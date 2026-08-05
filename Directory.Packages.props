@@ -6,6 +6,8 @@
   <!-- Package versions live here. A .csproj carries
        <PackageReference Include="..." /> with no Version. -->
   <ItemGroup>
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <!-- Pinned to the 1.x line of Microsoft.Testing.Platform: xunit.v3 3.2.2 uses
          xunit.v3.core.mtp-v1, and from 18.1.0 onwards this extension jumps to MTP 2.x,
@@ -14,6 +16,9 @@
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
     <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
+    <!-- Transitive pin. Microsoft.Data.Sqlite 10.0.10 still asks for the 2.1.x bundle, whose
+         native e_sqlite3 carries GHSA-2m69-gcr7-jv3q. The 3.x bundle is the fixed line. -->
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
   </ItemGroup>

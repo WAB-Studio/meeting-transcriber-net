@@ -1,13 +1,15 @@
 <Solution>
   <Folder Name="/src/">
-    <!-- Deploy: sin esto F5 compila pero no despliega el MSIX, y la ventana no abre. -->
+    <!-- Deploy: without it F5 builds but does not deploy the MSIX, and no window opens. -->
     <Project Path="src/MeetingTranscriber.App/MeetingTranscriber.App.csproj">
       <Platform Project="x64" />
       <Deploy />
     </Project>
     <Project Path="src/MeetingTranscriber.Domain/MeetingTranscriber.Domain.csproj" />
+    <Project Path="src/MeetingTranscriber.Infrastructure/MeetingTranscriber.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MeetingTranscriber.Domain.Tests/MeetingTranscriber.Domain.Tests.csproj" />
+    <Project Path="tests/MeetingTranscriber.Infrastructure.Tests/MeetingTranscriber.Infrastructure.Tests.csproj" />
   </Folder>
 </Solution>

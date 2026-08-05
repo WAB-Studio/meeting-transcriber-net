@@ -1,0 +1,20 @@
+{
+  "name": "winui",
+  "description": "Fork of Microsoft's winui plugin, carried in-repo so the two instructions that are wrong for this codebase stay fixed. See README.md for the divergences.",
+  "version": "0.5.0-mt.1",
+  "author": {
+    "name": "Microsoft (upstream), forked in meeting-transcriber-net"
+  },
+  "homepage": "https://github.com/microsoft/win-dev-skills",
+  "repository": "https://github.com/microsoft/win-dev-skills",
+  "license": "MIT",
+  "keywords": [
+    "windows",
+    "winui3",
+    "winui",
+    "xaml",
+    "windows app sdk",
+    "msix",
+    "packaging"
+  ]
+}
