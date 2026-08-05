@@ -76,6 +76,8 @@ public sealed partial class MainWindow : Window
                 Write($"  {key}={value}");
             }
 
+            await ReportChildRedirectionAsync();
+
             Write(string.Empty);
             Write("PASO MANUAL: correr `cmd /c set` desde el Explorador y comparar contra");
             Write("el bloque de arriba. La diferencia es lo que inyecta o tapa el contenedor.");
@@ -177,6 +179,42 @@ public sealed partial class MainWindow : Window
         {
             Status($"No se pudo guardar: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Heredar el entorno no es lo mismo que heredar el contenedor. El hijo ve
+    /// LOCALAPPDATA apuntando a la ruta real, pero si sus escrituras se redirigen igual
+    /// que las de la app, cualquier cosa que Claude Code deje ahi muere al desinstalar.
+    /// </summary>
+    private async Task ReportChildRedirectionAsync()
+    {
+        const string ChildProbeFileName = "meeting-transcriber-child-probe.txt";
+
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var stamp = Guid.NewGuid().ToString();
+
+        var startInfo = new ProcessStartInfo("cmd.exe", $"/c echo {stamp}> \"%LOCALAPPDATA%\\{ChildProbeFileName}\"")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        using (var child = Process.Start(startInfo) ?? throw new InvalidOperationException("cmd.exe no arranco."))
+        {
+            await child.WaitForExitAsync();
+        }
+
+        var containerPath = Path.Combine(
+            Path.GetDirectoryName(localAppData.TrimEnd(Path.DirectorySeparatorChar))!,
+            "Local", "Packages", Package.Current.Id.FamilyName, "LocalCache", "Local", ChildProbeFileName);
+
+        Write(string.Empty);
+        Write("Escritura del hijo en %LOCALAPPDATA%:");
+        Write($"  sello escrito:        {stamp}");
+        Write($"  en el contenedor:     {File.Exists(containerPath)}  {containerPath}");
+        Write(File.Exists(containerPath)
+            ? "  => el hijo HEREDA la redireccion: su %LOCALAPPDATA% no es el del usuario."
+            : $"  => el hijo escribe FUERA del contenedor. Confirmar a mano en {Path.Combine(localAppData, ChildProbeFileName)}");
     }
 
     private static async Task<Dictionary<string, string>> CaptureChildEnvironmentAsync()
