@@ -3,13 +3,13 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
-  <!-- Las versiones de paquetes viven acá. En los .csproj va
-       <PackageReference Include="..." /> sin Version. -->
+  <!-- Package versions live here. A .csproj carries
+       <PackageReference Include="..." /> with no Version. -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
-    <!-- Clavado en la línea 1.x de Microsoft.Testing.Platform: xunit.v3 3.2.2 usa
-         xunit.v3.core.mtp-v1, y de 18.1.0 en adelante esta extensión salta a MTP 2.x,
-         que revienta con TypeLoadException. Se puede subir cuando xunit.v3 4 sea estable. -->
+    <!-- Pinned to the 1.x line of Microsoft.Testing.Platform: xunit.v3 3.2.2 uses
+         xunit.v3.core.mtp-v1, and from 18.1.0 onwards this extension jumps to MTP 2.x,
+         which blows up with TypeLoadException. Can move once xunit.v3 4 is stable. -->
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.0.6" />
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
     <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.3.1" />

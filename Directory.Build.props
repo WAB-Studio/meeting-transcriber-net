@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
-  <!-- Los warnings se compilan como errores en CI, con -warnaserror.
-       En la máquina de desarrollo se ven y no frenan. -->
+  <!-- Warnings are compiled as errors in CI, with -warnaserror.
+       On the development machine they show up and do not block. -->
 
 </Project>

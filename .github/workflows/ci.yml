@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    # Windows nativo: WinUI 3, el Windows App SDK y WASAPI no corren en Linux.
+    # Windows native: WinUI 3, the Windows App SDK and WASAPI do not run on Linux.
     runs-on: windows-latest
 
     steps:
