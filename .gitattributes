@@ -1,0 +1,11 @@
+* text=auto eol=crlf
+
+# A fixture stands in for a provider response, so git leaves its bytes alone.
+tests/fixtures/deepgram/*.json -text
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.wav binary
+*.snk binary
+*.pfx binary

@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "MeetingTranscriber.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "MeetingTranscriber.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

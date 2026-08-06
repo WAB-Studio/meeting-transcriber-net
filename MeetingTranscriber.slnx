@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/src/">
+    <!-- Deploy: without it F5 builds but does not deploy the MSIX, and no window opens. -->
+    <Project Path="src/MeetingTranscriber.App/MeetingTranscriber.App.csproj">
+      <Platform Project="x64" />
+      <Deploy />
+    </Project>
+    <Project Path="src/MeetingTranscriber.Domain/MeetingTranscriber.Domain.csproj" />
+    <Project Path="src/MeetingTranscriber.Infrastructure/MeetingTranscriber.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MeetingTranscriber.Domain.Tests/MeetingTranscriber.Domain.Tests.csproj" />
+    <Project Path="tests/MeetingTranscriber.Infrastructure.Tests/MeetingTranscriber.Infrastructure.Tests.csproj" />
+    <Project Path="tests/MeetingTranscriber.CorpusImport.Tests/MeetingTranscriber.CorpusImport.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <!-- Run by hand, in the solution so the build and the formatter still see it. -->
+    <Project Path="tools/MeetingTranscriber.CorpusFixtures/MeetingTranscriber.CorpusFixtures.csproj" />
+    <Project Path="tools/MeetingTranscriber.CorpusImport/MeetingTranscriber.CorpusImport.csproj" />
+  </Folder>
+</Solution>

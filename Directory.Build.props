@@ -1,0 +1,12 @@
+<Project>
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- Warnings are compiled as errors in CI, with -warnaserror.
+       On the development machine they show up and do not block. -->
+
+</Project>
