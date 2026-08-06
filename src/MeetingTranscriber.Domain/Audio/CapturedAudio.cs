@@ -32,6 +32,23 @@ public static class CapturedAudio
         return (int)channel;
     }
 
+    /// <summary>
+    /// The channel at <paramref name="index"/>, which is both its position inside an interleaved
+    /// frame and the channel number a provider reports back about it. The inverse of
+    /// <see cref="IndexOf"/>, and here for the same reason: a number becomes a position in one
+    /// place or the contract has two copies to keep in step.
+    /// </summary>
+    public static AudioChannel ChannelAt(int index)
+    {
+        var channel = (AudioChannel)index;
+        if (channel is not (AudioChannel.Others or AudioChannel.Me))
+        {
+            throw new AudioContractException($"There is no audio channel at index {index}.");
+        }
+
+        return channel;
+    }
+
     /// <summary>Lays two equally long sources out as interleaved stereo frames.</summary>
     public static short[] Interleave(ReadOnlySpan<short> others, ReadOnlySpan<short> me)
     {

@@ -17,13 +17,13 @@ namespace MeetingTranscriber.Domain.Tests.Fixtures;
 /// </remarks>
 public static class DeepgramFixtures
 {
-    /// <summary>Both channels, 58 minutes, six diarized speakers sharing the meeting channel.</summary>
+    /// <summary>Both channels, 58 minutes, and two people sharing the microphone.</summary>
     public const string TwoChannelLong = "two-channel-long";
 
     /// <summary>Both channels, 34 minutes. The one to reach for when length is not the point.</summary>
     public const string TwoChannelShort = "two-channel-short";
 
-    /// <summary>One track with diarized speakers, the shape a <see cref="SourceProfile.Diarize"/> meeting has.</summary>
+    /// <summary>One track with six diarized speakers, the shape a <see cref="SourceProfile.Diarize"/> meeting has.</summary>
     public const string SingleTrackDiarized = "single-track-diarized";
 
     /// <summary>Both channels, and the microphone caught nothing at all.</summary>
@@ -51,12 +51,22 @@ public static class DeepgramFixtures
         var multichannel = ProfileOf(name) is SourceProfile.Multichannel;
 
         return response.RootElement.GetProperty("results").GetProperty("utterances").EnumerateArray()
-            .Select(turn => new SpeechSegment(
-                Duration.FromSeconds(turn.GetProperty("start").GetDouble()),
-                Duration.FromSeconds(turn.GetProperty("end").GetDouble()),
-                multichannel ? (AudioChannel)turn.GetProperty("channel").GetInt32() : null,
-                $"speaker_{turn.GetProperty("speaker").GetInt32()}",
-                turn.GetProperty("transcript").GetString()!))
+            .Select(turn =>
+            {
+                var channel = multichannel
+                    ? CapturedAudio.ChannelAt(turn.GetProperty("channel").GetInt32())
+                    : (AudioChannel?)null;
+
+                // The label rule itself is not a detail of this reader: it is the key
+                // speaker_assignments hangs off, so a shortcut here would be testing the rules
+                // against labels the corpus never sees.
+                return new SpeechSegment(
+                    Duration.FromSeconds(turn.GetProperty("start").GetDouble()),
+                    Duration.FromSeconds(turn.GetProperty("end").GetDouble()),
+                    channel,
+                    SpeakerLabels.For(channel, turn.GetProperty("speaker").GetInt32()),
+                    turn.GetProperty("transcript").GetString()!);
+            })
             .ToArray();
     }
 
