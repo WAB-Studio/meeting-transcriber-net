@@ -14,6 +14,11 @@ namespace MeetingTranscriber.Infrastructure.Migrations
     /// it was transcribed from, which is already stored and already indexed — a stronger answer
     /// than a folder name, because it does not care what the folder was called. Where a meeting
     /// came from is recorded as an audit event, which is where provenance belongs.
+    /// <para>
+    /// The values in the column are dropped rather than rewritten as audit events. No corpus has
+    /// any: the application has never shipped, and every import from here on writes the audit
+    /// event itself. See the Classification migration for the whole of that reasoning.
+    /// </para>
     /// </remarks>
     /// <inheritdoc />
     public partial class DropLegacyId : Migration

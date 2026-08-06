@@ -27,6 +27,18 @@ namespace MeetingTranscriber.Infrastructure.Migrations
     /// one is another migration. That is deliberate: they are values on disk, not labels in an
     /// interface.
     /// </para>
+    /// <para>
+    /// <b>It drops the companies and the projects instead of moving them, on purpose.</b> Those
+    /// rows are human layer — approved by a person, inferable from no artifact, recoverable from
+    /// no backup of files — so the choice was not a free one. It is safe because there is no corpus
+    /// to lose: the application has never shipped, and the only route into those tables was an
+    /// import that now writes the tree directly. Translating them would have been code nothing
+    /// could exercise against real rows, standing exactly where a person would trust it most.
+    /// </para>
+    /// <para>
+    /// That reasoning expires the day this application writes a corpus somebody keeps, and the day
+    /// it does is the day this note stops applying to migrations written after it.
+    /// </para>
     /// </remarks>
     /// <inheritdoc />
     public partial class Classification : Migration
