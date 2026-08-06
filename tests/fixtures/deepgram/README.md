@@ -22,6 +22,13 @@ same word is always the same word. No name of a person, a company or a product s
 test that says so does not work from a list of the real names — it checks that every word in every
 fixture is one of the vocabulary's, which is the same claim without publishing what it hides.
 
+The test walks the whole document rather than the fields the tool substitutes, because those two
+lists used to be the same one and shared a blind spot. Ten paths are exempt as structure, and each
+of them has to keep looking like structure: the request id, the audio hash, the date, Deepgram's
+`transaction_key` constant, the model ids and what the models are called, and the per-utterance
+ids. A string anywhere else — a block a request option turns on, a field the next API release
+adds — is held to the vocabulary and fails until the tool is taught to substitute it.
+
 **Nothing that was measured was touched.** Timings, confidences, speaker and channel numbers, word
 counts, ordering, the model and the duration are the provider's own, byte for byte: the two
 unreshaped fixtures hold exactly the numeric literals their sources do, in the same order. That
@@ -49,8 +56,25 @@ actually answered. Nothing else was reshaped, trimmed or shortened.
 ## Rebuilding them
 
 ```powershell
-dotnet run --project tools/MeetingTranscriber.CorpusFixtures -- <corpus-directory>
+dotnet run --project tools/MeetingTranscriber.CorpusFixtures -- <corpus-directory> <sources.json>
 ```
+
+`sources.json` says which meeting folder each fixture is built from:
+
+```json
+{
+  "two-channel-long":      "<folder>",
+  "two-channel-short":     "<folder>",
+  "single-track-diarized": "<folder>",
+  "two-channel-silent-me": "<folder>"
+}
+```
+
+It belongs next to the corpus and not in this repository. A folder name is the date and the time
+the user met somebody, which is the same fact the tool normalises inside every response — writing
+four of them into a recipe here would have published from the source what the output takes out.
+`single-track-diarized` needs a meeting whose channel 0 carries several diarized speakers; the
+other three take any.
 
 The tool is one way and never writes into the corpus. It needs the Python corpus, which only
 exists on the machine that recorded those meetings — which is the point of the fixtures being

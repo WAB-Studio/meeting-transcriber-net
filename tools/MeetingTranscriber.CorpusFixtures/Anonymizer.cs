@@ -7,11 +7,21 @@ namespace MeetingTranscriber.CorpusFixtures;
 /// Replaces everything a Deepgram response says while keeping everything it measures.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Word for word: every token becomes a <see cref="Vocabulary"/> word, and the timings, the
 /// confidences, the channel and speaker numbers, the word counts and the ordering are left
 /// exactly as the provider returned them. That is the half of the response the tests are for.
 /// Numbers stay untouched as raw JSON text, so a fixture round trips through this tool without
 /// a single digit shifting.
+/// </para>
+/// <para>
+/// It reaches the fields the responses in the corpus actually have. The provider's own summary,
+/// topic, intent and entity blocks arrive only under request options nobody has switched on, so
+/// there is no real response to write that substitution against and none is guessed at here.
+/// What closes the gap is on the other side: the privacy test walks every string in the document
+/// and holds anything it does not recognise to the vocabulary, so the first fixture built with one
+/// of those blocks fails before it is committed.
+/// </para>
 /// </remarks>
 internal sealed partial class Anonymizer(Vocabulary vocabulary)
 {

@@ -16,15 +16,21 @@ namespace MeetingTranscriber.CorpusFixtures;
 /// </remarks>
 internal static class Program
 {
+    /// <summary>
+    /// What each fixture is, and nothing about which meeting it came from. Which folder feeds
+    /// which fixture is the one thing here that would be a fact about the user's calendar — the
+    /// tool normalises that same date inside the response for exactly that reason — so it is asked
+    /// for at the command line and lives next to the corpus, not in this repository.
+    /// </summary>
     private static readonly Recipe[] Recipes =
     [
-        new("two-channel-long", "2026-07-29 09-35-15", Shape.AsRecorded),
-        new("two-channel-short", "2026-08-03 08-13-17", Shape.AsRecorded),
+        new("two-channel-long", Shape.AsRecorded),
+        new("two-channel-short", Shape.AsRecorded),
 
-        // This meeting and no other: six diarized speakers share its meeting channel, and a one
-        // track fixture whose every turn is speaker 0 would not be a diarized one.
-        new("single-track-diarized", "2026-08-04 13-23-25", Shape.MeetingChannelOnly),
-        new("two-channel-silent-me", "2026-08-03 13-23-59", Shape.SilentUserChannel),
+        // The source for this one has to be a meeting whose channel 0 carries several diarized
+        // speakers: a one track fixture whose every turn is speaker 0 would not be a diarized one.
+        new("single-track-diarized", Shape.MeetingChannelOnly),
+        new("two-channel-silent-me", Shape.SilentUserChannel),
     ];
 
     private static readonly JsonSerializerOptions Compact = new()
@@ -35,11 +41,28 @@ internal static class Program
         WriteIndented = false,
     };
 
+    private const string Usage = """
+        usage: dotnet run --project tools/MeetingTranscriber.CorpusFixtures -- <corpus-directory> <sources.json>
+
+        sources.json says which meeting folder each fixture is built from, and belongs next to the
+        corpus rather than in this repository — a folder name is a date and a time the user met
+        somebody, which is the same fact the tool normalises inside every response:
+
+          {
+            "two-channel-long":      "<folder>",
+            "two-channel-short":     "<folder>",
+            "single-track-diarized": "<folder>",
+            "two-channel-silent-me": "<folder>"
+          }
+
+        The corpus is only ever read.
+        """;
+
     private static int Main(string[] args)
     {
-        if (args.Length != 1)
+        if (args.Length != 2)
         {
-            Console.Error.WriteLine("usage: dotnet run --project tools/MeetingTranscriber.CorpusFixtures -- <corpus-directory>");
+            Console.Error.WriteLine(Usage);
             return 2;
         }
 
@@ -50,15 +73,27 @@ internal static class Program
             return 1;
         }
 
+        var sources = ReadSources(new FileInfo(args[1]));
+        if (sources is null)
+        {
+            return 1;
+        }
+
         var fixtures = FixtureDirectory();
         var anonymizer = new Anonymizer(Vocabulary.Load(Path.Combine(fixtures.FullName, "vocabulary.txt")));
 
         foreach (var recipe in Recipes)
         {
-            var source = new FileInfo(Path.Combine(corpus.FullName, recipe.Meeting, "deepgram.json"));
+            if (!sources.TryGetValue(recipe.Name, out var folder) || string.IsNullOrWhiteSpace(folder))
+            {
+                Console.Error.WriteLine($"'{args[1]}' does not say which meeting '{recipe.Name}' is built from.");
+                return 1;
+            }
+
+            var source = new FileInfo(Path.Combine(corpus.FullName, folder, "deepgram.json"));
             if (!source.Exists)
             {
-                Console.Error.WriteLine($"'{recipe.Meeting}' is not in this corpus, so '{recipe.Name}' was left alone.");
+                Console.Error.WriteLine($"'{recipe.Name}' names a meeting this corpus does not have.");
                 return 1;
             }
 
@@ -72,6 +107,26 @@ internal static class Program
         }
 
         return 0;
+    }
+
+    private static Dictionary<string, string>? ReadSources(FileInfo file)
+    {
+        if (!file.Exists)
+        {
+            Console.Error.WriteLine($"There is no source list at '{file.FullName}'.");
+            return null;
+        }
+
+        try
+        {
+            using var stream = file.OpenRead();
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(stream);
+        }
+        catch (JsonException exception)
+        {
+            Console.Error.WriteLine($"'{file.FullName}' is not a fixture source list: {exception.Message}");
+            return null;
+        }
     }
 
     private static JsonObject Read(FileInfo source)
@@ -167,5 +222,5 @@ internal static class Program
         SilentUserChannel,
     }
 
-    private sealed record Recipe(string Name, string Meeting, Shape Shape);
+    private sealed record Recipe(string Name, Shape Shape);
 }
