@@ -8,16 +8,24 @@ namespace MeetingTranscriber.Domain.Knowledge;
 /// has been decided about it.
 /// </summary>
 /// <remarks>
+/// <para>
 /// A provider splits a sentence across these freely — "Con", "Creo", "Eso todavía no lo tengo
 /// hecho" — so one of them on its own is usually a fragment. <see cref="Turns"/> is what turns
 /// them into something a person can read and a claim can cite.
+/// </para>
+/// <para>
+/// <c>Confidence</c> is what the provider reported about this one stretch, carried through
+/// unchanged and never combined: what a merged turn's confidence means is the projection's to
+/// decide, and grouping deliberately does not answer it. Null when the response did not say.
+/// </para>
 /// </remarks>
 public readonly record struct SpeechSegment(
     Duration Start,
     Duration End,
     AudioChannel? Channel,
     string SpeakerLabel,
-    string Text);
+    string Text,
+    double? Confidence = null);
 
 /// <summary>
 /// What the projection stores as a row of <c>utterances</c>: one contiguous stretch of speech

@@ -82,10 +82,14 @@ language: nova-3 against a language the audio is not in returns an empty string 
 0.0, no error, and charges in full. `two-channel-silent-me.json` is that case, and the meeting
 still projects from the channel that did carry speech.
 
-**Channel 1 is the user and needs no diarization.** — already the contract
+**Channel 1 is the microphone, and how many people it caught is not deterministic.** — measured
 
-`Domain/Audio/` fixes it: channel 0 is the meeting, channel 1 is the user. The Python renderer
-applies the user's name to channel 1 without consulting the diarizer, which is the same statement.
+The Python renderer applies the user's name to channel 1 without consulting the diarizer, and
+`Domain/Audio/` copied that as "channel 1 is the user". The fixtures disprove it:
+`two-channel-long` has two diarized speakers on channel 1, which is two people in one room sharing
+one microphone. What the channel does fix is which microphone the audio came from, never how many
+people spoke into it, so the parser reads the diarizer's labels on both channels. Deciding which of
+them is whom is a human resolution and its own task.
 
 ## What .NET does differently, on purpose
 
@@ -115,19 +119,23 @@ provider said, `speaker_assignments` maps a label to a person, and rendering joi
 consequence is that the one-based display is a rendering concern here and lives nowhere in the
 domain.
 
+The label itself is `SpeakerLabels.For`: `ch1:speaker_0` when the recording has channels, and
+`speaker_0` when it is a single track that has none. The channel is in there because a provider
+numbers speakers within a channel — both sides of a call start at zero — and `speaker_assignments`
+is keyed on the meeting and the label alone, so `speaker_0` on its own would have been two people
+under one key. Changing the shape of that string is a migration, not a rename.
+
 **Byte-identical output is not a goal.** What the tests check is domain invariants. Where the
 rendered text differs from the Python system's, the difference is intentional and gets written
 down here rather than chased.
 
 ## Still to settle
 
-Neither of these is answered by the Python system, so neither is decided here:
+Not answered by the Python system, so not decided here:
 
-- **What a speaker label looks like.** The fixtures are read as `speaker_0`, which is only what
-  the test reader does; the stored form is the parser's to fix, and it is the key
-  `speaker_assignments` hangs off, so it is a contract and not a formatting choice.
 - **What a merged turn's confidence means.** `utterances.confidence` exists and grouping does not
-  fill it. Python has per-utterance confidence and no per-turn number, so there is nothing to
+  fill it. The parser carries the provider's number on each `SpeechSegment` so the answer is still
+  available, but Python has per-utterance confidence and no per-turn number, so there is nothing to
   port: the lowest of the merged parts, a weighted mean and nothing at all are all defensible, and
   the projection has to pick one deliberately.
 

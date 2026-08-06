@@ -59,12 +59,14 @@ cloned under `\\wsl$\`: MSBuild is slow over the crossed filesystem and Hot Relo
 src/MeetingTranscriber.App/               WinUI 3, packaged as MSIX
 src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
+src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
 tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
 tools/MeetingTranscriber.CorpusImport/    reads a Python corpus in, then gets deleted
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```
 
-Domain, Infrastructure and CorpusImport each have their tests under `tests/<project>.Tests/`.
+Domain, Infrastructure, Processing and CorpusImport each have their tests under
+`tests/<project>.Tests/`.
 
 `tools/` is run by hand and is not part of the product. Nothing under `src/` may reference it or
 know the Python system existed, so deleting the importer is deleting two folders rather than
@@ -96,6 +98,10 @@ Breaking one corrupts meetings already recorded and artifacts already paid for.
   anchors on, and `Turns.Group` is the only thing that decides where one ends. What the Python
   system learned about that, and what .NET does differently on purpose, is in
   `docs/reference-behaviour.md`.
+- A speaker is stored as the label `SpeakerLabels.For` builds and never as a person's name. A
+  provider numbers speakers within a channel, so the channel is part of the label — `ch1:speaker_0`
+  — and only a single track has labels without one. It is the key `speaker_assignments` hangs off,
+  so two speakers sharing a label would put somebody's name on another person's words.
 
 ## Conventions
 

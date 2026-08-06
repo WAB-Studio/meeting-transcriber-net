@@ -7,10 +7,12 @@
     </Project>
     <Project Path="src/MeetingTranscriber.Domain/MeetingTranscriber.Domain.csproj" />
     <Project Path="src/MeetingTranscriber.Infrastructure/MeetingTranscriber.Infrastructure.csproj" />
+    <Project Path="src/MeetingTranscriber.Processing/MeetingTranscriber.Processing.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MeetingTranscriber.Domain.Tests/MeetingTranscriber.Domain.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Infrastructure.Tests/MeetingTranscriber.Infrastructure.Tests.csproj" />
+    <Project Path="tests/MeetingTranscriber.Processing.Tests/MeetingTranscriber.Processing.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.CorpusImport.Tests/MeetingTranscriber.CorpusImport.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

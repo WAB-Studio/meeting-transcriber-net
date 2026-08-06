@@ -63,7 +63,9 @@ BenchmarkDotNet.Artifacts/
 # .NET
 project.lock.json
 project.fragment.lock.json
-artifacts/
+# Anchored: this is the SDK's own output folder at the root of the repository, and unanchored it
+# also swallowed src/MeetingTranscriber.Domain/Artifacts/, which is a namespace and not a build.
+/artifacts/
 
 # Tye
 .tye/
