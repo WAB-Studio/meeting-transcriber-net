@@ -8,7 +8,7 @@ using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.EntityFrameworkCore;
 
-namespace MeetingTranscriber.Infrastructure.Import;
+namespace MeetingTranscriber.CorpusImport;
 
 /// <summary>How an import is allowed to treat the corpus it reads.</summary>
 /// <param name="CopyTo">

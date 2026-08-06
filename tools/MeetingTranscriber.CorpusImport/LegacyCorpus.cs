@@ -7,7 +7,7 @@ using MeetingTranscriber.Domain.Time;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
-namespace MeetingTranscriber.Infrastructure.Import;
+namespace MeetingTranscriber.CorpusImport;
 
 /// <summary>What a meeting folder of the Python corpus holds that is worth importing.</summary>
 public sealed record LegacyMeeting

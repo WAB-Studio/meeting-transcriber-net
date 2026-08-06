@@ -23,14 +23,20 @@ cloned under `\\wsl$\`: MSBuild is slow over the crossed filesystem and Hot Relo
 
 ```text
 src/MeetingTranscriber.App/             WinUI 3, packaged as MSIX
-src/MeetingTranscriber.Cli/             diagnosis, import, rebuild and recovery
 src/MeetingTranscriber.Domain/          entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/  SQLite, filesystem and credentials
 tests/MeetingTranscriber.Domain.Tests/
 tests/MeetingTranscriber.Infrastructure.Tests/
 tests/fixtures/deepgram/                anonymised responses, free to test against
-tools/MeetingTranscriber.CorpusFixtures/ builds those fixtures from the Python corpus
+tools/MeetingTranscriber.CorpusFixtures/  builds those fixtures from the Python corpus
+tools/MeetingTranscriber.CorpusImport/    reads a Python corpus in, then gets deleted
+tests/MeetingTranscriber.CorpusImport.Tests/
 ```
+
+`tools/` is for what is run by hand and is not part of the product. The Python system is closed
+and has two users, so its importer is dead code the day the last old corpus is read: it lives
+outside `src/`, nothing under `src/` references it, and removing it is deleting two folders rather
+than untangling the application. Its README says exactly what that deletion is.
 
 The seven-project split in `arquitectura.md` §3 is the destination, not the scaffolding. A project
 appears when there is code to put inside it, not before.
@@ -100,7 +106,7 @@ decided in a hurry later, mid-task.
 | MVVM | `CommunityToolkit.Mvvm` |
 | DI, hosting and logging | `Microsoft.Extensions.*` |
 | Tests | xUnit v3 + Shouldly |
-| Reading the legacy Python corpus | `YamlDotNet` |
+| Reading the legacy Python corpus | `YamlDotNet`, in the import tool only |
 
 ## Rules that are not preferences
 
@@ -115,7 +121,8 @@ decided in a hurry later, mid-task.
 - The legacy importer reads the Python corpus and never writes to it — no file in it is created,
   rewritten, moved or deleted, including by the option that copies the sources out. Running it
   twice imports nothing the second time. What it has nowhere to put, it names in its report
-  instead of dropping.
+  instead of dropping. It is a tool, not a feature: nothing in the application may come to depend
+  on it.
 - The corpus never lives in the MSIX package data folder — uninstalling wipes it, and the corpus
   holds artifacts that cannot be obtained again.
 - Claude Code is an optional dependency. Nothing about recording, transcription, rendering,

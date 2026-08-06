@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace MeetingTranscriber.Infrastructure.Import;
+namespace MeetingTranscriber.CorpusImport;
 
 /// <summary>
 /// What one import did, and everything it could not do. The second half is the point: an import

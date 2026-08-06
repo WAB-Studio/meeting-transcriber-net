@@ -1,24 +1,22 @@
-using MeetingTranscriber.Infrastructure.Import;
 using MeetingTranscriber.Infrastructure.Storage;
 
-namespace MeetingTranscriber.Cli;
+namespace MeetingTranscriber.CorpusImport;
 
 /// <summary>
-/// The command line, which arquitectura.md §3 gives diagnosis, import, rebuild and recovery. It
-/// shares the application's own services rather than implementing a second pipeline; today the
-/// only command is the one that reads the Python corpus.
+/// Reads a Python corpus into a .NET one. Run by hand, once per machine that has an old corpus,
+/// and then deleted whole — README.md in this folder says what deleting it means.
 /// </summary>
 internal static class Program
 {
     private const string Usage = """
-        usage: meeting-transcriber import <corpus-directory> --database <corpus.db> [options]
+        usage: corpus-import <corpus-directory> --database <corpus.db> [options]
 
           --copy <directory>   copy the sources into this corpus instead of pointing at
                                where they already are
           --language <code>    the language of a meeting whose rendered transcript does not
                                say (default: es)
 
-        The legacy corpus is only ever read.
+        The corpus it reads is only ever read.
         """;
 
     private static int Main(string[] args)
@@ -29,16 +27,9 @@ internal static class Program
             return args.Length == 0 ? 2 : 0;
         }
 
-        if (args[0] is not "import")
-        {
-            Console.Error.WriteLine($"'{args[0]}' is not a command.");
-            Console.Error.WriteLine(Usage);
-            return 2;
-        }
-
         try
         {
-            return Import(args[1..]);
+            return Import(args);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -49,9 +40,9 @@ internal static class Program
 
     private static int Import(string[] args)
     {
-        if (args.Length == 0 || args[0].StartsWith('-'))
+        if (args[0].StartsWith('-'))
         {
-            Console.Error.WriteLine("import needs the directory of the corpus to read.");
+            Console.Error.WriteLine("The first argument is the directory of the corpus to read.");
             return 2;
         }
 
@@ -78,7 +69,7 @@ internal static class Program
                     index++;
                     break;
                 default:
-                    Console.Error.WriteLine($"'{args[index]}' is not an option of import.");
+                    Console.Error.WriteLine($"'{args[index]}' is not an option.");
                     return 2;
             }
         }
@@ -91,7 +82,7 @@ internal static class Program
 
         if (database is null)
         {
-            Console.Error.WriteLine("import needs --database, the corpus to import into.");
+            Console.Error.WriteLine("--database is needed: the corpus to import into.");
             return 2;
         }
 

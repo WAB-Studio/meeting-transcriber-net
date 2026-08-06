@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace MeetingTranscriber.Infrastructure.Tests.Import;
+namespace MeetingTranscriber.CorpusImport.Tests;
 
 /// <summary>
 /// A Python corpus on disk, built for one test. Not the user's: no test may need that one, and a

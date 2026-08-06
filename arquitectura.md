@@ -258,6 +258,11 @@ El importador del corpus Python es una herramienta de una sola vía. Lee
 `deepgram.json`, `extraction.json`, `catalog.yaml`, `meta.yaml` y
 `corrections.yaml`, pero nunca los modifica ni elimina.
 
+No forma parte de la aplicación. El sistema Python está cerrado y tiene dos
+usuarios, así que esto es código muerto el día que se importe el último corpus
+viejo: vive en `tools/`, nada de `src/` lo referencia, y sacarlo es borrar dos
+carpetas en vez de desenredar la aplicación.
+
 Para cada reunión:
 
 1. genera un UUID y registra el identificador legacy;

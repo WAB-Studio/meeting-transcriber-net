@@ -1,11 +1,9 @@
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Meetings;
-using MeetingTranscriber.Infrastructure.Import;
 using MeetingTranscriber.Infrastructure.Storage;
-using MeetingTranscriber.Infrastructure.Tests.Storage;
 
-namespace MeetingTranscriber.Infrastructure.Tests.Import;
+namespace MeetingTranscriber.CorpusImport.Tests;
 
 public class CorpusImporterTests
 {
