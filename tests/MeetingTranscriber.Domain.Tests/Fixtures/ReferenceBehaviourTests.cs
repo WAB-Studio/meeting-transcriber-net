@@ -60,12 +60,45 @@ public class ReferenceBehaviourTests
         turns.Select(turn => turn.Channel).Distinct().ShouldBe(
             [AudioChannel.Others, AudioChannel.Me],
             ignoreOrder: true);
+    }
 
-        // Consecutive turns never share a speaker on a channel: that is what merging means, and
-        // a run of real speech is where it would show if the key were wrong.
+    /// <summary>
+    /// Two consecutive turns are two turns for a reason: either somebody else is speaking, or the
+    /// same speaker came back after a silence longer than the rule allows. A run of real speech is
+    /// where it would show if merging keyed on the wrong thing.
+    /// </summary>
+    [Theory]
+    [InlineData(DeepgramFixtures.TwoChannelLong)]
+    [InlineData(DeepgramFixtures.TwoChannelShort)]
+    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
+    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    public void Nothing_that_could_have_been_one_turn_was_left_as_two(string name)
+    {
+        var turns = Turns.Group(DeepgramFixtures.Segments(name));
+
         turns.Zip(turns.Skip(1))
             .ShouldAllBe(pair => pair.First.Channel != pair.Second.Channel
-                || pair.First.SpeakerLabel != pair.Second.SpeakerLabel);
+                || pair.First.SpeakerLabel != pair.Second.SpeakerLabel
+                || pair.Second.Start > pair.First.End + Turns.MaxSilence);
+    }
+
+    /// <summary>
+    /// A meeting where one side never interrupts used to come back as a single turn with the
+    /// whole recording inside it, and a citation against that checks nothing: every timestamp is
+    /// its start and every quote belongs to it.
+    /// </summary>
+    [Theory]
+    [InlineData(DeepgramFixtures.TwoChannelLong)]
+    [InlineData(DeepgramFixtures.TwoChannelShort)]
+    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
+    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    public void No_turn_swallows_the_meeting_it_belongs_to(string name)
+    {
+        var turns = Turns.Group(DeepgramFixtures.Segments(name));
+        var meeting = turns[^1].End - turns[0].Start;
+
+        turns.Count.ShouldBeGreaterThan(1);
+        turns.ShouldAllBe(turn => (turn.End - turn.Start).Milliseconds * 2 < meeting.Milliseconds);
     }
 
     [Fact]

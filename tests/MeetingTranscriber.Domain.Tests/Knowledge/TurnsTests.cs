@@ -59,6 +59,65 @@ public class TurnsTests
     }
 
     [Fact]
+    public void A_silence_longer_than_the_rule_allows_starts_a_new_turn()
+    {
+        var turns = Turns.Group([
+            Segment(0.0, 1.0, AudioChannel.Others, "speaker_0", "so that is settled"),
+            Segment(1.0 + 2.001, 4.0, AudioChannel.Others, "speaker_0", "and another thing"),
+        ]);
+
+        turns.Count.ShouldBe(2);
+        turns[1].Start.ShouldBe(Duration.FromMilliseconds(3_001));
+    }
+
+    [Fact]
+    public void A_pause_the_rule_allows_stays_inside_one_turn()
+    {
+        var turns = Turns.Group([
+            Segment(0.0, 1.0, AudioChannel.Others, "speaker_0", "so that is settled"),
+            Segment(1.0 + 2.0, 4.0, AudioChannel.Others, "speaker_0", "and another thing"),
+        ]);
+
+        turns.Count.ShouldBe(1);
+        turns[0].Text.ShouldBe("so that is settled and another thing");
+    }
+
+    /// <summary>
+    /// The case the rule exists for: one person talking for an hour with nobody interrupting.
+    /// Without a threshold that is a single turn, and a citation against it checks nothing —
+    /// every timestamp is its start and every quote is inside it.
+    /// </summary>
+    [Fact]
+    public void A_monologue_with_silences_in_it_is_not_one_turn()
+    {
+        var turns = Turns.Group(Enumerable.Range(0, 20)
+            .Select(index => Segment(index * 100.0, (index * 100.0) + 1.0, AudioChannel.Others, "speaker_0", "a")));
+
+        turns.Count.ShouldBe(20);
+    }
+
+    /// <summary>
+    /// An ordinal is the identity every citation hangs off, with a foreign key behind it. Two
+    /// segments starting in the same millisecond must not be numbered by whoever handed them
+    /// over: reading the same response by the list of turns or channel by channel would then
+    /// point a stored claim at a different turn, and nothing would fail.
+    /// </summary>
+    [Fact]
+    public void Segments_that_tie_on_the_instant_are_numbered_the_same_either_way()
+    {
+        var byChannel = new[]
+        {
+            Segment(4.0, 5.0, AudioChannel.Others, "speaker_1", "third"),
+            Segment(1.0, 2.0, AudioChannel.Others, "speaker_0", "the meeting side"),
+            Segment(1.0, 3.0, AudioChannel.Me, "speaker_0", "the microphone side"),
+        };
+
+        Turns.Group(byChannel).ShouldBe(Turns.Group(byChannel.AsEnumerable().Reverse()));
+        Turns.Group(byChannel).Select(turn => turn.Text)
+            .ShouldBe(["the meeting side", "the microphone side", "third"]);
+    }
+
+    [Fact]
     public void The_two_sides_of_a_call_are_never_welded_into_one_turn()
     {
         // Both channels label their first speaker 0, because a provider numbers speakers within

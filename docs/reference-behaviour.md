@@ -23,12 +23,50 @@ start of a turn.
 
 The provider returns utterances grouped by channel, so the raw order can be one whole side of the
 call followed by the other, and a transcript rendered in that order reads as two monologues.
-Sorting by start is what rebuilds the back and forth, and it is stable, so speech sharing an
-instant keeps the order it arrived in.
+Sorting by start is what rebuilds the back and forth.
 
 Today's responses happen to come back interleaved by time — every committed fixture is already in
 order. The sort stays anyway: nothing announces the day that stops being true, and a test pins
 that grouping a channel-ordered response gives the same turns as grouping the real one.
+
+**A silence of more than two seconds ends a turn.** — .NET only, `Turns.MaxSilence`
+
+Python merges consecutive speech from one speaker however long the gap, and it gets away with it
+because a citation there is validated against a timestamp. Anchored on a position instead, an
+oversized turn stops both halves of the contract from checking anything: every timestamp inside it
+is "the start of a turn" and every quote "belongs to" it. Measured over the four fixtures, a
+meeting where one side never interrupts came back as one turn holding the whole recording, with a
+103-second silence welded into it.
+
+Two seconds is a convention, not a measurement. Conversational pause lengths are lognormal with a
+long tail and no valley in the histogram to cut at, so no threshold falls out of the data: the
+anchors available are ~180 ms (the technical floor that keeps a stop consonant from splitting a
+word), ~1 s (conversation analysis's "standard maximum silence"), and 2–5 s (a lapse, where the
+floor is treated as abandoned). One second would split legitimate planning pauses, which a working
+meeting over a shared screen is full of; two seconds settles the pathological case — a 103-second
+silence welded inside one turn — without fragmenting. It agrees with the fixtures, where the median
+within-turn pause is 0.7 s and the third quartile 1.3 s, but the fixtures did not choose it.
+
+**It does not vary by language.** Cross-linguistic work on turn-taking puts the whole between-language
+spread in gap length at tens to a couple of hundred milliseconds — Stivers et al. (2009) across ten
+languages, Weilhammer and Rabold (2003) finding American English, German and Japanese
+statistically indistinguishable — which is one to two orders of magnitude below this threshold, and
+neither language family nor typology predicts where a language sits. What does move pause length is
+modality and the kind of interaction, not the language: face-to-face pauses run several times
+longer than telephone ones. So the rule is one number for the whole corpus, and if it is ever
+parameterised it is by the kind of meeting, never by `meetings.language`.
+
+The threshold is a domain rule and not a rendering setting — moving it renumbers every turn, and
+the ordinals are what stored citations point at.
+
+**An ordinal does not depend on who handed the segments over.** — .NET only
+
+Sorting by start alone leaves segments that begin in the same millisecond in the order they
+arrived, so reading one response by `results.utterances` and reading it channel by channel would
+hand out different ordinals for the same meeting — and every citation already stored would point
+at another turn without anything failing. Grouping therefore orders on the whole segment: start,
+then channel, then speaker label, then end, then text. No fixture has a tie today, which is
+exactly why the rule is pinned by a test rather than left to the sort.
 
 **Speech with nothing in it is not a turn.** — ported
 
