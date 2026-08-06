@@ -30,16 +30,23 @@ internal sealed class TemporaryCorpus : IDisposable
 
     public void Dispose()
     {
-        // Without this the pooled connection still holds the file and the delete fails.
+        // Without this the pooled connection still holds the file and the delete fails. It empties
+        // every pool in the process, so it also reaches the corpora of the tests running alongside
+        // this one — which costs them a reconnection and nothing else: a connection somebody is
+        // holding is not closed underneath them, only kept out of the pool once they hand it back.
         SqliteConnection.ClearAllPools();
 
         try
         {
             Directory.Delete(_directory, recursive: true);
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            // A leftover temp directory is not worth failing a green test over.
+            // A leftover temp directory is not worth failing a green test over. Windows refuses a
+            // delete two ways depending on how the other handle was opened — a sharing violation
+            // when it forbids deletion, access denied when it allowed it and the delete is still
+            // pending — and catching only the first leaves the test that happened to run while a
+            // scanner had the file open failing for something it never asserted.
         }
     }
 }

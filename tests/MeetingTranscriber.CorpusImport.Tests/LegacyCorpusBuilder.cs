@@ -75,9 +75,10 @@ public sealed class LegacyCorpusBuilder : IDisposable
         {
             root.Delete(recursive: true);
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            // A temp directory that outlives the run is noise, not a failed test.
+            // A temp directory that outlives the run is noise, not a failed test, and Windows
+            // refuses a contended delete as access denied as readily as a sharing violation.
         }
     }
 
