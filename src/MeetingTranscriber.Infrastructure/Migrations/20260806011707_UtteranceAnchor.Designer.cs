@@ -3,6 +3,7 @@ using System;
 using MeetingTranscriber.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace MeetingTranscriber.Infrastructure.Migrations
 {
     [DbContext(typeof(CorpusDbContext))]
-    partial class CorpusDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260806011707_UtteranceAnchor")]
+    partial class UtteranceAnchor
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -456,7 +459,6 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                         .HasColumnName("extraction_run_id");
 
                     b.Property<Guid>("MeetingId")
-                        .ValueGeneratedOnUpdateSometimes()
                         .HasColumnType("TEXT")
                         .HasColumnName("meeting_id");
 
@@ -511,7 +513,6 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                         .HasColumnName("extraction_run_id");
 
                     b.Property<Guid>("MeetingId")
-                        .ValueGeneratedOnUpdateSometimes()
                         .HasColumnType("TEXT")
                         .HasColumnName("meeting_id");
 
@@ -1108,11 +1109,6 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                                 .HasColumnType("INTEGER")
                                 .HasColumnName("end_ms");
 
-                            b1.Property<Guid>("MeetingId")
-                                .ValueGeneratedOnUpdateSometimes()
-                                .HasColumnType("TEXT")
-                                .HasColumnName("meeting_id");
-
                             b1.Property<string>("QuotedText")
                                 .IsRequired()
                                 .HasColumnType("TEXT")
@@ -1132,15 +1128,15 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                                 .HasColumnType("INTEGER")
                                 .HasColumnName("start_ms");
 
-                            b1.Property<int>("UtteranceOrdinal")
-                                .HasColumnType("INTEGER")
-                                .HasColumnName("utterance_ordinal");
+                            b1.Property<Guid>("UtteranceId")
+                                .HasColumnType("TEXT")
+                                .HasColumnName("utterance_id");
 
                             b1.HasKey("ActionItemId")
                                 .HasName("pk_action_items");
 
-                            b1.HasIndex("MeetingId", "UtteranceOrdinal")
-                                .HasDatabaseName("ix_action_items_meeting_id_utterance_ordinal");
+                            b1.HasIndex("UtteranceId")
+                                .HasDatabaseName("ix_action_items_utterance_id");
 
                             b1.ToTable("action_items");
 
@@ -1150,11 +1146,10 @@ namespace MeetingTranscriber.Infrastructure.Migrations
 
                             b1.HasOne("MeetingTranscriber.Domain.Knowledge.Utterance", null)
                                 .WithMany()
-                                .HasForeignKey("MeetingId", "UtteranceOrdinal")
-                                .HasPrincipalKey("MeetingId", "Ordinal")
+                                .HasForeignKey("UtteranceId")
                                 .OnDelete(DeleteBehavior.NoAction)
                                 .IsRequired()
-                                .HasConstraintName("fk_action_items_utterances_meeting_id_utterance_ordinal");
+                                .HasConstraintName("fk_action_items_utterances_utterance_id");
                         });
 
                     b.Navigation("Evidence")
@@ -1192,11 +1187,6 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                                 .HasColumnType("INTEGER")
                                 .HasColumnName("end_ms");
 
-                            b1.Property<Guid>("MeetingId")
-                                .ValueGeneratedOnUpdateSometimes()
-                                .HasColumnType("TEXT")
-                                .HasColumnName("meeting_id");
-
                             b1.Property<string>("QuotedText")
                                 .IsRequired()
                                 .HasColumnType("TEXT")
@@ -1216,15 +1206,15 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                                 .HasColumnType("INTEGER")
                                 .HasColumnName("start_ms");
 
-                            b1.Property<int>("UtteranceOrdinal")
-                                .HasColumnType("INTEGER")
-                                .HasColumnName("utterance_ordinal");
+                            b1.Property<Guid>("UtteranceId")
+                                .HasColumnType("TEXT")
+                                .HasColumnName("utterance_id");
 
                             b1.HasKey("DecisionId")
                                 .HasName("pk_decisions");
 
-                            b1.HasIndex("MeetingId", "UtteranceOrdinal")
-                                .HasDatabaseName("ix_decisions_meeting_id_utterance_ordinal");
+                            b1.HasIndex("UtteranceId")
+                                .HasDatabaseName("ix_decisions_utterance_id");
 
                             b1.ToTable("decisions");
 
@@ -1234,11 +1224,10 @@ namespace MeetingTranscriber.Infrastructure.Migrations
 
                             b1.HasOne("MeetingTranscriber.Domain.Knowledge.Utterance", null)
                                 .WithMany()
-                                .HasForeignKey("MeetingId", "UtteranceOrdinal")
-                                .HasPrincipalKey("MeetingId", "Ordinal")
+                                .HasForeignKey("UtteranceId")
                                 .OnDelete(DeleteBehavior.NoAction)
                                 .IsRequired()
-                                .HasConstraintName("fk_decisions_utterances_meeting_id_utterance_ordinal");
+                                .HasConstraintName("fk_decisions_utterances_utterance_id");
                         });
 
                     b.Navigation("Evidence")

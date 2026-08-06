@@ -62,6 +62,31 @@ public class SpeakerAssignment
 }
 
 /// <summary>
+/// Where an action stands and who owns it. An extraction proposes the action; it never closes
+/// one and never picks the owner, so neither can sit in <c>action_items</c>, which a rebuild
+/// deletes whole.
+/// </summary>
+/// <remarks>
+/// Keyed on the extraction run and the position inside it rather than on an action's id, because
+/// projecting the same accepted extraction again mints new ids. Nothing here points at
+/// <c>action_items</c>: a foreign key to a table that gets deleted and refilled is the same data
+/// loss with a constraint on top.
+/// </remarks>
+public class ActionItemProgress
+{
+    public Guid ExtractionRunId { get; set; }
+
+    public int Ordinal { get; set; }
+
+    public ActionItemState State { get; set; } = ActionItemState.Open;
+
+    /// <summary>Who took it, which is a person saying so — never the extraction guessing.</summary>
+    public Guid? OwnerPersonId { get; set; }
+
+    public UtcTimestamp UpdatedAt { get; set; }
+}
+
+/// <summary>
 /// A word the transcription gets wrong, and what it should say. Applied when rendering, never
 /// written back into the raw response.
 /// </summary>

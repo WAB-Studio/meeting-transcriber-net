@@ -20,6 +20,7 @@ public class CorpusMigrationTests
         "summaries",
         "decisions",
         "action_items",
+        "action_item_progress",
         "people",
         "projects",
         "meeting_participants",

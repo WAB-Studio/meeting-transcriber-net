@@ -219,7 +219,8 @@ Fuentes que no se sobrescriben:
 - `audio.wav`, si la política local del usuario decide conservarlo;
 - `deepgram.json` recibido de la transcripción pagada;
 - cada extracción aceptada bajo su propio `extraction_id`;
-- clasificación, nombres y correcciones aprobados por una persona.
+- clasificación, nombres y correcciones aprobados por una persona;
+- el estado y el responsable de cada acción, que los mueve una persona.
 
 Derivados reconstruibles:
 
@@ -228,6 +229,11 @@ Derivados reconstruibles:
 - `summary.md`;
 - tablas de utterances, summaries, decisiones y acciones;
 - índices FTS5.
+
+Una acción reconstruida vuelve tal como la propuso la extracción. Su estado y su
+responsable no están en esa fila: viven en `action_item_progress`, apuntados a la
+extracción y a la posición dentro de ella, y no al id de la acción, que la
+reproyección vuelve a generar.
 
 Un rerender nunca modifica `deepgram.json` ni una extracción anterior. Una nueva
 extracción crea una versión nueva y conserva la anterior.
@@ -282,6 +288,7 @@ utterances
 summaries
 decisions
 action_items
+action_item_progress
 people
 projects
 meeting_participants
@@ -604,13 +611,19 @@ Una extracción solo se acepta si:
 Una cita guarda al menos:
 
 ```text
-utterance_id
+utterance_ordinal
 start_ms
 end_ms
 speaker_label
 quoted_text
 source_artifact_sha256
 ```
+
+El turno se nombra por la reunión y su posición dentro de ella, nunca por su id. Los ids los
+reparte la proyección, así que un rebuild los borra y entrega otros; el par reunión y ordinal es lo
+que la proyección reproduce a partir del mismo `deepgram.json`, y por eso es lo que sobrevive. La
+reunión no se guarda aparte: es la de la decisión o la acción que lleva la cita, así que no hay
+forma de citar un turno de otra reunión.
 
 Un error deja el job reintentable y no modifica la última extracción aceptada.
 Reintentar un summary nunca llama otra vez a Deepgram.
@@ -641,7 +654,7 @@ Herramientas read-only iniciales:
 buscar_reuniones(query, filtros)
 leer_resumen(meeting_id)
 leer_turnos(meeting_id, desde_ms, hasta_ms)
-obtener_cita(meeting_id, utterance_id)
+obtener_cita(meeting_id, utterance_ordinal)
 listar_decisiones(filtros)
 listar_acciones(filtros)
 ```

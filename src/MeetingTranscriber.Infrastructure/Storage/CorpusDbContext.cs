@@ -40,6 +40,8 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
     public DbSet<ActionItem> ActionItems => Set<ActionItem>();
 
+    public DbSet<ActionItemProgress> ActionItemProgress => Set<ActionItemProgress>();
+
     public DbSet<Person> People => Set<Person>();
 
     public DbSet<Project> Projects => Set<Project>();
@@ -106,6 +108,28 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
                 .OnDelete(DeleteBehavior.Cascade);
             assignment.HasOne<Person>().WithMany().HasForeignKey(entity => entity.PersonId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ActionItemProgress>(progress =>
+        {
+            progress.ToTable("action_item_progress", table =>
+            {
+                table.HasCheckConstraint(
+                    "ck_action_item_progress_state",
+                    $"state IN ({WireNames<ActionItemState>.AsSqlList()})");
+                table.HasCheckConstraint("ck_action_item_progress_ordinal", "ordinal >= 0");
+            });
+
+            // The key is the extraction and the position in it, not an action's id: a rebuild
+            // mints new ids, and this row has to still find its action afterwards.
+            progress.HasKey(entity => new { entity.ExtractionRunId, entity.Ordinal });
+            // What is still open, across the corpus. The other half of that listing — when it is
+            // due — is a column of the projection, so the query joins and no one index serves it.
+            progress.HasIndex(entity => entity.State);
+            progress.HasOne<ExtractionRun>().WithMany().HasForeignKey(entity => entity.ExtractionRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+            progress.HasOne<Person>().WithMany().HasForeignKey(entity => entity.OwnerPersonId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<TerminologyCorrection>(correction =>
@@ -267,7 +291,9 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             });
 
             utterance.HasKey(entity => entity.Id);
-            utterance.HasIndex(entity => new { entity.MeetingId, entity.Ordinal }).IsUnique();
+            // An alternate key rather than a unique index because it is what citations point at,
+            // and SQLite will only accept a foreign key onto columns declared unique in the table.
+            utterance.HasAlternateKey(entity => new { entity.MeetingId, entity.Ordinal });
             utterance.HasIndex(entity => new { entity.MeetingId, entity.Start });
             utterance.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
                 .OnDelete(DeleteBehavior.Cascade);
@@ -304,19 +330,21 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
         {
             action.ToTable("action_items", table =>
             {
-                table.HasCheckConstraint("ck_action_items_state", $"state IN ({WireNames<ActionItemState>.AsSqlList()})");
+                table.HasCheckConstraint("ck_action_items_ordinal", "ordinal >= 0");
                 table.HasCheckConstraint("ck_action_items_evidence_span", "start_ms >= 0 AND end_ms >= start_ms");
             });
 
             action.HasKey(entity => entity.Id);
             action.HasIndex(entity => entity.MeetingId);
-            action.HasIndex(entity => new { entity.State, entity.DueDate });
+            action.HasIndex(entity => entity.DueDate);
+            // Unique because it is what a person's state is pinned to. Two actions sharing a
+            // position in one extraction would make that state ambiguous rather than wrong,
+            // which is the harder kind of bug to see.
+            action.HasIndex(entity => new { entity.ExtractionRunId, entity.Ordinal }).IsUnique();
             action.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
                 .OnDelete(DeleteBehavior.Cascade);
             action.HasOne<ExtractionRun>().WithMany().HasForeignKey(entity => entity.ExtractionRunId)
                 .OnDelete(DeleteBehavior.Cascade);
-            action.HasOne<Person>().WithMany().HasForeignKey(entity => entity.OwnerPersonId)
-                .OnDelete(DeleteBehavior.SetNull);
             ConfigureEvidence(action.OwnsOne(entity => entity.Evidence));
         });
     }
@@ -348,11 +376,28 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
     /// is no way to write one without the other. Its columns are named by the same pass as every
     /// other column, which is what keeps a field added here from landing as evidence_whatever.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The turn is named by the meeting and its position, not by its id, so the reference still
+    /// resolves after a rebuild has thrown every turn away and projected them again. The meeting
+    /// half is the owner's own <c>meeting_id</c> column, written once and read by both: a claim
+    /// citing a turn of another meeting has nowhere to put the other meeting's id.
+    /// </para>
+    /// <para>
+    /// The turn is referenced without a delete action on purpose. Cascading here made deleting
+    /// utterances take every decision and action citing them, silently — and a rebuild starts by
+    /// deleting utterances. NO ACTION is checked at the end of the statement, so deleting a
+    /// meeting still works: the claims go in the same statement as the turns they cite. Deleting
+    /// turns on their own now fails instead, which is what a projection deleted out of order is.
+    /// </para>
+    /// </remarks>
     private static void ConfigureEvidence<TOwner>(OwnedNavigationBuilder<TOwner, Citation> evidence)
         where TOwner : class
     {
-        evidence.HasOne<Utterance>().WithMany().HasForeignKey(citation => citation.UtteranceId)
-            .OnDelete(DeleteBehavior.Cascade);
+        evidence.HasOne<Utterance>().WithMany()
+            .HasForeignKey(citation => new { citation.MeetingId, citation.UtteranceOrdinal })
+            .HasPrincipalKey(utterance => new { utterance.MeetingId, utterance.Ordinal })
+            .OnDelete(DeleteBehavior.NoAction);
     }
 
     /// <summary>The kind to origin mapping of <see cref="Artifacts"/>, as one CHECK.</summary>

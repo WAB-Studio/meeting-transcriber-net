@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "deepgram-dotnet-speech-to-text": {
+      "source": "deepgram/deepgram-dotnet-sdk",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/deepgram-dotnet-speech-to-text/SKILL.md",
+      "computedHash": "fe6d3507b6b5e0157542633c1cdae74e6463b3093ed21ba05a288b9fe164a968"
+    }
+  }
+}

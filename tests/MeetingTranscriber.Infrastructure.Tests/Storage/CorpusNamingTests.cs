@@ -97,8 +97,8 @@ public class CorpusNamingTests
 
     /// <summary>
     /// Evidence is an owned type, so EF would prefix its columns with the navigation and call
-    /// them Evidence_UtteranceId. They are the citation fields arquitectura.md §7.3 lists, named
-    /// by the same pass as everything else — including any field added to a citation later.
+    /// them Evidence_UtteranceOrdinal. They are the citation fields arquitectura.md §7.3 lists,
+    /// named by the same pass as everything else — including any field added to a citation later.
     /// </summary>
     [Fact]
     public void Evidence_keeps_the_column_names_a_citation_is_defined_by()
@@ -110,13 +110,32 @@ public class CorpusNamingTests
         {
             var columns = Sql.Strings(context, $"SELECT name FROM pragma_table_info('{table}');");
 
-            columns.ShouldContain("utterance_id");
+            columns.ShouldContain("utterance_ordinal");
             columns.ShouldContain("start_ms");
             columns.ShouldContain("end_ms");
             columns.ShouldContain("speaker_label");
             columns.ShouldContain("quoted_text");
             columns.ShouldContain("source_artifact_sha256");
             columns.ShouldNotContain(column => column.StartsWith("evidence", StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    /// <summary>
+    /// The meeting half of a citation is the owner's own column, not a copy of it. Two would let a
+    /// claim say it belongs to one meeting and cites a turn of another, and the pass that names
+    /// columns is what would quietly produce the second one.
+    /// </summary>
+    [Fact]
+    public void A_citation_shares_the_meeting_of_the_claim_it_belongs_to()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        foreach (var table in new[] { "decisions", "action_items" })
+        {
+            var columns = Sql.Strings(context, $"SELECT name FROM pragma_table_info('{table}');");
+
+            columns.Count(column => column == "meeting_id").ShouldBe(1, table);
         }
     }
 
