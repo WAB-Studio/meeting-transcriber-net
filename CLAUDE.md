@@ -51,6 +51,10 @@ Breaking one corrupts meetings already recorded and artifacts already paid for.
   reaches. The runner starts what `IsDue` says is due, which is never `awaiting_user`: a job that
   a restart found running stops on a person, because a charge that may already have happened is
   not something the app gets to repeat on its own.
+- A turn, not a provider utterance, is what the `utterances` table stores and what a citation
+  anchors on, and `Turns.Group` is the only thing that decides where one ends. What the Python
+  system learned about that, and what .NET does differently on purpose, is in
+  `docs/reference-behaviour.md`.
 
 ## Conventions
 

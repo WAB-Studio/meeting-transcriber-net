@@ -2,6 +2,8 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Knowledge;
+using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Domain.Tests.Fixtures;
 
@@ -37,6 +39,26 @@ public static class DeepgramFixtures
         TwoChannelLong or TwoChannelShort or TwoChannelSilentMe => SourceProfile.Multichannel,
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Not a fixture."),
     };
+
+    /// <summary>
+    /// What the provider returned, as the domain sees it. Enough to drive a rule and no more:
+    /// the parser that has to survive a truncated file, a missing field or a channel count that
+    /// disagrees with the profile is its own piece of work, and this is not a draft of it.
+    /// </summary>
+    public static IReadOnlyList<SpeechSegment> Segments(string name)
+    {
+        using var response = Read(name);
+        var multichannel = ProfileOf(name) is SourceProfile.Multichannel;
+
+        return response.RootElement.GetProperty("results").GetProperty("utterances").EnumerateArray()
+            .Select(turn => new SpeechSegment(
+                Duration.FromSeconds(turn.GetProperty("start").GetDouble()),
+                Duration.FromSeconds(turn.GetProperty("end").GetDouble()),
+                multichannel ? (AudioChannel)turn.GetProperty("channel").GetInt32() : null,
+                $"speaker_{turn.GetProperty("speaker").GetInt32()}",
+                turn.GetProperty("transcript").GetString()!))
+            .ToArray();
+    }
 
     public static JsonDocument Read(string name)
     {

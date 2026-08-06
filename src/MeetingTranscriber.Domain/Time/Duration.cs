@@ -31,6 +31,21 @@ public readonly record struct Duration : IComparable<Duration>
     /// </summary>
     public static Duration FromTimeSpan(TimeSpan value) => FromMilliseconds((long)value.TotalMilliseconds);
 
+    /// <summary>
+    /// Rounds to the nearest millisecond. Transcription providers report offsets as seconds in
+    /// floating point, and this is where that stops: rounding in one place is what keeps two
+    /// callers from disagreeing by a millisecond about where the same turn starts.
+    /// </summary>
+    public static Duration FromSeconds(double seconds)
+    {
+        if (!double.IsFinite(seconds))
+        {
+            throw new ArgumentOutOfRangeException(nameof(seconds), seconds, "A duration is a number of seconds.");
+        }
+
+        return FromMilliseconds((long)Math.Round(seconds * 1000, MidpointRounding.AwayFromZero));
+    }
+
     public TimeSpan ToTimeSpan() => TimeSpan.FromMilliseconds(Milliseconds);
 
     public int CompareTo(Duration other) => Milliseconds.CompareTo(other.Milliseconds);

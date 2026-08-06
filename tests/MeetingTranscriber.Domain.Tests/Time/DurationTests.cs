@@ -4,6 +4,31 @@ namespace MeetingTranscriber.Domain.Tests.Time;
 
 public class DurationTests
 {
+    [Theory]
+    [InlineData(0.0, 0)]
+    [InlineData(6.3199997, 6_320)]
+    [InlineData(2063.04, 2_063_040)]
+    [InlineData(0.0005, 1)]
+    [InlineData(0.0004, 0)]
+    public void Seconds_from_a_provider_land_on_the_nearest_millisecond(double seconds, long milliseconds)
+    {
+        Duration.FromSeconds(seconds).Milliseconds.ShouldBe(milliseconds);
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void A_length_that_is_not_a_number_is_not_a_duration(double seconds)
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => Duration.FromSeconds(seconds));
+    }
+
+    [Fact]
+    public void A_negative_number_of_seconds_is_still_not_a_duration()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => Duration.FromSeconds(-0.5));
+    }
+
     [Fact]
     public void A_duration_is_whole_milliseconds()
     {
