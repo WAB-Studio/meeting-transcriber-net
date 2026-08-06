@@ -11,9 +11,16 @@ public class Meeting
 {
     public Guid Id { get; set; }
 
-    public Guid? ProjectId { get; set; }
-
     public string? Title { get; set; }
+
+    /// <summary>
+    /// What a person wrote down so somebody who was not there can read the meeting. Nothing
+    /// infers it, which is why it is stored beside the title and not with the projections.
+    /// </summary>
+    public string? Context { get; set; }
+
+    /// <summary>The shape it was classified as, when one was used.</summary>
+    public Guid? TemplateId { get; set; }
 
     public UtcTimestamp StartedAt { get; set; }
 

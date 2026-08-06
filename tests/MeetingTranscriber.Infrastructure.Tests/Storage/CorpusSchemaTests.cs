@@ -21,28 +21,128 @@ public class CorpusSchemaTests
     }
 
     /// <summary>
-    /// A company is a label on work, not what the work belongs to. Losing it must not take the
-    /// projects, because the meetings hang off those and the meetings are the corpus.
+    /// Deleting a node takes the tree under it and nothing else. The work is inside the node, so
+    /// it goes; a person is not, so they stay and only lose the link.
     /// </summary>
     [Fact]
-    public void Deleting_a_company_leaves_its_projects_and_people_where_they_are()
+    public void Deleting_a_node_takes_what_hangs_under_it_and_leaves_the_people()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
 
         Sql.Execute(context, $"""
-            INSERT INTO companies (id, name, created_at, updated_at)
-            VALUES ('c', 'A Company', '{When}', '{When}');
-            INSERT INTO projects (id, company_id, name, created_at, updated_at)
-            VALUES ('p', 'c', 'the work', '{When}', '{When}');
-            INSERT INTO people (id, company_id, display_name, is_me, created_at, updated_at)
-            VALUES ('h', 'c', 'Somebody', 0, '{When}', '{When}');
-            DELETE FROM companies WHERE id = 'c';
+            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
+            VALUES ('o', NULL, 'organization', 'An Organization', 0, '{When}', '{When}');
+            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
+            VALUES ('i', 'o', 'initiative', 'the work', 1, '{When}', '{When}');
+            INSERT INTO people (id, organization_id, display_name, is_me, created_at, updated_at)
+            VALUES ('h', 'o', 'Somebody', 0, '{When}', '{When}');
+            DELETE FROM nodes WHERE id = 'o';
             """);
 
-        Sql.Scalar(context, "SELECT count(*) FROM projects;").ShouldBe(1L);
-        Sql.Scalar(context, "SELECT company_id FROM projects;").ShouldBe(DBNull.Value);
-        Sql.Scalar(context, "SELECT company_id FROM people;").ShouldBe(DBNull.Value);
+        Sql.Scalar(context, "SELECT count(*) FROM nodes;").ShouldBe(0L);
+        Sql.Scalar(context, "SELECT count(*) FROM people;").ShouldBe(1L);
+        Sql.Scalar(context, "SELECT organization_id FROM people;").ShouldBe(DBNull.Value);
+    }
+
+    [Fact]
+    public void A_node_cannot_sit_deeper_than_the_tree_goes()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Should.Throw<SqliteException>(() => Sql.Execute(context, $"""
+            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
+            VALUES ('o', NULL, 'organization', 'root', 0, '{When}', '{When}');
+            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
+            VALUES ('d', 'o', 'topic', 'too deep', 3, '{When}', '{When}');
+            """));
+    }
+
+    /// <summary>A root is exactly what has no parent, in both directions.</summary>
+    [Theory]
+    [InlineData("NULL", 1)]
+    [InlineData("'o'", 0)]
+    public void A_node_is_a_root_or_it_is_not(string parent, int depth)
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Sql.Execute(context, $"""
+            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
+            VALUES ('o', NULL, 'organization', 'root', 0, '{When}', '{When}');
+            """);
+
+        Should.Throw<SqliteException>(() => Sql.Execute(context, $"""
+            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
+            VALUES ('x', {parent}, 'initiative', 'confused', {depth}, '{When}', '{When}');
+            """));
+    }
+
+    /// <summary>
+    /// SQLite counts NULLs as distinct, so the index over (parent, name) lets two roots share a
+    /// name. The filtered one is what actually stops a second organization called the same thing.
+    /// </summary>
+    [Fact]
+    public void Two_roots_cannot_share_a_name()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Sql.Execute(context, $"""
+            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
+            VALUES ('a', NULL, 'organization', 'TwoOfThese', 0, '{When}', '{When}');
+            """);
+
+        Should.Throw<SqliteException>(() => Sql.Execute(context, $"""
+            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
+            VALUES ('b', NULL, 'organization', 'TwoOfThese', 0, '{When}', '{When}');
+            """));
+    }
+
+    /// <summary>
+    /// The case the single project column could not hold: one meeting, two bodies of work, both
+    /// searchable. It is two rows, not a choice between them.
+    /// </summary>
+    [Fact]
+    public void A_meeting_can_be_work_of_two_things_at_once()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        InsertMeeting(context);
+        Sql.Execute(context, $"""
+            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
+            VALUES ('o', NULL, 'organization', 'An Organization', 0, '{When}', '{When}');
+            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
+            VALUES ('a', 'o', 'initiative', 'coati', 1, '{When}', '{When}');
+            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
+            VALUES ('b', 'o', 'initiative', 'huemul', 1, '{When}', '{When}');
+            INSERT INTO meeting_nodes (meeting_id, node_id, role, created_at)
+            VALUES ('{MeetingId}', 'a', 'work_of', '{When}');
+            INSERT INTO meeting_nodes (meeting_id, node_id, role, created_at)
+            VALUES ('{MeetingId}', 'b', 'work_of', '{When}');
+            """);
+
+        Sql.Scalar(context, "SELECT count(*) FROM meeting_nodes;").ShouldBe(2L);
+    }
+
+    [Fact]
+    public void A_meeting_cannot_relate_to_a_node_in_a_way_the_domain_does_not_have()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        InsertMeeting(context);
+        Sql.Execute(context, $"""
+            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
+            VALUES ('o', NULL, 'organization', 'An Organization', 0, '{When}', '{When}');
+            """);
+
+        Should.Throw<SqliteException>(() => Sql.Execute(context, $"""
+            INSERT INTO meeting_nodes (meeting_id, node_id, role, created_at)
+            VALUES ('{MeetingId}', 'o', 'sort_of_about', '{When}');
+            """));
     }
 
     [Fact]

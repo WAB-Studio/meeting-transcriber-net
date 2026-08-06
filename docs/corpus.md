@@ -62,10 +62,11 @@ model tracks. Both have to be put back by hand, and not in that same migration �
 before a rebuild it still has pending, so the statements would run against the table about to be
 dropped.
 
-Everything else is a source, and the part that matters most is the **human layer**: `companies`,
-`people`, `projects`, `meeting_participants`, `speaker_assignments`, `terminology_corrections`,
-`action_item_progress`, and the titles and classifications on `meetings`. None of it is inferable
-from any artifact, so a backup that copies only the files loses it.
+Everything else is a source, and the part that matters most is the **human layer**: `nodes`,
+`meeting_nodes`, `templates`, `people`, `meeting_participants`, `speaker_assignments`,
+`terminology_corrections`, `action_item_progress`, and the titles, context notes and
+classifications on `meetings`. None of it is inferable from any artifact, so a backup that copies
+only the files loses it.
 
 Runs and jobs — `capture_runs`, `processing_jobs`, `transcription_runs`, `extraction_runs` — are
 sources too. They are the record of what was charged and what state a restart found.

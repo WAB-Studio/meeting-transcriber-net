@@ -21,10 +21,12 @@ erDiagram
     meetings ||--o{ speaker_assignments : "cascade"
     meetings ||--o{ terminology_corrections : "cascade"
     meetings |o--o{ audit_events : "set null"
-    companies |o--o{ projects : "set null"
-    companies |o--o{ people : "set null"
-    projects |o--o{ meetings : "set null"
-    projects ||--o{ terminology_corrections : "cascade"
+    nodes ||--o{ nodes : "cascade, hasta 3 niveles"
+    nodes |o--o{ people : "set null"
+    nodes ||--o{ meeting_nodes : "cascade"
+    meetings ||--o{ meeting_nodes : "cascade"
+    nodes ||--o{ terminology_corrections : "cascade"
+    templates |o--o{ meetings : "set null"
     people ||--o{ meeting_participants : "cascade"
     people ||--o{ speaker_assignments : "cascade"
     people |o--o{ decisions : "set null"
@@ -43,8 +45,9 @@ erDiagram
 
     meetings {
         TEXT id PK
-        TEXT project_id FK
         TEXT title "capa humana"
+        TEXT context "capa humana"
+        TEXT template_id FK
         TEXT started_at
         INTEGER duration_ms
         TEXT source_profile "multichannel o diarize"
@@ -193,7 +196,7 @@ contenido externo, mantenidas por triggers, y no tienen foreign keys. EF no las 
 | Grupo | Tablas | Qué pasa si las borro |
 | --- | --- | --- |
 | **Derivadas** | `utterances`, `summaries`, `decisions`, `action_items`, ambos FTS5 | Nada. Se reproyectan desde `deepgram.json` y las extracciones aceptadas. |
-| **Capa humana** | `people`, `projects`, `meeting_participants`, `speaker_assignments`, `terminology_corrections`, `action_item_progress`, más el título y la clasificación de `meetings` | Se pierde para siempre. No sale de ningún artefacto. |
+| **Capa humana** | `people`, `nodes`, `meeting_nodes`, `templates`, `meeting_participants`, `speaker_assignments`, `terminology_corrections`, `action_item_progress`, más el título y la clasificación de `meetings` | Se pierde para siempre. No sale de ningún artefacto. |
 | **Registro** | `artifacts`, `capture_runs`, `processing_jobs`, `transcription_runs`, `extraction_runs` | Se pierde qué se pagó y en qué estado quedó cada cosa. |
 
 ---

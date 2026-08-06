@@ -5,43 +5,18 @@ namespace MeetingTranscriber.Domain.Meetings;
 // Everything in this file is approved by a person. None of it can be inferred from an artifact,
 // so a backup that copies only the files loses it.
 
-/// <summary>
-/// Who a project is for. One person works across several of these, which is why it is a column
-/// and not a prefix on a project's name: search filters by company on its own.
-/// </summary>
-public class Company
-{
-    public Guid Id { get; set; }
-
-    public required string Name { get; set; }
-
-    public UtcTimestamp CreatedAt { get; set; }
-
-    public UtcTimestamp UpdatedAt { get; set; }
-}
-
-/// <summary>A body of work meetings are grouped under.</summary>
-public class Project
-{
-    public Guid Id { get; set; }
-
-    /// <summary>Null for work that belongs to nobody in particular.</summary>
-    public Guid? CompanyId { get; set; }
-
-    public required string Name { get; set; }
-
-    public UtcTimestamp CreatedAt { get; set; }
-
-    public UtcTimestamp UpdatedAt { get; set; }
-}
-
 /// <summary>Somebody who appears in meetings.</summary>
 public class Person
 {
     public Guid Id { get; set; }
 
-    /// <summary>Where they work, when that is known. People change companies; meetings do not.</summary>
-    public Guid? CompanyId { get; set; }
+    /// <summary>
+    /// Where they work, when that is known. It has to be a node of kind
+    /// <see cref="NodeKind.Organization"/>, which the schema cannot say and a CHECK cannot reach.
+    /// One person at a time, which is already known to be too few — a contractor works for two
+    /// clients, and somebody leaving one company for another belongs to both for a month.
+    /// </summary>
+    public Guid? OrganizationId { get; set; }
 
     public required string DisplayName { get; set; }
 
@@ -60,7 +35,8 @@ public class MeetingParticipant
 
     public Guid PersonId { get; set; }
 
-    public string? Role { get; set; }
+    /// <summary>Why they are on it. Most people attended; some are what it was about.</summary>
+    public ParticipantRole Role { get; set; } = ParticipantRole.Attended;
 
     public UtcTimestamp CreatedAt { get; set; }
 }
@@ -115,8 +91,11 @@ public class TerminologyCorrection
 {
     public Guid Id { get; set; }
 
-    /// <summary>Scoped to a project, to a single meeting, or to neither, which makes it global.</summary>
-    public Guid? ProjectId { get; set; }
+    /// <summary>
+    /// Scoped to a node and everything under it, to a single meeting, or to neither, which makes
+    /// it global.
+    /// </summary>
+    public Guid? NodeId { get; set; }
 
     public Guid? MeetingId { get; set; }
 

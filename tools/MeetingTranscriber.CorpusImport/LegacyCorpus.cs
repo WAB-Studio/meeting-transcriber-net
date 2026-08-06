@@ -29,6 +29,9 @@ public sealed record LegacyMeeting
 
     public string? Context { get; init; }
 
+    /// <summary>What the old corpus called the meeting type: a review, a refinement, a one to one.</summary>
+    public string? MeetingType { get; init; }
+
     public string? CompanyId { get; init; }
 
     public string? ProjectId { get; init; }
@@ -164,6 +167,7 @@ public sealed class LegacyCorpus(DirectoryInfo root)
         {
             Title = Trimmed(meta?.title),
             Context = Trimmed(meta?.context),
+            MeetingType = Trimmed(meta?.meeting_type),
             CompanyId = Trimmed(meta?.company),
             ProjectId = Trimmed(meta?.project),
             Speakers = (meta?.speakers ?? [])
@@ -263,6 +267,8 @@ public sealed class LegacyCorpus(DirectoryInfo root)
         public string? title { get; set; }
 
         public string? context { get; set; }
+
+        public string? meeting_type { get; set; }
 
         public Dictionary<string, string?>? speakers { get; set; }
     }

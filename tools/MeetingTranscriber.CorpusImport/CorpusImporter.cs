@@ -54,22 +54,23 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
         var report = new ImportReport();
 
         var (companies, projects, people) = corpus.ReadCatalog();
-        var companyIds = ImportCompanies(companies, now, report);
-        var projectIds = ImportProjects(projects, companyIds, now, report);
-        var personIds = ImportPeople(people, companyIds, now, report);
+        var organizationIds = ImportOrganizations(companies, now, report);
+        var initiativeIds = ImportInitiatives(projects, organizationIds, now, report);
+        var personIds = ImportPeople(people, organizationIds, now, report);
 
         ImportCorrections(corpus.ReadCorrections(), now, report);
 
         foreach (var legacy in corpus.Meetings())
         {
-            ImportMeeting(legacy, projectIds, personIds, options, now, report);
+            ImportMeeting(legacy, organizationIds, initiativeIds, personIds, options, now, report);
         }
 
         context.SaveChanges();
         return report;
     }
 
-    private Dictionary<string, Guid> ImportCompanies(
+    /// <summary>The catalog's companies, as the roots of the tree.</summary>
+    private Dictionary<string, Guid> ImportOrganizations(
         IReadOnlyList<LegacyCatalogEntry> entries,
         UtcTimestamp now,
         ImportReport report)
@@ -77,56 +78,71 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
         var byId = new Dictionary<string, Guid>(StringComparer.Ordinal);
         foreach (var entry in entries)
         {
-            var existing = context.Companies.Local.FirstOrDefault(company => company.Name == entry.Name)
-                ?? context.Companies.FirstOrDefault(company => company.Name == entry.Name);
-            if (existing is null)
-            {
-                existing = new Company { Id = Guid.NewGuid(), Name = entry.Name, CreatedAt = now, UpdatedAt = now };
-                context.Companies.Add(existing);
-                report.Imported(ImportCounter.Company);
-            }
-
-            byId[entry.Id] = existing.Id;
+            var node = Node(entry.Name, parent: null, NodeKind.Organization, now, report, ImportCounter.Organization);
+            byId[entry.Id] = node.Id;
         }
 
         return byId;
     }
 
-    private Dictionary<string, Guid> ImportProjects(
+    /// <summary>
+    /// The catalog's projects, under the organization each belongs to. A project whose company
+    /// the catalog does not name becomes a root of its own: work belonging to nobody in
+    /// particular is ordinary, and inventing an owner for it would be worse than having none.
+    /// </summary>
+    private Dictionary<string, Guid> ImportInitiatives(
         IReadOnlyList<LegacyCatalogEntry> entries,
-        IReadOnlyDictionary<string, Guid> companies,
+        IReadOnlyDictionary<string, Guid> organizations,
         UtcTimestamp now,
         ImportReport report)
     {
         var byId = new Dictionary<string, Guid>(StringComparer.Ordinal);
         foreach (var entry in entries)
         {
-            var company = Lookup(companies, entry.CompanyId);
-            var existing = context.Projects.Local.FirstOrDefault(project => project.Name == entry.Name)
-                ?? context.Projects.FirstOrDefault(project => project.Name == entry.Name);
-            if (existing is null)
-            {
-                existing = new Project
-                {
-                    Id = Guid.NewGuid(),
-                    CompanyId = company,
-                    Name = entry.Name,
-                    CreatedAt = now,
-                    UpdatedAt = now,
-                };
-                context.Projects.Add(existing);
-                report.Imported(ImportCounter.Project);
-            }
-
-            byId[entry.Id] = existing.Id;
+            var parent = Lookup(organizations, entry.CompanyId);
+            var node = Node(entry.Name, parent, NodeKind.Initiative, now, report, ImportCounter.Initiative);
+            byId[entry.Id] = node.Id;
         }
 
         return byId;
+    }
+
+    /// <summary>Finds a node by its place in the tree, or puts it there.</summary>
+    private Node Node(
+        string name,
+        Guid? parent,
+        NodeKind kind,
+        UtcTimestamp now,
+        ImportReport report,
+        ImportCounter counter)
+    {
+        var existing = context.Nodes.Local.FirstOrDefault(node => node.ParentId == parent && node.Name == name)
+            ?? context.Nodes.FirstOrDefault(node => node.ParentId == parent && node.Name == name);
+        if (existing is not null)
+        {
+            return existing;
+        }
+
+        var created = new Node
+        {
+            Id = Guid.NewGuid(),
+            ParentId = parent,
+            Kind = kind,
+            Name = name,
+            // The schema can say a root has no parent; that a child sits one below it is this
+            // side's to keep, because a CHECK cannot read the parent's row.
+            Depth = parent is null ? 0 : 1,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+        context.Nodes.Add(created);
+        report.Imported(counter);
+        return created;
     }
 
     private Dictionary<string, Guid> ImportPeople(
         IReadOnlyList<LegacyCatalogEntry> entries,
-        IReadOnlyDictionary<string, Guid> companies,
+        IReadOnlyDictionary<string, Guid> organizations,
         UtcTimestamp now,
         ImportReport report)
     {
@@ -143,7 +159,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
                 existing = new Person
                 {
                     Id = Guid.NewGuid(),
-                    CompanyId = Lookup(companies, entry.CompanyId),
+                    OrganizationId = Lookup(organizations, entry.CompanyId),
                     DisplayName = entry.Name,
                     CreatedAt = now,
                     UpdatedAt = now,
@@ -161,9 +177,9 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
     private void ImportCorrections(IReadOnlyList<LegacyTerm> terms, UtcTimestamp now, ImportReport report)
     {
         // Global, because that is what the legacy file is: one list for the whole corpus, with no
-        // way to say a term only applies to one project.
+        // way to say a term only applies to one node.
         var known = context.TerminologyCorrections
-            .Where(correction => correction.ProjectId == null && correction.MeetingId == null)
+            .Where(correction => correction.NodeId == null && correction.MeetingId == null)
             .Select(correction => correction.WrongText)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -190,7 +206,8 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
 
     private void ImportMeeting(
         LegacyMeeting legacy,
-        IReadOnlyDictionary<string, Guid> projects,
+        IReadOnlyDictionary<string, Guid> organizations,
+        IReadOnlyDictionary<string, Guid> initiatives,
         IReadOnlyDictionary<string, Guid> people,
         ImportOptions options,
         UtcTimestamp now,
@@ -232,8 +249,9 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             meeting = new Meeting
             {
                 Id = Guid.NewGuid(),
-                ProjectId = Lookup(projects, legacy.ProjectId),
                 Title = legacy.Title,
+                Context = legacy.Context,
+                TemplateId = Template(legacy.MeetingType, now),
                 StartedAt = startedAt,
                 Duration = legacy.Duration,
                 SourceProfile = legacy.Profile!.Value,
@@ -256,21 +274,79 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             });
         }
 
-        if (legacy.Context is not null)
-        {
-            report.CouldNotImport($"{legacy.Id}: the meeting's context note has no column to go in");
-        }
-
-        // A meeting reaches its company through its project. With no project there is no route,
-        // and the company the old corpus wrote on the meeting itself has nowhere to land.
-        if (legacy.CompanyId is not null && legacy.ProjectId is null)
-        {
-            report.CouldNotImport(
-                $"{legacy.Id}: names company '{legacy.CompanyId}' and no project, so the company is not reachable");
-        }
-
+        Classify(legacy, meeting, organizations, initiatives, now, report);
         ImportArtifacts(legacy, meeting, options, now, report);
         ImportSpeakers(legacy, meeting, people, now, report);
+    }
+
+    /// <summary>
+    /// What the meeting is work of. The project when it names one, and the organization itself
+    /// when it does not — which is the meeting that happened before any project existed, and had
+    /// nowhere to go when a meeting could only belong to a project.
+    /// </summary>
+    private void Classify(
+        LegacyMeeting legacy,
+        Meeting meeting,
+        IReadOnlyDictionary<string, Guid> organizations,
+        IReadOnlyDictionary<string, Guid> initiatives,
+        UtcTimestamp now,
+        ImportReport report)
+    {
+        // The old corpus names one project per meeting. Several is what the new shape allows and
+        // what the old one could not say, so nothing here reads more than it wrote down.
+        var node = Lookup(initiatives, legacy.ProjectId) ?? Lookup(organizations, legacy.CompanyId);
+        if (node is null)
+        {
+            if (legacy.ProjectId is not null || legacy.CompanyId is not null)
+            {
+                report.CouldNotImport(
+                    $"{legacy.Id}: names '{legacy.ProjectId ?? legacy.CompanyId}', which is not in the catalog");
+            }
+
+            return;
+        }
+
+        var linked = context.MeetingNodes.Local
+            .Concat(context.MeetingNodes.Where(link => link.MeetingId == meeting.Id))
+            .Any(link => link.MeetingId == meeting.Id
+                && link.NodeId == node
+                && link.Role == MeetingNodeRole.WorkOf);
+        if (linked)
+        {
+            return;
+        }
+
+        context.MeetingNodes.Add(new MeetingNode
+        {
+            MeetingId = meeting.Id,
+            NodeId = node.Value,
+            Role = MeetingNodeRole.WorkOf,
+            CreatedAt = now,
+        });
+        report.Imported(ImportCounter.Classified);
+    }
+
+    /// <summary>
+    /// The template a meeting was classified as. The old corpus called it the meeting type, and
+    /// its values — a review, a refinement, a one to one — are exactly the shapes a template
+    /// names.
+    /// </summary>
+    private Guid? Template(string? name, UtcTimestamp now)
+    {
+        if (name is null)
+        {
+            return null;
+        }
+
+        var existing = context.Templates.Local.FirstOrDefault(template => template.Name == name)
+            ?? context.Templates.FirstOrDefault(template => template.Name == name);
+        if (existing is null)
+        {
+            existing = new MeetingTemplate { Id = Guid.NewGuid(), Name = name, CreatedAt = now };
+            context.Templates.Add(existing);
+        }
+
+        return existing.Id;
     }
 
     private void ImportArtifacts(

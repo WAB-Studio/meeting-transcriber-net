@@ -26,8 +26,14 @@ public class CorpusImporterTests
         meeting.Duration!.Value.Milliseconds.ShouldBe(1_800_500);
         meeting.Language.ShouldBe("es");
         meeting.LifecycleState.ShouldBe(LifecycleState.Active);
-        meeting.ProjectId.ShouldBe(context.Projects.Single(project => project.Name == "orchard").Id);
+        meeting.Context.ShouldBeNull();
         meeting.StartedAt.Value.LocalDateTime.ShouldBe(new DateTime(2026, 7, 29, 9, 35, 15));
+
+        var link = context.MeetingNodes.Single();
+        link.NodeId.ShouldBe(context.Nodes.Single(node => node.Name == "orchard").Id);
+        link.Role.ShouldBe(MeetingNodeRole.WorkOf);
+        context.Templates.Single(template => template.Id == meeting.TemplateId)
+            .Name.ShouldBe("review");
     }
 
     [Fact]
@@ -67,8 +73,8 @@ public class CorpusImporterTests
 
         context.Meetings.Count().ShouldBe(2);
         context.Artifacts.Count().ShouldBe(4);
-        context.Projects.Count().ShouldBe(1);
-        context.Companies.Count().ShouldBe(1);
+        context.Nodes.Count().ShouldBe(2);
+        context.MeetingNodes.Count().ShouldBe(2);
         context.People.Count().ShouldBe(2);
         context.SpeakerAssignments.Count().ShouldBe(2);
         context.MeetingParticipants.Count().ShouldBe(2);
@@ -304,11 +310,11 @@ public class CorpusImporterTests
             correction => correction.MatchMode == TerminologyMatchMode.IgnoreCase);
         // Global: the legacy file is one list for the whole corpus.
         context.TerminologyCorrections.ShouldAllBe(
-            correction => correction.ProjectId == null && correction.MeetingId == null);
+            correction => correction.NodeId == null && correction.MeetingId == null);
     }
 
     [Fact]
-    public void A_project_keeps_the_company_it_belongs_to()
+    public void The_catalog_arrives_as_a_tree()
     {
         using var legacy = new LegacyCorpusBuilder().WithCatalog().WithMeeting("2026-07-29 09-35-15");
         using var corpus = new TemporaryCorpus();
@@ -316,12 +322,19 @@ public class CorpusImporterTests
 
         new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
 
-        var acme = context.Companies.Single();
+        var acme = context.Nodes.Single(node => node.Kind == NodeKind.Organization);
         acme.Name.ShouldBe("Acme");
-        context.Projects.Single().CompanyId.ShouldBe(acme.Id);
-        context.People.Single(person => person.DisplayName == "Renée").CompanyId.ShouldBe(acme.Id);
+        acme.ParentId.ShouldBeNull();
+        acme.Depth.ShouldBe(0);
+
+        var orchard = context.Nodes.Single(node => node.Kind == NodeKind.Initiative);
+        orchard.Name.ShouldBe("orchard");
+        orchard.ParentId.ShouldBe(acme.Id);
+        orchard.Depth.ShouldBe(1);
+
+        context.People.Single(person => person.DisplayName == "Renée").OrganizationId.ShouldBe(acme.Id);
         // Sam has no company in the catalog, and gets none here.
-        context.People.Single(person => person.DisplayName == "Sam").CompanyId.ShouldBeNull();
+        context.People.Single(person => person.DisplayName == "Sam").OrganizationId.ShouldBeNull();
     }
 
     [Fact]
@@ -335,7 +348,7 @@ public class CorpusImporterTests
 
         var meeting = context.Meetings.Single();
         meeting.Title.ShouldBeNull();
-        meeting.ProjectId.ShouldBeNull();
+        context.MeetingNodes.ShouldBeEmpty();
     }
 
     [Fact]
@@ -351,12 +364,17 @@ public class CorpusImporterTests
         report.NotImported.ShouldContain(line => line.Contains("recording date", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// The note somebody wrote so a reader who was not there understands the meeting. Nothing
+    /// infers it, so losing it on the way in would lose it for good.
+    /// </summary>
     [Fact]
-    public void A_meeting_whose_context_note_has_nowhere_to_go_says_so()
+    public void A_meeting_keeps_the_note_a_person_wrote_on_it()
     {
         const string meta = """
             title: "with a note"
-            context: "the note nobody has a column for"
+            context: "talks about the issues, which gh lists"
+            meeting_type: "refinement"
             """;
         using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15", meta: meta);
         using var corpus = new TemporaryCorpus();
@@ -364,16 +382,21 @@ public class CorpusImporterTests
 
         var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
 
-        context.Meetings.Single().Title.ShouldBe("with a note");
-        report.NotImported.ShouldContain(line => line.Contains("context note", StringComparison.Ordinal));
+        var meeting = context.Meetings.Single();
+        meeting.Title.ShouldBe("with a note");
+        meeting.Context.ShouldBe("talks about the issues, which gh lists");
+        context.Templates.Single(template => template.Id == meeting.TemplateId)
+            .Name.ShouldBe("refinement");
+        report.NotImported.ShouldNotContain(line => line.Contains("context", StringComparison.Ordinal));
     }
 
     /// <summary>
-    /// A meeting reaches its company through its project, so one without a project cannot be
-    /// linked to the company the old corpus wrote on it. Said out loud rather than dropped.
+    /// The meeting held before any project existed — an interview, a first call with a client.
+    /// It hangs off the organization itself, which is what a meeting could not do when it could
+    /// only belong to a project.
     /// </summary>
     [Fact]
-    public void A_meeting_with_a_company_and_no_project_says_the_company_is_out_of_reach()
+    public void A_meeting_with_an_organization_and_no_project_hangs_off_the_organization()
     {
         const string meta = """
             company: "acme"
@@ -385,23 +408,27 @@ public class CorpusImporterTests
 
         var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
 
-        context.Meetings.Single().ProjectId.ShouldBeNull();
-        report.NotImported.ShouldContain(line => line.Contains("not reachable", StringComparison.Ordinal));
+        var link = context.MeetingNodes.Single();
+        link.NodeId.ShouldBe(context.Nodes.Single(node => node.Name == "Acme").Id);
+        link.Role.ShouldBe(MeetingNodeRole.WorkOf);
+        report.NotImported.ShouldNotContain(line => line.Contains("catalog", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void A_meeting_that_names_a_project_reaches_its_company_through_it()
+    public void A_meeting_naming_something_the_catalog_does_not_have_says_so()
     {
-        using var legacy = new LegacyCorpusBuilder().WithCatalog().WithMeeting("2026-07-29 09-35-15");
+        const string meta = """
+            project: "ghost"
+            title: "nowhere"
+            """;
+        using var legacy = new LegacyCorpusBuilder().WithCatalog().WithMeeting("2026-07-29 09-35-15", meta: meta);
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
 
         var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
 
-        var meeting = context.Meetings.Single();
-        var project = context.Projects.Single(project => project.Id == meeting.ProjectId);
-        project.CompanyId.ShouldBe(context.Companies.Single().Id);
-        report.NotImported.ShouldNotContain(line => line.Contains("not reachable", StringComparison.Ordinal));
+        context.MeetingNodes.ShouldBeEmpty();
+        report.NotImported.ShouldContain(line => line.Contains("not in the catalog", StringComparison.Ordinal));
     }
 
     [Fact]

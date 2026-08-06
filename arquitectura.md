@@ -297,9 +297,10 @@ summaries
 decisions
 action_items
 action_item_progress
-companies
+nodes
+meeting_nodes
+templates
 people
-projects
 meeting_participants
 speaker_assignments
 terminology_corrections
@@ -316,8 +317,9 @@ Campos principales:
 
 ```text
 id UUID/TEXT PRIMARY KEY
-project_id TEXT NULL
 title TEXT NULL
+context TEXT NULL
+template_id TEXT NULL
 started_at TEXT
 duration_ms INTEGER NULL
 source_profile TEXT
@@ -330,6 +332,18 @@ deleted_at TEXT NULL
 
 `lifecycle_state` describe solamente si la reunión está activa, eliminándose o
 eliminada. No intenta resumir todos los procesos.
+
+La reunión no cuelga de un proyecto: se relaciona con nodos de `nodes`, y cada
+vínculo dice de qué manera. Una reunión sobre dos proyectos son dos vínculos
+`work_of`; una con un cliente suma un `counterpart` a la organización del otro
+lado; una que ocurrió antes de que existiera el proyecto cuelga directamente de
+la organización. El árbol llega hasta tres niveles: es una clasificación que
+alguien tiene en la cabeza, no un árbol de carpetas, y con el tope todo lo que
+cuelga de un nodo está a dos joins.
+
+Los nombres de las clases (`organization`, `initiative`, `topic`) y de los
+papeles (`work_of`, `counterpart`, `about`) son provisorios y están guardados
+con CHECK: cambiarlos es otra migración, no renombrar una etiqueta.
 
 ### 5.3 Jobs y estados independientes
 

@@ -44,11 +44,13 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
     public DbSet<ActionItemProgress> ActionItemProgress => Set<ActionItemProgress>();
 
-    public DbSet<Company> Companies => Set<Company>();
+    public DbSet<Node> Nodes => Set<Node>();
+
+    public DbSet<MeetingNode> MeetingNodes => Set<MeetingNode>();
+
+    public DbSet<MeetingTemplate> Templates => Set<MeetingTemplate>();
 
     public DbSet<Person> People => Set<Person>();
-
-    public DbSet<Project> Projects => Set<Project>();
 
     public DbSet<MeetingParticipant> MeetingParticipants => Set<MeetingParticipant>();
 
@@ -81,37 +83,67 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
     private static void ConfigureHumanLayer(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<Company>(company =>
+        modelBuilder.Entity<Node>(node =>
         {
-            company.ToTable("companies");
-            company.HasKey(entity => entity.Id);
-            company.HasIndex(entity => entity.Name).IsUnique();
+            node.ToTable("nodes", table =>
+            {
+                table.HasCheckConstraint("ck_nodes_kind", $"kind IN ({WireNames<NodeKind>.AsSqlList()})");
+                table.HasCheckConstraint("ck_nodes_depth", $"depth BETWEEN 0 AND {Node.MaxDepth}");
+                // A root is exactly what has no parent. The rest — that a child sits one below
+                // its parent — needs another row, which a CHECK cannot reach.
+                table.HasCheckConstraint("ck_nodes_root", "(parent_id IS NULL) = (depth = 0)");
+            });
+
+            node.HasKey(entity => entity.Id);
+            node.HasIndex(entity => new { entity.ParentId, entity.Name }).IsUnique();
+            // SQLite counts NULLs as distinct, so the index above lets two roots share a name.
+            // This one is what actually stops a second 'TechSed' at the top of the tree.
+            node.HasIndex(entity => entity.Name).IsUnique().HasFilter("parent_id IS NULL");
+            // Deleting a node takes what hangs under it. A tree that outlives its root is the
+            // kind of orphan nothing goes looking for.
+            node.HasOne<Node>().WithMany().HasForeignKey(entity => entity.ParentId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<Project>(project =>
+        modelBuilder.Entity<MeetingNode>(link =>
         {
-            project.ToTable("projects");
-            project.HasKey(entity => entity.Id);
-            // Unique across companies, not within one. Two companies calling a project the same
-            // thing is rare; a corpus with two 'coati' and no way to tell them apart is worse.
-            project.HasIndex(entity => entity.Name).IsUnique();
-            // A company disappearing does not take the work with it, and the meetings under that
-            // work are the corpus. The link is what is lost, which is the recoverable half.
-            project.HasOne<Company>().WithMany().HasForeignKey(entity => entity.CompanyId)
-                .OnDelete(DeleteBehavior.SetNull);
+            link.ToTable("meeting_nodes", table => table.HasCheckConstraint(
+                "ck_meeting_nodes_role",
+                $"role IN ({WireNames<MeetingNodeRole>.AsSqlList()})"));
+
+            // The role is part of the key: one meeting can be work of a node and also about it.
+            link.HasKey(entity => new { entity.MeetingId, entity.NodeId, entity.Role });
+            // Everything under this node, for a listing and for the terminology that applies.
+            link.HasIndex(entity => entity.NodeId);
+            link.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            link.HasOne<Node>().WithMany().HasForeignKey(entity => entity.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<MeetingTemplate>(template =>
+        {
+            template.ToTable("templates");
+            template.HasKey(entity => entity.Id);
+            template.HasIndex(entity => entity.Name).IsUnique();
         });
 
         modelBuilder.Entity<Person>(person =>
         {
             person.ToTable("people");
             person.HasKey(entity => entity.Id);
-            person.HasOne<Company>().WithMany().HasForeignKey(entity => entity.CompanyId)
+            // Losing an organization does not lose the people who were in it: they are in
+            // meetings, and a meeting without its participants is not repairable.
+            person.HasOne<Node>().WithMany().HasForeignKey(entity => entity.OrganizationId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<MeetingParticipant>(participant =>
         {
-            participant.ToTable("meeting_participants");
+            participant.ToTable("meeting_participants", table => table.HasCheckConstraint(
+                "ck_meeting_participants_role",
+                $"role IN ({WireNames<ParticipantRole>.AsSqlList()})"));
+
             participant.HasKey(entity => new { entity.MeetingId, entity.PersonId });
             participant.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
                 .OnDelete(DeleteBehavior.Cascade);
@@ -155,9 +187,9 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
         {
             correction.ToTable("terminology_corrections", table => table.HasCheckConstraint(
                 "ck_terminology_corrections_scope",
-                "project_id IS NULL OR meeting_id IS NULL"));
+                "node_id IS NULL OR meeting_id IS NULL"));
             correction.HasKey(entity => entity.Id);
-            correction.HasOne<Project>().WithMany().HasForeignKey(entity => entity.ProjectId)
+            correction.HasOne<Node>().WithMany().HasForeignKey(entity => entity.NodeId)
                 .OnDelete(DeleteBehavior.Cascade);
             correction.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
                 .OnDelete(DeleteBehavior.Cascade);
@@ -190,7 +222,7 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             // The list every window opens on: the meetings that are still here, newest first.
             // Equality column first, then the one being ordered on.
             meeting.HasIndex(entity => new { entity.LifecycleState, entity.StartedAt });
-            meeting.HasOne<Project>().WithMany().HasForeignKey(entity => entity.ProjectId)
+            meeting.HasOne<MeetingTemplate>().WithMany().HasForeignKey(entity => entity.TemplateId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
