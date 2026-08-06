@@ -1,0 +1,59 @@
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+
+using MeetingTranscriber.Domain.Audio;
+
+namespace MeetingTranscriber.Domain.Tests.Fixtures;
+
+/// <summary>
+/// The committed Deepgram responses, and what each one is there to cover.
+/// </summary>
+/// <remarks>
+/// They are read from the repository rather than copied into the test output: they are megabytes
+/// of paid response, they change only when the tool that builds them is run, and a copy per
+/// configuration buys nothing but a slower build. See tests/fixtures/deepgram/README.md.
+/// </remarks>
+public static class DeepgramFixtures
+{
+    /// <summary>Both channels, 58 minutes, six diarized speakers sharing the meeting channel.</summary>
+    public const string TwoChannelLong = "two-channel-long";
+
+    /// <summary>Both channels, 34 minutes. The one to reach for when length is not the point.</summary>
+    public const string TwoChannelShort = "two-channel-short";
+
+    /// <summary>One track with diarized speakers, the shape a <see cref="SourceProfile.Diarize"/> meeting has.</summary>
+    public const string SingleTrackDiarized = "single-track-diarized";
+
+    /// <summary>Both channels, and the microphone caught nothing at all.</summary>
+    public const string TwoChannelSilentMe = "two-channel-silent-me";
+
+    public static IEnumerable<string> All =>
+        [TwoChannelLong, TwoChannelShort, SingleTrackDiarized, TwoChannelSilentMe];
+
+    /// <summary>The profile whose audio each fixture is a transcription of.</summary>
+    public static SourceProfile ProfileOf(string name) => name switch
+    {
+        SingleTrackDiarized => SourceProfile.Diarize,
+        TwoChannelLong or TwoChannelShort or TwoChannelSilentMe => SourceProfile.Multichannel,
+        _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Not a fixture."),
+    };
+
+    public static JsonDocument Read(string name)
+    {
+        using var stream = File.OpenRead(Path.Combine(Directory.FullName, name + ".json"));
+        return JsonDocument.Parse(stream);
+    }
+
+    /// <summary>The closed list of words the fixtures are allowed to be made of.</summary>
+    public static IReadOnlySet<string> Vocabulary() => File
+        .ReadAllLines(Path.Combine(Directory.FullName, "vocabulary.txt"))
+        .Select(line => line.Trim())
+        .Where(line => line.Length > 0 && !line.StartsWith('#'))
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    public static DirectoryInfo Directory => Locate();
+
+    private static DirectoryInfo Locate([CallerFilePath] string thisFile = "") => new(
+        Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(thisFile)!, "..", "..", "fixtures", "deepgram")));
+}

@@ -874,6 +874,14 @@ sistema:
 No es obligatorio producir texto byte a byte idéntico al Python actual. Los tests
 comprueban invariantes de dominio y diferencias intencionales documentadas.
 
+Esas respuestas no se leen del corpus del usuario: están versionadas en
+`tests/fixtures/deepgram/` con cada palabra sustituida por una de un vocabulario
+cerrado y con los tiempos, las confianzas y los números de canal tal como los
+mandó el proveedor. Ningún test depende del corpus real, y el que necesite un
+caso que el juego no cubre amplía el juego. El corpus no tiene ninguna reunión de
+una sola pista ni ningún canal vacío, así que esas dos se derivan de una
+respuesta real y el README de la carpeta dice exactamente cómo.
+
 ### 12.3 Motor de audio
 
 El motor consume paquetes sintéticos con timestamp y devuelve audio alineado.

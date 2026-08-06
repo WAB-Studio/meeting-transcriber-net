@@ -12,4 +12,8 @@
     <Project Path="tests/MeetingTranscriber.Domain.Tests/MeetingTranscriber.Domain.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Infrastructure.Tests/MeetingTranscriber.Infrastructure.Tests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <!-- Run by hand, in the solution so the build and the formatter still see it. -->
+    <Project Path="tools/MeetingTranscriber.CorpusFixtures/MeetingTranscriber.CorpusFixtures.csproj" />
+  </Folder>
 </Solution>

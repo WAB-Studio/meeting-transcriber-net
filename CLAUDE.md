@@ -27,6 +27,8 @@ src/MeetingTranscriber.Domain/          entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/  SQLite, filesystem and credentials
 tests/MeetingTranscriber.Domain.Tests/
 tests/MeetingTranscriber.Infrastructure.Tests/
+tests/fixtures/deepgram/                anonymised responses, free to test against
+tools/MeetingTranscriber.CorpusFixtures/ builds those fixtures from the Python corpus
 ```
 
 The seven-project split in `arquitectura.md` §3 is the destination, not the scaffolding. A project
@@ -96,6 +98,10 @@ decided in a hurry later, mid-task.
 
 - Tests never touch the network and never spend Deepgram credits or Claude Code quota. Live tests
   are separate opt-in commands and are not part of `dotnet test`.
+- What they read instead is `tests/fixtures/deepgram/`: real responses with every word replaced by
+  one from a closed vocabulary, and every timing, confidence and channel number left as the
+  provider sent it. A test needing a case the set does not cover extends the set — never the
+  user's corpus, which no test may depend on. `tests/fixtures/deepgram/README.md` says how.
 - `deepgram.json` is a paid artifact: never overwritten, and corrections are never written into
   it. Re-transcribing creates a new version and needs explicit cost approval.
 - The corpus never lives in the MSIX package data folder — uninstalling wipes it, and the corpus
