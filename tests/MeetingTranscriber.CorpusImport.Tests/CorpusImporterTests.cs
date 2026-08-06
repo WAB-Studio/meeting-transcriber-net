@@ -368,6 +368,42 @@ public class CorpusImporterTests
         report.NotImported.ShouldContain(line => line.Contains("context note", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// A meeting reaches its company through its project, so one without a project cannot be
+    /// linked to the company the old corpus wrote on it. Said out loud rather than dropped.
+    /// </summary>
+    [Fact]
+    public void A_meeting_with_a_company_and_no_project_says_the_company_is_out_of_reach()
+    {
+        const string meta = """
+            company: "acme"
+            title: "no project"
+            """;
+        using var legacy = new LegacyCorpusBuilder().WithCatalog().WithMeeting("2026-07-29 09-35-15", meta: meta);
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        context.Meetings.Single().ProjectId.ShouldBeNull();
+        report.NotImported.ShouldContain(line => line.Contains("not reachable", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_meeting_that_names_a_project_reaches_its_company_through_it()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithCatalog().WithMeeting("2026-07-29 09-35-15");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        var meeting = context.Meetings.Single();
+        var project = context.Projects.Single(project => project.Id == meeting.ProjectId);
+        project.CompanyId.ShouldBe(context.Companies.Single().Id);
+        report.NotImported.ShouldNotContain(line => line.Contains("not reachable", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void A_meeting_with_no_rendered_transcript_records_the_language_it_was_told()
     {

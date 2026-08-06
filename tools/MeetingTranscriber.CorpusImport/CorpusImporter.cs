@@ -261,6 +261,14 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             report.CouldNotImport($"{legacy.Id}: the meeting's context note has no column to go in");
         }
 
+        // A meeting reaches its company through its project. With no project there is no route,
+        // and the company the old corpus wrote on the meeting itself has nowhere to land.
+        if (legacy.CompanyId is not null && legacy.ProjectId is null)
+        {
+            report.CouldNotImport(
+                $"{legacy.Id}: names company '{legacy.CompanyId}' and no project, so the company is not reachable");
+        }
+
         ImportArtifacts(legacy, meeting, options, now, report);
         ImportSpeakers(legacy, meeting, people, now, report);
     }
