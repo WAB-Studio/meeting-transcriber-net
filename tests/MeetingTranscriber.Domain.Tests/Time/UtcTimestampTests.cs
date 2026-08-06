@@ -79,4 +79,35 @@ public class UtcTimestampTests
 
         UtcTimestamp.FromUnixMilliseconds(timestamp.UnixMilliseconds).ShouldBe(timestamp);
     }
+
+    /// <summary>
+    /// Every date field is required with a setter, so forgetting to assign one leaves the struct
+    /// at its default rather than failing to compile. Year one has to mean that and nothing else.
+    /// </summary>
+    [Fact]
+    public void A_timestamp_nobody_assigned_is_the_only_thing_year_one_can_be()
+    {
+        default(UtcTimestamp).IsSet.ShouldBeFalse();
+
+        UtcTimestamp.From(new DateTimeOffset(2026, 8, 5, 0, 0, 0, TimeSpan.Zero)).IsSet.ShouldBeTrue();
+        UtcTimestamp.FromUnixMilliseconds(0).IsSet.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void No_factory_hands_back_the_instant_that_means_unassigned()
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => UtcTimestamp.From(DateTimeOffset.MinValue));
+        Should.Throw<ArgumentOutOfRangeException>(() => UtcTimestamp.Parse("0001-01-01T00:00:00.000Z"));
+    }
+
+    /// <summary>
+    /// The point of the whole thing: it is refused where it would otherwise become a date on disk
+    /// that nothing can tell apart from one somebody meant.
+    /// </summary>
+    [Fact]
+    public void A_timestamp_nobody_assigned_is_not_something_to_store()
+    {
+        Should.Throw<InvalidOperationException>(() => default(UtcTimestamp).ToStorage());
+        Should.NotThrow(() => UtcTimestamp.FromUnixMilliseconds(0).ToStorage());
+    }
 }

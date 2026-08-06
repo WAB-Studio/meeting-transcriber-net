@@ -5,11 +5,15 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace MeetingTranscriber.Infrastructure.Storage;
 
-/// <summary>An instant keeps the UTC text form the domain round trips through.</summary>
+/// <summary>
+/// An instant keeps the UTC text form the domain round trips through, and a timestamp nobody
+/// assigned never reaches a column: every date field is required with a setter, so forgetting one
+/// would otherwise land in the corpus as year one and read back as a date like any other.
+/// </summary>
 public sealed class UtcTimestampConverter : ValueConverter<UtcTimestamp, string>
 {
     public UtcTimestampConverter()
-        : base(value => value.ToString(), text => UtcTimestamp.Parse(text))
+        : base(value => value.ToStorage(), text => UtcTimestamp.Parse(text))
     {
     }
 }

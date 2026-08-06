@@ -11,10 +11,30 @@ public readonly record struct UtcTimestamp : IComparable<UtcTimestamp>
     /// <summary>The round trippable text form used in SQLite, manifests and artifacts.</summary>
     public const string Format = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
 
-    private UtcTimestamp(DateTimeOffset value) => Value = Normalize(value);
+    private UtcTimestamp(DateTimeOffset value)
+    {
+        Value = Normalize(value);
+        if (Value == default)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(value), value, "Year one is not an instant; it is what an unassigned timestamp looks like.");
+        }
+    }
 
     /// <summary>The instant, with a zero offset and no sub millisecond remainder.</summary>
     public DateTimeOffset Value { get; }
+
+    /// <summary>
+    /// False for the one value no factory can produce: <c>default</c>, which is year one.
+    /// </summary>
+    /// <remarks>
+    /// A timestamp is a required field with a setter on every entity that has one, so forgetting
+    /// to assign it is not a compile error — it is a struct left at its default, and year one is
+    /// a perfectly valid <see cref="DateTimeOffset"/> that reads back out of SQLite as a date.
+    /// Keeping the default unreachable through the factories is what makes it mean exactly one
+    /// thing, and <see cref="ToStorage"/> is where it stops.
+    /// </remarks>
+    public bool IsSet => Value != default;
 
     /// <summary>Milliseconds since the Unix epoch.</summary>
     public long UnixMilliseconds => Value.ToUnixTimeMilliseconds();
@@ -56,6 +76,15 @@ public readonly record struct UtcTimestamp : IComparable<UtcTimestamp>
     public int CompareTo(UtcTimestamp other) => Value.CompareTo(other.Value);
 
     public override string ToString() => Value.ToString(Format, CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The text form to persist, refusing a timestamp nobody assigned. A row carrying year one is
+    /// a field somebody forgot, and it is indistinguishable from a real date once it is on disk.
+    /// </summary>
+    public string ToStorage() => IsSet
+        ? ToString()
+        : throw new InvalidOperationException(
+            "A timestamp was never assigned. Year one is not something to write into a corpus.");
 
     /// <summary>How long after <paramref name="earlier"/> the left instant happened.</summary>
     public static Duration operator -(UtcTimestamp later, UtcTimestamp earlier) =>

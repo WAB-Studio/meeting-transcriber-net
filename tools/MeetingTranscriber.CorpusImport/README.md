@@ -29,4 +29,5 @@ from `Directory.Packages.props` — this is the only thing that reads YAML. Noth
 references either project, so nothing else moves.
 
 Two things it introduced do **not** come out with it, because they are the application's and not
-the import's: the `companies` table, and the `Turns` rule the projection is built on.
+the import's: the classification tree — `nodes`, `meeting_nodes` and `templates` — and the `Turns`
+rule the projection is built on.

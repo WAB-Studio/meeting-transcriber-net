@@ -29,11 +29,36 @@ public class SourceProfileTests
         Should.Throw<AudioContractException>(() => profile.EnsureChannelCount(channelCount));
     }
 
+    /// <summary>
+    /// The microphone and nothing else. Channel 0 is the whole meeting, so a multichannel capture
+    /// knows who one of its two channels belongs to and nothing about who is on the other.
+    /// </summary>
     [Fact]
-    public void Only_multichannel_knows_who_speaks_without_asking_a_person()
+    public void The_only_speaker_the_contract_names_is_the_one_on_the_microphone()
     {
-        SourceProfile.Multichannel.HasDeterministicSpeakers().ShouldBeTrue();
-        SourceProfile.Diarize.HasDeterministicSpeakers().ShouldBeFalse();
+        SourceProfile.Multichannel.DeterministicSpeakerChannel().ShouldBe(AudioChannel.Me);
+        SourceProfile.Diarize.DeterministicSpeakerChannel().ShouldBeNull();
+    }
+
+    /// <summary>
+    /// Both profiles diarize. Turning it off for multichannel would leave the channel carrying
+    /// the room with one label for everybody on it.
+    /// </summary>
+    [Theory]
+    [InlineData(SourceProfile.Multichannel)]
+    [InlineData(SourceProfile.Diarize)]
+    public void Every_profile_asks_the_provider_to_tell_speakers_apart(SourceProfile profile)
+    {
+        profile.RequestsDiarization().ShouldBeTrue();
+    }
+
+    [Fact]
+    public void A_profile_the_domain_does_not_have_reaches_neither_answer()
+    {
+        const SourceProfile unknown = (SourceProfile)99;
+
+        Should.Throw<AudioContractException>(() => unknown.DeterministicSpeakerChannel());
+        Should.Throw<AudioContractException>(() => unknown.RequestsDiarization());
     }
 
     [Theory]
