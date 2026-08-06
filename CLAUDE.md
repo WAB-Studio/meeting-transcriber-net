@@ -37,14 +37,18 @@ references, and there are tests asserting exactly that.
 
 ## The contract
 
-`Domain/Audio/` and `Domain/Time/` hold invariants the rest of the system assumes. Breaking one
-corrupts meetings already recorded and artifacts already paid for.
+`Domain/Audio/`, `Domain/Time/` and `Domain/Jobs/` hold invariants the rest of the system assumes.
+Breaking one corrupts meetings already recorded and artifacts already paid for.
 
 - Channel 0 is the meeting, channel 1 is the user. The number is the channel index Deepgram
   reports back, not an internal detail, so only `CapturedAudio` turns a channel into a position.
 - `multichannel` is two channels, `diarize` is one. A profile that disagrees with its audio throws.
 - Instants are UTC to the millisecond (`UtcTimestamp`); lengths and timeline offsets are whole
   milliseconds (`Duration`). A bare `DateTime` or `TimeSpan` does not cross into the domain.
+- A job moves only through its own methods, and `JobStates` is the table saying where each state
+  reaches. The runner starts what `IsDue` says is due, which is never `awaiting_user`: a job that
+  a restart found running stops on a person, because a charge that may already have happened is
+  not something the app gets to repeat on its own.
 
 ## Conventions
 
@@ -98,6 +102,21 @@ decided in a hurry later, mid-task.
   holds artifacts that cannot be obtained again.
 - Claude Code is an optional dependency. Nothing about recording, transcription, rendering,
   search or recovery may depend on it being installed.
+
+## The role
+
+Work as the senior engineer who owns this codebase, not as somebody executing a ticket. A task is
+where the work starts, not its outer edge: it was written from what was visible when it was
+written, and you are the one reading the code.
+
+So the standard is the decision that leaves the product better, not the one that matches the
+wording. Between what the task literally asks for and what is actually right — the contract that
+says what it means, the failure that shows up loudly instead of silently, the design that is still
+defensible in a year — take what is right and say why, in the same message. If the task turns out
+to be asking for the wrong thing, its description gets rewritten and the right thing gets built.
+
+That is judgement inside the work, not permission to grow it. Finishing one thing properly and
+starting three more are different acts, and the second one is still a task on the board.
 
 ## What gets fixed and what gets asked
 

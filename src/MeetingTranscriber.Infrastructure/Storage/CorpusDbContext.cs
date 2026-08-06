@@ -18,7 +18,9 @@ namespace MeetingTranscriber.Infrastructure.Storage;
 /// </summary>
 public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) : DbContext(options)
 {
-    private static readonly string JobStates = WireNames<JobState>.AsSqlList();
+    // Named for what it is, and not JobStates: that is the domain type holding the transitions,
+    // and a field shadowing it here would make the next reference to either one a coin toss.
+    private static readonly string JobStateNames = WireNames<JobState>.AsSqlList();
 
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
@@ -216,7 +218,7 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             job.ToTable("processing_jobs", table =>
             {
                 table.HasCheckConstraint("ck_processing_jobs_kind", $"kind IN ({WireNames<JobKind>.AsSqlList()})");
-                table.HasCheckConstraint("ck_processing_jobs_state", $"state IN ({JobStates})");
+                table.HasCheckConstraint("ck_processing_jobs_state", $"state IN ({JobStateNames})");
                 table.HasCheckConstraint("ck_processing_jobs_attempt", "attempt >= 0");
             });
 
@@ -231,7 +233,7 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
         {
             run.ToTable("transcription_runs", table =>
             {
-                table.HasCheckConstraint("ck_transcription_runs_state", $"state IN ({JobStates})");
+                table.HasCheckConstraint("ck_transcription_runs_state", $"state IN ({JobStateNames})");
                 table.HasCheckConstraint(
                     "ck_transcription_runs_source_profile",
                     $"source_profile IN ({WireNames<SourceProfile>.AsSqlList()})");
@@ -257,7 +259,7 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
         {
             run.ToTable("extraction_runs", table =>
             {
-                table.HasCheckConstraint("ck_extraction_runs_state", $"state IN ({JobStates})");
+                table.HasCheckConstraint("ck_extraction_runs_state", $"state IN ({JobStateNames})");
                 table.HasCheckConstraint("ck_extraction_runs_input_hash", "length(input_hash) = 64");
                 table.HasCheckConstraint(
                     "ck_extraction_runs_raw_output_hash",

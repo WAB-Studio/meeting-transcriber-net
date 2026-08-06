@@ -1,4 +1,5 @@
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
@@ -83,6 +84,62 @@ public class CorpusStorageTests
 
         Sql.Scalar(context, "SELECT start_ms FROM utterances;").ShouldBe(1_500L);
         Sql.Scalar(context, "SELECT end_ms FROM utterances;").ShouldBe(4_250L);
+    }
+
+    [Fact]
+    public void A_job_lands_in_the_columns_the_contract_promises()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var meeting = NewMeeting();
+        var job = ProcessingJob.Queue(Guid.NewGuid(), meeting.Id, JobKind.Transcribe, "transcribe/one", When);
+        job.Start(When);
+        job.FailRetryable("deepgram answered 503", When + Duration.FromMilliseconds(60_000));
+
+        context.Meetings.Add(meeting);
+        context.ProcessingJobs.Add(job);
+        context.SaveChanges();
+
+        Sql.Scalar(context, "SELECT kind FROM processing_jobs;").ShouldBe("transcribe");
+        Sql.Scalar(context, "SELECT state FROM processing_jobs;").ShouldBe("failed_retryable");
+        Sql.Scalar(context, "SELECT attempt FROM processing_jobs;").ShouldBe(1L);
+        Sql.Scalar(context, "SELECT next_attempt_at FROM processing_jobs;").ShouldBe("2026-08-05T14:31:12.345Z");
+    }
+
+    /// <summary>
+    /// A job only moves through its own methods, so every setter it has is private and its
+    /// constructor takes the one property that is required. Reading one back is what proves EF
+    /// can still materialise that, and it is the kind of break a domain test cannot see.
+    /// </summary>
+    [Fact]
+    public void A_job_comes_back_off_disk_where_its_own_methods_left_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        var id = Guid.NewGuid();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            var meeting = NewMeeting();
+            var job = ProcessingJob.Queue(id, meeting.Id, JobKind.Transcribe, "transcribe/one", When);
+            job.Start(When);
+            job.AwaitUser("a restart found it running");
+
+            writing.Meetings.Add(meeting);
+            writing.ProcessingJobs.Add(job);
+            writing.SaveChanges();
+        }
+
+        using var reading = corpus.Open();
+        var stored = reading.ProcessingJobs.Single(job => job.Id == id);
+
+        stored.Kind.ShouldBe(JobKind.Transcribe);
+        stored.State.ShouldBe(JobState.AwaitingUser);
+        stored.IdempotencyKey.ShouldBe("transcribe/one");
+        stored.Attempt.ShouldBe(1);
+        stored.StartedAt.ShouldBe(When);
+        stored.NextAttemptAt.ShouldBeNull();
+        stored.IsDue(When + Duration.FromMilliseconds(86_400_000)).ShouldBeFalse();
     }
 
     private static Meeting NewMeeting() => new()

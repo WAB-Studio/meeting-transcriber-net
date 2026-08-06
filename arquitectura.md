@@ -357,6 +357,43 @@ cancelled
 Esto permite que una reunión esté transcrita aunque su summary haya fallado, o
 que pueda consultarse mientras un backup está pendiente.
 
+Transiciones válidas, y no hay otras:
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> running
+    pending --> awaiting_user
+    pending --> cancelled
+    running --> succeeded
+    running --> failed_retryable
+    running --> failed_permanent
+    running --> awaiting_user
+    running --> cancelled
+    failed_retryable --> running
+    failed_retryable --> awaiting_user
+    failed_retryable --> failed_permanent
+    failed_retryable --> cancelled
+    awaiting_user --> pending
+    awaiting_user --> succeeded
+    awaiting_user --> failed_permanent
+    awaiting_user --> cancelled
+    succeeded --> [*]
+    failed_permanent --> [*]
+    cancelled --> [*]
+```
+
+El runner arranca por su cuenta los jobs en `pending` y `failed_retryable`, y
+sólo cuando llegó su `next_attempt_at`. `awaiting_user` queda deliberadamente
+fuera de esa lista y sin fecha de reintento: es donde para lo que la aplicación
+no decide sola —un coste a aprobar, un intento cuyo resultado no puede
+establecer— y de ahí sale únicamente porque una persona lo movió. La excepción
+es `awaiting_user → succeeded`, que es el reinicio encontrando en disco la
+respuesta ya pagada: resolver el job con lo que ya se cobró no es reintentarlo.
+
+`succeeded`, `failed_permanent` y `cancelled` son terminales. Volver a intentar
+ese trabajo es un job nuevo con su propia `idempotency_key`, no éste revivido.
+
 ### 5.4 Configuración de SQLite
 
 - foreign keys activadas;
