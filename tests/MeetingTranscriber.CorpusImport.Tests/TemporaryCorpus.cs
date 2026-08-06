@@ -33,9 +33,10 @@ internal sealed class TemporaryCorpus : IDisposable
         {
             Directory.Delete(directory, recursive: true);
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            // A leftover temp directory is not worth failing a green test over.
+            // A leftover temp directory is not worth failing a green test over, and Windows
+            // refuses a contended delete as access denied as readily as a sharing violation.
         }
     }
 }

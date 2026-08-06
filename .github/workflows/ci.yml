@@ -17,6 +17,21 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      # CLAUDE.md is read in full on every task, so its length is a running cost. The ceiling is
+      # there to force an eviction rather than an append; the rule it enforces is in the file.
+      - name: CLAUDE.md stays within its budget
+        shell: pwsh
+        run: |
+          $limit = 175
+          # Not Measure-Object -Line: it skips blank lines, so it would report a number nobody
+          # else's line count agrees with.
+          $lines = @(Get-Content CLAUDE.md).Count
+          if ($lines -gt $limit) {
+            Write-Host "::error file=CLAUDE.md::$lines lines, budget is $limit. Move a section to docs/ and leave the line that says when to open it — see 'What belongs in this file'."
+            exit 1
+          }
+          Write-Host "CLAUDE.md: $lines/$limit lines"
+
       - name: Restore
         run: dotnet restore
 

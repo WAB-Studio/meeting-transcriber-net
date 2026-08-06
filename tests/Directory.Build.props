@@ -1,0 +1,13 @@
+<Project>
+
+  <Import Project="$([MSBuild]::GetPathOfFileAbove($(MSBuildThisFile), $(MSBuildThisFileDirectory)..))" />
+
+  <PropertyGroup>
+    <!-- What `dotnet test` prints when a test fails. Off, the run says "Failed: 1" and points at a
+         log under bin/ that the next run overwrites, so a test that fails once in twelve is
+         precisely the one whose name nobody ever gets to read. On, the failing test, its file and
+         line and its stack trace come out on the console, which is the record CI keeps. -->
+    <TestingPlatformShowTestsFailure>true</TestingPlatformShowTestsFailure>
+  </PropertyGroup>
+
+</Project>
