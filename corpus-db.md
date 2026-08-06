@@ -43,7 +43,6 @@ erDiagram
 
     meetings {
         TEXT id PK
-        TEXT legacy_id UK
         TEXT project_id FK
         TEXT title "capa humana"
         TEXT started_at

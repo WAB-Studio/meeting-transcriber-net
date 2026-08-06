@@ -13,7 +13,7 @@ public sealed class ImportReport
 
     public int MeetingsImported { get; private set; }
 
-    /// <summary>Meetings already in this corpus, matched on their legacy identifier.</summary>
+    /// <summary>Meetings already in this corpus, matched on the response they came from.</summary>
     public int MeetingsAlreadyThere { get; private set; }
 
     public int ArtifactsRegistered { get; private set; }

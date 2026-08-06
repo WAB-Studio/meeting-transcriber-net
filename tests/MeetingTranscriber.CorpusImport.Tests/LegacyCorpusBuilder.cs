@@ -34,7 +34,7 @@ public sealed class LegacyCorpusBuilder : IDisposable
         bool extraction = true,
         bool transcript = true)
     {
-        Write($"{id}/deepgram.json", Response(channels, seconds));
+        Write($"{id}/deepgram.json", Response(id, channels, seconds));
 
         if (meta is not null)
         {
@@ -88,7 +88,12 @@ public sealed class LegacyCorpusBuilder : IDisposable
         File.WriteAllText(file.FullName, content, new UTF8Encoding(false));
     }
 
-    private static string Response(int channels, double seconds)
+    /// <summary>
+    /// A response carrying its own request id, as a real one does. Two meetings never come back
+    /// with the same bytes, and a fixture that pretended otherwise would be testing a case the
+    /// importer is right to treat as one meeting.
+    /// </summary>
+    private static string Response(string requestId, int channels, double seconds)
     {
         var duration = seconds.ToString("0.0###", CultureInfo.InvariantCulture);
         var alternatives = string.Join(
@@ -100,7 +105,7 @@ public sealed class LegacyCorpusBuilder : IDisposable
         // Three dollars, because the response ends on two closing braces and two is what an
         // interpolation would take.
         return $$$"""
-            {"metadata":{"transaction_key":"deprecated","request_id":"r","sha256":"s","created":"2026-01-01T00:00:00.000Z","duration":{{{duration}}},"channels":{{{channels}}},"models":["m"]},"results":{"channels":[{{{alternatives}}}],"utterances":[]}}
+            {"metadata":{"transaction_key":"deprecated","request_id":"{{{requestId}}}","sha256":"s","created":"2026-01-01T00:00:00.000Z","duration":{{{duration}}},"channels":{{{channels}}},"models":["m"]},"results":{"channels":[{{{alternatives}}}],"utterances":[]}}
             """;
     }
 

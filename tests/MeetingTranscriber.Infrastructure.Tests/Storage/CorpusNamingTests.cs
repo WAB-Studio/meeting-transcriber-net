@@ -80,7 +80,6 @@ public class CorpusNamingTests
         Sql.Strings(context, "SELECT name FROM pragma_table_info('meetings');").ShouldBe(
             [
                 "id",
-                "legacy_id",
                 "project_id",
                 "title",
                 "started_at",

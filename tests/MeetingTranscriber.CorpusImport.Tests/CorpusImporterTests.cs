@@ -21,7 +21,6 @@ public class CorpusImporterTests
         new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
 
         var meeting = context.Meetings.Single();
-        meeting.LegacyId.ShouldBe("2026-07-29 09-35-15");
         meeting.Title.ShouldBe("the one about the orchard");
         meeting.SourceProfile.ShouldBe(SourceProfile.Multichannel);
         meeting.Duration!.Value.Milliseconds.ShouldBe(1_800_500);
@@ -74,6 +73,75 @@ public class CorpusImporterTests
         context.SpeakerAssignments.Count().ShouldBe(2);
         context.MeetingParticipants.Count().ShouldBe(2);
         context.TerminologyCorrections.Count().ShouldBe(2);
+    }
+
+    /// <summary>
+    /// What matching on the response rather than on the folder buys. A corpus edited by hand for
+    /// months has folders that were renamed, and neither half of that is a second meeting.
+    /// </summary>
+    [Fact]
+    public void A_meeting_whose_folder_was_renamed_is_still_the_same_meeting()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var importer = new CorpusImporter(context, Clock);
+
+        importer.Import(new LegacyCorpus(legacy.Directory));
+        Directory.Move(
+            Path.Combine(legacy.Directory.FullName, "2026-07-29 09-35-15"),
+            Path.Combine(legacy.Directory.FullName, "2026-07-29 09-35-16"));
+        var second = importer.Import(new LegacyCorpus(legacy.Directory));
+
+        second.MeetingsImported.ShouldBe(0);
+        second.MeetingsAlreadyThere.ShouldBe(1);
+        context.Meetings.Count().ShouldBe(1);
+    }
+
+    /// <summary>
+    /// Two folders holding the same response are one meeting, deliberately. Byte-identical
+    /// responses carry the same request id, so they are one call that was paid for once, however
+    /// many places it was copied to.
+    /// </summary>
+    [Fact]
+    public void The_same_response_in_two_folders_is_one_meeting()
+    {
+        using var legacy = new LegacyCorpusBuilder();
+        legacy.WithMeeting("2026-07-29 09-35-15");
+        File.Copy(
+            Path.Combine(legacy.Directory.FullName, "2026-07-29 09-35-15", "deepgram.json"),
+            Path.Combine(
+                Directory.CreateDirectory(
+                    Path.Combine(legacy.Directory.FullName, "2026-08-03 08-13-17")).FullName,
+                "deepgram.json"));
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        report.MeetingsImported.ShouldBe(1);
+        report.MeetingsAlreadyThere.ShouldBe(1);
+        context.Meetings.Count().ShouldBe(1);
+    }
+
+    /// <summary>
+    /// Where a meeting came from is provenance, and provenance goes in the audit trail. It used
+    /// to be a column of the meeting, which made the application carry the old system's
+    /// identifier long after the tool that read it was deleted.
+    /// </summary>
+    [Fact]
+    public void Where_a_meeting_came_from_is_written_down()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        var audit = context.AuditEvents.Single();
+        audit.Action.ShouldBe("imported");
+        audit.MeetingId.ShouldBe(context.Meetings.Single().Id);
+        audit.Detail.ShouldNotBeNull().ShouldContain("2026-07-29 09-35-15");
     }
 
     /// <summary>

@@ -88,20 +88,6 @@ public class CorpusSchemaTests
     }
 
     [Fact]
-    public void The_same_legacy_meeting_cannot_be_imported_twice()
-    {
-        using var corpus = new TemporaryCorpus();
-        using var context = corpus.OpenMigrated();
-
-        InsertMeeting(context, legacyId: "2026-03-01-planning");
-
-        Should.Throw<SqliteException>(() => InsertMeeting(
-            context,
-            id: "22222222-2222-2222-2222-222222222222",
-            legacyId: "2026-03-01-planning"));
-    }
-
-    [Fact]
     public void A_turn_can_only_sit_on_the_meeting_channel_the_user_channel_or_neither()
     {
         using var corpus = new TemporaryCorpus();
@@ -239,12 +225,11 @@ public class CorpusSchemaTests
     private static void InsertMeeting(
         CorpusDbContext context,
         string id = MeetingId,
-        string? legacyId = null,
         string sourceProfile = "multichannel",
         string lifecycleState = "active") =>
         Sql.Execute(context, $"""
-            INSERT INTO meetings (id, legacy_id, started_at, source_profile, language, lifecycle_state, created_at, updated_at)
-            VALUES ('{id}', {(legacyId is null ? "NULL" : $"'{legacyId}'")}, '{When}', '{sourceProfile}', 'es', '{lifecycleState}', '{When}', '{When}');
+            INSERT INTO meetings (id, started_at, source_profile, language, lifecycle_state, created_at, updated_at)
+            VALUES ('{id}', '{When}', '{sourceProfile}', 'es', '{lifecycleState}', '{When}', '{When}');
             """);
 
     private static void InsertUtterance(

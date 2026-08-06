@@ -11,12 +11,6 @@ public class Meeting
 {
     public Guid Id { get; set; }
 
-    /// <summary>
-    /// Identifier in the Python corpus this was imported from. Unique, so however often the
-    /// import re-runs, the same legacy artifact never turns into two meetings.
-    /// </summary>
-    public string? LegacyId { get; set; }
-
     public Guid? ProjectId { get; set; }
 
     public string? Title { get; set; }

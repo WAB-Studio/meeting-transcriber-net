@@ -27,10 +27,11 @@ public sealed record ImportOptions(DirectoryInfo? CopyTo = null, string Language
 /// never creates, moves, rewrites or deletes anything inside it.
 /// </summary>
 /// <remarks>
-/// Repeatable. Meetings are matched on the identifier the Python corpus used, so running it twice
-/// over the same corpus imports nothing the second time rather than making a second copy of every
-/// meeting. Everything the human layer holds — the companies, the projects, the people, the
-/// resolved speakers, the titles and the corrections — is matched the same way.
+/// Repeatable. A meeting is matched on the SHA-256 of the response it was transcribed from, so
+/// running it twice over the same corpus imports nothing the second time rather than making a
+/// second copy of every meeting — and renaming a folder does not turn one meeting into two.
+/// Everything the human layer holds — the companies, the projects, the people, the resolved
+/// speakers, the titles and the corrections — is matched by what it is, the same way.
 /// </remarks>
 public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
 {
@@ -207,7 +208,15 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             return;
         }
 
-        var meeting = context.Meetings.FirstOrDefault(existing => existing.LegacyId == legacy.Id);
+        // What decides this meeting is already here: the response it was transcribed from. It is
+        // stored, it is indexed, and it does not care what the folder it arrived in was called.
+        var response = new FileInfo(Path.Combine(legacy.Directory.FullName, "deepgram.json"));
+        var responseSha256 = Sha256(response);
+        var meeting = Imported(responseSha256) is { } imported
+            ? context.Meetings.Local.FirstOrDefault(existing => existing.Id == imported)
+                ?? context.Meetings.First(existing => existing.Id == imported)
+            : null;
+
         if (meeting is not null)
         {
             report.Imported(ImportCounter.MeetingAlreadyThere);
@@ -223,7 +232,6 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             meeting = new Meeting
             {
                 Id = Guid.NewGuid(),
-                LegacyId = legacy.Id,
                 ProjectId = Lookup(projects, legacy.ProjectId),
                 Title = legacy.Title,
                 StartedAt = startedAt,
@@ -235,6 +243,17 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             };
             context.Meetings.Add(meeting);
             report.Imported(ImportCounter.Meeting);
+
+            // Where it came from, in the table provenance belongs in rather than as a column of
+            // the meeting. It outlives the tool that wrote it and costs the application nothing.
+            context.AuditEvents.Add(new AuditEvent
+            {
+                OccurredAt = now,
+                Actor = AuditActor.App,
+                Action = "imported",
+                MeetingId = meeting.Id,
+                Detail = $"from the Python corpus, folder '{legacy.Id}'",
+            });
         }
 
         if (legacy.Context is not null)
@@ -384,6 +403,13 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
 
         return $"speaker_{number - 1}";
     }
+
+    /// <summary>The meeting a response with this hash was already imported as, if there is one.</summary>
+    private Guid? Imported(string responseSha256) => context.Artifacts.Local
+        .Concat(context.Artifacts)
+        .FirstOrDefault(artifact =>
+            artifact.Kind == ArtifactKind.DeepgramResponse && artifact.Sha256 == responseSha256)
+        ?.MeetingId;
 
     private static Guid? Lookup(IReadOnlyDictionary<string, Guid> known, string? key) =>
         key is not null && known.TryGetValue(key, out var id) ? id : null;

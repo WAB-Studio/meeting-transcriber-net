@@ -265,15 +265,18 @@ carpetas en vez de desenredar la aplicación.
 
 Para cada reunión:
 
-1. genera un UUID y registra el identificador legacy;
+1. genera un UUID y anota de dónde vino como evento de auditoría;
 2. calcula hashes de todos los artefactos fuente;
 3. importa las decisiones humanas a SQLite;
 4. copia o referencia los originales según una opción explícita;
 5. reconstruye derivados con .NET;
 6. produce un reporte de diferencias y elementos no importables.
 
-La importación es repetible e idempotente. El mismo artefacto legacy no crea dos
-reuniones.
+La importación es repetible e idempotente. Una reunión se reconoce por el SHA-256
+de la respuesta de la que se transcribió, que ya está guardado e indexado: el
+mismo artefacto pagado no crea dos reuniones, y renombrar una carpeta tampoco.
+El identificador del sistema Python no es una columna de la aplicación — sería
+llevar en el esquema algo que existe sólo por una herramienta que se borra.
 
 ---
 
@@ -313,7 +316,6 @@ Campos principales:
 
 ```text
 id UUID/TEXT PRIMARY KEY
-legacy_id TEXT UNIQUE NULL
 project_id TEXT NULL
 title TEXT NULL
 started_at TEXT

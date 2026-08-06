@@ -186,7 +186,6 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             });
 
             meeting.HasKey(entity => entity.Id);
-            meeting.HasIndex(entity => entity.LegacyId).IsUnique();
             meeting.HasIndex(entity => entity.StartedAt);
             // The list every window opens on: the meetings that are still here, newest first.
             // Equality column first, then the one being ordered on.
