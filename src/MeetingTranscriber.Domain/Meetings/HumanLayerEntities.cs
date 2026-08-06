@@ -5,10 +5,28 @@ namespace MeetingTranscriber.Domain.Meetings;
 // Everything in this file is approved by a person. None of it can be inferred from an artifact,
 // so a backup that copies only the files loses it.
 
+/// <summary>
+/// Who a project is for. One person works across several of these, which is why it is a column
+/// and not a prefix on a project's name: search filters by company on its own.
+/// </summary>
+public class Company
+{
+    public Guid Id { get; set; }
+
+    public required string Name { get; set; }
+
+    public UtcTimestamp CreatedAt { get; set; }
+
+    public UtcTimestamp UpdatedAt { get; set; }
+}
+
 /// <summary>A body of work meetings are grouped under.</summary>
 public class Project
 {
     public Guid Id { get; set; }
+
+    /// <summary>Null for work that belongs to nobody in particular.</summary>
+    public Guid? CompanyId { get; set; }
 
     public required string Name { get; set; }
 
@@ -21,6 +39,9 @@ public class Project
 public class Person
 {
     public Guid Id { get; set; }
+
+    /// <summary>Where they work, when that is known. People change companies; meetings do not.</summary>
+    public Guid? CompanyId { get; set; }
 
     public required string DisplayName { get; set; }
 

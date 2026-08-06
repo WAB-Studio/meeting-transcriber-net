@@ -20,6 +20,31 @@ public class CorpusSchemaTests
         Sql.Scalar(context, "PRAGMA journal_mode;").ShouldBe("wal");
     }
 
+    /// <summary>
+    /// A company is a label on work, not what the work belongs to. Losing it must not take the
+    /// projects, because the meetings hang off those and the meetings are the corpus.
+    /// </summary>
+    [Fact]
+    public void Deleting_a_company_leaves_its_projects_and_people_where_they_are()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Sql.Execute(context, $"""
+            INSERT INTO companies (id, name, created_at, updated_at)
+            VALUES ('c', 'A Company', '{When}', '{When}');
+            INSERT INTO projects (id, company_id, name, created_at, updated_at)
+            VALUES ('p', 'c', 'the work', '{When}', '{When}');
+            INSERT INTO people (id, company_id, display_name, is_me, created_at, updated_at)
+            VALUES ('h', 'c', 'Somebody', 0, '{When}', '{When}');
+            DELETE FROM companies WHERE id = 'c';
+            """);
+
+        Sql.Scalar(context, "SELECT count(*) FROM projects;").ShouldBe(1L);
+        Sql.Scalar(context, "SELECT company_id FROM projects;").ShouldBe(DBNull.Value);
+        Sql.Scalar(context, "SELECT company_id FROM people;").ShouldBe(DBNull.Value);
+    }
+
     [Fact]
     public void An_artifact_cannot_belong_to_a_meeting_that_is_not_there()
     {

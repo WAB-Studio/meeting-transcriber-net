@@ -21,6 +21,8 @@ erDiagram
     meetings ||--o{ speaker_assignments : "cascade"
     meetings ||--o{ terminology_corrections : "cascade"
     meetings |o--o{ audit_events : "set null"
+    companies |o--o{ projects : "set null"
+    companies |o--o{ people : "set null"
     projects |o--o{ meetings : "set null"
     projects ||--o{ terminology_corrections : "cascade"
     people ||--o{ meeting_participants : "cascade"

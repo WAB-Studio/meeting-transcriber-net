@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>meeting-transcriber</AssemblyName>
+    <RootNamespace>MeetingTranscriber.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MeetingTranscriber.Domain\MeetingTranscriber.Domain.csproj" />
+    <ProjectReference Include="..\MeetingTranscriber.Infrastructure\MeetingTranscriber.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

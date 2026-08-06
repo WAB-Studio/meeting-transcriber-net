@@ -5,6 +5,7 @@
       <Platform Project="x64" />
       <Deploy />
     </Project>
+    <Project Path="src/MeetingTranscriber.Cli/MeetingTranscriber.Cli.csproj" />
     <Project Path="src/MeetingTranscriber.Domain/MeetingTranscriber.Domain.csproj" />
     <Project Path="src/MeetingTranscriber.Infrastructure/MeetingTranscriber.Infrastructure.csproj" />
   </Folder>

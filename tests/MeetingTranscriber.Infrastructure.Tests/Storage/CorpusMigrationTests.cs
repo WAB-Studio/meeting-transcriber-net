@@ -21,6 +21,7 @@ public class CorpusMigrationTests
         "decisions",
         "action_items",
         "action_item_progress",
+        "companies",
         "people",
         "projects",
         "meeting_participants",

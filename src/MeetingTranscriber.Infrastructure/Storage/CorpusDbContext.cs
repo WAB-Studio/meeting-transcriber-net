@@ -44,6 +44,8 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
     public DbSet<ActionItemProgress> ActionItemProgress => Set<ActionItemProgress>();
 
+    public DbSet<Company> Companies => Set<Company>();
+
     public DbSet<Person> People => Set<Person>();
 
     public DbSet<Project> Projects => Set<Project>();
@@ -79,17 +81,32 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
     private static void ConfigureHumanLayer(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<Company>(company =>
+        {
+            company.ToTable("companies");
+            company.HasKey(entity => entity.Id);
+            company.HasIndex(entity => entity.Name).IsUnique();
+        });
+
         modelBuilder.Entity<Project>(project =>
         {
             project.ToTable("projects");
             project.HasKey(entity => entity.Id);
+            // Unique across companies, not within one. Two companies calling a project the same
+            // thing is rare; a corpus with two 'coati' and no way to tell them apart is worse.
             project.HasIndex(entity => entity.Name).IsUnique();
+            // A company disappearing does not take the work with it, and the meetings under that
+            // work are the corpus. The link is what is lost, which is the recoverable half.
+            project.HasOne<Company>().WithMany().HasForeignKey(entity => entity.CompanyId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Person>(person =>
         {
             person.ToTable("people");
             person.HasKey(entity => entity.Id);
+            person.HasOne<Company>().WithMany().HasForeignKey(entity => entity.CompanyId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<MeetingParticipant>(participant =>
