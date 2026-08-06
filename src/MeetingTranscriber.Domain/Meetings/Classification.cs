@@ -56,9 +56,12 @@ public enum ParticipantRole
 /// or materialised path to find.
 /// </para>
 /// <para>
-/// <see cref="Depth"/> is stored because a CHECK cannot look at another row, let alone another
-/// table. The schema can say a depth is between zero and two and that only a root has no parent;
-/// that a child sits exactly one below its parent is this type's to keep.
+/// A child carries its parent's class and depth beside the parent's id, and the three are one
+/// foreign key against the parent's own columns — the same technique a citation uses to point at
+/// the pair of a meeting and a turn's position. That is what makes "a child sits exactly one below
+/// its parent" and "the classes go organization, initiative, topic in that order" things the
+/// database refuses rather than things a comment asserts. They are the parent's values, never set
+/// by a caller, which is why the factories are the only way in.
 /// </para>
 /// </remarks>
 public class Node
@@ -66,21 +69,103 @@ public class Node
     /// <summary>The deepest a tree goes: a root, its work, and a subject inside that work.</summary>
     public const int MaxDepth = 2;
 
-    public Guid Id { get; set; }
+    private Node(string name) => Name = name;
+
+    public Guid Id { get; private set; }
 
     /// <summary>Null only for a root, which is what <see cref="Depth"/> zero means.</summary>
-    public Guid? ParentId { get; set; }
+    public Guid? ParentId { get; private set; }
 
-    public NodeKind Kind { get; set; }
+    public NodeKind Kind { get; private set; }
 
-    public required string Name { get; set; }
+    /// <summary>Renaming a node is ordinary, and moves nothing in the tree.</summary>
+    public string Name { get; set; }
 
     /// <summary>Zero for a root. Always one more than the parent's.</summary>
-    public int Depth { get; set; }
+    public int Depth { get; private set; }
 
-    public UtcTimestamp CreatedAt { get; set; }
+    /// <summary>The parent's class, carried so the foreign key can check it. Null for a root.</summary>
+    public NodeKind? ParentKind { get; private set; }
+
+    /// <summary>The parent's depth, carried for the same reason. Null for a root.</summary>
+    public int? ParentDepth { get; private set; }
+
+    public UtcTimestamp CreatedAt { get; private set; }
 
     public UtcTimestamp UpdatedAt { get; set; }
+
+    /// <summary>
+    /// Puts a node at the top of a tree of its own. A topic is never one: it is a subject inside
+    /// some body of work, and one hanging off nothing names an incident belonging to nobody.
+    /// </summary>
+    public static Node Root(Guid id, NodeKind kind, string name, UtcTimestamp now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (!CanBeRoot(kind))
+        {
+            throw new ClassificationException(
+                $"'{name}' is a {kind} and cannot be a root; it belongs inside an {NodeKind.Initiative}.");
+        }
+
+        return new Node(name)
+        {
+            Id = id,
+            Kind = kind,
+            Depth = 0,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+    }
+
+    /// <summary>
+    /// Hangs a node under another, one level down, copying the parent's class and depth so the
+    /// key can be checked against them.
+    /// </summary>
+    public static Node Under(Guid id, Node parent, NodeKind kind, string name, UtcTimestamp now)
+    {
+        ArgumentNullException.ThrowIfNull(parent);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        if (Holds(parent.Kind) != kind)
+        {
+            throw new ClassificationException(
+                $"A {parent.Kind} holds {Holds(parent.Kind)?.ToString() ?? "nothing"}, so '{name}' cannot be a {kind} inside it.");
+        }
+
+        if (parent.Depth + 1 > MaxDepth)
+        {
+            throw new ClassificationException(
+                $"'{name}' would sit at depth {parent.Depth + 1}, and the tree stops at {MaxDepth}.");
+        }
+
+        return new Node(name)
+        {
+            Id = id,
+            ParentId = parent.Id,
+            Kind = kind,
+            Depth = parent.Depth + 1,
+            ParentKind = parent.Kind,
+            ParentDepth = parent.Depth,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+    }
+
+    /// <summary>The one class a node of this class can hold, or null when it holds none.</summary>
+    public static NodeKind? Holds(NodeKind kind) => kind switch
+    {
+        NodeKind.Organization => NodeKind.Initiative,
+        NodeKind.Initiative => NodeKind.Topic,
+        NodeKind.Topic => null,
+        _ => throw new ClassificationException($"Unknown node kind '{kind}'."),
+    };
+
+    /// <summary>
+    /// Whether a node of this class can stand at the top of a tree of its own. An organization
+    /// always does; work belonging to nobody in particular is ordinary and does too. A topic is
+    /// a subject inside some body of work, and one hanging off nothing is a subject of nothing.
+    /// </summary>
+    public static bool CanBeRoot(NodeKind kind) => Holds(kind) is not null;
 }
 
 /// <summary>

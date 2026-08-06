@@ -3,6 +3,8 @@ using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace MeetingTranscriber.CorpusImport.Tests;
 
 public class CorpusImporterTests
@@ -234,7 +236,93 @@ public class CorpusImporterTests
         context.Artifacts.Select(artifact => artifact.Kind).ShouldBe(
             [ArtifactKind.DeepgramResponse, ArtifactKind.Extraction],
             ignoreOrder: true);
-        report.NotImported.ShouldContain(line => line.Contains("transcript.md", StringComparison.Ordinal));
+        report.SkippedByDesign["transcript.md"].ShouldBe(1);
+        report.SkippedByDesign["utterances.jsonl"].ShouldBe(1);
+    }
+
+    /// <summary>
+    /// The three lists are three because they are three different things, and one of them is the
+    /// reason the report exists. Run over a real corpus the files rendered here are three lines
+    /// per meeting; what had nowhere to go is a handful in total, and used to sit underneath them.
+    /// </summary>
+    [Fact]
+    public void What_is_left_behind_on_purpose_is_not_mixed_with_what_had_nowhere_to_go()
+    {
+        const string nowhere = """
+            project: "ghost"
+            title: "nowhere"
+            """;
+        using var legacy = new LegacyCorpusBuilder()
+            .WithCatalog()
+            .WithMeeting("2026-07-29 09-35-15")
+            .WithMeeting("2026-08-03 08-13-17", meta: nowhere, transcript: false);
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        // Rendered here, so never news: counted by name, and named nowhere else.
+        report.SkippedByDesign.Values.Sum().ShouldBe(2);
+
+        // Came in, with something the corpus did not say and the import chose.
+        report.Assumed.ShouldHaveSingleItem().ShouldContain("language", Case.Sensitive);
+
+        // Did not come in. One line, and it is the only thing in the list.
+        report.NotImported.ShouldHaveSingleItem().ShouldContain("not in the catalog", Case.Sensitive);
+    }
+
+    /// <summary>
+    /// One transaction for the whole import meant a single row the corpus refused cost every
+    /// meeting behind it — and the report with them, which is printed at the end and is the only
+    /// record of what a run left behind.
+    /// </summary>
+    [Fact]
+    public void A_meeting_the_corpus_refuses_does_not_take_the_others_with_it()
+    {
+        const string refused = """
+            title: "the one this corpus will not have"
+            """;
+        using var legacy = new LegacyCorpusBuilder()
+            .WithMeeting("2026-07-29 09-35-15", meta: null)
+            .WithMeeting("2026-08-03 08-13-17", meta: refused)
+            .WithMeeting("2026-08-04 13-23-25", meta: null);
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        // One row this corpus refuses, standing in for whatever a corpus edited by hand for months
+        // turns out to hold. A trigger rather than a stub in the importer: what is under test is
+        // that the write is per meeting, and a fake that never reaches SQLite would not show it.
+        context.Database.ExecuteSqlRaw("""
+            CREATE TRIGGER refuse_one BEFORE INSERT ON meetings
+            WHEN NEW.title = 'the one this corpus will not have'
+            BEGIN SELECT RAISE(ABORT, 'this corpus refuses that meeting'); END;
+            """);
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        report.MeetingsImported.ShouldBe(2);
+        context.Meetings.Count().ShouldBe(2);
+        report.NotImported.ShouldHaveSingleItem().ShouldContain("2026-08-03 08-13-17", Case.Sensitive);
+    }
+
+    /// <summary>
+    /// A response the domain has no profile for used to escape the read and take the whole run
+    /// with it, before a single meeting had been written. A corpus edited by hand for months is
+    /// the one place a file like that lives.
+    /// </summary>
+    [Fact]
+    public void A_response_that_matches_no_profile_is_named_and_the_rest_still_arrive()
+    {
+        using var legacy = new LegacyCorpusBuilder()
+            .WithMeeting("2026-07-29 09-35-15", meta: null)
+            .WithMeeting("2026-08-03 08-13-17", channels: 3, meta: null);
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        report.MeetingsImported.ShouldBe(1);
+        report.NotImported.ShouldHaveSingleItem().ShouldContain("2026-08-03 08-13-17", Case.Sensitive);
     }
 
     [Fact]
@@ -442,7 +530,7 @@ public class CorpusImporterTests
             .Import(new LegacyCorpus(legacy.Directory), new ImportOptions(Language: "en"));
 
         context.Meetings.Single().Language.ShouldBe("en");
-        report.NotImported.ShouldContain(line => line.Contains("language", StringComparison.Ordinal));
+        report.Assumed.ShouldContain(line => line.Contains("language", StringComparison.Ordinal));
     }
 
     [Fact]

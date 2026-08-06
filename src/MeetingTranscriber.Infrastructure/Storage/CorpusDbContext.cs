@@ -22,6 +22,10 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
     // and a field shadowing it here would make the next reference to either one a coin toss.
     private static readonly string JobStateNames = WireNames<JobState>.AsSqlList();
 
+    private static readonly string AwaitingUser = WireNames<JobState>.Of(JobState.AwaitingUser);
+
+    private static readonly string Organization = WireNames<NodeKind>.Of(NodeKind.Organization);
+
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
     public DbSet<Artifact> Artifacts => Set<Artifact>();
@@ -89,19 +93,34 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             {
                 table.HasCheckConstraint("ck_nodes_kind", $"kind IN ({WireNames<NodeKind>.AsSqlList()})");
                 table.HasCheckConstraint("ck_nodes_depth", $"depth BETWEEN 0 AND {Node.MaxDepth}");
-                // A root is exactly what has no parent. The rest — that a child sits one below
-                // its parent — needs another row, which a CHECK cannot reach.
+                // A root is exactly what has no parent, and the copy of the parent it carries
+                // arrives whole or not at all.
                 table.HasCheckConstraint("ck_nodes_root", "(parent_id IS NULL) = (depth = 0)");
+                table.HasCheckConstraint(
+                    "ck_nodes_parent",
+                    "(parent_id IS NULL) = (parent_kind IS NULL) AND (parent_id IS NULL) = (parent_depth IS NULL)");
+                // Exactly one level below. The foreign key below is what makes parent_depth the
+                // parent's own, so together the two say what neither can say alone.
+                table.HasCheckConstraint(
+                    "ck_nodes_child_depth",
+                    "parent_depth IS NULL OR depth = parent_depth + 1");
+                table.HasCheckConstraint("ck_nodes_parent_kind", ClassOrder());
             });
 
             node.HasKey(entity => entity.Id);
+            // What a child's copy of its parent is checked against. Two of them: the tree needs
+            // the depth as well, and a person's employer needs the class on its own.
+            node.HasAlternateKey(entity => new { entity.Id, entity.Kind });
+            node.HasAlternateKey(entity => new { entity.Id, entity.Kind, entity.Depth });
             node.HasIndex(entity => new { entity.ParentId, entity.Name }).IsUnique();
             // SQLite counts NULLs as distinct, so the index above lets two roots share a name.
             // This one is what actually stops a second 'TechSed' at the top of the tree.
             node.HasIndex(entity => entity.Name).IsUnique().HasFilter("parent_id IS NULL");
             // Deleting a node takes what hangs under it. A tree that outlives its root is the
             // kind of orphan nothing goes looking for.
-            node.HasOne<Node>().WithMany().HasForeignKey(entity => entity.ParentId)
+            node.HasOne<Node>().WithMany()
+                .HasForeignKey(entity => new { entity.ParentId, entity.ParentKind, entity.ParentDepth })
+                .HasPrincipalKey(parent => new { parent.Id, parent.Kind, parent.Depth })
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -130,11 +149,19 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
         modelBuilder.Entity<Person>(person =>
         {
-            person.ToTable("people");
+            person.ToTable("people", table => table.HasCheckConstraint(
+                "ck_people_organization",
+                $"(organization_id IS NULL) = (organization_kind IS NULL)"
+                + $" AND (organization_kind IS NULL OR organization_kind = '{Organization}')"));
+
             person.HasKey(entity => entity.Id);
-            // Losing an organization does not lose the people who were in it: they are in
-            // meetings, and a meeting without its participants is not repairable.
-            person.HasOne<Node>().WithMany().HasForeignKey(entity => entity.OrganizationId)
+            // The class travels with the id, so a person whose employer is a project or a ticket
+            // is refused by the key rather than by whoever wrote the insert.
+            person.HasOne<Node>().WithMany()
+                .HasForeignKey(entity => new { entity.OrganizationId, entity.OrganizationKind })
+                .HasPrincipalKey(node => new { node.Id, node.Kind })
+                // Losing an organization does not lose the people who were in it: they are in
+                // meetings, and a meeting without its participants is not repairable.
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
@@ -268,6 +295,11 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
                 table.HasCheckConstraint("ck_processing_jobs_kind", $"kind IN ({WireNames<JobKind>.AsSqlList()})");
                 table.HasCheckConstraint("ck_processing_jobs_state", $"state IN ({JobStateNames})");
                 table.HasCheckConstraint("ck_processing_jobs_attempt", "attempt >= 0");
+                // Waiting for a person and having failed are different things, and the column
+                // somebody opens to find out what happened has to keep saying which.
+                table.HasCheckConstraint(
+                    "ck_processing_jobs_awaiting_reason",
+                    $"(state = '{AwaitingUser}') = (awaiting_reason IS NOT NULL)");
             });
 
             job.HasKey(entity => entity.Id);
@@ -281,7 +313,6 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
         {
             run.ToTable("transcription_runs", table =>
             {
-                table.HasCheckConstraint("ck_transcription_runs_state", $"state IN ({JobStateNames})");
                 table.HasCheckConstraint(
                     "ck_transcription_runs_source_profile",
                     $"source_profile IN ({WireNames<SourceProfile>.AsSqlList()})");
@@ -293,12 +324,12 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
             run.HasKey(entity => entity.Id);
             // Not unique: the same audio under the same billable configuration is repeated by a
-            // deliberate re-transcription, which carries its own cost approval.
-            run.HasIndex(entity => new { entity.AudioSha256, entity.BillableConfigHash, entity.State });
+            // deliberate re-transcription, which carries its own cost approval. Where each of
+            // them stands is one join away, on the job, which is the only row that holds it.
+            run.HasIndex(entity => new { entity.AudioSha256, entity.BillableConfigHash });
             run.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
                 .OnDelete(DeleteBehavior.Cascade);
-            run.HasOne<ProcessingJob>().WithMany().HasForeignKey(entity => entity.JobId)
-                .OnDelete(DeleteBehavior.SetNull);
+            ConfigureRunJob(run);
             run.HasOne<Artifact>().WithMany().HasForeignKey(entity => entity.ResponseArtifactId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
@@ -307,7 +338,6 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
         {
             run.ToTable("extraction_runs", table =>
             {
-                table.HasCheckConstraint("ck_extraction_runs_state", $"state IN ({JobStateNames})");
                 table.HasCheckConstraint("ck_extraction_runs_input_hash", "length(input_hash) = 64");
                 table.HasCheckConstraint(
                     "ck_extraction_runs_raw_output_hash",
@@ -318,8 +348,7 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             run.HasIndex(entity => new { entity.MeetingId, entity.CreatedAt });
             run.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
                 .OnDelete(DeleteBehavior.Cascade);
-            run.HasOne<ProcessingJob>().WithMany().HasForeignKey(entity => entity.JobId)
-                .OnDelete(DeleteBehavior.SetNull);
+            ConfigureRunJob(run);
             run.HasOne<Artifact>().WithMany().HasForeignKey(entity => entity.OutputArtifactId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
@@ -448,6 +477,45 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             .HasForeignKey(citation => new { citation.MeetingId, citation.UtteranceOrdinal })
             .HasPrincipalKey(utterance => new { utterance.MeetingId, utterance.Ordinal })
             .OnDelete(DeleteBehavior.NoAction);
+    }
+
+    /// <summary>
+    /// The job a run hangs off: required, because the job is the only row that says where the run
+    /// stands, and NO ACTION so a job cannot be deleted out from under a call somebody paid for.
+    /// Deleting the meeting still works — SQLite checks an immediate constraint at the end of the
+    /// statement, and the cascade takes the job and the run in the same one.
+    /// </summary>
+    private static void ConfigureRunJob<TRun>(EntityTypeBuilder<TRun> run)
+        where TRun : class =>
+        run.HasOne<ProcessingJob>().WithMany()
+            .HasForeignKey(nameof(TranscriptionRun.JobId))
+            .OnDelete(DeleteBehavior.NoAction);
+
+    /// <summary>
+    /// Which class of node can sit under which, as one CHECK over the class a child carries of its
+    /// parent. With the foreign key making that copy the parent's own, the two together say the
+    /// tree goes organization, initiative, topic — and that an organization is always a root and a
+    /// topic never one.
+    /// </summary>
+    /// <remarks>
+    /// Every comparison against <c>parent_kind</c> is <c>IS</c> and not <c>=</c>, because a CHECK
+    /// only fails on FALSE: a root reaches <c>'x' = NULL</c>, which is NULL, and a constraint that
+    /// evaluates to NULL lets the row through. That is how a topic stood as a root against a
+    /// constraint written to forbid exactly that.
+    /// </remarks>
+    private static string ClassOrder()
+    {
+        var kinds = Enum.GetValues<NodeKind>().Order().ToArray();
+
+        // A root has no parent to be checked against, so which classes may be one is said here.
+        var roots = kinds.Where(Node.CanBeRoot).Select(Quoted);
+        var under = kinds
+            .Where(parent => Node.Holds(parent) is not null)
+            .Select(parent => $"(parent_kind IS {Quoted(parent)} AND kind = {Quoted(Node.Holds(parent)!.Value)})");
+
+        return $"(parent_kind IS NULL AND kind IN ({string.Join(", ", roots)})) OR {string.Join(" OR ", under)}";
+
+        static string Quoted(NodeKind kind) => $"'{WireNames<NodeKind>.Of(kind)}'";
     }
 
     /// <summary>The kind to origin mapping of <see cref="Artifacts"/>, as one CHECK.</summary>

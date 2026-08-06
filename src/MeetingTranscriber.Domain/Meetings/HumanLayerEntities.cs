@@ -11,12 +11,23 @@ public class Person
     public Guid Id { get; set; }
 
     /// <summary>
-    /// Where they work, when that is known. It has to be a node of kind
-    /// <see cref="NodeKind.Organization"/>, which the schema cannot say and a CHECK cannot reach.
-    /// One person at a time, which is already known to be too few — a contractor works for two
-    /// clients, and somebody leaving one company for another belongs to both for a month.
+    /// Where they work, when that is known. One person at a time, which is already known to be too
+    /// few — a contractor works for two clients, and somebody leaving one company for another
+    /// belongs to both for a month.
     /// </summary>
-    public Guid? OrganizationId { get; set; }
+    /// <remarks>
+    /// Set through <see cref="WorksAt"/>, which is what keeps it in step with
+    /// <see cref="OrganizationKind"/>: the pair is one foreign key onto a node's id and class, so
+    /// "their organization is a node of kind organization" is refused by the database and not
+    /// merely asserted here.
+    /// </remarks>
+    public Guid? OrganizationId { get; private set; }
+
+    /// <summary>
+    /// Always <see cref="NodeKind.Organization"/> when there is an organization at all. It is the
+    /// half of the key that says which class the node has to be.
+    /// </summary>
+    public NodeKind? OrganizationKind { get; private set; }
 
     public required string DisplayName { get; set; }
 
@@ -26,6 +37,22 @@ public class Person
     public UtcTimestamp CreatedAt { get; set; }
 
     public UtcTimestamp UpdatedAt { get; set; }
+
+    /// <summary>
+    /// Records where they work, or clears it when given nothing. Only an organization will do: a
+    /// project and a ticket are places work happens, not people's employers.
+    /// </summary>
+    public void WorksAt(Node? organization)
+    {
+        if (organization is not null && organization.Kind is not NodeKind.Organization)
+        {
+            throw new ClassificationException(
+                $"'{DisplayName}' cannot work at '{organization.Name}': it is a {organization.Kind}, not an {NodeKind.Organization}.");
+        }
+
+        OrganizationId = organization?.Id;
+        OrganizationKind = organization is null ? null : NodeKind.Organization;
+    }
 }
 
 /// <summary>A person confirmed to have been in a meeting.</summary>
@@ -64,10 +91,22 @@ public class SpeakerAssignment
 /// deletes whole.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Keyed on the extraction run and the position inside it rather than on an action's id, because
 /// projecting the same accepted extraction again mints new ids. Nothing here points at
 /// <c>action_items</c>: a foreign key to a table that gets deleted and refilled is the same data
 /// loss with a constraint on top.
+/// </para>
+/// <para>
+/// That key covers a rebuild and deliberately does not cover a re-extraction. A second extraction
+/// is a second run, so its actions arrive with no progress at all and are shown as new, and what
+/// somebody marked stays on the run they marked it on — readable, and superseded rather than
+/// moved. Neither way of carrying it forward survives contact with what an extraction actually
+/// does: the position moves whenever the model adds an item or reorders one, so following it would
+/// hand somebody else's state to the wrong action without anything failing, and following the
+/// statement text means a reworded line loses its owner while a line repeated in two meetings
+/// finds one. A person re-reading the summary they asked for again is the honest outcome.
+/// </para>
 /// </remarks>
 public class ActionItemProgress
 {

@@ -44,13 +44,20 @@ public class CaptureRun
 }
 
 /// <summary>One call to a transcription provider, and what it was allowed to cost.</summary>
+/// <remarks>
+/// It carries no state of its own. Where this call stands is the state of the job that runs it —
+/// one row, moving only through <see cref="ProcessingJob"/>'s own methods, recovered by the same
+/// restart. A copy here would be a second answer to "was this transcription charged for", writable
+/// to anything, and the two would disagree the first time one of them was not updated.
+/// </remarks>
 public class TranscriptionRun
 {
     public Guid Id { get; set; }
 
     public Guid MeetingId { get; set; }
 
-    public Guid? JobId { get; set; }
+    /// <summary>The job that runs it, and the only thing that says where it stands.</summary>
+    public Guid JobId { get; set; }
 
     public required string Provider { get; set; }
 
@@ -82,8 +89,6 @@ public class TranscriptionRun
 
     public Guid? ResponseArtifactId { get; set; }
 
-    public JobState State { get; set; } = JobState.Pending;
-
     public UtcTimestamp CreatedAt { get; set; }
 
     public UtcTimestamp? FinishedAt { get; set; }
@@ -92,13 +97,15 @@ public class TranscriptionRun
 }
 
 /// <summary>One summary attempt, with everything needed to tell two attempts apart.</summary>
+/// <remarks>Where it stands is its job's, for the reason <see cref="TranscriptionRun"/> gives.</remarks>
 public class ExtractionRun
 {
     public Guid Id { get; set; }
 
     public Guid MeetingId { get; set; }
 
-    public Guid? JobId { get; set; }
+    /// <summary>The job that runs it, and the only thing that says where it stands.</summary>
+    public Guid JobId { get; set; }
 
     public required string Provider { get; set; }
 
@@ -115,8 +122,6 @@ public class ExtractionRun
     public string? RawOutputHash { get; set; }
 
     public Guid? OutputArtifactId { get; set; }
-
-    public JobState State { get; set; } = JobState.Pending;
 
     /// <summary>A new extraction never edits the one before it. Accepting one is what supersedes it.</summary>
     public UtcTimestamp? AcceptedAt { get; set; }

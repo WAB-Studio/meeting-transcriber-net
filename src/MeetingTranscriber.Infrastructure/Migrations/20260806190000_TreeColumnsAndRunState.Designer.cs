@@ -3,6 +3,7 @@ using System;
 using MeetingTranscriber.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace MeetingTranscriber.Infrastructure.Migrations
 {
     [DbContext(typeof(CorpusDbContext))]
-    partial class CorpusDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260806190000_TreeColumnsAndRunState")]
+    partial class TreeColumnsAndRunState
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -951,9 +954,6 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_nodes_parent_id_name");
 
-                    b.HasIndex("ParentId", "ParentKind", "ParentDepth")
-                        .HasDatabaseName("ix_nodes_parent_id_parent_kind_parent_depth");
-
                     b.ToTable("nodes", null, t =>
                         {
                             t.HasCheckConstraint("ck_nodes_child_depth", "parent_depth IS NULL OR depth = parent_depth + 1");
@@ -1007,8 +1007,8 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_people");
 
-                    b.HasIndex("OrganizationId", "OrganizationKind")
-                        .HasDatabaseName("ix_people_organization_id_organization_kind");
+                    b.HasIndex("OrganizationId")
+                        .HasDatabaseName("ix_people_organization_id");
 
                     b.ToTable("people", null, t =>
                         {
@@ -1458,20 +1458,18 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                 {
                     b.HasOne("MeetingTranscriber.Domain.Meetings.Node", null)
                         .WithMany()
-                        .HasForeignKey("ParentId", "ParentKind", "ParentDepth")
-                        .HasPrincipalKey("Id", "Kind", "Depth")
+                        .HasForeignKey("ParentId")
                         .OnDelete(DeleteBehavior.Cascade)
-                        .HasConstraintName("fk_nodes_nodes_parent_id_parent_kind_parent_depth");
+                        .HasConstraintName("fk_nodes_nodes_parent_id");
                 });
 
             modelBuilder.Entity("MeetingTranscriber.Domain.Meetings.Person", b =>
                 {
                     b.HasOne("MeetingTranscriber.Domain.Meetings.Node", null)
                         .WithMany()
-                        .HasForeignKey("OrganizationId", "OrganizationKind")
-                        .HasPrincipalKey("Id", "Kind")
+                        .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_people_nodes_organization_id_organization_kind");
+                        .HasConstraintName("fk_people_nodes_organization_id");
                 });
 
             modelBuilder.Entity("MeetingTranscriber.Domain.Meetings.SpeakerAssignment", b =>

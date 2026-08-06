@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Jobs;
@@ -11,49 +13,85 @@ namespace MeetingTranscriber.Infrastructure.Tests.Storage;
 /// rename in C# silently changes what is on disk. These tests spell every one of them out, so
 /// that rename shows up as a failure instead of as a corpus nobody can read.
 /// </summary>
-public class CorpusNamingTests
+public partial class CorpusNamingTests
 {
+    /// <summary>
+    /// Every stored value, spelled out. It is also read back by
+    /// <see cref="Every_enum_the_model_stores_is_spelled_out_here"/>, so an enum the model persists
+    /// and this list has not heard of fails rather than going uncovered — which is how the three
+    /// marked provisional, and therefore likeliest to be renamed, were the ones missing.
+    /// </summary>
+    private static readonly (object Value, string Stored)[] Names =
+    [
+        (SourceProfile.Multichannel, "multichannel"),
+        (SourceProfile.Diarize, "diarize"),
+        (LifecycleState.Active, "active"),
+        (LifecycleState.Deleting, "deleting"),
+        (LifecycleState.Deleted, "deleted"),
+        (JobKind.Capture, "capture"),
+        (JobKind.Finalize, "finalize"),
+        (JobKind.Transcribe, "transcribe"),
+        (JobKind.Extract, "extract"),
+        (JobKind.Render, "render"),
+        (JobKind.Backup, "backup"),
+        (JobState.Pending, "pending"),
+        (JobState.Running, "running"),
+        (JobState.AwaitingUser, "awaiting_user"),
+        (JobState.Succeeded, "succeeded"),
+        (JobState.FailedRetryable, "failed_retryable"),
+        (JobState.FailedPermanent, "failed_permanent"),
+        (JobState.Cancelled, "cancelled"),
+        (ArtifactKind.SpoolBlock, "spool_block"),
+        (ArtifactKind.Audio, "audio"),
+        (ArtifactKind.DeepgramResponse, "deepgram_response"),
+        (ArtifactKind.Extraction, "extraction"),
+        (ArtifactKind.Manifest, "manifest"),
+        (ArtifactKind.Transcript, "transcript"),
+        (ArtifactKind.Utterances, "utterances"),
+        (ArtifactKind.Summary, "summary"),
+        (ArtifactOrigin.Source, "source"),
+        (ArtifactOrigin.Derived, "derived"),
+        (CaptureMode.ProcessLoopback, "process_loopback"),
+        (CaptureMode.FullLoopback, "full_loopback"),
+        (ActionItemState.Open, "open"),
+        (ActionItemState.Done, "done"),
+        (ActionItemState.Dropped, "dropped"),
+        (SpeakerAssignmentSource.Channel, "channel"),
+        (SpeakerAssignmentSource.Person, "person"),
+        (TerminologyMatchMode.Exact, "exact"),
+        (TerminologyMatchMode.IgnoreCase, "ignore_case"),
+        (AuditActor.User, "user"),
+        (AuditActor.App, "app"),
+        (AuditActor.Agent, "agent"),
+
+        // Provisional, which is exactly why they are here: a rename changes what is on disk and
+        // the CHECK behind it at the same time, and neither the migration nor a test would notice.
+        (NodeKind.Organization, "organization"),
+        (NodeKind.Initiative, "initiative"),
+        (NodeKind.Topic, "topic"),
+        (MeetingNodeRole.WorkOf, "work_of"),
+        (MeetingNodeRole.Counterpart, "counterpart"),
+        (MeetingNodeRole.About, "about"),
+        (ParticipantRole.Attended, "attended"),
+        (ParticipantRole.Subject, "subject"),
+    ];
+
+    public static TheoryData<object, string> StoredNames
+    {
+        get
+        {
+            var data = new TheoryData<object, string>();
+            foreach (var (value, stored) in Names)
+            {
+                data.Add(value, stored);
+            }
+
+            return data;
+        }
+    }
+
     [Theory]
-    [InlineData(SourceProfile.Multichannel, "multichannel")]
-    [InlineData(SourceProfile.Diarize, "diarize")]
-    [InlineData(LifecycleState.Active, "active")]
-    [InlineData(LifecycleState.Deleting, "deleting")]
-    [InlineData(LifecycleState.Deleted, "deleted")]
-    [InlineData(JobKind.Capture, "capture")]
-    [InlineData(JobKind.Finalize, "finalize")]
-    [InlineData(JobKind.Transcribe, "transcribe")]
-    [InlineData(JobKind.Extract, "extract")]
-    [InlineData(JobKind.Render, "render")]
-    [InlineData(JobKind.Backup, "backup")]
-    [InlineData(JobState.Pending, "pending")]
-    [InlineData(JobState.Running, "running")]
-    [InlineData(JobState.AwaitingUser, "awaiting_user")]
-    [InlineData(JobState.Succeeded, "succeeded")]
-    [InlineData(JobState.FailedRetryable, "failed_retryable")]
-    [InlineData(JobState.FailedPermanent, "failed_permanent")]
-    [InlineData(JobState.Cancelled, "cancelled")]
-    [InlineData(ArtifactKind.SpoolBlock, "spool_block")]
-    [InlineData(ArtifactKind.Audio, "audio")]
-    [InlineData(ArtifactKind.DeepgramResponse, "deepgram_response")]
-    [InlineData(ArtifactKind.Extraction, "extraction")]
-    [InlineData(ArtifactKind.Manifest, "manifest")]
-    [InlineData(ArtifactKind.Transcript, "transcript")]
-    [InlineData(ArtifactKind.Utterances, "utterances")]
-    [InlineData(ArtifactKind.Summary, "summary")]
-    [InlineData(ArtifactOrigin.Source, "source")]
-    [InlineData(ArtifactOrigin.Derived, "derived")]
-    [InlineData(CaptureMode.ProcessLoopback, "process_loopback")]
-    [InlineData(CaptureMode.FullLoopback, "full_loopback")]
-    [InlineData(ActionItemState.Open, "open")]
-    [InlineData(ActionItemState.Done, "done")]
-    [InlineData(ActionItemState.Dropped, "dropped")]
-    [InlineData(SpeakerAssignmentSource.Channel, "channel")]
-    [InlineData(SpeakerAssignmentSource.Person, "person")]
-    [InlineData(TerminologyMatchMode.Exact, "exact")]
-    [InlineData(TerminologyMatchMode.IgnoreCase, "ignore_case")]
-    [InlineData(AuditActor.User, "user")]
-    [InlineData(AuditActor.App, "app")]
-    [InlineData(AuditActor.Agent, "agent")]
+    [MemberData(nameof(StoredNames))]
     public void An_enum_is_stored_under_exactly_this_name(object value, string expected)
     {
         StoredName(value).ShouldBe(expected);
@@ -140,11 +178,42 @@ public class CorpusNamingTests
     }
 
     /// <summary>
-    /// The convention covers every column of every table, so a property added anywhere lands in
-    /// snake_case without anybody remembering to name it.
+    /// Which enums to spell out is read off the model rather than remembered. The list above was
+    /// hand-written, so what it missed was whatever went in last — and what went in last was the
+    /// classification, whose names are the ones marked provisional and likeliest to move.
     /// </summary>
     [Fact]
-    public void No_column_anywhere_keeps_its_csharp_casing()
+    public void Every_enum_the_model_stores_is_spelled_out_here()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.Open();
+
+        var covered = Names.Select(name => name.Value).ToHashSet();
+        var stored = context.Model.GetEntityTypes()
+            .SelectMany(entity => entity.GetProperties())
+            .Select(property => Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType)
+            .Where(type => type.IsEnum)
+            // The channel is the one enum stored as its number, because that number is the
+            // contract: it is what the provider answers with. It has its own tests.
+            .Where(type => type != typeof(AudioChannel))
+            .Distinct();
+
+        foreach (var type in stored)
+        {
+            foreach (var value in Enum.GetValues(type))
+            {
+                covered.ShouldContain(value, $"{type.Name}.{value} is stored and spelled out nowhere");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The convention covers every column of every table, so a property added anywhere lands in
+    /// snake_case without anybody remembering to name it. Checked against the convention and not
+    /// against lowercase: <c>awaitingreason</c> is lowercase too, and it is not what is on disk.
+    /// </summary>
+    [Fact]
+    public void Every_column_anywhere_is_named_by_the_convention()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
@@ -163,9 +232,10 @@ public class CorpusNamingTests
 
         foreach (var table in tables)
         {
+            SnakeCase().IsMatch(table).ShouldBeTrue(table);
             foreach (var column in Sql.Strings(context, $"SELECT name FROM pragma_table_info('{table}');"))
             {
-                column.ShouldBe(column.ToLowerInvariant(), $"{table}.{column}");
+                SnakeCase().IsMatch(column).ShouldBeTrue($"{table}.{column}");
             }
         }
     }
@@ -182,8 +252,18 @@ public class CorpusNamingTests
         Sql.Strings(context, "SELECT name FROM pragma_table_info('meetings');").ShouldContain("duration_ms");
     }
 
+    /// <summary>
+    /// Lowercase words joined by single underscores, which is what the naming pass produces —
+    /// unlike "not uppercase", which <c>awaitingreason</c> also satisfies.
+    /// </summary>
+    [GeneratedRegex("^[a-z][a-z0-9]*(_[a-z0-9]+)*$")]
+    private static partial Regex SnakeCase();
+
     private static string StoredName(object value) => value switch
     {
+        NodeKind kind => WireNames<NodeKind>.Of(kind),
+        MeetingNodeRole role => WireNames<MeetingNodeRole>.Of(role),
+        ParticipantRole role => WireNames<ParticipantRole>.Of(role),
         SourceProfile profile => WireNames<SourceProfile>.Of(profile),
         LifecycleState state => WireNames<LifecycleState>.Of(state),
         JobKind kind => WireNames<JobKind>.Of(kind),

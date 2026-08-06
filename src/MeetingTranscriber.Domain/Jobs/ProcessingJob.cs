@@ -38,7 +38,16 @@ public class ProcessingJob
     /// <summary>When the job reached a state it never leaves. Null while it can still move.</summary>
     public UtcTimestamp? FinishedAt { get; private set; }
 
+    /// <summary>How the last attempt failed. Null while nothing has gone wrong.</summary>
     public string? LastError { get; private set; }
+
+    /// <summary>
+    /// Why this job is waiting for a person, and null unless it is. A cost to approve and a
+    /// restart that found the work half done are the two reasons, and neither is a failure: they
+    /// are kept apart from <see cref="LastError"/> because the column somebody opens to find out
+    /// what happened would otherwise say "error" over a job that is working exactly as designed.
+    /// </summary>
+    public string? AwaitingReason { get; private set; }
 
     /// <summary>
     /// The earliest the runner may start this job. Null means as soon as it is seen, and it is
@@ -138,7 +147,7 @@ public class ProcessingJob
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
 
         MoveTo(JobState.AwaitingUser);
-        LastError = reason;
+        AwaitingReason = reason;
         NextAttemptAt = null;
     }
 
@@ -170,5 +179,10 @@ public class ProcessingJob
     {
         State.EnsureCanMoveTo(next);
         State = next;
+
+        // Cleared by every move, and written back by the one move that has a reason. A job that
+        // a person released still carrying why it stopped would show up as waiting on a screen
+        // that reads the column instead of the state.
+        AwaitingReason = null;
     }
 }

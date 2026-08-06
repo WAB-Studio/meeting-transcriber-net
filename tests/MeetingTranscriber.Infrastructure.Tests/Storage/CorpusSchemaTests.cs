@@ -10,6 +10,9 @@ public class CorpusSchemaTests
     private const string When = "2026-08-05T14:00:00.000Z";
     private const string Sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
 
+    /// <summary>A real one, for the tests that read a job back through the model.</summary>
+    private const string JobId = "44444444-4444-4444-4444-444444444444";
+
     [Fact]
     public void A_connection_arrives_with_foreign_keys_on_and_the_file_in_wal()
     {
@@ -30,19 +33,18 @@ public class CorpusSchemaTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
 
+        InsertRoot(context, "o", "organization", "An Organization");
+        InsertChild(context, "i", parent: "o", parentKind: "organization", parentDepth: 0, "initiative", "the work");
         Sql.Execute(context, $"""
-            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
-            VALUES ('o', NULL, 'organization', 'An Organization', 0, '{When}', '{When}');
-            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
-            VALUES ('i', 'o', 'initiative', 'the work', 1, '{When}', '{When}');
-            INSERT INTO people (id, organization_id, display_name, is_me, created_at, updated_at)
-            VALUES ('h', 'o', 'Somebody', 0, '{When}', '{When}');
+            INSERT INTO people (id, organization_id, organization_kind, display_name, is_me, created_at, updated_at)
+            VALUES ('h', 'o', 'organization', 'Somebody', 0, '{When}', '{When}');
             DELETE FROM nodes WHERE id = 'o';
             """);
 
         Sql.Scalar(context, "SELECT count(*) FROM nodes;").ShouldBe(0L);
         Sql.Scalar(context, "SELECT count(*) FROM people;").ShouldBe(1L);
         Sql.Scalar(context, "SELECT organization_id FROM people;").ShouldBe(DBNull.Value);
+        Sql.Scalar(context, "SELECT organization_kind FROM people;").ShouldBe(DBNull.Value);
     }
 
     [Fact]
@@ -51,32 +53,116 @@ public class CorpusSchemaTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
 
-        Should.Throw<SqliteException>(() => Sql.Execute(context, $"""
-            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
-            VALUES ('o', NULL, 'organization', 'root', 0, '{When}', '{When}');
-            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
-            VALUES ('d', 'o', 'topic', 'too deep', 3, '{When}', '{When}');
-            """));
+        InsertRoot(context, "o", "organization", "root");
+        InsertChild(context, "i", parent: "o", parentKind: "organization", parentDepth: 0, "initiative", "the work");
+
+        Should.Throw<SqliteException>(() => InsertChild(
+            context, "d", parent: "i", parentKind: "initiative", parentDepth: 1, "topic", "too deep", depth: 3));
     }
 
-    /// <summary>A root is exactly what has no parent, in both directions.</summary>
+    /// <summary>
+    /// One level down, and no other. A child says what its parent's depth is, the foreign key
+    /// makes that the parent's own, and a CHECK ties it to the child's — so a node landing at the
+    /// wrong depth is refused by the database and not by whoever remembered to compute it.
+    /// </summary>
     [Theory]
-    [InlineData("NULL", 1)]
-    [InlineData("'o'", 0)]
-    public void A_node_is_a_root_or_it_is_not(string parent, int depth)
+    [InlineData(0)]
+    [InlineData(2)]
+    public void A_child_sits_exactly_one_level_below_its_parent(int depth)
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
 
-        Sql.Execute(context, $"""
-            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
-            VALUES ('o', NULL, 'organization', 'root', 0, '{When}', '{When}');
-            """);
+        InsertRoot(context, "o", "organization", "root");
 
+        Should.Throw<SqliteException>(() => InsertChild(
+            context, "x", parent: "o", parentKind: "organization", parentDepth: 0, "initiative", "wrong depth", depth));
+    }
+
+    /// <summary>
+    /// The copy a child keeps of its parent has to be the parent's own. Without the key it is a
+    /// pair of columns anybody can write anything into, and the depth check above would pass over
+    /// a parent that is nowhere near where the child says it is.
+    /// </summary>
+    [Fact]
+    public void A_child_cannot_invent_the_parent_it_says_it_has()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        InsertRoot(context, "o", "organization", "root");
+        InsertChild(context, "i", parent: "o", parentKind: "organization", parentDepth: 0, "initiative", "the work");
+
+        // 'i' is an initiative at depth 1, and this child claims it is an organization at depth 0.
+        Should.Throw<SqliteException>(() => InsertChild(
+            context, "x", parent: "i", parentKind: "organization", parentDepth: 0, "initiative", "invented"));
+    }
+
+    /// <summary>
+    /// The classes go organization, initiative, topic, and the tree is where that is said. A topic
+    /// standing on its own is a subject of nothing; an organization under one is the order upside
+    /// down.
+    /// </summary>
+    [Fact]
+    public void A_topic_is_never_a_root()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Should.Throw<SqliteException>(() => InsertRoot(context, "t", "topic", "an incident"));
+    }
+
+    [Fact]
+    public void An_organization_never_hangs_off_a_topic()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        InsertRoot(context, "o", "organization", "root");
+        InsertChild(context, "i", parent: "o", parentKind: "organization", parentDepth: 0, "initiative", "the work");
+        InsertChild(context, "t", parent: "i", parentKind: "initiative", parentDepth: 1, "topic", "an incident");
+
+        Should.Throw<SqliteException>(() => InsertChild(
+            context, "x", parent: "t", parentKind: "topic", parentDepth: 2, "organization", "upside down"));
+    }
+
+    /// <summary>
+    /// Where somebody works is an organization. A project and a ticket are places work happens,
+    /// and the class travels with the id so neither has anywhere to be written.
+    /// </summary>
+    [Fact]
+    public void A_person_works_at_an_organization_and_not_at_a_project()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        InsertRoot(context, "o", "organization", "An Organization");
+        InsertChild(context, "i", parent: "o", parentKind: "organization", parentDepth: 0, "initiative", "the work");
+
+        Should.NotThrow(() => InsertPerson(context, "a", organization: "o", organizationKind: "organization"));
+        // The initiative, correctly named as one: the key has no row to match.
+        Should.Throw<SqliteException>(() => InsertPerson(context, "b", "i", "initiative"));
+        // And the same initiative, dressed up as an organization: no row matches that either.
+        Should.Throw<SqliteException>(() => InsertPerson(context, "c", "i", "organization"));
+    }
+
+    /// <summary>A root is exactly what has no parent, in both directions.</summary>
+    [Fact]
+    public void A_node_is_a_root_or_it_is_not()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        // No parent, and claiming to be one level down.
         Should.Throw<SqliteException>(() => Sql.Execute(context, $"""
-            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
-            VALUES ('x', {parent}, 'initiative', 'confused', {depth}, '{When}', '{When}');
+            INSERT INTO nodes (id, parent_id, parent_kind, parent_depth, kind, name, depth, created_at, updated_at)
+            VALUES ('x', NULL, NULL, NULL, 'initiative', 'confused', 1, '{When}', '{When}');
             """));
+
+        // A parent, and claiming to be a root.
+        InsertRoot(context, "o", "organization", "root");
+        Should.Throw<SqliteException>(() => InsertChild(
+            context, "y", parent: "o", parentKind: "organization", parentDepth: 0, "initiative", "confused", depth: 0));
     }
 
     /// <summary>
@@ -89,15 +175,9 @@ public class CorpusSchemaTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
 
-        Sql.Execute(context, $"""
-            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
-            VALUES ('a', NULL, 'organization', 'TwoOfThese', 0, '{When}', '{When}');
-            """);
+        InsertRoot(context, "a", "organization", "TwoOfThese");
 
-        Should.Throw<SqliteException>(() => Sql.Execute(context, $"""
-            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
-            VALUES ('b', NULL, 'organization', 'TwoOfThese', 0, '{When}', '{When}');
-            """));
+        Should.Throw<SqliteException>(() => InsertRoot(context, "b", "organization", "TwoOfThese"));
     }
 
     /// <summary>
@@ -111,13 +191,10 @@ public class CorpusSchemaTests
         using var context = corpus.OpenMigrated();
 
         InsertMeeting(context);
+        InsertRoot(context, "o", "organization", "An Organization");
+        InsertChild(context, "a", parent: "o", parentKind: "organization", parentDepth: 0, "initiative", "coati");
+        InsertChild(context, "b", parent: "o", parentKind: "organization", parentDepth: 0, "initiative", "huemul");
         Sql.Execute(context, $"""
-            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
-            VALUES ('o', NULL, 'organization', 'An Organization', 0, '{When}', '{When}');
-            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
-            VALUES ('a', 'o', 'initiative', 'coati', 1, '{When}', '{When}');
-            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
-            VALUES ('b', 'o', 'initiative', 'huemul', 1, '{When}', '{When}');
             INSERT INTO meeting_nodes (meeting_id, node_id, role, created_at)
             VALUES ('{MeetingId}', 'a', 'work_of', '{When}');
             INSERT INTO meeting_nodes (meeting_id, node_id, role, created_at)
@@ -134,10 +211,7 @@ public class CorpusSchemaTests
         using var context = corpus.OpenMigrated();
 
         InsertMeeting(context);
-        Sql.Execute(context, $"""
-            INSERT INTO nodes (id, parent_id, kind, name, depth, created_at, updated_at)
-            VALUES ('o', NULL, 'organization', 'An Organization', 0, '{When}', '{When}');
-            """);
+        InsertRoot(context, "o", "organization", "An Organization");
 
         Should.Throw<SqliteException>(() => Sql.Execute(context, $"""
             INSERT INTO meeting_nodes (meeting_id, node_id, role, created_at)
@@ -253,6 +327,104 @@ public class CorpusSchemaTests
         Should.Throw<SqliteException>(() => InsertJob(context, id: "j1", state: "in_progress"));
     }
 
+    /// <summary>
+    /// A job waiting for a person says why, and a job that is not waiting says nothing. Which
+    /// matters because the reason used to be written into the error column: a cost still to
+    /// approve is not a failure, and that column is the one a screen reads to say what happened.
+    /// </summary>
+    [Fact]
+    public void Only_a_job_waiting_for_a_person_carries_a_reason_for_waiting()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        InsertMeeting(context);
+
+        Should.Throw<SqliteException>(() => InsertJob(
+            context, id: "j0", state: "awaiting_user", defaultReason: false));
+        Should.Throw<SqliteException>(() => InsertJob(
+            context, id: "j1", state: "running", awaitingReason: "not waiting for anybody"));
+    }
+
+    /// <summary>
+    /// Where a run stands is its job's, and the job cannot be taken out from under it: a call
+    /// somebody paid for whose state nothing holds is worse than one that refuses to be deleted.
+    /// </summary>
+    [Fact]
+    public void A_run_cannot_lose_the_job_that_says_where_it_stands()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        InsertMeeting(context);
+        InsertJob(context, id: "j0", state: "running");
+        InsertTranscriptionRun(context, id: "t0", job: "'j0'");
+
+        Should.Throw<SqliteException>(() => Sql.Execute(context, "DELETE FROM processing_jobs WHERE id = 'j0';"));
+
+        // A run with no job at all has nowhere to say where it stands either.
+        Should.Throw<SqliteException>(() => InsertTranscriptionRun(context, id: "t1", job: "NULL"));
+    }
+
+    /// <summary>
+    /// And the refusal above must not cost the one deletion the corpus is built for: the meeting
+    /// takes its jobs and its runs in the same statement, which is when the constraint is checked.
+    /// </summary>
+    [Fact]
+    public void Deleting_a_meeting_still_takes_its_jobs_and_the_runs_that_point_at_them()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        InsertMeeting(context);
+        InsertJob(context, id: "j0", state: "succeeded");
+        InsertTranscriptionRun(context, id: "t0", job: "'j0'");
+
+        Sql.Execute(context, $"DELETE FROM meetings WHERE id = '{MeetingId}';");
+
+        Sql.Scalar(context, "SELECT count(*) FROM processing_jobs;").ShouldBe(0L);
+        Sql.Scalar(context, "SELECT count(*) FROM transcription_runs;").ShouldBe(0L);
+    }
+
+    /// <summary>
+    /// The second answer that used to exist. A run held the same seven-state vocabulary as its
+    /// job, writable to anything, and the two disagreed the moment one of them was not updated.
+    /// </summary>
+    [Fact]
+    public void A_run_has_no_state_of_its_own_to_disagree_with_its_job()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        foreach (var table in new[] { "transcription_runs", "extraction_runs" })
+        {
+            Sql.Strings(context, $"SELECT name FROM pragma_table_info('{table}');")
+                .ShouldNotContain("state", table);
+        }
+    }
+
+    /// <summary>
+    /// What a restart does to a run: nothing, because there is nothing to do. The job it belongs
+    /// to is where it stands, so recovering the job is what moves the run — and a run left in
+    /// 'running' for ever is a state that no longer exists to be left in.
+    /// </summary>
+    [Fact]
+    public void A_restart_leaves_a_run_wherever_it_leaves_the_job()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        InsertMeeting(context);
+        InsertJob(context, id: JobId, state: "running");
+        InsertTranscriptionRun(context, id: "t0", job: $"'{JobId}'");
+
+        var job = context.ProcessingJobs.Single();
+        job.RecoverAfterRestart().ShouldBeTrue();
+        context.SaveChanges();
+
+        Sql.Scalar(context, """
+            SELECT job.state FROM transcription_runs AS run
+            JOIN processing_jobs AS job ON job.id = run.job_id
+            WHERE run.id = 't0';
+            """).ShouldBe("awaiting_user");
+    }
+
     [Fact]
     public void Deleting_a_meeting_takes_its_rows_with_it()
     {
@@ -322,6 +494,50 @@ public class CorpusSchemaTests
             id: "22222222-2222-2222-2222-222222222222"));
     }
 
+    private static void InsertTranscriptionRun(CorpusDbContext context, string id, string job) =>
+        Sql.Execute(context, $"""
+            INSERT INTO transcription_runs (
+                id, meeting_id, job_id, provider, source_profile, language, audio_sha256,
+                billable_config_hash, created_at)
+            VALUES ('{id}', '{MeetingId}', {job}, 'deepgram', 'multichannel', 'es', '{Sha256}',
+                    'nova-3/multichannel', '{When}');
+            """);
+
+    private static void InsertRoot(CorpusDbContext context, string id, string kind, string name) =>
+        Sql.Execute(context, $"""
+            INSERT INTO nodes (id, parent_id, parent_kind, parent_depth, kind, name, depth, created_at, updated_at)
+            VALUES ('{id}', NULL, NULL, NULL, '{kind}', '{name}', 0, '{When}', '{When}');
+            """);
+
+    /// <summary>
+    /// A child, spelling out the copy of its parent it carries. The depth defaults to the one it
+    /// should have, so a test that wants the wrong one has to say so.
+    /// </summary>
+    private static void InsertChild(
+        CorpusDbContext context,
+        string id,
+        string parent,
+        string parentKind,
+        int parentDepth,
+        string kind,
+        string name,
+        int? depth = null) =>
+        Sql.Execute(context, $"""
+            INSERT INTO nodes (id, parent_id, parent_kind, parent_depth, kind, name, depth, created_at, updated_at)
+            VALUES ('{id}', '{parent}', '{parentKind}', {parentDepth}, '{kind}', '{name}',
+                    {depth ?? (parentDepth + 1)}, '{When}', '{When}');
+            """);
+
+    private static void InsertPerson(
+        CorpusDbContext context,
+        string id,
+        string organization,
+        string organizationKind) =>
+        Sql.Execute(context, $"""
+            INSERT INTO people (id, organization_id, organization_kind, display_name, is_me, created_at, updated_at)
+            VALUES ('{id}', '{organization}', '{organizationKind}', 'Somebody', 0, '{When}', '{When}');
+            """);
+
     private static void InsertMeeting(
         CorpusDbContext context,
         string id = MeetingId,
@@ -349,12 +565,16 @@ public class CorpusSchemaTests
             VALUES ('{kind}-{origin}', '{MeetingId}', '{kind}', '{origin}', '{kind}.{origin}', 1, '{Sha256}', '{When}');
             """);
 
-    /// <summary>A summary needs the extraction run it came out of, so both go in here.</summary>
+    /// <summary>
+    /// A summary needs the extraction run it came out of, and a run needs the job that ran it —
+    /// which is the only row saying where it stands — so all three go in here.
+    /// </summary>
     private static void InsertSummary(CorpusDbContext context, string @abstract, string body)
     {
+        InsertJob(context, id: "j-extract", state: "succeeded");
         Sql.Execute(context, $"""
-            INSERT INTO extraction_runs (id, meeting_id, provider, prompt_version, schema_version, input_hash, state, created_at)
-            VALUES ('e0', '{MeetingId}', 'claude_code', '1', '1', '{Sha256}', 'succeeded', '{When}');
+            INSERT INTO extraction_runs (id, meeting_id, job_id, provider, prompt_version, schema_version, input_hash, created_at)
+            VALUES ('e0', '{MeetingId}', 'j-extract', 'claude_code', '1', '1', '{Sha256}', '{When}');
             """);
 
         Sql.Execute(context, $"""
@@ -363,9 +583,22 @@ public class CorpusSchemaTests
             """);
     }
 
-    private static void InsertJob(CorpusDbContext context, string id, string state) =>
+    /// <summary>
+    /// A job. The reason defaults to whatever the state needs, so a test that wants the two out of
+    /// step has to ask for it.
+    /// </summary>
+    private static void InsertJob(
+        CorpusDbContext context,
+        string id,
+        string state,
+        string? awaitingReason = null,
+        bool defaultReason = true)
+    {
+        var reason = awaitingReason ?? (defaultReason && state == "awaiting_user" ? "a cost nobody approved" : null);
         Sql.Execute(context, $"""
-            INSERT INTO processing_jobs (id, meeting_id, kind, state, idempotency_key, created_at, attempt)
-            VALUES ('{id}', '{MeetingId}', 'transcribe', '{state}', '{id}', '{When}', 0);
+            INSERT INTO processing_jobs (id, meeting_id, kind, state, awaiting_reason, idempotency_key, created_at, attempt)
+            VALUES ('{id}', '{MeetingId}', 'transcribe', '{state}',
+                    {(reason is null ? "NULL" : $"'{reason}'")}, '{id}', '{When}', 0);
             """);
+    }
 }

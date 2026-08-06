@@ -49,37 +49,79 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
 
     public ImportReport Import(LegacyCorpus corpus, ImportOptions? options = null)
     {
+        ArgumentNullException.ThrowIfNull(corpus);
+
         options ??= new ImportOptions();
         var now = UtcTimestamp.From(clock.GetUtcNow());
         var report = new ImportReport();
 
         var (companies, projects, people) = corpus.ReadCatalog();
-        var organizationIds = ImportOrganizations(companies, now, report);
-        var initiativeIds = ImportInitiatives(projects, organizationIds, now, report);
-        var personIds = ImportPeople(people, organizationIds, now, report);
-
-        ImportCorrections(corpus.ReadCorrections(), now, report);
+        var catalog = new ImportReport();
+        var organizations = ImportOrganizations(companies, now, catalog);
+        var initiatives = ImportInitiatives(projects, organizations, now, catalog);
+        var personIds = ImportPeople(people, organizations, now, catalog);
+        ImportCorrections(corpus.ReadCorrections(), now, catalog);
+        Commit("the catalog", catalog, report);
 
         foreach (var legacy in corpus.Meetings())
         {
-            ImportMeeting(legacy, organizationIds, initiativeIds, personIds, options, now, report);
+            // Each meeting is its own transaction. One that the corpus refuses used to take the
+            // two hundred behind it, and the report with them — which is printed at the end and
+            // is the only record of what a run left behind.
+            var meeting = new ImportReport();
+            Commit(
+                legacy.Id,
+                meeting,
+                report,
+                () => ImportMeeting(legacy, organizations, initiatives, personIds, options, now, meeting));
         }
 
-        context.SaveChanges();
         return report;
     }
 
+    /// <summary>
+    /// Reads one meeting and writes it, and folds its tally into the run's report. A meeting the
+    /// corpus refuses — or one whose files cannot be read or copied — is named there instead, and
+    /// everything read for it is thrown away so the next one starts from a clean change tracker.
+    /// </summary>
+    /// <remarks>
+    /// A source already copied to disk is left where it is. It carries no row, so the next run
+    /// copies and registers it again, which is the same outcome as never having tried — and
+    /// deleting files is not something this tool does.
+    /// </remarks>
+    private void Commit(string what, ImportReport pending, ImportReport report, Action? read = null)
+    {
+        try
+        {
+            read?.Invoke();
+            context.SaveChanges();
+        }
+        catch (Exception exception) when (exception is DbUpdateException or IOException
+            or UnauthorizedAccessException)
+        {
+            report.CouldNotImport($"{what}: {(exception.InnerException ?? exception).Message}");
+            foreach (var entry in context.ChangeTracker.Entries()
+                .Where(entry => entry.State is not EntityState.Unchanged).ToArray())
+            {
+                entry.State = EntityState.Detached;
+            }
+
+            return;
+        }
+
+        report.Absorb(pending);
+    }
+
     /// <summary>The catalog's companies, as the roots of the tree.</summary>
-    private Dictionary<string, Guid> ImportOrganizations(
+    private Dictionary<string, Node> ImportOrganizations(
         IReadOnlyList<LegacyCatalogEntry> entries,
         UtcTimestamp now,
         ImportReport report)
     {
-        var byId = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        var byId = new Dictionary<string, Node>(StringComparer.Ordinal);
         foreach (var entry in entries)
         {
-            var node = Node(entry.Name, parent: null, NodeKind.Organization, now, report, ImportCounter.Organization);
-            byId[entry.Id] = node.Id;
+            byId[entry.Id] = NodeAt(entry.Name, parent: null, NodeKind.Organization, now, report, ImportCounter.Organization);
         }
 
         return byId;
@@ -90,51 +132,46 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
     /// the catalog does not name becomes a root of its own: work belonging to nobody in
     /// particular is ordinary, and inventing an owner for it would be worse than having none.
     /// </summary>
-    private Dictionary<string, Guid> ImportInitiatives(
+    private Dictionary<string, Node> ImportInitiatives(
         IReadOnlyList<LegacyCatalogEntry> entries,
-        IReadOnlyDictionary<string, Guid> organizations,
+        IReadOnlyDictionary<string, Node> organizations,
         UtcTimestamp now,
         ImportReport report)
     {
-        var byId = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        var byId = new Dictionary<string, Node>(StringComparer.Ordinal);
         foreach (var entry in entries)
         {
             var parent = Lookup(organizations, entry.CompanyId);
-            var node = Node(entry.Name, parent, NodeKind.Initiative, now, report, ImportCounter.Initiative);
-            byId[entry.Id] = node.Id;
+            byId[entry.Id] = NodeAt(entry.Name, parent, NodeKind.Initiative, now, report, ImportCounter.Initiative);
         }
 
         return byId;
     }
 
-    /// <summary>Finds a node by its place in the tree, or puts it there.</summary>
-    private Node Node(
+    /// <summary>
+    /// Finds a node by its place in the tree, or puts it there. Where it sits — its depth, and
+    /// the copy of the parent the key is checked against — is the tree's to work out, never this
+    /// tool's: a hardcoded depth here is what would put the first third-level node in wrong.
+    /// </summary>
+    private Node NodeAt(
         string name,
-        Guid? parent,
+        Node? parent,
         NodeKind kind,
         UtcTimestamp now,
         ImportReport report,
         ImportCounter counter)
     {
-        var existing = context.Nodes.Local.FirstOrDefault(node => node.ParentId == parent && node.Name == name)
-            ?? context.Nodes.FirstOrDefault(node => node.ParentId == parent && node.Name == name);
+        var parentId = parent?.Id;
+        var existing = context.Nodes.Local.FirstOrDefault(node => node.ParentId == parentId && node.Name == name)
+            ?? context.Nodes.FirstOrDefault(node => node.ParentId == parentId && node.Name == name);
         if (existing is not null)
         {
             return existing;
         }
 
-        var created = new Node
-        {
-            Id = Guid.NewGuid(),
-            ParentId = parent,
-            Kind = kind,
-            Name = name,
-            // The schema can say a root has no parent; that a child sits one below it is this
-            // side's to keep, because a CHECK cannot read the parent's row.
-            Depth = parent is null ? 0 : 1,
-            CreatedAt = now,
-            UpdatedAt = now,
-        };
+        var created = parent is null
+            ? Node.Root(Guid.NewGuid(), kind, name, now)
+            : Node.Under(Guid.NewGuid(), parent, kind, name, now);
         context.Nodes.Add(created);
         report.Imported(counter);
         return created;
@@ -142,7 +179,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
 
     private Dictionary<string, Guid> ImportPeople(
         IReadOnlyList<LegacyCatalogEntry> entries,
-        IReadOnlyDictionary<string, Guid> organizations,
+        IReadOnlyDictionary<string, Node> organizations,
         UtcTimestamp now,
         ImportReport report)
     {
@@ -159,11 +196,11 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
                 existing = new Person
                 {
                     Id = Guid.NewGuid(),
-                    OrganizationId = Lookup(organizations, entry.CompanyId),
                     DisplayName = entry.Name,
                     CreatedAt = now,
                     UpdatedAt = now,
                 };
+                existing.WorksAt(Lookup(organizations, entry.CompanyId));
                 context.People.Add(existing);
                 report.Imported(ImportCounter.Person);
             }
@@ -206,8 +243,8 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
 
     private void ImportMeeting(
         LegacyMeeting legacy,
-        IReadOnlyDictionary<string, Guid> organizations,
-        IReadOnlyDictionary<string, Guid> initiatives,
+        IReadOnlyDictionary<string, Node> organizations,
+        IReadOnlyDictionary<string, Node> initiatives,
         IReadOnlyDictionary<string, Guid> people,
         ImportOptions options,
         UtcTimestamp now,
@@ -242,7 +279,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
         {
             if (legacy.Language is null)
             {
-                report.CouldNotImport(
+                report.Assume(
                     $"{legacy.Id}: no rendered transcript to read the language from, recorded as '{options.Language}'");
             }
 
@@ -287,8 +324,8 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
     private void Classify(
         LegacyMeeting legacy,
         Meeting meeting,
-        IReadOnlyDictionary<string, Guid> organizations,
-        IReadOnlyDictionary<string, Guid> initiatives,
+        IReadOnlyDictionary<string, Node> organizations,
+        IReadOnlyDictionary<string, Node> initiatives,
         UtcTimestamp now,
         ImportReport report)
     {
@@ -309,7 +346,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
         var linked = context.MeetingNodes.Local
             .Concat(context.MeetingNodes.Where(link => link.MeetingId == meeting.Id))
             .Any(link => link.MeetingId == meeting.Id
-                && link.NodeId == node
+                && link.NodeId == node.Id
                 && link.Role == MeetingNodeRole.WorkOf);
         if (linked)
         {
@@ -319,7 +356,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
         context.MeetingNodes.Add(new MeetingNode
         {
             MeetingId = meeting.Id,
-            NodeId = node.Value,
+            NodeId = node.Id,
             Role = MeetingNodeRole.WorkOf,
             CreatedAt = now,
         });
@@ -360,7 +397,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
         {
             if (File.Exists(Path.Combine(legacy.Directory.FullName, name)))
             {
-                report.CouldNotImport($"{legacy.Id}: {name} is this application's to render again");
+                report.SkippedByChoice(name);
             }
         }
 
@@ -497,6 +534,9 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
 
     private static Guid? Lookup(IReadOnlyDictionary<string, Guid> known, string? key) =>
         key is not null && known.TryGetValue(key, out var id) ? id : null;
+
+    private static Node? Lookup(IReadOnlyDictionary<string, Node> known, string? key) =>
+        key is not null && known.TryGetValue(key, out var node) ? node : null;
 
     private static string Sha256(FileInfo file)
     {

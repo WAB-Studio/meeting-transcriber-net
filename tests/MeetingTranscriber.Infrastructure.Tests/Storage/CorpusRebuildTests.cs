@@ -14,6 +14,7 @@ public class CorpusRebuildTests
     private const string MeetingId = "11111111-1111-1111-1111-111111111111";
     private const string ExtractionRunId = "22222222-2222-2222-2222-222222222222";
     private const string PersonId = "33333333-3333-3333-3333-333333333333";
+    private const string JobId = "44444444-4444-4444-4444-444444444444";
     private const string When = "2026-08-05T14:00:00.000Z";
     private const string Sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -164,6 +165,55 @@ public class CorpusRebuildTests
         Sql.Scalar(context, "SELECT count(*) FROM people;").ShouldBe(1L);
     }
 
+    /// <summary>
+    /// A rebuild keeps what a person marked. Extracting the meeting again deliberately does not.
+    /// </summary>
+    /// <remarks>
+    /// The two look alike and are opposite. A rebuild reads the same accepted extraction and puts
+    /// the same actions back at the same positions, so the state pinned to those positions still
+    /// fits. A second extraction is a second run: it can reword an action, add one above another
+    /// or drop one, so neither the position nor the text is the same action twice. Following
+    /// either would hand somebody's "done" to a line they never read, and be invisible. So the
+    /// state stays on the run it was recorded against — still there, still readable, superseded
+    /// rather than moved — and the new run's actions arrive with nothing on them.
+    /// </remarks>
+    [Fact]
+    public void A_second_extraction_leaves_the_first_ones_state_alone_and_starts_its_own_blank()
+    {
+        const string secondJob = "55555555-5555-5555-5555-555555555555";
+        const string secondRun = "66666666-6666-6666-6666-666666666666";
+
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Project(context, generation: "first");
+        Sql.Execute(context, $"""
+            INSERT INTO action_item_progress (extraction_run_id, ordinal, state, owner_person_id, updated_at)
+            VALUES ('{ExtractionRunId}', 0, 'done', '{PersonId}', '{When}');
+            """);
+
+        // The meeting is extracted again and the new one is accepted. It reorders what it found:
+        // 'send the budget' comes back second, and there is a new action above it.
+        Sql.Execute(context, $"""
+            INSERT INTO processing_jobs (id, meeting_id, kind, state, idempotency_key, created_at, attempt)
+            VALUES ('{secondJob}', '{MeetingId}', 'extract', 'succeeded', 'extract/{MeetingId}/2', '{When}', 1);
+            INSERT INTO extraction_runs (
+                id, meeting_id, job_id, provider, prompt_version, schema_version, input_hash, accepted_at, created_at)
+            VALUES ('{secondRun}', '{MeetingId}', '{secondJob}', 'claude_code', '2', '1', '{Sha256}', '{When}', '{When}');
+            """);
+        InsertAction(context, "second", ordinal: 0, statement: "chase the invoice", utteranceOrdinal: 0, extractionRunId: secondRun);
+        InsertAction(context, "second", ordinal: 1, statement: "send the budget", utteranceOrdinal: 0, extractionRunId: secondRun);
+
+        // Nothing followed it across, by position or by wording.
+        Sql.Scalar(context, $"SELECT count(*) FROM action_item_progress WHERE extraction_run_id = '{secondRun}';")
+            .ShouldBe(0L);
+
+        // And nothing was taken from where it was: the older run keeps its actions and its state.
+        Sql.Scalar(context, $"SELECT state FROM action_item_progress WHERE extraction_run_id = '{ExtractionRunId}' AND ordinal = 0;")
+            .ShouldBe("done");
+        Sql.Scalar(context, $"SELECT count(*) FROM action_items WHERE extraction_run_id = '{ExtractionRunId}';")
+            .ShouldBe(2L);
+    }
+
     [Fact]
     public void One_extraction_cannot_put_two_actions_in_the_same_position()
     {
@@ -210,9 +260,15 @@ public class CorpusRebuildTests
                 VALUES ('{PersonId}', 'Ada', 0, '{When}', '{When}');
                 """);
 
+            // A run belongs to the job that ran it, which is the only row holding where it stands.
             Sql.Execute(context, $"""
-                INSERT INTO extraction_runs (id, meeting_id, provider, prompt_version, schema_version, input_hash, state, created_at)
-                VALUES ('{ExtractionRunId}', '{MeetingId}', 'claude_code', '1', '1', '{Sha256}', 'succeeded', '{When}');
+                INSERT INTO processing_jobs (id, meeting_id, kind, state, idempotency_key, created_at, attempt)
+                VALUES ('{JobId}', '{MeetingId}', 'extract', 'succeeded', 'extract/{MeetingId}', '{When}', 1);
+                """);
+
+            Sql.Execute(context, $"""
+                INSERT INTO extraction_runs (id, meeting_id, job_id, provider, prompt_version, schema_version, input_hash, created_at)
+                VALUES ('{ExtractionRunId}', '{MeetingId}', '{JobId}', 'claude_code', '1', '1', '{Sha256}', '{When}');
                 """);
         }
 
@@ -234,13 +290,14 @@ public class CorpusRebuildTests
         string generation,
         int ordinal,
         string statement,
-        int utteranceOrdinal) =>
+        int utteranceOrdinal,
+        string extractionRunId = ExtractionRunId) =>
         Sql.Execute(context, $"""
             INSERT INTO action_items (
                 id, meeting_id, extraction_run_id, ordinal, statement, due_date, created_at,
                 utterance_ordinal, start_ms, end_ms, speaker_label, quoted_text, source_artifact_sha256)
             VALUES (
-                '{generation}-a{ordinal}', '{MeetingId}', '{ExtractionRunId}', {ordinal}, '{statement}', NULL, '{When}',
+                '{generation}-a{ordinal}', '{MeetingId}', '{extractionRunId}', {ordinal}, '{statement}', NULL, '{When}',
                 {utteranceOrdinal}, 0, 1000, 'channel_0', '{statement}', '{Sha256}');
             """);
 

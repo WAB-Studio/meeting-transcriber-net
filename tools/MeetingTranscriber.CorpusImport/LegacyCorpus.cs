@@ -150,8 +150,12 @@ public sealed class LegacyCorpus(DirectoryInfo root)
                 },
             };
         }
+        // Including the ones the domain raises over what the file says. A response of three
+        // channels matches no profile and a negative duration is not a length, and either used to
+        // leave here as an exception that took the whole run with it — before a single meeting had
+        // been written, and without naming the folder it came out of.
         catch (Exception exception) when (exception is JsonException or KeyNotFoundException
-            or InvalidOperationException or IOException)
+            or InvalidOperationException or IOException or ArgumentException or AudioContractException)
         {
             return meeting with { Unreadable = $"deepgram.json cannot be read: {exception.Message}" };
         }

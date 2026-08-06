@@ -85,7 +85,9 @@ public class ProcessingJobTests
         job.RecoverAfterRestart().ShouldBeTrue();
 
         job.State.ShouldBe(JobState.AwaitingUser);
-        job.LastError.ShouldNotBeNull();
+        // Why it is waiting, and not what went wrong: nothing did.
+        job.AwaitingReason.ShouldNotBeNull();
+        job.LastError.ShouldBeNull();
         // Nothing is scheduled, so no amount of time passing makes the runner take it.
         job.NextAttemptAt.ShouldBeNull();
         job.IsDue(Later(1)).ShouldBeFalse();
@@ -149,6 +151,59 @@ public class ProcessingJobTests
 
         job.State.ShouldBe(JobState.AwaitingUser);
         job.IsDue(Later(100)).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A cost still to approve is not a failure, and the error column is what a screen reads to
+    /// say what happened. Writing the reason there made every job waiting on a person look broken.
+    /// </summary>
+    [Fact]
+    public void Waiting_for_a_person_is_not_written_down_as_an_error()
+    {
+        var job = NewJob();
+
+        job.AwaitUser("transcribing this meeting costs money nobody approved yet");
+
+        job.AwaitingReason.ShouldBe("transcribing this meeting costs money nobody approved yet");
+        job.LastError.ShouldBeNull();
+    }
+
+    /// <summary>The two are kept apart in both directions: a real failure is not a reason to wait.</summary>
+    [Fact]
+    public void A_job_that_failed_and_then_stopped_on_a_person_says_both_things()
+    {
+        var job = NewJob();
+        job.Start(Later(1));
+        job.FailRetryable("deepgram answered 503", Later(10));
+
+        job.AwaitUser("four attempts in a row failed");
+
+        job.LastError.ShouldBe("deepgram answered 503");
+        job.AwaitingReason.ShouldBe("four attempts in a row failed");
+    }
+
+    /// <summary>
+    /// And a job somebody released stops saying it is waiting. Left behind, it would show up as
+    /// waiting on any screen reading the column instead of the state.
+    /// </summary>
+    [Fact]
+    public void A_job_that_stopped_waiting_no_longer_says_why_it_was()
+    {
+        var job = NewJob();
+        job.AwaitUser("a cost nobody approved");
+
+        job.Requeue();
+
+        job.AwaitingReason.ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_wait_without_a_reason_is_not_recorded()
+    {
+        var job = NewJob();
+
+        Should.Throw<ArgumentException>(() => job.AwaitUser(" "));
+        job.State.ShouldBe(JobState.Pending);
     }
 
     [Fact]
