@@ -10,10 +10,7 @@ namespace MeetingTranscriber.Domain.Tests.Fixtures;
 public class ReferenceBehaviourTests
 {
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
-    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
-    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
     public void A_real_meeting_becomes_turns_a_citation_can_land_on(string name)
     {
         var turns = Turns.Group(DeepgramFixtures.Segments(name));
@@ -25,10 +22,7 @@ public class ReferenceBehaviourTests
     }
 
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
-    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
-    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
     public void Turns_run_forwards(string name)
     {
         var turns = Turns.Group(DeepgramFixtures.Segments(name));
@@ -37,10 +31,7 @@ public class ReferenceBehaviourTests
     }
 
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
-    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
-    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
     public void Grouping_says_less_than_the_provider_did_and_loses_nothing(string name)
     {
         var segments = DeepgramFixtures.Segments(name);
@@ -51,8 +42,7 @@ public class ReferenceBehaviourTests
     }
 
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
+    [MemberData(nameof(DeepgramFixtures.EachWithBothSidesHeard), MemberType = typeof(DeepgramFixtures))]
     public void Both_sides_of_a_call_get_their_own_turns(string name)
     {
         var turns = Turns.Group(DeepgramFixtures.Segments(name));
@@ -68,10 +58,7 @@ public class ReferenceBehaviourTests
     /// where it would show if merging keyed on the wrong thing.
     /// </summary>
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
-    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
-    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
     public void Nothing_that_could_have_been_one_turn_was_left_as_two(string name)
     {
         var turns = Turns.Group(DeepgramFixtures.Segments(name));
@@ -88,10 +75,7 @@ public class ReferenceBehaviourTests
     /// its start and every quote belongs to it.
     /// </summary>
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
-    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
-    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
     public void No_turn_swallows_the_meeting_it_belongs_to(string name)
     {
         var turns = Turns.Group(DeepgramFixtures.Segments(name));
@@ -138,10 +122,7 @@ public class ReferenceBehaviourTests
     /// checking something whichever way a new fixture falls.
     /// </summary>
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
-    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
-    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
     public void Only_a_microphone_that_caught_one_speaker_settles_who_it_was(string name)
     {
         var segments = DeepgramFixtures.Segments(name);
@@ -173,6 +154,26 @@ public class ReferenceBehaviourTests
         resolution.Mine.ShouldBeNull();
         resolution.NeedingAPerson.ShouldContain("ch1:speaker_0");
         resolution.NeedingAPerson.ShouldContain("ch1:speaker_1");
+    }
+
+    /// <summary>
+    /// The other side of the same rule, and the case the set had no real response for: one person
+    /// at their desk on a call, which is how most meetings are recorded. Until this fixture the
+    /// biconditional above only ever checked that nothing was settled, so the one assignment the
+    /// system makes without asking was proved by hand written segments alone.
+    /// </summary>
+    [Fact]
+    public void One_voice_on_the_microphone_settles_the_user_and_leaves_the_meeting_to_a_person()
+    {
+        var resolution = Speakers.Resolve(
+            SourceProfile.Multichannel,
+            DeepgramFixtures.Segments(DeepgramFixtures.TwoChannelOneVoiceMe));
+
+        resolution.Mine.ShouldBe("ch1:speaker_0");
+
+        // Three people on the other end of the call, and the recording says nothing about which
+        // of them is which. Settling the microphone does not settle them.
+        resolution.NeedingAPerson.ShouldBe(["ch0:speaker_0", "ch0:speaker_1", "ch0:speaker_2"]);
     }
 
     private static int Words(IEnumerable<string> texts) =>

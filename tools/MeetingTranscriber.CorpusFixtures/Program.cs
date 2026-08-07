@@ -27,6 +27,12 @@ internal static class Program
         new("two-channel-long", Shape.AsRecorded),
         new("two-channel-short", Shape.AsRecorded),
 
+        // The source for this one has to be a meeting in which exactly one person spoke into the
+        // microphone. It is not a variant of the two above: one voice on channel 1 is the only
+        // shape in which the system names a speaker without asking, so it is also the only one
+        // where getting the response wrong puts somebody's name on words they did not say.
+        new("two-channel-one-voice-me", Shape.AsRecorded),
+
         // The source for this one has to be a meeting whose channel 0 carries several diarized
         // speakers: a one track fixture whose every turn is speaker 0 would not be a diarized one.
         new("single-track-diarized", Shape.MeetingChannelOnly),
@@ -49,10 +55,11 @@ internal static class Program
         somebody, which is the same fact the tool normalises inside every response:
 
           {
-            "two-channel-long":      "<folder>",
-            "two-channel-short":     "<folder>",
-            "single-track-diarized": "<folder>",
-            "two-channel-silent-me": "<folder>"
+            "two-channel-long":         "<folder>",
+            "two-channel-short":        "<folder>",
+            "two-channel-one-voice-me": "<folder>",
+            "single-track-diarized":    "<folder>",
+            "two-channel-silent-me":    "<folder>"
           }
 
         The corpus is only ever read.

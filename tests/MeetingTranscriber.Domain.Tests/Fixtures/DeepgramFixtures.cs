@@ -23,6 +23,14 @@ public static class DeepgramFixtures
     /// <summary>Both channels, 34 minutes. The one to reach for when length is not the point.</summary>
     public const string TwoChannelShort = "two-channel-short";
 
+    /// <summary>
+    /// Both channels, 13 minutes, and one voice on the microphone against three on the meeting.
+    /// The only shape in which the system settles a speaker without asking, so it is the only one
+    /// where <see cref="Speakers.Resolve"/> naming the wrong label would sign somebody else's
+    /// words — and the four fixtures before it left that branch with no real response behind it.
+    /// </summary>
+    public const string TwoChannelOneVoiceMe = "two-channel-one-voice-me";
+
     /// <summary>One track with six diarized speakers, the shape a <see cref="SourceProfile.Diarize"/> meeting has.</summary>
     public const string SingleTrackDiarized = "single-track-diarized";
 
@@ -30,13 +38,29 @@ public static class DeepgramFixtures
     public const string TwoChannelSilentMe = "two-channel-silent-me";
 
     public static IEnumerable<string> All =>
-        [TwoChannelLong, TwoChannelShort, SingleTrackDiarized, TwoChannelSilentMe];
+        [TwoChannelLong, TwoChannelShort, TwoChannelOneVoiceMe, SingleTrackDiarized, TwoChannelSilentMe];
+
+    /// <summary>
+    /// Every fixture, for a theory that is about all of them. Declared here rather than repeated
+    /// as a list of attributes per test: the set grows, and a fixture nobody remembered to add to
+    /// the ninth list is one whose case is covered everywhere except where it fails.
+    /// </summary>
+    public static TheoryData<string> Each => new(All);
+
+    /// <summary>
+    /// The fixtures whose two channels both caught somebody, which is what a theory about two
+    /// sides of a conversation needs. <see cref="TwoChannelSilentMe"/> is multichannel and is
+    /// deliberately not one of them.
+    /// </summary>
+    public static TheoryData<string> EachWithBothSidesHeard =>
+        new(TwoChannelLong, TwoChannelShort, TwoChannelOneVoiceMe);
 
     /// <summary>The profile whose audio each fixture is a transcription of.</summary>
     public static SourceProfile ProfileOf(string name) => name switch
     {
         SingleTrackDiarized => SourceProfile.Diarize,
-        TwoChannelLong or TwoChannelShort or TwoChannelSilentMe => SourceProfile.Multichannel,
+        TwoChannelLong or TwoChannelShort or TwoChannelOneVoiceMe or TwoChannelSilentMe =>
+            SourceProfile.Multichannel,
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Not a fixture."),
     };
 
