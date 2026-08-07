@@ -15,9 +15,9 @@ namespace MeetingTranscriber.Infrastructure.Migrations
     ///
     /// External content keys on rowid, and neither indexed table has an INTEGER PRIMARY KEY, so
     /// SQLite is free to renumber those rowids during a VACUUM. Search would then answer with
-    /// the wrong rows and never report an error. Anything that vacuums the corpus has to follow
-    /// it with INSERT INTO utterances_fts (utterances_fts) VALUES ('rebuild'), and the same for
-    /// summaries_fts.
+    /// the wrong rows and never report an error. Nothing vacuums the corpus directly for that
+    /// reason: CorpusIntegrity.Compact vacuums and rebuilds both indexes, and CorpusIntegrity.Check
+    /// is what notices an index that has stopped matching its table.
     /// </summary>
     /// <inheritdoc />
     public partial class FullTextSearch : Migration

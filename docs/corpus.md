@@ -50,10 +50,24 @@ take every decision and action citing them and say nothing about it. Deleting tu
 now fails, and a meeting still deletes whole: the turns and the claims go in one statement, and
 that is when the constraint is checked.
 
-The FTS5 indexes are external content keyed on rowid, and a `VACUUM` may renumber the rowids of
-the tables they index. Whatever vacuums the corpus rebuilds them afterwards — `INSERT INTO
-utterances_fts (utterances_fts) VALUES ('rebuild')`, and the same for `summaries_fts` — or search
-answers with the wrong rows and says nothing.
+The FTS5 indexes are external content keyed on rowid, and a `VACUUM` may renumber the rowids of the
+tables they index, after which search answers with the wrong rows and says nothing. So nothing
+vacuums the corpus directly: `CorpusIntegrity.Compact` does both halves, and the reason it exists is
+that today's SQLite happens not to renumber them — a bare `VACUUM` looks correct every time anybody
+tries it, and is one release away from not being.
+
+## Checking a corpus
+
+`CorpusIntegrity.Check` reports what is wrong instead of answering yes or no, and
+`CorpusIntegrity.Ensure` throws the same list. Anything that copies the corpus runs it first: a
+backup taken of a corpus that was already wrong is a backup of being wrong, restored later with
+confidence.
+
+It covers three things — `PRAGMA integrity_check` for the file, `PRAGMA foreign_key_check` for
+orphans, and each FTS5 index against the table it indexes. The third one is easy to write and have
+do nothing: FTS5's bare `VALUES ('integrity-check')` only asks whether the index is internally
+consistent, which an index built against the wrong rows is. The comparison against the content table
+is `VALUES ('integrity-check', 1)`, and that is the only form that catches this.
 
 A migration that changes `utterances` or `summaries` costs the same and one thing more. SQLite
 cannot alter a constraint in place, so EF drops the table and rebuilds it: the rows come back under
