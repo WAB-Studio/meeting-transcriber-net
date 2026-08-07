@@ -6,6 +6,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MeetingTranscriber.Domain\MeetingTranscriber.Domain.csproj" />
+    <!--
+      Rendering reads the response out of the corpus and puts the derivatives back into it, so this
+      layer sits above storage rather than beside it: Processing -> Infrastructure -> Domain. The
+      edge only goes this way. Infrastructure knowing how a Deepgram response is parsed would be
+      SQLite depending on a provider, which is the dependency this project exists to avoid.
+    -->
+    <ProjectReference Include="..\MeetingTranscriber.Infrastructure\MeetingTranscriber.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

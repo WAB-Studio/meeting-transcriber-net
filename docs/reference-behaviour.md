@@ -139,15 +139,16 @@ under one key. Changing the shape of that string is a migration, not a rename.
 rendered text differs from the Python system's, the difference is intentional and gets written
 down here rather than chased.
 
-## Still to settle
+**A merged turn's confidence is the mean of its parts, weighted by their length.** — .NET only
 
-Not answered by the Python system, so not decided here:
-
-- **What a merged turn's confidence means.** `utterances.confidence` exists and grouping does not
-  fill it. The parser carries the provider's number on each `SpeechSegment` so the answer is still
-  available, but Python has per-utterance confidence and no per-turn number, so there is nothing to
-  port: the lowest of the merged parts, a weighted mean and nothing at all are all defensible, and
-  the projection has to pick one deliberately.
+Python has per-utterance confidence and no per-turn number, so there was nothing to port and three
+answers were defensible: the lowest of the parts, a weighted mean, or nothing at all. The lowest
+makes every long turn look untrustworthy, since one bad part is enough and turns get longer the
+less somebody is interrupted; nothing at all leaves a column for whoever writes a screen to decide.
+The weighted mean reads the same at three seconds and at three minutes — a doubtful half-second
+does not drag down a minute of clear speech, and a doubtful minute does. A part the response said
+nothing about is left out of the mean rather than counted as zero, which would be a claim the
+response never made.
 
 ## Not ported, and where it goes instead
 

@@ -207,11 +207,71 @@ public class TurnsTests
         Turns.Group(segments).ShouldBe(Turns.Group(segments));
     }
 
+    /// <summary>
+    /// A turn is as certain as its text, weighted by how long each part of it lasted. The lowest of
+    /// the parts was the alternative, and it makes every long turn look untrustworthy because one
+    /// bad part is enough — and turns get longer the less somebody is interrupted.
+    /// </summary>
+    [Fact]
+    public void A_turns_confidence_is_the_mean_of_its_parts_weighted_by_their_length()
+    {
+        var turns = Turns.Group([
+            Segment(0.0, 8.0, null, "speaker_0", "eight clear seconds", 0.98),
+            Segment(8.0, 10.0, null, "speaker_0", "two doubtful ones", 0.61),
+        ]);
+
+        // (0.98 * 8000 + 0.61 * 2000) / 10000, and not 0.61 and not 0.795.
+        turns.ShouldHaveSingleItem().Confidence!.Value.ShouldBe(0.906, tolerance: 1e-9);
+    }
+
+    /// <summary>
+    /// A part the response said nothing about is left out of the mean. Counting it as zero would be
+    /// a claim the response never made, and it would drag the turn down for saying nothing.
+    /// </summary>
+    [Fact]
+    public void A_part_the_response_said_nothing_about_is_not_a_zero()
+    {
+        var turns = Turns.Group([
+            Segment(0.0, 1.0, null, "speaker_0", "measured", 0.9),
+            Segment(1.0, 2.0, null, "speaker_0", "not measured"),
+        ]);
+
+        turns.ShouldHaveSingleItem().Confidence!.Value.ShouldBe(0.9, tolerance: 1e-9);
+    }
+
+    [Fact]
+    public void A_turn_the_response_said_nothing_about_carries_no_confidence()
+    {
+        Turns.Group([Segment(0.0, 1.0, null, "speaker_0", "nothing reported")])
+            .ShouldHaveSingleItem().Confidence.ShouldBeNull();
+    }
+
+    /// <summary>
+    /// A turn with no length has no weights to divide by, and averaging what there is beats
+    /// dividing by zero over a case a provider is free to hand back.
+    /// </summary>
+    [Fact]
+    public void A_turn_that_lasts_no_time_still_answers()
+    {
+        var turns = Turns.Group([
+            Segment(1.0, 1.0, null, "speaker_0", "one"),
+            Segment(1.0, 1.0, null, "speaker_0", "two"),
+        ]);
+
+        turns.ShouldHaveSingleItem().Confidence.ShouldBeNull();
+
+        Turns.Group([
+            Segment(1.0, 1.0, null, "speaker_0", "one", 0.4),
+            Segment(1.0, 1.0, null, "speaker_0", "two", 0.6),
+        ]).ShouldHaveSingleItem().Confidence!.Value.ShouldBe(0.5, tolerance: 1e-9);
+    }
+
     private static SpeechSegment Segment(
         double start,
         double end,
         AudioChannel? channel,
         string label,
-        string text) =>
-        new(Duration.FromSeconds(start), Duration.FromSeconds(end), channel, label, text);
+        string text,
+        double? confidence = null) =>
+        new(Duration.FromSeconds(start), Duration.FromSeconds(end), channel, label, text, confidence);
 }

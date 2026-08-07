@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 43/74
+progress: 46/76
 updated: 2026-08-07
 ---
 
@@ -77,7 +77,9 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-30: Anti: a meeting cannot write into another meeting's folder.
 - [x] ISC-31: A corpus that is not sound fails and names the table or index that broke.
 - [x] ISC-32: Compacting leaves search answering exactly what it answered before.
-- [ ] ISC-33: `transcript.md` and `utterances.jsonl` render from the stored turns and re-render identically.
+- [x] ISC-33: `transcript.md` and `utterances.jsonl` render from the stored turns and re-render identically.
+- [x] ISC-75: Anti: a name or a correction reaches the rendered files and never the stored turn.
+- [x] ISC-76: A merged turn's confidence is the mean of its parts, weighted by their length.
 - [ ] ISC-34: The diagnostic CLI reports corpus state without opening the application.
 - [x] ISC-66: Every table of the human layer is written through `HumanLayer`.
 - [x] ISC-67: Exactly one person carries the flag naming the user of this install.
@@ -166,6 +168,15 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
+- **2026-08-07** — A merged turn's confidence is the mean of its parts weighted by their length.
+  The lowest of the parts and nothing at all were the alternatives: the lowest makes every long
+  turn look untrustworthy, since one bad part is enough and turns get longer the less somebody is
+  interrupted, and nothing at all leaves the column for whoever writes a screen to decide. A part
+  the response said nothing about is left out of the mean rather than counted as zero.
+- **2026-08-07** — `MeetingTranscriber.Processing` references `MeetingTranscriber.Infrastructure`,
+  and the edge only goes that way. Rendering reads the response out of the corpus and puts the
+  derivatives back, so it sits above storage; the opposite edge would make SQLite depend on how a
+  Deepgram response is parsed, which is the dependency the split exists to prevent.
 - **2026-08-07** — An imported extraction run carries `schema_version` `legacy` and, when the file
   does not say, `prompt_version` `unknown`. Neither is a version somebody chose: the Python system
   had exactly one extraction shape and never numbered it, so `legacy` names that shape, which is
@@ -271,3 +282,6 @@ Board: 7 · Distribución y backup
 - ISC-72 — `CorpusSearchTests.A_query_the_index_cannot_parse_says_so_and_names_it` green 2026-08-07
 - ISC-73 — `CorpusImporterTests.An_imported_extraction_arrives_with_the_run_it_came_out_of` green 2026-08-07
 - ISC-74 — `CorpusImporterTests.A_decision_and_an_action_projected_from_it_hang_off_that_run` green 2026-08-07
+- ISC-33 — `MeetingRendererTests.Rendering_again_leaves_the_sources_alone_and_produces_the_same_files` green 2026-08-07
+- ISC-75 — `MeetingRendererTests.A_name_and_a_correction_reach_the_transcript_and_not_the_stored_turns` green 2026-08-07
+- ISC-76 — `TurnsTests.A_turns_confidence_is_the_mean_of_its_parts_weighted_by_their_length` green 2026-08-07
