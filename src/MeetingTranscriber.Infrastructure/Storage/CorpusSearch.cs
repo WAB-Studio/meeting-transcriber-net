@@ -1,15 +1,18 @@
-using System.Data;
 using System.Data.Common;
 
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 
 using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Infrastructure.Storage;
 
 /// <summary>Which index answered, and therefore what the hit points at.</summary>
+/// <remarks>
+/// The member names are what the query selects and what the reader parses back, both through
+/// <see cref="WireNames{TEnum}"/>. Renaming one changes the two together, which is the only reason
+/// the string in the SQL and the enum in the hit cannot come to mean different things.
+/// </remarks>
 public enum SearchSource
 {
     /// <summary>A turn somebody said. It carries where on the timeline it was said.</summary>
@@ -84,6 +87,10 @@ public static class CorpusSearch
 
     private static readonly string Active = WireNames<LifecycleState>.Of(LifecycleState.Active);
 
+    private static readonly string TurnSource = WireNames<SearchSource>.Of(SearchSource.Turn);
+
+    private static readonly string SummarySource = WireNames<SearchSource>.Of(SearchSource.Summary);
+
     /// <summary>
     /// Both indexes, best first. A meeting on its way out does not answer: it is being deleted, and
     /// offering it is offering something that will not be there when somebody opens it.
@@ -99,21 +106,14 @@ public static class CorpusSearch
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
 
-        var connection = context.Database.GetDbConnection();
-        if (connection.State is not ConnectionState.Open)
-        {
-            context.Database.OpenConnection();
-        }
-
-        using var command = connection.CreateCommand();
-        command.CommandText = Sql;
-        Bind(command, "@query", query);
-        Bind(command, "@limit", limit);
-        Bind(command, "@active", Active);
-
         try
         {
-            return Read(command);
+            return RawSql.Rows(context, Sql, ReadHit, command =>
+            {
+                Bind(command, "@query", query);
+                Bind(command, "@limit", limit);
+                Bind(command, "@active", Active);
+            });
         }
         catch (SqliteException refused)
         {
@@ -121,25 +121,21 @@ public static class CorpusSearch
         }
     }
 
-    private static List<SearchHit> Read(DbCommand command)
-    {
-        var hits = new List<SearchHit>();
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            hits.Add(new SearchHit(
-                Guid.Parse(reader.GetString(0)),
-                UtcTimestamp.Parse(reader.GetString(1)),
-                reader.IsDBNull(2) ? null : reader.GetString(2),
-                reader.GetString(3) is "turn" ? SearchSource.Turn : SearchSource.Summary,
-                reader.GetString(4),
-                reader.IsDBNull(5) ? null : reader.GetInt32(5),
-                reader.IsDBNull(6) ? null : Duration.FromMilliseconds(reader.GetInt64(6)),
-                reader.IsDBNull(7) ? null : Duration.FromMilliseconds(reader.GetInt64(7))));
-        }
-
-        return hits;
-    }
+    /// <summary>
+    /// One row, in the order the query selects. The source is parsed rather than compared against
+    /// one name, so a row this cannot place stops the search instead of arriving as the other kind
+    /// of hit — which, with a summary's nulls where a turn's anchor goes, is a citation quietly
+    /// losing the place it points at.
+    /// </summary>
+    private static SearchHit ReadHit(DbDataReader reader) => new(
+        Guid.Parse(reader.GetString(0)),
+        UtcTimestamp.Parse(reader.GetString(1)),
+        reader.IsDBNull(2) ? null : reader.GetString(2),
+        WireNames<SearchSource>.Parse(reader.GetString(3)),
+        reader.GetString(4),
+        reader.IsDBNull(5) ? null : reader.GetInt32(5),
+        reader.IsDBNull(6) ? null : Duration.FromMilliseconds(reader.GetInt64(6)),
+        reader.IsDBNull(7) ? null : Duration.FromMilliseconds(reader.GetInt64(7)));
 
     private static void Bind(DbCommand command, string name, object value)
     {
@@ -159,7 +155,7 @@ public static class CorpusSearch
             SELECT meeting.id AS meeting_id,
                    meeting.started_at AS started_at,
                    meeting.title AS title,
-                   'turn' AS source,
+                   '{TurnSource}' AS source,
                    snippet(utterances_fts, 0, '', '', '…', {SnippetTokens}) AS snippet,
                    turn.ordinal AS ordinal,
                    turn.start_ms AS start_ms,
@@ -175,7 +171,7 @@ public static class CorpusSearch
             SELECT meeting.id,
                    meeting.started_at,
                    meeting.title,
-                   'summary',
+                   '{SummarySource}',
                    snippet(summaries_fts, -1, '', '', '…', {SnippetTokens}),
                    NULL,
                    NULL,
