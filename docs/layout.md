@@ -16,6 +16,10 @@ tests/fixtures/deepgram/                  anonymised responses, free to test aga
 Domain, Infrastructure, Processing and CorpusImport each have their tests under
 `tests/<project>.Tests/`.
 
+`Processing` references `Infrastructure`, and only that way round: rendering reads the paid
+response out of the corpus and puts the derivatives back, so it sits above storage. The opposite
+edge would make SQLite depend on how a Deepgram response is parsed.
+
 `tests/MeetingTranscriber.Isa.Tests/` is the exception to that pattern and references no `src/`
 project: it reads `ISA.md` at the repo root. The claims surface is a repo document rather than a
 layer, so its gate does not belong under any one of them.
