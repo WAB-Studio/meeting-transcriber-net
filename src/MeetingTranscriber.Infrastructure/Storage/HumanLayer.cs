@@ -308,7 +308,7 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
 
             existing.PersonId = person.Id;
             existing.AssignedBy = assignedBy;
-            existing.CreatedAt = Now;
+            existing.AssignedAt = Now;
             context.SaveChanges();
             return existing;
         }
@@ -319,7 +319,7 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
             SpeakerLabel = speakerLabel,
             PersonId = person.Id,
             AssignedBy = assignedBy,
-            CreatedAt = Now,
+            AssignedAt = Now,
         };
 
         context.SpeakerAssignments.Add(assignment);

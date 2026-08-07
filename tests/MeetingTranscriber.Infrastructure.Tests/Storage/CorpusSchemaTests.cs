@@ -290,7 +290,7 @@ public class CorpusSchemaTests
         using var context = corpus.OpenMigrated();
 
         Should.Throw<SqliteException>(() => Sql.Execute(context, $"""
-            INSERT INTO artifacts (id, meeting_id, kind, origin, relative_path, byte_size, sha256, created_at)
+            INSERT INTO artifacts (id, meeting_id, kind, origin, relative_path, byte_size, sha256, confirmed_at)
             VALUES ('a', 'no-such-meeting', 'audio', 'source', 'audio.wav', 1, '{Sha256}', '{When}');
             """));
     }
@@ -647,7 +647,7 @@ public class CorpusSchemaTests
 
     private static void InsertArtifact(CorpusDbContext context, string kind, string origin) =>
         Sql.Execute(context, $"""
-            INSERT INTO artifacts (id, meeting_id, kind, origin, relative_path, byte_size, sha256, created_at)
+            INSERT INTO artifacts (id, meeting_id, kind, origin, relative_path, byte_size, sha256, confirmed_at)
             VALUES ('{kind}-{origin}', '{MeetingId}', '{kind}', '{origin}', '{kind}.{origin}', 1, '{Sha256}', '{When}');
             """);
 

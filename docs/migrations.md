@@ -9,12 +9,17 @@ dotnet dotnet-ef migrations add <Name> --project src/MeetingTranscriber.Infrastr
 Everything below is a way that command goes wrong. Two of the five fail silently and one blames
 something that is not at fault, which is why they are written down rather than learned twice.
 
-## Renumber the migration before anything else
+## Check the id sorts last, before anything else
 
-Migration ids here are hand-picked and ahead of the clock, so a freshly generated one sorts
-*before* the ones already committed and would run in the wrong order. Rename the file, its designer
-and the `[Migration]` attribute inside it to the next free slot, and do it first — every check
-below is meaningless against a migration that will never run in the position you tested it in.
+A migration runs in the position its id sorts to, so an id that lands before one already committed
+runs in the wrong order — and every check below is meaningless against a migration you tested in a
+position it will never run in. `ls` the folder and confirm the new file is last.
+
+Twelve of the ids here are hand-picked and were ahead of the clock at the time, which is why a
+generated one used to sort before them and had to be renamed into the next free slot. That block
+ends at `20260806200000_Affiliations`; the clock passed it on 2026-08-07, so a generated timestamp
+now sorts last on its own and is kept. Renaming one into an invented slot from here would be
+reintroducing hand-picked ids for a problem that no longer exists.
 
 ## Run `dotnet format` afterwards
 

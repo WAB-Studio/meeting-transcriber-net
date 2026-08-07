@@ -6,6 +6,9 @@ using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
+
 namespace MeetingTranscriber.Infrastructure.Tests.Storage;
 
 /// <summary>
@@ -132,6 +135,83 @@ public partial class CorpusNamingTests
                 "deleted_at",
             ],
             ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// The two columns that hold when something was settled rather than when its row appeared.
+    /// Both were <c>created_at</c> and both were written over on a row that already existed, so
+    /// they are spelled out here beside the rule that now makes that impossible.
+    /// </summary>
+    [Fact]
+    public void A_timestamp_that_moves_is_named_for_what_it_records()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Sql.Strings(context, "SELECT name FROM pragma_table_info('artifacts');").ShouldBe(
+            [
+                "id",
+                "meeting_id",
+                "kind",
+                "origin",
+                "relative_path",
+                "byte_size",
+                "sha256",
+                "confirmed_at",
+            ],
+            ignoreOrder: true);
+
+        Sql.Strings(context, "SELECT name FROM pragma_table_info('speaker_assignments');").ShouldBe(
+            [
+                "meeting_id",
+                "speaker_label",
+                "person_id",
+                "assigned_by",
+                "assigned_at",
+            ],
+            ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// <c>created_at</c> is a promise about the row and not a place to keep the latest of
+    /// anything, and the model holds every table to it at once rather than each writer holding
+    /// itself to it. Read off the model because that is what the promise covers: a table added
+    /// later is checked without anybody remembering to come back here.
+    /// </summary>
+    [Fact]
+    public void No_created_at_anywhere_can_be_written_over_a_row_that_exists()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.Open();
+
+        var promised = context.Model.GetEntityTypes()
+            .SelectMany(entity => entity.GetProperties())
+            .Where(property => property.GetColumnName() == "created_at")
+            .ToArray();
+
+        promised.ShouldNotBeEmpty();
+        foreach (var property in promised)
+        {
+            property.GetAfterSaveBehavior().ShouldBe(
+                PropertySaveBehavior.Throw,
+                $"{property.DeclaringType.DisplayName()}.{property.Name} can be moved after its row exists");
+        }
+    }
+
+    /// <summary>
+    /// And that the rule is a refusal rather than a note in the model: a person is the table with
+    /// both columns, so moving the wrong one is exactly the mistake being caught.
+    /// </summary>
+    [Fact]
+    public void Moving_a_created_at_on_a_stored_row_fails_instead_of_being_written()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var person = new HumanLayerFixture(context).HumanLayer.Add("Somebody");
+        person.CreatedAt = person.UpdatedAt = HumanLayerFixture.Interviewed;
+
+        Should.Throw<InvalidOperationException>(() => context.SaveChanges());
     }
 
     /// <summary>
