@@ -4,6 +4,7 @@ using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.EntityFrameworkCore;
@@ -364,6 +365,95 @@ public class CorpusImporterTests
             entry.Detail!.Contains("02132d9f-69ba-47c3-ab5b-ca6b4c739408", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// The other half of not importing the Python system's rendered files: the meeting gets those
+    /// files anyway, produced here from the response that was just imported. Without them a legacy
+    /// meeting arrives with nothing to search and no turn a claim could resolve against.
+    /// </summary>
+    [Fact]
+    public void An_imported_meeting_arrives_with_its_derivatives_generated_here()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithCatalog().WithMeeting("2026-07-29 09-35-15");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock)
+            .Import(new LegacyCorpus(legacy.Directory), new ImportOptions(CopyTo: corpus.Root));
+
+        report.MeetingsRendered.ShouldBe(1);
+        report.TurnsProjected.ShouldBeGreaterThan(0);
+
+        var meeting = context.Meetings.Single().Id;
+        context.Utterances.Count(turn => turn.MeetingId == meeting).ShouldBe(report.TurnsProjected);
+
+        foreach (var kind in new[] { ArtifactKind.Transcript, ArtifactKind.Utterances })
+        {
+            var artifact = context.Artifacts.Single(row => row.Kind == kind);
+            artifact.Origin.ShouldBe(ArtifactOrigin.Derived);
+            CorpusFiles.Locate(corpus.Root, artifact.RelativePath).Exists.ShouldBeTrue(artifact.RelativePath);
+        }
+
+        // Rendered here means rendered by this application: a speaker the old corpus resolved is a
+        // name in the transcript, and a correction it carried has been applied.
+        var transcript = File.ReadAllText(CorpusFiles.Locate(
+            corpus.Root,
+            context.Artifacts.Single(row => row.Kind == ArtifactKind.Transcript).RelativePath).FullName);
+        transcript.ShouldContain("## Renée");
+    }
+
+    /// <summary>
+    /// Repeatable, like everything else here. A second run finds the same meeting and re-renders to
+    /// the same bytes rather than to a second file or a different one.
+    /// </summary>
+    [Fact]
+    public void Importing_again_does_not_duplicate_or_rewrite_the_derivatives()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithCatalog().WithMeeting("2026-07-29 09-35-15");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var importer = new CorpusImporter(context, Clock);
+        var options = new ImportOptions(CopyTo: corpus.Root);
+
+        importer.Import(new LegacyCorpus(legacy.Directory), options);
+        var before = context.Artifacts
+            .Where(artifact => artifact.Origin == ArtifactOrigin.Derived)
+            .OrderBy(artifact => artifact.RelativePath)
+            .Select(artifact => artifact.RelativePath + "|" + artifact.Sha256)
+            .ToArray();
+        var turns = context.Utterances.Count();
+
+        importer.Import(new LegacyCorpus(legacy.Directory), options);
+
+        context.Artifacts
+            .Where(artifact => artifact.Origin == ArtifactOrigin.Derived)
+            .OrderBy(artifact => artifact.RelativePath)
+            .Select(artifact => artifact.RelativePath + "|" + artifact.Sha256)
+            .ToArray()
+            .ShouldBe(before);
+        context.Utterances.Count().ShouldBe(turns);
+    }
+
+    /// <summary>
+    /// With the sources left where they are there is nowhere to write a derivative that is not the
+    /// Python corpus, and this tool never writes there. The run says none were rendered rather than
+    /// putting a file next to the response it read.
+    /// </summary>
+    [Fact]
+    public void Without_a_corpus_to_write_into_no_derivative_is_produced()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var before = legacy.Fingerprint();
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        report.MeetingsRendered.ShouldBe(0);
+        context.Utterances.ShouldBeEmpty();
+        context.Artifacts.ShouldAllBe(artifact => artifact.Origin == ArtifactOrigin.Source);
+        legacy.Fingerprint().ShouldBe(before);
+    }
+
     private static Citation Cited(Guid meetingId) => new()
     {
         MeetingId = meetingId,
@@ -578,7 +668,9 @@ public class CorpusImporterTests
         new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
 
         var assignment = context.SpeakerAssignments.Single();
-        assignment.SpeakerLabel.ShouldBe("speaker_0");
+        // The channel is in the label because the label is what a rendered turn carries: a bare
+        // speaker_0 on a two channel meeting names nobody and fails at nothing.
+        assignment.SpeakerLabel.ShouldBe("ch0:speaker_0");
         assignment.AssignedBy.ShouldBe(SpeakerAssignmentSource.Person);
         assignment.PersonId.ShouldBe(context.People.Single(person => person.DisplayName == "Renée").Id);
 
@@ -604,7 +696,7 @@ public class CorpusImporterTests
 
         new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
 
-        context.SpeakerAssignments.ShouldAllBe(assignment => assignment.SpeakerLabel != "channel_1");
+        context.SpeakerAssignments.ShouldAllBe(assignment => !assignment.SpeakerLabel.StartsWith("ch1:"));
         context.People.ShouldAllBe(person => !person.IsMe);
     }
 

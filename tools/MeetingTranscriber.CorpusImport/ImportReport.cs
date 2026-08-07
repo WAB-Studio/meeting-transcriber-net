@@ -53,6 +53,15 @@ public sealed class ImportReport
     public int ExtractionRunsImported => Count(ImportCounter.ExtractionRun);
 
     /// <summary>
+    /// Meetings whose transcript, jsonl and turns this application produced from the response it
+    /// just imported. Zero when the sources were registered where they already are: the derivatives
+    /// would have nowhere to go but the Python corpus, and this tool never writes there.
+    /// </summary>
+    public int MeetingsRendered => Count(ImportCounter.Rendered);
+
+    public int TurnsProjected => Count(ImportCounter.Turn);
+
+    /// <summary>
     /// Files left where they are on purpose, by name and how many meetings had one. They are this
     /// application's to render again, so there are three per meeting and none of them is news.
     /// </summary>
@@ -119,6 +128,7 @@ public sealed class ImportReport
         report.AppendLine($"speakers      {SpeakersResolved} resolved onto a person");
         report.AppendLine($"corrections   {CorrectionsImported}");
         report.AppendLine($"extractions   {ExtractionRunsImported} with the run they came out of");
+        report.AppendLine($"derivatives   {MeetingsRendered} meetings rendered, {TurnsProjected} turns projected");
 
         if (skipped.Count > 0)
         {
@@ -164,4 +174,6 @@ public enum ImportCounter
     Speaker,
     Correction,
     ExtractionRun,
+    Rendered,
+    Turn,
 }

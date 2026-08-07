@@ -22,6 +22,12 @@ internal sealed class TemporaryCorpus : IDisposable
 
     public string DatabasePath { get; }
 
+    /// <summary>
+    /// The corpus root, which is the folder the database sits in and the one <c>meetings/</c> hangs
+    /// off — and what an import copies into when it is asked to copy at all.
+    /// </summary>
+    public DirectoryInfo Root => new(directory);
+
     public CorpusDbContext OpenMigrated() => CorpusDatabase.OpenMigrated(DatabasePath);
 
     public void Dispose()

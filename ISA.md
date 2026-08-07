@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 48/78
+progress: 50/80
 updated: 2026-08-07
 ---
 
@@ -61,6 +61,8 @@ Board: 0 · Contratos y caracterización
 - [x] ISC-21: Anti: the importer never writes to the Python corpus — it comes out exactly as it went in.
 - [x] ISC-22: Importing the same corpus twice imports it once, and a renamed folder is still the same meeting.
 - [x] ISC-23: Anti: what the import cannot place is named in the report, never dropped, and never mixed with what was skipped on purpose.
+- [x] ISC-79: An imported meeting arrives with its derivatives produced here, and importing it again re-renders them rather than duplicating them.
+- [x] ISC-80: Anti: a speaker the old corpus resolved arrives under a label a rendered turn actually carries.
 - [x] ISC-73: Every imported extraction arrives with the run it came out of, carrying what its file knows.
 - [x] ISC-74: A decision, an action and the state a person gives it hang off an imported run.
 
@@ -233,6 +235,20 @@ Board: 7 · Distribución y backup
 
 ## Learning
 
+- **conjecture** — The importer stored a resolved speaker as `speaker_0`, and that was the label,
+  because nothing else in the system had an opinion about it.
+- **refuted-by** — The first legacy meeting rendered through `MeetingRenderer` produced turns
+  labelled `ch0:speaker_0`, so every assignment the old corpus carried matched no turn and no name
+  reached the transcript. Nothing failed: an assignment for a label that does not exist is a row
+  the join simply does not find.
+- **learned** — A contract only holds where two sides of it meet. `SpeakerLabels.For` was written,
+  documented and tested, and the importer spelled the string out by hand a few lines away — which
+  is the one thing that could silently lose the most valuable rows in the old corpus, because every
+  one of them is somebody having listened.
+- **criterion-now** — A stored label is built by `SpeakerLabels.For` and never spelled out, and a
+  writer of `speaker_assignments` is tested against a rendered turn rather than against a string
+  literal. Both sides come from the same function or neither is proved.
+
 - **conjecture** — `dotnet test --filter "FullyQualifiedName~X"` selects a test class, so a
   Test Strategy row could name the filter alone and stay short.
 - **refuted-by** — Run against `TurnsTests` it executed all 439 tests across all four projects
@@ -296,3 +312,5 @@ Board: 7 · Distribución y backup
 - ISC-76 — `TurnsTests.A_turns_confidence_is_the_mean_of_its_parts_weighted_by_their_length` green 2026-08-07
 - ISC-77 — `CorpusRebuildTests.Rebuilding_produces_the_same_projections_and_the_same_files` green 2026-08-07
 - ISC-78 — `CorpusRebuildTests.A_claim_still_points_at_the_turn_it_came_from` green 2026-08-07
+- ISC-79 — `CorpusImporterTests.Importing_again_does_not_duplicate_or_rewrite_the_derivatives` green 2026-08-07
+- ISC-80 — `CorpusImporterTests.A_speaker_somebody_resolved_arrives_under_the_label_the_provider_wrote` green 2026-08-07
