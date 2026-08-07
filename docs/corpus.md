@@ -82,6 +82,12 @@ Everything else is a source, and the part that matters most is the **human layer
 classifications on `meetings`. None of it is inferable from any artifact, so a backup that copies
 only the files loses it.
 
+`HumanLayer` writes all of it, and the reason it exists rather than a page of `context.Add` is the
+two rules that cannot be constraints: exactly one person is the user of this install, and a speaker
+label somebody resolved is not overwritten by one the recording settled. The first is two rows
+changing together, which a unique index refuses halfway through; the second is the same row written
+twice, of which the database only ever sees the second.
+
 Runs and jobs — `capture_runs`, `processing_jobs`, `transcription_runs`, `extraction_runs` — are
 sources too. They are the record of what was charged and what state a restart found.
 

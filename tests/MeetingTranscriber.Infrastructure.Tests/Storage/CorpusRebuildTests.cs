@@ -1,3 +1,4 @@
+using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.Data.Sqlite;
@@ -17,6 +18,26 @@ public class CorpusRebuildTests
     private const string JobId = "44444444-4444-4444-4444-444444444444";
     private const string When = "2026-08-05T14:00:00.000Z";
     private const string Sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+
+    /// <summary>The four tables a rebuild empties, and the whole of what it is allowed to empty.</summary>
+    private static readonly string[] Derived = ["action_items", "decisions", "summaries", "utterances"];
+
+    /// <summary>
+    /// The tables <c>docs/corpus.md</c> calls the human layer. Spelled out rather than derived,
+    /// because the point of the list is to fail when one of them is missing from what was written.
+    /// </summary>
+    private static readonly string[] HumanLayerTables =
+    [
+        "nodes",
+        "meeting_nodes",
+        "templates",
+        "people",
+        "affiliations",
+        "meeting_people",
+        "speaker_assignments",
+        "terminology_corrections",
+        "action_item_progress",
+    ];
 
     [Fact]
     public void Rebuilding_the_projections_leaves_every_action_where_its_owner_left_it()
@@ -227,6 +248,89 @@ public class CorpusRebuildTests
             ordinal: 0,
             statement: "send the budget again",
             utteranceOrdinal: 0));
+    }
+
+    /// <summary>
+    /// The promise <c>docs/corpus.md</c> makes about the whole corpus and not only about the tables
+    /// somebody thought to check: the four derived tables are thrown away and projected again, and
+    /// every other table comes back byte for byte what it was.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The tables are read out of the database rather than listed here, so one added later is
+    /// compared without anybody remembering to add it — and so are the columns, which is the failure
+    /// worth catching: a human layer column quietly deleted looks exactly like a rebuild working.
+    /// </para>
+    /// <para>
+    /// The human layer goes in through <see cref="HumanLayer"/> rather than through SQL. What is
+    /// under test is what a rebuild leaves alone, so the rows have to be the ones the application
+    /// would actually have written; hand-written SQL could satisfy this while the real write path
+    /// put a column somewhere a rebuild deletes.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Deleting_every_derived_row_and_projecting_again_leaves_every_other_table_as_it_was()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Project(context, generation: "first");
+        WriteHumanLayer(context);
+
+        var before = Snapshot(context);
+
+        // The snapshot is only worth comparing if it holds the rows this is about. Without this the
+        // test passes just as well over a corpus where nothing was ever written.
+        foreach (var table in HumanLayerTables)
+        {
+            before.ShouldContain(row => row.StartsWith($"{table}: ", StringComparison.Ordinal), customMessage: table);
+        }
+
+        Rebuild(context);
+
+        Snapshot(context).ShouldBe(before);
+    }
+
+    /// <summary>
+    /// Every table the corpus holds except the four a rebuild is allowed to empty, each row as text
+    /// with its columns in a fixed order.
+    /// </summary>
+    private static List<string> Snapshot(CorpusDbContext context) =>
+    [
+        .. Sql.Tables(context)
+            .Where(table => !Derived.Contains(table, StringComparer.Ordinal))
+            .SelectMany(table => Sql.Rows(context, table).Select(row => $"{table}: {row}")),
+    ];
+
+    /// <summary>
+    /// A human layer with something in every one of its tables, written the way the application
+    /// writes one.
+    /// </summary>
+    private static void WriteHumanLayer(CorpusDbContext context)
+    {
+        var clock = new SteppedClock(new DateTimeOffset(2026, 8, 7, 12, 0, 0, TimeSpan.Zero));
+        var human = new HumanLayer(context, clock);
+        var meeting = Guid.Parse(MeetingId);
+
+        var techsed = human.Root(NodeKind.Organization, "TechSed");
+        var coati = human.Under(techsed, NodeKind.Initiative, "Coati");
+        var template = human.Template("trabajo");
+        var ada = human.Add("Ada");
+        var jo = human.Add("Jo");
+
+        human.ThisIsMe(ada);
+        human.Join(ada, techsed);
+        human.Link(meeting, coati, MeetingNodeRole.WorkOf);
+        human.Link(meeting, techsed, MeetingNodeRole.Counterpart);
+        // Both roles at once, which is the pair a single row per person could not hold.
+        human.Name(meeting, jo, MeetingPersonRole.Attended);
+        human.Name(meeting, jo, MeetingPersonRole.Subject);
+        human.Assign(meeting, "ch1:speaker_0", ada);
+        human.Correct("quati", "Coati", under: coati);
+        human.Mark(Guid.Parse(ExtractionRunId), ordinal: 0, ActionItemState.Done, jo);
+
+        var stored = context.Meetings.Find(meeting)!;
+        human.Describe(stored, "la daily del equipo", "arranca el sprint");
+        human.Shape(stored, template);
     }
 
     /// <summary>What a rebuild does: every derived row goes, then the same sources go back in.</summary>
