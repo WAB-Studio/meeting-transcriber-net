@@ -91,6 +91,18 @@ sources too. They are the record of what was charged and what state a restart fo
 the side it belongs on. A migration that moves a kind across the line is a deliberate act, not a
 typo that slips through.
 
+On disk it is the same line, enforced by the write itself: `StagedArtifact.Commit` puts a source in
+place with the replace refused, so the filesystem is what stops a paid response being overwritten
+rather than a check above it that a second writer could pass between the looking and the moving. A
+derivative replaces what was there, which is what re-rendering is, and keeps the one row the backup
+and the rebuild walk.
+
+The two cannot be written together, so the order decides which one is wrong first when the power
+goes: the file lands, then the row. A corpus that says less than it holds is recovered by looking;
+one that says more is a corpus that lies when it is read. `ArtifactReconciler` is what looks —
+unfinished writes, which it may delete because they were never artifacts, and files with no row,
+which it never touches because one of them may be the only copy of something that was paid for.
+
 Two consequences worth stating plainly:
 
 - A rerender never touches `deepgram.json` or an earlier extraction. A new extraction gets a new
