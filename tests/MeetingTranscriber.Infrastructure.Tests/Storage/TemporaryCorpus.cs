@@ -24,6 +24,13 @@ internal sealed class TemporaryCorpus : IDisposable
 
     public string DatabasePath { get; }
 
+    /// <summary>
+    /// The corpus root, which is the folder the database sits in and the one <c>meetings/</c> and
+    /// <c>spool/</c> hang off. The same arrangement a real corpus has, so a test that walks it is
+    /// walking the layout the application writes.
+    /// </summary>
+    public DirectoryInfo Root => new(_directory);
+
     public CorpusDbContext Open() => CorpusDatabase.Open(DatabasePath);
 
     public CorpusDbContext OpenMigrated() => CorpusDatabase.OpenMigrated(DatabasePath);
