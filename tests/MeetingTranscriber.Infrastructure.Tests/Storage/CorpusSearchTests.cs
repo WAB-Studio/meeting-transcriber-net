@@ -1,5 +1,9 @@
+using System.Data;
+
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
+
+using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Infrastructure.Tests.Storage;
 
@@ -160,6 +164,24 @@ public class CorpusSearchTests
 
         refused.Query.ShouldBe("presupuesto AND");
         refused.Message.ShouldContain("presupuesto AND");
+    }
+
+    /// <summary>
+    /// A search borrows the connection and hands it back. EF opens one per operation and closes it
+    /// again, so a search that left its own open would pin the SQLite handle for as long as the
+    /// context lives — which for the UI is the whole session, with the MCP server reading beside it.
+    /// </summary>
+    [Fact]
+    public void A_search_leaves_the_connection_as_it_found_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Corpus.Write(context);
+        context.Database.GetDbConnection().State.ShouldBe(ConnectionState.Closed);
+
+        CorpusSearch.Find(context, "presupuesto").ShouldNotBeEmpty();
+
+        context.Database.GetDbConnection().State.ShouldBe(ConnectionState.Closed);
     }
 
     [Fact]

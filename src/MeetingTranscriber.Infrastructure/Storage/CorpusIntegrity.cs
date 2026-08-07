@@ -1,6 +1,3 @@
-using System.Data;
-using System.Data.Common;
-
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
@@ -101,7 +98,7 @@ public static class CorpusIntegrity
     }
 
     /// <summary>Whether the file itself still reads as a database.</summary>
-    private static IEnumerable<CorpusProblem> FileIsIntact(CorpusDbContext context) => Rows(
+    private static IEnumerable<CorpusProblem> FileIsIntact(CorpusDbContext context) => RawSql.Rows(
             context,
             "PRAGMA integrity_check;",
             reader => reader.GetString(0))
@@ -113,7 +110,7 @@ public static class CorpusIntegrity
     /// forgot to turn them on holds rows the schema says are impossible, and every one of them is
     /// still sitting there afterwards.
     /// </summary>
-    private static IEnumerable<CorpusProblem> EveryReferencePointsAtSomething(CorpusDbContext context) => Rows(
+    private static IEnumerable<CorpusProblem> EveryReferencePointsAtSomething(CorpusDbContext context) => RawSql.Rows(
         context,
         "PRAGMA foreign_key_check;",
         reader => new CorpusProblem(
@@ -160,25 +157,4 @@ public static class CorpusIntegrity
 
     private static void Execute(CorpusDbContext context, string sql) =>
         context.Database.ExecuteSqlRaw(sql);
-
-    private static List<T> Rows<T>(CorpusDbContext context, string sql, Func<DbDataReader, T> read)
-    {
-        var connection = context.Database.GetDbConnection();
-        if (connection.State is not ConnectionState.Open)
-        {
-            context.Database.OpenConnection();
-        }
-
-        using var command = connection.CreateCommand();
-        command.CommandText = sql;
-
-        var rows = new List<T>();
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
-        {
-            rows.Add(read(reader));
-        }
-
-        return rows;
-    }
 }
