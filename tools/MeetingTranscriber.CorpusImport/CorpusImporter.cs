@@ -200,9 +200,16 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
                     CreatedAt = now,
                     UpdatedAt = now,
                 };
-                existing.WorksAt(Lookup(organizations, entry.CompanyId));
                 context.People.Add(existing);
                 report.Imported(ImportCounter.Person);
+
+                // Open at both ends. The legacy catalog names one company per person and no dates
+                // at all, so anything narrower here would be this tool inventing when they joined.
+                if (Lookup(organizations, entry.CompanyId) is { } organization)
+                {
+                    context.Affiliations.Add(Affiliation.At(Guid.NewGuid(), existing, organization, now));
+                    report.Imported(ImportCounter.Affiliation);
+                }
             }
 
             byId[entry.Id] = existing.Id;
@@ -492,15 +499,20 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             });
             report.Imported(ImportCounter.Speaker);
 
-            var present = context.MeetingParticipants.Local
-                .Concat(context.MeetingParticipants.Where(participant => participant.MeetingId == meeting.Id))
-                .Any(participant => participant.MeetingId == meeting.Id && participant.PersonId == personId);
+            // Attended, and nothing more: a resolved speaker label is somebody having talked. What
+            // a meeting was about is not in the legacy corpus, so no subject is written here.
+            var present = context.MeetingPeople.Local
+                .Concat(context.MeetingPeople.Where(person => person.MeetingId == meeting.Id))
+                .Any(person => person.MeetingId == meeting.Id
+                    && person.PersonId == personId
+                    && person.Role == MeetingPersonRole.Attended);
             if (!present)
             {
-                context.MeetingParticipants.Add(new MeetingParticipant
+                context.MeetingPeople.Add(new MeetingPerson
                 {
                     MeetingId = meeting.Id,
                     PersonId = personId,
+                    Role = MeetingPersonRole.Attended,
                     CreatedAt = now,
                 });
             }

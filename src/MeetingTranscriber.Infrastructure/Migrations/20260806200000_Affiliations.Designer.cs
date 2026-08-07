@@ -3,6 +3,7 @@ using System;
 using MeetingTranscriber.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace MeetingTranscriber.Infrastructure.Migrations
 {
     [DbContext(typeof(CorpusDbContext))]
-    partial class CorpusDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260806200000_Affiliations")]
+    partial class Affiliations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -1554,3 +1557,4 @@ namespace MeetingTranscriber.Infrastructure.Migrations
         }
     }
 }
+

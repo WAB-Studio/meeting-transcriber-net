@@ -18,8 +18,8 @@ public partial class CorpusNamingTests
     /// <summary>
     /// Every stored value, spelled out. It is also read back by
     /// <see cref="Every_enum_the_model_stores_is_spelled_out_here"/>, so an enum the model persists
-    /// and this list has not heard of fails rather than going uncovered — which is how the three
-    /// marked provisional, and therefore likeliest to be renamed, were the ones missing.
+    /// and this list has not heard of fails rather than going uncovered — which is how the
+    /// classification, the newest and least settled of them, was the one missing.
     /// </summary>
     private static readonly (object Value, string Stored)[] Names =
     [
@@ -64,16 +64,17 @@ public partial class CorpusNamingTests
         (AuditActor.App, "app"),
         (AuditActor.Agent, "agent"),
 
-        // Provisional, which is exactly why they are here: a rename changes what is on disk and
-        // the CHECK behind it at the same time, and neither the migration nor a test would notice.
+        // The classification vocabulary, closed against the thirteen meetings arquitectura.md §5.3
+        // lists. A rename changes what is on disk and the CHECK behind it at the same time, and
+        // neither the migration nor a test elsewhere would notice.
         (NodeKind.Organization, "organization"),
         (NodeKind.Initiative, "initiative"),
         (NodeKind.Topic, "topic"),
         (MeetingNodeRole.WorkOf, "work_of"),
         (MeetingNodeRole.Counterpart, "counterpart"),
         (MeetingNodeRole.About, "about"),
-        (ParticipantRole.Attended, "attended"),
-        (ParticipantRole.Subject, "subject"),
+        (MeetingPersonRole.Attended, "attended"),
+        (MeetingPersonRole.Subject, "subject"),
     ];
 
     public static TheoryData<object, string> StoredNames
@@ -180,7 +181,7 @@ public partial class CorpusNamingTests
     /// <summary>
     /// Which enums to spell out is read off the model rather than remembered. The list above was
     /// hand-written, so what it missed was whatever went in last — and what went in last was the
-    /// classification, whose names are the ones marked provisional and likeliest to move.
+    /// classification, the one vocabulary that had not been settled yet.
     /// </summary>
     [Fact]
     public void Every_enum_the_model_stores_is_spelled_out_here()
@@ -263,7 +264,7 @@ public partial class CorpusNamingTests
     {
         NodeKind kind => WireNames<NodeKind>.Of(kind),
         MeetingNodeRole role => WireNames<MeetingNodeRole>.Of(role),
-        ParticipantRole role => WireNames<ParticipantRole>.Of(role),
+        MeetingPersonRole role => WireNames<MeetingPersonRole>.Of(role),
         SourceProfile profile => WireNames<SourceProfile>.Of(profile),
         LifecycleState state => WireNames<LifecycleState>.Of(state),
         JobKind kind => WireNames<JobKind>.Of(kind),

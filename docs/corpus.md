@@ -77,7 +77,7 @@ before a rebuild it still has pending, so the statements would run against the t
 dropped.
 
 Everything else is a source, and the part that matters most is the **human layer**: `nodes`,
-`meeting_nodes`, `templates`, `people`, `meeting_participants`, `speaker_assignments`,
+`meeting_nodes`, `templates`, `people`, `affiliations`, `meeting_people`, `speaker_assignments`,
 `terminology_corrections`, `action_item_progress`, and the titles, context notes and
 classifications on `meetings`. None of it is inferable from any artifact, so a backup that copies
 only the files loses it.

@@ -6,28 +6,14 @@ namespace MeetingTranscriber.Domain.Meetings;
 // so a backup that copies only the files loses it.
 
 /// <summary>Somebody who appears in meetings.</summary>
+/// <remarks>
+/// Where they work is not here: it is an <see cref="Affiliation"/>, of which they have as many as
+/// they have, because a contractor works for two clients at once and somebody moving between
+/// companies belongs to both for a month.
+/// </remarks>
 public class Person
 {
     public Guid Id { get; set; }
-
-    /// <summary>
-    /// Where they work, when that is known. One person at a time, which is already known to be too
-    /// few — a contractor works for two clients, and somebody leaving one company for another
-    /// belongs to both for a month.
-    /// </summary>
-    /// <remarks>
-    /// Set through <see cref="WorksAt"/>, which is what keeps it in step with
-    /// <see cref="OrganizationKind"/>: the pair is one foreign key onto a node's id and class, so
-    /// "their organization is a node of kind organization" is refused by the database and not
-    /// merely asserted here.
-    /// </remarks>
-    public Guid? OrganizationId { get; private set; }
-
-    /// <summary>
-    /// Always <see cref="NodeKind.Organization"/> when there is an organization at all. It is the
-    /// half of the key that says which class the node has to be.
-    /// </summary>
-    public NodeKind? OrganizationKind { get; private set; }
 
     public required string DisplayName { get; set; }
 
@@ -40,33 +26,120 @@ public class Person
     public UtcTimestamp CreatedAt { get; set; }
 
     public UtcTimestamp UpdatedAt { get; set; }
-
-    /// <summary>
-    /// Records where they work, or clears it when given nothing. Only an organization will do: a
-    /// project and a ticket are places work happens, not people's employers.
-    /// </summary>
-    public void WorksAt(Node? organization)
-    {
-        if (organization is not null && organization.Kind is not NodeKind.Organization)
-        {
-            throw new ClassificationException(
-                $"'{DisplayName}' cannot work at '{organization.Name}': it is a {organization.Kind}, not an {NodeKind.Organization}.");
-        }
-
-        OrganizationId = organization?.Id;
-        OrganizationKind = organization is null ? null : NodeKind.Organization;
-    }
 }
 
-/// <summary>A person confirmed to have been in a meeting.</summary>
-public class MeetingParticipant
+/// <summary>
+/// Somebody at an organization, for as long as they were there. Employment is one of these, and so
+/// are contracting, membership and being enrolled — the corpus records that the person and the
+/// organization go together, not under which contract.
+/// </summary>
+/// <remarks>
+/// <para>
+/// It carries a period because a meeting is read years after it happened: without one, hiring the
+/// candidate you interviewed rewrites the interview into a meeting with your own employee. Both
+/// ends are open rather than unknown — no start is "as far back as this corpus goes", no end is
+/// "still there" — and a corpus that never learned the dates has both, which is what the legacy
+/// import produces.
+/// </para>
+/// <para>
+/// The class travels beside the id so the pair is one foreign key onto a node's own id and class:
+/// that somebody's organization is a node of kind organization is refused by the database, and a
+/// project or a ticket has nowhere to be written.
+/// </para>
+/// </remarks>
+public class Affiliation
+{
+    private Affiliation()
+    {
+    }
+
+    public Guid Id { get; private set; }
+
+    public Guid PersonId { get; private set; }
+
+    public Guid OrganizationId { get; private set; }
+
+    /// <summary>Always <see cref="NodeKind.Organization"/>: the half of the key that says so.</summary>
+    public NodeKind OrganizationKind { get; private set; }
+
+    /// <summary>When they joined, or null for as far back as this corpus knows.</summary>
+    public UtcTimestamp? StartedAt { get; private set; }
+
+    /// <summary>When they left, or null while they are still there.</summary>
+    public UtcTimestamp? EndedAt { get; private set; }
+
+    public UtcTimestamp CreatedAt { get; private set; }
+
+    /// <summary>
+    /// Puts somebody at an organization. Only an organization will do: a project and a ticket are
+    /// places work happens, not places people belong to.
+    /// </summary>
+    public static Affiliation At(
+        Guid id,
+        Person person,
+        Node organization,
+        UtcTimestamp now,
+        UtcTimestamp? from = null,
+        UtcTimestamp? until = null)
+    {
+        ArgumentNullException.ThrowIfNull(person);
+        ArgumentNullException.ThrowIfNull(organization);
+
+        if (organization.Kind is not NodeKind.Organization)
+        {
+            throw new ClassificationException(
+                $"'{person.DisplayName}' cannot be at '{organization.Name}': it is a {organization.Kind}, not an {NodeKind.Organization}.");
+        }
+
+        var affiliation = new Affiliation
+        {
+            Id = id,
+            PersonId = person.Id,
+            OrganizationId = organization.Id,
+            OrganizationKind = NodeKind.Organization,
+            StartedAt = from,
+            CreatedAt = now,
+        };
+
+        if (until is { } end)
+        {
+            affiliation.Ended(end);
+        }
+
+        return affiliation;
+    }
+
+    /// <summary>Closes it. Leaving before arriving is a typo, and this is where it is caught.</summary>
+    public void Ended(UtcTimestamp at)
+    {
+        if (StartedAt is { } start && at < start)
+        {
+            throw new ClassificationException($"An affiliation cannot end at {at} and have started at {start}.");
+        }
+
+        EndedAt = at;
+    }
+
+    /// <summary>
+    /// Whether it held then, which is the question every reading of an old meeting asks. Half open
+    /// on purpose: the day somebody leaves one company and joins another belongs to the new one,
+    /// and counting it twice would put them in both.
+    /// </summary>
+    public bool Held(UtcTimestamp at) =>
+        (StartedAt is not { } start || start <= at) && (EndedAt is not { } end || at < end);
+}
+
+/// <summary>
+/// A person a meeting names, and the part that says how. A person has as many of these as apply:
+/// their own one to one is one they attended and are the subject of, and both are true at once.
+/// </summary>
+public class MeetingPerson
 {
     public Guid MeetingId { get; set; }
 
     public Guid PersonId { get; set; }
 
-    /// <summary>Why they are on it. Most people attended; some are what it was about.</summary>
-    public ParticipantRole Role { get; set; } = ParticipantRole.Attended;
+    public MeetingPersonRole Role { get; set; } = MeetingPersonRole.Attended;
 
     public UtcTimestamp CreatedAt { get; set; }
 }

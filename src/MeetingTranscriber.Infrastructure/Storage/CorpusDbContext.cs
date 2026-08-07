@@ -56,7 +56,9 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
     public DbSet<Person> People => Set<Person>();
 
-    public DbSet<MeetingParticipant> MeetingParticipants => Set<MeetingParticipant>();
+    public DbSet<Affiliation> Affiliations => Set<Affiliation>();
+
+    public DbSet<MeetingPerson> MeetingPeople => Set<MeetingPerson>();
 
     public DbSet<SpeakerAssignment> SpeakerAssignments => Set<SpeakerAssignment>();
 
@@ -149,32 +151,55 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
         modelBuilder.Entity<Person>(person =>
         {
-            person.ToTable("people", table => table.HasCheckConstraint(
-                "ck_people_organization",
-                $"(organization_id IS NULL) = (organization_kind IS NULL)"
-                + $" AND (organization_kind IS NULL OR organization_kind = '{Organization}')"));
-
+            person.ToTable("people");
             person.HasKey(entity => entity.Id);
-            // The class travels with the id, so a person whose employer is a project or a ticket
-            // is refused by the key rather than by whoever wrote the insert.
-            person.HasOne<Node>().WithMany()
-                .HasForeignKey(entity => new { entity.OrganizationId, entity.OrganizationKind })
-                .HasPrincipalKey(node => new { node.Id, node.Kind })
-                // Losing an organization does not lose the people who were in it: they are in
-                // meetings, and a meeting without its participants is not repairable.
-                .OnDelete(DeleteBehavior.SetNull);
         });
 
-        modelBuilder.Entity<MeetingParticipant>(participant =>
+        modelBuilder.Entity<Affiliation>(affiliation =>
         {
-            participant.ToTable("meeting_participants", table => table.HasCheckConstraint(
-                "ck_meeting_participants_role",
-                $"role IN ({WireNames<ParticipantRole>.AsSqlList()})"));
+            affiliation.ToTable("affiliations", table =>
+            {
+                table.HasCheckConstraint("ck_affiliations_organization", $"organization_kind = '{Organization}'");
+                table.HasCheckConstraint(
+                    "ck_affiliations_period",
+                    "started_at IS NULL OR ended_at IS NULL OR ended_at >= started_at");
+            });
 
-            participant.HasKey(entity => new { entity.MeetingId, entity.PersonId });
-            participant.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
+            affiliation.HasKey(entity => entity.Id);
+            // Somebody can be at the same organization twice — they left and came back — so the
+            // pair is not the key. What cannot happen is two of them open at once: that is the
+            // same fact written twice, and nothing downstream could tell which one to close.
+            affiliation.HasIndex(entity => new { entity.PersonId, entity.OrganizationId })
+                .IsUnique()
+                .HasFilter("ended_at IS NULL");
+            affiliation.HasOne<Person>().WithMany().HasForeignKey(entity => entity.PersonId)
                 .OnDelete(DeleteBehavior.Cascade);
-            participant.HasOne<Person>().WithMany().HasForeignKey(entity => entity.PersonId)
+            // The class travels with the id, so somebody said to be at a project or a ticket is
+            // refused by the key rather than by whoever wrote the insert. Losing an organization
+            // takes the affiliations to it and leaves the people: they are in meetings, and a
+            // meeting without the people on it is not repairable. Who is at this organization needs
+            // no index of its own — this key brings one, and it leads with the id.
+            affiliation.HasOne<Node>().WithMany()
+                .HasForeignKey(entity => new { entity.OrganizationId, entity.OrganizationKind })
+                .HasPrincipalKey(node => new { node.Id, node.Kind })
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<MeetingPerson>(person =>
+        {
+            person.ToTable("meeting_people", table => table.HasCheckConstraint(
+                "ck_meeting_people_role",
+                $"role IN ({WireNames<MeetingPersonRole>.AsSqlList()})"));
+
+            // The role is part of the key, as it is for a node: somebody's own one to one is a
+            // meeting they attended and are the subject of, and one column made that a choice.
+            person.HasKey(entity => new { entity.MeetingId, entity.PersonId, entity.Role });
+            // Every meeting somebody is on. The key leads with the meeting, so searching by person
+            // is the one direction it cannot serve.
+            person.HasIndex(entity => entity.PersonId);
+            person.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            person.HasOne<Person>().WithMany().HasForeignKey(entity => entity.PersonId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

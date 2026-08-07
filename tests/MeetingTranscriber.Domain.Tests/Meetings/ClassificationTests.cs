@@ -10,8 +10,12 @@ namespace MeetingTranscriber.Domain.Tests.Meetings;
 /// </summary>
 public class ClassificationTests
 {
-    private static readonly UtcTimestamp Now =
-        UtcTimestamp.From(new DateTimeOffset(2026, 8, 6, 12, 0, 0, TimeSpan.Zero));
+    private static readonly UtcTimestamp Now = At(2026, 8, 6);
+
+    /// <summary>Three instants a year apart, for the affiliations that begin and end between them.</summary>
+    private static readonly UtcTimestamp Joined = At(2024, 3, 1);
+
+    private static readonly UtcTimestamp Left = At(2025, 6, 30);
 
     [Fact]
     public void A_root_is_at_the_top_with_nothing_above_it()
@@ -94,34 +98,85 @@ public class ClassificationTests
     }
 
     /// <summary>
-    /// Where somebody works is an organization. A project and a ticket are places work happens,
-    /// not employers, and the class is carried alongside the id so the key can say so too.
+    /// Somebody belongs to an organization. A project and a ticket are places work happens, not
+    /// places people belong to, and the class is carried alongside the id so the key can say so too.
     /// </summary>
     [Fact]
-    public void A_person_works_at_an_organization_and_nothing_else()
+    public void Somebody_is_at_an_organization_and_nothing_else()
     {
         var organization = Root(NodeKind.Organization, "TechSed");
         var initiative = Under(organization, NodeKind.Initiative, "Coati");
-        var person = new Person { Id = Guid.NewGuid(), DisplayName = "Renée", CreatedAt = Now, UpdatedAt = Now };
+        var person = Somebody();
 
-        person.WorksAt(organization);
-        person.OrganizationId.ShouldBe(organization.Id);
-        person.OrganizationKind.ShouldBe(NodeKind.Organization);
+        var affiliation = Affiliation.At(Guid.NewGuid(), person, organization, Now);
+        affiliation.PersonId.ShouldBe(person.Id);
+        affiliation.OrganizationId.ShouldBe(organization.Id);
+        affiliation.OrganizationKind.ShouldBe(NodeKind.Organization);
 
-        Should.Throw<ClassificationException>(() => person.WorksAt(initiative));
+        Should.Throw<ClassificationException>(() => Affiliation.At(Guid.NewGuid(), person, initiative, Now));
+    }
+
+    /// <summary>
+    /// The case the single column could not hold. Both are open, both are true, and neither is a
+    /// row somebody had to invent to say the other.
+    /// </summary>
+    [Fact]
+    public void Somebody_can_be_at_two_organizations_at_once()
+    {
+        var person = Somebody();
+        var one = Affiliation.At(Guid.NewGuid(), person, Root(NodeKind.Organization, "TechSed"), Now);
+        var other = Affiliation.At(Guid.NewGuid(), person, Root(NodeKind.Organization, "A Client"), Now);
+
+        one.Held(Now).ShouldBeTrue();
+        other.Held(Now).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// An affiliation with no dates held then and holds now: a corpus that never learned the dates
+    /// is the ordinary case — it is what the legacy import produces — and not a broken one.
+    /// </summary>
+    [Fact]
+    public void An_affiliation_open_at_both_ends_holds_whenever_it_is_asked()
+    {
+        var affiliation = Affiliation.At(Guid.NewGuid(), Somebody(), Root(NodeKind.Organization, "TechSed"), Now);
+
+        affiliation.Held(Joined).ShouldBeTrue();
+        affiliation.Held(Left).ShouldBeTrue();
+        affiliation.Held(Now).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Why the period is there at all: reading a meeting from the year they were somewhere else has
+    /// to give the answer that was true then, not the one that is true now.
+    /// </summary>
+    [Fact]
+    public void An_affiliation_that_ended_stops_holding_the_moment_it_did()
+    {
+        var affiliation = Affiliation.At(
+            Guid.NewGuid(), Somebody(), Root(NodeKind.Organization, "TechSed"), Now, from: Joined, until: Left);
+
+        affiliation.Held(At(2024, 2, 29)).ShouldBeFalse();
+        affiliation.Held(Joined).ShouldBeTrue();
+        affiliation.Held(At(2025, 6, 29)).ShouldBeTrue();
+        // Half open, so the day somebody moves belongs to where they went and not to both.
+        affiliation.Held(Left).ShouldBeFalse();
+        affiliation.Held(Now).ShouldBeFalse();
     }
 
     [Fact]
-    public void Somebody_who_works_nowhere_carries_neither_half_of_the_key()
+    public void An_affiliation_cannot_end_before_it_started()
     {
-        var person = new Person { Id = Guid.NewGuid(), DisplayName = "Renée", CreatedAt = Now, UpdatedAt = Now };
-        person.WorksAt(Root(NodeKind.Organization, "TechSed"));
+        var affiliation = Affiliation.At(
+            Guid.NewGuid(), Somebody(), Root(NodeKind.Organization, "TechSed"), Now, from: Left);
 
-        person.WorksAt(null);
-
-        person.OrganizationId.ShouldBeNull();
-        person.OrganizationKind.ShouldBeNull();
+        Should.Throw<ClassificationException>(() => affiliation.Ended(Joined));
     }
+
+    private static UtcTimestamp At(int year, int month, int day) =>
+        UtcTimestamp.From(new DateTimeOffset(year, month, day, 12, 0, 0, TimeSpan.Zero));
+
+    private static Person Somebody() =>
+        new() { Id = Guid.NewGuid(), DisplayName = "Renée", CreatedAt = Now, UpdatedAt = Now };
 
     private static Node Root(NodeKind kind, string name) => Node.Root(Guid.NewGuid(), kind, name, Now);
 

@@ -14,6 +14,9 @@
     <Project Path="tests/MeetingTranscriber.Infrastructure.Tests/MeetingTranscriber.Infrastructure.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Processing.Tests/MeetingTranscriber.Processing.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.CorpusImport.Tests/MeetingTranscriber.CorpusImport.Tests.csproj" />
+    <!-- Reads ISA.md, references no src project: the claims surface is a repo document, not a
+         layer, so its gate does not belong under any one of them. -->
+    <Project Path="tests/MeetingTranscriber.Isa.Tests/MeetingTranscriber.Isa.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <!-- Run by hand, in the solution so the build and the formatter still see it. -->

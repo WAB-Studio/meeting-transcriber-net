@@ -22,6 +22,7 @@ something here has stopped earning its place, and the fix is to move a section o
 | Where the rest lives | Open it when |
 | --- | --- |
 | `arquitectura.md` | The design as a whole, in Spanish. Written in the destination, not the present. |
+| `docs/layout.md` | Looking for where something lives. |
 | `docs/migrations.md` | Adding or editing an EF migration. |
 | `docs/packages.md` | Adding, bumping or choosing a package. |
 | `docs/corpus.md` | Deciding what gets backed up, what is deletable, what is rebuildable. |
@@ -55,26 +56,26 @@ cloned under `\\wsl$\`: MSBuild is slow over the crossed filesystem and Hot Relo
 
 ## Layout
 
-```text
-src/MeetingTranscriber.App/               WinUI 3, packaged as MSIX
-src/MeetingTranscriber.Domain/            entities, states and pure rules
-src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
-src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
-tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
-tools/MeetingTranscriber.CorpusImport/    reads a Python corpus in, then gets deleted
-tests/fixtures/deepgram/                  anonymised responses, free to test against
-```
+`src/` is the product and `tools/` is run by hand beside it: nothing under `src/` may reference
+`tools/` or know the Python system existed, so deleting the importer deletes two folders rather
+than untangling the application. The seven-project split in `arquitectura.md` §3 is the
+destination — a project appears when there is code for it, dependencies point inwards, and
+`MeetingTranscriber.Domain` stays free of Windows references, with tests asserting exactly that.
 
-Domain, Infrastructure, Processing and CorpusImport each have their tests under
-`tests/<project>.Tests/`.
+## How work starts and ends
 
-`tools/` is run by hand and is not part of the product. Nothing under `src/` may reference it or
-know the Python system existed, so deleting the importer is deleting two folders rather than
-untangling the application — its README says what that deletion is.
+`ISA.md` says what done means, the board says what to do next, and **a claim closes on a probe
+that ran, never on a task moving.**
 
-The seven-project split in `arquitectura.md` §3 is the destination, not the scaffolding: a project
-appears when there is code to put in it. Dependencies point inwards, and `MeetingTranscriber.Domain`
-stays free of Windows and WinUI references, with tests asserting exactly that.
+1. Work starts from a board task, and the claims it closes exist in `ISA.md` before anything is
+   built — if they do not, they get written first, each stating what would prove it false.
+2. The task names them: `Cierra: ISC-12, ISC-13`. The pointer only goes that way, because ISC IDs
+   are stable forever and ClickUp IDs churn.
+3. Closing is running the probe, marking `[x]`, adding the `## Verification` stub and recounting
+   `progress:`; `IsaStructureTests` fails if the count disagrees.
+4. The task then moves to `in review` with the evidence in a comment. Closing it is the user's.
+
+A failed probe asks whether the code or the claim is wrong; the `isa` skill has the rest.
 
 ## The contract
 
@@ -92,10 +93,12 @@ Breaking one corrupts meetings already recorded and artifacts already paid for.
   reaches. The runner starts what `IsDue` says is due, which is never `awaiting_user`: a job that
   a restart found running stops on a person, because a charge that may already have happened is
   not something the app gets to repeat on its own.
-- A meeting is not filed under one project. It links to nodes of a three-level tree, and the
-  link carries which way — work of it, the other side of the table, or what it was about. A
-  meeting covering two projects is two links, and one held before the project existed hangs
-  off the organization. The kind and role names are provisional and stored under a CHECK.
+- A meeting is not filed under one thing, and neither is a person. It links to nodes of a
+  three-level tree and the link carries which way; somebody is named on it as having attended, as
+  what it was about, or both; and where they belong is an affiliation with a period, of which they
+  have as many as they have. Every one of those names is closed and stored under a CHECK — renaming
+  one is a migration — and what they were closed against is the thirteen meetings in
+  `arquitectura.md` §5.3, which `ClassificationStoriesTests` stores and finds again.
 - A turn, not a provider utterance, is what the `utterances` table stores and what a citation
   anchors on, and `Turns.Group` is the only thing that decides where one ends. What the Python
   system learned about that, and what .NET does differently on purpose, is in

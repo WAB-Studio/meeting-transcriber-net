@@ -301,7 +301,8 @@ nodes
 meeting_nodes
 templates
 people
-meeting_participants
+affiliations
+meeting_people
 speaker_assignments
 terminology_corrections
 settings
@@ -341,11 +342,70 @@ la organización. El árbol llega hasta tres niveles: es una clasificación que
 alguien tiene en la cabeza, no un árbol de carpetas, y con el tope todo lo que
 cuelga de un nodo está a dos joins.
 
-Los nombres de las clases (`organization`, `initiative`, `topic`) y de los
-papeles (`work_of`, `counterpart`, `about`) son provisorios y están guardados
-con CHECK: cambiarlos es otra migración, no renombrar una etiqueta.
+### 5.3 Clasificación de una reunión
 
-### 5.3 Jobs y estados independientes
+El vocabulario está cerrado. Son valores guardados con CHECK, no etiquetas de una
+interfaz, así que cambiar cualquiera de estos nombres es otra migración.
+
+Clases de nodo — qué es:
+
+| Clase | Qué nombra |
+| --- | --- |
+| `organization` | Una organización de cualquier tipo: un cliente, una facultad, la que organiza una conferencia. Deliberadamente no `company` — llamarlas empresas hacía que el nombre mintiera. |
+| `initiative` | Un cuerpo de trabajo que dura: un proyecto, una materia, una línea de soporte. |
+| `topic` | Un asunto concreto: un incidente, un ticket, una renegociación. Nunca es raíz. |
+
+Papeles del vínculo — cómo se relaciona la reunión con ese nodo:
+
+| Papel | Qué dice |
+| --- | --- |
+| `work_of` | La reunión es trabajo de ese nodo. Lo que antes era el proyecto. |
+| `counterpart` | El otro lado de la mesa: un cliente, la empresa que entrevista, un socio. |
+| `about` | De qué trata, sin ser trabajo de eso. |
+
+Y en las personas que la reunión nombra, en `meeting_people`: `attended`, y
+`subject` cuando la reunión es sobre esa persona. Los dos a la vez son dos filas,
+porque el 1:1 de alguien es una reunión a la que asistió y de la que es el sujeto,
+y una desvinculación se habla antes de que la persona esté en la sala.
+
+Las personas no son nodos. Dónde están es `affiliations`: tantas como tengan —un
+contractor está en dos clientes a la vez— y cada una con desde y hasta, porque una
+reunión se lee años después y sin período contratar al candidato que entrevistaste
+reescribe la entrevista en una reunión con un empleado propio. Los dos extremos son
+abiertos y no desconocidos: sin desde es "hasta donde este corpus llega", sin hasta
+es "sigue ahí".
+
+Los templates guardan sólo el nombre. Qué clases de hijos ofrece cada uno y qué
+ranuras muestra llega con la interfaz que los usa, y siempre va a pre-llenar nada
+más: un template no puede expresar lo que los constraints prohíben, y una reunión
+que no se parece a ninguno se clasifica a mano igual.
+
+#### Las trece reuniones contra las que se cerró
+
+Cada una se guarda sin inventar filas, y se encuentra por organización, por
+iniciativa o por persona. `ClassificationStoriesTests` son las trece en un corpus.
+
+| # | Reunión | Cómo se guarda |
+| --- | --- | --- |
+| 1 | Clase de facultad | `work_of` la materia. La facultad se alcanza por el árbol, sin que nada la nombre. |
+| 2 | Junta casual | Sin vínculos. Aparece en el listado de sin clasificar y en la búsqueda por texto. |
+| 3 | Entrevista, yo candidato | `counterpart` la empresa. No hay proyecto y no hace falta inventarlo. |
+| 4 | Entrevista, yo entrevistando | `work_of` mi organización; el candidato con la afiliación de entonces, que contratarlo no pisa. |
+| 5 | Dos proyectos | Dos `work_of`. |
+| 6 | Vendedor con cliente | `work_of` la iniciativa y `counterpart` el cliente. |
+| 7 | PM con su equipo | `work_of` la iniciativa; cada contractor con sus afiliaciones abiertas. |
+| 8 | Conferencia | `about` la conferencia. Doscientos asistentes que no se cargan, y ninguna fila que finja que sí. |
+| 9 | Reunión entre dos empresas | Dos `counterpart`, y ningún vínculo que invente un dueño. |
+| 10 | RRHH desvinculando | `work_of` mi organización; la persona como `subject`, haya estado o no. |
+| 11 | 1:1 recurrente | `work_of` la organización, sin proyecto; la persona `attended` y `subject`. |
+| 12 | Daily | `work_of` la iniciativa. |
+| 13 | Soporte post-venta | `work_of` el ticket, que es un `topic`, y `counterpart` el cliente. |
+
+Dos cosas quedan afuera a propósito, y ninguna es clasificación: la serie que
+relaciona las doscientas dailies del mismo equipo entre sí, y la política de
+retención propia de una reunión sensible.
+
+### 5.4 Jobs y estados independientes
 
 Captura, finalización, transcripción, extracción, renderizado y backup son jobs
 separados. Cada job contiene:
@@ -416,7 +476,7 @@ respuesta ya pagada: resolver el job con lo que ya se cobró no es reintentarlo.
 `succeeded`, `failed_permanent` y `cancelled` son terminales. Volver a intentar
 ese trabajo es un job nuevo con su propia `idempotency_key`, no éste revivido.
 
-### 5.4 Configuración de SQLite
+### 5.5 Configuración de SQLite
 
 - foreign keys activadas;
 - WAL para permitir lecturas mientras la aplicación escribe;
@@ -956,97 +1016,12 @@ una cifra fija para considerar las pruebas baratas.
 
 ## 13. Plan de implementación
 
-### Fase 0 — contratos y caracterización
+Las ocho fases y sus tareas viven en el board de ClickUp, space `MeetingTranscriber`, una lista
+por fase. Ahí se mueven de estado y ahí se ve qué está en curso; una copia acá sería la foto
+congelada de algo que cambia todas las semanas, y la foto es la que se termina leyendo.
 
-- fijar `SourceProfile`, canales y unidades temporales;
-- definir esquemas de artefactos y SQLite;
-- definir jobs y transiciones válidas;
-- crear fixtures anonimizados desde `deepgram.json` existentes;
-- portar a tests .NET las invariantes importantes del sistema actual;
-- implementar el importador read-only del corpus legacy.
-
-Resultado: el comportamiento valioso está especificado sin introducir una
-dependencia de runtime en Python.
-
-### Fase 1 — núcleo .NET desde artefactos
-
-- solución y proyectos .NET;
-- SQLite, migraciones y repositorios;
-- parser de Deepgram;
-- transcript, utterances y FTS5;
-- clasificación, personas y correcciones;
-- rebuild completo desde artefactos;
-- CLI de diagnóstico.
-
-Resultado: dado un `deepgram.json`, toda la parte determinista funciona en .NET.
-
-### Fase 2 — spike y motor de audio
-
-- captura de micrófono y loopback completo en consola;
-- prueba temprana de process loopback;
-- timeline y remuestreo;
-- formato de bloques y recuperación;
-- WAV estéreo validado;
-- pruebas largas con señales conocidas.
-
-Resultado: se valida el mayor riesgo técnico antes de invertir en toda la UI.
-
-### Fase 3 — grabador WinUI
-
-- selección de fuentes;
-- medidores y avisos;
-- grabar, pausar y detener;
-- recuperación después de cierre abrupto;
-- cola local y estados visibles;
-- importación de archivos mono y estéreo.
-
-Resultado: la aplicación sustituye OBS sin necesitar Python, WSL o FFmpeg.
-
-### Fase 4 — Deepgram BYOK
-
-- Credential Manager;
-- validación y estimación de coste;
-- aprobación explícita;
-- cliente Deepgram;
-- persistencia durable de `deepgram.json`;
-- recuperación de estados inciertos;
-- pruebas live opt-in con presupuesto.
-
-Resultado: flujo completo de grabación a transcript desde la aplicación nativa.
-
-### Fase 5 — summaries
-
-- contrato de proveedor;
-- adaptador Claude Code headless;
-- proceso aislado por reunión;
-- schemas y validación de evidencia;
-- versionado de extracciones;
-- modo manual/desactivado;
-- fake CLI para tests offline.
-
-Resultado: summaries usando la cuenta y los créditos disponibles del usuario sin
-hacer de Claude Code una dependencia obligatoria del producto.
-
-### Fase 6 — conocimiento local
-
-- búsqueda FTS5;
-- edición de clasificación y speakers;
-- decisiones, acciones y citas navegables;
-- MCP local read-only por stdio;
-- límites de respuesta y auditoría local.
-
-Resultado: personas y agentes consultan el corpus sin servidor ni red local.
-
-### Fase 7 — distribución y backup
-
-- paquete MSIX self-contained, instalado por sideload durante la alpha;
-- app execution alias para la CLI y el servidor MCP;
-- snapshots verificados;
-- restauración a directorio alterno;
-- pruebas de upgrade y recuperación;
-- publicación en Partner Center cuando la distribución lo requiera.
-
-Resultado: una aplicación local instalable y recuperable.
+Qué persigue cada fase —qué tiene que ser cierto cuando termina— está en `ISA.md`, en el bloque
+`### F<n>` que nombra su lista.
 
 ---
 
@@ -1077,20 +1052,12 @@ Resultado: una aplicación local instalable y recuperable.
 
 ## 15. Criterios de salida para la primera versión
 
-La primera versión se considera utilizable cuando:
+Están en `ISA.md`, como claims con su marca de cerrado y el conteo `progress: M/N` en el
+encabezado.
 
-- graba dos horas con menos de 50 ms de deriva medida;
-- recupera una grabación después de terminar el proceso a la fuerza;
-- nunca invierte canal 0 y canal 1;
-- no llama a Deepgram sin validación y aprobación;
-- nunca sobrescribe un `deepgram.json` confirmado;
-- reconstruye todas las proyecciones eliminando solamente derivados;
-- importa una copia del corpus existente sin modificar las fuentes;
-- funciona sin Claude Code instalado;
-- usa Claude Code headless cuando el usuario lo habilita;
-- busca summaries y transcript sin red;
-- crea y verifica un backup restaurable;
-- todos los tests automáticos funcionan sin red ni créditos.
+Eran doce frases que nadie podía verificar sin leerse el código entero, y que envejecían sin que
+se notara porque nada las contaba. Como claims, cada una cierra sobre evidencia registrada o
+sigue abierta, y el número dice cuántas van.
 
 ---
 
