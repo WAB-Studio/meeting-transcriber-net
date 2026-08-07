@@ -11,6 +11,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\MeetingTranscriber.Domain\MeetingTranscriber.Domain.csproj" />
     <ProjectReference Include="..\..\src\MeetingTranscriber.Infrastructure\MeetingTranscriber.Infrastructure.csproj" />
+    <!-- An imported meeting gets its derivatives rendered here rather than carrying the Python
+         system's. Deleting this tool deletes the reference; nothing under src/ points back. -->
+    <ProjectReference Include="..\..\src\MeetingTranscriber.Processing\MeetingTranscriber.Processing.csproj" />
   </ItemGroup>
 
   <ItemGroup>

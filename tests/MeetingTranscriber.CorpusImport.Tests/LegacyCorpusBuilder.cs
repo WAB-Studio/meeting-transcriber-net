@@ -103,10 +103,18 @@ public sealed class LegacyCorpusBuilder : IDisposable
                 {"alternatives":[{"transcript":"turno {{channel}}","confidence":0.9,"words":[]}]}
                 """));
 
+        // Two utterances a channel, so a rendered transcript has turns in it rather than being an
+        // empty file that any renderer would produce.
+        var utterances = string.Join(
+            ",",
+            Enumerable.Range(0, channels).SelectMany(channel => Enumerable.Range(0, 2).Select(index => $$"""
+                {"channel":{{channel}},"start":{{(channel * 10) + (index * 4)}}.0,"end":{{(channel * 10) + (index * 4)}}.5,"speaker":0,"confidence":0.9,"transcript":"turno {{channel}}{{index}} de quati"}
+                """)));
+
         // Three dollars, because the response ends on two closing braces and two is what an
         // interpolation would take.
         return $$$"""
-            {"metadata":{"transaction_key":"deprecated","request_id":"{{{requestId}}}","sha256":"s","created":"2026-01-01T00:00:00.000Z","duration":{{{duration}}},"channels":{{{channels}}},"models":["m"]},"results":{"channels":[{{{alternatives}}}],"utterances":[]}}
+            {"metadata":{"transaction_key":"deprecated","request_id":"{{{requestId}}}","sha256":"s","created":"2026-01-01T00:00:00.000Z","duration":{{{duration}}},"channels":{{{channels}}},"models":["m"]},"results":{"channels":[{{{alternatives}}}],"utterances":[{{{utterances}}}]}}
             """;
     }
 

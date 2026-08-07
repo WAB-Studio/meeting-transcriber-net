@@ -2,10 +2,13 @@ using System.Globalization;
 using System.Security.Cryptography;
 
 using MeetingTranscriber.Domain.Artifacts;
+using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Jobs;
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
+using MeetingTranscriber.Processing.Rendering;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -13,9 +16,14 @@ namespace MeetingTranscriber.CorpusImport;
 
 /// <summary>How an import is allowed to treat the corpus it reads.</summary>
 /// <param name="CopyTo">
-/// Where to copy the sources, or null to register them where they already are. Copying is the
-/// explicit option because it doubles the disk the paid responses take, and referencing is the
-/// one that breaks if the legacy corpus is ever moved.
+/// The corpus to copy the sources into, or null to register them where they already are. Copying
+/// is the explicit option because it doubles the disk the paid responses take, and referencing is
+/// the one that breaks if the legacy corpus is ever moved.
+/// <para>
+/// It is also the only thing that says where this corpus lives, so it is what decides whether a
+/// meeting arrives with its derivatives rendered. Without it there is nowhere to put them that is
+/// not the Python corpus, and writing there is the one thing this tool never does.
+/// </para>
 /// </param>
 /// <param name="Language">
 /// The language to record for a meeting whose rendered transcript does not say. The paid response
@@ -87,11 +95,28 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             // two hundred behind it, and the report with them — which is printed at the end and
             // is the only record of what a run left behind.
             var meeting = new ImportReport();
+            Meeting? imported = null;
             Commit(
                 legacy.Id,
                 meeting,
                 report,
-                () => ImportMeeting(legacy, organizations, initiatives, personIds, options, now, meeting));
+                () => imported = ImportMeeting(
+                    legacy, organizations, initiatives, personIds, options, now, meeting));
+
+            // Rendering is its own transaction, after the meeting is on disk rather than tracked:
+            // it reads the response back through the corpus, and a row that has not been committed
+            // is a row a query does not find. It is also work worth keeping when it succeeds over a
+            // meeting whose derivatives then fail, and losing only when they do.
+            if (imported is not null && options.CopyTo is not null)
+            {
+                var derivatives = new ImportReport();
+                var landed = imported;
+                Commit(
+                    $"{legacy.Id} derivatives",
+                    derivatives,
+                    report,
+                    () => RenderDerivatives(legacy, landed, options, now, derivatives));
+            }
         }
 
         return report;
@@ -266,7 +291,12 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
         }
     }
 
-    private void ImportMeeting(
+    /// <summary>
+    /// Reads one meeting into the corpus and answers with it, or null when it had nowhere to go and
+    /// the report says why. The caller needs the answer because the derivatives are rendered after
+    /// this has been committed.
+    /// </summary>
+    private Meeting? ImportMeeting(
         LegacyMeeting legacy,
         IReadOnlyDictionary<string, Node> organizations,
         IReadOnlyDictionary<string, Node> initiatives,
@@ -278,13 +308,13 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
         if (legacy.Unreadable is { } problem)
         {
             report.CouldNotImport($"{legacy.Id}: {problem}");
-            return;
+            return null;
         }
 
         if (legacy.RecordedAt is not { } startedAt)
         {
             report.CouldNotImport($"{legacy.Id}: the folder name gives no recording date");
-            return;
+            return null;
         }
 
         // What decides this meeting is already here: the response it was transcribed from. It is
@@ -340,6 +370,50 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
         var artifacts = ImportArtifacts(legacy, meeting, options, now, report);
         ImportExtraction(legacy, meeting, artifacts, responseSha256, now, report);
         ImportSpeakers(legacy, meeting, people, now, report);
+        return meeting;
+    }
+
+    /// <summary>
+    /// Produces this meeting's derivatives here, from the response that was just imported.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The Python system's <c>transcript.md</c> and <c>utterances.jsonl</c> are not imported and
+    /// never were: registering them would claim a rebuild reproduces bytes that nothing here wrote.
+    /// This is the other half of that decision — the meeting gets those files anyway, generated by
+    /// this application from the paid response, which is what makes its citations resolve and its
+    /// turns searchable.
+    /// </para>
+    /// <para>
+    /// It runs after the speakers, so a label somebody resolved in the old corpus is already a name
+    /// in the transcript this produces. Rendering is repeatable on its own, so a second import
+    /// re-renders to the same bytes rather than to a second file.
+    /// </para>
+    /// </remarks>
+    private void RenderDerivatives(
+        LegacyMeeting legacy,
+        Meeting meeting,
+        ImportOptions options,
+        UtcTimestamp now,
+        ImportReport report)
+    {
+        // Nothing per meeting when there is nowhere to write: the run's tally says none were
+        // rendered, and two hundred identical lines saying why would bury the list that matters.
+        if (options.CopyTo is not { } corpus)
+        {
+            return;
+        }
+
+        try
+        {
+            var rendered = MeetingRenderer.Render(context, corpus, meeting.Id, now);
+            report.Imported(ImportCounter.Rendered);
+            report.Imported(ImportCounter.Turn, rendered.Turns);
+        }
+        catch (RenderException problem)
+        {
+            report.CouldNotImport($"{legacy.Id}: {problem.Message}");
+        }
     }
 
     /// <summary>
@@ -611,7 +685,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
                 continue;
             }
 
-            if (SpeakerLabel(label) is not { } speakerLabel)
+            if (SpeakerLabel(label, meeting.SourceProfile) is not { } speakerLabel)
             {
                 report.CouldNotImport($"{legacy.Id}: '{label}' is not a label the provider would have written");
                 continue;
@@ -660,7 +734,19 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
     /// one because a person reads it; the provider counts from zero, and what is stored is what
     /// the provider said.
     /// </summary>
-    private static string? SpeakerLabel(string legacyLabel)
+    /// <remarks>
+    /// Built by <see cref="SpeakerLabels.For"/> and never spelled out here, because the label is
+    /// the key <c>speaker_assignments</c> hangs off and a rendered turn carries the same string. A
+    /// bare <c>speaker_0</c> written for a two channel meeting is an assignment that matches no
+    /// turn — it names nobody and nothing fails, which is the quietest way to lose the one thing in
+    /// the old corpus that nothing regenerates.
+    /// <para>
+    /// The channel is the loopback whenever there is one: the Python system diarized the meeting
+    /// side, and the microphone it labelled from configuration rather than from a decision about
+    /// that meeting, which is exactly what this tool refuses to import.
+    /// </para>
+    /// </remarks>
+    private static string? SpeakerLabel(string legacyLabel, SourceProfile profile)
     {
         const string prefix = "Speaker ";
         if (!legacyLabel.StartsWith(prefix, StringComparison.Ordinal)
@@ -670,7 +756,8 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             return null;
         }
 
-        return $"speaker_{number - 1}";
+        var channel = profile is SourceProfile.Multichannel ? AudioChannel.Loopback : (AudioChannel?)null;
+        return SpeakerLabels.For(channel, number - 1);
     }
 
     /// <summary>The meeting a response with this hash was already imported as, if there is one.</summary>
