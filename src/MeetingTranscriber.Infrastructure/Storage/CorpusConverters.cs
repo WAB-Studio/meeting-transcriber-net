@@ -28,8 +28,8 @@ public sealed class DurationConverter : ValueConverter<Duration, long>
 }
 
 /// <summary>
-/// A channel is stored as the number the contract fixes — 0 the meeting, 1 the user — because
-/// that number is also what the provider answers with.
+/// A channel is stored as the number the contract fixes — 0 the loopback, 1 the microphone —
+/// because that number is also what the provider answers with.
 /// </summary>
 public sealed class AudioChannelConverter : ValueConverter<AudioChannel, int>
 {

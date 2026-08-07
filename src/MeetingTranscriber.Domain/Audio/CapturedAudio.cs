@@ -24,7 +24,7 @@ public static class CapturedAudio
     /// </summary>
     public static int IndexOf(AudioChannel channel)
     {
-        if (channel is not (AudioChannel.Others or AudioChannel.Me))
+        if (channel is not (AudioChannel.Loopback or AudioChannel.Microphone))
         {
             throw new AudioContractException($"Unknown audio channel '{channel}'.");
         }
@@ -41,7 +41,7 @@ public static class CapturedAudio
     public static AudioChannel ChannelAt(int index)
     {
         var channel = (AudioChannel)index;
-        if (channel is not (AudioChannel.Others or AudioChannel.Me))
+        if (channel is not (AudioChannel.Loopback or AudioChannel.Microphone))
         {
             throw new AudioContractException($"There is no audio channel at index {index}.");
         }
@@ -50,22 +50,22 @@ public static class CapturedAudio
     }
 
     /// <summary>Lays two equally long sources out as interleaved stereo frames.</summary>
-    public static short[] Interleave(ReadOnlySpan<short> others, ReadOnlySpan<short> me)
+    public static short[] Interleave(ReadOnlySpan<short> loopback, ReadOnlySpan<short> microphone)
     {
-        if (others.Length != me.Length)
+        if (loopback.Length != microphone.Length)
         {
             throw new AudioContractException(
-                $"Both sources need the same number of samples, got {others.Length} and {me.Length}.");
+                $"Both sources need the same number of samples, got {loopback.Length} and {microphone.Length}.");
         }
 
-        var othersIndex = IndexOf(AudioChannel.Others);
-        var meIndex = IndexOf(AudioChannel.Me);
-        var interleaved = new short[others.Length * ChannelCount];
-        for (var frame = 0; frame < others.Length; frame++)
+        var loopbackIndex = IndexOf(AudioChannel.Loopback);
+        var microphoneIndex = IndexOf(AudioChannel.Microphone);
+        var interleaved = new short[loopback.Length * ChannelCount];
+        for (var frame = 0; frame < loopback.Length; frame++)
         {
             var start = frame * ChannelCount;
-            interleaved[start + othersIndex] = others[frame];
-            interleaved[start + meIndex] = me[frame];
+            interleaved[start + loopbackIndex] = loopback[frame];
+            interleaved[start + microphoneIndex] = microphone[frame];
         }
 
         return interleaved;

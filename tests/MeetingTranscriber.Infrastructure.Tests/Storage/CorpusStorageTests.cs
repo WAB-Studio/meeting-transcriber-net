@@ -61,8 +61,8 @@ public class CorpusStorageTests
 
         var meeting = NewMeeting();
         context.Meetings.Add(meeting);
-        context.Utterances.Add(NewUtterance(meeting.Id, ordinal: 0, AudioChannel.Others));
-        context.Utterances.Add(NewUtterance(meeting.Id, ordinal: 1, AudioChannel.Me));
+        context.Utterances.Add(NewUtterance(meeting.Id, ordinal: 0, AudioChannel.Loopback));
+        context.Utterances.Add(NewUtterance(meeting.Id, ordinal: 1, AudioChannel.Microphone));
         context.Utterances.Add(NewUtterance(meeting.Id, ordinal: 2, channel: null));
         context.SaveChanges();
 
@@ -79,7 +79,7 @@ public class CorpusStorageTests
 
         var meeting = NewMeeting();
         context.Meetings.Add(meeting);
-        context.Utterances.Add(NewUtterance(meeting.Id, ordinal: 0, AudioChannel.Others));
+        context.Utterances.Add(NewUtterance(meeting.Id, ordinal: 0, AudioChannel.Loopback));
         context.SaveChanges();
 
         Sql.Scalar(context, "SELECT start_ms FROM utterances;").ShouldBe(1_500L);

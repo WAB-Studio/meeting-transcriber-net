@@ -30,14 +30,14 @@ public class SourceProfileTests
     }
 
     /// <summary>
-    /// The microphone and nothing else. Channel 0 is the whole meeting, so a multichannel capture
-    /// knows who one of its two channels belongs to and nothing about who is on the other.
+    /// Which channel the user's own microphone lands on, and nothing about how many voices are on
+    /// it. A single track has no channel to point at, so it has no microphone channel either.
     /// </summary>
     [Fact]
-    public void The_only_speaker_the_contract_names_is_the_one_on_the_microphone()
+    public void Only_a_multichannel_capture_has_a_channel_of_its_own_for_the_microphone()
     {
-        SourceProfile.Multichannel.DeterministicSpeakerChannel().ShouldBe(AudioChannel.Me);
-        SourceProfile.Diarize.DeterministicSpeakerChannel().ShouldBeNull();
+        SourceProfile.Multichannel.MicrophoneChannel().ShouldBe(AudioChannel.Microphone);
+        SourceProfile.Diarize.MicrophoneChannel().ShouldBeNull();
     }
 
     /// <summary>
@@ -57,7 +57,7 @@ public class SourceProfileTests
     {
         const SourceProfile unknown = (SourceProfile)99;
 
-        Should.Throw<AudioContractException>(() => unknown.DeterministicSpeakerChannel());
+        Should.Throw<AudioContractException>(() => unknown.MicrophoneChannel());
         Should.Throw<AudioContractException>(() => unknown.RequestsDiarization());
     }
 

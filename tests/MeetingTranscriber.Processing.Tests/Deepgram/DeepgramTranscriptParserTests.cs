@@ -161,7 +161,7 @@ public class DeepgramTranscriptParserTests
 
         var transcript = DeepgramTranscriptParser.Parse(response, SourceProfile.Multichannel);
 
-        transcript.Channels[CapturedAudio.IndexOf(AudioChannel.Me)].SpeakerLabels
+        transcript.Channels[CapturedAudio.IndexOf(AudioChannel.Microphone)].SpeakerLabels
             .ShouldBe(["ch1:speaker_0", "ch1:speaker_1"]);
     }
 
@@ -191,8 +191,8 @@ public class DeepgramTranscriptParserTests
         var transcript = DeepgramTranscriptParser.Parse(response, SourceProfile.Multichannel);
 
         transcript.Channels.Count.ShouldBe(2);
-        transcript.SilentChannels.Select(channel => channel.Channel).ShouldBe([AudioChannel.Me]);
-        transcript.Segments.ShouldAllBe(segment => segment.Channel == AudioChannel.Others);
+        transcript.SilentChannels.Select(channel => channel.Channel).ShouldBe([AudioChannel.Microphone]);
+        transcript.Segments.ShouldAllBe(segment => segment.Channel == AudioChannel.Loopback);
     }
 
     [Fact]
@@ -254,7 +254,7 @@ public class DeepgramTranscriptParserTests
         var turns = Turns.Group(DeepgramTranscriptParser.Parse(response, SourceProfile.Multichannel).Segments);
 
         turns.Select(turn => turn.Channel)
-            .ShouldBe([AudioChannel.Others, AudioChannel.Me, AudioChannel.Others]);
+            .ShouldBe([AudioChannel.Loopback, AudioChannel.Microphone, AudioChannel.Loopback]);
     }
 
     private static string Response(int channels, string[] transcripts, object[] utterances) =>

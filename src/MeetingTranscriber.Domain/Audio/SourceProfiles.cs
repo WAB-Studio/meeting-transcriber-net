@@ -12,18 +12,20 @@ public static class SourceProfiles
     };
 
     /// <summary>
-    /// The one channel whose speaker the contract already names, or null when the profile has
-    /// none. Everybody else on the recording is a label somebody still has to resolve.
+    /// The channel carrying the user's own microphone, or null when the profile has no channels to
+    /// tell apart. It is where their voice arrives, which is not the same as saying it is the only
+    /// voice there: <see cref="Knowledge.Speakers.Resolve"/> is what decides whether the recording
+    /// settles who spoke or a person has to.
     /// </summary>
     /// <remarks>
-    /// Only the microphone is ever deterministic. Channel 0 carries the whole meeting — a room, a
-    /// call with four people on the other end — which is the reason it is diarized at all, so a
-    /// profile claiming to put each speaker on a channel of its own would have been describing
-    /// audio nobody records.
+    /// The other channel is never a single speaker. It carries the whole meeting — a room, a call
+    /// with four people on the other end — which is the reason it is diarized at all, so a profile
+    /// claiming to put each speaker on a channel of its own would have been describing audio nobody
+    /// records.
     /// </remarks>
-    public static AudioChannel? DeterministicSpeakerChannel(this SourceProfile profile) => profile switch
+    public static AudioChannel? MicrophoneChannel(this SourceProfile profile) => profile switch
     {
-        SourceProfile.Multichannel => AudioChannel.Me,
+        SourceProfile.Multichannel => AudioChannel.Microphone,
         SourceProfile.Diarize => null,
         _ => throw new AudioContractException($"Unknown source profile '{profile}'."),
     };

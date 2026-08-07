@@ -5,35 +5,35 @@ namespace MeetingTranscriber.Domain.Tests.Audio;
 public class AudioChannelTests
 {
     [Fact]
-    public void The_meeting_is_channel_zero_and_the_user_is_channel_one()
+    public void The_loopback_is_channel_zero_and_the_microphone_is_channel_one()
     {
         // The numbers are the contract Deepgram answers with, not an implementation detail.
-        ((int)AudioChannel.Others).ShouldBe(0);
-        ((int)AudioChannel.Me).ShouldBe(1);
+        ((int)AudioChannel.Loopback).ShouldBe(0);
+        ((int)AudioChannel.Microphone).ShouldBe(1);
 
-        CapturedAudio.IndexOf(AudioChannel.Others).ShouldBe(0);
-        CapturedAudio.IndexOf(AudioChannel.Me).ShouldBe(1);
+        CapturedAudio.IndexOf(AudioChannel.Loopback).ShouldBe(0);
+        CapturedAudio.IndexOf(AudioChannel.Microphone).ShouldBe(1);
     }
 
     [Fact]
-    public void Interleaving_puts_the_meeting_first_in_every_frame()
+    public void Interleaving_puts_the_loopback_first_in_every_frame()
     {
-        short[] others = [10, 20, 30];
-        short[] me = [-10, -20, -30];
+        short[] loopback = [10, 20, 30];
+        short[] microphone = [-10, -20, -30];
 
-        CapturedAudio.Interleave(others, me).ShouldBe([10, -10, 20, -20, 30, -30]);
+        CapturedAudio.Interleave(loopback, microphone).ShouldBe([10, -10, 20, -20, 30, -30]);
     }
 
     [Fact]
     public void Deinterleaving_gives_each_source_back_untouched()
     {
-        short[] others = [10, 20, 30];
-        short[] me = [-10, -20, -30];
+        short[] loopback = [10, 20, 30];
+        short[] microphone = [-10, -20, -30];
 
-        var interleaved = CapturedAudio.Interleave(others, me);
+        var interleaved = CapturedAudio.Interleave(loopback, microphone);
 
-        CapturedAudio.Deinterleave(interleaved, AudioChannel.Others).ShouldBe(others);
-        CapturedAudio.Deinterleave(interleaved, AudioChannel.Me).ShouldBe(me);
+        CapturedAudio.Deinterleave(interleaved, AudioChannel.Loopback).ShouldBe(loopback);
+        CapturedAudio.Deinterleave(interleaved, AudioChannel.Microphone).ShouldBe(microphone);
     }
 
     [Fact]
@@ -41,8 +41,8 @@ public class AudioChannelTests
     {
         short[] interleaved = [10, -10, 20, -20];
 
-        CapturedAudio.Deinterleave(interleaved, AudioChannel.Others).ShouldBe([10, 20]);
-        CapturedAudio.Deinterleave(interleaved, AudioChannel.Me).ShouldBe([-10, -20]);
+        CapturedAudio.Deinterleave(interleaved, AudioChannel.Loopback).ShouldBe([10, 20]);
+        CapturedAudio.Deinterleave(interleaved, AudioChannel.Microphone).ShouldBe([-10, -20]);
     }
 
     [Fact]
@@ -51,16 +51,16 @@ public class AudioChannelTests
         short[] interleaved = [10, -10, 20];
 
         Should.Throw<AudioContractException>(
-            () => CapturedAudio.Deinterleave(interleaved, AudioChannel.Others));
+            () => CapturedAudio.Deinterleave(interleaved, AudioChannel.Loopback));
     }
 
     [Fact]
     public void Two_sources_of_different_length_cannot_be_interleaved()
     {
-        short[] others = [10, 20, 30];
-        short[] me = [-10, -20];
+        short[] loopback = [10, 20, 30];
+        short[] microphone = [-10, -20];
 
-        Should.Throw<AudioContractException>(() => CapturedAudio.Interleave(others, me));
+        Should.Throw<AudioContractException>(() => CapturedAudio.Interleave(loopback, microphone));
     }
 
     [Fact]

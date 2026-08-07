@@ -31,7 +31,10 @@ public class Person
 
     public required string DisplayName { get; set; }
 
-    /// <summary>The user of this install. Channel 1 is theirs by contract, not by guess.</summary>
+    /// <summary>
+    /// The user of this install. The microphone is theirs by contract; the voices on it are only
+    /// theirs when it caught one speaker, and otherwise somebody has to say which is which.
+    /// </summary>
     public bool IsMe { get; set; }
 
     public UtcTimestamp CreatedAt { get; set; }
