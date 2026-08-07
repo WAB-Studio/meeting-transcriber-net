@@ -6,6 +6,8 @@ using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Deepgram;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace MeetingTranscriber.Processing.Rendering;
 
 /// <summary>A meeting that cannot be rendered, saying which one and what is missing.</summary>
@@ -51,8 +53,12 @@ public static class MeetingRenderer
         var rendered = TranscriptRenderer.Render(header, turns);
 
         // Both or neither: a transcript naming turns the jsonl does not have is a meeting that
-        // reads as two different meetings depending on which file somebody opened.
-        using var write = context.Database.BeginTransaction();
+        // reads as two different meetings depending on which file somebody opened. A caller already
+        // inside a transaction keeps its own — a rebuild wraps every meeting in one, and opening a
+        // second here would throw rather than nest.
+        using var write = context.Database.CurrentTransaction is null
+            ? context.Database.BeginTransaction()
+            : null;
         var transcript = DurableArtifact.WriteText(
             context,
             root,
@@ -69,7 +75,7 @@ public static class MeetingRenderer
             CorpusFiles.PathFor(meeting.Id, "utterances.jsonl"),
             now,
             rendered.Jsonl);
-        write.Commit();
+        write?.Commit();
 
         return new RenderedMeeting(turns.Count, transcript, utterances);
     }
@@ -96,9 +102,20 @@ public static class MeetingRenderer
         var transcript = DeepgramTranscriptParser.ParseFile(file.FullName, meeting.SourceProfile);
         var turns = Turns.Group(transcript.Segments);
 
-        context.Utterances.RemoveRange(
-            [.. context.Utterances.Where(turn => turn.MeetingId == meeting.Id)]);
-        context.SaveChanges();
+        // Deleted straight through rather than through the change tracker, and the difference is
+        // not performance. Marking a tracked turn deleted makes EF notice that a tracked claim
+        // cites it and refuse in memory — before any SQL runs, and therefore before the deferred
+        // foreign keys that make replacing a turn possible at all get a say. Detaching first is
+        // what stops the tracker holding turns that are no longer there and colliding with the
+        // ones about to arrive under the same positions.
+        foreach (var tracked in context.ChangeTracker.Entries<Utterance>()
+            .Where(entry => entry.Entity.MeetingId == meeting.Id)
+            .ToArray())
+        {
+            tracked.State = EntityState.Detached;
+        }
+
+        context.Utterances.Where(turn => turn.MeetingId == meeting.Id).ExecuteDelete();
 
         foreach (var turn in turns)
         {

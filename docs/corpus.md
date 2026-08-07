@@ -50,6 +50,14 @@ take every decision and action citing them and say nothing about it. Deleting tu
 now fails, and a meeting still deletes whole: the turns and the claims go in one statement, and
 that is when the constraint is checked.
 
+`CorpusRebuild.Run` is how a rebuild gets past that without deleting the claims. Every meeting is
+reprojected inside one transaction with `PRAGMA defer_foreign_keys`, so the turns go and come back
+under the same positions while the claims stay where they are, and the check happens at the commit.
+That is not a way around the constraint — it is what makes it useful: a rebuild that renumbered a
+turn fails at the end instead of quietly rewriting what every stored claim points at. Summaries,
+decisions and actions are left alone rather than reprojected, because nothing reads an accepted
+extraction back into rows yet; when something does, it becomes a step in there.
+
 The FTS5 indexes are external content keyed on rowid, and a `VACUUM` may renumber the rowids of the
 tables they index, after which search answers with the wrong rows and says nothing. So nothing
 vacuums the corpus directly: `CorpusIntegrity.Compact` does both halves, and the reason it exists is

@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 46/76
+progress: 48/78
 updated: 2026-08-07
 ---
 
@@ -80,6 +80,8 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-33: `transcript.md` and `utterances.jsonl` render from the stored turns and re-render identically.
 - [x] ISC-75: Anti: a name or a correction reaches the rendered files and never the stored turn.
 - [x] ISC-76: A merged turn's confidence is the mean of its parts, weighted by their length.
+- [x] ISC-77: Rebuilding the whole corpus from its sources produces the same projections and the same derived files.
+- [x] ISC-78: Anti: a rebuild that moved a turn's position fails rather than rewriting what every stored claim points at.
 - [ ] ISC-34: The diagnostic CLI reports corpus state without opening the application.
 - [x] ISC-66: Every table of the human layer is written through `HumanLayer`.
 - [x] ISC-67: Exactly one person carries the flag naming the user of this install.
@@ -168,6 +170,13 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
+- **2026-08-07** — A rebuild replaces the turns underneath the claims that cite them, in one
+  transaction with `PRAGMA defer_foreign_keys`, rather than deleting the claims and putting them
+  back. Deleting them was the obvious shape and is the wrong one: nothing reads an accepted
+  extraction back into rows yet, so a rebuild that deleted them would be losing what it cannot
+  produce again. Deferring turns "the ordinals came out the same" from an assumption into a thing
+  the commit refuses when it is false — which is the one failure a rebuild could have that nothing
+  else would notice.
 - **2026-08-07** — A merged turn's confidence is the mean of its parts weighted by their length.
   The lowest of the parts and nothing at all were the alternatives: the lowest makes every long
   turn look untrustworthy, since one bad part is enough and turns get longer the less somebody is
@@ -285,3 +294,5 @@ Board: 7 · Distribución y backup
 - ISC-33 — `MeetingRendererTests.Rendering_again_leaves_the_sources_alone_and_produces_the_same_files` green 2026-08-07
 - ISC-75 — `MeetingRendererTests.A_name_and_a_correction_reach_the_transcript_and_not_the_stored_turns` green 2026-08-07
 - ISC-76 — `TurnsTests.A_turns_confidence_is_the_mean_of_its_parts_weighted_by_their_length` green 2026-08-07
+- ISC-77 — `CorpusRebuildTests.Rebuilding_produces_the_same_projections_and_the_same_files` green 2026-08-07
+- ISC-78 — `CorpusRebuildTests.A_claim_still_points_at_the_turn_it_came_from` green 2026-08-07
