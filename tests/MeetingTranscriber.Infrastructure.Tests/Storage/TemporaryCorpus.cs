@@ -86,6 +86,36 @@ internal static class Sql
         return rows;
     }
 
+    /// <summary>
+    /// Every row of a table as text, columns and rows both in a stable order, for comparing a table
+    /// against itself across an operation that was supposed to leave it alone.
+    /// </summary>
+    /// <remarks>
+    /// The columns are read out of the table rather than listed by the caller, so a column added
+    /// later is compared without anybody remembering to add it here — which is the whole point,
+    /// since the failure being looked for is a column of the human layer quietly being deleted.
+    /// </remarks>
+    public static List<string> Rows(CorpusDbContext context, string table)
+    {
+        var columns = Strings(context, $"SELECT name FROM pragma_table_info('{table}') ORDER BY name;");
+        var fields = columns.Select(column => $"coalesce(cast(\"{column}\" AS TEXT), '<null>')");
+        var row = string.Join(" || '|' || ", fields);
+
+        return Strings(context, $"SELECT {row} AS stored FROM \"{table}\" ORDER BY stored;");
+    }
+
+    /// <summary>
+    /// Every table the corpus holds, leaving out SQLite's own and the shadow tables an external
+    /// content FTS5 index keeps beside itself.
+    /// </summary>
+    public static List<string> Tables(CorpusDbContext context) => Strings(
+        context,
+        """
+        SELECT name FROM sqlite_master
+        WHERE type = 'table' AND name NOT LIKE 'sqlite\_%' ESCAPE '\' AND name NOT LIKE '%fts%'
+        ORDER BY name;
+        """);
+
     private static IDbCommand Command(CorpusDbContext context, string sql)
     {
         var connection = context.Database.GetDbConnection();

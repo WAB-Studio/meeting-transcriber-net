@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 33/65
+progress: 37/68
 updated: 2026-08-07
 ---
 
@@ -77,6 +77,9 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-32: Compacting leaves search answering exactly what it answered before.
 - [ ] ISC-33: `transcript.md` and `utterances.jsonl` render from the stored turns and re-render identically.
 - [ ] ISC-34: The diagnostic CLI reports corpus state without opening the application.
+- [x] ISC-66: Every table of the human layer is written through `HumanLayer`.
+- [x] ISC-67: Exactly one person carries the flag naming the user of this install.
+- [x] ISC-68: Anti: a speaker label a person resolved is never overwritten by one the recording settled.
 
 ### F3 · Audio engine
 Why: two sources become one timeline a person can trust. This is the largest technical risk in
@@ -125,7 +128,7 @@ answer traces back to a turn.
 Board: 6 · Conocimiento local
 - [x] ISC-56: Search is the index answering, not the table.
 - [ ] ISC-57: Everything search promises to find is indexed.
-- [ ] ISC-58: An edited classification or speaker assignment survives a full rebuild.
+- [x] ISC-58: An edited classification or speaker assignment survives a full rebuild.
 - [ ] ISC-59: The MCP server answers read-only over stdio and never writes.
 - [ ] ISC-60: Anti: an MCP response is bounded and the request is recorded locally.
 
@@ -157,6 +160,17 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
+- **2026-08-07** — One person is the user of this install, and that is not a unique index. The flag
+  moving is one row losing it while another gains it, and SQLite checks a unique index at the end of
+  each statement rather than of the transaction, so the pair would be refused whenever the update
+  setting it happened to run before the one clearing it — an order the caller does not choose.
+  `HumanLayer.ThisIsMe` is where the rule holds instead, and with the speaker label a person
+  resolved outranking one the recording settled, it is the reason the human layer has a service and
+  not only tables.
+- **2026-08-07** — `refined:` ISC-25's stub named a schema assertion about one table while the claim
+  said "every edit a person made". It now names the probe that compares every table a rebuild is not
+  allowed to touch, reading the tables and their columns out of the database rather than from a
+  list. The claim did not change; what was offered as proof of it did.
 - **2026-08-07** — `ISA.md` lands as the claims surface. `arquitectura.md` keeps the design and
   its reasoning; its §13 is removed in favour of the board, which is the live version of the
   same plan, and its §15 graduates into these claims, which is what it always was.
@@ -218,7 +232,7 @@ Board: 7 · Distribución y backup
 - ISC-22 — `CorpusImporterTests.Importing_the_same_corpus_twice_imports_it_once` green 2026-08-07
 - ISC-23 — `CorpusImporterTests.What_is_left_behind_on_purpose_is_not_mixed_with_what_had_nowhere_to_go` green 2026-08-07
 - ISC-24 — `DeepgramTranscriptParserTests` green 2026-08-07
-- ISC-25 — `CorpusRebuildTests.What_a_person_moved_is_not_a_column_of_what_the_rebuild_deletes` green 2026-08-07
+- ISC-25 — `CorpusRebuildTests.Deleting_every_derived_row_and_projecting_again_leaves_every_other_table_as_it_was` green 2026-08-07
 - ISC-26 — `CorpusRebuildTests.A_claim_cannot_cite_a_turn_the_meeting_never_had` green 2026-08-07
 - ISC-27 — `DurableWriteTests.A_source_is_never_written_over` green 2026-08-07
 - ISC-28 — `DurableWriteTests.A_write_cut_while_its_content_is_produced_leaves_nothing_at_all` green 2026-08-07
@@ -228,3 +242,7 @@ Board: 7 · Distribución y backup
 - ISC-32 — `CorpusIntegrityTests.Compacting_leaves_search_answering_exactly_what_it_answered_before` green 2026-08-07
 - ISC-54 — `CorpusRebuildTests.A_second_extraction_leaves_the_first_ones_state_alone_and_starts_its_own_blank` green 2026-08-07
 - ISC-56 — `CorpusIntegrityTests.Search_is_the_index_answering_and_not_the_table` green 2026-08-07
+- ISC-58 — `CorpusRebuildTests.Deleting_every_derived_row_and_projecting_again_leaves_every_other_table_as_it_was` green 2026-08-07
+- ISC-66 — `HumanLayerTests.Every_table_of_the_human_layer_has_a_way_in` green 2026-08-07
+- ISC-67 — `HumanLayerTests.Exactly_one_person_is_the_user_of_this_install` green 2026-08-07
+- ISC-68 — `HumanLayerTests.A_label_the_recording_settled_does_not_overwrite_one_a_person_resolved` green 2026-08-07
