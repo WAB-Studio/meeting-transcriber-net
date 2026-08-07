@@ -40,7 +40,42 @@ public sealed record LegacyMeeting
     public IReadOnlyDictionary<string, string> Speakers { get; init; } =
         new Dictionary<string, string>(StringComparer.Ordinal);
 
+    /// <summary>The run that produced <c>extraction.json</c>, or null when there is no such file.</summary>
+    public LegacyExtraction? Extraction { get; init; }
+
     /// <summary>Why this meeting cannot be imported at all, or null when it can.</summary>
+    public string? Unreadable { get; init; }
+}
+
+/// <summary>
+/// What the Python system wrote down about the run that produced an <c>extraction.json</c>, which
+/// is everything outside the <c>response</c> the model returned.
+/// </summary>
+/// <remarks>
+/// There is no schema version anywhere in the file, and there never was: the Python system had one
+/// shape and never versioned it. The prompt is versioned, as the git description of the skill that
+/// ran — <c>31d0d27-dirty</c> — which is more than this corpus was expected to have.
+/// </remarks>
+/// <param name="Model">The model that answered, verbatim.</param>
+/// <param name="SkillVersion">
+/// The version of the prompt, as the Python system knew it. Null when the file does not say.
+/// </param>
+/// <param name="SessionId">
+/// The Claude Code session the extraction came out of. Nothing in the schema holds it — it is the
+/// provider's own handle, not a property of the run — so it is recorded as an audit event, which is
+/// where provenance goes and which outlives this tool.
+/// </param>
+/// <param name="ExtractedAt">
+/// When the extraction ran, written by the machine that ran it and in its own time, like the folder
+/// names. Null when the file does not say or says something that is not a date.
+/// </param>
+public sealed record LegacyExtraction(
+    string? Model,
+    string? SkillVersion,
+    string? SessionId,
+    UtcTimestamp? ExtractedAt)
+{
+    /// <summary>Why the file could not be read, or null when it was.</summary>
     public string? Unreadable { get; init; }
 }
 
@@ -160,6 +195,8 @@ public sealed class LegacyCorpus(DirectoryInfo root)
             return meeting with { Unreadable = $"deepgram.json cannot be read: {exception.Message}" };
         }
 
+        meeting = meeting with { Extraction = ReadExtraction(folder) };
+
         var metaPath = new FileInfo(Path.Combine(folder.FullName, "meta.yaml"));
         if (!metaPath.Exists)
         {
@@ -179,6 +216,56 @@ public sealed class LegacyCorpus(DirectoryInfo root)
                 .ToDictionary(pair => pair.Key, pair => pair.Value!.Trim(), StringComparer.Ordinal),
         };
     }
+
+    /// <summary>
+    /// What the extraction file says about the run behind it. A file that will not parse is not a
+    /// reason to lose the meeting: it comes back saying so, and the importer names it in the report
+    /// rather than refusing everything else the folder holds.
+    /// </summary>
+    private static LegacyExtraction? ReadExtraction(DirectoryInfo folder)
+    {
+        var file = new FileInfo(Path.Combine(folder.FullName, "extraction.json"));
+        if (!file.Exists)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var extraction = JsonDocument.Parse(File.ReadAllText(file.FullName));
+            var root = extraction.RootElement;
+            return new LegacyExtraction(
+                Text(root, "model"),
+                Text(root, "skill_version"),
+                Text(root, "session_id"),
+                ExtractedAt(Text(root, "extracted_at")));
+        }
+        catch (Exception exception) when (exception is JsonException or IOException
+            or InvalidOperationException or ArgumentException)
+        {
+            return new LegacyExtraction(null, null, null, null)
+            {
+                Unreadable = $"extraction.json cannot be read: {exception.Message}",
+            };
+        }
+
+        static string? Text(JsonElement root, string name) =>
+            root.ValueKind is JsonValueKind.Object
+            && root.TryGetProperty(name, out var value)
+            && value.ValueKind is JsonValueKind.String
+                ? Trimmed(value.GetString())
+                : null;
+    }
+
+    /// <summary>
+    /// When the extraction ran. The Python system wrote a naive local timestamp, the same choice
+    /// the recorder made for the folder names, and it is the same machine.
+    /// </summary>
+    private static UtcTimestamp? ExtractedAt(string? value) =>
+        value is not null
+        && DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed)
+            ? UtcTimestamp.From(DateTime.SpecifyKind(parsed, DateTimeKind.Local))
+            : null;
 
     /// <summary>
     /// The language of a meeting, which the paid response does not carry: it was a request

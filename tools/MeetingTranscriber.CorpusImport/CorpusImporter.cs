@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 
 using MeetingTranscriber.Domain.Artifacts;
+using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
@@ -46,6 +47,23 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
     /// the Python system's output would claim a rebuild reproduces bytes that nothing here wrote.
     /// </summary>
     private static readonly string[] Derived = ["transcript.md", "utterances.jsonl", "summary.md"];
+
+    /// <summary>
+    /// What produced every extraction in the Python corpus. The file does not name it, and it does
+    /// not have to: the model it records and the versioned skill beside it are Claude Code headless,
+    /// which is the only thing that ever wrote one of these.
+    /// </summary>
+    private const string ClaudeCode = "claude_code";
+
+    /// <summary>
+    /// The Python system had one extraction shape and never versioned it, so this names that shape
+    /// rather than inventing a number for it. A run carrying it is one whose response is laid out
+    /// the way the old system laid it out, which is exactly what a schema version is for.
+    /// </summary>
+    private const string LegacySchema = "legacy";
+
+    /// <summary>What goes in when the file does not say, and it is reported when it happens.</summary>
+    private const string UnknownPrompt = "unknown";
 
     public ImportReport Import(LegacyCorpus corpus, ImportOptions? options = null)
     {
@@ -319,8 +337,115 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
         }
 
         Classify(legacy, meeting, organizations, initiatives, now, report);
-        ImportArtifacts(legacy, meeting, options, now, report);
+        var artifacts = ImportArtifacts(legacy, meeting, options, now, report);
+        ImportExtraction(legacy, meeting, artifacts, responseSha256, now, report);
         ImportSpeakers(legacy, meeting, people, now, report);
+    }
+
+    /// <summary>
+    /// The run that produced this meeting's <c>extraction.json</c>. Without it the file is an
+    /// artifact nothing points at: a decision or an action projected out of it has no run to hang
+    /// off, and neither has the state a person later gives it, which is keyed on the run.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It is recorded as a job that ran once and succeeded, because that is what happened — the
+    /// summary exists. The instant is the one the file carries, so the run sits on the timeline
+    /// where it actually ran rather than where it was imported, and it is accepted at the same
+    /// moment: the Python system had no acceptance step, and the extraction it wrote is the one it
+    /// rendered from.
+    /// </para>
+    /// <para>
+    /// <c>InputHash</c> is the response the meeting was transcribed from. What the Python system
+    /// actually fed the model was the transcript it rendered, and that file is not imported — it is
+    /// this application's to produce — so the response is the furthest back this corpus can still
+    /// name, and it is the thing the extraction ultimately came out of.
+    /// </para>
+    /// </remarks>
+    private void ImportExtraction(
+        LegacyMeeting legacy,
+        Meeting meeting,
+        IReadOnlyDictionary<string, Artifact> artifacts,
+        string responseSha256,
+        UtcTimestamp now,
+        ImportReport report)
+    {
+        if (legacy.Extraction is not { } extraction)
+        {
+            return;
+        }
+
+        if (extraction.Unreadable is { } problem)
+        {
+            report.CouldNotImport($"{legacy.Id}: {problem}");
+            return;
+        }
+
+        if (!artifacts.TryGetValue("extraction.json", out var output))
+        {
+            return;
+        }
+
+        // Repeatable the way everything else here is: by what the thing is. The file the run
+        // produced is what says this run is already in the corpus.
+        var already = context.ExtractionRuns.Local
+            .Concat(context.ExtractionRuns.Where(run => run.MeetingId == meeting.Id))
+            .Any(run => run.MeetingId == meeting.Id && run.RawOutputHash == output.Sha256);
+        if (already)
+        {
+            return;
+        }
+
+        var ranAt = extraction.ExtractedAt ?? now;
+        if (extraction.ExtractedAt is null)
+        {
+            report.Assume($"{legacy.Id}: extraction.json gives no date, recorded as having run at import time");
+        }
+
+        if (extraction.SkillVersion is null)
+        {
+            report.Assume($"{legacy.Id}: extraction.json names no prompt version, recorded as '{UnknownPrompt}'");
+        }
+
+        // Keyed on the file it produced, so two different extractions of one meeting are two jobs
+        // and the same one imported twice is never a second.
+        var job = ProcessingJob.Queue(
+            Guid.NewGuid(), meeting.Id, JobKind.Extract, $"extract/{meeting.Id}/{output.Sha256}", ranAt);
+        job.Start(ranAt);
+        job.Succeed(ranAt);
+        context.ProcessingJobs.Add(job);
+
+        context.ExtractionRuns.Add(new ExtractionRun
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting.Id,
+            JobId = job.Id,
+            Provider = ClaudeCode,
+            Model = extraction.Model,
+            PromptVersion = extraction.SkillVersion ?? UnknownPrompt,
+            SchemaVersion = LegacySchema,
+            InputHash = responseSha256,
+            RawOutputHash = output.Sha256,
+            OutputArtifactId = output.Id,
+            AcceptedAt = ranAt,
+            CreatedAt = ranAt,
+        });
+        report.Imported(ImportCounter.ExtractionRun);
+
+        // The session is the provider's own handle and no column holds it, so it goes where
+        // provenance goes. Naming it beats dropping it: it is how somebody finds the conversation
+        // this summary came out of, and nothing else in the corpus can lead them there.
+        if (extraction.SessionId is { } session)
+        {
+            context.AuditEvents.Add(new AuditEvent
+            {
+                OccurredAt = now,
+                Actor = AuditActor.App,
+                Action = "imported",
+                MeetingId = meeting.Id,
+                Detail = $"extraction from Claude Code session '{session}'",
+            });
+        }
     }
 
     /// <summary>
@@ -393,7 +518,11 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
         return existing.Id;
     }
 
-    private void ImportArtifacts(
+    /// <summary>
+    /// Registers the sources and answers with them by file name, the ones already registered
+    /// included — a run imported on a second pass still has to be able to point at its output.
+    /// </summary>
+    private Dictionary<string, Artifact> ImportArtifacts(
         LegacyMeeting legacy,
         Meeting meeting,
         ImportOptions options,
@@ -408,6 +537,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             }
         }
 
+        var registered = new Dictionary<string, Artifact>(StringComparer.Ordinal);
         foreach (var (name, kind) in Sources)
         {
             var source = new FileInfo(Path.Combine(legacy.Directory.FullName, name));
@@ -422,9 +552,11 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
 
             var known = context.Artifacts.Local
                 .Concat(context.Artifacts.Where(artifact => artifact.MeetingId == meeting.Id))
-                .Any(artifact => artifact.MeetingId == meeting.Id && artifact.RelativePath == relativePath);
-            if (known)
+                .FirstOrDefault(artifact =>
+                    artifact.MeetingId == meeting.Id && artifact.RelativePath == relativePath);
+            if (known is not null)
             {
+                registered[name] = known;
                 continue;
             }
 
@@ -435,7 +567,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
                 report.Imported(ImportCounter.ArtifactCopy);
             }
 
-            context.Artifacts.Add(new Artifact
+            var artifact = new Artifact
             {
                 Id = Guid.NewGuid(),
                 MeetingId = meeting.Id,
@@ -445,9 +577,13 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
                 ByteSize = source.Length,
                 Sha256 = sha256,
                 CreatedAt = now,
-            });
+            };
+            context.Artifacts.Add(artifact);
+            registered[name] = artifact;
             report.Imported(ImportCounter.Artifact);
         }
+
+        return registered;
     }
 
     /// <summary>

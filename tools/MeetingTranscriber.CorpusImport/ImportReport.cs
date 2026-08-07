@@ -47,6 +47,12 @@ public sealed class ImportReport
     public int CorrectionsImported => Count(ImportCounter.Correction);
 
     /// <summary>
+    /// Extractions given the run they came out of. Fewer than the meetings: not every folder in the
+    /// old corpus was ever summarised.
+    /// </summary>
+    public int ExtractionRunsImported => Count(ImportCounter.ExtractionRun);
+
+    /// <summary>
     /// Files left where they are on purpose, by name and how many meetings had one. They are this
     /// application's to render again, so there are three per meeting and none of them is news.
     /// </summary>
@@ -112,6 +118,7 @@ public sealed class ImportReport
         report.AppendLine($"links         {MeetingsClassified} meeting to node");
         report.AppendLine($"speakers      {SpeakersResolved} resolved onto a person");
         report.AppendLine($"corrections   {CorrectionsImported}");
+        report.AppendLine($"extractions   {ExtractionRunsImported} with the run they came out of");
 
         if (skipped.Count > 0)
         {
@@ -156,4 +163,5 @@ public enum ImportCounter
     Classified,
     Speaker,
     Correction,
+    ExtractionRun,
 }
