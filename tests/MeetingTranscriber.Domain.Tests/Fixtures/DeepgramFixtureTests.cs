@@ -77,12 +77,12 @@ public partial class DeepgramFixtureTests
         using var response = DeepgramFixtures.Read(DeepgramFixtures.TwoChannelSilentMe);
         var channels = response.RootElement.GetProperty("results").GetProperty("channels");
 
-        var me = Alternative(channels[CapturedAudio.IndexOf(AudioChannel.Me)]);
+        var me = Alternative(channels[CapturedAudio.IndexOf(AudioChannel.Microphone)]);
         me.GetProperty("words").GetArrayLength().ShouldBe(0);
         me.GetProperty("transcript").GetString().ShouldBeEmpty();
 
         // The meeting is still there. An empty capture on both channels is a different case.
-        Alternative(channels[CapturedAudio.IndexOf(AudioChannel.Others)])
+        Alternative(channels[CapturedAudio.IndexOf(AudioChannel.Loopback)])
             .GetProperty("words").GetArrayLength().ShouldBeGreaterThan(0);
 
         Turns(response).ShouldAllBe(turn => turn.GetProperty("channel").GetInt32() == 0);
@@ -96,7 +96,7 @@ public partial class DeepgramFixtureTests
         using var response = DeepgramFixtures.Read(name);
 
         Turns(response).Select(turn => turn.GetProperty("channel").GetInt32()).Distinct().Order()
-            .ShouldBe([CapturedAudio.IndexOf(AudioChannel.Others), CapturedAudio.IndexOf(AudioChannel.Me)]);
+            .ShouldBe([CapturedAudio.IndexOf(AudioChannel.Loopback), CapturedAudio.IndexOf(AudioChannel.Microphone)]);
     }
 
     [Theory]

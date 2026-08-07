@@ -7,8 +7,8 @@ namespace MeetingTranscriber.Domain.Audio;
 public enum SourceProfile
 {
     /// <summary>
-    /// Captured by the application: two channels, <see cref="AudioChannel.Others"/>
-    /// then <see cref="AudioChannel.Me"/>. Every speaker turn belongs to a channel.
+    /// Captured by the application: two channels, <see cref="AudioChannel.Loopback"/>
+    /// then <see cref="AudioChannel.Microphone"/>. Every speaker turn belongs to a channel.
     /// </summary>
     Multichannel = 1,
 

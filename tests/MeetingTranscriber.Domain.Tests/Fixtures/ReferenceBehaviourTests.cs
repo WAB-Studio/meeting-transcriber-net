@@ -58,7 +58,7 @@ public class ReferenceBehaviourTests
         var turns = Turns.Group(DeepgramFixtures.Segments(name));
 
         turns.Select(turn => turn.Channel).Distinct().ShouldBe(
-            [AudioChannel.Others, AudioChannel.Me],
+            [AudioChannel.Loopback, AudioChannel.Microphone],
             ignoreOrder: true);
     }
 
@@ -106,7 +106,7 @@ public class ReferenceBehaviourTests
     {
         var turns = Turns.Group(DeepgramFixtures.Segments(DeepgramFixtures.TwoChannelSilentMe));
 
-        turns.ShouldAllBe(turn => turn.Channel == AudioChannel.Others);
+        turns.ShouldAllBe(turn => turn.Channel == AudioChannel.Loopback);
     }
 
     [Fact]
@@ -130,6 +130,49 @@ public class ReferenceBehaviourTests
         var shuffled = segments.OrderBy(segment => segment.Channel).ThenBy(segment => segment.Start);
 
         Turns.Group(shuffled).ShouldBe(Turns.Group(segments));
+    }
+
+    /// <summary>
+    /// The rule, against every real response: the microphone settles the user exactly when it
+    /// caught one speaker, and everybody else waits. Stated as the biconditional so it keeps
+    /// checking something whichever way a new fixture falls.
+    /// </summary>
+    [Theory]
+    [InlineData(DeepgramFixtures.TwoChannelLong)]
+    [InlineData(DeepgramFixtures.TwoChannelShort)]
+    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
+    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    public void Only_a_microphone_that_caught_one_speaker_settles_who_it_was(string name)
+    {
+        var segments = DeepgramFixtures.Segments(name);
+        var microphone = DeepgramFixtures.ProfileOf(name).MicrophoneChannel();
+
+        var resolution = Speakers.Resolve(DeepgramFixtures.ProfileOf(name), segments);
+        var onMicrophone = segments
+            .Where(segment => segment.Channel == microphone && microphone is not null)
+            .Select(segment => segment.SpeakerLabel)
+            .Distinct()
+            .ToArray();
+
+        (resolution.Mine is not null).ShouldBe(onMicrophone.Length == 1);
+        segments.Select(segment => segment.SpeakerLabel).Distinct()
+            .ShouldBe([.. resolution.NeedingAPerson, .. resolution.Mine is null ? Array.Empty<string>() : [resolution.Mine]], ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// Why the rule is not "channel 1 is the user". This is a real meeting in which two people sat
+    /// at one microphone, and the old contract would have signed both sets of words with one name.
+    /// </summary>
+    [Fact]
+    public void Two_people_at_one_microphone_is_a_meeting_that_actually_happened()
+    {
+        var resolution = Speakers.Resolve(
+            SourceProfile.Multichannel,
+            DeepgramFixtures.Segments(DeepgramFixtures.TwoChannelLong));
+
+        resolution.Mine.ShouldBeNull();
+        resolution.NeedingAPerson.ShouldContain("ch1:speaker_0");
+        resolution.NeedingAPerson.ShouldContain("ch1:speaker_1");
     }
 
     private static int Words(IEnumerable<string> texts) =>

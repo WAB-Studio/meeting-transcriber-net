@@ -460,15 +460,19 @@ proveedor.
 
 Se abren dos flujos:
 
-- **otros:** audio del proceso seleccionado o loopback completo como fallback;
-- **yo:** micrófono seleccionado.
+- **loopback:** audio del proceso seleccionado o loopback completo como fallback;
+- **micrófono:** micrófono seleccionado.
 
 El contrato de canales es estable:
 
 ```text
-canal 0 = otros
-canal 1 = yo
+canal 0 = loopback
+canal 1 = micrófono
 ```
+
+Los dos nombran un origen de audio y no una persona. Un canal es determinista
+sobre por qué dispositivo entró el sonido, y no dice cuánta gente habló por él:
+dos personas en la misma sala comparten un micrófono.
 
 La captura por proceso usa `ActivateAudioInterfaceAsync` con process loopback e
 incluye el árbol de procesos cuando Windows lo soporta. Teams, Zoom, navegadores
@@ -579,9 +583,10 @@ El renderer .NET transforma `deepgram.json` en:
 - filas `utterances` para búsqueda y citas;
 - participantes pendientes de resolución humana.
 
-La asignación del canal del micrófono al usuario es determinista. Los speakers
-diarizados de una pista son probabilísticos y se conservan como labels hasta que
-una persona los asigne.
+El canal del micrófono asigna al usuario solamente cuando trajo un único speaker:
+no había nadie más que pudiera ser. Con dos, cuál es cuál es justo lo que la
+grabación no sabe, así que ninguno se asigna. Los demás speakers diarizados son
+probabilísticos y se conservan como labels hasta que una persona los asigne.
 
 Los nombres y correcciones se aplican al renderizar. Nunca se escriben dentro de
 `deepgram.json` ni de la evidencia cruda usada para validar citas.

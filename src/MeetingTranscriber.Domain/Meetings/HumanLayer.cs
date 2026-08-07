@@ -3,7 +3,11 @@ namespace MeetingTranscriber.Domain.Meetings;
 /// <summary>What settled a speaker label onto a person.</summary>
 public enum SpeakerAssignmentSource
 {
-    /// <summary>The contract gave it for free: a multichannel capture knows whose channel is whose.</summary>
+    /// <summary>
+    /// The recording gave it for free, which happens in one case: the microphone channel came back
+    /// with a single speaker, so there was nobody else it could be. <c>Speakers.Resolve</c> is the
+    /// only thing that hands this out.
+    /// </summary>
     Channel = 1,
 
     /// <summary>Somebody resolved a diarized label, which outranks any guess.</summary>

@@ -17,10 +17,10 @@ public class TurnsTests
         // What a multichannel response looks like before anything sorts it: one whole side of
         // the call, then the other. Rendered in that order it reads as two monologues.
         var turns = Turns.Group([
-            Segment(0.5, 2.0, AudioChannel.Others, "speaker_0", "morning, can you hear me?"),
-            Segment(9.2, 11.0, AudioChannel.Others, "speaker_1", "different person here"),
-            Segment(3.1, 4.0, AudioChannel.Me, "speaker_0", "loud and clear"),
-            Segment(12.0, 13.0, AudioChannel.Me, "speaker_0", "agreed"),
+            Segment(0.5, 2.0, AudioChannel.Loopback, "speaker_0", "morning, can you hear me?"),
+            Segment(9.2, 11.0, AudioChannel.Loopback, "speaker_1", "different person here"),
+            Segment(3.1, 4.0, AudioChannel.Microphone, "speaker_0", "loud and clear"),
+            Segment(12.0, 13.0, AudioChannel.Microphone, "speaker_0", "agreed"),
         ]);
 
         turns.Select(turn => turn.Text).ShouldBe([
@@ -35,8 +35,8 @@ public class TurnsTests
     public void Turns_are_numbered_from_the_start_of_the_meeting()
     {
         var turns = Turns.Group([
-            Segment(5.0, 6.0, AudioChannel.Me, "speaker_0", "second"),
-            Segment(1.0, 2.0, AudioChannel.Others, "speaker_0", "first"),
+            Segment(5.0, 6.0, AudioChannel.Microphone, "speaker_0", "second"),
+            Segment(1.0, 2.0, AudioChannel.Loopback, "speaker_0", "first"),
         ]);
 
         turns.Select(turn => turn.Ordinal).ShouldBe([0, 1]);
@@ -47,9 +47,9 @@ public class TurnsTests
     public void Consecutive_speech_from_one_speaker_is_one_turn()
     {
         var turns = Turns.Group([
-            Segment(0.0, 0.9, AudioChannel.Me, "speaker_0", "First."),
-            Segment(1.0, 1.9, AudioChannel.Me, "speaker_0", "Second."),
-            Segment(2.0, 2.9, AudioChannel.Others, "speaker_0", "Third."),
+            Segment(0.0, 0.9, AudioChannel.Microphone, "speaker_0", "First."),
+            Segment(1.0, 1.9, AudioChannel.Microphone, "speaker_0", "Second."),
+            Segment(2.0, 2.9, AudioChannel.Loopback, "speaker_0", "Third."),
         ]);
 
         turns.Count.ShouldBe(2);
@@ -62,8 +62,8 @@ public class TurnsTests
     public void A_silence_longer_than_the_rule_allows_starts_a_new_turn()
     {
         var turns = Turns.Group([
-            Segment(0.0, 1.0, AudioChannel.Others, "speaker_0", "so that is settled"),
-            Segment(1.0 + 2.001, 4.0, AudioChannel.Others, "speaker_0", "and another thing"),
+            Segment(0.0, 1.0, AudioChannel.Loopback, "speaker_0", "so that is settled"),
+            Segment(1.0 + 2.001, 4.0, AudioChannel.Loopback, "speaker_0", "and another thing"),
         ]);
 
         turns.Count.ShouldBe(2);
@@ -74,8 +74,8 @@ public class TurnsTests
     public void A_pause_the_rule_allows_stays_inside_one_turn()
     {
         var turns = Turns.Group([
-            Segment(0.0, 1.0, AudioChannel.Others, "speaker_0", "so that is settled"),
-            Segment(1.0 + 2.0, 4.0, AudioChannel.Others, "speaker_0", "and another thing"),
+            Segment(0.0, 1.0, AudioChannel.Loopback, "speaker_0", "so that is settled"),
+            Segment(1.0 + 2.0, 4.0, AudioChannel.Loopback, "speaker_0", "and another thing"),
         ]);
 
         turns.Count.ShouldBe(1);
@@ -91,7 +91,7 @@ public class TurnsTests
     public void A_monologue_with_silences_in_it_is_not_one_turn()
     {
         var turns = Turns.Group(Enumerable.Range(0, 20)
-            .Select(index => Segment(index * 100.0, (index * 100.0) + 1.0, AudioChannel.Others, "speaker_0", "a")));
+            .Select(index => Segment(index * 100.0, (index * 100.0) + 1.0, AudioChannel.Loopback, "speaker_0", "a")));
 
         turns.Count.ShouldBe(20);
     }
@@ -107,9 +107,9 @@ public class TurnsTests
     {
         var byChannel = new[]
         {
-            Segment(4.0, 5.0, AudioChannel.Others, "speaker_1", "third"),
-            Segment(1.0, 2.0, AudioChannel.Others, "speaker_0", "the meeting side"),
-            Segment(1.0, 3.0, AudioChannel.Me, "speaker_0", "the microphone side"),
+            Segment(4.0, 5.0, AudioChannel.Loopback, "speaker_1", "third"),
+            Segment(1.0, 2.0, AudioChannel.Loopback, "speaker_0", "the meeting side"),
+            Segment(1.0, 3.0, AudioChannel.Microphone, "speaker_0", "the microphone side"),
         };
 
         Turns.Group(byChannel).ShouldBe(Turns.Group(byChannel.AsEnumerable().Reverse()));
@@ -123,13 +123,13 @@ public class TurnsTests
         // Both channels label their first speaker 0, because a provider numbers speakers within
         // a channel. Merging on the label alone would make this one turn saying both halves.
         var turns = Turns.Group([
-            Segment(0.0, 1.0, AudioChannel.Others, "speaker_0", "are you there?"),
-            Segment(1.0, 2.0, AudioChannel.Me, "speaker_0", "yes"),
+            Segment(0.0, 1.0, AudioChannel.Loopback, "speaker_0", "are you there?"),
+            Segment(1.0, 2.0, AudioChannel.Microphone, "speaker_0", "yes"),
         ]);
 
         turns.Count.ShouldBe(2);
-        turns[0].Channel.ShouldBe(AudioChannel.Others);
-        turns[1].Channel.ShouldBe(AudioChannel.Me);
+        turns[0].Channel.ShouldBe(AudioChannel.Loopback);
+        turns[1].Channel.ShouldBe(AudioChannel.Microphone);
     }
 
     [Fact]
@@ -161,9 +161,9 @@ public class TurnsTests
     public void Speech_with_nothing_in_it_is_not_a_turn()
     {
         var turns = Turns.Group([
-            Segment(0.0, 1.0, AudioChannel.Me, "speaker_0", "   "),
-            Segment(1.0, 2.0, AudioChannel.Me, "speaker_0", string.Empty),
-            Segment(2.0, 3.0, AudioChannel.Me, "speaker_0", " something "),
+            Segment(0.0, 1.0, AudioChannel.Microphone, "speaker_0", "   "),
+            Segment(1.0, 2.0, AudioChannel.Microphone, "speaker_0", string.Empty),
+            Segment(2.0, 3.0, AudioChannel.Microphone, "speaker_0", " something "),
         ]);
 
         turns.Count.ShouldBe(1);
@@ -199,9 +199,9 @@ public class TurnsTests
         // and a claim anchored on a position has to land on the same turn afterwards.
         var segments = new[]
         {
-            Segment(0.0, 1.0, AudioChannel.Others, "speaker_0", "a"),
-            Segment(1.0, 2.0, AudioChannel.Me, "speaker_0", "b"),
-            Segment(2.0, 3.0, AudioChannel.Others, "speaker_1", "c"),
+            Segment(0.0, 1.0, AudioChannel.Loopback, "speaker_0", "a"),
+            Segment(1.0, 2.0, AudioChannel.Microphone, "speaker_0", "b"),
+            Segment(2.0, 3.0, AudioChannel.Loopback, "speaker_1", "c"),
         };
 
         Turns.Group(segments).ShouldBe(Turns.Group(segments));

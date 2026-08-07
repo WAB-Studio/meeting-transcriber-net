@@ -82,14 +82,22 @@ language: nova-3 against a language the audio is not in returns an empty string 
 0.0, no error, and charges in full. `two-channel-silent-me.json` is that case, and the meeting
 still projects from the channel that did carry speech.
 
-**Channel 1 is the microphone, and how many people it caught is not deterministic.** — measured
+**Channel 1 is the microphone, and how many people it caught is not deterministic.** — .NET only,
+`Speakers.Resolve`
 
 The Python renderer applies the user's name to channel 1 without consulting the diarizer, and
 `Domain/Audio/` copied that as "channel 1 is the user". The fixtures disprove it:
 `two-channel-long` has two diarized speakers on channel 1, which is two people in one room sharing
-one microphone. What the channel does fix is which microphone the audio came from, never how many
-people spoke into it, so the parser reads the diarizer's labels on both channels. Deciding which of
-them is whom is a human resolution and its own task.
+one microphone, and Python would have signed both sets of words with one name.
+
+What a channel fixes is the device the audio arrived through, never how many people spoke into it.
+So the members are named for the devices — `Loopback` and `Microphone` — and the free assignment is
+narrow: one speaker on the microphone is the user, because there was nobody else it could be, and
+anything else is a label with no row in `speaker_assignments` until somebody says who it is. A
+microphone that caught nobody settles nobody and asks nothing either.
+
+Not one committed fixture takes the free assignment, which is worth knowing when reading the
+tests: the set has no meeting recorded with a single person at the microphone.
 
 ## What .NET does differently, on purpose
 

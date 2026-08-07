@@ -59,9 +59,9 @@ public class FixtureParsingTests
         var transcript = Parse(name);
 
         transcript.Channels.Select(channel => channel.Channel)
-            .ShouldBe([AudioChannel.Others, AudioChannel.Me]);
+            .ShouldBe([AudioChannel.Loopback, AudioChannel.Microphone]);
         transcript.Channels.Select(channel => channel.Index)
-            .ShouldBe([CapturedAudio.IndexOf(AudioChannel.Others), CapturedAudio.IndexOf(AudioChannel.Me)]);
+            .ShouldBe([CapturedAudio.IndexOf(AudioChannel.Loopback), CapturedAudio.IndexOf(AudioChannel.Microphone)]);
     }
 
     /// <summary>
@@ -75,9 +75,9 @@ public class FixtureParsingTests
         var transcript = Parse(DeepgramFixtures.TwoChannelSilentMe);
 
         transcript.Channels.Count.ShouldBe(2);
-        transcript.SilentChannels.Select(channel => channel.Channel).ShouldBe([AudioChannel.Me]);
+        transcript.SilentChannels.Select(channel => channel.Channel).ShouldBe([AudioChannel.Microphone]);
         transcript.Segments.ShouldNotBeEmpty();
-        transcript.Segments.ShouldAllBe(segment => segment.Channel == AudioChannel.Others);
+        transcript.Segments.ShouldAllBe(segment => segment.Channel == AudioChannel.Loopback);
     }
 
     /// <summary>
@@ -89,7 +89,7 @@ public class FixtureParsingTests
     public void Two_people_sharing_the_microphone_come_back_as_two_speakers()
     {
         var microphone = Parse(DeepgramFixtures.TwoChannelLong)
-            .Channels[CapturedAudio.IndexOf(AudioChannel.Me)];
+            .Channels[CapturedAudio.IndexOf(AudioChannel.Microphone)];
 
         microphone.SpeakerLabels.ShouldBe(["ch1:speaker_0", "ch1:speaker_1"]);
     }
