@@ -31,7 +31,7 @@ public sealed class LegacyCorpusBuilder : IDisposable
         int channels = 2,
         double seconds = 1800.5,
         string? meta = DefaultMeta,
-        bool extraction = true,
+        string? extraction = DefaultExtraction,
         bool transcript = true)
     {
         Write($"{id}/deepgram.json", Response(id, channels, seconds));
@@ -41,9 +41,9 @@ public sealed class LegacyCorpusBuilder : IDisposable
             Write($"{id}/meta.yaml", meta);
         }
 
-        if (extraction)
+        if (extraction is not null)
         {
-            Write($"{id}/extraction.json", """{"response": {"abstract": "something happened"}}""");
+            Write($"{id}/extraction.json", extraction);
         }
 
         if (transcript)
@@ -109,6 +109,21 @@ public sealed class LegacyCorpusBuilder : IDisposable
             {"metadata":{"transaction_key":"deprecated","request_id":"{{{requestId}}}","sha256":"s","created":"2026-01-01T00:00:00.000Z","duration":{{{duration}}},"channels":{{{channels}}},"models":["m"]},"results":{"channels":[{{{alternatives}}}],"utterances":[]}}
             """;
     }
+
+    /// <summary>
+    /// An extraction as the Python system wrote one: the model that answered, the git description
+    /// of the skill that prompted it, the Claude Code session it came out of, and a naive local
+    /// timestamp. There is no schema version in it, and there never was in a real one either.
+    /// </summary>
+    public const string DefaultExtraction = """
+        {
+          "skill_version": "31d0d27-dirty",
+          "model": "claude-opus-5[1m]",
+          "session_id": "02132d9f-69ba-47c3-ab5b-ca6b4c739408",
+          "extracted_at": "2026-07-29T10:58:55",
+          "response": {"abstract": "something happened", "decisions": [], "actions": []}
+        }
+        """;
 
     public const string DefaultCatalog = """
         companies:

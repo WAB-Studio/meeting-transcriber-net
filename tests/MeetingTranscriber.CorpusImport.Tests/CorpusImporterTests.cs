@@ -1,6 +1,9 @@
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Jobs;
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
+using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.EntityFrameworkCore;
@@ -147,11 +150,230 @@ public class CorpusImporterTests
 
         new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
 
-        var audit = context.AuditEvents.Single();
+        var audit = context.AuditEvents.AsEnumerable()
+            .Single(entry => entry.Detail!.Contains("folder", StringComparison.Ordinal));
         audit.Action.ShouldBe("imported");
         audit.MeetingId.ShouldBe(context.Meetings.Single().Id);
         audit.Detail.ShouldNotBeNull().ShouldContain("2026-07-29 09-35-15");
     }
+
+    /// <summary>
+    /// Everything the old corpus knew about the run that produced its summary, in the row a
+    /// projected decision or action hangs off. Without it the extraction is a file nothing points
+    /// at, and a claim read out of it would have no run to belong to.
+    /// </summary>
+    [Fact]
+    public void An_imported_extraction_arrives_with_the_run_it_came_out_of()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        report.ExtractionRunsImported.ShouldBe(1);
+        var run = context.ExtractionRuns.Single();
+        var meeting = context.Meetings.Single();
+        var output = context.Artifacts.Single(artifact => artifact.Kind == ArtifactKind.Extraction);
+        var response = context.Artifacts.Single(artifact => artifact.Kind == ArtifactKind.DeepgramResponse);
+
+        run.MeetingId.ShouldBe(meeting.Id);
+        run.Provider.ShouldBe("claude_code");
+        run.Model.ShouldBe("claude-opus-5[1m]");
+        run.PromptVersion.ShouldBe("31d0d27-dirty");
+        // The Python system had one shape and never versioned it; this names that shape.
+        run.SchemaVersion.ShouldBe("legacy");
+
+        // What it produced, and what it ultimately came out of. The transcript the model was
+        // actually given is this application's to render, so the response is as far back as the
+        // corpus can still name.
+        run.RawOutputHash.ShouldBe(output.Sha256);
+        run.OutputArtifactId.ShouldBe(output.Id);
+        run.InputHash.ShouldBe(response.Sha256);
+
+        // On the timeline where it ran, not where it was imported, and accepted then: the old
+        // system had no acceptance step and rendered from the extraction it wrote.
+        run.CreatedAt.Value.LocalDateTime.ShouldBe(new DateTime(2026, 7, 29, 10, 58, 55));
+        run.AcceptedAt.ShouldBe(run.CreatedAt);
+
+        // It ran once and it landed, which is what having a summary means.
+        var job = context.ProcessingJobs.Single(entry => entry.Id == run.JobId);
+        job.Kind.ShouldBe(JobKind.Extract);
+        job.State.ShouldBe(JobState.Succeeded);
+        job.Attempt.ShouldBe(1);
+    }
+
+    /// <summary>
+    /// The half of this the run exists for. A decision and an action read out of that extraction
+    /// hang off it, and so does the state a person later gives the action, which is keyed on the
+    /// run rather than on an action's id.
+    /// </summary>
+    [Fact]
+    public void A_decision_and_an_action_projected_from_it_hang_off_that_run()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        var run = context.ExtractionRuns.Single();
+        var meeting = context.Meetings.Single();
+        var when = run.CreatedAt;
+
+        context.Utterances.Add(new Utterance
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting.Id,
+            Ordinal = 0,
+            Start = Duration.Zero,
+            End = Duration.FromMilliseconds(1000),
+            Channel = AudioChannel.Loopback,
+            SpeakerLabel = "ch0:speaker_0",
+            Text = "sube el presupuesto",
+        });
+        context.Decisions.Add(new Decision
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting.Id,
+            ExtractionRunId = run.Id,
+            Statement = "el presupuesto sube",
+            Evidence = Cited(meeting.Id),
+            CreatedAt = when,
+        });
+        context.ActionItems.Add(new ActionItem
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting.Id,
+            ExtractionRunId = run.Id,
+            Ordinal = 0,
+            Statement = "mandar el presupuesto",
+            Evidence = Cited(meeting.Id),
+            CreatedAt = when,
+        });
+        context.ActionItemProgress.Add(new ActionItemProgress
+        {
+            ExtractionRunId = run.Id,
+            Ordinal = 0,
+            State = ActionItemState.Done,
+            UpdatedAt = when,
+        });
+        context.SaveChanges();
+
+        context.Decisions.Single().ExtractionRunId.ShouldBe(run.Id);
+        context.ActionItems.Single().ExtractionRunId.ShouldBe(run.Id);
+        context.ActionItemProgress.Single().ExtractionRunId.ShouldBe(run.Id);
+    }
+
+    /// <summary>
+    /// Repeatable like the rest of the tool, and matched on what the run produced rather than on
+    /// anything this corpus minted.
+    /// </summary>
+    [Fact]
+    public void Importing_the_same_extraction_twice_leaves_one_run()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var importer = new CorpusImporter(context, Clock);
+
+        importer.Import(new LegacyCorpus(legacy.Directory));
+        var second = importer.Import(new LegacyCorpus(legacy.Directory));
+
+        second.ExtractionRunsImported.ShouldBe(0);
+        context.ExtractionRuns.Count().ShouldBe(1);
+        context.ProcessingJobs.Count().ShouldBe(1);
+    }
+
+    /// <summary>
+    /// A folder nobody ever summarised gets no run, rather than an empty one standing for work
+    /// that never happened.
+    /// </summary>
+    [Fact]
+    public void A_meeting_with_no_extraction_gets_no_run()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15", extraction: null);
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        report.ExtractionRunsImported.ShouldBe(0);
+        context.ExtractionRuns.ShouldBeEmpty();
+        context.ProcessingJobs.ShouldBeEmpty();
+        context.Meetings.Count().ShouldBe(1);
+    }
+
+    /// <summary>
+    /// The prompt version is the one thing here a real file might not carry. What goes in then is
+    /// said out loud rather than looking like a version somebody chose.
+    /// </summary>
+    [Fact]
+    public void An_extraction_that_names_no_prompt_version_says_so_and_still_arrives()
+    {
+        const string thin = """{"model": "claude-opus-5[1m]", "response": {"abstract": "x"}}""";
+        using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15", extraction: thin);
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        var run = context.ExtractionRuns.Single();
+        run.PromptVersion.ShouldBe("unknown");
+        report.Assumed.ShouldContain(line => line.Contains("prompt version", StringComparison.Ordinal));
+        report.Assumed.ShouldContain(line => line.Contains("run at import time", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A corpus edited by hand for months has a file somebody truncated. It is named, and the
+    /// meeting it belongs to still arrives with everything else the folder holds.
+    /// </summary>
+    [Fact]
+    public void An_extraction_that_cannot_be_read_is_named_and_the_meeting_still_arrives()
+    {
+        using var legacy = new LegacyCorpusBuilder()
+            .WithMeeting("2026-07-29 09-35-15", extraction: """{"model": "claude""");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        context.Meetings.Count().ShouldBe(1);
+        context.ExtractionRuns.ShouldBeEmpty();
+        report.NotImported.ShouldContain(line => line.Contains("extraction.json", StringComparison.Ordinal));
+
+        // The file itself is still registered: it was paid for in credits and it is still the only
+        // copy of that summary, whatever this tool could make of its contents.
+        context.Artifacts.ShouldContain(artifact => artifact.Kind == ArtifactKind.Extraction);
+    }
+
+    /// <summary>
+    /// The Claude Code session the summary came out of. No column holds it — it is the provider's
+    /// own handle — and it is the only thread back to the conversation that produced the summary,
+    /// so it is written where provenance goes rather than dropped.
+    /// </summary>
+    [Fact]
+    public void The_session_an_extraction_came_out_of_is_written_down()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        context.AuditEvents.ShouldContain(entry =>
+            entry.Detail!.Contains("02132d9f-69ba-47c3-ab5b-ca6b4c739408", StringComparison.Ordinal));
+    }
+
+    private static Citation Cited(Guid meetingId) => new()
+    {
+        MeetingId = meetingId,
+        UtteranceOrdinal = 0,
+        Start = Duration.Zero,
+        End = Duration.FromMilliseconds(1000),
+        SpeakerLabel = "ch0:speaker_0",
+        QuotedText = "sube el presupuesto",
+        SourceArtifactSha256 = new string('0', 64),
+    };
 
     /// <summary>
     /// One way, and the corpus it reads is full of things that were paid for. Nothing in it is

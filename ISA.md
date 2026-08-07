@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 41/72
+progress: 43/74
 updated: 2026-08-07
 ---
 
@@ -61,6 +61,8 @@ Board: 0 · Contratos y caracterización
 - [x] ISC-21: Anti: the importer never writes to the Python corpus — it comes out exactly as it went in.
 - [x] ISC-22: Importing the same corpus twice imports it once, and a renamed folder is still the same meeting.
 - [x] ISC-23: Anti: what the import cannot place is named in the report, never dropped, and never mixed with what was skipped on purpose.
+- [x] ISC-73: Every imported extraction arrives with the run it came out of, carrying what its file knows.
+- [x] ISC-74: A decision, an action and the state a person gives it hang off an imported run.
 
 ### F2 · Deterministic core from artifacts
 Why: given a `deepgram.json`, everything that does not need a microphone works — parse, store,
@@ -164,6 +166,13 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
+- **2026-08-07** — An imported extraction run carries `schema_version` `legacy` and, when the file
+  does not say, `prompt_version` `unknown`. Neither is a version somebody chose: the Python system
+  had exactly one extraction shape and never numbered it, so `legacy` names that shape, which is
+  what a schema version is for; `unknown` is reported as an assumption every time it is written, so
+  it cannot be mistaken for one. `input_hash` is the response the meeting was transcribed from —
+  what the model was actually given was the rendered transcript, and that file is deliberately not
+  imported, so the response is the furthest back this corpus can still name.
 - **2026-08-07** — Search takes FTS5's query syntax rather than a bag of words, and one hit is one
   row rather than one meeting. The syntax is what makes `presupuesto AND cliente` and a quoted
   phrase mean what somebody typing them expects, and the cost — a query FTS5 cannot parse is an
@@ -260,3 +269,5 @@ Board: 7 · Distribución y backup
 - ISC-70 — `CorpusSearchTests.A_meeting_being_deleted_is_not_something_search_offers` green 2026-08-07
 - ISC-71 — `CorpusSearchTests.Throwing_both_indexes_away_and_rebuilding_them_answers_exactly_the_same` green 2026-08-07
 - ISC-72 — `CorpusSearchTests.A_query_the_index_cannot_parse_says_so_and_names_it` green 2026-08-07
+- ISC-73 — `CorpusImporterTests.An_imported_extraction_arrives_with_the_run_it_came_out_of` green 2026-08-07
+- ISC-74 — `CorpusImporterTests.A_decision_and_an_action_projected_from_it_hang_off_that_run` green 2026-08-07
