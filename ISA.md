@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 37/68
+progress: 41/72
 updated: 2026-08-07
 ---
 
@@ -128,6 +128,10 @@ answer traces back to a turn.
 Board: 6 · Conocimiento local
 - [x] ISC-56: Search is the index answering, not the table.
 - [ ] ISC-57: Everything search promises to find is indexed.
+- [x] ISC-69: A hit carries the meeting, its date, its title, an elided snippet and where on the timeline it was said.
+- [x] ISC-70: Anti: a meeting on its way out is never something search offers.
+- [x] ISC-71: Throwing both search indexes away and rebuilding them leaves search answering exactly what it answered before.
+- [x] ISC-72: Anti: a query the index cannot parse is refused naming the query, never as a database error.
 - [x] ISC-58: An edited classification or speaker assignment survives a full rebuild.
 - [ ] ISC-59: The MCP server answers read-only over stdio and never writes.
 - [ ] ISC-60: Anti: an MCP response is bounded and the request is recorded locally.
@@ -160,6 +164,12 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
+- **2026-08-07** — Search takes FTS5's query syntax rather than a bag of words, and one hit is one
+  row rather than one meeting. The syntax is what makes `presupuesto AND cliente` and a quoted
+  phrase mean what somebody typing them expects, and the cost — a query FTS5 cannot parse is an
+  error — is paid as `CorpusSearchException` naming the query. Per hit rather than per meeting
+  because "where was this said" has as many answers as it has, and collapsing them would make one
+  limit mean two different things depending on how long the meeting was.
 - **2026-08-07** — One person is the user of this install, and that is not a unique index. The flag
   moving is one row losing it while another gains it, and SQLite checks a unique index at the end of
   each statement rather than of the transaction, so the pair would be refused whenever the update
@@ -246,3 +256,7 @@ Board: 7 · Distribución y backup
 - ISC-66 — `HumanLayerTests.Every_table_of_the_human_layer_has_a_way_in` green 2026-08-07
 - ISC-67 — `HumanLayerTests.Exactly_one_person_is_the_user_of_this_install` green 2026-08-07
 - ISC-68 — `HumanLayerTests.A_label_the_recording_settled_does_not_overwrite_one_a_person_resolved` green 2026-08-07
+- ISC-69 — `CorpusSearchTests.A_hit_carries_the_meeting_the_date_the_title_a_snippet_and_where_it_was_said` green 2026-08-07
+- ISC-70 — `CorpusSearchTests.A_meeting_being_deleted_is_not_something_search_offers` green 2026-08-07
+- ISC-71 — `CorpusSearchTests.Throwing_both_indexes_away_and_rebuilding_them_answers_exactly_the_same` green 2026-08-07
+- ISC-72 — `CorpusSearchTests.A_query_the_index_cannot_parse_says_so_and_names_it` green 2026-08-07
