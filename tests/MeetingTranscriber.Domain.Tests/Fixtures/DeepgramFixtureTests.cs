@@ -24,6 +24,7 @@ public partial class DeepgramFixtureTests
             [
                 DeepgramFixtures.TwoChannelLong,
                 DeepgramFixtures.TwoChannelShort,
+                DeepgramFixtures.TwoChannelOneVoiceMe,
                 DeepgramFixtures.SingleTrackDiarized,
                 DeepgramFixtures.TwoChannelSilentMe,
             ],
@@ -37,10 +38,7 @@ public partial class DeepgramFixtureTests
     }
 
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
-    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
-    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
     public void A_fixture_has_the_channels_its_profile_promises(string name)
     {
         using var response = DeepgramFixtures.Read(name);
@@ -71,6 +69,20 @@ public partial class DeepgramFixtureTests
             .Count().ShouldBeGreaterThan(1);
     }
 
+    /// <summary>
+    /// One voice on the microphone and several on the meeting, which is the whole point of it: a
+    /// fixture with one speaker everywhere would settle the user for the wrong reason, and one
+    /// with a second voice on the microphone is the case the other four already cover.
+    /// </summary>
+    [Fact]
+    public void The_one_voice_fixture_has_one_person_at_the_microphone_and_a_room_on_the_other_side()
+    {
+        using var response = DeepgramFixtures.Read(DeepgramFixtures.TwoChannelOneVoiceMe);
+
+        Speakers(response, AudioChannel.Microphone).ShouldBe([0]);
+        Speakers(response, AudioChannel.Loopback).Length.ShouldBeGreaterThan(1);
+    }
+
     [Fact]
     public void The_silent_fixture_has_a_channel_nobody_spoke_on()
     {
@@ -89,8 +101,7 @@ public partial class DeepgramFixtureTests
     }
 
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
+    [MemberData(nameof(DeepgramFixtures.EachWithBothSidesHeard), MemberType = typeof(DeepgramFixtures))]
     public void A_two_channel_fixture_answers_on_both_of_the_numbers_the_contract_fixes(string name)
     {
         using var response = DeepgramFixtures.Read(name);
@@ -100,10 +111,7 @@ public partial class DeepgramFixtureTests
     }
 
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
-    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
-    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
     public void Turns_run_forwards_and_stay_inside_the_meeting(string name)
     {
         using var response = DeepgramFixtures.Read(name);
@@ -131,10 +139,7 @@ public partial class DeepgramFixtureTests
     /// of widening quietly.
     /// </summary>
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
-    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
-    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
     public void Nothing_anybody_said_is_still_in_a_fixture(string name)
     {
         var vocabulary = DeepgramFixtures.Vocabulary();
@@ -161,10 +166,7 @@ public partial class DeepgramFixtureTests
     /// go away, and a field holding a sentence could be waved through by adding its path.
     /// </summary>
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
-    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
-    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
     public void What_a_fixture_holds_that_is_not_speech_is_the_provider_describing_itself(string name)
     {
         using var response = DeepgramFixtures.Read(name);
@@ -179,10 +181,7 @@ public partial class DeepgramFixtureTests
     }
 
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
-    [InlineData(DeepgramFixtures.SingleTrackDiarized)]
-    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
     public void No_fixture_carries_the_call_that_was_paid_for(string name)
     {
         using var response = DeepgramFixtures.Read(name);
@@ -203,6 +202,14 @@ public partial class DeepgramFixtureTests
 
     private static IEnumerable<JsonElement> Turns(JsonDocument response) =>
         response.RootElement.GetProperty("results").GetProperty("utterances").EnumerateArray();
+
+    /// <summary>The provider's speaker numbers on one channel, which it numbers within it.</summary>
+    private static int[] Speakers(JsonDocument response, AudioChannel channel) => Turns(response)
+        .Where(turn => turn.GetProperty("channel").GetInt32() == CapturedAudio.IndexOf(channel))
+        .Select(turn => turn.GetProperty("speaker").GetInt32())
+        .Distinct()
+        .Order()
+        .ToArray();
 
     /// <summary>
     /// Every string in a response, with the path it sits at — <c>results.utterances[].transcript</c>

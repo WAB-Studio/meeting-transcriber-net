@@ -53,6 +53,7 @@ public class FixtureParsingTests
     [Theory]
     [InlineData(DeepgramFixtures.TwoChannelLong)]
     [InlineData(DeepgramFixtures.TwoChannelShort)]
+    [InlineData(DeepgramFixtures.TwoChannelOneVoiceMe)]
     [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
     public void A_captured_meeting_comes_back_as_the_two_channels_it_was_sent_as(string name)
     {

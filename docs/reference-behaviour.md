@@ -34,7 +34,7 @@ that grouping a channel-ordered response gives the same turns as grouping the re
 Python merges consecutive speech from one speaker however long the gap, and it gets away with it
 because a citation there is validated against a timestamp. Anchored on a position instead, an
 oversized turn stops both halves of the contract from checking anything: every timestamp inside it
-is "the start of a turn" and every quote "belongs to" it. Measured over the four fixtures, a
+is "the start of a turn" and every quote "belongs to" it. Measured over the committed fixtures, a
 meeting where one side never interrupts came back as one turn holding the whole recording, with a
 103-second silence welded into it.
 
@@ -96,8 +96,10 @@ narrow: one speaker on the microphone is the user, because there was nobody else
 anything else is a label with no row in `speaker_assignments` until somebody says who it is. A
 microphone that caught nobody settles nobody and asks nothing either.
 
-Not one committed fixture takes the free assignment, which is worth knowing when reading the
-tests: the set has no meeting recorded with a single person at the microphone.
+One committed fixture takes the free assignment and the rest do not, which is what makes the rule
+testable in both directions. `two-channel-one-voice-me` is a meeting recorded the ordinary way —
+one person at their desk, three on the other end of the call — and it settles `ch1:speaker_0`
+without asking; the other four settle nobody, each for a different reason.
 
 ## What .NET does differently, on purpose
 

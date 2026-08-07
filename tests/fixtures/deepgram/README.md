@@ -1,6 +1,6 @@
 # Deepgram fixtures
 
-Four responses that let almost the whole system be tested for free. They come from meetings that
+Five responses that let almost the whole system be tested for free. They come from meetings that
 were already transcribed and already paid for in the Python corpus, and nothing in them was ever
 sent to Deepgram again.
 
@@ -8,6 +8,7 @@ sent to Deepgram again.
 | --- | --- |
 | `two-channel-long.json` | Both channels, 58 minutes. The long meeting. |
 | `two-channel-short.json` | Both channels, 34 minutes. The one to use when length is not the point. |
+| `two-channel-one-voice-me.json` | Both channels, 13 minutes, one voice on the microphone and three on the meeting. The only shape in which the system settles a speaker without asking. |
 | `single-track-diarized.json` | One track, six diarized speakers. The `diarize` shape. |
 | `two-channel-silent-me.json` | Both channels, and the microphone caught nothing. |
 
@@ -30,7 +31,7 @@ ids. A string anywhere else — a block a request option turns on, a field the n
 adds — is held to the vocabulary and fails until the tool is taught to substitute it.
 
 **Nothing that was measured was touched.** Timings, confidences, speaker and channel numbers, word
-counts, ordering, the model and the duration are the provider's own, byte for byte: the two
+counts, ordering, the model and the duration are the provider's own, byte for byte: the three
 unreshaped fixtures hold exactly the numeric literals their sources do, in the same order. That
 half of the response is what the tests are about.
 
@@ -63,18 +64,20 @@ dotnet run --project tools/MeetingTranscriber.CorpusFixtures -- <corpus-director
 
 ```json
 {
-  "two-channel-long":      "<folder>",
-  "two-channel-short":     "<folder>",
-  "single-track-diarized": "<folder>",
-  "two-channel-silent-me": "<folder>"
+  "two-channel-long":         "<folder>",
+  "two-channel-short":        "<folder>",
+  "two-channel-one-voice-me": "<folder>",
+  "single-track-diarized":    "<folder>",
+  "two-channel-silent-me":    "<folder>"
 }
 ```
 
 It belongs next to the corpus and not in this repository. A folder name is the date and the time
 the user met somebody, which is the same fact the tool normalises inside every response — writing
-four of them into a recipe here would have published from the source what the output takes out.
-`single-track-diarized` needs a meeting whose channel 0 carries several diarized speakers; the
-other three take any.
+five of them into a recipe here would have published from the source what the output takes out.
+`single-track-diarized` needs a meeting whose channel 0 carries several diarized speakers, and
+`two-channel-one-voice-me` one where exactly one person spoke into the microphone; the other three
+take any.
 
 The tool is one way and never writes into the corpus. It needs the Python corpus, which only
 exists on the machine that recorded those meetings — which is the point of the fixtures being
