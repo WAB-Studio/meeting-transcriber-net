@@ -24,8 +24,8 @@ public class CorpusSchemaTests
     }
 
     /// <summary>
-    /// Deleting a node takes the tree under it and nothing else. The work is inside the node, so
-    /// it goes; a person is not, so they stay and only lose the link.
+    /// Deleting a node takes the tree under it and the affiliations to it, and nothing else. The
+    /// work is inside the node, so it goes; a person is not, so they stay and only lose the link.
     /// </summary>
     [Fact]
     public void Deleting_a_node_takes_what_hangs_under_it_and_leaves_the_people()
@@ -35,16 +35,13 @@ public class CorpusSchemaTests
 
         InsertRoot(context, "o", "organization", "An Organization");
         InsertChild(context, "i", parent: "o", parentKind: "organization", parentDepth: 0, "initiative", "the work");
-        Sql.Execute(context, $"""
-            INSERT INTO people (id, organization_id, organization_kind, display_name, is_me, created_at, updated_at)
-            VALUES ('h', 'o', 'organization', 'Somebody', 0, '{When}', '{When}');
-            DELETE FROM nodes WHERE id = 'o';
-            """);
+        InsertPerson(context, "h");
+        InsertAffiliation(context, "a", person: "h", organization: "o", organizationKind: "organization");
+        Sql.Execute(context, "DELETE FROM nodes WHERE id = 'o';");
 
         Sql.Scalar(context, "SELECT count(*) FROM nodes;").ShouldBe(0L);
         Sql.Scalar(context, "SELECT count(*) FROM people;").ShouldBe(1L);
-        Sql.Scalar(context, "SELECT organization_id FROM people;").ShouldBe(DBNull.Value);
-        Sql.Scalar(context, "SELECT organization_kind FROM people;").ShouldBe(DBNull.Value);
+        Sql.Scalar(context, "SELECT count(*) FROM affiliations;").ShouldBe(0L);
     }
 
     [Fact]
@@ -127,23 +124,90 @@ public class CorpusSchemaTests
     }
 
     /// <summary>
-    /// Where somebody works is an organization. A project and a ticket are places work happens,
+    /// Where somebody belongs is an organization. A project and a ticket are places work happens,
     /// and the class travels with the id so neither has anywhere to be written.
     /// </summary>
     [Fact]
-    public void A_person_works_at_an_organization_and_not_at_a_project()
+    public void A_person_is_at_an_organization_and_not_at_a_project()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
 
         InsertRoot(context, "o", "organization", "An Organization");
         InsertChild(context, "i", parent: "o", parentKind: "organization", parentDepth: 0, "initiative", "the work");
+        InsertPerson(context, "h");
 
-        Should.NotThrow(() => InsertPerson(context, "a", organization: "o", organizationKind: "organization"));
-        // The initiative, correctly named as one: the key has no row to match.
-        Should.Throw<SqliteException>(() => InsertPerson(context, "b", "i", "initiative"));
-        // And the same initiative, dressed up as an organization: no row matches that either.
-        Should.Throw<SqliteException>(() => InsertPerson(context, "c", "i", "organization"));
+        Should.NotThrow(() => InsertAffiliation(context, "a", "h", organization: "o", organizationKind: "organization"));
+        // The initiative, correctly named as one: the CHECK refuses the class outright.
+        Should.Throw<SqliteException>(() => InsertAffiliation(context, "b", "h", "i", "initiative"));
+        // And the same initiative, dressed up as an organization: no row matches the key either.
+        Should.Throw<SqliteException>(() => InsertAffiliation(context, "c", "h", "i", "organization"));
+    }
+
+    /// <summary>
+    /// The case the single column could not hold: a contractor at two clients at once. What is
+    /// refused is the same one twice while both are open, which is one fact written down twice.
+    /// </summary>
+    [Fact]
+    public void Somebody_is_at_two_organizations_at_once_but_never_at_one_twice()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        InsertRoot(context, "o", "organization", "An Organization");
+        InsertRoot(context, "p", "organization", "A Client");
+        InsertPerson(context, "h");
+
+        Should.NotThrow(() => InsertAffiliation(context, "a", "h", "o", "organization"));
+        Should.NotThrow(() => InsertAffiliation(context, "b", "h", "p", "organization"));
+        Should.Throw<SqliteException>(() => InsertAffiliation(context, "c", "h", "o", "organization"));
+
+        // Closed, so being there again is a second spell and not a duplicate of the first.
+        Sql.Execute(context, $"UPDATE affiliations SET ended_at = '{When}' WHERE id = 'a';");
+        Should.NotThrow(() => InsertAffiliation(context, "d", "h", "o", "organization"));
+    }
+
+    [Fact]
+    public void An_affiliation_cannot_end_before_it_started()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        InsertRoot(context, "o", "organization", "An Organization");
+        InsertPerson(context, "h");
+
+        Should.Throw<SqliteException>(() => InsertAffiliation(
+            context, "a", "h", "o", "organization", startedAt: When, endedAt: "2026-08-04T14:00:00.000Z"));
+    }
+
+    /// <summary>
+    /// Somebody's own one to one: they were there, and it was about them. One row per person made
+    /// that a choice between two true things, and whichever was not picked was lost.
+    /// </summary>
+    [Fact]
+    public void A_meeting_can_be_attended_by_the_person_it_is_about()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        InsertMeeting(context);
+        InsertPerson(context, "h");
+
+        Should.NotThrow(() => InsertMeetingPerson(context, "h", "attended"));
+        Should.NotThrow(() => InsertMeetingPerson(context, "h", "subject"));
+        Sql.Scalar(context, "SELECT count(*) FROM meeting_people;").ShouldBe(2L);
+    }
+
+    [Fact]
+    public void A_meeting_cannot_name_a_person_in_a_way_the_domain_does_not_have()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        InsertMeeting(context);
+        InsertPerson(context, "h");
+
+        Should.Throw<SqliteException>(() => InsertMeetingPerson(context, "h", "sort_of_there"));
     }
 
     /// <summary>A root is exactly what has no parent, in both directions.</summary>
@@ -528,15 +592,37 @@ public class CorpusSchemaTests
                     {depth ?? (parentDepth + 1)}, '{When}', '{When}');
             """);
 
-    private static void InsertPerson(
+    private static void InsertPerson(CorpusDbContext context, string id) =>
+        Sql.Execute(context, $"""
+            INSERT INTO people (id, display_name, is_me, created_at, updated_at)
+            VALUES ('{id}', 'Somebody', 0, '{When}', '{When}');
+            """);
+
+    /// <summary>
+    /// Somebody at an organization, open at both ends unless the test says otherwise — which is
+    /// what the corpus holds whenever nobody wrote the dates down.
+    /// </summary>
+    private static void InsertAffiliation(
         CorpusDbContext context,
         string id,
+        string person,
         string organization,
-        string organizationKind) =>
+        string organizationKind,
+        string? startedAt = null,
+        string? endedAt = null) =>
         Sql.Execute(context, $"""
-            INSERT INTO people (id, organization_id, organization_kind, display_name, is_me, created_at, updated_at)
-            VALUES ('{id}', '{organization}', '{organizationKind}', 'Somebody', 0, '{When}', '{When}');
+            INSERT INTO affiliations (id, person_id, organization_id, organization_kind, started_at, ended_at, created_at)
+            VALUES ('{id}', '{person}', '{organization}', '{organizationKind}',
+                    {Quoted(startedAt)}, {Quoted(endedAt)}, '{When}');
             """);
+
+    private static void InsertMeetingPerson(CorpusDbContext context, string person, string role) =>
+        Sql.Execute(context, $"""
+            INSERT INTO meeting_people (meeting_id, person_id, role, created_at)
+            VALUES ('{MeetingId}', '{person}', '{role}', '{When}');
+            """);
+
+    private static string Quoted(string? value) => value is null ? "NULL" : $"'{value}'";
 
     private static void InsertMeeting(
         CorpusDbContext context,

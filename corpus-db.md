@@ -17,17 +17,18 @@ erDiagram
     meetings ||--o{ summaries : "cascade"
     meetings ||--o{ decisions : "cascade"
     meetings ||--o{ action_items : "cascade"
-    meetings ||--o{ meeting_participants : "cascade"
+    meetings ||--o{ meeting_people : "cascade"
     meetings ||--o{ speaker_assignments : "cascade"
     meetings ||--o{ terminology_corrections : "cascade"
     meetings |o--o{ audit_events : "set null"
     nodes ||--o{ nodes : "cascade, hasta 3 niveles"
-    nodes |o--o{ people : "set null"
+    nodes ||--o{ affiliations : "cascade"
+    people ||--o{ affiliations : "cascade"
     nodes ||--o{ meeting_nodes : "cascade"
     meetings ||--o{ meeting_nodes : "cascade"
     nodes ||--o{ terminology_corrections : "cascade"
     templates |o--o{ meetings : "set null"
-    people ||--o{ meeting_participants : "cascade"
+    people ||--o{ meeting_people : "cascade"
     people ||--o{ speaker_assignments : "cascade"
     people |o--o{ decisions : "set null"
     people |o--o{ action_item_progress : "set null"
@@ -152,14 +153,33 @@ erDiagram
         TEXT display_name
         INTEGER is_me
     }
-    projects {
+    nodes {
+        TEXT id PK
+        TEXT parent_id FK "con parent_kind y parent_depth"
+        TEXT kind "organization, initiative o topic"
+        TEXT name
+        INTEGER depth "0 a 2"
+    }
+    meeting_nodes {
+        TEXT meeting_id PK
+        TEXT node_id PK
+        TEXT role PK "work_of, counterpart o about"
+    }
+    templates {
         TEXT id PK
         TEXT name UK
     }
-    meeting_participants {
+    affiliations {
+        TEXT id PK
+        TEXT person_id FK
+        TEXT organization_id FK "con organization_kind, siempre organization"
+        TEXT started_at "NULL: hasta donde llega el corpus"
+        TEXT ended_at "NULL: sigue ahi"
+    }
+    meeting_people {
         TEXT meeting_id PK
         TEXT person_id PK
-        TEXT role
+        TEXT role PK "attended o subject"
     }
     speaker_assignments {
         TEXT meeting_id PK
@@ -169,7 +189,7 @@ erDiagram
     }
     terminology_corrections {
         TEXT id PK
-        TEXT project_id FK
+        TEXT node_id FK
         TEXT meeting_id FK
         TEXT wrong_text
         TEXT correct_text
@@ -196,7 +216,7 @@ contenido externo, mantenidas por triggers, y no tienen foreign keys. EF no las 
 | Grupo | Tablas | Qué pasa si las borro |
 | --- | --- | --- |
 | **Derivadas** | `utterances`, `summaries`, `decisions`, `action_items`, ambos FTS5 | Nada. Se reproyectan desde `deepgram.json` y las extracciones aceptadas. |
-| **Capa humana** | `people`, `nodes`, `meeting_nodes`, `templates`, `meeting_participants`, `speaker_assignments`, `terminology_corrections`, `action_item_progress`, más el título y la clasificación de `meetings` | Se pierde para siempre. No sale de ningún artefacto. |
+| **Capa humana** | `people`, `affiliations`, `nodes`, `meeting_nodes`, `templates`, `meeting_people`, `speaker_assignments`, `terminology_corrections`, `action_item_progress`, más el título y la clasificación de `meetings` | Se pierde para siempre. No sale de ningún artefacto. |
 | **Registro** | `artifacts`, `capture_runs`, `processing_jobs`, `transcription_runs`, `extraction_runs` | Se pierde qué se pagó y en qué estado quedó cada cosa. |
 
 ---

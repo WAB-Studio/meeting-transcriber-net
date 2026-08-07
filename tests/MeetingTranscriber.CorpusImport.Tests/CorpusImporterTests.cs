@@ -79,7 +79,8 @@ public class CorpusImporterTests
         context.MeetingNodes.Count().ShouldBe(2);
         context.People.Count().ShouldBe(2);
         context.SpeakerAssignments.Count().ShouldBe(2);
-        context.MeetingParticipants.Count().ShouldBe(2);
+        context.MeetingPeople.Count().ShouldBe(2);
+        context.Affiliations.Count().ShouldBe(1);
         context.TerminologyCorrections.Count().ShouldBe(2);
     }
 
@@ -361,7 +362,11 @@ public class CorpusImporterTests
 
         // Speaker 2 was never resolved, so nothing is invented for it.
         context.SpeakerAssignments.Count().ShouldBe(1);
-        context.MeetingParticipants.Single().PersonId.ShouldBe(assignment.PersonId);
+
+        // Attended, and only that: what a meeting was about is not in the legacy corpus.
+        var named = context.MeetingPeople.Single();
+        named.PersonId.ShouldBe(assignment.PersonId);
+        named.Role.ShouldBe(MeetingPersonRole.Attended);
     }
 
     /// <summary>
@@ -420,9 +425,16 @@ public class CorpusImporterTests
         orchard.ParentId.ShouldBe(acme.Id);
         orchard.Depth.ShouldBe(1);
 
-        context.People.Single(person => person.DisplayName == "Renée").OrganizationId.ShouldBe(acme.Id);
-        // Sam has no company in the catalog, and gets none here.
-        context.People.Single(person => person.DisplayName == "Sam").OrganizationId.ShouldBeNull();
+        var renée = context.People.Single(person => person.DisplayName == "Renée");
+        var affiliation = context.Affiliations.Single(entry => entry.PersonId == renée.Id);
+        affiliation.OrganizationId.ShouldBe(acme.Id);
+        // Open at both ends: the catalog carries no dates, and inventing one is not this tool's.
+        affiliation.StartedAt.ShouldBeNull();
+        affiliation.EndedAt.ShouldBeNull();
+
+        // Sam has no company in the catalog, and gets no affiliation rather than an empty one.
+        var sam = context.People.Single(person => person.DisplayName == "Sam");
+        context.Affiliations.ShouldNotContain(entry => entry.PersonId == sam.Id);
     }
 
     [Fact]

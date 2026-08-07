@@ -1,0 +1,132 @@
+namespace MeetingTranscriber.Isa.Tests;
+
+/// <summary>
+/// The structural gate on ISA.md. Every check here is one a person cannot argue with, which is
+/// the only kind worth blocking a build over.
+/// </summary>
+/// <remarks>
+/// What is deliberately absent is the count-shaped judgement — "enough claims", "one anti-claim
+/// per feature". A count that blocks just gets manufactured, and a claim written to satisfy a
+/// counter is worse than a missing one because it reads as coverage. Those live in the skill's
+/// CheckCompleteness workflow, which reports and does not block.
+/// </remarks>
+public class IsaStructureTests
+{
+    /// <summary>
+    /// The eight lists of the MeetingTranscriber space, plus the em dash F0 carries because
+    /// cross-cutting work belongs to no single list.
+    /// </summary>
+    /// <remarks>
+    /// Hardcoded, and it has to be: tests never touch the network, so the board cannot be asked.
+    /// This catches a `Board:` line invented or mistyped in the ISA, which is the half inside this
+    /// repo's control. A list renamed in ClickUp goes unnoticed until somebody edits the ISA — the
+    /// rename is the moment to update this array, and the skill says so.
+    /// </remarks>
+    private static readonly string[] BoardLists =
+    [
+        "—",
+        "0 · Contratos y caracterización",
+        "1 · Núcleo .NET desde artefactos",
+        "2 · Spike y motor de audio",
+        "3 · Grabador WinUI",
+        "4 · Deepgram BYOK",
+        "5 · Summaries",
+        "6 · Conocimiento local",
+        "7 · Distribución y backup",
+    ];
+
+    private readonly IsaDocument isa = IsaDocument.Read();
+
+    [Fact]
+    public void The_progress_count_is_the_claims_and_not_an_opinion()
+    {
+        var closed = isa.Claims.Count(claim => claim.Closed);
+
+        isa.Frontmatter.ShouldContainKey("progress");
+        isa.Frontmatter["progress"].ShouldBe(
+            $"{closed}/{isa.Claims.Count}",
+            "progress is a count of closed claims over total, recomputed here. Someone edited a "
+            + "claim and left the number, or wrote the number they wanted.");
+    }
+
+    [Fact]
+    public void A_complete_ISA_has_every_claim_closed_and_no_fog_left()
+    {
+        if (isa.Frontmatter.GetValueOrDefault("phase") != "complete")
+        {
+            return;
+        }
+
+        isa.Claims.ShouldAllBe(claim => claim.Closed);
+        isa.Fog.ShouldBeEmpty(
+            "fog graduates to a claim or dies in Decisions; it cannot be carried past the close.");
+    }
+
+    [Fact]
+    public void Every_feature_says_why_it_exists_and_which_list_it_is_worked_from()
+    {
+        isa.Features.ShouldNotBeEmpty();
+
+        foreach (var feature in isa.Features)
+        {
+            feature.Why.ShouldNotBeNullOrWhiteSpace(
+                $"{feature.Id} · {feature.Name}: the Why line states what the name and the claims "
+                + "do not. Without it the block is a folder.");
+            BoardLists.ShouldContain(feature.Board, $"{feature.Id} · {feature.Name}: "
+                + $"'{feature.Board}' is not a list in the MeetingTranscriber space.");
+        }
+    }
+
+    [Fact]
+    public void No_claim_id_is_used_twice()
+    {
+        // IDs never renumber, so a duplicate means a split reused a number rather than nesting
+        // under it — and Verification, Decisions and the board all key on the ID.
+        isa.Claims.Select(claim => claim.Id).ShouldBeUnique();
+    }
+
+    [Fact]
+    public void Every_closed_claim_points_at_what_closed_it()
+    {
+        var stubs = isa.VerificationStubs.ToHashSet(StringComparer.Ordinal);
+
+        foreach (var claim in isa.Claims.Where(claim => claim.Closed))
+        {
+            stubs.ShouldContain(claim.Id, $"{claim.Id} is marked closed with no Verification stub. "
+                + "Assertion without evidence is not closure.");
+        }
+    }
+
+    [Fact]
+    public void Nothing_is_verified_that_is_not_closed()
+    {
+        var open = isa.Claims.Where(claim => !claim.Closed).Select(claim => claim.Id)
+            .ToHashSet(StringComparer.Ordinal);
+
+        isa.VerificationStubs.Where(open.Contains).ShouldBeEmpty(
+            "a stub under an open claim is evidence for something the file says did not happen; "
+            + "one of the two is wrong.");
+    }
+
+    [Fact]
+    public void The_sections_appear_in_the_order_the_format_fixes()
+    {
+        string[] expected =
+        [
+            "## Goal",
+            "## Features",
+            "## Not yet specified",
+            "## Decisions",
+            "## Learning",
+            "## Verification",
+        ];
+
+        var present = isa.Lines
+            .Where(line => line.StartsWith("## ", StringComparison.Ordinal))
+            .ToArray();
+
+        // Optional sections may be absent; what may not happen is two of them swapping places.
+        present.ShouldBeSubsetOf(expected);
+        present.ShouldBe([.. expected.Where(present.Contains)]);
+    }
+}

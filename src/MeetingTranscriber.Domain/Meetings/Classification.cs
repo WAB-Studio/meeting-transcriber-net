@@ -2,9 +2,10 @@ using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Domain.Meetings;
 
-// How a meeting is classified. The shape here is settled; the names are not — they are stored
-// values with a CHECK behind them, so renaming one is a migration and not a relabelling. Which
-// names these end up with is decided in "Refinar los nombres de la clasificación".
+// How a meeting is classified. Both the shape and the names are settled: they are stored values
+// with a CHECK behind them, so renaming one from here is a migration and not a relabelling. What
+// they have to hold is the thirteen meetings arquitectura.md §5.3 lists, and
+// ClassificationStoriesTests is each of them stored and found again.
 
 /// <summary>What a node of the classification tree is.</summary>
 public enum NodeKind
@@ -35,8 +36,14 @@ public enum MeetingNodeRole
     About = 3,
 }
 
-/// <summary>Why a person is on a meeting.</summary>
-public enum ParticipantRole
+/// <summary>How a person relates to a meeting they are named on.</summary>
+/// <remarks>
+/// Not one of two, but as many as apply, the same way a node's role is: somebody in their own one
+/// to one attended it and is what it was about, and a dismissal discussed before the person is in
+/// the room is the subject of a meeting they were never at. One column forced a choice between
+/// those and lost whichever was not picked.
+/// </remarks>
+public enum MeetingPersonRole
 {
     Attended = 1,
 

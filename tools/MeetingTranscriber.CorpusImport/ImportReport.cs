@@ -36,6 +36,10 @@ public sealed class ImportReport
 
     public int PeopleImported => Count(ImportCounter.Person);
 
+    /// <summary>People placed at an organization. Fewer than the people: the catalog leaves some
+    /// with no company at all, and this tool does not pick one for them.</summary>
+    public int AffiliationsImported => Count(ImportCounter.Affiliation);
+
     public int MeetingsClassified => Count(ImportCounter.Classified);
 
     public int SpeakersResolved => Count(ImportCounter.Speaker);
@@ -104,7 +108,7 @@ public sealed class ImportReport
         report.AppendLine($"artifacts     {ArtifactsRegistered} registered, {ArtifactsCopied} copied");
         report.AppendLine($"organizations {OrganizationsImported}");
         report.AppendLine($"initiatives   {InitiativesImported}");
-        report.AppendLine($"people        {PeopleImported}");
+        report.AppendLine($"people        {PeopleImported}, {AffiliationsImported} placed at an organization");
         report.AppendLine($"links         {MeetingsClassified} meeting to node");
         report.AppendLine($"speakers      {SpeakersResolved} resolved onto a person");
         report.AppendLine($"corrections   {CorrectionsImported}");
@@ -148,6 +152,7 @@ public enum ImportCounter
     Organization,
     Initiative,
     Person,
+    Affiliation,
     Classified,
     Speaker,
     Correction,
