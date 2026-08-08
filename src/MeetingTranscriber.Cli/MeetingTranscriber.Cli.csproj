@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- The name an app execution alias will publish on the PATH, since the install directory's
+         path changes with every version. Nothing packages this yet: that is ISC-64. -->
+    <AssemblyName>meeting-transcriber</AssemblyName>
+    <RootNamespace>MeetingTranscriber.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Every command is a call into these. There is no fourth reference and no pipeline of its
+         own: what the CLI adds is argument parsing, a report and an exit code. -->
+    <ProjectReference Include="..\MeetingTranscriber.Domain\MeetingTranscriber.Domain.csproj" />
+    <ProjectReference Include="..\MeetingTranscriber.Infrastructure\MeetingTranscriber.Infrastructure.csproj" />
+    <ProjectReference Include="..\MeetingTranscriber.Processing\MeetingTranscriber.Processing.csproj" />
+  </ItemGroup>
+
+</Project>

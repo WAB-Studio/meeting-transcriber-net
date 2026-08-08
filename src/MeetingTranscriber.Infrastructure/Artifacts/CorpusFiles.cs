@@ -119,7 +119,19 @@ public static class CorpusFiles
         ArgumentNullException.ThrowIfNull(file);
 
         using var stream = file.OpenRead();
-        return Convert.ToHexStringLower(SHA256.HashData(stream));
+        return Sha256Of(stream);
+    }
+
+    /// <summary>
+    /// The same hash, of a stream somebody else is holding open. What a caller reads from one
+    /// handle uses, so that the bytes it hashed and the bytes it went on to store are the same
+    /// bytes rather than two reads of a file anything could have replaced in between.
+    /// </summary>
+    public static string Sha256Of(Stream content)
+    {
+        ArgumentNullException.ThrowIfNull(content);
+
+        return Convert.ToHexStringLower(SHA256.HashData(content));
     }
 
     private static string Named(string name)
