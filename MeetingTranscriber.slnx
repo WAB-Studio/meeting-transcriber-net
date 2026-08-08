@@ -10,6 +10,9 @@
     <Project Path="src/MeetingTranscriber.Processing/MeetingTranscriber.Processing.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <!-- Holds no test: the corpus on disk, the SQL helpers and the fixture inventory the suites
+         share, so a third project that needs one references it rather than copying it. -->
+    <Project Path="tests/MeetingTranscriber.Testing/MeetingTranscriber.Testing.csproj" />
     <Project Path="tests/MeetingTranscriber.Domain.Tests/MeetingTranscriber.Domain.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Infrastructure.Tests/MeetingTranscriber.Infrastructure.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Processing.Tests/MeetingTranscriber.Processing.Tests.csproj" />

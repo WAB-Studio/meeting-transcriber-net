@@ -10,11 +10,18 @@ src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
 src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
 tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
 tools/MeetingTranscriber.CorpusImport/    reads a Python corpus in, then gets deleted
+tests/MeetingTranscriber.Testing/         what a test opens: corpus, SQL, fixture inventory
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```
 
 Domain, Infrastructure, Processing and CorpusImport each have their tests under
 `tests/<project>.Tests/`.
+
+`tests/MeetingTranscriber.Testing/` holds no test. It is where `TemporaryCorpus`, the raw-SQL
+helpers and the inventory of the Deepgram fixtures live, so a suite that opens a corpus or walks
+the fixture set references it instead of carrying a copy — and adding a fixture is one edit every
+suite sees. It stops at `Infrastructure` on purpose: `Domain.Tests` references it, and a path from
+there to `Processing` would let a domain rule be proved against the parser's own output.
 
 `Processing` references `Infrastructure`, and only that way round: rendering reads the paid
 response out of the corpus and puts the derivatives back, so it sits above storage. The opposite

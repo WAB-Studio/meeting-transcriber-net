@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 51/81
+progress: 53/83
 updated: 2026-08-07
 ---
 
@@ -49,6 +49,8 @@ Board: —
 - [x] ISC-14: Every stored table and column name is spelled out in a test, so a rename fails the suite.
 - [x] ISC-81: Anti: a column named `created_at` cannot be written over a row that already exists.
 - [x] ISC-15: Anti: nothing under `tests/` names an HTTP or socket type, so no test can reach the network.
+- [x] ISC-82: Anti: a Deepgram fixture cannot be named in the test tree outside the one inventory every suite reads.
+- [x] ISC-83: Anti: a test cannot open a corpus on disk except through the one `TemporaryCorpus` the suites share.
 - [x] ISC-16: The build is clean under `-warnaserror` and `dotnet format --verify-no-changes` passes.
 - [x] ISC-17: A meeting, a turn and a job come back off disk as the types they went in as.
 
@@ -173,6 +175,21 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
+- **2026-08-07** — `tests/MeetingTranscriber.Testing` holds what a test opens — the temporary
+  corpus, the raw-SQL helpers, the fixture inventory — and every suite references it, the
+  importer's included. The importer's copy was a deliberate duplicate so that deleting the tool
+  would be a deletion rather than a change to the tests that stay; with a project whose only job is
+  support, deleting it still is — the support project loses a consumer. It stops at
+  `Infrastructure`: `Domain.Tests` references it, and a path from there to `Processing` would let a
+  domain rule be proved against the parser's own output, which `DomainAssemblyTests` now refuses.
+  The inventory carries no `TheoryData`, because xunit's own analyzer crashes on a `MemberData`
+  pointing at another assembly and a crashed analyzer is a warning CI fails on; each suite wraps
+  the set in one line over `All`.
+- **2026-08-07** — `refined:` ISC-18 and ISC-19 say *every* response in `tests/fixtures/deepgram/`,
+  and their probes walked the inventory rather than the directory — so both were only as universal
+  as somebody remembering to add a line. `DeepgramFixtureTests` now compares the two directions,
+  and a response committed without being named fails. The claims did not change; what could be
+  offered as proof of them did.
 - **2026-08-07** — `created_at` means the row's own age everywhere, and the model refuses to write
   one over a row that exists rather than each writer being trusted to. The two that held a
   different fact under it get the names for what they record — `artifacts.confirmed_at`,
@@ -336,3 +353,5 @@ Board: 7 · Distribución y backup
 - ISC-79 — `CorpusImporterTests.Importing_again_does_not_duplicate_or_rewrite_the_derivatives` green 2026-08-07
 - ISC-81 — `CorpusNamingTests.No_created_at_anywhere_can_be_written_over_a_row_that_exists` and `.Moving_a_created_at_on_a_stored_row_fails_instead_of_being_written` green 2026-08-07, both red with the model rule commented out
 - ISC-80 — `CorpusImporterTests.A_speaker_somebody_resolved_arrives_under_the_label_the_provider_wrote` green 2026-08-07
+- ISC-82 — `git grep -l` for the five fixture names over `tests/**/*.cs` returned `MeetingTranscriber.Testing/DeepgramFixtures.cs` alone 2026-08-07; the other hit is the tool that builds them, which is not the test tree. `DeepgramFixtureTests.The_inventory_names_exactly_the_responses_that_are_committed` green, red with a fixture dropped from the inventory
+- ISC-83 — `git grep -l "class TemporaryCorpus" -- tests/` returned `MeetingTranscriber.Testing/TemporaryCorpus.cs` alone 2026-08-07

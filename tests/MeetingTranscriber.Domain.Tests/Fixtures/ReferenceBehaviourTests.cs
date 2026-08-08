@@ -10,10 +10,10 @@ namespace MeetingTranscriber.Domain.Tests.Fixtures;
 public class ReferenceBehaviourTests
 {
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.Each), MemberType = typeof(FixtureTheories))]
     public void A_real_meeting_becomes_turns_a_citation_can_land_on(string name)
     {
-        var turns = Turns.Group(DeepgramFixtures.Segments(name));
+        var turns = Turns.Group(FixtureResponses.Segments(name));
 
         turns.ShouldNotBeEmpty();
         turns.Select(turn => turn.Ordinal).ShouldBe(Enumerable.Range(0, turns.Count));
@@ -22,19 +22,19 @@ public class ReferenceBehaviourTests
     }
 
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.Each), MemberType = typeof(FixtureTheories))]
     public void Turns_run_forwards(string name)
     {
-        var turns = Turns.Group(DeepgramFixtures.Segments(name));
+        var turns = Turns.Group(FixtureResponses.Segments(name));
 
         turns.Select(turn => turn.Start).ShouldBeInOrder();
     }
 
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.Each), MemberType = typeof(FixtureTheories))]
     public void Grouping_says_less_than_the_provider_did_and_loses_nothing(string name)
     {
-        var segments = DeepgramFixtures.Segments(name);
+        var segments = FixtureResponses.Segments(name);
         var turns = Turns.Group(segments);
 
         turns.Count.ShouldBeLessThan(segments.Count);
@@ -42,10 +42,10 @@ public class ReferenceBehaviourTests
     }
 
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.EachWithBothSidesHeard), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.EachWithBothSidesHeard), MemberType = typeof(FixtureTheories))]
     public void Both_sides_of_a_call_get_their_own_turns(string name)
     {
-        var turns = Turns.Group(DeepgramFixtures.Segments(name));
+        var turns = Turns.Group(FixtureResponses.Segments(name));
 
         turns.Select(turn => turn.Channel).Distinct().ShouldBe(
             [AudioChannel.Loopback, AudioChannel.Microphone],
@@ -58,10 +58,10 @@ public class ReferenceBehaviourTests
     /// where it would show if merging keyed on the wrong thing.
     /// </summary>
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.Each), MemberType = typeof(FixtureTheories))]
     public void Nothing_that_could_have_been_one_turn_was_left_as_two(string name)
     {
-        var turns = Turns.Group(DeepgramFixtures.Segments(name));
+        var turns = Turns.Group(FixtureResponses.Segments(name));
 
         turns.Zip(turns.Skip(1))
             .ShouldAllBe(pair => pair.First.Channel != pair.Second.Channel
@@ -75,10 +75,10 @@ public class ReferenceBehaviourTests
     /// its start and every quote belongs to it.
     /// </summary>
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.Each), MemberType = typeof(FixtureTheories))]
     public void No_turn_swallows_the_meeting_it_belongs_to(string name)
     {
-        var turns = Turns.Group(DeepgramFixtures.Segments(name));
+        var turns = Turns.Group(FixtureResponses.Segments(name));
         var meeting = turns[^1].End - turns[0].Start;
 
         turns.Count.ShouldBeGreaterThan(1);
@@ -88,7 +88,7 @@ public class ReferenceBehaviourTests
     [Fact]
     public void A_channel_nobody_spoke_on_contributes_no_turns()
     {
-        var turns = Turns.Group(DeepgramFixtures.Segments(DeepgramFixtures.TwoChannelSilentMe));
+        var turns = Turns.Group(FixtureResponses.Segments(DeepgramFixtures.TwoChannelSilentMe));
 
         turns.ShouldAllBe(turn => turn.Channel == AudioChannel.Loopback);
     }
@@ -96,7 +96,7 @@ public class ReferenceBehaviourTests
     [Fact]
     public void A_single_track_keeps_its_speakers_apart_without_a_channel_to_help()
     {
-        var turns = Turns.Group(DeepgramFixtures.Segments(DeepgramFixtures.SingleTrackDiarized));
+        var turns = Turns.Group(FixtureResponses.Segments(DeepgramFixtures.SingleTrackDiarized));
 
         turns.ShouldAllBe(turn => turn.Channel == null);
         turns.Select(turn => turn.SpeakerLabel).Distinct().Count().ShouldBeGreaterThan(1);
@@ -110,7 +110,7 @@ public class ReferenceBehaviourTests
     [Fact]
     public void Sorting_is_still_the_reason_a_transcript_reads_as_a_conversation()
     {
-        var segments = DeepgramFixtures.Segments(DeepgramFixtures.TwoChannelShort);
+        var segments = FixtureResponses.Segments(DeepgramFixtures.TwoChannelShort);
         var shuffled = segments.OrderBy(segment => segment.Channel).ThenBy(segment => segment.Start);
 
         Turns.Group(shuffled).ShouldBe(Turns.Group(segments));
@@ -122,10 +122,10 @@ public class ReferenceBehaviourTests
     /// checking something whichever way a new fixture falls.
     /// </summary>
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.Each), MemberType = typeof(FixtureTheories))]
     public void Only_a_microphone_that_caught_one_speaker_settles_who_it_was(string name)
     {
-        var segments = DeepgramFixtures.Segments(name);
+        var segments = FixtureResponses.Segments(name);
         var microphone = DeepgramFixtures.ProfileOf(name).MicrophoneChannel();
 
         var resolution = Speakers.Resolve(DeepgramFixtures.ProfileOf(name), segments);
@@ -149,7 +149,7 @@ public class ReferenceBehaviourTests
     {
         var resolution = Speakers.Resolve(
             SourceProfile.Multichannel,
-            DeepgramFixtures.Segments(DeepgramFixtures.TwoChannelLong));
+            FixtureResponses.Segments(DeepgramFixtures.TwoChannelLong));
 
         resolution.Mine.ShouldBeNull();
         resolution.NeedingAPerson.ShouldContain("ch1:speaker_0");
@@ -167,7 +167,7 @@ public class ReferenceBehaviourTests
     {
         var resolution = Speakers.Resolve(
             SourceProfile.Multichannel,
-            DeepgramFixtures.Segments(DeepgramFixtures.TwoChannelOneVoiceMe));
+            FixtureResponses.Segments(DeepgramFixtures.TwoChannelOneVoiceMe));
 
         resolution.Mine.ShouldBe("ch1:speaker_0");
 

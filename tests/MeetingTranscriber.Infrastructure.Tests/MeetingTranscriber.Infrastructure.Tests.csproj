@@ -9,11 +9,13 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MeetingTranscriber.Infrastructure\MeetingTranscriber.Infrastructure.csproj" />
+    <ProjectReference Include="..\MeetingTranscriber.Testing\MeetingTranscriber.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="Shouldly" />
+    <Using Include="MeetingTranscriber.Testing" />
   </ItemGroup>
 
   <ItemGroup>

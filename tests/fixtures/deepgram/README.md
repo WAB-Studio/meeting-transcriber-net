@@ -12,8 +12,10 @@ sent to Deepgram again.
 | `single-track-diarized.json` | One track, six diarized speakers. The `diarize` shape. |
 | `two-channel-silent-me.json` | Both channels, and the microphone caught nothing. |
 
-`vocabulary.txt` is the closed list of words the fixtures are made of. Read them through
-`DeepgramFixtures` in `MeetingTranscriber.Domain.Tests`.
+`vocabulary.txt` is the closed list of words the fixtures are made of. Which responses exist is
+`DeepgramFixtures` in `MeetingTranscriber.Testing`, and that is the only place the set is written
+down: a sixth response is a file here and a line there, and every suite that walks the set sees it.
+A file committed here without that line fails `DeepgramFixtureTests`.
 
 ## What was changed, and what was not
 

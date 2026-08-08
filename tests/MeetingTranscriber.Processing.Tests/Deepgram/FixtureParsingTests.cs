@@ -14,6 +14,14 @@ public class FixtureParsingTests
 {
     public static TheoryData<string> Fixtures => new(DeepgramFixtures.All);
 
+    /// <summary>
+    /// Asked of the inventory rather than listed here: a fixture recorded on two channels that
+    /// nobody remembered to add would run every theory about all of them and skip the one about
+    /// what two channels come back as, which is the test it was added for.
+    /// </summary>
+    public static TheoryData<string> Multichannel =>
+        new(DeepgramFixtures.WithProfile(SourceProfile.Multichannel));
+
     [Theory]
     [MemberData(nameof(Fixtures))]
     public void A_real_response_becomes_speech_the_domain_can_group(string name)
@@ -51,10 +59,7 @@ public class FixtureParsingTests
     }
 
     [Theory]
-    [InlineData(DeepgramFixtures.TwoChannelLong)]
-    [InlineData(DeepgramFixtures.TwoChannelShort)]
-    [InlineData(DeepgramFixtures.TwoChannelOneVoiceMe)]
-    [InlineData(DeepgramFixtures.TwoChannelSilentMe)]
+    [MemberData(nameof(Multichannel))]
     public void A_captured_meeting_comes_back_as_the_two_channels_it_was_sent_as(string name)
     {
         var transcript = Parse(name);

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <!-- A library, not a suite: it holds no test and must not be one the runner tries to run. -->
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Infrastructure and no further. Processing stays out on purpose: Domain.Tests references
+         this project, and a path from a domain test to the parser would let a rule be proved
+         against the parser's own output instead of against a response. -->
+    <ProjectReference Include="..\..\src\MeetingTranscriber.Infrastructure\MeetingTranscriber.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <!-- No test framework: this project holds what a test opens, never an assertion or a theory,
+       so it does not reference xunit or Shouldly and cannot grow a test by accident. -->
+
+</Project>

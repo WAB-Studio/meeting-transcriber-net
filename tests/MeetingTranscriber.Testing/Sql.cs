@@ -2,67 +2,15 @@ using System.Data;
 
 using MeetingTranscriber.Infrastructure.Storage;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
-namespace MeetingTranscriber.Infrastructure.Tests.Storage;
-
-/// <summary>
-/// A corpus on disk rather than in memory: WAL and busy_timeout only mean anything against a
-/// file, and those are exactly the settings worth testing.
-/// </summary>
-internal sealed class TemporaryCorpus : IDisposable
-{
-    private readonly string _directory;
-
-    public TemporaryCorpus()
-    {
-        _directory = Path.Combine(Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n"));
-        Directory.CreateDirectory(_directory);
-        DatabasePath = Path.Combine(_directory, "corpus.db");
-    }
-
-    public string DatabasePath { get; }
-
-    /// <summary>
-    /// The corpus root, which is the folder the database sits in and the one <c>meetings/</c> and
-    /// <c>spool/</c> hang off. The same arrangement a real corpus has, so a test that walks it is
-    /// walking the layout the application writes.
-    /// </summary>
-    public DirectoryInfo Root => new(_directory);
-
-    public CorpusDbContext Open() => CorpusDatabase.Open(DatabasePath);
-
-    public CorpusDbContext OpenMigrated() => CorpusDatabase.OpenMigrated(DatabasePath);
-
-    public void Dispose()
-    {
-        // Without this the pooled connection still holds the file and the delete fails. It empties
-        // every pool in the process, so it also reaches the corpora of the tests running alongside
-        // this one — which costs them a reconnection and nothing else: a connection somebody is
-        // holding is not closed underneath them, only kept out of the pool once they hand it back.
-        SqliteConnection.ClearAllPools();
-
-        try
-        {
-            Directory.Delete(_directory, recursive: true);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // A leftover temp directory is not worth failing a green test over. Windows refuses a
-            // delete two ways depending on how the other handle was opened — a sharing violation
-            // when it forbids deletion, access denied when it allowed it and the delete is still
-            // pending — and catching only the first leaves the test that happened to run while a
-            // scanner had the file open failing for something it never asserted.
-        }
-    }
-}
+namespace MeetingTranscriber.Testing;
 
 /// <summary>
 /// Constraints are asserted through raw SQL on purpose. What is under test is what the database
 /// refuses, not what the model would have stopped before getting there.
 /// </summary>
-internal static class Sql
+public static class Sql
 {
     public static void Execute(CorpusDbContext context, string sql) => context.Database.ExecuteSqlRaw(sql);
 

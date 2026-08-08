@@ -160,6 +160,7 @@ MeetingTranscriber.sln
     MeetingTranscriber.Mcp/             servidor MCP local por stdio
     MeetingTranscriber.Cli/             diagnóstico, reparación y automatización
   tests/
+    MeetingTranscriber.Testing/         corpus temporal, SQL y el inventario de fixtures
     MeetingTranscriber.Domain.Tests/
     MeetingTranscriber.Audio.Tests/
     MeetingTranscriber.Infrastructure.Tests/
@@ -170,6 +171,11 @@ MeetingTranscriber.sln
 Las dependencias apuntan hacia el dominio. WinUI, SQLite, WASAPI, Deepgram y Claude
 Code son adaptadores reemplazables alrededor de reglas comprobables sin hardware
 ni red.
+
+`MeetingTranscriber.Testing` no contiene tests: es lo que un test abre. Llega hasta
+Infrastructure y no más allá — las pruebas del dominio lo referencian, y un camino
+desde ahí hasta Processing dejaría probar una regla del dominio contra la salida del
+parser en vez de contra una respuesta.
 
 La CLI comparte los mismos servicios de aplicación que WinUI. No implementa un
 segundo pipeline. Sirve para diagnóstico, importación, rebuild y recuperación,
