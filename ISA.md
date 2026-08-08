@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 53/83
+progress: 56/85
 updated: 2026-08-07
 ---
 
@@ -87,7 +87,9 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-76: A merged turn's confidence is the mean of its parts, weighted by their length.
 - [x] ISC-77: Rebuilding the whole corpus from its sources produces the same projections and the same derived files.
 - [x] ISC-78: Anti: a rebuild that moved a turn's position fails rather than rewriting what every stored claim points at.
-- [ ] ISC-34: The diagnostic CLI reports corpus state without opening the application.
+- [x] ISC-34: The diagnostic CLI reports corpus state without opening the application.
+- [x] ISC-84: A paid response on disk becomes a meeting with its turns and its derived files, through the command line alone.
+- [x] ISC-85: Anti: the same response cannot become two meetings — filing it again re-renders the one it already is.
 - [x] ISC-66: Every table of the human layer is written through `HumanLayer`.
 - [x] ISC-67: Exactly one person carries the flag naming the user of this install.
 - [x] ISC-68: Anti: a speaker label a person resolved is never overwritten by one the recording settled.
@@ -175,6 +177,34 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
+- **2026-08-07** — The command line has no way of its own to do anything. Every command is a call
+  into the service the application would have called, and the one thing that had no service was
+  filing a response that has no meeting yet: `MeetingIntake` is that, in `Processing`. It is not
+  written wide enough to take the response a transcription job brings back — that one belongs to a
+  meeting that already exists and to the run that paid for it, and a parameter added now for a
+  caller nobody has written would be guessing at what that caller needs. What the two will share is
+  `MeetingRenderer`. The response identifies the meeting, so filing the same bytes twice re-renders
+  the meeting it already is, whatever the file was called.
+- **2026-08-07** — The response is committed the moment it is on disk, and the derivatives are
+  rendered outside that transaction. One transaction over both was the first shape and it is the
+  wrong one: `DurableArtifact` puts the file in place before the row, so a render that failed would
+  have rolled the response's row back and left the paid file behind as an unrecorded thing the
+  reconciler may never adopt — and the retry, finding no row with that hash, would have filed a
+  second copy under a second meeting. Filing first means a failed render leaves a meeting whose
+  source is in the corpus and whose derivatives are not, which running the same command again puts
+  right. The three reads of the response — parse, hash, copy — are one handle no writer may replace
+  underneath, so the length, the identity and the stored bytes cannot come from three versions.
+- **2026-08-07** — `import` asks for the source profile instead of reading it off the response's
+  channel count, and pays a flag for it. Inferring would mean the profile can never disagree with
+  the audio, which sounds like one less way to be wrong and is the opposite: a recording made on
+  two channels that came back as one track was billed as something other than what was sent, and
+  that is exactly what the contract's refusal exists to say out loud. What is inferred instead is
+  the meeting's length, which the response does know.
+- **2026-08-07** — Only `migrate` brings a corpus into existence; every other command refuses a
+  directory with no `corpus.db` in it. A path typed wrong is a far commoner cause than a corpus
+  somebody meant to start, and answering a typo with an empty corpus reads as success. `status` is
+  the one command that opens a corpus this build's schema has moved past, because "why does
+  everything else refuse" is a question about the corpus's state.
 - **2026-08-07** — `tests/MeetingTranscriber.Testing` holds what a test opens — the temporary
   corpus, the raw-SQL helpers, the fixture inventory — and every suite references it, the
   importer's included. The importer's copy was a deliberate duplicate so that deleting the tool
@@ -258,6 +288,21 @@ Board: 7 · Distribución y backup
   close on, so what would falsify it lives in whoever picks up the work rather than in the file.
 
 ## Learning
+
+- **conjecture** — A `corpus.db` that is there is either a corpus or a permissions problem, and
+  SQLite's error says which.
+- **refuted-by** — A file of zero bytes is neither. SQLite reads it as an empty database and
+  refuses to put it into WAL, so every write against it comes back as `attempt to write a readonly
+  database` — including the migration that would have made it a corpus. The directory was a dead
+  end: the corpus could not be created there again, and the message sent whoever read it to look at
+  permissions that were fine.
+- **learned** — The state a create leaves behind when it is cut off is not "nothing" and not "a
+  corpus". It is a third thing, and it is the one state where the error a component reports is
+  about something other than what is wrong. Every file this program opens can be in it.
+- **criterion-now** — An empty `corpus.db` is not a corpus: every command refuses it saying so, and
+  `migrate` removes it, which is the only file this program deletes without being asked. A refusal
+  that comes from SQLite keeps SQLite's words and adds the path, because two very different causes
+  arrive under the same sentence and this program cannot tell them apart.
 
 - **conjecture** — A timestamp column is named after the moment it holds, so `created_at` on a
   table is a description of that column and nothing more.
@@ -355,3 +400,6 @@ Board: 7 · Distribución y backup
 - ISC-80 — `CorpusImporterTests.A_speaker_somebody_resolved_arrives_under_the_label_the_provider_wrote` green 2026-08-07
 - ISC-82 — `git grep -l` for the five fixture names over `tests/**/*.cs` returned `MeetingTranscriber.Testing/DeepgramFixtures.cs` alone 2026-08-07; the other hit is the tool that builds them, which is not the test tree. `DeepgramFixtureTests.The_inventory_names_exactly_the_responses_that_are_committed` green, red with a fixture dropped from the inventory
 - ISC-83 — `git grep -l "class TemporaryCorpus" -- tests/` returned `MeetingTranscriber.Testing/TemporaryCorpus.cs` alone 2026-08-07
+- ISC-34 — `CommandLineTests` green 2026-08-07: `status` answers for a corpus this build has moved past, and `check` names the file the corpus claims and does not have
+- ISC-84 — `CliWalkthroughTests.A_response_becomes_a_meeting_that_renders_rebuilds_and_is_found_again` green 2026-08-07
+- ISC-85 — `CliWalkthroughTests.The_same_response_imported_twice_is_one_meeting` green 2026-08-07

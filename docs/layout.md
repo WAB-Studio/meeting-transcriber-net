@@ -5,6 +5,7 @@ map you open when you need to know where something lives.
 
 ```text
 src/MeetingTranscriber.App/               WinUI 3, packaged as MSIX
+src/MeetingTranscriber.Cli/               diagnosis, import, rebuild and recovery from a prompt
 src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
 src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
@@ -22,6 +23,13 @@ helpers and the inventory of the Deepgram fixtures live, so a suite that opens a
 the fixture set references it instead of carrying a copy — and adding a fixture is one edit every
 suite sees. It stops at `Infrastructure` on purpose: `Domain.Tests` references it, and a path from
 there to `Processing` would let a domain rule be proved against the parser's own output.
+
+`MeetingTranscriber.Cli` is the product's other front end and holds no rule of its own: every
+command is a call into the same service the application calls, and what it adds is argument
+parsing, a report and an exit code. It is where the whole path from a paid response to an answer
+can be exercised without automating a window — `tests/MeetingTranscriber.Cli.Tests/` walks it —
+and it is the half of the alias that exists: nothing packages it yet, so an installed build has no
+`meeting-transcriber` on the PATH until ISC-64 is closed.
 
 `Processing` references `Infrastructure`, and only that way round: rendering reads the paid
 response out of the corpus and puts the derivatives back, so it sits above storage. The opposite
