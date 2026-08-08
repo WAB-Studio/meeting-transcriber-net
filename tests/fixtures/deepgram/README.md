@@ -82,8 +82,10 @@ five of them into a recipe here would have published from the source what the ou
 take any.
 
 The tool is one way and never writes into the corpus. It needs the Python corpus, which only
-exists on the machine that recorded those meetings — which is the point of the fixtures being
-committed: no test needs it.
+exists on the machine that recorded those meetings — on that machine it is `~/meetings` inside
+WSL and nowhere under `C:\Users\`, so the path the tool is given crosses the filesystem. That the
+corpus is reachable from exactly one place is the point of the fixtures being committed: no test
+needs it.
 
 The substitution is deterministic, so re-running over the same corpus rewrites the same bytes. A
 fixture that comes back with a diff means the source, the vocabulary or the tool changed, and

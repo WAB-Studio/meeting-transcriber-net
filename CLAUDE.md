@@ -58,6 +58,7 @@ something here has stopped earning its place, and the fix is to move a section o
 | --- | --- |
 | `arquitectura.md` | The design as a whole, in Spanish. Written in the destination, not the present. |
 | `docs/layout.md` | Looking for where something lives. |
+| `docs/shell.md` | A command by hand did something other than what it looks like it did. |
 | `docs/migrations.md` | Adding or editing an EF migration. |
 | `docs/packages.md` | Adding, bumping or choosing a package. |
 | `docs/corpus.md` | Deciding what gets backed up, what is deletable, what is rebuildable. |
@@ -86,9 +87,6 @@ dotnet test --no-build
 Those four commands are exactly what CI runs on `windows-latest`. Warnings fail the build in CI
 only; locally they show up and do not block. `dotnet format` has to pass clean.
 
-WinUI 3, the Windows App SDK and WASAPI do not build or run on WSL, and the repo must not be
-cloned under `\\wsl$\`: MSBuild is slow over the crossed filesystem and Hot Reload misses changes.
-
 ## Layout
 
 `src/` is the product and `tools/` is run by hand beside it: nothing under `src/` may reference
@@ -99,17 +97,19 @@ destination — a project appears when there is code for it, dependencies point 
 
 ## How work starts and ends
 
-`ISA.md` says what done means, the board says what to do next, and **a claim closes on a probe
-that ran, never on a task moving.**
+`ISA.md` says what done means and the board says what to do next. **A claim closes on a probe that
+ran, never on a task moving, and `ISA.md` is never edited by hand: steps 1 and 3 run through the
+`isa` skill**, which owns how a claim is written, scored and closed — and what a failed probe says
+about whether the code or the claim is wrong.
 
 1. Work starts from a board task, and the claims it closes exist in `ISA.md` before anything is
    built — if they do not, they get written first, each stating what would prove it false.
 2. The task names them — `Cierra: ISC-12, ISC-13` — and the pointer only ever goes that way.
 3. Closing is running the probe, marking `[x]`, adding the `## Verification` stub and recounting
    `progress:`; `IsaStructureTests` fails if the count disagrees.
-4. The task then moves to `in review` with the evidence in a comment. Closing it is the user's.
-
-A failed probe asks whether the code or the claim is wrong; the `isa` skill has the rest.
+4. A diff over 50 lines runs `/adversarial-review` first, and what the verdict confirms gets
+   fixed in the same pass. The task then moves to `in review` with the evidence and the verdict
+   in a comment. Closing it is the user's.
 
 ## The contract
 
