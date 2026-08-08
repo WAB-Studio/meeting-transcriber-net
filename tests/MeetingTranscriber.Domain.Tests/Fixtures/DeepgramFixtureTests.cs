@@ -17,31 +17,28 @@ public partial class DeepgramFixtureTests
 
     private const string Uuid = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$";
 
+    /// <summary>
+    /// Both ways round, and the second direction is the one that matters: a response committed
+    /// without being named in the inventory is one every theory walks past, so it fails here
+    /// rather than sitting in the directory looking covered. Naming the five here as well would
+    /// be the third list — the one that makes a sixth fixture two edits instead of one — and what
+    /// each of them is there to cover is asserted below, by the tests that use it.
+    /// </summary>
     [Fact]
-    public void The_set_covers_every_case_it_was_built_for()
+    public void The_inventory_names_exactly_the_responses_that_are_committed()
     {
-        DeepgramFixtures.All.ShouldBe(
-            [
-                DeepgramFixtures.TwoChannelLong,
-                DeepgramFixtures.TwoChannelShort,
-                DeepgramFixtures.TwoChannelOneVoiceMe,
-                DeepgramFixtures.SingleTrackDiarized,
-                DeepgramFixtures.TwoChannelSilentMe,
-            ],
-            ignoreOrder: true);
+        var committed = DeepgramFixtures.Directory
+            .EnumerateFiles("*.json")
+            .Select(file => Path.GetFileNameWithoutExtension(file.Name));
 
-        foreach (var name in DeepgramFixtures.All)
-        {
-            File.Exists(Path.Combine(DeepgramFixtures.Directory.FullName, name + ".json"))
-                .ShouldBeTrue($"{name} is missing");
-        }
+        DeepgramFixtures.All.ShouldBe(committed, ignoreOrder: true);
     }
 
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.Each), MemberType = typeof(FixtureTheories))]
     public void A_fixture_has_the_channels_its_profile_promises(string name)
     {
-        using var response = DeepgramFixtures.Read(name);
+        using var response = FixtureResponses.Read(name);
         var profile = DeepgramFixtures.ProfileOf(name);
         var channels = response.RootElement.GetProperty("results").GetProperty("channels");
 
@@ -53,7 +50,7 @@ public partial class DeepgramFixtureTests
     [Fact]
     public void The_long_fixture_is_a_long_meeting()
     {
-        using var response = DeepgramFixtures.Read(DeepgramFixtures.TwoChannelLong);
+        using var response = FixtureResponses.Read(DeepgramFixtures.TwoChannelLong);
 
         Seconds(response).ShouldBeGreaterThan(45 * 60);
     }
@@ -61,7 +58,7 @@ public partial class DeepgramFixtureTests
     [Fact]
     public void The_diarized_fixture_has_speakers_to_tell_apart()
     {
-        using var response = DeepgramFixtures.Read(DeepgramFixtures.SingleTrackDiarized);
+        using var response = FixtureResponses.Read(DeepgramFixtures.SingleTrackDiarized);
 
         // A single track says nothing about who is who, so the labels are all a renderer gets and
         // one of them is not a diarized meeting.
@@ -77,7 +74,7 @@ public partial class DeepgramFixtureTests
     [Fact]
     public void The_one_voice_fixture_has_one_person_at_the_microphone_and_a_room_on_the_other_side()
     {
-        using var response = DeepgramFixtures.Read(DeepgramFixtures.TwoChannelOneVoiceMe);
+        using var response = FixtureResponses.Read(DeepgramFixtures.TwoChannelOneVoiceMe);
 
         Speakers(response, AudioChannel.Microphone).ShouldBe([0]);
         Speakers(response, AudioChannel.Loopback).Length.ShouldBeGreaterThan(1);
@@ -86,7 +83,7 @@ public partial class DeepgramFixtureTests
     [Fact]
     public void The_silent_fixture_has_a_channel_nobody_spoke_on()
     {
-        using var response = DeepgramFixtures.Read(DeepgramFixtures.TwoChannelSilentMe);
+        using var response = FixtureResponses.Read(DeepgramFixtures.TwoChannelSilentMe);
         var channels = response.RootElement.GetProperty("results").GetProperty("channels");
 
         var me = Alternative(channels[CapturedAudio.IndexOf(AudioChannel.Microphone)]);
@@ -101,20 +98,20 @@ public partial class DeepgramFixtureTests
     }
 
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.EachWithBothSidesHeard), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.EachWithBothSidesHeard), MemberType = typeof(FixtureTheories))]
     public void A_two_channel_fixture_answers_on_both_of_the_numbers_the_contract_fixes(string name)
     {
-        using var response = DeepgramFixtures.Read(name);
+        using var response = FixtureResponses.Read(name);
 
         Turns(response).Select(turn => turn.GetProperty("channel").GetInt32()).Distinct().Order()
             .ShouldBe([CapturedAudio.IndexOf(AudioChannel.Loopback), CapturedAudio.IndexOf(AudioChannel.Microphone)]);
     }
 
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.Each), MemberType = typeof(FixtureTheories))]
     public void Turns_run_forwards_and_stay_inside_the_meeting(string name)
     {
-        using var response = DeepgramFixtures.Read(name);
+        using var response = FixtureResponses.Read(name);
         var seconds = Seconds(response);
         var previous = 0.0;
 
@@ -139,11 +136,11 @@ public partial class DeepgramFixtureTests
     /// of widening quietly.
     /// </summary>
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.Each), MemberType = typeof(FixtureTheories))]
     public void Nothing_anybody_said_is_still_in_a_fixture(string name)
     {
         var vocabulary = DeepgramFixtures.Vocabulary();
-        using var response = DeepgramFixtures.Read(name);
+        using var response = FixtureResponses.Read(name);
 
         // Closed by construction: every word was replaced by one of these. Checking the list is
         // complete rather than checking real names are absent is what keeps this test from being
@@ -166,10 +163,10 @@ public partial class DeepgramFixtureTests
     /// go away, and a field holding a sentence could be waved through by adding its path.
     /// </summary>
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.Each), MemberType = typeof(FixtureTheories))]
     public void What_a_fixture_holds_that_is_not_speech_is_the_provider_describing_itself(string name)
     {
-        using var response = DeepgramFixtures.Read(name);
+        using var response = FixtureResponses.Read(name);
 
         foreach (var (path, text) in Strings(response.RootElement, string.Empty))
         {
@@ -181,10 +178,10 @@ public partial class DeepgramFixtureTests
     }
 
     [Theory]
-    [MemberData(nameof(DeepgramFixtures.Each), MemberType = typeof(DeepgramFixtures))]
+    [MemberData(nameof(FixtureTheories.Each), MemberType = typeof(FixtureTheories))]
     public void No_fixture_carries_the_call_that_was_paid_for(string name)
     {
-        using var response = DeepgramFixtures.Read(name);
+        using var response = FixtureResponses.Read(name);
         var metadata = response.RootElement.GetProperty("metadata");
 
         metadata.GetProperty("request_id").GetString().ShouldBe("00000000-0000-0000-0000-000000000000");

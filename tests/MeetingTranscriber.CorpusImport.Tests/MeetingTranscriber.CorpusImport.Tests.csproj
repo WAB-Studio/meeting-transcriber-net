@@ -8,13 +8,17 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Only the tool. Nothing in src references this, so both projects come out together. -->
+    <!-- The tool, and the test support every suite shares. Nothing in src references either, so
+         the tool and this project still come out together: the support project loses a consumer
+         rather than needing a change. -->
     <ProjectReference Include="..\..\tools\MeetingTranscriber.CorpusImport\MeetingTranscriber.CorpusImport.csproj" />
+    <ProjectReference Include="..\MeetingTranscriber.Testing\MeetingTranscriber.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="Shouldly" />
+    <Using Include="MeetingTranscriber.Testing" />
   </ItemGroup>
 
   <ItemGroup>
