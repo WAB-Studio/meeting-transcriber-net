@@ -158,7 +158,12 @@ public class SpeakerAssignment
 
     public SpeakerAssignmentSource AssignedBy { get; set; }
 
-    public UtcTimestamp CreatedAt { get; set; }
+    /// <summary>
+    /// When this label was settled on this person, which moves when a person overrules what the
+    /// channel guessed. The other half of <see cref="AssignedBy"/>: both say something about the
+    /// answer that stands, not about the row.
+    /// </summary>
+    public UtcTimestamp AssignedAt { get; set; }
 }
 
 /// <summary>

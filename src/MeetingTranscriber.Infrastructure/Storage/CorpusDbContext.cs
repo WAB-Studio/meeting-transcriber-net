@@ -26,6 +26,9 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
     private static readonly string Organization = WireNames<NodeKind>.Of(NodeKind.Organization);
 
+    /// <summary>The one column name the model treats as a promise. See <see cref="SealCreatedAt"/>.</summary>
+    private const string CreatedAtColumn = "created_at";
+
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
     public DbSet<Artifact> Artifacts => Set<Artifact>();
@@ -85,6 +88,7 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
         ApplyEnumNames(modelBuilder);
         ApplySnakeCaseNames(modelBuilder);
+        SealCreatedAt(modelBuilder);
     }
 
     private static void ConfigureHumanLayer(ModelBuilder modelBuilder)
@@ -577,6 +581,33 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
                 var converter = (ValueConverter)Activator.CreateInstance(
                     typeof(EnumWireConverter<>).MakeGenericType(type))!;
                 property.SetValueConverter(converter);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A column called <c>created_at</c> says when its row was created, so nothing may write one
+    /// over a row that is already there. Declared on the model rather than left to each writer:
+    /// the two that broke it — a speaker a person reassigned, an artifact a rerender replaced —
+    /// were both keeping an honest timestamp under a name that promised another one, and neither
+    /// read as wrong at the call site. A row that wants "when what it holds now was settled" gets
+    /// a column that says so, and this is what makes that a compile-time-visible decision instead
+    /// of a habit.
+    /// </summary>
+    /// <remarks>
+    /// Runs after the naming pass, because the rule is about the name on disk and not about the
+    /// property: <c>CreatedAt</c> is only the usual way to arrive at <c>created_at</c>.
+    /// </remarks>
+    private static void SealCreatedAt(ModelBuilder modelBuilder)
+    {
+        foreach (var entity in modelBuilder.Model.GetEntityTypes())
+        {
+            foreach (var property in entity.GetProperties())
+            {
+                if (property.GetColumnName() == CreatedAtColumn)
+                {
+                    property.SetAfterSaveBehavior(PropertySaveBehavior.Throw);
+                }
             }
         }
     }

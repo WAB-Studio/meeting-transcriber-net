@@ -254,7 +254,7 @@ public sealed class StagedArtifact : IDisposable
                 RelativePath = RelativePath,
                 ByteSize = ByteSize,
                 Sha256 = Sha256,
-                CreatedAt = now,
+                ConfirmedAt = now,
             };
             context.Artifacts.Add(artifact);
         }
@@ -267,7 +267,7 @@ public sealed class StagedArtifact : IDisposable
 
             // The row says when the file that is there now was confirmed, not when the first
             // file to carry this name was. A rerender produces a different artifact.
-            artifact.CreatedAt = now;
+            artifact.ConfirmedAt = now;
         }
 
         context.SaveChanges();

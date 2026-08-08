@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 50/80
+progress: 51/81
 updated: 2026-08-07
 ---
 
@@ -47,6 +47,7 @@ Board: —
 - [x] ISC-12: Every classification name is closed and stored under a CHECK.
 - [x] ISC-13: The thirteen meetings of `arquitectura.md` §5.3 store and are found again.
 - [x] ISC-14: Every stored table and column name is spelled out in a test, so a rename fails the suite.
+- [x] ISC-81: Anti: a column named `created_at` cannot be written over a row that already exists.
 - [x] ISC-15: Anti: nothing under `tests/` names an HTTP or socket type, so no test can reach the network.
 - [x] ISC-16: The build is clean under `-warnaserror` and `dotnet format --verify-no-changes` passes.
 - [x] ISC-17: A meeting, a turn and a job come back off disk as the types they went in as.
@@ -172,6 +173,12 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
+- **2026-08-07** — `created_at` means the row's own age everywhere, and the model refuses to write
+  one over a row that exists rather than each writer being trusted to. The two that held a
+  different fact under it get the names for what they record — `artifacts.confirmed_at`,
+  `speaker_assignments.assigned_at`, the latter completing a pair `assigned_by` had been half of.
+  A rule declared once is what makes the next timestamp that wants to move ask for a name instead
+  of borrowing the column already there.
 - **2026-08-07** — A rebuild replaces the turns underneath the claims that cite them, in one
   transaction with `PRAGMA defer_foreign_keys`, rather than deleting the claims and putting them
   back. Deleting them was the obvious shape and is the wrong one: nothing reads an accepted
@@ -234,6 +241,20 @@ Board: 7 · Distribución y backup
   close on, so what would falsify it lives in whoever picks up the work rather than in the file.
 
 ## Learning
+
+- **conjecture** — A timestamp column is named after the moment it holds, so `created_at` on a
+  table is a description of that column and nothing more.
+- **refuted-by** — Two tables kept an honest value under it and rewrote it in place: an artifact
+  every time a derivative was rendered again, a speaker assignment every time somebody corrected
+  what the channel had guessed. Both reads at the call site looked right, and both were storing
+  when the answer was settled under a name promising when the row appeared.
+- **learned** — A column present on nearly every table stops being a description and becomes the
+  default place to put a time. Nothing was wrong at either call site in isolation; what was wrong
+  is that neither had to name what it was recording, so the vocabulary quietly widened to mean
+  "the last time anything about this row was true".
+- **criterion-now** — `created_at` is read-only once its row exists, held on the model rather than
+  by each writer. A timestamp that moves gets a column named for what moves it, and finding that
+  out costs a failed `SaveChanges` at the moment it is written rather than a query years later.
 
 - **conjecture** — The importer stored a resolved speaker as `speaker_0`, and that was the label,
   because nothing else in the system had an opinion about it.
@@ -313,4 +334,5 @@ Board: 7 · Distribución y backup
 - ISC-77 — `CorpusRebuildTests.Rebuilding_produces_the_same_projections_and_the_same_files` green 2026-08-07
 - ISC-78 — `CorpusRebuildTests.A_claim_still_points_at_the_turn_it_came_from` green 2026-08-07
 - ISC-79 — `CorpusImporterTests.Importing_again_does_not_duplicate_or_rewrite_the_derivatives` green 2026-08-07
+- ISC-81 — `CorpusNamingTests.No_created_at_anywhere_can_be_written_over_a_row_that_exists` and `.Moving_a_created_at_on_a_stored_row_fails_instead_of_being_written` green 2026-08-07, both red with the model rule commented out
 - ISC-80 — `CorpusImporterTests.A_speaker_somebody_resolved_arrives_under_the_label_the_provider_wrote` green 2026-08-07

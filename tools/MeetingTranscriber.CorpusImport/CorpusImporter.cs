@@ -650,7 +650,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
                 RelativePath = relativePath,
                 ByteSize = source.Length,
                 Sha256 = sha256,
-                CreatedAt = now,
+                ConfirmedAt = now,
             };
             context.Artifacts.Add(artifact);
             registered[name] = artifact;
@@ -705,7 +705,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
                 SpeakerLabel = speakerLabel,
                 PersonId = personId,
                 AssignedBy = SpeakerAssignmentSource.Person,
-                CreatedAt = now,
+                AssignedAt = now,
             });
             report.Imported(ImportCounter.Speaker);
 

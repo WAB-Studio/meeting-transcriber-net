@@ -25,5 +25,10 @@ public class Artifact
     /// <summary>Lowercase hex of the SHA-256, so always 64 characters.</summary>
     public required string Sha256 { get; set; }
 
-    public UtcTimestamp CreatedAt { get; set; }
+    /// <summary>
+    /// When the bytes that are there now were re-read and hashed — not when the first file to
+    /// carry this path was. Re-rendering a derivative confirms a different file under the same
+    /// name, and the row is meant to say which one is on disk.
+    /// </summary>
+    public UtcTimestamp ConfirmedAt { get; set; }
 }
