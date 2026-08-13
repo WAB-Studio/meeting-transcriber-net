@@ -185,6 +185,62 @@ public class DurableWriteTests
     }
 
     /// <summary>
+    /// The one source that rule does not reach, and the reason the question is asked as *can this
+    /// be produced again* rather than *is this a source*. The card is regenerated from the meetings
+    /// row every time it is written, so refusing to replace it would protect nothing and cost the
+    /// only thing it is for: a card that can be put right, and put back when it is gone.
+    /// </summary>
+    [Fact]
+    public void The_recovery_card_is_the_source_a_second_write_replaces()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var path = CorpusFiles.PathFor(meeting, "manifest.json");
+
+        var first = DurableArtifact.WriteText(
+            context, corpus.Root, meeting, ArtifactKind.Manifest, path, When, "{\"title\":\"before\"}");
+        var second = DurableArtifact.WriteText(
+            context, corpus.Root, meeting, ArtifactKind.Manifest, path, When, "{\"title\":\"after\"}");
+
+        second.Id.ShouldBe(first.Id);
+        second.Origin.ShouldBe(ArtifactOrigin.Source);
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, path).FullName).ShouldBe("{\"title\":\"after\"}");
+        context.Artifacts.Count().ShouldBe(1);
+        EveryRowReReads(context, corpus.Root);
+    }
+
+    /// <summary>
+    /// What keeps the replaceable kinds from reaching a file that is not theirs. Whether a write
+    /// may replace is decided by the kind the caller names, and the destination is named by the
+    /// same caller — so on their own the two say nothing about each other, and a manifest addressed
+    /// at the response would put the corpus's regenerable file over its paid one.
+    /// </summary>
+    [Fact]
+    public void A_write_that_calls_a_path_something_it_is_not_is_refused_before_the_file_moves()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var path = CorpusFiles.PathFor(meeting, "deepgram.json");
+
+        DurableArtifact.WriteText(
+            context, corpus.Root, meeting, ArtifactKind.DeepgramResponse, path, When, "{\"paid\":true}");
+
+        var refused = Should.Throw<ArtifactWriteException>(() => DurableArtifact.WriteText(
+            context, corpus.Root, meeting, ArtifactKind.Manifest, path, When, "{\"meeting\":\"mine now\"}"));
+
+        refused.Message.ShouldContain("DeepgramResponse");
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, path).FullName).ShouldBe("{\"paid\":true}");
+
+        var artifact = context.Artifacts.ShouldHaveSingleItem();
+        artifact.Kind.ShouldBe(ArtifactKind.DeepgramResponse);
+        artifact.Origin.ShouldBe(ArtifactOrigin.Source);
+        Files(corpus).ShouldBe([$"meetings/{meeting}/deepgram.json"]);
+        EveryRowReReads(context, corpus.Root);
+    }
+
+    /// <summary>
     /// A derivative is the other half of that rule: re-rendering replaces it, and the corpus keeps
     /// one row for one file because the row is what a backup and a rebuild walk.
     /// </summary>

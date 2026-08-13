@@ -206,10 +206,11 @@ public sealed class StagedArtifact : IDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A source is written with the replace refused, so the filesystem itself is what stops a paid
-    /// response from being overwritten — not a check above it that a second writer could slip past
-    /// between the looking and the moving. A derivative replaces whatever was there, which is what
-    /// re-rendering is.
+    /// An artifact the corpus cannot produce again is written with the replace refused, so the
+    /// filesystem itself is what stops a paid response from being overwritten — not a check above it
+    /// that a second writer could slip past between the looking and the moving. Everything the
+    /// corpus can produce again replaces whatever was there, which is what re-rendering is, and what
+    /// lets a recovery card be corrected rather than pinned to whatever it first said.
     /// </para>
     /// <para>
     /// <c>SaveChanges</c> is the transaction. A caller committing several staged artifacts
@@ -224,24 +225,38 @@ public sealed class StagedArtifact : IDisposable
             ?? throw new InvalidOperationException($"'{RelativePath}' has already been put in place.");
 
         var destination = CorpusFiles.Locate(_root, RelativePath);
-        var rebuildable = kind.IsRebuildable();
+        var replaceable = kind.MayBeReplaced();
+
+        // Looked up before the move, not after, because it is the only thing that can still refuse.
+        // Replaceability is decided by the kind the caller passed, and the path is passed by the
+        // same caller: on their own, the two say nothing about each other, so a manifest addressed
+        // at 'deepgram.json' would overwrite a paid response and then relabel its row. What the
+        // corpus already knows about this path is what closes that, and it is worth nothing after
+        // File.Move has run.
+        var artifact = context.Artifacts.FirstOrDefault(
+            row => row.MeetingId == _meetingId && row.RelativePath == RelativePath);
+
+        if (artifact is not null && artifact.Kind != kind)
+        {
+            throw new ArtifactWriteException(
+                $"'{RelativePath}' is this meeting's {artifact.Kind} and this write calls it a "
+                + $"{kind}. A path holds one kind for as long as the corpus does, so this is a "
+                + "caller naming the wrong file rather than an artifact changing what it is.");
+        }
 
         try
         {
-            File.Move(temporary.FullName, destination.FullName, overwrite: rebuildable);
+            File.Move(temporary.FullName, destination.FullName, overwrite: replaceable);
         }
-        catch (IOException) when (!rebuildable && StillThere(destination))
+        catch (IOException) when (!replaceable && StillThere(destination))
         {
             throw new ArtifactWriteException(
-                $"'{RelativePath}' is already there and a {kind} is a source, which is never "
-                + "rewritten. Writing it again would destroy the only copy of something that "
-                + "cannot be obtained a second time.");
+                $"'{RelativePath}' is already there and a {kind} is never rewritten. Writing it "
+                + "again would destroy the only copy of something that cannot be obtained a "
+                + "second time.");
         }
 
         _temporary = null;
-
-        var artifact = context.Artifacts.FirstOrDefault(
-            row => row.MeetingId == _meetingId && row.RelativePath == RelativePath);
 
         if (artifact is null)
         {
@@ -260,8 +275,8 @@ public sealed class StagedArtifact : IDisposable
         }
         else
         {
-            artifact.Kind = kind;
-            artifact.Origin = kind.OriginOf();
+            // The kind and the origin are not reassigned: the row already carries this kind, which
+            // is what the refusal above established, and nothing else may turn one into another.
             artifact.ByteSize = ByteSize;
             artifact.Sha256 = Sha256;
 

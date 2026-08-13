@@ -452,6 +452,41 @@ public class CorpusImporterTests
         context.Utterances.ShouldBeEmpty();
         context.Artifacts.ShouldAllBe(artifact => artifact.Origin == ArtifactOrigin.Source);
         legacy.Fingerprint().ShouldBe(before);
+
+        // The card goes the same way, and for a reason worth keeping separate from the renders:
+        // there is no meeting folder to put one in, and the folder that does hold these files is
+        // the Python corpus, which this tool does not write to. The fingerprint above is that.
+        report.ManifestsWritten.ShouldBe(0);
+        context.Artifacts.ShouldAllBe(artifact => artifact.Kind != ArtifactKind.Manifest);
+    }
+
+    /// <summary>
+    /// An imported meeting is recognisable in its folder without the database, the same as one
+    /// filed from the command line and from the same writer. The old corpus had no card of any
+    /// kind, so this one is written here rather than carried across.
+    /// </summary>
+    [Fact]
+    public void An_imported_meeting_arrives_with_the_card_that_names_it()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithCatalog().WithMeeting("2026-07-29 09-35-15");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock)
+            .Import(new LegacyCorpus(legacy.Directory), new ImportOptions(CopyTo: corpus.Root));
+
+        report.ManifestsWritten.ShouldBe(1);
+
+        var meeting = context.Meetings.Single();
+        var manifest = context.Artifacts.Single(row => row.Kind == ArtifactKind.Manifest);
+        manifest.Origin.ShouldBe(ArtifactOrigin.Source);
+
+        var card = MeetingManifest.Read(CorpusFiles.Locate(corpus.Root, manifest.RelativePath));
+        card.MeetingId.ShouldBe(meeting.Id);
+        card.StartedAt.ShouldBe(meeting.StartedAt);
+        card.Profile.ShouldBe(meeting.SourceProfile);
+        card.Language.ShouldBe(meeting.Language);
+        card.Title.ShouldBe(meeting.Title);
     }
 
     private static Citation Cited(Guid meetingId) => new()

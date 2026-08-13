@@ -48,6 +48,7 @@ public static class MeetingCommands
                 ? $"{received.MeetingId} (this response was already here)"
                 : $"{received.MeetingId}");
         Report.Line(output, "response", received.Response.RelativePath);
+        Report.Line(output, "manifest", received.Manifest.RelativePath);
         Rendered(output, received.Turns, received.Transcript.RelativePath, received.Utterances.RelativePath);
         return Cli.Ok;
     }

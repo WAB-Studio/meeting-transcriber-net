@@ -53,6 +53,12 @@ public class CliWalkthroughTests
         utterances.Exists.ShouldBeTrue(utterances.FullName);
         File.Exists(Path.Combine(root, imported.Value("transcript"))).ShouldBeTrue();
 
+        // The card that names the meeting, opened as the flat file it is. Reading it back through
+        // the corpus would be reading the thing it exists to survive the loss of.
+        var card = new FileInfo(Path.Combine(root, imported.Value("manifest")));
+        card.Exists.ShouldBeTrue(card.FullName);
+        File.ReadAllText(card.FullName).ShouldContain(meeting);
+
         var status = CommandLine.Of("status", "--corpus", root);
         status.Code.ShouldBe(Cli.Ok, status.Error);
         status.Value("meetings").ShouldBe("1 active");

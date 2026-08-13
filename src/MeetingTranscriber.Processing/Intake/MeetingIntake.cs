@@ -39,6 +39,7 @@ public sealed record ReceivedMeeting(
     bool WasAlreadyThere,
     int Turns,
     Artifact Response,
+    Artifact Manifest,
     Artifact Transcript,
     Artifact Utterances);
 
@@ -110,6 +111,13 @@ public static class MeetingIntake
         var meetingId = already?.MeetingId ?? Guid.NewGuid();
         var stored = already ?? Record(context, root, meetingId, response, details, transcript, bytes, now);
 
+        // Before the render and on every filing, including one that found the meeting already
+        // here. It is the cheapest artifact to produce and the only one that says which meeting
+        // this folder is, so it goes down as early as there is a row to write it from — and a
+        // filing that finds the card missing, or saying what the corpus no longer says, is what
+        // puts it right.
+        var manifest = MeetingManifest.Write(context, root, meetingId, now);
+
         // Outside the filing above, and deliberately. The file and the database cannot be written
         // together, so a response that has landed on disk is recorded the moment it can be; a
         // render that then fails leaves a meeting whose paid source is in the corpus and whose
@@ -123,6 +131,7 @@ public static class MeetingIntake
             already is not null,
             rendered.Turns,
             stored,
+            manifest,
             rendered.Transcript,
             rendered.Utterances);
     }

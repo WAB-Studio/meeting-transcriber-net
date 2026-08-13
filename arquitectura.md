@@ -215,7 +215,10 @@ MeetingTranscriber/
 ```
 
 `manifest.json` no sustituye SQLite. Es una ficha mínima de recuperación que
-permite reconocer los artefactos si la base está dañada o ausente.
+permite reconocer de qué reunión es una carpeta si la base está dañada o ausente:
+su id, cuándo empezó, con qué perfil se grabó, en qué idioma y cómo se llama. No
+lista los archivos que tiene al lado — están nombrados por lo que son, y una
+ficha que los repitiera sólo repetiría el listado del directorio.
 
 ### 4.2 Fuentes y derivados
 
