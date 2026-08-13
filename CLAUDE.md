@@ -107,9 +107,9 @@ about whether the code or the claim is wrong.
 2. The task names them — `Cierra: ISC-12, ISC-13` — and the pointer only ever goes that way.
 3. Closing is running the probe, marking `[x]`, adding the `## Verification` stub and recounting
    `progress:`; `IsaStructureTests` fails if the count disagrees.
-4. A diff over 50 lines runs `/adversarial-review` first, and what the verdict confirms gets
-   fixed in the same pass. The task then moves to `in review` with the evidence and the verdict
-   in a comment. Closing it is the user's.
+4. A diff over 50 lines that are not comments runs `/adversarial-review` first, and what the
+   verdict confirms gets fixed in the same pass. The task then moves to `in review` with the
+   evidence and the verdict in a comment. Closing it is the user's.
 
 ## The contract
 

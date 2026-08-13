@@ -81,14 +81,9 @@ public static class MeetingManifest
     /// <summary>
     /// Writes the card this meeting's row says it should have, replacing any card already there.
     /// </summary>
-    public static Artifact Write(
-        CorpusDbContext context,
-        DirectoryInfo root,
-        Guid meetingId,
-        UtcTimestamp now)
+    public static Artifact Write(CorpusDbContext context, Guid meetingId, UtcTimestamp now)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(root);
 
         var meeting = context.Meetings.FirstOrDefault(row => row.Id == meetingId)
             ?? throw new ManifestException(
@@ -96,7 +91,6 @@ public static class MeetingManifest
 
         return DurableArtifact.WriteText(
             context,
-            root,
             meetingId,
             ArtifactKind.Manifest,
             CorpusFiles.PathFor(meetingId, FileName),

@@ -21,10 +21,7 @@ public sealed class TemporaryCorpus : IDisposable
     {
         directory = Path.Combine(Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n"));
         Directory.CreateDirectory(directory);
-        DatabasePath = Path.Combine(directory, "corpus.db");
     }
-
-    public string DatabasePath { get; }
 
     /// <summary>
     /// The corpus root, which is the folder the database sits in and the one <c>meetings/</c> and
@@ -33,9 +30,15 @@ public sealed class TemporaryCorpus : IDisposable
     /// </summary>
     public DirectoryInfo Root => new(directory);
 
-    public CorpusDbContext Open() => CorpusDatabase.Open(DatabasePath);
+    /// <summary>
+    /// The database inside it, for the tests that are about the file itself — that it was made,
+    /// that half a copy is refused, what compacting did to its size.
+    /// </summary>
+    public string DatabasePath => CorpusDatabase.PathIn(Root);
 
-    public CorpusDbContext OpenMigrated() => CorpusDatabase.OpenMigrated(DatabasePath);
+    public CorpusDbContext Open() => CorpusDatabase.Open(Root);
+
+    public CorpusDbContext OpenMigrated() => CorpusDatabase.OpenMigrated(Root);
 
     public void Dispose()
     {

@@ -42,15 +42,15 @@ public class ArtifactRestoreTests
         var kept = Kept(corpus, "backup.json", Paid);
 
         CorpusFiles.Locate(corpus.Root, response.RelativePath).Delete();
-        ArtifactReconciler.Check(context, corpus.Root).ShouldHaveSingleItem()
+        ArtifactReconciler.Check(context).ShouldHaveSingleItem()
             .State.ShouldBe(ArtifactState.Missing);
 
-        var restored = ArtifactRestore.Restore(context, corpus.Root, kept, Later);
+        var restored = ArtifactRestore.Restore(context, kept, Later);
 
         restored.Sha256.ShouldBe(response.Sha256);
         restored.PutBack.ShouldBe([response.RelativePath]);
         restored.AlreadyThere.ShouldBeEmpty();
-        ArtifactReconciler.Check(context, corpus.Root, verifyContents: true).ShouldBeEmpty();
+        ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
     }
 
     /// <summary>
@@ -68,7 +68,7 @@ public class ArtifactRestoreTests
         var kept = Kept(corpus, "backup.json", Paid);
         CorpusFiles.Locate(corpus.Root, response.RelativePath).Delete();
 
-        ArtifactRestore.Restore(context, corpus.Root, kept, Later);
+        ArtifactRestore.Restore(context, kept, Later);
 
         var row = context.Artifacts.Single();
         row.Id.ShouldBe(response.Id);
@@ -95,11 +95,11 @@ public class ArtifactRestoreTests
         CorpusFiles.Locate(corpus.Root, response.RelativePath).Delete();
 
         var refused = Should.Throw<ArtifactRestoreException>(
-            () => ArtifactRestore.Restore(context, corpus.Root, stranger, Later));
+            () => ArtifactRestore.Restore(context, stranger, Later));
 
         refused.Message.ShouldContain(stranger.FullName);
         CorpusFiles.Locate(corpus.Root, response.RelativePath).Exists.ShouldBeFalse();
-        ArtifactReconciler.Check(context, corpus.Root).ShouldHaveSingleItem()
+        ArtifactReconciler.Check(context).ShouldHaveSingleItem()
             .State.ShouldBe(ArtifactState.Missing);
     }
 
@@ -120,7 +120,7 @@ public class ArtifactRestoreTests
 
         CorpusFiles.Locate(corpus.Root, gone.RelativePath).Delete();
 
-        var restored = ArtifactRestore.Restore(context, corpus.Root, kept, Later);
+        var restored = ArtifactRestore.Restore(context, kept, Later);
 
         restored.PutBack.ShouldBeEmpty();
         restored.AlreadyThere.ShouldBe([other.RelativePath]);
@@ -145,7 +145,7 @@ public class ArtifactRestoreTests
         var damaged = CorpusFiles.Locate(corpus.Root, response.RelativePath);
         File.WriteAllText(damaged.FullName, "half of a copy that stopped", new UTF8Encoding(false));
 
-        var restored = ArtifactRestore.Restore(context, corpus.Root, kept, Later);
+        var restored = ArtifactRestore.Restore(context, kept, Later);
 
         restored.PutBack.ShouldBeEmpty();
         restored.AlreadyThere.ShouldBe([response.RelativePath]);
@@ -168,12 +168,12 @@ public class ArtifactRestoreTests
         CorpusFiles.Locate(corpus.Root, first.RelativePath).Delete();
         CorpusFiles.Locate(corpus.Root, second.RelativePath).Delete();
 
-        var restored = ArtifactRestore.Restore(context, corpus.Root, kept, Later);
+        var restored = ArtifactRestore.Restore(context, kept, Later);
 
         restored.PutBack.Count.ShouldBe(2);
         restored.PutBack.ShouldContain(first.RelativePath);
         restored.PutBack.ShouldContain(second.RelativePath);
-        ArtifactReconciler.Check(context, corpus.Root, verifyContents: true).ShouldBeEmpty();
+        ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
     }
 
     [Fact]
@@ -184,7 +184,7 @@ public class ArtifactRestoreTests
         var absent = new FileInfo(Path.Combine(corpus.Root.FullName, "nothing.json"));
 
         Should.Throw<ArtifactRestoreException>(
-            () => ArtifactRestore.Restore(context, corpus.Root, absent, Later))
+            () => ArtifactRestore.Restore(context, absent, Later))
             .Message.ShouldContain(absent.FullName);
     }
 
@@ -203,7 +203,6 @@ public class ArtifactRestoreTests
         string? paid = null) =>
         DurableArtifact.WriteText(
             context,
-            corpus.Root,
             meeting,
             ArtifactKind.DeepgramResponse,
             CorpusFiles.PathFor(meeting, "deepgram.json"),

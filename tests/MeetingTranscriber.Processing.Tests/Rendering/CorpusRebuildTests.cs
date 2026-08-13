@@ -38,7 +38,7 @@ public class CorpusRebuildTests
         var meetings = DeepgramFixtures.All.Select(fixture => Recorded(context, corpus.Root, fixture)).ToArray();
         context.Artifacts.Where(artifact => artifact.Kind == ArtifactKind.Manifest).ShouldBeEmpty();
 
-        CorpusRebuild.Run(context, corpus.Root, When);
+        CorpusRebuild.Run(context, When);
 
         foreach (var meeting in meetings)
         {
@@ -61,12 +61,12 @@ public class CorpusRebuildTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelShort);
-        CorpusRebuild.Run(context, corpus.Root, When);
+        CorpusRebuild.Run(context, When);
 
         context.Meetings.Single(row => row.Id == meeting).Title = "la que renombraron después";
         context.SaveChanges();
 
-        CorpusRebuild.Run(context, corpus.Root, When);
+        CorpusRebuild.Run(context, When);
 
         var manifest = context.Artifacts.Single(
             artifact => artifact.MeetingId == meeting && artifact.Kind == ArtifactKind.Manifest);
@@ -81,7 +81,7 @@ public class CorpusRebuildTests
         using var context = corpus.OpenMigrated();
         var meetings = DeepgramFixtures.All.Select(fixture => Recorded(context, corpus.Root, fixture)).ToArray();
 
-        var report = CorpusRebuild.Run(context, corpus.Root, When);
+        var report = CorpusRebuild.Run(context, When);
 
         report.Meetings.ShouldBe(meetings.Length);
         report.CouldNotRebuild.ShouldBeEmpty();
@@ -104,11 +104,11 @@ public class CorpusRebuildTests
             Recorded(context, corpus.Root, fixture);
         }
 
-        CorpusRebuild.Run(context, corpus.Root, When);
+        CorpusRebuild.Run(context, When);
         var turns = Turns(context);
         var derived = Derived(context);
 
-        CorpusRebuild.Run(context, corpus.Root, When + Duration.FromMilliseconds(60_000));
+        CorpusRebuild.Run(context, When + Duration.FromMilliseconds(60_000));
 
         Turns(context).ShouldBe(turns);
         Derived(context).ShouldBe(derived);
@@ -126,13 +126,13 @@ public class CorpusRebuildTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelShort);
-        CorpusRebuild.Run(context, corpus.Root, When);
+        CorpusRebuild.Run(context, When);
 
         var cited = context.Utterances.OrderBy(turn => turn.Ordinal).Skip(3).First();
         var run = Extracted(context, meeting);
         Claim(context, meeting, run, cited);
 
-        CorpusRebuild.Run(context, corpus.Root, When);
+        CorpusRebuild.Run(context, When);
 
         // Not one turn id in common, and the claim still lands on the same words.
         context.Utterances.ShouldAllBe(turn => turn.Id != cited.Id);
@@ -155,11 +155,11 @@ public class CorpusRebuildTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelShort);
-        CorpusRebuild.Run(context, corpus.Root, When);
+        CorpusRebuild.Run(context, When);
         var run = Extracted(context, meeting);
         Claim(context, meeting, run, context.Utterances.First());
 
-        CorpusRebuild.Run(context, corpus.Root, When);
+        CorpusRebuild.Run(context, When);
 
         context.Decisions.Count().ShouldBe(1);
         context.ActionItems.Count().ShouldBe(1);
@@ -175,9 +175,9 @@ public class CorpusRebuildTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelShort);
-        CorpusRebuild.Run(context, corpus.Root, When);
+        CorpusRebuild.Run(context, When);
 
-        var human = new HumanLayer(context, corpus.Root, TimeProvider.System);
+        var human = new HumanLayer(context, TimeProvider.System);
         var techsed = human.Root(NodeKind.Organization, "TechSed");
         var somebody = human.Add("Renata");
         human.ThisIsMe(somebody);
@@ -189,7 +189,7 @@ public class CorpusRebuildTests
 
         var before = HumanLayer(context);
 
-        CorpusRebuild.Run(context, corpus.Root, When);
+        CorpusRebuild.Run(context, When);
 
         HumanLayer(context).ShouldBe(before);
     }
@@ -207,7 +207,7 @@ public class CorpusRebuildTests
         var lost = Recorded(context, corpus.Root, DeepgramFixtures.SingleTrackDiarized);
         CorpusFiles.Locate(corpus.Root, CorpusFiles.PathFor(lost, "deepgram.json")).Delete();
 
-        var report = CorpusRebuild.Run(context, corpus.Root, When);
+        var report = CorpusRebuild.Run(context, When);
 
         report.Meetings.ShouldBe(1);
         report.CouldNotRebuild.ShouldHaveSingleItem().ShouldContain(lost.ToString());
@@ -227,7 +227,7 @@ public class CorpusRebuildTests
         var leaving = $"UPDATE meetings SET lifecycle_state = 'deleting', deleted_at = '{When}';";
         context.Database.ExecuteSqlRaw(leaving);
 
-        var report = CorpusRebuild.Run(context, corpus.Root, When);
+        var report = CorpusRebuild.Run(context, When);
 
         report.Meetings.ShouldBe(0);
         context.Utterances.ShouldBeEmpty();
@@ -244,7 +244,7 @@ public class CorpusRebuildTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelShort);
-        CorpusRebuild.Run(context, corpus.Root, When);
+        CorpusRebuild.Run(context, When);
 
         // A bare word: the query is FTS5's own syntax, so a trailing full stop is a syntax error
         // rather than punctuation to ignore.
@@ -252,7 +252,7 @@ public class CorpusRebuildTests
         var before = CorpusSearch.Find(context, word, limit: 100).Count;
         before.ShouldBeGreaterThan(0);
 
-        CorpusRebuild.Run(context, corpus.Root, When);
+        CorpusRebuild.Run(context, When);
 
         CorpusSearch.Find(context, word, limit: 100).Count.ShouldBe(before);
         CorpusIntegrity.Check(context).ShouldBeEmpty();
@@ -290,7 +290,7 @@ public class CorpusRebuildTests
             }
         }
 
-        var report = CorpusRebuild.Run(context, corpus.Root, When);
+        var report = CorpusRebuild.Run(context, When);
 
         report.Meetings.ShouldBe(Rounds * DeepgramFixtures.All.Count());
         report.CouldNotRebuild.ShouldBeEmpty();
@@ -350,7 +350,6 @@ public class CorpusRebuildTests
 
         DurableArtifact.Write(
             context,
-            root,
             meeting.Id,
             ArtifactKind.DeepgramResponse,
             CorpusFiles.PathFor(meeting.Id, "deepgram.json"),

@@ -9,14 +9,13 @@ namespace MeetingTranscriber.CorpusImport;
 internal static class Program
 {
     private const string Usage = """
-        usage: corpus-import <corpus-directory> --database <corpus.db> [options]
+        usage: corpus-import <python-corpus> --corpus <directory> [options]
 
-          --copy <directory>   copy the sources into this corpus instead of pointing at
-                               where they already are
           --language <code>    the language of a meeting whose rendered transcript does not
                                say (default: es)
 
-        The corpus it reads is only ever read.
+        The sources are copied into the corpus, which is made if it is not there. The Python
+        corpus it reads is only ever read, so it may not be the corpus written into.
         """;
 
     private static int Main(string[] args)
@@ -47,21 +46,21 @@ internal static class Program
         }
 
         var source = new DirectoryInfo(args[0]);
-        string? database = null;
-        DirectoryInfo? copyTo = null;
+        DirectoryInfo? destination = null;
         var language = "es";
 
         for (var index = 1; index < args.Length; index++)
         {
-            var value = index + 1 < args.Length ? args[index + 1] : null;
+            // An option's value is never another option. Without this, '--corpus --language es'
+            // makes a corpus in a directory called '--language' and says nothing about it.
+            var value = index + 1 < args.Length && !args[index + 1].StartsWith('-')
+                ? args[index + 1]
+                : null;
+
             switch (args[index])
             {
-                case "--database" when value is not null:
-                    database = value;
-                    index++;
-                    break;
-                case "--copy" when value is not null:
-                    copyTo = new DirectoryInfo(value);
+                case "--corpus" when value is not null:
+                    destination = new DirectoryInfo(value);
                     index++;
                     break;
                 case "--language" when value is not null:
@@ -69,7 +68,7 @@ internal static class Program
                     index++;
                     break;
                 default:
-                    Console.Error.WriteLine($"'{args[index]}' is not an option.");
+                    Console.Error.WriteLine($"'{args[index]}' is not an option, or is missing its value.");
                     return 2;
             }
         }
@@ -80,17 +79,43 @@ internal static class Program
             return 1;
         }
 
-        if (database is null)
+        if (destination is null)
         {
-            Console.Error.WriteLine("--database is needed: the corpus to import into.");
+            Console.Error.WriteLine("--corpus is needed: the folder of the corpus to import into.");
             return 2;
         }
 
-        using var context = CorpusDatabase.OpenMigrated(database);
+        // One way, and this is where that is enforced rather than assumed. The corpus written into
+        // is a database and a folder of copies, so naming the Python corpus as the destination
+        // would put both inside the thing this tool promises only to read.
+        if (Inside(destination, source))
+        {
+            Console.Error.WriteLine(
+                $"'{destination.FullName}' is inside the corpus being read. This tool never writes "
+                + "into the Python corpus, so the corpus it imports into has to be somewhere else.");
+            return 2;
+        }
+
+        // The corpus is a folder, and one flag names it. It used to be two — a database and a
+        // folder to copy into — which meant a run could write rows into one corpus and files into
+        // another, and both halves would report success.
+        destination.Create();
+
+        using var context = CorpusDatabase.OpenMigrated(destination);
         var importer = new CorpusImporter(context, TimeProvider.System);
-        var report = importer.Import(new LegacyCorpus(source), new ImportOptions(copyTo, language));
+        var report = importer.Import(new LegacyCorpus(source), new ImportOptions(language));
 
         Console.Write(report.ToString());
         return 0;
+    }
+
+    /// <summary>Whether one folder is the other or sits under it, however each was spelled.</summary>
+    private static bool Inside(DirectoryInfo folder, DirectoryInfo other)
+    {
+        var under = Path.TrimEndingDirectorySeparator(folder.FullName);
+        var outer = Path.TrimEndingDirectorySeparator(other.FullName);
+
+        return under.Equals(outer, StringComparison.OrdinalIgnoreCase)
+            || under.StartsWith(outer + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 }

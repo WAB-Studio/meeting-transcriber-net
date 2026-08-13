@@ -29,16 +29,16 @@ namespace MeetingTranscriber.Infrastructure.Storage;
 /// so the boundary is the method rather than the caller.
 /// </para>
 /// <para>
-/// It holds the corpus root, and not because most of it writes files — only <see cref="Describe"/>
-/// does. It is because a corpus is a database and a folder, and the title a person types is the one
-/// thing a person can change that the folder also carries: the recovery card in
-/// <see cref="MeetingManifest"/>. A human layer that could not reach the folder would be one whose
-/// renames go stale on disk with nothing able to say so, and the root arrives in the constructor
-/// rather than in that method so that a caller cannot hold a human layer which is unable to keep
-/// the card current.
+/// It reaches the corpus folder, and not because most of it writes files — only
+/// <see cref="Describe"/> does. It is because a corpus is a database and a folder, and the title a
+/// person types is the one thing a person can change that the folder also carries: the recovery
+/// card in <see cref="MeetingManifest"/>. A human layer that could not reach the folder would be
+/// one whose renames go stale on disk with nothing able to say so. The folder comes from the
+/// corpus itself rather than from whoever constructs this, which is what makes it the folder these
+/// rows are in and not one a caller named.
 /// </para>
 /// </remarks>
-public sealed class HumanLayer(CorpusDbContext context, DirectoryInfo root, TimeProvider clock)
+public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
 {
     private UtcTimestamp Now => UtcTimestamp.From(clock.GetUtcNow());
 
@@ -487,7 +487,7 @@ public sealed class HumanLayer(CorpusDbContext context, DirectoryInfo root, Time
         meeting.UpdatedAt = now;
         context.SaveChanges();
 
-        MeetingManifest.Write(context, root, meeting.Id, now);
+        MeetingManifest.Write(context, meeting.Id, now);
 
         edit?.Commit();
     }

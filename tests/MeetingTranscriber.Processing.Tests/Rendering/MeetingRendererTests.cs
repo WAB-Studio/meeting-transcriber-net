@@ -25,7 +25,7 @@ public class MeetingRendererTests
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context, corpus.Root);
 
-        var rendered = MeetingRenderer.Render(context, corpus.Root, meeting, When);
+        var rendered = MeetingRenderer.Render(context, meeting, When);
 
         rendered.Turns.ShouldBeGreaterThan(0);
         context.Utterances.Count(turn => turn.MeetingId == meeting).ShouldBe(rendered.Turns);
@@ -52,7 +52,7 @@ public class MeetingRendererTests
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context, corpus.Root);
 
-        MeetingRenderer.Render(context, corpus.Root, meeting, When);
+        MeetingRenderer.Render(context, meeting, When);
 
         var ordinals = context.Utterances
             .Where(turn => turn.MeetingId == meeting)
@@ -75,11 +75,11 @@ public class MeetingRendererTests
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context, corpus.Root);
 
-        var first = MeetingRenderer.Render(context, corpus.Root, meeting, When);
+        var first = MeetingRenderer.Render(context, meeting, When);
         var response = context.Artifacts.Single(artifact => artifact.Kind == ArtifactKind.DeepgramResponse);
         var responseSha = CorpusFiles.Sha256Of(CorpusFiles.Locate(corpus.Root, response.RelativePath));
 
-        var second = MeetingRenderer.Render(context, corpus.Root, meeting, When + Duration.FromMilliseconds(60_000));
+        var second = MeetingRenderer.Render(context, meeting, When + Duration.FromMilliseconds(60_000));
 
         second.Transcript.Sha256.ShouldBe(first.Transcript.Sha256);
         second.Utterances.Sha256.ShouldBe(first.Utterances.Sha256);
@@ -103,16 +103,16 @@ public class MeetingRendererTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context, corpus.Root);
-        MeetingRenderer.Render(context, corpus.Root, meeting, When);
+        MeetingRenderer.Render(context, meeting, When);
 
         var spoken = context.Utterances.First(turn => turn.MeetingId == meeting);
         var word = spoken.Text.Split(' ')[0];
-        var human = new HumanLayer(context, corpus.Root, TimeProvider.System);
+        var human = new HumanLayer(context, TimeProvider.System);
         var somebody = human.Add("Renata");
         human.Assign(meeting, spoken.SpeakerLabel, somebody);
         human.Correct(word, "CORREGIDO");
 
-        var rendered = MeetingRenderer.Render(context, corpus.Root, meeting, When);
+        var rendered = MeetingRenderer.Render(context, meeting, When);
         var markdown = File.ReadAllText(
             CorpusFiles.Locate(corpus.Root, rendered.Transcript.RelativePath).FullName);
 
@@ -134,16 +134,16 @@ public class MeetingRendererTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context, corpus.Root);
-        MeetingRenderer.Render(context, corpus.Root, meeting, When);
+        MeetingRenderer.Render(context, meeting, When);
         var word = context.Utterances.First(turn => turn.MeetingId == meeting).Text.Split(' ')[0];
 
-        var human = new HumanLayer(context, corpus.Root, TimeProvider.System);
+        var human = new HumanLayer(context, TimeProvider.System);
         var techsed = human.Root(NodeKind.Organization, "TechSed");
         var coati = human.Under(techsed, NodeKind.Initiative, "Coati");
         human.Link(meeting, coati, MeetingNodeRole.WorkOf);
         human.Correct(word, "DESDE ARRIBA", under: techsed);
 
-        var rendered = MeetingRenderer.Render(context, corpus.Root, meeting, When);
+        var rendered = MeetingRenderer.Render(context, meeting, When);
 
         File.ReadAllText(CorpusFiles.Locate(corpus.Root, rendered.Transcript.RelativePath).FullName)
             .ShouldContain("DESDE ARRIBA");
@@ -160,12 +160,12 @@ public class MeetingRendererTests
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context, corpus.Root);
         var elsewhere = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelShort);
-        MeetingRenderer.Render(context, corpus.Root, meeting, When);
+        MeetingRenderer.Render(context, meeting, When);
         var word = context.Utterances.First(turn => turn.MeetingId == meeting).Text.Split(' ')[0];
 
-        new HumanLayer(context, corpus.Root, TimeProvider.System).Correct(word, "AJENO", meetingId: elsewhere);
+        new HumanLayer(context, TimeProvider.System).Correct(word, "AJENO", meetingId: elsewhere);
 
-        var rendered = MeetingRenderer.Render(context, corpus.Root, meeting, When);
+        var rendered = MeetingRenderer.Render(context, meeting, When);
 
         File.ReadAllText(CorpusFiles.Locate(corpus.Root, rendered.Transcript.RelativePath).FullName)
             .ShouldNotContain("AJENO");
@@ -179,7 +179,7 @@ public class MeetingRendererTests
         var meeting = Meeting(context, SourceProfile.Multichannel);
 
         var refused = Should.Throw<RenderException>(
-            () => MeetingRenderer.Render(context, corpus.Root, meeting, When));
+            () => MeetingRenderer.Render(context, meeting, When));
 
         refused.Message.ShouldContain(meeting.ToString());
     }
@@ -191,7 +191,7 @@ public class MeetingRendererTests
         using var context = corpus.OpenMigrated();
 
         Should.Throw<RenderException>(
-            () => MeetingRenderer.Render(context, corpus.Root, Guid.NewGuid(), When));
+            () => MeetingRenderer.Render(context, Guid.NewGuid(), When));
     }
 
     /// <summary>A meeting with its paid response in the corpus, ready to be rendered from.</summary>
@@ -204,7 +204,6 @@ public class MeetingRendererTests
 
         DurableArtifact.Write(
             context,
-            root,
             meeting,
             ArtifactKind.DeepgramResponse,
             CorpusFiles.PathFor(meeting, "deepgram.json"),

@@ -78,7 +78,9 @@ public class CorpusImporterTests
         second.MeetingsAlreadyThere.ShouldBe(2);
 
         context.Meetings.Count().ShouldBe(2);
-        context.Artifacts.Count().ShouldBe(4);
+
+        // Five each: the two sources copied in, the card, and the two files rendered here.
+        context.Artifacts.Count().ShouldBe(10);
         context.Nodes.Count().ShouldBe(2);
         context.MeetingNodes.Count().ShouldBe(2);
         context.People.Count().ShouldBe(2);
@@ -221,17 +223,10 @@ public class CorpusImporterTests
         var meeting = context.Meetings.Single();
         var when = run.CreatedAt;
 
-        context.Utterances.Add(new Utterance
-        {
-            Id = Guid.NewGuid(),
-            MeetingId = meeting.Id,
-            Ordinal = 0,
-            Start = Duration.Zero,
-            End = Duration.FromMilliseconds(1000),
-            Channel = AudioChannel.Loopback,
-            SpeakerLabel = "ch0:speaker_0",
-            Text = "sube el presupuesto",
-        });
+        // The turn cited below is one the import rendered. It used to be written here, from a
+        // time when an import produced no turns of its own.
+        context.Utterances.Any(turn => turn.MeetingId == meeting.Id && turn.Ordinal == 0).ShouldBeTrue();
+
         context.Decisions.Add(new Decision
         {
             Id = Guid.NewGuid(),
@@ -378,7 +373,7 @@ public class CorpusImporterTests
         using var context = corpus.OpenMigrated();
 
         var report = new CorpusImporter(context, Clock)
-            .Import(new LegacyCorpus(legacy.Directory), new ImportOptions(CopyTo: corpus.Root));
+            .Import(new LegacyCorpus(legacy.Directory));
 
         report.MeetingsRendered.ShouldBe(1);
         report.TurnsProjected.ShouldBeGreaterThan(0);
@@ -412,9 +407,8 @@ public class CorpusImporterTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var importer = new CorpusImporter(context, Clock);
-        var options = new ImportOptions(CopyTo: corpus.Root);
 
-        importer.Import(new LegacyCorpus(legacy.Directory), options);
+        importer.Import(new LegacyCorpus(legacy.Directory));
         var before = context.Artifacts
             .Where(artifact => artifact.Origin == ArtifactOrigin.Derived)
             .OrderBy(artifact => artifact.RelativePath)
@@ -422,7 +416,7 @@ public class CorpusImporterTests
             .ToArray();
         var turns = context.Utterances.Count();
 
-        importer.Import(new LegacyCorpus(legacy.Directory), options);
+        importer.Import(new LegacyCorpus(legacy.Directory));
 
         context.Artifacts
             .Where(artifact => artifact.Origin == ArtifactOrigin.Derived)
@@ -431,33 +425,6 @@ public class CorpusImporterTests
             .ToArray()
             .ShouldBe(before);
         context.Utterances.Count().ShouldBe(turns);
-    }
-
-    /// <summary>
-    /// With the sources left where they are there is nowhere to write a derivative that is not the
-    /// Python corpus, and this tool never writes there. The run says none were rendered rather than
-    /// putting a file next to the response it read.
-    /// </summary>
-    [Fact]
-    public void Without_a_corpus_to_write_into_no_derivative_is_produced()
-    {
-        using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15");
-        using var corpus = new TemporaryCorpus();
-        using var context = corpus.OpenMigrated();
-        var before = legacy.Fingerprint();
-
-        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
-
-        report.MeetingsRendered.ShouldBe(0);
-        context.Utterances.ShouldBeEmpty();
-        context.Artifacts.ShouldAllBe(artifact => artifact.Origin == ArtifactOrigin.Source);
-        legacy.Fingerprint().ShouldBe(before);
-
-        // The card goes the same way, and for a reason worth keeping separate from the renders:
-        // there is no meeting folder to put one in, and the folder that does hold these files is
-        // the Python corpus, which this tool does not write to. The fingerprint above is that.
-        report.ManifestsWritten.ShouldBe(0);
-        context.Artifacts.ShouldAllBe(artifact => artifact.Kind != ArtifactKind.Manifest);
     }
 
     /// <summary>
@@ -473,7 +440,7 @@ public class CorpusImporterTests
         using var context = corpus.OpenMigrated();
 
         var report = new CorpusImporter(context, Clock)
-            .Import(new LegacyCorpus(legacy.Directory), new ImportOptions(CopyTo: corpus.Root));
+            .Import(new LegacyCorpus(legacy.Directory));
 
         report.ManifestsWritten.ShouldBe(1);
 
@@ -514,19 +481,11 @@ public class CorpusImporterTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var before = legacy.Fingerprint();
-        var target = System.IO.Directory.CreateTempSubdirectory("imported-corpus-");
 
-        try
-        {
-            new CorpusImporter(context, Clock)
-                .Import(new LegacyCorpus(legacy.Directory), new ImportOptions(CopyTo: target));
+        new CorpusImporter(context, Clock)
+            .Import(new LegacyCorpus(legacy.Directory));
 
-            legacy.Fingerprint().ShouldBe(before);
-        }
-        finally
-        {
-            target.Delete(recursive: true);
-        }
+        legacy.Fingerprint().ShouldBe(before);
     }
 
     [Fact]
@@ -535,29 +494,28 @@ public class CorpusImporterTests
         using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15");
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var target = System.IO.Directory.CreateTempSubdirectory("imported-corpus-");
 
-        try
-        {
-            var report = new CorpusImporter(context, Clock)
-                .Import(new LegacyCorpus(legacy.Directory), new ImportOptions(CopyTo: target));
+        var report = new CorpusImporter(context, Clock)
+            .Import(new LegacyCorpus(legacy.Directory));
 
-            report.ArtifactsCopied.ShouldBe(2);
-            foreach (var artifact in context.Artifacts)
-            {
-                var copied = new FileInfo(Path.Combine(target.FullName, artifact.RelativePath));
-                copied.Exists.ShouldBeTrue(artifact.RelativePath);
-                copied.Length.ShouldBe(artifact.ByteSize);
-            }
-        }
-        finally
+        report.ArtifactsCopied.ShouldBe(2);
+        foreach (var artifact in context.Artifacts)
         {
-            target.Delete(recursive: true);
+            // Under the corpus the rows were written into, which is the only folder there is: the
+            // copy used to name its own, and a run could put the files anywhere the rows were not.
+            var copied = CorpusFiles.Locate(corpus.Root, artifact.RelativePath);
+            copied.Exists.ShouldBeTrue(artifact.RelativePath);
+            copied.Length.ShouldBe(artifact.ByteSize);
         }
     }
 
+    /// <summary>
+    /// Every source lands under the meeting's own folder in the corpus the rows are in. There used
+    /// to be an option that registered them where the Python corpus already had them, and what it
+    /// produced was rows naming files that are not where the corpus says they are.
+    /// </summary>
     [Fact]
-    public void Without_the_copy_option_an_artifact_points_at_where_it_already_is()
+    public void An_imported_source_is_stored_where_this_corpus_keeps_that_meetings_files()
     {
         using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15");
         using var corpus = new TemporaryCorpus();
@@ -565,14 +523,27 @@ public class CorpusImporterTests
 
         var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
 
-        report.ArtifactsCopied.ShouldBe(0);
-        context.Artifacts.Select(artifact => artifact.RelativePath).ShouldBe(
-            ["2026-07-29 09-35-15/deepgram.json", "2026-07-29 09-35-15/extraction.json"],
-            ignoreOrder: true);
+        report.ArtifactsCopied.ShouldBe(2);
+        var meeting = context.Meetings.Single().Id;
+        context.Artifacts
+            .Where(artifact => artifact.Origin == ArtifactOrigin.Source)
+            .Select(artifact => artifact.RelativePath)
+            .ShouldBe(
+                [
+                    CorpusFiles.PathFor(meeting, "deepgram.json"),
+                    CorpusFiles.PathFor(meeting, "extraction.json"),
+                    CorpusFiles.PathFor(meeting, MeetingManifest.FileName),
+                ],
+                ignoreOrder: true);
     }
 
+    /// <summary>
+    /// Only the sources come across. The corpus does hold derived files afterwards, and they are
+    /// this application's renders rather than the Python system's — registering those would claim
+    /// a rebuild reproduces bytes nothing here wrote.
+    /// </summary>
     [Fact]
-    public void Only_the_sources_are_registered()
+    public void Only_the_sources_are_imported_and_the_rendered_files_are_produced_here()
     {
         using var legacy = new LegacyCorpusBuilder().WithMeeting("2026-07-29 09-35-15");
         using var corpus = new TemporaryCorpus();
@@ -580,12 +551,27 @@ public class CorpusImporterTests
 
         var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
 
-        context.Artifacts.ShouldAllBe(artifact => artifact.Origin == ArtifactOrigin.Source);
-        context.Artifacts.Select(artifact => artifact.Kind).ShouldBe(
-            [ArtifactKind.DeepgramResponse, ArtifactKind.Extraction],
-            ignoreOrder: true);
         report.SkippedByDesign["transcript.md"].ShouldBe(1);
         report.SkippedByDesign["utterances.jsonl"].ShouldBe(1);
+        report.ArtifactsRegistered.ShouldBe(2);
+
+        context.Artifacts.Select(artifact => artifact.Kind).ShouldBe(
+            [
+                ArtifactKind.DeepgramResponse,
+                ArtifactKind.Extraction,
+                ArtifactKind.Manifest,
+                ArtifactKind.Transcript,
+                ArtifactKind.Utterances,
+            ],
+            ignoreOrder: true);
+
+        // Rendered here: the bytes are not the ones the Python corpus holds under the same names.
+        var legacyFiles = legacy.Fingerprint()
+            .ToDictionary(file => Path.GetFileName(file.Key), file => file.Value, StringComparer.Ordinal);
+        foreach (var derived in context.Artifacts.Where(row => row.Origin == ArtifactOrigin.Derived))
+        {
+            derived.Sha256.ShouldNotBe(legacyFiles[Path.GetFileName(derived.RelativePath)]);
+        }
     }
 
     /// <summary>
@@ -682,10 +668,16 @@ public class CorpusImporterTests
 
         new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
 
-        var fingerprint = legacy.Fingerprint();
-        foreach (var artifact in context.Artifacts)
+        // Keyed by file name: the legacy corpus knows its own paths and the corpus stores its own,
+        // and what has to agree is the bytes under each name.
+        var fingerprint = legacy.Fingerprint()
+            .ToDictionary(file => Path.GetFileName(file.Key), file => file.Value, StringComparer.Ordinal);
+
+        foreach (var artifact in context.Artifacts
+            .Where(row => row.Kind == ArtifactKind.DeepgramResponse || row.Kind == ArtifactKind.Extraction))
         {
-            artifact.Sha256.ShouldBe(fingerprint[artifact.RelativePath]);
+            var name = Path.GetFileName(artifact.RelativePath);
+            artifact.Sha256.ShouldBe(fingerprint[name], name);
         }
     }
 

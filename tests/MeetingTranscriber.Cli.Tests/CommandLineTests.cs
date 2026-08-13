@@ -1,5 +1,6 @@
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Infrastructure.Artifacts;
+using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.EntityFrameworkCore;
 
@@ -89,7 +90,7 @@ public class CommandLineTests
         var run = CommandLine.Of("status", "--corpus", corpus.Root.FullName);
 
         run.Code.ShouldBe(Cli.Refused);
-        run.Error.ShouldContain(Corpus.DatabaseName);
+        run.Error.ShouldContain(CorpusDatabase.DatabaseName);
         run.Error.ShouldContain("migrate");
         File.Exists(corpus.DatabasePath).ShouldBeFalse();
     }

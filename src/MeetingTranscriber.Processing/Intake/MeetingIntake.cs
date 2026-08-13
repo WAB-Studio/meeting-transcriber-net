@@ -69,13 +69,11 @@ public static class MeetingIntake
 
     public static ReceivedMeeting Receive(
         CorpusDbContext context,
-        DirectoryInfo root,
         FileInfo response,
         MeetingDetails details,
         UtcTimestamp now)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(response);
         ArgumentNullException.ThrowIfNull(details);
 
@@ -109,7 +107,7 @@ public static class MeetingIntake
             artifact.Kind == ArtifactKind.DeepgramResponse && artifact.Sha256 == sha256);
 
         var meetingId = already?.MeetingId ?? Guid.NewGuid();
-        var stored = already ?? Record(context, root, meetingId, response, details, transcript, bytes, now);
+        var stored = already ?? Record(context, meetingId, response, details, transcript, bytes, now);
 
         // A meeting the corpus knows and whose paid file is gone. Somebody handing the original
         // over again is the ordinary way that gets noticed, and it used to go straight to a render
@@ -119,7 +117,7 @@ public static class MeetingIntake
         // under, and this hands over no row of its own even though it is holding one.
         if (already is not null)
         {
-            ArtifactRestore.Restore(context, root, bytes, now);
+            ArtifactRestore.Restore(context, bytes, now);
         }
 
         // Before the render and on every filing, including one that found the meeting already
@@ -127,7 +125,7 @@ public static class MeetingIntake
         // this folder is, so it goes down as early as there is a row to write it from — and a
         // filing that finds the card missing, or saying what the corpus no longer says, is what
         // puts it right.
-        var manifest = MeetingManifest.Write(context, root, meetingId, now);
+        var manifest = MeetingManifest.Write(context, meetingId, now);
 
         // Outside the filing above, and deliberately. The file and the database cannot be written
         // together, so a response that has landed on disk is recorded the moment it can be; a
@@ -135,7 +133,7 @@ public static class MeetingIntake
         // derivatives are not, which this command puts right by being run again — where one
         // transaction over both would have rolled the response's row back and left the file
         // behind as something nothing may adopt.
-        var rendered = MeetingRenderer.Render(context, root, meetingId, now);
+        var rendered = MeetingRenderer.Render(context, meetingId, now);
 
         return new ReceivedMeeting(
             meetingId,
@@ -154,7 +152,6 @@ public static class MeetingIntake
     /// </summary>
     private static Artifact Record(
         CorpusDbContext context,
-        DirectoryInfo root,
         Guid meetingId,
         FileInfo response,
         MeetingDetails details,
@@ -197,7 +194,6 @@ public static class MeetingIntake
 
         var artifact = DurableArtifact.Write(
             context,
-            root,
             meetingId,
             ArtifactKind.DeepgramResponse,
             CorpusFiles.PathFor(meetingId, ResponseFileName),

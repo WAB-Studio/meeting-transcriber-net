@@ -34,7 +34,21 @@ Determine the **intent** — what the author is trying to achieve. This is criti
 challenge whether the work *achieves the intent well*, not whether the intent is correct.
 State the intent explicitly before proceeding.
 
-Assess change size:
+Assess change size. **Only lines that are not comments count** — a comment-only line, added or
+removed, is not a line of change for the purposes of this table, and neither is the comment half
+of a line that also carries code. A diff that is mostly documentation or commentary sizes as the
+code it changes, not as the prose around it.
+
+For C# — where comment lines dominate — the count is:
+
+```sh
+git diff -U0 -- '*.cs' | grep -E '^[+-]' | grep -Ev '^(\+\+\+|---)' \
+  | sed -E 's/^[+-][[:space:]]*//' | grep -Ev '^(//|/\*|\*)' | wc -l
+```
+
+Add the changed lines in every other file to that. The command is a helper, not the rule: it does
+not see a trailing comment on a code line, and it would read a markdown bullet as a block-comment
+continuation, so where the two disagree the rule wins.
 
 | Size | Threshold | Reviewers |
 |------|-----------|-----------|
@@ -108,5 +122,5 @@ Append the Lead Judgment section to the verdict (see `references/verdict-format.
 
 Vendored from [poteto/noodle](https://github.com/poteto/noodle)
 `.agents/skills/adversarial-review/`. Changes from upstream: the `brain/principles.md` dependency
-is vendored into `references/principles/`, the scratch directory is not hardcoded to `/tmp`, and
-the `schedule:` frontmatter key became prose.
+is vendored into `references/principles/`, the scratch directory is not hardcoded to `/tmp`, the
+`schedule:` frontmatter key became prose, and the size thresholds count only non-comment lines.

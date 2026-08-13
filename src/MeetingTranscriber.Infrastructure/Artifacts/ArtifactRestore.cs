@@ -64,11 +64,7 @@ public static class ArtifactRestore
     /// <exception cref="ArtifactRestoreException">
     /// The file is not there, or no row of this corpus describes what is in it.
     /// </exception>
-    public static Restoration Restore(
-        CorpusDbContext context,
-        DirectoryInfo root,
-        FileInfo offered,
-        UtcTimestamp now)
+    public static Restoration Restore(CorpusDbContext context, FileInfo offered, UtcTimestamp now)
     {
         ArgumentNullException.ThrowIfNull(offered);
 
@@ -88,7 +84,7 @@ public static class ArtifactRestore
             Share = FileShare.Read,
         });
 
-        return Restore(context, root, bytes, $"'{offered.FullName}'", now);
+        return Restore(context, bytes, $"'{offered.FullName}'", now);
     }
 
     /// <summary>
@@ -100,22 +96,16 @@ public static class ArtifactRestore
     /// A seekable stream of somebody's copy. It is rewound and hashed here: which rows these bytes
     /// belong under is never something a caller gets to say.
     /// </param>
-    public static Restoration Restore(
-        CorpusDbContext context,
-        DirectoryInfo root,
-        Stream bytes,
-        UtcTimestamp now) =>
-        Restore(context, root, bytes, "what was handed over", now);
+    public static Restoration Restore(CorpusDbContext context, Stream bytes, UtcTimestamp now) =>
+        Restore(context, bytes, "what was handed over", now);
 
     private static Restoration Restore(
         CorpusDbContext context,
-        DirectoryInfo root,
         Stream bytes,
         string whereFrom,
         UtcTimestamp now)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(bytes);
 
         bytes.Position = 0;
@@ -142,7 +132,7 @@ public static class ArtifactRestore
         // means. Picking one would be this deciding something it has no way to decide.
         foreach (var artifact in recorded)
         {
-            if (CorpusFiles.Locate(root, artifact.RelativePath).Exists)
+            if (CorpusFiles.Locate(context.Root, artifact.RelativePath).Exists)
             {
                 alreadyThere.Add(artifact.RelativePath);
                 continue;
@@ -156,7 +146,7 @@ public static class ArtifactRestore
             // so only the moment it was last confirmed on disk moves, which is what that column
             // means.
             DurableArtifact.Write(
-                context, root, artifact.MeetingId, artifact.Kind, artifact.RelativePath, now, bytes.CopyTo);
+                context, artifact.MeetingId, artifact.Kind, artifact.RelativePath, now, bytes.CopyTo);
             putBack.Add(artifact.RelativePath);
         }
 

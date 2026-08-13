@@ -26,8 +26,8 @@ public class ArtifactReconcilerTests
         var meeting = Recorded(context);
         Written(context, corpus, meeting, "transcript.md", ArtifactKind.Transcript, "a rendering");
 
-        ArtifactReconciler.Check(context, corpus.Root, verifyContents: true).ShouldBeEmpty();
-        ArtifactReconciler.Sweep(corpus.Root).ShouldBeEmpty();
+        ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
+        ArtifactReconciler.Sweep(context).ShouldBeEmpty();
     }
 
     [Fact]
@@ -38,12 +38,12 @@ public class ArtifactReconcilerTests
         var meeting = Recorded(context);
         var leftover = Drop(corpus, $"meetings/{meeting}/transcript.md.f00d{CorpusFiles.UnfinishedSuffix}", "half");
 
-        var finding = ArtifactReconciler.Check(context, corpus.Root).ShouldHaveSingleItem();
+        var finding = ArtifactReconciler.Check(context).ShouldHaveSingleItem();
         finding.State.ShouldBe(ArtifactState.Unfinished);
         finding.RelativePath.ShouldBe(leftover);
 
-        ArtifactReconciler.Sweep(corpus.Root).ShouldBe([leftover]);
-        ArtifactReconciler.Check(context, corpus.Root).ShouldBeEmpty();
+        ArtifactReconciler.Sweep(context).ShouldBe([leftover]);
+        ArtifactReconciler.Check(context).ShouldBeEmpty();
     }
 
     /// <summary>
@@ -59,11 +59,11 @@ public class ArtifactReconcilerTests
         var meeting = Recorded(context);
         var orphan = Drop(corpus, $"meetings/{meeting}/deepgram.json", "{\"paid\":true}");
 
-        var finding = ArtifactReconciler.Check(context, corpus.Root).ShouldHaveSingleItem();
+        var finding = ArtifactReconciler.Check(context).ShouldHaveSingleItem();
         finding.State.ShouldBe(ArtifactState.Unrecorded);
         finding.RelativePath.ShouldBe(orphan);
 
-        ArtifactReconciler.Sweep(corpus.Root).ShouldBeEmpty();
+        ArtifactReconciler.Sweep(context).ShouldBeEmpty();
         File.ReadAllText(CorpusFiles.Locate(corpus.Root, orphan).FullName).ShouldBe("{\"paid\":true}");
     }
 
@@ -77,7 +77,7 @@ public class ArtifactReconcilerTests
 
         CorpusFiles.Locate(corpus.Root, artifact.RelativePath).Delete();
 
-        var finding = ArtifactReconciler.Check(context, corpus.Root).ShouldHaveSingleItem();
+        var finding = ArtifactReconciler.Check(context).ShouldHaveSingleItem();
         finding.State.ShouldBe(ArtifactState.Missing);
         finding.RelativePath.ShouldBe(artifact.RelativePath);
     }
@@ -96,7 +96,7 @@ public class ArtifactReconcilerTests
 
         File.WriteAllText(CorpusFiles.Locate(corpus.Root, artifact.RelativePath).FullName, "cut");
 
-        ArtifactReconciler.Check(context, corpus.Root).ShouldHaveSingleItem()
+        ArtifactReconciler.Check(context).ShouldHaveSingleItem()
             .State.ShouldBe(ArtifactState.Changed);
     }
 
@@ -115,8 +115,8 @@ public class ArtifactReconcilerTests
 
         File.WriteAllText(CorpusFiles.Locate(corpus.Root, artifact.RelativePath).FullName, "a rewriting");
 
-        ArtifactReconciler.Check(context, corpus.Root).ShouldBeEmpty();
-        ArtifactReconciler.Check(context, corpus.Root, verifyContents: true).ShouldHaveSingleItem()
+        ArtifactReconciler.Check(context).ShouldBeEmpty();
+        ArtifactReconciler.Check(context, verifyContents: true).ShouldHaveSingleItem()
             .State.ShouldBe(ArtifactState.Changed);
     }
 
@@ -132,11 +132,11 @@ public class ArtifactReconcilerTests
         var meeting = Recorded(context);
         var block = Drop(corpus, $"spool/{meeting}/000001.block", "pcm");
 
-        var finding = ArtifactReconciler.Check(context, corpus.Root).ShouldHaveSingleItem();
+        var finding = ArtifactReconciler.Check(context).ShouldHaveSingleItem();
         finding.State.ShouldBe(ArtifactState.Spooled);
         finding.RelativePath.ShouldBe(block);
 
-        ArtifactReconciler.Sweep(corpus.Root).ShouldBeEmpty();
+        ArtifactReconciler.Sweep(context).ShouldBeEmpty();
         CorpusFiles.Locate(corpus.Root, block).Exists.ShouldBeTrue();
     }
 
@@ -153,14 +153,13 @@ public class ArtifactReconcilerTests
 
         DurableArtifact.WriteText(
             context,
-            corpus.Root,
             meeting,
             ArtifactKind.SpoolBlock,
             CorpusFiles.SpoolPathFor(meeting, "000001.block"),
             When,
             "pcm");
 
-        ArtifactReconciler.Check(context, corpus.Root, verifyContents: true).ShouldBeEmpty();
+        ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
     }
 
     [Fact]
@@ -171,7 +170,7 @@ public class ArtifactReconcilerTests
         Recorded(context);
 
         File.Exists(corpus.DatabasePath).ShouldBeTrue();
-        ArtifactReconciler.Check(context, corpus.Root, verifyContents: true).ShouldBeEmpty();
+        ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
     }
 
     /// <summary>A file put on disk by something other than a durable write.</summary>
@@ -191,7 +190,7 @@ public class ArtifactReconcilerTests
         ArtifactKind kind,
         string text) =>
         DurableArtifact.WriteText(
-            context, corpus.Root, meeting, kind, CorpusFiles.PathFor(meeting, name), When, text);
+            context, meeting, kind, CorpusFiles.PathFor(meeting, name), When, text);
 
     private static Guid Recorded(CorpusDbContext context)
     {

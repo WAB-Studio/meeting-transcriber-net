@@ -29,6 +29,49 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
     /// <summary>The one column name the model treats as a promise. See <see cref="SealCreatedAt"/>.</summary>
     private const string CreatedAtColumn = "created_at";
 
+    private string? _database;
+
+    /// <summary>
+    /// The folder this corpus is: the one its database sits in, as arquitectura.md §4.1 lays a
+    /// corpus out.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A corpus is a database and a folder, and this is what keeps them one thing. Everything that
+    /// writes an artifact asks the corpus where it is rather than being told by its caller, so
+    /// rows landing in one corpus while files land in another is not a mistake that can be made —
+    /// there is nowhere left to make it. It is read off the connection rather than remembered from
+    /// a constructor because that is the one answer nothing can disagree with: it is the folder
+    /// holding the file these rows are actually being read from and written to.
+    /// </para>
+    /// <para>
+    /// Read again every time, and the file it answered for the first time is kept so that a
+    /// context moved to another database throws here instead of answering. EF lets a caller do
+    /// that — <c>SetConnectionString</c> while the connection is closed — and it is the one way
+    /// left to make the two halves disagree: a write staged against the folder of one corpus and
+    /// committed into the rows of another. Nothing in this product moves a context, so this is
+    /// what makes that stay true rather than a repair for something being done.
+    /// </para>
+    /// </remarks>
+    public DirectoryInfo Root
+    {
+        get
+        {
+            var database = Path.GetFullPath(DatabaseFile());
+            _database ??= database;
+
+            if (!string.Equals(_database, database, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"This corpus was opened on '{_database}' and is now on '{database}'. A corpus "
+                    + "is a database and the folder it is in, so one moved to another database is "
+                    + "no longer the corpus whose folder anything holding it is writing into.");
+            }
+
+            return new DirectoryInfo(Path.GetDirectoryName(database)!);
+        }
+    }
+
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
     public DbSet<Artifact> Artifacts => Set<Artifact>();
@@ -70,6 +113,28 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
     public DbSet<Setting> Settings => Set<Setting>();
 
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+
+    /// <summary>
+    /// The database file this context is on. Every corpus is opened through
+    /// <see cref="CorpusDatabase"/>, which is handed a folder and composes the file inside it, so
+    /// the data source is always an absolute path to a file in a corpus. Anything else — a context
+    /// built by hand onto a relative path, or onto no file at all — is refused here rather than
+    /// answering with a folder that is only true from whichever directory the process started in.
+    /// </summary>
+    private string DatabaseFile()
+    {
+        var source = Database.GetDbConnection().DataSource;
+
+        if (!Path.IsPathFullyQualified(source) || Path.GetDirectoryName(source) is not { Length: > 0 })
+        {
+            throw new InvalidOperationException(
+                $"This corpus is open on '{source}', which is not the full path of a file in a "
+                + $"corpus folder, so there is no folder to write its artifacts into. A corpus is "
+                + $"opened by naming its folder, through {nameof(CorpusDatabase)}.");
+        }
+
+        return source;
+    }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder builder)
     {

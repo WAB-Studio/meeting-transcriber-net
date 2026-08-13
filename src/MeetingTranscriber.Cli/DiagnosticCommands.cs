@@ -106,7 +106,7 @@ public static class DiagnosticCommands
         using var context = corpus.Write();
 
         var problems = CorpusIntegrity.Check(context);
-        var findings = ArtifactReconciler.Check(context, corpus.Root, verifyContents);
+        var findings = ArtifactReconciler.Check(context, verifyContents);
 
         foreach (var problem in problems)
         {
@@ -140,16 +140,14 @@ public static class DiagnosticCommands
         var corpus = Corpus.At(arguments);
         arguments.EnsureNothingLeftOver();
 
-        // Opened read only and then let go of. The sweep itself is entirely on the filesystem, and
-        // a schema this build has moved past is no reason to leave a dead write behind — but this
-        // command deletes, so what it deletes from has to be a corpus and not a directory that
-        // happens to have a file of that name in it.
-        using (var context = corpus.Inspect())
-        {
-            _ = corpus.Pending(context);
-        }
+        // Opened read only, and a schema this build has moved past is no reason to leave a dead
+        // write behind — but this command deletes, so what it deletes from has to be a corpus and
+        // not a directory that happens to have a file of that name in it. The sweep is entirely on
+        // the filesystem and the corpus is what says which folder that is.
+        using var context = corpus.Inspect();
+        _ = corpus.Pending(context);
 
-        var swept = ArtifactReconciler.Sweep(corpus.Root);
+        var swept = ArtifactReconciler.Sweep(context);
         foreach (var write in swept)
         {
             output.WriteLine(write);
@@ -175,7 +173,7 @@ public static class DiagnosticCommands
         arguments.EnsureNothingLeftOver();
 
         using var context = corpus.Write();
-        var restored = ArtifactRestore.Restore(context, corpus.Root, offered, Clock.Now());
+        var restored = ArtifactRestore.Restore(context, offered, Clock.Now());
 
         Report.Line(output, "sha256", restored.Sha256);
         foreach (var path in restored.PutBack)
