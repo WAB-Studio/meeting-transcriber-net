@@ -1,7 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- Windows because recording is: the same floor MeetingTranscriber.Audio declares, since
+         `capture` is how a two hour drift run gets made. The corpus commands would target
+         anything, and a second target framework for a platform this product does not ship on
+         would cost a conditional around every audio line to serve nobody. -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <!-- The name an app execution alias will publish on the PATH, since the install directory's
@@ -11,8 +16,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Every command is a call into these. There is no fourth reference and no pipeline of its
+    <!-- Every command is a call into these. There is no further reference and no pipeline of its
          own: what the CLI adds is argument parsing, a report and an exit code. -->
+    <ProjectReference Include="..\MeetingTranscriber.Audio\MeetingTranscriber.Audio.csproj" />
     <ProjectReference Include="..\MeetingTranscriber.Domain\MeetingTranscriber.Domain.csproj" />
     <ProjectReference Include="..\MeetingTranscriber.Infrastructure\MeetingTranscriber.Infrastructure.csproj" />
     <ProjectReference Include="..\MeetingTranscriber.Processing\MeetingTranscriber.Processing.csproj" />

@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 69/107
+progress: 73/111
 updated: 2026-08-13
 ---
 
@@ -111,6 +111,10 @@ Board: 1 · Núcleo .NET desde artefactos
 Why: two sources become one timeline a person can trust. This is the largest technical risk in
 the product and it is settled before any UI is built on top of it.
 Board: 2 · Spike y motor de audio
+- [x] ISC-108: The selected microphone and the full system loopback are captured over the same stretch of time, each into its own stream.
+- [x] ISC-109: A capture names each source's device and the format that device handed it.
+- [x] ISC-110: A source's level is measured from the samples that arrived, so a source that heard nothing reads as silent.
+- [x] ISC-111: Anti: a capture that cannot open both of its sources stops, rather than recording one of them.
 - [ ] ISC-35: Two hours of capture end with under 50 ms of measured drift between the two channels.
 - [ ] ISC-36: Anti: the produced WAV never carries the microphone on channel 0.
 - [ ] ISC-37: A spool cut off mid-block recovers to its last complete block.
@@ -591,6 +595,10 @@ Board: 7 · Distribución y backup
 - ISC-66 — `HumanLayerTests.Every_table_of_the_human_layer_has_a_way_in` green 2026-08-07
 - ISC-67 — `HumanLayerTests.Exactly_one_person_is_the_user_of_this_install` green 2026-08-07
 - ISC-68 — `HumanLayerTests.A_label_the_recording_settled_does_not_overwrite_one_a_person_resolved` green 2026-08-07
+- ISC-108 — `capture --out … --seconds 12` on this machine 2026-08-13: the two streams opened 32 ms apart and each wrote 4,654,138 bytes of 48 kHz float32, the loopback of the default playback endpoint and a fifine microphone
+- ISC-109 — the same run: `ch0 device`/`ch0 format` named 'Altavoces (High Definition Audio Device)' at 48000 Hz, 2 ch, 32 bit float before a sample was written, and `ch1` its microphone. `StreamFormatTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-13 for the extensible format WASAPI really hands over
+- ISC-110 — `LevelsTests` and `SourceMeterTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-13; the same run metered both sources every second, between −7.5 and −58.8 dBFS
+- ISC-111 — `AudioDevicesTests` green 2026-08-13, and two runs 2026-08-13: `--microphone "blue yeti"` refused with exit 1 and no file written, and a channel 1 whose file was already there refused with exit 1 after channel 0 had opened, leaving nothing of channel 0 behind
 - ISC-69 — `CorpusSearchTests.A_hit_carries_the_meeting_the_date_the_title_a_snippet_and_where_it_was_said` green 2026-08-07
 - ISC-70 — `CorpusSearchTests.A_meeting_being_deleted_is_not_something_search_offers` green 2026-08-07
 - ISC-71 — `CorpusSearchTests.Throwing_both_indexes_away_and_rebuilding_them_answers_exactly_the_same` green 2026-08-07

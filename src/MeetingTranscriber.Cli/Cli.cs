@@ -1,3 +1,5 @@
+using MeetingTranscriber.Audio;
+
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
@@ -91,6 +93,16 @@ public static class Cli
             "the same for every meeting, then both search indexes",
             MeetingCommands.Rebuild),
         new(
+            "devices",
+            "devices",
+            "what this machine can record from, under the names Windows gives them",
+            AudioCommands.Devices),
+        new(
+            "capture",
+            "capture --out <directory> --seconds <n> [--microphone <name-or-id>]",
+            "record what the machine plays and what the microphone hears, at the same time",
+            AudioCommands.Capture),
+        new(
             "search",
             $"search <query> {Corpus.Option} <directory> [--limit <n>]",
             "ask the corpus, in the index's own query syntax",
@@ -154,10 +166,12 @@ public static class Cli
     /// <summary>
     /// The failures that are answers rather than defects: a corpus that is not there or not sound,
     /// a response that cannot be read, a meeting that cannot be rendered, a query the index
-    /// refuses, a disk that will not give the file up. Anything else is a bug and comes out as one.
+    /// refuses, a machine with no microphone to give, a disk that will not give the file up.
+    /// Anything else is a bug and comes out as one.
     /// </summary>
     private static bool IsRefusal(Exception exception) => exception
         is CommandException
+        or AudioCaptureException
         or CorpusIntegrityException
         or CorpusSearchException
         or IntakeException

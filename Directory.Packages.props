@@ -14,6 +14,9 @@
          which blows up with TypeLoadException. Can move once xunit.v3 4 is stable. -->
     <PackageVersion Include="Microsoft.Testing.Extensions.CodeCoverage" Version="18.0.6" />
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
+    <!-- WASAPI capture and endpoint enumeration. The NAudio meta-package pulls MIDI, ASIO and
+         WinMM along with it, and this application opens none of the three. -->
+    <PackageVersion Include="NAudio.Wasapi" Version="2.3.0" />
     <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <!-- Transitive pin. Microsoft.Data.Sqlite 10.0.10 still asks for the 2.1.x bundle, whose
