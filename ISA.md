@@ -207,6 +207,13 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
+- **2026-08-13** — Who gets to say that one decision superseded another was already settled, on the
+  board, before this session proposed the opposite: a person declares it, a model may only offer it,
+  and a later date is never evidence on its own. The entry below saying the run's links count was
+  written without reading that, and it does not stand. The claims are unaffected, which is the point
+  of having rewritten them to properties — ISC-96 says a person's word outranks the machine either
+  way. What the board's call costs is that nothing gets marked superseded until somebody looks, and
+  ISC-95 is what keeps that from hiding anything: until then both stand.
 - **2026-08-13** — refined: ISC-89 to ISC-97 were written to a mechanism and are rewritten to the
   property. The first wording named links, a reconciliation run and a scope of nodes — a design
   chosen in one conversation, before anything outside the importer fills `decisions`, written into
