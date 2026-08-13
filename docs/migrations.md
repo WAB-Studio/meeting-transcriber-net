@@ -9,6 +9,13 @@ dotnet dotnet-ef migrations add <Name> --project src/MeetingTranscriber.Infrastr
 Everything below is a way that command goes wrong. Two of the five fail silently and one blames
 something that is not at fault, which is why they are written down rather than learned twice.
 
+## A migration owes nobody anything yet
+
+Nothing has shipped, so a migration may drop what it replaces and say so, and needs no compatibility
+path, fallback or version check — CLAUDE.md's "Nothing has shipped yet" is the rule. The first
+install somebody records into is when that section gets deleted, and only migrations written after
+that point have to carry data forward.
+
 ## Check the id sorts last, before anything else
 
 A migration runs in the position its id sorts to, so an id that lands before one already committed

@@ -155,15 +155,15 @@ Board: 6 · Conocimiento local
 - [x] ISC-58: An edited classification or speaker assignment survives a full rebuild.
 - [ ] ISC-59: The MCP server answers read-only over stdio and never writes.
 - [ ] ISC-60: Anti: an MCP response is bounded and the request is recorded locally.
-- [ ] ISC-89: What a later meeting did to a decision is stored as a link between the two, and the decision itself is never rewritten to say it.
-- [ ] ISC-90: A decision stands until a link says otherwise, so what stands is the corpus's answer and not the reader's.
-- [ ] ISC-91: What stands comes back from the links alone, without reading the meetings behind them.
-- [ ] ISC-92: A standing decision comes back with when it was settled and what has happened around it since, so "nothing contradicted it" is never read as "somebody confirmed it".
-- [ ] ISC-93: A link cites the turn in the later meeting where the change was said, the way a decision cites the turn it came from.
+- [ ] ISC-89: What a meeting recorded is never rewritten by a later one — what changed is recorded beside it and both stay readable.
+- [ ] ISC-90: Two people asking the same corpus what still stands get the same answer, whoever is reading and whatever they read first.
+- [ ] ISC-91: What still stands comes back at the same cost with three hundred meetings behind it as with ten.
+- [ ] ISC-92: A decision comes back with when it was settled and what has happened around it since, so "nothing contradicted it" is never read as "somebody confirmed it".
+- [ ] ISC-93: Anything saying a decision no longer stands cites the turn where that was said, the way a decision cites the turn it came from.
 - [ ] ISC-94: Anti: two decisions that contradict each other with nothing settling it come back as a conflict, and neither is hidden for being the older one.
-- [ ] ISC-95: Anti: a corpus no reconciliation has run over hides nothing — every decision stands until something says otherwise.
-- [ ] ISC-96: A person's word on whether a decision stands outranks the link a run proposed, and survives a rebuild.
-- [ ] ISC-97: A run compares a new decision only against what stands under the same nodes, so what it reads is bounded by the classification and not by the corpus.
+- [ ] ISC-95: Anti: nothing is hidden for want of a pass having run over it — a decision stands until something says otherwise.
+- [ ] ISC-96: A person's word on whether a decision stands outranks whatever the machine concluded, and survives a rebuild.
+- [ ] ISC-97: Deciding what an arriving meeting changed reads a bounded part of the corpus, and what bounds it does not grow as meetings accumulate.
 
 ### F8 · Distribution and backup
 Why: the application installs, upgrades and comes back from a lost disk, because the corpus
@@ -190,15 +190,36 @@ Board: 7 · Distribución y backup
   regrouped. `docs/reference-behaviour.md` has the grouping rules but not this.
 - **What bounds an MCP response in ISC-60.** Rows, bytes or tokens — and the answer depends on
   what an agent actually asks for, which nobody has measured yet.
-- **How a run decides that two decisions speak to the same thing.** Links are pairwise and scoped
-  to the nodes, which is what keeps the comparison bounded (ISC-97), but nothing says how close two
-  statements have to be before one is offered as replacing the other. The question is statable and
-  the probe is not: there is no set of decisions across meetings to measure it against, and the two
-  errors do not cost the same — a link that should not exist hides something somebody decided,
-  while a missing one only leaves both standing.
+- **How the corpus decides that a decision stopped standing.** ISC-89 to ISC-97 say what has to be
+  true of the answer; none of them says what produces it, and four shapes are on the table with no
+  evidence between them. A pass over each arriving meeting, linking a new decision to the standing
+  one it replaces — the most precise, and wrong in the direction that hides something somebody
+  decided. The same question asked at read time over the decisions of one node, which stores nothing
+  and answers differently on two days. A person asked at the end of a meeting which standing
+  decisions this one touched — the most reliable, and a chore that gets skipped. Or nothing inferred
+  at all: every decision comes back with its date and what has happened since, and the person
+  judges, which is ISC-92 on its own and can hide nothing. What decides between them is a corpus
+  with enough meetings on one node to measure, and that does not exist yet — the extraction that
+  fills `decisions` outside the importer is F6 and unbuilt. Two things would have to be measured
+  before choosing: how close two statements have to be before one is offered as replacing the other,
+  and how much of one node actually fits in a context, which is the number the read-time shape lives
+  or dies on.
 
 ## Decisions
 
+- **2026-08-13** — refined: ISC-89 to ISC-97 were written to a mechanism and are rewritten to the
+  property. The first wording named links, a reconciliation run and a scope of nodes — a design
+  chosen in one conversation, before anything outside the importer fills `decisions`, written into
+  the file whose job is to say what must be true and not what was built. The properties outlive
+  whatever produces them: what was recorded stays readable, the same question gets the same answer,
+  the answer says how old it is, a change cites a turn, a conflict is not settled by a date, a pass
+  that never ran hides nothing, a person outranks the machine, and neither the read nor the pass
+  grows with the corpus. Every one of those survives all four candidates, which is the test the
+  first wording failed. The mechanism moves to `## Not yet specified`, where it is one candidate and
+  not the answer. One argument used to pick it was overstated and does not survive: that the
+  decisions of one node would not fit in a context at three hundred meetings. Scoped to a node they
+  probably do, and what is left standing for maintaining the state is determinism and citability —
+  the same question answered the same way, and a change that points at a turn — not size.
 - **2026-08-13** — Whether a decision still stands is maintained when a meeting arrives, never
   recomputed when somebody asks. Handing an agent every decision in the corpus and letting it work
   out what survived was the shape to beat, and it loses three ways: at three hundred meetings it
