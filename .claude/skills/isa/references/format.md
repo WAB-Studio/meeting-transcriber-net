@@ -122,6 +122,15 @@ Mechanical, enforced by `IsaStructureTests`, and hard failures:
 4. No ISC ID appears twice.
 5. Every closed claim has a `## Verification` stub, and no open claim has one.
 6. The sections that are present appear in the fixed order.
+7. Every bullet inside a feature block parses as a claim line.
+8. Every non-blank line under `## Verification` parses as a stub.
+9. `## Learning` is whole entries of four labels in order, and nothing else.
+
+Checks 7 to 9 exist because a parser that skips what it does not recognise reports a spliced
+section as a sound one. On 2026-08-13 an append landed on the first line of an existing entry and
+welded two of them together; the gate was green over it, so were three adversarial reviewers, and
+it merged. What a section holds is now read exhaustively, and a line the shape does not describe
+is a failure rather than a line nobody parsed.
 
 The board check is against a hardcoded list of the eight phase lists, because tests never touch
 the network. It catches a `Board:` line invented or mistyped here; it cannot catch a list renamed
@@ -132,4 +141,8 @@ manufactured:
 
 - at least one `Anti:` claim exists;
 - no claim bundles two verifiable things;
-- nothing shipped that no claim asked for.
+- nothing shipped that no claim asked for;
+- a stub reads as a pointer rather than a paragraph. Advisory and not a character count, because
+  the one honest exception has no test to point at: a claim closed on a hand run carries the run's
+  numbers, since nothing else holds them and CI will never produce them again. A stub naming a
+  test class has no such excuse — the class is the evidence, and the narrative belongs in the PR.

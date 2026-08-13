@@ -108,6 +108,48 @@ public class IsaStructureTests
             + "one of the two is wrong.");
     }
 
+    /// <summary>
+    /// The three checks below all answer one question: did every line of a section survive being
+    /// read? A parser that skips what it does not recognise makes a section that is half prose
+    /// look exactly like a section that is whole — which is how an append landed on top of the
+    /// first line of an existing entry on 2026-08-13, welding two of them together, and passed a
+    /// green gate, an adversarial review and a merge into `main`.
+    /// </summary>
+    [Fact]
+    public void Nothing_in_a_feature_block_is_a_bullet_that_is_not_a_claim()
+    {
+        isa.StrayFeatureBullets.ShouldBeEmpty(
+            "a feature block holds claims and nothing else. A bullet here parsed as no claim, so "
+            + "it counts towards nothing and closes nothing while reading like it does.");
+    }
+
+    [Fact]
+    public void Every_line_of_the_evidence_is_a_stub_for_one_claim()
+    {
+        isa.StrayVerificationLines.ShouldBeEmpty(
+            "a line under Verification that is not `- ISC-N — …` is evidence the gate cannot read, "
+            + "so no claim is held up by it.");
+    }
+
+    [Fact]
+    public void A_learning_entry_is_whole_or_it_is_not_written()
+    {
+        string[] shape = ["conjecture", "refuted-by", "learned", "criterion-now"];
+
+        // The four run in order and repeat, so entry N's labels are positions 4N..4N+3. A missing
+        // or spliced bullet shifts everything after it and the first mismatch names the position.
+        var expected = Enumerable.Range(0, isa.LearningLabels.Count)
+            .Select(position => shape[position % shape.Length]);
+
+        isa.LearningLabels.ShouldBe(
+            [.. expected],
+            "Learning is conjecture / refuted-by / learned / criterion-now, in that order, and a "
+            + "partial entry does not get written — a refutation with no criterion changed nothing.");
+        (isa.LearningLabels.Count % shape.Length).ShouldBe(
+            0,
+            $"{isa.LearningLabels.Count} bullets is not whole entries of {shape.Length}.");
+    }
+
     [Fact]
     public void The_sections_appear_in_the_order_the_format_fixes()
     {

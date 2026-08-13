@@ -295,7 +295,9 @@ Board: 7 · Distribución y backup
   looked up from the bytes in every case, which also made the two paths one: filing a response
   again restores every row those bytes belong under, where before it restored the one arbitrary row
   its own `FirstOrDefault` had found. Found by `/adversarial-review`; the architect reviewer, rated
-  high, and the skeptic and architect independently on the `FirstOrDefault`. which settles the question the card's own
+  high, and the skeptic and architect independently on the `FirstOrDefault`.
+
+- **2026-08-13** — `HumanLayer` takes the corpus root, which settles the question the card's own
   decision below left open. Only `Describe` uses it: the title is the one of the card's five fields
   a person moves after the meeting was filed, so it is the one human edit the folder also carries.
   The alternative was a layer above holding both the database and the folder and calling `Describe`

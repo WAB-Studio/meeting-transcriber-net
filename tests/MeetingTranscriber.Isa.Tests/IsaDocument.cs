@@ -16,13 +16,21 @@ internal sealed partial class IsaDocument
 {
     private const string FogSection = "## Not yet specified";
 
+    private const string LearningSection = "## Learning";
+
+    private const string VerificationSection = "## Verification";
+
     private IsaDocument(string[] lines)
     {
         Lines = lines;
         Frontmatter = ReadFrontmatter(lines);
         Features = ReadFeatures(lines);
         Claims = [.. Features.SelectMany(feature => feature.Claims)];
+        StrayFeatureBullets = [.. Features.SelectMany(feature => feature.StrayBullets)];
         VerificationStubs = ReadVerificationStubs(lines);
+        StrayVerificationLines = [.. ReadSectionBody(lines, VerificationSection)
+            .Where(line => !StubLine().IsMatch(line))];
+        LearningLabels = ReadLearningLabels(lines);
         Fog = ReadSectionBody(lines, FogSection);
     }
 
@@ -34,7 +42,24 @@ internal sealed partial class IsaDocument
 
     public IReadOnlyList<Claim> Claims { get; }
 
+    /// <summary>
+    /// Bullets sitting inside a feature block that are not claim lines. A section is only as
+    /// trustworthy as the reader's certainty that everything in it was parsed, so what the shape
+    /// does not describe is collected rather than skipped.
+    /// </summary>
+    public IReadOnlyList<string> StrayFeatureBullets { get; }
+
     public IReadOnlyList<string> VerificationStubs { get; }
+
+    /// <summary>Non-blank lines under `## Verification` that are not provenance stubs.</summary>
+    public IReadOnlyList<string> StrayVerificationLines { get; }
+
+    /// <summary>
+    /// The label of each bullet under `## Learning` — `conjecture`, `refuted-by` and the rest —
+    /// in the order they appear. A bullet carrying no label reads as an empty string instead of
+    /// being dropped, because a bullet the shape does not describe is what this is here to catch.
+    /// </summary>
+    public IReadOnlyList<string> LearningLabels { get; }
 
     /// <summary>Body of `## Not yet specified`, empty when the section is absent.</summary>
     public IReadOnlyList<string> Fog { get; }
@@ -116,18 +141,34 @@ internal sealed partial class IsaDocument
                         claim.Groups["text"].Value.Trim(),
                         current.Id));
                 }
+                else if (line.StartsWith("- ", StringComparison.Ordinal))
+                {
+                    current.StrayBullets.Add(line);
+                }
             }
         }
 
         return features;
     }
 
+    /// <summary>
+    /// Read from the section rather than from the whole file: a stub is evidence, and a line that
+    /// happens to carry the shape somewhere else is not evidence of anything.
+    /// </summary>
     private static List<string> ReadVerificationStubs(string[] lines) =>
     [
-        .. lines
+        .. ReadSectionBody(lines, VerificationSection)
             .Select(line => StubLine().Match(line))
             .Where(match => match.Success)
             .Select(match => match.Groups["id"].Value),
+    ];
+
+    private static List<string> ReadLearningLabels(string[] lines) =>
+    [
+        .. ReadSectionBody(lines, LearningSection)
+            .Where(line => line.StartsWith("- ", StringComparison.Ordinal))
+            .Select(line => LearningLabel().Match(line))
+            .Select(match => match.Success ? match.Groups["label"].Value : string.Empty),
     ];
 
     private static List<string> ReadSectionBody(string[] lines, string heading) =>
@@ -148,6 +189,9 @@ internal sealed partial class IsaDocument
     [GeneratedRegex(@"^- (?<id>ISC-[0-9.]+) — ")]
     private static partial Regex StubLine();
 
+    [GeneratedRegex(@"^- \*\*(?<label>[a-z-]+)\*\* — ")]
+    private static partial Regex LearningLabel();
+
     internal sealed record Claim(string Id, bool Closed, string Text, string Feature);
 
     internal sealed class Feature(string id, string name)
@@ -161,5 +205,7 @@ internal sealed partial class IsaDocument
         public string? Board { get; set; }
 
         public List<Claim> Claims { get; } = [];
+
+        public List<string> StrayBullets { get; } = [];
     }
 }
