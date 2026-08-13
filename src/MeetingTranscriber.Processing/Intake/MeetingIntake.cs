@@ -111,6 +111,17 @@ public static class MeetingIntake
         var meetingId = already?.MeetingId ?? Guid.NewGuid();
         var stored = already ?? Record(context, root, meetingId, response, details, transcript, bytes, now);
 
+        // A meeting the corpus knows and whose paid file is gone. Somebody handing the original
+        // over again is the ordinary way that gets noticed, and it used to go straight to a render
+        // that failed on the file the row names — with the bytes that would have fixed it open in
+        // this method. They go back before anything is derived from them, through the same door the
+        // restore command uses and on the same terms: the corpus finds the rows these bytes belong
+        // under, and this hands over no row of its own even though it is holding one.
+        if (already is not null)
+        {
+            ArtifactRestore.Restore(context, root, bytes, now);
+        }
+
         // Before the render and on every filing, including one that found the meeting already
         // here. It is the cheapest artifact to produce and the only one that says which meeting
         // this folder is, so it goes down as early as there is a row to write it from — and a

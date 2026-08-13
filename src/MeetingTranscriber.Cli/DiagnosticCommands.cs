@@ -9,8 +9,9 @@ using Microsoft.EntityFrameworkCore;
 namespace MeetingTranscriber.Cli;
 
 /// <summary>
-/// What is true of the corpus itself: what it holds, whether it is sound, and the two repairs
-/// that are safe to run without a person deciding anything.
+/// What is true of the corpus itself: what it holds, whether it is sound, the two repairs that are
+/// safe to run without a person deciding anything, and the one that starts with a file a person
+/// went and found.
 /// </summary>
 /// <remarks>
 /// None of this opens the application. That is the reason the commands exist: a corpus that will
@@ -155,6 +156,44 @@ public static class DiagnosticCommands
         }
 
         output.WriteLine($"{swept.Count} unfinished write(s) removed.");
+        return Cli.Ok;
+    }
+
+    /// <summary>
+    /// The repair the check reports and cannot make: a row whose file is gone, put back from a copy
+    /// somebody still has. What identifies the file is what is in it, so the command asks for
+    /// nothing but the corpus and the bytes — a backup folder does not say which meeting a loose
+    /// <c>deepgram.json</c> belongs to, and the corpus does.
+    /// </summary>
+    public static int Restore(Arguments arguments, TextWriter output)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        ArgumentNullException.ThrowIfNull(output);
+
+        var corpus = Corpus.At(arguments);
+        var offered = new FileInfo(arguments.Only("The file to put back"));
+        arguments.EnsureNothingLeftOver();
+
+        using var context = corpus.Write();
+        var restored = ArtifactRestore.Restore(context, corpus.Root, offered, Clock.Now());
+
+        Report.Line(output, "sha256", restored.Sha256);
+        foreach (var path in restored.PutBack)
+        {
+            Report.Line(output, "put back", path);
+        }
+
+        // Named rather than counted, because a path already holding a file is the answer to running
+        // this twice and it is also the answer when what is at that path is not what the row
+        // describes. Which of the two it is belongs to 'check', and somebody who cannot see the
+        // path has nothing to ask it about.
+        foreach (var path in restored.AlreadyThere)
+        {
+            Report.Line(output, "in place", path);
+        }
+
+        output.WriteLine(
+            $"{restored.PutBack.Count} file(s) put back, {restored.AlreadyThere.Count} already in place.");
         return Cli.Ok;
     }
 

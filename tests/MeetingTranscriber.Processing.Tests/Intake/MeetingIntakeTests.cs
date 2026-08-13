@@ -115,6 +115,33 @@ public class MeetingIntakeTests
     }
 
     /// <summary>
+    /// The other half of it, one step further back: the paid file itself is gone. Handing the
+    /// original over again is what somebody does when the check says the corpus claims a file it
+    /// does not have, and before this it went straight to a render that failed on that same file —
+    /// with the bytes that would have fixed it open in the method. They go back first, and only
+    /// because they are the ones the row already records, which is what found the meeting at all.
+    /// </summary>
+    [Fact]
+    public void A_meeting_whose_response_is_gone_gets_it_back_when_the_same_bytes_are_filed_again()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var first = Receive(context, corpus.Root);
+        var response = CorpusFiles.Locate(corpus.Root, first.Response.RelativePath);
+
+        response.Delete();
+
+        var again = Receive(context, corpus.Root);
+
+        again.MeetingId.ShouldBe(first.MeetingId);
+        again.WasAlreadyThere.ShouldBeTrue();
+        again.Turns.ShouldBe(first.Turns);
+        context.Meetings.Count().ShouldBe(1);
+        context.Artifacts.Count(artifact => artifact.Kind == ArtifactKind.DeepgramResponse).ShouldBe(1);
+        ArtifactReconciler.Check(context, corpus.Root, verifyContents: true).ShouldBeEmpty();
+    }
+
+    /// <summary>
     /// The contract's refusal, and the state the corpus is left in by it. Nothing is filed: a
     /// meeting whose response cannot be read is a meeting nothing can ever render, and the paid
     /// file would be one that may never be written again.

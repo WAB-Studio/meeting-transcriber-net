@@ -148,6 +148,33 @@ one that says more is a corpus that lies when it is read. `ArtifactReconciler` i
 unfinished writes, which it may delete because they were never artifacts, and files with no row,
 which it never touches because one of them may be the only copy of something that was paid for.
 
+## Putting a lost file back
+
+The reconciler reports a row whose file is gone and stops there. `ArtifactRestore` is what a person
+runs when they still have the bytes, and the hash the corpus already recorded is its whole
+authority: the bytes go back only where the corpus already says those exact bytes are. Nothing is
+accepted for being the right size, carrying the right name or arriving from the right folder — which
+makes a different file under a paid response's row impossible rather than guarded against, and means
+the command needs no meeting and no path, because a loose `deepgram.json` in a backup folder does
+not say which meeting it is and the corpus does.
+
+Nothing there takes a row from its caller, and that is the same rule as the one above it rather than
+a second one. A method handed a row and a stream compares two things one caller supplied, and
+`StagedArtifact.Commit` writes the hash of what it wrote onto the row it finds — so a fabricated
+hash with bytes to match would land under a real path and leave the corpus saying it had always been
+those bytes. The row is looked up from the bytes, for the reason the kind is looked up from the
+path.
+
+It writes only where there is no file. A file that is there and is not what its row describes is
+damage, and destroying it could destroy the only copy of something: the path is named, `check` is
+what says which of the two it is, and deleting it and running the restore again is a person's
+deliberate act.
+
+Filing a response whose file is gone does the same thing on the way past, because that is how this
+gets noticed — the check says the corpus claims a file it has not got, and the obvious move is to
+hand the original over again. The bytes are put back before anything is derived from them, and only
+because they are the ones the row records, which is what identified the meeting in the first place.
+
 Two consequences worth stating plainly:
 
 - A rerender never touches `deepgram.json` or an earlier extraction. A new extraction gets a new
