@@ -177,7 +177,7 @@ public class CorpusRebuildTests
         var meeting = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelShort);
         CorpusRebuild.Run(context, corpus.Root, When);
 
-        var human = new HumanLayer(context, TimeProvider.System);
+        var human = new HumanLayer(context, corpus.Root, TimeProvider.System);
         var techsed = human.Root(NodeKind.Organization, "TechSed");
         var somebody = human.Add("Renata");
         human.ThisIsMe(somebody);

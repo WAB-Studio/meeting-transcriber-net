@@ -208,7 +208,7 @@ public partial class CorpusNamingTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
 
-        var person = new HumanLayerFixture(context).HumanLayer.Add("Somebody");
+        var person = new HumanLayerFixture(context, corpus.Root).HumanLayer.Add("Somebody");
         person.CreatedAt = person.UpdatedAt = HumanLayerFixture.Interviewed;
 
         Should.Throw<InvalidOperationException>(() => context.SaveChanges());
