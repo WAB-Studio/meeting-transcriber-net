@@ -159,7 +159,7 @@ Board: 6 · Conocimiento local
 - [ ] ISC-90: Two people asking the same corpus what still stands get the same answer, whoever is reading and whatever they read first.
 - [ ] ISC-91: What still stands comes back at the same cost with three hundred meetings behind it as with ten.
 - [ ] ISC-92: A decision comes back with when it was settled and what has happened around it since, so "nothing contradicted it" is never read as "somebody confirmed it".
-- [ ] ISC-93: Anything saying a decision no longer stands cites the turn where that was said, the way a decision cites the turn it came from.
+- [ ] ISC-93: What ended a decision is recorded as the turn where it was said or as the person who said so, and never as neither.
 - [ ] ISC-94: Anti: two decisions that contradict each other with nothing settling it come back as a conflict, and neither is hidden for being the older one.
 - [ ] ISC-95: Anti: nothing is hidden for want of a pass having run over it — a decision stands until something says otherwise.
 - [ ] ISC-96: A person's word on whether a decision stands outranks whatever the machine concluded, and survives a rebuild.
@@ -207,6 +207,16 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
+- **2026-08-13** — refined: ISC-93 demanded a turn from anything that says a decision no longer
+  stands, which forbids the case the board had already chosen — a person declaring it from what they
+  know, with no meeting where anybody said it out loud. The human layer has always held what no
+  artifact contains; a speaker assignment and a classification are exactly that. The claim was
+  reading a rule about what a machine may assert as a rule about evidence in general. What may not
+  happen is neither: a turn or a name, never nothing. Checked the other way round as well — the
+  board's call that a person declares and a model only offers does not depend on the measurement
+  nobody has run, because the asymmetry decides it. A wrong edge hides something somebody decided
+  and nobody misses what they cannot see; a missing one leaves both standing, in plain sight. What
+  the measurement decides is how much a model may offer, not who settles it.
 - **2026-08-13** — Who gets to say that one decision superseded another was already settled, on the
   board, before this session proposed the opposite: a person declares it, a model may only offer it,
   and a later date is never evidence on its own. The entry below saying the run's links count was
