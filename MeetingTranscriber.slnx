@@ -5,6 +5,9 @@
       <Platform Project="x64" />
       <Deploy />
     </Project>
+    <!-- Diagnosis, import, rebuild and recovery from a prompt. It calls the same services the
+         app does: what it adds is argument parsing, a report and an exit code. -->
+    <Project Path="src/MeetingTranscriber.Cli/MeetingTranscriber.Cli.csproj" />
     <Project Path="src/MeetingTranscriber.Domain/MeetingTranscriber.Domain.csproj" />
     <Project Path="src/MeetingTranscriber.Infrastructure/MeetingTranscriber.Infrastructure.csproj" />
     <Project Path="src/MeetingTranscriber.Processing/MeetingTranscriber.Processing.csproj" />
@@ -13,6 +16,7 @@
     <!-- Holds no test: the corpus on disk, the SQL helpers and the fixture inventory the suites
          share, so a third project that needs one references it rather than copying it. -->
     <Project Path="tests/MeetingTranscriber.Testing/MeetingTranscriber.Testing.csproj" />
+    <Project Path="tests/MeetingTranscriber.Cli.Tests/MeetingTranscriber.Cli.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Domain.Tests/MeetingTranscriber.Domain.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Infrastructure.Tests/MeetingTranscriber.Infrastructure.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Processing.Tests/MeetingTranscriber.Processing.Tests.csproj" />

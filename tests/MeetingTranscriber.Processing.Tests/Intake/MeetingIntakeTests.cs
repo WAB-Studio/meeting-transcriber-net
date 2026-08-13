@@ -1,0 +1,162 @@
+using MeetingTranscriber.Domain.Artifacts;
+using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Meetings;
+using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Artifacts;
+using MeetingTranscriber.Infrastructure.Storage;
+using MeetingTranscriber.Processing.Intake;
+
+using Microsoft.EntityFrameworkCore;
+
+namespace MeetingTranscriber.Processing.Tests.Intake;
+
+/// <summary>
+/// A paid response on disk becoming a meeting of the corpus: the row, the source filed as one,
+/// and everything derived from it.
+/// </summary>
+public class MeetingIntakeTests
+{
+    private const string Fixture = DeepgramFixtures.TwoChannelShort;
+
+    private static readonly UtcTimestamp When =
+        UtcTimestamp.From(new DateTimeOffset(2026, 3, 4, 14, 0, 0, TimeSpan.Zero));
+
+    [Fact]
+    public void A_response_becomes_a_meeting_with_its_source_and_its_derivatives()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var received = Receive(context, corpus.Root);
+
+        var meeting = context.Meetings.Single();
+        meeting.Id.ShouldBe(received.MeetingId);
+        meeting.Title.ShouldBe("la del presupuesto");
+        meeting.StartedAt.ShouldBe(When);
+        meeting.Language.ShouldBe("es");
+        meeting.SourceProfile.ShouldBe(DeepgramFixtures.ProfileOf(Fixture));
+
+        // The length comes off the response, which is the only thing that knows it.
+        meeting.Duration!.Value.Milliseconds.ShouldBeGreaterThan(0);
+
+        received.WasAlreadyThere.ShouldBeFalse();
+        received.Response.Kind.ShouldBe(ArtifactKind.DeepgramResponse);
+        received.Response.Origin.ShouldBe(ArtifactOrigin.Source);
+        received.Response.Sha256.ShouldBe(CorpusFiles.Sha256Of(new FileInfo(DeepgramFixtures.PathOf(Fixture))));
+        received.Turns.ShouldBe(context.Utterances.Count(turn => turn.MeetingId == received.MeetingId));
+
+        CorpusFiles.Locate(corpus.Root, received.Response.RelativePath).Exists.ShouldBeTrue();
+        CorpusFiles.Locate(corpus.Root, received.Transcript.RelativePath).Exists.ShouldBeTrue();
+        CorpusFiles.Locate(corpus.Root, received.Utterances.RelativePath).Exists.ShouldBeTrue();
+
+        // Where it came from, in the table provenance belongs in.
+        context.AuditEvents.Single().MeetingId.ShouldBe(received.MeetingId);
+    }
+
+    /// <summary>
+    /// The response is what identifies the meeting, so the same bytes are the same meeting however
+    /// they arrive — under another file name, from another folder, a second time by somebody who
+    /// was not sure the first one worked.
+    /// </summary>
+    [Fact]
+    public void The_same_response_under_another_name_is_the_same_meeting()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var first = Receive(context, corpus.Root);
+
+        var elsewhere = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():n}.json");
+        File.Copy(DeepgramFixtures.PathOf(Fixture), elsewhere);
+        try
+        {
+            var second = Receive(context, corpus.Root, new FileInfo(elsewhere));
+
+            second.MeetingId.ShouldBe(first.MeetingId);
+            second.WasAlreadyThere.ShouldBeTrue();
+            second.Turns.ShouldBe(first.Turns);
+            second.Response.Id.ShouldBe(first.Response.Id);
+            context.Meetings.Count().ShouldBe(1);
+            context.Artifacts.Count(artifact => artifact.Kind == ArtifactKind.DeepgramResponse).ShouldBe(1);
+        }
+        finally
+        {
+            File.Delete(elsewhere);
+        }
+    }
+
+    /// <summary>
+    /// The half that makes the meeting worth filing again: a corpus whose derivatives are gone —
+    /// a render that failed, a folder somebody emptied — gets them back from the response it
+    /// already holds, and does not gain a second meeting on the way.
+    /// </summary>
+    [Fact]
+    public void A_meeting_whose_derivatives_are_gone_gets_them_back_from_the_response_it_has()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var first = Receive(context, corpus.Root);
+
+        foreach (var derived in context.Artifacts.Where(artifact => artifact.Origin == ArtifactOrigin.Derived).ToArray())
+        {
+            CorpusFiles.Locate(corpus.Root, derived.RelativePath).Delete();
+            context.Artifacts.Remove(derived);
+        }
+
+        context.Utterances.Where(turn => turn.MeetingId == first.MeetingId).ExecuteDelete();
+        context.SaveChanges();
+
+        var again = Receive(context, corpus.Root);
+
+        again.MeetingId.ShouldBe(first.MeetingId);
+        again.Turns.ShouldBe(first.Turns);
+        context.Meetings.Count().ShouldBe(1);
+        CorpusFiles.Locate(corpus.Root, again.Transcript.RelativePath).Exists.ShouldBeTrue();
+        CorpusFiles.Locate(corpus.Root, again.Utterances.RelativePath).Exists.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The contract's refusal, and the state the corpus is left in by it. Nothing is filed: a
+    /// meeting whose response cannot be read is a meeting nothing can ever render, and the paid
+    /// file would be one that may never be written again.
+    /// </summary>
+    [Fact]
+    public void A_response_that_disagrees_with_its_profile_is_refused_with_nothing_filed()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Should.Throw<AudioContractException>(
+            () => Receive(context, corpus.Root, profile: SourceProfile.Diarize));
+
+        context.Meetings.ShouldBeEmpty();
+        context.Artifacts.ShouldBeEmpty();
+        Directory.Exists(Path.Combine(corpus.Root.FullName, CorpusFiles.Meetings)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void A_response_that_is_not_there_says_which_file()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var missing = new FileInfo(Path.Combine(corpus.Root.FullName, "nothing.json"));
+
+        var refused = Should.Throw<IntakeException>(() => Receive(context, corpus.Root, missing));
+
+        refused.Message.ShouldContain(missing.FullName);
+    }
+
+    private static ReceivedMeeting Receive(
+        CorpusDbContext context,
+        DirectoryInfo root,
+        FileInfo? response = null,
+        SourceProfile? profile = null) => MeetingIntake.Receive(
+            context,
+            root,
+            response ?? new FileInfo(DeepgramFixtures.PathOf(Fixture)),
+            new MeetingDetails(
+                When,
+                profile ?? DeepgramFixtures.ProfileOf(Fixture),
+                "es",
+                "la del presupuesto"),
+            When);
+}
