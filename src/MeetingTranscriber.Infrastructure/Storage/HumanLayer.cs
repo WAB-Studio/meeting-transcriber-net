@@ -1,5 +1,6 @@
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Artifacts;
 
 namespace MeetingTranscriber.Infrastructure.Storage;
 
@@ -27,8 +28,17 @@ namespace MeetingTranscriber.Infrastructure.Storage;
 /// one should not take back the one before it, and the two rules above each move more than one row,
 /// so the boundary is the method rather than the caller.
 /// </para>
+/// <para>
+/// It holds the corpus root, and not because most of it writes files — only <see cref="Describe"/>
+/// does. It is because a corpus is a database and a folder, and the title a person types is the one
+/// thing a person can change that the folder also carries: the recovery card in
+/// <see cref="MeetingManifest"/>. A human layer that could not reach the folder would be one whose
+/// renames go stale on disk with nothing able to say so, and the root arrives in the constructor
+/// rather than in that method so that a caller cannot hold a human layer which is unable to keep
+/// the card current.
+/// </para>
 /// </remarks>
-public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
+public sealed class HumanLayer(CorpusDbContext context, DirectoryInfo root, TimeProvider clock)
 {
     private UtcTimestamp Now => UtcTimestamp.From(clock.GetUtcNow());
 
@@ -429,14 +439,57 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
     /// The title and the note somebody wrote so a person who was not there can read the meeting.
     /// Nothing infers either, which is why they are stored beside the meeting and not projected.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The recovery card is rewritten here because the title is on it, and this is the only place a
+    /// title moves after the meeting was filed. Leaving it to <c>rebuild</c> was what the corpus did
+    /// before, and a rename is not the moment anybody runs one: the folder would go on naming the
+    /// meeting by a title nobody uses, and the day that mattered would be the day the database was
+    /// gone and the card was the only thing left to read.
+    /// </para>
+    /// <para>
+    /// The two halves are one transaction, which is the only arrangement that does not recreate the
+    /// bug in a narrower window. The row is saved first because the card is produced from what the
+    /// corpus holds — writing it first would put a title on disk that no statement had yet agreed
+    /// to — but saved outside a transaction it would stand while a card write that could not
+    /// happen threw, and a rename with a stale card is exactly what this method exists to prevent.
+    /// Inside one, a disk that is full or a folder that cannot be written takes the rename back
+    /// with it, and the person is told the title did not change rather than told nothing and left
+    /// with a folder that disagrees.
+    /// </para>
+    /// <para>
+    /// What the transaction cannot cover is the file itself, because a filesystem does not join a
+    /// SQLite transaction: a rollback after the replace has happened leaves the new card beside the
+    /// old row, which <see cref="Artifacts.ArtifactReconciler"/> reports as a hash that disagrees
+    /// and <c>rebuild</c> puts right. That window is the one <see cref="Artifacts.DurableArtifact"/>
+    /// already chooses everywhere — a file ahead of the corpus, never a corpus ahead of the file.
+    /// </para>
+    /// <para>
+    /// Written on every call rather than only when the title actually moved. The card is a
+    /// statement of what the corpus holds, not a diff of it, so a card that is missing, emptied or
+    /// left behind by a write that never finished comes back on the next edit — and a comparison
+    /// that decided otherwise would be one more thing that has to be right for the folder to be.
+    /// The note is not on the card and never has been: five fields, and
+    /// <see cref="MeetingManifest"/> says why.
+    /// </para>
+    /// </remarks>
     public void Describe(Meeting meeting, string? title, string? notes)
     {
         ArgumentNullException.ThrowIfNull(meeting);
 
+        using var edit = context.Database.CurrentTransaction is null
+            ? context.Database.BeginTransaction()
+            : null;
+
+        var now = Now;
         meeting.Title = title;
         meeting.Context = notes;
-        meeting.UpdatedAt = Now;
+        meeting.UpdatedAt = now;
         context.SaveChanges();
+
+        MeetingManifest.Write(context, root, meeting.Id, now);
+
+        edit?.Commit();
     }
 
     /// <summary>The shape the meeting was classified as, or none.</summary>

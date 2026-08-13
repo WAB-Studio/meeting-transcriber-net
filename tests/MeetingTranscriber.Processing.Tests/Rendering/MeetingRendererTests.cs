@@ -107,7 +107,7 @@ public class MeetingRendererTests
 
         var spoken = context.Utterances.First(turn => turn.MeetingId == meeting);
         var word = spoken.Text.Split(' ')[0];
-        var human = new HumanLayer(context, TimeProvider.System);
+        var human = new HumanLayer(context, corpus.Root, TimeProvider.System);
         var somebody = human.Add("Renata");
         human.Assign(meeting, spoken.SpeakerLabel, somebody);
         human.Correct(word, "CORREGIDO");
@@ -137,7 +137,7 @@ public class MeetingRendererTests
         MeetingRenderer.Render(context, corpus.Root, meeting, When);
         var word = context.Utterances.First(turn => turn.MeetingId == meeting).Text.Split(' ')[0];
 
-        var human = new HumanLayer(context, TimeProvider.System);
+        var human = new HumanLayer(context, corpus.Root, TimeProvider.System);
         var techsed = human.Root(NodeKind.Organization, "TechSed");
         var coati = human.Under(techsed, NodeKind.Initiative, "Coati");
         human.Link(meeting, coati, MeetingNodeRole.WorkOf);
@@ -163,7 +163,7 @@ public class MeetingRendererTests
         MeetingRenderer.Render(context, corpus.Root, meeting, When);
         var word = context.Utterances.First(turn => turn.MeetingId == meeting).Text.Split(' ')[0];
 
-        new HumanLayer(context, TimeProvider.System).Correct(word, "AJENO", meetingId: elsewhere);
+        new HumanLayer(context, corpus.Root, TimeProvider.System).Correct(word, "AJENO", meetingId: elsewhere);
 
         var rendered = MeetingRenderer.Render(context, corpus.Root, meeting, When);
 

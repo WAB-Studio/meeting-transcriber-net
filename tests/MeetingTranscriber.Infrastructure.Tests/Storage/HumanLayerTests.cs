@@ -1,7 +1,11 @@
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
+
+using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Infrastructure.Tests.Storage;
 
@@ -30,7 +34,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var fixture = new HumanLayerFixture(context);
+        var fixture = new HumanLayerFixture(context, corpus.Root);
         var human = fixture.HumanLayer;
 
         var organization = human.Root(NodeKind.Organization, "TechSed");
@@ -66,6 +70,89 @@ public class HumanLayerTests
     }
 
     /// <summary>
+    /// The title is on the recovery card, and it is the one of that card's five fields a person
+    /// moves after the meeting was filed. So renaming writes the card, and the probe is the
+    /// situation the card exists for: the corpus is closed and the file is all that is left to
+    /// answer from.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The meeting is given its card first, the way filing one leaves it, so what is being probed
+    /// is a card going stale rather than one never written. Those are different failures and only
+    /// the first is what a rename does.
+    /// </para>
+    /// <para>
+    /// Read back through <c>MeetingManifest.Read</c> rather than by looking for the new title in
+    /// the text. A file holding the right characters in the wrong shape is not a card anybody
+    /// recovers from, and a substring check would call it one.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Renaming_a_meeting_leaves_its_card_saying_the_new_title()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid meetingId;
+        string card;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            var fixture = new HumanLayerFixture(context, corpus.Root);
+            var meeting = fixture.Meeting("la daily");
+            meetingId = meeting.Id;
+            var filed = MeetingManifest.Write(context, corpus.Root, meeting.Id, HumanLayerFixture.Now);
+            MeetingManifest.Read(CorpusFiles.Locate(corpus.Root, filed.RelativePath)).Title.ShouldBe("la daily");
+
+            fixture.HumanLayer.Describe(meeting, "la daily del equipo", "arranca el sprint");
+
+            // Still the one card and the one row: the file is replaced where it stands, which is
+            // what keeps a rename out of the artifacts table as a second entry for the same path.
+            var manifest = context.Artifacts.Single(artifact => artifact.Kind == ArtifactKind.Manifest);
+            manifest.Id.ShouldBe(filed.Id);
+            manifest.Origin.ShouldBe(ArtifactOrigin.Source);
+            card = CorpusFiles.Locate(corpus.Root, manifest.RelativePath).FullName;
+        }
+
+        var recovered = MeetingManifest.Read(new FileInfo(card));
+
+        recovered.MeetingId.ShouldBe(meetingId);
+        recovered.Title.ShouldBe("la daily del equipo");
+    }
+
+    /// <summary>
+    /// The other half of the same promise: a rename whose card cannot be written does not happen.
+    /// Saving the row on its own and letting the card write throw afterwards would leave exactly
+    /// the folder this is about — a meeting renamed in the database and named the old way on disk
+    /// — in a narrower window and with nobody told which of the two it got.
+    /// </summary>
+    /// <remarks>
+    /// A directory standing where the card goes is how the write is made to fail. It is the
+    /// nearest thing this suite can arrange to a full disk, and what matters is that the failure
+    /// arrives from the filesystem at the moment of replacing, which is where a real one would —
+    /// Windows calls that one access denied rather than an I/O error, which is why the type
+    /// asserted is the one it actually throws and not the family it looks like it belongs to.
+    /// The title is then read past the tracked entity: a rolled-back transaction does not undo
+    /// what EF holds in memory, and what is being asserted is what the corpus kept.
+    /// </remarks>
+    [Fact]
+    public void A_rename_whose_card_cannot_be_written_does_not_happen_at_all()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var fixture = new HumanLayerFixture(context, corpus.Root);
+        var meeting = fixture.Meeting("la daily");
+        var filed = MeetingManifest.Write(context, corpus.Root, meeting.Id, HumanLayerFixture.Now);
+
+        var card = CorpusFiles.Locate(corpus.Root, filed.RelativePath);
+        card.Delete();
+        Directory.CreateDirectory(card.FullName);
+
+        Should.Throw<UnauthorizedAccessException>(() =>
+            fixture.HumanLayer.Describe(meeting, "la daily del equipo", "arranca el sprint"));
+
+        context.Meetings.AsNoTracking().Single().Title.ShouldBe("la daily");
+    }
+
+    /// <summary>
     /// The flag is on one row and moves whole. Two of them would leave <c>Speakers.Resolve</c>
     /// settling a voice onto whichever the query happened to return first, which is a wrong name on
     /// somebody's words and nothing failing.
@@ -75,7 +162,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var human = new HumanLayerFixture(context).HumanLayer;
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
 
         var first = human.Add("Ada");
         var second = human.Add("Renata");
@@ -93,7 +180,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var human = new HumanLayerFixture(context).HumanLayer;
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
 
         var ada = human.Add("Ada");
         human.ThisIsMe(ada);
@@ -112,7 +199,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var fixture = new HumanLayerFixture(context);
+        var fixture = new HumanLayerFixture(context, corpus.Root);
         var human = fixture.HumanLayer;
 
         var meeting = fixture.Meeting("una reunion");
@@ -133,7 +220,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var fixture = new HumanLayerFixture(context);
+        var fixture = new HumanLayerFixture(context, corpus.Root);
         var human = fixture.HumanLayer;
 
         var meeting = fixture.Meeting("una reunion");
@@ -158,7 +245,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var fixture = new HumanLayerFixture(context);
+        var fixture = new HumanLayerFixture(context, corpus.Root);
         var human = fixture.HumanLayer;
 
         var meeting = fixture.Meeting("un 1:1");
@@ -181,7 +268,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var fixture = new HumanLayerFixture(context);
+        var fixture = new HumanLayerFixture(context, corpus.Root);
         var human = fixture.HumanLayer;
 
         var meeting = fixture.Meeting("dos proyectos");
@@ -210,7 +297,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var fixture = new HumanLayerFixture(context);
+        var fixture = new HumanLayerFixture(context, corpus.Root);
         var human = fixture.HumanLayer;
 
         var northwind = human.Root(NodeKind.Organization, "Northwind");
@@ -237,7 +324,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var fixture = new HumanLayerFixture(context);
+        var fixture = new HumanLayerFixture(context, corpus.Root);
         var human = fixture.HumanLayer;
 
         var meeting = fixture.Meeting("una reunion");
@@ -258,7 +345,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var human = new HumanLayerFixture(context).HumanLayer;
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
 
         var correction = human.Correct("quati", "Coaty");
         human.Recorrect(correction, "Coati", TerminologyMatchMode.IgnoreCase);
@@ -282,7 +369,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var fixture = new HumanLayerFixture(context);
+        var fixture = new HumanLayerFixture(context, corpus.Root);
         var human = fixture.HumanLayer;
 
         var meeting = fixture.Meeting("una reunion");
@@ -310,7 +397,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var fixture = new HumanLayerFixture(context);
+        var fixture = new HumanLayerFixture(context, corpus.Root);
         var human = fixture.HumanLayer;
 
         var meeting = fixture.Meeting("una reunion");
@@ -343,7 +430,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var fixture = new HumanLayerFixture(context);
+        var fixture = new HumanLayerFixture(context, corpus.Root);
         var human = fixture.HumanLayer;
 
         var meeting = fixture.Meeting("una reunion");
@@ -374,7 +461,7 @@ public class HumanLayerTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var fixture = new HumanLayerFixture(context);
+        var fixture = new HumanLayerFixture(context, corpus.Root);
         var human = fixture.HumanLayer;
 
         var meeting = fixture.Meeting("una reunion");
@@ -410,11 +497,11 @@ internal sealed class HumanLayerFixture
 
     private readonly CorpusDbContext _context;
 
-    public HumanLayerFixture(CorpusDbContext context)
+    public HumanLayerFixture(CorpusDbContext context, DirectoryInfo root)
     {
         _context = context;
         Clock = new SteppedClock(Now.Value);
-        HumanLayer = new HumanLayer(context, Clock);
+        HumanLayer = new HumanLayer(context, root, Clock);
     }
 
     public SteppedClock Clock { get; }

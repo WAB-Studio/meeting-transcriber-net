@@ -274,7 +274,7 @@ public class CorpusRebuildTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         Project(context, generation: "first");
-        WriteHumanLayer(context);
+        WriteHumanLayer(context, corpus.Root);
 
         var before = Snapshot(context);
 
@@ -305,10 +305,10 @@ public class CorpusRebuildTests
     /// A human layer with something in every one of its tables, written the way the application
     /// writes one.
     /// </summary>
-    private static void WriteHumanLayer(CorpusDbContext context)
+    private static void WriteHumanLayer(CorpusDbContext context, DirectoryInfo root)
     {
         var clock = new SteppedClock(new DateTimeOffset(2026, 8, 7, 12, 0, 0, TimeSpan.Zero));
-        var human = new HumanLayer(context, clock);
+        var human = new HumanLayer(context, root, clock);
         var meeting = Guid.Parse(MeetingId);
 
         var techsed = human.Root(NodeKind.Organization, "TechSed");

@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 61/99
+progress: 63/101
 updated: 2026-08-13
 ---
 
@@ -94,6 +94,8 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-87: A meeting is recognised from its `manifest.json` alone — its id, when it started, its profile, its language and its title — with nothing else read.
 - [x] ISC-88: Anti: a second filing cannot leave the recovery card stale or missing — it writes the card as the corpus now says it is.
 - [x] ISC-98: A rebuild leaves every meeting in the corpus holding the card the corpus now describes, including one that never had a card at all.
+- [x] ISC-100: Changing a meeting's title leaves its recovery card saying the new title, with no other command run.
+- [x] ISC-101: Anti: a rename whose card cannot be written does not change the title either.
 - [x] ISC-99: Anti: a write cannot put one kind of artifact over the path another kind already holds.
 - [x] ISC-66: Every table of the human layer is written through `HumanLayer`.
 - [x] ISC-67: Exactly one person carries the flag naming the user of this install.
@@ -207,6 +209,26 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
+- **2026-08-13** — `HumanLayer` takes the corpus root, which settles the question the card's own
+  decision below left open. Only `Describe` uses it: the title is the one of the card's five fields
+  a person moves after the meeting was filed, so it is the one human edit the folder also carries.
+  The alternative was a layer above holding both the database and the folder and calling `Describe`
+  as its database half, and it was refused for what it leaves possible — `Describe` stays public and
+  callable across projects, so the rename that skips the card is still one call away, which is the
+  bug rather than the fix. The root arrives in the constructor and not in the method for the same
+  reason: a human layer that cannot keep the card current should not be constructible. What it costs
+  is that a type about rows now holds a directory, and that is the honest shape — a corpus is a
+  database and a folder, and this is the layer a person writes into.
+- **2026-08-13** — refined: the rename and its card are one transaction, against a first pass that
+  saved the row and then wrote the card outside one. The reasoning that pass rested on was wrong:
+  it took the choice to be between a stale card and a card whose bytes are ahead of the row it is
+  recorded against, when the second of those happens either way — the artifact row is saved by the
+  same statement in both, so the only thing the transaction changes is whether a card that could
+  not be written takes the rename back with it. Unwrapped, a full disk left the title changed and
+  the folder saying the old one, which is the bug in a narrower window and with nobody told which
+  half they got. What no transaction can cover is the replace itself, and the direction that
+  window falls in was already chosen — a file ahead of the corpus, never a corpus ahead of the
+  file. Found by `/adversarial-review`; three reviewers, unanimous.
 - **2026-08-13** — Who gets to say that one decision superseded another was already settled, on the
   board, before this session proposed the opposite: a person declares it, a model may only offer it,
   and a later date is never evidence on its own. The entry below saying the run's links count was
@@ -506,3 +528,5 @@ Board: 7 · Distribución y backup
 - ISC-88 — `MeetingManifestTests.Filing_again_writes_the_card_as_the_corpus_now_says_it_is` and `.A_card_that_is_gone_comes_back_when_the_response_is_filed_again` green 2026-08-13; `DurableWriteTests.The_recovery_card_is_the_source_a_second_write_replaces` pins the rule under them, and `.A_source_is_never_written_over` still holds for the response
 - ISC-98 — `CorpusRebuildTests.A_rebuild_leaves_every_meeting_with_the_card_that_names_it` and `.A_rebuild_brings_a_card_up_to_a_title_somebody_changed_since` green 2026-08-13, the first starting from a corpus with no manifest row at all
 - ISC-99 — `DurableWriteTests.A_write_that_calls_a_path_something_it_is_not_is_refused_before_the_file_moves` green 2026-08-13: a manifest addressed at `deepgram.json` is refused and the paid bytes are still there afterwards. `ArtifactsTests.The_manifest_is_the_only_source_a_second_write_may_replace` holds the exception to one kind
+- ISC-100 — `HumanLayerTests.Renaming_a_meeting_leaves_its_card_saying_the_new_title` green 2026-08-13: the meeting is given its card first, so the probe fails on a card gone stale rather than on one never written — it read `la daily` against `la daily del equipo` before the fix, and the corpus is closed before the file is read
+- ISC-101 — `HumanLayerTests.A_rename_whose_card_cannot_be_written_does_not_happen_at_all` green 2026-08-13: a directory standing where the card goes makes the replace fail, and the title is read back past the tracked entity to prove the corpus kept the old one
