@@ -65,6 +65,11 @@ public static class Cli
             "remove the writes that never finished, which were never artifacts",
             DiagnosticCommands.Sweep),
         new(
+            "restore",
+            $"restore <file> {Corpus.Option} <directory>",
+            "put a file the corpus records and the disk has lost back, from bytes it already describes",
+            DiagnosticCommands.Restore),
+        new(
             "compact",
             $"compact {Corpus.Option} <directory>",
             "reclaim space and put the search indexes back, which is never one without the other",
@@ -160,6 +165,7 @@ public static class Cli
         or DeepgramResponseException
         or AudioContractException
         or ArtifactWriteException
+        or ArtifactRestoreException
         or SqliteException
         or IOException
         or UnauthorizedAccessException;

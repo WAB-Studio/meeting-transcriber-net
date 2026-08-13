@@ -23,7 +23,10 @@ public static class Report
         ArgumentNullException.ThrowIfNull(output);
         ArgumentNullException.ThrowIfNull(label);
 
-        output.WriteLine($"{label.PadRight(LabelWidth)}{value}");
+        // One space always, whatever the label's length. Padding alone puts the value hard against
+        // a label that is already as wide as the column, and a report whose separator disappears on
+        // one line is one nothing can read a value back out of.
+        output.WriteLine($"{label.PadRight(LabelWidth - 1)} {value}");
     }
 
     /// <summary>

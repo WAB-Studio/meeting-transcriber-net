@@ -1,4 +1,4 @@
-using MeetingTranscriber.Domain.Time;
+﻿using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Intake;
 using MeetingTranscriber.Processing.Rendering;
@@ -10,7 +10,7 @@ namespace MeetingTranscriber.Cli;
 /// asking the corpus a question.
 /// </summary>
 /// <remarks>
-/// The whole flow with no microphone and no provider in it — a paid response goes in, the turns
+/// The whole flow with no microphone and no provider in it â€” a paid response goes in, the turns
 /// and the files come out, and search finds what was said. That is what makes it worth having: it
 /// is the application's own path, driven from a prompt, so it can be exercised without automating
 /// a window.
@@ -39,7 +39,7 @@ public static class MeetingCommands
         arguments.EnsureNothingLeftOver();
 
         using var context = corpus.Write();
-        var received = MeetingIntake.Receive(context, corpus.Root, response, details, Now());
+        var received = MeetingIntake.Receive(context, corpus.Root, response, details, Clock.Now());
 
         Report.Line(
             output,
@@ -63,7 +63,7 @@ public static class MeetingCommands
         arguments.EnsureNothingLeftOver();
 
         using var context = corpus.Write();
-        var rendered = MeetingRenderer.Render(context, corpus.Root, meeting, Now());
+        var rendered = MeetingRenderer.Render(context, corpus.Root, meeting, Clock.Now());
 
         Report.Line(output, "meeting", $"{meeting}");
         Rendered(output, rendered.Turns, rendered.Transcript.RelativePath, rendered.Utterances.RelativePath);
@@ -83,7 +83,7 @@ public static class MeetingCommands
         arguments.EnsureNothingLeftOver();
 
         using var context = corpus.Write();
-        var report = CorpusRebuild.Run(context, corpus.Root, Now());
+        var report = CorpusRebuild.Run(context, corpus.Root, Clock.Now());
 
         output.WriteLine(report.ToString());
         return report.CouldNotRebuild.Count == 0 ? Cli.Ok : Cli.Refused;
@@ -132,10 +132,4 @@ public static class MeetingCommands
         Report.Line(output, "transcript", transcript);
         Report.Line(output, "utterances", utterances);
     }
-
-    /// <summary>
-    /// Now, through the same clock every other writer uses. It reaches the corpus as the moment an
-    /// artifact was confirmed, so it is the machine's clock and never an argument.
-    /// </summary>
-    private static UtcTimestamp Now() => UtcTimestamp.From(TimeProvider.System.GetUtcNow());
 }

@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 63/101
+progress: 66/104
 updated: 2026-08-13
 ---
 
@@ -97,6 +97,9 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-100: Changing a meeting's title leaves its recovery card saying the new title, with no other command run.
 - [x] ISC-101: Anti: a rename whose card cannot be written does not change the title either.
 - [x] ISC-99: Anti: a write cannot put one kind of artifact over the path another kind already holds.
+- [x] ISC-102: A source the corpus records and the disk has lost comes back from bytes that hash to what its row already says, leaving the check clean.
+- [x] ISC-103: Anti: bytes no row of this corpus describes never reach an artifact's path.
+- [x] ISC-104: Filing a response again when its file is gone puts the paid bytes back before anything is rendered from them.
 - [x] ISC-66: Every table of the human layer is written through `HumanLayer`.
 - [x] ISC-67: Exactly one person carries the flag naming the user of this install.
 - [x] ISC-68: Anti: a speaker label a person resolved is never overwritten by one the recording settled.
@@ -209,7 +212,31 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
-- **2026-08-13** — `HumanLayer` takes the corpus root, which settles the question the card's own
+- **2026-08-13** — What authorises putting a lost source back is the hash the row already carries,
+  and nothing else. The alternative shape was to name the meeting and the path on the command line
+  and check the bytes against the row found that way, which is the same rule with a second address
+  bolted on — and the second address is what makes it weaker: two things that can disagree, where
+  one of them is typed. Taking the hash as both the authority and the address means the bytes reach
+  a path only where the corpus already says those exact bytes are, so a different file under a paid
+  response's row is impossible rather than guarded against, and a loose `deepgram.json` in a backup
+  folder needs nobody to work out which meeting it was. What it costs is the case where somebody has
+  *a* response for a meeting and not *the* one: they get told nothing in this corpus is those bytes,
+  which is correct — that file is a re-transcription and has to be paid for and filed as its own
+  version, never dropped over the row that describes another. It writes only where there is no file,
+  so a file that is there and is wrong is named and left: `check` says which of the two it is, and
+  destroying what might be the only copy of something stays a person's deliberate act.
+- **2026-08-13** — refined: nothing in the restore takes an artifact row from its caller, against a
+  first pass where the intake path handed over the row it was already holding and the method
+  compared the offered bytes against that row's hash. That guard was worth nothing: both sides of
+  the comparison came from the caller, and `StagedArtifact.Commit` writes the hash of what it wrote
+  onto whatever row it finds by meeting and path — so a fabricated hash with bytes to match would
+  have landed under a real paid path and left the corpus saying it had always been those bytes. It
+  is the same lesson `DurableArtifact` already carries one field over, where the *kind* is read off
+  the corpus rather than believed from the caller, and it was missed one layer up. The row is now
+  looked up from the bytes in every case, which also made the two paths one: filing a response
+  again restores every row those bytes belong under, where before it restored the one arbitrary row
+  its own `FirstOrDefault` had found. Found by `/adversarial-review`; the architect reviewer, rated
+  high, and the skeptic and architect independently on the `FirstOrDefault`. which settles the question the card's own
   decision below left open. Only `Describe` uses it: the title is the one of the card's five fields
   a person moves after the meeting was filed, so it is the one human edit the folder also carries.
   The alternative was a layer above holding both the database and the folder and calling `Describe`
@@ -530,3 +557,6 @@ Board: 7 · Distribución y backup
 - ISC-99 — `DurableWriteTests.A_write_that_calls_a_path_something_it_is_not_is_refused_before_the_file_moves` green 2026-08-13: a manifest addressed at `deepgram.json` is refused and the paid bytes are still there afterwards. `ArtifactsTests.The_manifest_is_the_only_source_a_second_write_may_replace` holds the exception to one kind
 - ISC-100 — `HumanLayerTests.Renaming_a_meeting_leaves_its_card_saying_the_new_title` green 2026-08-13: the meeting is given its card first, so the probe fails on a card gone stale rather than on one never written — it read `la daily` against `la daily del equipo` before the fix, and the corpus is closed before the file is read
 - ISC-101 — `HumanLayerTests.A_rename_whose_card_cannot_be_written_does_not_happen_at_all` green 2026-08-13: a directory standing where the card goes makes the replace fail, and the title is read back past the tracked entity to prove the corpus kept the old one
+- ISC-102 — `ArtifactRestoreTests` and `CommandLineTests.A_paid_file_the_corpus_lost_is_put_back_from_the_bytes_it_already_describes` green 2026-08-13; the command line one deletes the paid response, sees `check` refuse, restores from the original and gets `Sound` out of `check --verify-contents`
+- ISC-103 — `ArtifactRestoreTests.Bytes_no_row_of_this_corpus_describes_are_refused_and_nothing_is_written` and `.Bytes_the_corpus_records_elsewhere_do_not_land_where_another_row_is_missing` green 2026-08-13; the second is the one worth having, since bytes the corpus does know are the case where a wrong path is reachable at all
+- ISC-104 — `MeetingIntakeTests.A_meeting_whose_response_is_gone_gets_it_back_when_the_same_bytes_are_filed_again` green 2026-08-13, red with the restore taken out of `Receive`: `RenderException` naming the response the row points at, which is the failure the task was raised for

@@ -36,7 +36,7 @@ public class CommandLineTests
 
         run.Code.ShouldBe(Cli.Ok);
         foreach (var command in new[]
-            { "migrate", "status", "check", "sweep", "compact", "import", "render", "rebuild", "search" })
+            { "migrate", "status", "check", "sweep", "restore", "compact", "import", "render", "rebuild", "search" })
         {
             run.Output.ShouldContain(command);
         }
@@ -200,6 +200,62 @@ public class CommandLineTests
         run.Output.ShouldContain("1 unfinished write(s) removed.");
         File.Exists(unfinished).ShouldBeFalse();
         File.Exists(Path.Combine(root, imported.Value("transcript"))).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The repair the check reports and cannot make, run end to end: the paid file the corpus
+    /// claims is gone, somebody still has the original, and one command puts it back where the row
+    /// says it is. Nothing tells the command which meeting or which path — the bytes do, because
+    /// the corpus already recorded what they hash to.
+    /// </summary>
+    [Fact]
+    public void A_paid_file_the_corpus_lost_is_put_back_from_the_bytes_it_already_describes()
+    {
+        using var corpus = new TemporaryCorpus();
+        var root = corpus.Root.FullName;
+        CommandLine.Of("migrate", "--corpus", root);
+        var imported = Import(root);
+        var response = Path.Combine(root, imported.Value("response"));
+
+        File.Delete(response);
+        CommandLine.Of("check", "--corpus", root).Code.ShouldBe(Cli.Refused);
+
+        var restored = CommandLine.Of("restore", DeepgramFixtures.PathOf(Fixture), "--corpus", root);
+
+        restored.Code.ShouldBe(Cli.Ok, restored.Error);
+        restored.Value("put back").ShouldBe(imported.Value("response"));
+        File.Exists(response).ShouldBeTrue();
+
+        var sound = CommandLine.Of("check", "--corpus", root, "--verify-contents");
+        sound.Code.ShouldBe(Cli.Ok, sound.Error);
+        sound.Output.ShouldContain("Sound");
+
+        // Twice is how somebody actually runs this, and the second one is not an error.
+        var again = CommandLine.Of("restore", DeepgramFixtures.PathOf(Fixture), "--corpus", root);
+        again.Code.ShouldBe(Cli.Ok, again.Error);
+        again.Value("in place").ShouldBe(imported.Value("response"));
+    }
+
+    /// <summary>
+    /// A file of somebody else's corpus, or a version of this one that was never confirmed here.
+    /// Either way no row is asking for it, and the refusal says so rather than putting it somewhere.
+    /// </summary>
+    [Fact]
+    public void A_file_no_row_of_the_corpus_describes_is_refused_rather_than_filed_somewhere()
+    {
+        using var corpus = new TemporaryCorpus();
+        var root = corpus.Root.FullName;
+        CommandLine.Of("migrate", "--corpus", root);
+        Import(root);
+
+        var stranger = Path.Combine(root, "from-another-machine.json");
+        File.WriteAllText(stranger, "{\"results\":\"a meeting this corpus never had\"}");
+
+        var run = CommandLine.Of("restore", stranger, "--corpus", root);
+
+        run.Code.ShouldBe(Cli.Refused);
+        run.Error.ShouldContain(stranger);
+        CommandLine.Of("check", "--corpus", root, "--verify-contents").Code.ShouldBe(Cli.Ok);
     }
 
     /// <summary>
