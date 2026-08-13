@@ -16,21 +16,19 @@ using Microsoft.EntityFrameworkCore;
 namespace MeetingTranscriber.CorpusImport;
 
 /// <summary>How an import is allowed to treat the corpus it reads.</summary>
-/// <param name="CopyTo">
-/// The corpus to copy the sources into, or null to register them where they already are. Copying
-/// is the explicit option because it doubles the disk the paid responses take, and referencing is
-/// the one that breaks if the legacy corpus is ever moved.
-/// <para>
-/// It is also the only thing that says where this corpus lives, so it is what decides whether a
-/// meeting arrives with its derivatives rendered. Without it there is nowhere to put them that is
-/// not the Python corpus, and writing there is the one thing this tool never does.
-/// </para>
-/// </param>
 /// <param name="Language">
 /// The language to record for a meeting whose rendered transcript does not say. The paid response
 /// does not carry it: it was a request parameter.
 /// </param>
-public sealed record ImportOptions(DirectoryInfo? CopyTo = null, string Language = "es");
+/// <remarks>
+/// There is no option not to copy the sources in, and there used to be. A stored path is read
+/// against the corpus whose row holds it, so a row left pointing into the Python corpus names a
+/// file that is not where the corpus says it is: the meeting cannot be rendered, the check calls
+/// every source of it missing, and the copy the corpus is meant to hold is still one folder away
+/// from somebody deleting it by hand. What the option saved was disk. What it cost was the corpus
+/// being a corpus.
+/// </remarks>
+public sealed record ImportOptions(string Language = "es");
 
 /// <summary>
 /// Reads the Python corpus into this one. One way: it opens the legacy corpus for reading and
@@ -97,7 +95,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             // is the only record of what a run left behind.
             var meeting = new ImportReport();
             Meeting? imported = null;
-            Commit(
+            var committed = Commit(
                 legacy.Id,
                 meeting,
                 report,
@@ -108,15 +106,19 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             // read the meeting back through the corpus, and a row that has not been committed is a
             // row a query does not find. It is also work worth keeping when it succeeds over a
             // meeting whose files then fail, and losing only when they do.
-            if (imported is not null && options.CopyTo is not null)
+            //
+            // Whether it committed, and not whether a Meeting was built: the read above assigns
+            // one and the save after it is what can still refuse. Files written for a meeting the
+            // corpus rolled back are a card about a meeting that is not there, which is the
+            // exception the card writer throws — the refusal of one meeting taking the run down.
+            if (committed && imported is { } landed)
             {
                 var files = new ImportReport();
-                var landed = imported;
                 Commit(
                     $"{legacy.Id} files",
                     files,
                     report,
-                    () => WriteMeetingFiles(legacy, landed, options, now, files));
+                    () => WriteMeetingFiles(legacy, landed, now, files));
             }
         }
 
@@ -133,7 +135,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
     /// copies and registers it again, which is the same outcome as never having tried — and
     /// deleting files is not something this tool does.
     /// </remarks>
-    private void Commit(string what, ImportReport pending, ImportReport report, Action? read = null)
+    private bool Commit(string what, ImportReport pending, ImportReport report, Action? read = null)
     {
         try
         {
@@ -150,10 +152,11 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
                 entry.State = EntityState.Detached;
             }
 
-            return;
+            return false;
         }
 
         report.Absorb(pending);
+        return true;
     }
 
     /// <summary>The catalog's companies, as the roots of the tree.</summary>
@@ -401,28 +404,18 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
     private void WriteMeetingFiles(
         LegacyMeeting legacy,
         Meeting meeting,
-        ImportOptions options,
         UtcTimestamp now,
         ImportReport report)
     {
-        // Nothing per meeting when there is nowhere to write: the run's tally says none were
-        // written, and two hundred identical lines saying why would bury the list that matters.
-        // Registering the sources where they already are creates no meeting folder, and the Python
-        // corpus is not somewhere this tool puts files.
-        if (options.CopyTo is not { } corpus)
-        {
-            return;
-        }
-
         // Before the render, and it is the one of the two that has to survive the other failing:
         // a meeting whose derivatives could not be produced is still a meeting somebody has to be
         // able to recognise in a folder, and the card is what says which one it is.
-        MeetingManifest.Write(context, corpus, meeting.Id, now);
+        MeetingManifest.Write(context, meeting.Id, now);
         report.Imported(ImportCounter.Manifest);
 
         try
         {
-            var rendered = MeetingRenderer.Render(context, corpus, meeting.Id, now);
+            var rendered = MeetingRenderer.Render(context, meeting.Id, now);
             report.Imported(ImportCounter.Rendered);
             report.Imported(ImportCounter.Turn, rendered.Turns);
         }
@@ -636,9 +629,7 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
                 continue;
             }
 
-            var relativePath = options.CopyTo is null
-                ? Path.Combine(legacy.Directory.Name, name).Replace('\\', '/')
-                : $"meetings/{meeting.Id}/{name}";
+            var relativePath = CorpusFiles.PathFor(meeting.Id, name);
 
             var known = context.Artifacts.Local
                 .Concat(context.Artifacts.Where(artifact => artifact.MeetingId == meeting.Id))
@@ -651,11 +642,8 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
             }
 
             var sha256 = Sha256(source);
-            if (options.CopyTo is { } target)
-            {
-                Copy(source, new FileInfo(Path.Combine(target.FullName, relativePath)), sha256);
-                report.Imported(ImportCounter.ArtifactCopy);
-            }
+            Copy(source, CorpusFiles.Locate(context.Root, relativePath), sha256);
+            report.Imported(ImportCounter.ArtifactCopy);
 
             var artifact = new Artifact
             {

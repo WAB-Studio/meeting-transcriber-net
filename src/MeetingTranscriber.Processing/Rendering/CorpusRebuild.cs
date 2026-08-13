@@ -62,10 +62,9 @@ public static class CorpusRebuild
     /// <summary>
     /// Rebuilds every meeting that is still here, oldest first, then the search indexes.
     /// </summary>
-    public static RebuildReport Run(CorpusDbContext context, DirectoryInfo root, UtcTimestamp now)
+    public static RebuildReport Run(CorpusDbContext context, UtcTimestamp now)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(root);
 
         var clock = Stopwatch.StartNew();
         var meetings = context.Meetings
@@ -92,11 +91,11 @@ public static class CorpusRebuild
             // corpus had cards at all, or one whose title somebody has changed since, gets the card
             // the corpus now describes — and a meeting whose response is missing is exactly the one
             // worth being able to recognise in a folder.
-            MeetingManifest.Write(context, root, meeting, now);
+            MeetingManifest.Write(context, meeting, now);
 
             try
             {
-                turns += MeetingRenderer.Render(context, root, meeting, now).Turns;
+                turns += MeetingRenderer.Render(context, meeting, now).Turns;
                 rebuilt++;
             }
             catch (RenderException missing)

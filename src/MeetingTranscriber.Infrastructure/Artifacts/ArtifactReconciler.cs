@@ -78,12 +78,11 @@ public static class ArtifactReconciler
     /// </param>
     public static IReadOnlyList<ArtifactFinding> Check(
         CorpusDbContext context,
-        DirectoryInfo root,
         bool verifyContents = false)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(root);
 
+        var root = context.Root;
         var findings = new List<ArtifactFinding>();
         var recorded = context.Artifacts
             .AsNoTracking()
@@ -138,10 +137,16 @@ public static class ArtifactReconciler
     /// Removes the unfinished writes and answers with what it removed. The only thing start-up
     /// gets to do without asking, and it is safe because one of these was never an artifact.
     /// </summary>
-    public static IReadOnlyList<string> Sweep(DirectoryInfo root)
+    /// <remarks>
+    /// It takes the corpus and not a folder even though it never reads a row: this deletes, and
+    /// what it deletes from has to be the folder of a corpus rather than a directory somebody
+    /// named that happens to have files ending the same way.
+    /// </remarks>
+    public static IReadOnlyList<string> Sweep(CorpusDbContext context)
     {
-        ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(context);
 
+        var root = context.Root;
         var swept = new List<string>();
         foreach (var file in Walk(root).Where(file => CorpusFiles.IsUnfinished(file.Name)))
         {

@@ -4,12 +4,15 @@ Reads a corpus written by the Python system into a .NET one. Run by hand, once p
 has an old corpus:
 
 ```powershell
-dotnet run --project tools/MeetingTranscriber.CorpusImport -- <corpus-directory> --database <corpus.db>
+dotnet run --project tools/MeetingTranscriber.CorpusImport -- <python-corpus> --corpus <directory>
 ```
 
-`--copy <directory>` copies the sources into the new corpus instead of registering them where they
-already are. `--language <code>` is the language recorded for a meeting whose rendered transcript
-does not say — the paid response does not carry it, it was a request parameter.
+`--corpus` is the folder of the corpus to write into, database and files together, and it is made
+if it is not there. It may not be the corpus being read, or anywhere inside it. The sources are
+copied in: a stored path is read against the corpus holding the row, so a row left pointing back at
+the Python corpus would name a file that is not where the corpus says it is. `--language <code>` is
+the language recorded for a meeting whose rendered transcript does not say — the paid response does
+not carry it, it was a request parameter.
 
 The corpus it reads is only ever read: nothing in it is created, rewritten, moved or deleted. It is
 repeatable, so running it twice imports nothing the second time.

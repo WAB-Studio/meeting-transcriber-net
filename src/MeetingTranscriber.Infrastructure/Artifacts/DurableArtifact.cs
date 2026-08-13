@@ -34,23 +34,24 @@ public sealed class ArtifactWriteException(string message) : Exception(message);
 public static class DurableArtifact
 {
     /// <summary>Writes an artifact and records it. What almost every caller wants.</summary>
-    /// <param name="context">The corpus. Its transaction, if it has one, is the one the row joins.</param>
-    /// <param name="root">The corpus root. Never the package data folder.</param>
+    /// <param name="context">
+    /// The corpus: the rows and the folder they describe. Its transaction, if it has one, is the
+    /// one the row joins.
+    /// </param>
     /// <param name="contents">
     /// Writes the artifact. Called once, on a stream that is hashing what goes through it, and a
     /// throw from it leaves nothing behind.
     /// </param>
     public static Artifact Write(
         CorpusDbContext context,
-        DirectoryInfo root,
         Guid meetingId,
         ArtifactKind kind,
         string relativePath,
         UtcTimestamp now,
         Action<Stream> contents)
     {
-        using var staged = StagedArtifact.Stage(root, meetingId, relativePath, contents);
-        return staged.Commit(context, kind, now);
+        using var staged = StagedArtifact.Stage(context, meetingId, relativePath, contents);
+        return staged.Commit(kind, now);
     }
 
     /// <summary>Writes a text artifact — a transcript, a manifest — as UTF-8 with no BOM.</summary>
@@ -61,7 +62,6 @@ public static class DurableArtifact
     /// </remarks>
     public static Artifact WriteText(
         CorpusDbContext context,
-        DirectoryInfo root,
         Guid meetingId,
         ArtifactKind kind,
         string relativePath,
@@ -70,7 +70,7 @@ public static class DurableArtifact
     {
         ArgumentNullException.ThrowIfNull(text);
 
-        return Write(context, root, meetingId, kind, relativePath, now, stream =>
+        return Write(context, meetingId, kind, relativePath, now, stream =>
         {
             using var writer = new StreamWriter(stream, new UTF8Encoding(false), leaveOpen: true);
             writer.Write(text);
@@ -88,22 +88,27 @@ public static class DurableArtifact
 /// until that transaction commits nothing in the corpus has moved. It also means every state a
 /// crash can leave is a state this type can be stopped in, which is how the sequence is tested
 /// without killing a process and hoping the timing lands where it was aimed.
+/// <para>
+/// The corpus arrives at the staging and not at the commit, even though only the commit writes a
+/// row: the file goes into the folder that corpus is, so taking it later would be the two halves
+/// arriving separately again — a file staged beside one corpus and a row recorded in another.
+/// </para>
 /// </remarks>
 public sealed class StagedArtifact : IDisposable
 {
-    private readonly DirectoryInfo _root;
+    private readonly CorpusDbContext _corpus;
     private readonly Guid _meetingId;
     private FileInfo? _temporary;
 
     private StagedArtifact(
-        DirectoryInfo root,
+        CorpusDbContext corpus,
         Guid meetingId,
         string relativePath,
         FileInfo temporary,
         long byteSize,
         string sha256)
     {
-        _root = root;
+        _corpus = corpus;
         _meetingId = meetingId;
         _temporary = temporary;
         RelativePath = relativePath;
@@ -140,16 +145,16 @@ public sealed class StagedArtifact : IDisposable
     /// </para>
     /// </remarks>
     public static StagedArtifact Stage(
-        DirectoryInfo root,
+        CorpusDbContext corpus,
         Guid meetingId,
         string relativePath,
         Action<Stream> contents)
     {
-        ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(corpus);
         ArgumentNullException.ThrowIfNull(contents);
         CorpusFiles.EnsureBelongsTo(meetingId, relativePath);
 
-        var destination = CorpusFiles.Locate(root, relativePath);
+        var destination = CorpusFiles.Locate(corpus.Root, relativePath);
         destination.Directory!.Create();
 
         var temporary = new FileInfo(
@@ -192,7 +197,7 @@ public sealed class StagedArtifact : IDisposable
                     + "The disk did not keep what it was given, and nothing was put in place.");
             }
 
-            return new StagedArtifact(root, meetingId, relativePath, temporary, temporary.Length, written);
+            return new StagedArtifact(corpus, meetingId, relativePath, temporary, temporary.Length, written);
         }
         catch
         {
@@ -218,13 +223,12 @@ public sealed class StagedArtifact : IDisposable
     /// meeting appear as a set or not at all.
     /// </para>
     /// </remarks>
-    public Artifact Commit(CorpusDbContext context, ArtifactKind kind, UtcTimestamp now)
+    public Artifact Commit(ArtifactKind kind, UtcTimestamp now)
     {
-        ArgumentNullException.ThrowIfNull(context);
         var temporary = _temporary
             ?? throw new InvalidOperationException($"'{RelativePath}' has already been put in place.");
 
-        var destination = CorpusFiles.Locate(_root, RelativePath);
+        var destination = CorpusFiles.Locate(_corpus.Root, RelativePath);
         var replaceable = kind.MayBeReplaced();
 
         // Looked up before the move, not after, because it is the only thing that can still refuse.
@@ -233,7 +237,7 @@ public sealed class StagedArtifact : IDisposable
         // at 'deepgram.json' would overwrite a paid response and then relabel its row. What the
         // corpus already knows about this path is what closes that, and it is worth nothing after
         // File.Move has run.
-        var artifact = context.Artifacts.FirstOrDefault(
+        var artifact = _corpus.Artifacts.FirstOrDefault(
             row => row.MeetingId == _meetingId && row.RelativePath == RelativePath);
 
         if (artifact is not null && artifact.Kind != kind)
@@ -271,7 +275,7 @@ public sealed class StagedArtifact : IDisposable
                 Sha256 = Sha256,
                 ConfirmedAt = now,
             };
-            context.Artifacts.Add(artifact);
+            _corpus.Artifacts.Add(artifact);
         }
         else
         {
@@ -285,7 +289,7 @@ public sealed class StagedArtifact : IDisposable
             artifact.ConfirmedAt = now;
         }
 
-        context.SaveChanges();
+        _corpus.SaveChanges();
         return artifact;
     }
 

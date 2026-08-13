@@ -43,13 +43,13 @@ public class DurableWriteTests
         var path = CorpusFiles.PathFor(meeting, "transcript.md");
 
         var artifact = DurableArtifact.WriteText(
-            context, corpus.Root, meeting, ArtifactKind.Transcript, path, When, "# Reunión\n\nUna línea.\n");
+            context, meeting, ArtifactKind.Transcript, path, When, "# Reunión\n\nUna línea.\n");
 
         artifact.RelativePath.ShouldBe(path);
         artifact.Origin.ShouldBe(ArtifactOrigin.Derived);
         artifact.Sha256.Length.ShouldBe(64);
         File.ReadAllText(CorpusFiles.Locate(corpus.Root, path).FullName).ShouldBe("# Reunión\n\nUna línea.\n");
-        EveryRowReReads(context, corpus.Root);
+        EveryRowReReads(context);
     }
 
     /// <summary>
@@ -65,7 +65,6 @@ public class DurableWriteTests
 
         DurableArtifact.WriteText(
             context,
-            corpus.Root,
             meeting,
             ArtifactKind.Transcript,
             CorpusFiles.PathFor(meeting, "transcript.md"),
@@ -73,7 +72,7 @@ public class DurableWriteTests
             "whatever");
 
         Files(corpus).ShouldBe([$"meetings/{meeting}/transcript.md"]);
-        ArtifactReconciler.Check(context, corpus.Root, verifyContents: true).ShouldBeEmpty();
+        ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
     }
 
     /// <summary>
@@ -90,7 +89,7 @@ public class DurableWriteTests
         var path = CorpusFiles.PathFor(meeting, "transcript.md");
 
         Should.Throw<InvalidOperationException>(() => DurableArtifact.Write(
-            context, corpus.Root, meeting, ArtifactKind.Transcript, path, When, stream =>
+            context, meeting, ArtifactKind.Transcript, path, When, stream =>
             {
                 stream.Write(Encoding.UTF8.GetBytes("half a transcript"));
                 throw new InvalidOperationException("the renderer gave up");
@@ -98,7 +97,7 @@ public class DurableWriteTests
 
         Files(corpus).ShouldBeEmpty();
         context.Artifacts.ShouldBeEmpty();
-        EveryRowReReads(context, corpus.Root);
+        EveryRowReReads(context);
     }
 
     /// <summary>
@@ -114,16 +113,16 @@ public class DurableWriteTests
         var path = CorpusFiles.PathFor(meeting, "transcript.md");
 
         var staged = StagedArtifact.Stage(
-            corpus.Root, meeting, path, stream => stream.Write(Encoding.UTF8.GetBytes("a whole transcript")));
+            context, meeting, path, stream => stream.Write(Encoding.UTF8.GetBytes("a whole transcript")));
 
         staged.IsPending.ShouldBeTrue();
         CorpusFiles.Locate(corpus.Root, path).Exists.ShouldBeFalse();
         context.Artifacts.ShouldBeEmpty();
-        EveryRowReReads(context, corpus.Root);
+        EveryRowReReads(context);
 
-        var findings = ArtifactReconciler.Check(context, corpus.Root);
+        var findings = ArtifactReconciler.Check(context);
         findings.Select(finding => finding.State).ShouldBe([ArtifactState.Unfinished]);
-        ArtifactReconciler.Sweep(corpus.Root).Count.ShouldBe(1);
+        ArtifactReconciler.Sweep(context).Count.ShouldBe(1);
         Files(corpus).ShouldBeEmpty();
     }
 
@@ -144,18 +143,18 @@ public class DurableWriteTests
         var path = CorpusFiles.PathFor(unrecorded, "deepgram.json");
 
         using var staged = StagedArtifact.Stage(
-            corpus.Root, unrecorded, path, stream => stream.Write(Encoding.UTF8.GetBytes("{}")));
+            context, unrecorded, path, stream => stream.Write(Encoding.UTF8.GetBytes("{}")));
 
-        Should.Throw<DbUpdateException>(() => staged.Commit(context, ArtifactKind.DeepgramResponse, When));
+        Should.Throw<DbUpdateException>(() => staged.Commit(ArtifactKind.DeepgramResponse, When));
 
         CorpusFiles.Locate(corpus.Root, path).Exists.ShouldBeTrue();
         staged.IsPending.ShouldBeFalse();
 
         using var reopened = corpus.Open();
         reopened.Artifacts.ShouldBeEmpty();
-        EveryRowReReads(reopened, corpus.Root);
+        EveryRowReReads(reopened);
 
-        var findings = ArtifactReconciler.Check(reopened, corpus.Root);
+        var findings = ArtifactReconciler.Check(reopened);
         findings.Select(finding => finding.State).ShouldBe([ArtifactState.Unrecorded]);
     }
 
@@ -173,15 +172,15 @@ public class DurableWriteTests
         var path = CorpusFiles.PathFor(meeting, "deepgram.json");
 
         DurableArtifact.WriteText(
-            context, corpus.Root, meeting, ArtifactKind.DeepgramResponse, path, When, "{\"paid\":true}");
+            context, meeting, ArtifactKind.DeepgramResponse, path, When, "{\"paid\":true}");
 
         Should.Throw<ArtifactWriteException>(() => DurableArtifact.WriteText(
-            context, corpus.Root, meeting, ArtifactKind.DeepgramResponse, path, When, "{}"));
+            context, meeting, ArtifactKind.DeepgramResponse, path, When, "{}"));
 
         File.ReadAllText(CorpusFiles.Locate(corpus.Root, path).FullName).ShouldBe("{\"paid\":true}");
         context.Artifacts.Count().ShouldBe(1);
         Files(corpus).ShouldBe([$"meetings/{meeting}/deepgram.json"]);
-        EveryRowReReads(context, corpus.Root);
+        EveryRowReReads(context);
     }
 
     /// <summary>
@@ -199,15 +198,15 @@ public class DurableWriteTests
         var path = CorpusFiles.PathFor(meeting, "manifest.json");
 
         var first = DurableArtifact.WriteText(
-            context, corpus.Root, meeting, ArtifactKind.Manifest, path, When, "{\"title\":\"before\"}");
+            context, meeting, ArtifactKind.Manifest, path, When, "{\"title\":\"before\"}");
         var second = DurableArtifact.WriteText(
-            context, corpus.Root, meeting, ArtifactKind.Manifest, path, When, "{\"title\":\"after\"}");
+            context, meeting, ArtifactKind.Manifest, path, When, "{\"title\":\"after\"}");
 
         second.Id.ShouldBe(first.Id);
         second.Origin.ShouldBe(ArtifactOrigin.Source);
         File.ReadAllText(CorpusFiles.Locate(corpus.Root, path).FullName).ShouldBe("{\"title\":\"after\"}");
         context.Artifacts.Count().ShouldBe(1);
-        EveryRowReReads(context, corpus.Root);
+        EveryRowReReads(context);
     }
 
     /// <summary>
@@ -225,10 +224,10 @@ public class DurableWriteTests
         var path = CorpusFiles.PathFor(meeting, "deepgram.json");
 
         DurableArtifact.WriteText(
-            context, corpus.Root, meeting, ArtifactKind.DeepgramResponse, path, When, "{\"paid\":true}");
+            context, meeting, ArtifactKind.DeepgramResponse, path, When, "{\"paid\":true}");
 
         var refused = Should.Throw<ArtifactWriteException>(() => DurableArtifact.WriteText(
-            context, corpus.Root, meeting, ArtifactKind.Manifest, path, When, "{\"meeting\":\"mine now\"}"));
+            context, meeting, ArtifactKind.Manifest, path, When, "{\"meeting\":\"mine now\"}"));
 
         refused.Message.ShouldContain("DeepgramResponse");
         File.ReadAllText(CorpusFiles.Locate(corpus.Root, path).FullName).ShouldBe("{\"paid\":true}");
@@ -237,7 +236,7 @@ public class DurableWriteTests
         artifact.Kind.ShouldBe(ArtifactKind.DeepgramResponse);
         artifact.Origin.ShouldBe(ArtifactOrigin.Source);
         Files(corpus).ShouldBe([$"meetings/{meeting}/deepgram.json"]);
-        EveryRowReReads(context, corpus.Root);
+        EveryRowReReads(context);
     }
 
     /// <summary>
@@ -253,7 +252,7 @@ public class DurableWriteTests
         var path = CorpusFiles.PathFor(meeting, "transcript.md");
 
         var first = DurableArtifact.WriteText(
-            context, corpus.Root, meeting, ArtifactKind.Transcript, path, When, "the first rendering");
+            context, meeting, ArtifactKind.Transcript, path, When, "the first rendering");
 
         // Read off the entity now: the second write updates this same row, so afterwards there is
         // no first hash left to compare against.
@@ -261,7 +260,6 @@ public class DurableWriteTests
 
         var second = DurableArtifact.WriteText(
             context,
-            corpus.Root,
             meeting,
             ArtifactKind.Transcript,
             path,
@@ -273,7 +271,7 @@ public class DurableWriteTests
         context.Artifacts.Count().ShouldBe(1);
         File.ReadAllText(CorpusFiles.Locate(corpus.Root, path).FullName)
             .ShouldBe("the second rendering, with the corrections applied");
-        EveryRowReReads(context, corpus.Root);
+        EveryRowReReads(context);
     }
 
     [Fact]
@@ -285,7 +283,6 @@ public class DurableWriteTests
 
         var artifact = DurableArtifact.WriteText(
             context,
-            corpus.Root,
             meeting,
             ArtifactKind.Summary,
             CorpusFiles.PathFor(meeting, "summary.md"),
@@ -294,7 +291,7 @@ public class DurableWriteTests
 
         artifact.ByteSize.ShouldBe(0);
         artifact.Sha256.ShouldBe("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-        EveryRowReReads(context, corpus.Root);
+        EveryRowReReads(context);
     }
 
     [Fact]
@@ -308,11 +305,11 @@ public class DurableWriteTests
         Random.Shared.NextBytes(audio);
 
         var artifact = DurableArtifact.Write(
-            context, corpus.Root, meeting, ArtifactKind.Audio, path, When, stream => stream.Write(audio));
+            context, meeting, ArtifactKind.Audio, path, When, stream => stream.Write(audio));
 
         artifact.ByteSize.ShouldBe(audio.Length);
         File.ReadAllBytes(CorpusFiles.Locate(corpus.Root, path).FullName).ShouldBe(audio);
-        EveryRowReReads(context, corpus.Root);
+        EveryRowReReads(context);
     }
 
     /// <summary>
@@ -329,11 +326,12 @@ public class DurableWriteTests
     public void A_path_that_is_not_this_meetings_is_refused(string shape)
     {
         using var corpus = new TemporaryCorpus();
+        using var context = corpus.Open();
         var meeting = Guid.NewGuid();
         var path = string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, meeting);
 
         Should.Throw<ArgumentException>(() => StagedArtifact.Stage(
-            corpus.Root, meeting, path, stream => stream.WriteByte(0)));
+            context, meeting, path, stream => stream.WriteByte(0)));
         Files(corpus).ShouldBeEmpty();
     }
 
@@ -341,10 +339,11 @@ public class DurableWriteTests
     public void Another_meetings_folder_is_not_somewhere_this_meeting_may_write()
     {
         using var corpus = new TemporaryCorpus();
+        using var context = corpus.Open();
         var meeting = Guid.NewGuid();
 
         Should.Throw<ArgumentException>(() => StagedArtifact.Stage(
-            corpus.Root,
+            context,
             meeting,
             CorpusFiles.PathFor(Guid.NewGuid(), "transcript.md"),
             stream => stream.WriteByte(0)));
@@ -354,11 +353,11 @@ public class DurableWriteTests
     /// The invariant every cut above is measured against: a row always names a file that is there
     /// and reads back as what the row says it is.
     /// </summary>
-    private static void EveryRowReReads(CorpusDbContext context, DirectoryInfo root)
+    private static void EveryRowReReads(CorpusDbContext context)
     {
         foreach (var artifact in context.Artifacts.AsNoTracking().ToList())
         {
-            var file = CorpusFiles.Locate(root, artifact.RelativePath);
+            var file = CorpusFiles.Locate(context.Root, artifact.RelativePath);
 
             file.Exists.ShouldBeTrue($"{artifact.RelativePath} has a row and no file");
             file.Length.ShouldBe(artifact.ByteSize, $"{artifact.RelativePath} is not the size its row says");

@@ -210,7 +210,6 @@ public class MeetingManifestTests
         DirectoryInfo root,
         string? title = "la del presupuesto") => MeetingIntake.Receive(
             context,
-            root,
             new FileInfo(DeepgramFixtures.PathOf(Fixture)),
             new MeetingDetails(When, DeepgramFixtures.ProfileOf(Fixture), "es", title),
             When);

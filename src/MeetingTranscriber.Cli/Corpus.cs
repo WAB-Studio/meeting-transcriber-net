@@ -23,9 +23,6 @@ namespace MeetingTranscriber.Cli;
 /// </remarks>
 public sealed class Corpus
 {
-    /// <summary>Where a corpus keeps its database, as arquitectura.md §4.1 lays a corpus out.</summary>
-    public const string DatabaseName = "corpus.db";
-
     /// <summary>The option every command takes.</summary>
     public const string Option = "--corpus";
 
@@ -33,7 +30,7 @@ public sealed class Corpus
 
     public DirectoryInfo Root { get; }
 
-    public string DatabasePath => Path.Combine(Root.FullName, DatabaseName);
+    public string DatabasePath => CorpusDatabase.PathIn(Root);
 
     public static Corpus At(Arguments arguments)
     {
@@ -58,7 +55,7 @@ public sealed class Corpus
     {
         Root.Create();
         DiscardEmpty();
-        return CorpusDatabase.OpenMigrated(DatabasePath);
+        return CorpusDatabase.OpenMigrated(Root);
     });
 
     /// <summary>
@@ -95,13 +92,13 @@ public sealed class Corpus
         if (!file.Exists)
         {
             throw new CommandException(
-                $"There is no {DatabaseName} in '{Root.FullName}'. 'migrate' makes one there.");
+                $"There is no {CorpusDatabase.DatabaseName} in '{Root.FullName}'. 'migrate' makes one there.");
         }
 
         if (file.Length == 0)
         {
             throw new CommandException(
-                $"The {DatabaseName} in '{Root.FullName}' is empty: nothing was ever written into "
+                $"The {CorpusDatabase.DatabaseName} in '{Root.FullName}' is empty: nothing was ever written into "
                 + "it. 'migrate' makes one there.");
         }
     }
@@ -125,10 +122,10 @@ public sealed class Corpus
         }
     }
 
-    private string Existing()
+    private DirectoryInfo Existing()
     {
         EnsureThere();
-        return DatabasePath;
+        return Root;
     }
 
     /// <summary>

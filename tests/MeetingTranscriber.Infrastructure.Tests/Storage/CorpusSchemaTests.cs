@@ -549,7 +549,7 @@ public class CorpusSchemaTests
         }
 
         SqliteConnection.ClearAllPools();
-        using var reading = CorpusDatabase.OpenReadOnly(corpus.DatabasePath);
+        using var reading = CorpusDatabase.OpenReadOnly(corpus.Root);
 
         Sql.Scalar(reading, "SELECT count(*) FROM meetings;").ShouldBe(1L);
         Sql.Scalar(reading, "PRAGMA foreign_keys;").ShouldBe(1L);

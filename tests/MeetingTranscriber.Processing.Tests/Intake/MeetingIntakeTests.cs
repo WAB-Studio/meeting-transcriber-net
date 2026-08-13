@@ -138,7 +138,7 @@ public class MeetingIntakeTests
         again.Turns.ShouldBe(first.Turns);
         context.Meetings.Count().ShouldBe(1);
         context.Artifacts.Count(artifact => artifact.Kind == ArtifactKind.DeepgramResponse).ShouldBe(1);
-        ArtifactReconciler.Check(context, corpus.Root, verifyContents: true).ShouldBeEmpty();
+        ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
     }
 
     /// <summary>
@@ -178,7 +178,6 @@ public class MeetingIntakeTests
         FileInfo? response = null,
         SourceProfile? profile = null) => MeetingIntake.Receive(
             context,
-            root,
             response ?? new FileInfo(DeepgramFixtures.PathOf(Fixture)),
             new MeetingDetails(
                 When,

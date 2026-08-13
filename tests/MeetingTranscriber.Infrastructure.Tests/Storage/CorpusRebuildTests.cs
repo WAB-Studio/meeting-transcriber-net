@@ -308,7 +308,7 @@ public class CorpusRebuildTests
     private static void WriteHumanLayer(CorpusDbContext context, DirectoryInfo root)
     {
         var clock = new SteppedClock(new DateTimeOffset(2026, 8, 7, 12, 0, 0, TimeSpan.Zero));
-        var human = new HumanLayer(context, root, clock);
+        var human = new HumanLayer(context, clock);
         var meeting = Guid.Parse(MeetingId);
 
         var techsed = human.Root(NodeKind.Organization, "TechSed");

@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 66/104
+progress: 68/106
 updated: 2026-08-13
 ---
 
@@ -53,6 +53,8 @@ Board: —
 - [x] ISC-83: Anti: a test cannot open a corpus on disk except through the one `TemporaryCorpus` the suites share.
 - [x] ISC-16: The build is clean under `-warnaserror` and `dotnet format --verify-no-changes` passes.
 - [x] ISC-17: A meeting, a turn and a job come back off disk as the types they went in as.
+- [x] ISC-105: A corpus says which folder it is, and it is the folder its database sits in.
+- [x] ISC-106: Anti: nothing that writes a corpus can be handed one corpus's database and another one's folder.
 
 ### F1 · Contracts and characterisation
 Why: what the Python system learned is specified in .NET before any of it is rebuilt, so the
@@ -211,6 +213,36 @@ Board: 7 · Distribución y backup
   or dies on.
 
 ## Decisions
+
+- **2026-08-13** — refined: copying the sources in is what importing is, against a first pass where
+  `--copy` was an option. `/adversarial-review` found all three reviewers on the same thing, and
+  they were right: without it the importer writes rows whose `relative_path` is read against the
+  corpus holding them and points into the Python corpus instead, so every source of an imported
+  meeting resolves to a file that is not there — nothing renders, the check calls them all missing,
+  and the copy the corpus is for is still one folder away from being deleted by hand. The option
+  saved disk and cost the corpus being a corpus. Two other things fell out of making it mandatory,
+  and both were live: a meeting whose transaction the corpus refused still reached the file writer,
+  because the gate read whether a `Meeting` had been built rather than whether the save committed,
+  and it threw the card writer's "there is no meeting" over the run; and the reflection probe never
+  saw `tools/`, which is where the mismatch actually was, so the rule now lives in
+  `MeetingTranscriber.Testing` and both suites assert it over what each can reach. What the
+  reviewers asked for and did not get is an immutable corpus handle: `CorpusDbContext.Root` refuses
+  after a `SetConnectionString` instead, which closes the same hole without a second type standing
+  between every caller and the corpus.
+- **2026-08-13** — A corpus is opened by naming its folder, and the context carries it: the folder
+  and the database stop being two arguments a caller has to keep pointing at the same place. The
+  choice was between that and a pair checked where it is built, and the pair loses on the same
+  ground the check would stand on — the folder *is* the database's folder, so it is one fact said
+  twice, and the check only exists because the second saying can be wrong. What it costs is that
+  every write signature changed at once, which is the whole point: `DirectoryInfo` and
+  `CorpusDbContext` no longer meet in any parameter list, so ISC-106 is a compile-time property and
+  its probe is a reflection sweep rather than a throw somebody has to remember to write. The one
+  live instance was the importer, which took `--database` and `--copy` as unrelated strings and had
+  two green tests copying into a folder no row pointed at; it takes `--corpus` now, and `--copy` is
+  a switch. `CorpusDbContext.Root` is read off the open connection rather than remembered from a
+  constructor, because that is the answer nothing can disagree with, and a context open on anything
+  that is not an absolute file path is refused rather than answered with a folder that depends on
+  the working directory.
 
 - **2026-08-13** — What authorises putting a lost source back is the hash the row already carries,
   and nothing else. The alternative shape was to name the meeting and the path on the command line
@@ -510,6 +542,8 @@ Board: 7 · Distribución y backup
 - ISC-15 — `git grep` over `tests/` returned no match 2026-08-07
 - ISC-16 — `dotnet build` 0 warnings 0 errors 2026-08-07
 - ISC-17 — `CorpusStorageTests` green 2026-08-07
+- ISC-105 — `CorpusIsOneThingTests.A_corpus_says_which_folder_it_is` green 2026-08-13
+- ISC-106 — `CorpusIsOneThingTests` in `Cli.Tests` and `CorpusImport.Tests` green 2026-08-13, each red against a signature taking both in the assemblies it covers
 - ISC-18 — `FixtureParsingTests` green 2026-08-07
 - ISC-19 — `DeepgramFixtureTests` green 2026-08-07
 - ISC-20 — `ReferenceBehaviourTests` green 2026-08-07

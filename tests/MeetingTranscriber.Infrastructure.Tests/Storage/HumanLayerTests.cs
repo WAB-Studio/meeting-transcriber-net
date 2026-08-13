@@ -99,7 +99,7 @@ public class HumanLayerTests
             var fixture = new HumanLayerFixture(context, corpus.Root);
             var meeting = fixture.Meeting("la daily");
             meetingId = meeting.Id;
-            var filed = MeetingManifest.Write(context, corpus.Root, meeting.Id, HumanLayerFixture.Now);
+            var filed = MeetingManifest.Write(context, meeting.Id, HumanLayerFixture.Now);
             MeetingManifest.Read(CorpusFiles.Locate(corpus.Root, filed.RelativePath)).Title.ShouldBe("la daily");
 
             fixture.HumanLayer.Describe(meeting, "la daily del equipo", "arranca el sprint");
@@ -140,7 +140,7 @@ public class HumanLayerTests
         using var context = corpus.OpenMigrated();
         var fixture = new HumanLayerFixture(context, corpus.Root);
         var meeting = fixture.Meeting("la daily");
-        var filed = MeetingManifest.Write(context, corpus.Root, meeting.Id, HumanLayerFixture.Now);
+        var filed = MeetingManifest.Write(context, meeting.Id, HumanLayerFixture.Now);
 
         var card = CorpusFiles.Locate(corpus.Root, filed.RelativePath);
         card.Delete();
@@ -501,7 +501,7 @@ internal sealed class HumanLayerFixture
     {
         _context = context;
         Clock = new SteppedClock(Now.Value);
-        HumanLayer = new HumanLayer(context, root, Clock);
+        HumanLayer = new HumanLayer(context, Clock);
     }
 
     public SteppedClock Clock { get; }

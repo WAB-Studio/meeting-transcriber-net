@@ -37,18 +37,13 @@ public sealed record RenderedMeeting(int Turns, Artifact Transcript, Artifact Ut
 /// </remarks>
 public static class MeetingRenderer
 {
-    public static RenderedMeeting Render(
-        CorpusDbContext context,
-        DirectoryInfo root,
-        Guid meetingId,
-        UtcTimestamp now)
+    public static RenderedMeeting Render(CorpusDbContext context, Guid meetingId, UtcTimestamp now)
     {
         ArgumentNullException.ThrowIfNull(context);
-        ArgumentNullException.ThrowIfNull(root);
 
         var meeting = context.Meetings.FirstOrDefault(row => row.Id == meetingId)
             ?? throw new RenderException($"There is no meeting {meetingId} to render.");
-        var turns = Project(context, root, meeting);
+        var turns = Project(context, meeting);
         var header = Header(context, meeting);
         var rendered = TranscriptRenderer.Render(header, turns);
 
@@ -61,7 +56,6 @@ public static class MeetingRenderer
             : null;
         var transcript = DurableArtifact.WriteText(
             context,
-            root,
             meeting.Id,
             ArtifactKind.Transcript,
             CorpusFiles.PathFor(meeting.Id, "transcript.md"),
@@ -69,7 +63,6 @@ public static class MeetingRenderer
             rendered.Markdown);
         var utterances = DurableArtifact.WriteText(
             context,
-            root,
             meeting.Id,
             ArtifactKind.Utterances,
             CorpusFiles.PathFor(meeting.Id, "utterances.jsonl"),
@@ -85,14 +78,14 @@ public static class MeetingRenderer
     /// than in one statement, because the position of a turn in its meeting is unique and the two
     /// generations share every one of them.
     /// </summary>
-    private static IReadOnlyList<Turn> Project(CorpusDbContext context, DirectoryInfo root, Meeting meeting)
+    private static IReadOnlyList<Turn> Project(CorpusDbContext context, Meeting meeting)
     {
         var response = context.Artifacts.FirstOrDefault(
                 artifact => artifact.MeetingId == meeting.Id && artifact.Kind == ArtifactKind.DeepgramResponse)
             ?? throw new RenderException(
                 $"Meeting {meeting.Id} has no response to render from; nothing derived can be produced without it.");
 
-        var file = CorpusFiles.Locate(root, response.RelativePath);
+        var file = CorpusFiles.Locate(context.Root, response.RelativePath);
         if (!file.Exists)
         {
             throw new RenderException(

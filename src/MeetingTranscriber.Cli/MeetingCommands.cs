@@ -39,7 +39,7 @@ public static class MeetingCommands
         arguments.EnsureNothingLeftOver();
 
         using var context = corpus.Write();
-        var received = MeetingIntake.Receive(context, corpus.Root, response, details, Clock.Now());
+        var received = MeetingIntake.Receive(context, response, details, Clock.Now());
 
         Report.Line(
             output,
@@ -63,7 +63,7 @@ public static class MeetingCommands
         arguments.EnsureNothingLeftOver();
 
         using var context = corpus.Write();
-        var rendered = MeetingRenderer.Render(context, corpus.Root, meeting, Clock.Now());
+        var rendered = MeetingRenderer.Render(context, meeting, Clock.Now());
 
         Report.Line(output, "meeting", $"{meeting}");
         Rendered(output, rendered.Turns, rendered.Transcript.RelativePath, rendered.Utterances.RelativePath);
@@ -83,7 +83,7 @@ public static class MeetingCommands
         arguments.EnsureNothingLeftOver();
 
         using var context = corpus.Write();
-        var report = CorpusRebuild.Run(context, corpus.Root, Clock.Now());
+        var report = CorpusRebuild.Run(context, Clock.Now());
 
         output.WriteLine(report.ToString());
         return report.CouldNotRebuild.Count == 0 ? Cli.Ok : Cli.Refused;
