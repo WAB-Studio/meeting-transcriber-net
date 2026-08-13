@@ -7,6 +7,7 @@ using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Rendering;
 
@@ -103,19 +104,19 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
                 () => imported = ImportMeeting(
                     legacy, organizations, initiatives, personIds, options, now, meeting));
 
-            // Rendering is its own transaction, after the meeting is on disk rather than tracked:
-            // it reads the response back through the corpus, and a row that has not been committed
-            // is a row a query does not find. It is also work worth keeping when it succeeds over a
-            // meeting whose derivatives then fail, and losing only when they do.
+            // Its own transaction, after the meeting is on disk rather than tracked: both writers
+            // read the meeting back through the corpus, and a row that has not been committed is a
+            // row a query does not find. It is also work worth keeping when it succeeds over a
+            // meeting whose files then fail, and losing only when they do.
             if (imported is not null && options.CopyTo is not null)
             {
-                var derivatives = new ImportReport();
+                var files = new ImportReport();
                 var landed = imported;
                 Commit(
-                    $"{legacy.Id} derivatives",
-                    derivatives,
+                    $"{legacy.Id} files",
+                    files,
                     report,
-                    () => RenderDerivatives(legacy, landed, options, now, derivatives));
+                    () => WriteMeetingFiles(legacy, landed, options, now, files));
             }
         }
 
@@ -374,7 +375,8 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
     }
 
     /// <summary>
-    /// Produces this meeting's derivatives here, from the response that was just imported.
+    /// Puts into this meeting's folder the files this application owns: the card that names it, and
+    /// the derivatives produced here from the response that was just imported.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -385,12 +387,18 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
     /// turns searchable.
     /// </para>
     /// <para>
+    /// The old corpus had no card of any kind, so an imported meeting gets one written here rather
+    /// than carried across. It is the same card a meeting filed from the command line gets, from
+    /// the same writer, because a folder recovered off a dead disk should not read differently
+    /// depending on which door its meeting came in through.
+    /// </para>
+    /// <para>
     /// It runs after the speakers, so a label somebody resolved in the old corpus is already a name
     /// in the transcript this produces. Rendering is repeatable on its own, so a second import
     /// re-renders to the same bytes rather than to a second file.
     /// </para>
     /// </remarks>
-    private void RenderDerivatives(
+    private void WriteMeetingFiles(
         LegacyMeeting legacy,
         Meeting meeting,
         ImportOptions options,
@@ -398,11 +406,19 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
         ImportReport report)
     {
         // Nothing per meeting when there is nowhere to write: the run's tally says none were
-        // rendered, and two hundred identical lines saying why would bury the list that matters.
+        // written, and two hundred identical lines saying why would bury the list that matters.
+        // Registering the sources where they already are creates no meeting folder, and the Python
+        // corpus is not somewhere this tool puts files.
         if (options.CopyTo is not { } corpus)
         {
             return;
         }
+
+        // Before the render, and it is the one of the two that has to survive the other failing:
+        // a meeting whose derivatives could not be produced is still a meeting somebody has to be
+        // able to recognise in a folder, and the card is what says which one it is.
+        MeetingManifest.Write(context, corpus, meeting.Id, now);
+        report.Imported(ImportCounter.Manifest);
 
         try
         {

@@ -2,6 +2,7 @@ using System.Diagnostics;
 
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.EntityFrameworkCore;
@@ -86,6 +87,13 @@ public static class CorpusRebuild
 
         foreach (var meeting in meetings)
         {
+            // The card first, and for every meeting rather than only the ones that render. It is
+            // what makes this the command that puts a corpus right: a meeting filed before the
+            // corpus had cards at all, or one whose title somebody has changed since, gets the card
+            // the corpus now describes — and a meeting whose response is missing is exactly the one
+            // worth being able to recognise in a folder.
+            MeetingManifest.Write(context, root, meeting, now);
+
             try
             {
                 turns += MeetingRenderer.Render(context, root, meeting, now).Turns;

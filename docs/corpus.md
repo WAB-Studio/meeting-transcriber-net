@@ -27,6 +27,30 @@ spool/<meeting_id>/      source     while the blocks are the only recoverable co
 where the database is gone, and a recovery card that can only be rebuilt from the thing it is
 meant to replace is no recovery card at all.
 
+It carries five fields — the meeting's id, when it started, its profile, its language and its
+title — and that is the whole of it. They answer the one question the folder cannot answer for
+itself: the files in it are named after what they hold, so a card listing them would repeat the
+directory listing, and everything else somebody typed is what the backup is for. It is always those
+five keys, with a null title where a meeting has no name, so nothing reading these meets a second
+shape of the file on the one meeting nobody got round to naming. `MeetingManifest` both writes it
+and reads it back, because a card this product could only write is one it could not actually
+recover from.
+
+Filing a meeting writes its card, and so does a rebuild — every meeting, every time. That second
+one is what makes this a promise about a folder rather than about a moment: intake only ever
+reaches the meeting being filed, so a meeting that predates the card, or one whose title somebody
+changed since, gets its card from `rebuild` and from nothing else. Writing it where a title is
+edited is the piece still missing, and until it lands a renamed meeting's card is one `rebuild`
+behind.
+
+It is also the one source that may be written over, which is the distinction the rest of this
+section turns on: *source* decides what a backup carries and what a deletion spares, and it is a
+separate question from whether a second write destroys anything. For every other source it does —
+those bytes cannot be obtained again. The card is produced from the `meetings` row every time, so
+filing a meeting again writes the card the corpus now describes, and a card somebody deleted comes
+back. Making it write-once would not be the careful choice: it would pin whatever the card said
+first and leave a meeting whose card was never written without one for good.
+
 ## In the database
 
 Derived tables — `utterances`, `summaries`, `decisions`, `action_items`, and both FTS5 indexes.
@@ -105,11 +129,18 @@ sources too. They are the record of what was charged and what state a restart fo
 the side it belongs on. A migration that moves a kind across the line is a deliberate act, not a
 typo that slips through.
 
-On disk it is the same line, enforced by the write itself: `StagedArtifact.Commit` puts a source in
-place with the replace refused, so the filesystem is what stops a paid response being overwritten
+On disk the line the write enforces is the other one — whether the corpus can produce this artifact
+again. `Artifacts.MayBeReplaced` answers it, and `StagedArtifact.Commit` puts anything it says no to
+in place with the replace refused, so the filesystem is what stops a paid response being overwritten
 rather than a check above it that a second writer could pass between the looking and the moving. A
 derivative replaces what was there, which is what re-rendering is, and keeps the one row the backup
-and the rebuild walk.
+and the rebuild walk. The manifest is the one artifact the two lines fall on opposite sides of.
+
+Replaceability is decided by the kind the caller names, and the destination is named by the same
+caller, so on their own the two say nothing about each other — a manifest addressed at
+`deepgram.json` would put a regenerable file over a paid one. What closes that is the row: a path
+holds one kind for as long as the corpus does, and a write that calls it something else is refused
+before the file moves, which is the only moment the refusal is still worth anything.
 
 The two cannot be written together, so the order decides which one is wrong first when the power
 goes: the file lands, then the row. A corpus that says less than it holds is recovered by looking;

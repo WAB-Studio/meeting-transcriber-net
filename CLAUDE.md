@@ -24,6 +24,14 @@ starting three more are different acts, and the second is still a task on the bo
 this repo is for is seeing how far the work runs without a person in the loop, so the default is
 to act and asking is the exception.
 
+The first question about any piece of work is whether it should exist at all. What earns a change
+its place is the real use it serves — a meeting somebody records, a query somebody runs, a recovery
+after a crash that happened. A problem only the code suggests, an edge case no recording reaches, a
+fallback for input nothing produces: those are not small tasks, they are invented ones, and they
+cost what real work costs while looking like progress. If what breaks without the change cannot be
+said in one sentence about somebody using this app, it does not get built — and a board task that
+turns out to be one of those gets said so, not quietly built anyway.
+
 - **Ask only about a decision that changes the shape of the work** — where human input lives, what
   a contract promises, whether to build for a query nobody has written yet. Ask before doing that
   work, not after: picking one and reporting it as a finding is deciding without asking.
@@ -69,23 +77,15 @@ something here has stopped earning its place, and the fix is to move a section o
 There is no installed build and no corpus anybody keeps, so nothing has to carry old data forward:
 a migration may drop what it replaces and say so, a column may be renamed for the name it should
 have had, and none of it needs a compatibility path, a fallback or a version check. Do what is
-right now, not what keeps a hypothetical old corpus readable. The legacy Python corpus is not an
-exception — it is read by a tool that never migrates anything and gets deleted whole.
-
-The first install somebody records into is when this section gets deleted, and only migrations
-written after that point owe anybody anything.
+right now, not what keeps a hypothetical old corpus readable — the legacy Python corpus included,
+which a tool reads and never migrates. `docs/migrations.md` says when this stops being true.
 
 ## Build and test
 
-```powershell
-dotnet restore
-dotnet format --verify-no-changes
-dotnet build --no-restore -warnaserror
-dotnet test --no-build
-```
-
-Those four commands are exactly what CI runs on `windows-latest`. Warnings fail the build in CI
-only; locally they show up and do not block. `dotnet format` has to pass clean.
+`dotnet restore`, then `dotnet format --verify-no-changes`, `dotnet build --no-restore -warnaserror`
+and `dotnet test --no-build`, each on its own line so a failure stops the pass. Those four are
+exactly what CI runs on `windows-latest`. Warnings fail the build in CI only; locally they show up
+and do not block. `dotnet format` has to pass clean.
 
 ## Layout
 

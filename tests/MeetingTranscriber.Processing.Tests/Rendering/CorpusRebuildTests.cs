@@ -24,6 +24,56 @@ public class CorpusRebuildTests
 
     private const string Sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
 
+    /// <summary>
+    /// The command that puts a corpus right, applied to the card. A meeting filed before this
+    /// corpus wrote cards at all has none, and nothing else would ever give it one: intake only
+    /// reaches the meeting whose response is being filed. So a rebuild writes every card, which is
+    /// also what makes the promise in docs/corpus.md true of a folder rather than of a moment.
+    /// </summary>
+    [Fact]
+    public void A_rebuild_leaves_every_meeting_with_the_card_that_names_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meetings = DeepgramFixtures.All.Select(fixture => Recorded(context, corpus.Root, fixture)).ToArray();
+        context.Artifacts.Where(artifact => artifact.Kind == ArtifactKind.Manifest).ShouldBeEmpty();
+
+        CorpusRebuild.Run(context, corpus.Root, When);
+
+        foreach (var meeting in meetings)
+        {
+            var manifest = context.Artifacts.Single(
+                artifact => artifact.MeetingId == meeting && artifact.Kind == ArtifactKind.Manifest);
+            manifest.Origin.ShouldBe(ArtifactOrigin.Source);
+            MeetingManifest.Read(CorpusFiles.Locate(corpus.Root, manifest.RelativePath))
+                .MeetingId.ShouldBe(meeting);
+        }
+    }
+
+    /// <summary>
+    /// The staleness a rebuild is the answer to today: the card is written where a meeting is
+    /// filed, so a title somebody changed afterwards does not reach it until something writes it
+    /// again. Running the rebuild is that something.
+    /// </summary>
+    [Fact]
+    public void A_rebuild_brings_a_card_up_to_a_title_somebody_changed_since()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelShort);
+        CorpusRebuild.Run(context, corpus.Root, When);
+
+        context.Meetings.Single(row => row.Id == meeting).Title = "la que renombraron después";
+        context.SaveChanges();
+
+        CorpusRebuild.Run(context, corpus.Root, When);
+
+        var manifest = context.Artifacts.Single(
+            artifact => artifact.MeetingId == meeting && artifact.Kind == ArtifactKind.Manifest);
+        MeetingManifest.Read(CorpusFiles.Locate(corpus.Root, manifest.RelativePath))
+            .Title.ShouldBe("la que renombraron después");
+    }
+
     [Fact]
     public void Every_meeting_that_is_still_here_is_rebuilt()
     {

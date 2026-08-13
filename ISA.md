@@ -1,7 +1,7 @@
 ---
 phase: climbing
-progress: 56/85
-updated: 2026-08-07
+progress: 61/99
+updated: 2026-08-13
 ---
 
 # ISA — meeting-transcriber-net
@@ -76,7 +76,7 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-24: A Deepgram response becomes turns with their channel, speaker label and offsets.
 - [x] ISC-25: Rebuilding the projections deletes only derivatives and leaves every edit a person made.
 - [x] ISC-26: Anti: a claim cannot cite a turn the meeting never had, and deleting a cited turn fails rather than taking the claim along.
-- [x] ISC-27: A source artifact is never written over; a derivative is replaced and stays one row.
+- [x] ISC-27: A source that cannot be produced again is never written over; a derivative is replaced and stays one row.
 - [x] ISC-28: A write cut off part-way leaves either nothing or the finished artifact, never a half one.
 - [x] ISC-29: What is recorded for an artifact is the hash of the bytes that were actually written.
 - [x] ISC-30: Anti: a meeting cannot write into another meeting's folder.
@@ -90,6 +90,11 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-34: The diagnostic CLI reports corpus state without opening the application.
 - [x] ISC-84: A paid response on disk becomes a meeting with its turns and its derived files, through the command line alone.
 - [x] ISC-85: Anti: the same response cannot become two meetings — filing it again re-renders the one it already is.
+- [x] ISC-86: A meeting's folder carries a `manifest.json`, recorded as a source artifact, from the moment the meeting is filed.
+- [x] ISC-87: A meeting is recognised from its `manifest.json` alone — its id, when it started, its profile, its language and its title — with nothing else read.
+- [x] ISC-88: Anti: a second filing cannot leave the recovery card stale or missing — it writes the card as the corpus now says it is.
+- [x] ISC-98: A rebuild leaves every meeting in the corpus holding the card the corpus now describes, including one that never had a card at all.
+- [x] ISC-99: Anti: a write cannot put one kind of artifact over the path another kind already holds.
 - [x] ISC-66: Every table of the human layer is written through `HumanLayer`.
 - [x] ISC-67: Exactly one person carries the flag naming the user of this install.
 - [x] ISC-68: Anti: a speaker label a person resolved is never overwritten by one the recording settled.
@@ -137,7 +142,9 @@ Board: 5 · Summaries
 
 ### F7 · Local knowledge
 Why: people and agents query the corpus with no server, no network and no cloud, and every
-answer traces back to a turn.
+answer traces back to a turn. What an answer says still stands is maintained as meetings arrive
+rather than re-derived at every question, and the corpus answers the same way whether or not a
+run has been over it.
 Board: 6 · Conocimiento local
 - [x] ISC-56: Search is the index answering, not the table.
 - [ ] ISC-57: Everything search promises to find is indexed.
@@ -148,6 +155,15 @@ Board: 6 · Conocimiento local
 - [x] ISC-58: An edited classification or speaker assignment survives a full rebuild.
 - [ ] ISC-59: The MCP server answers read-only over stdio and never writes.
 - [ ] ISC-60: Anti: an MCP response is bounded and the request is recorded locally.
+- [ ] ISC-89: What a meeting recorded is never rewritten by a later one — what changed is recorded beside it and both stay readable.
+- [ ] ISC-90: Two people asking the same corpus what still stands get the same answer, whoever is reading and whatever they read first.
+- [ ] ISC-91: What still stands comes back at the same cost with three hundred meetings behind it as with ten.
+- [ ] ISC-92: A decision comes back with when it was settled and what has happened around it since, so "nothing contradicted it" is never read as "somebody confirmed it".
+- [ ] ISC-93: Anything saying a decision no longer stands cites the turn where that was said, the way a decision cites the turn it came from.
+- [ ] ISC-94: Anti: two decisions that contradict each other with nothing settling it come back as a conflict, and neither is hidden for being the older one.
+- [ ] ISC-95: Anti: nothing is hidden for want of a pass having run over it — a decision stands until something says otherwise.
+- [ ] ISC-96: A person's word on whether a decision stands outranks whatever the machine concluded, and survives a rebuild.
+- [ ] ISC-97: Deciding what an arriving meeting changed reads a bounded part of the corpus, and what bounds it does not grow as meetings accumulate.
 
 ### F8 · Distribution and backup
 Why: the application installs, upgrades and comes back from a lost disk, because the corpus
@@ -174,9 +190,84 @@ Board: 7 · Distribución y backup
   regrouped. `docs/reference-behaviour.md` has the grouping rules but not this.
 - **What bounds an MCP response in ISC-60.** Rows, bytes or tokens — and the answer depends on
   what an agent actually asks for, which nobody has measured yet.
+- **How the corpus decides that a decision stopped standing.** ISC-89 to ISC-97 say what has to be
+  true of the answer; none of them says what produces it, and four shapes are on the table with no
+  evidence between them. A pass over each arriving meeting, linking a new decision to the standing
+  one it replaces — the most precise, and wrong in the direction that hides something somebody
+  decided. The same question asked at read time over the decisions of one node, which stores nothing
+  and answers differently on two days. A person asked at the end of a meeting which standing
+  decisions this one touched — the most reliable, and a chore that gets skipped. Or nothing inferred
+  at all: every decision comes back with its date and what has happened since, and the person
+  judges, which is ISC-92 on its own and can hide nothing. What decides between them is a corpus
+  with enough meetings on one node to measure, and that does not exist yet — the extraction that
+  fills `decisions` outside the importer is F6 and unbuilt. Two things would have to be measured
+  before choosing: how close two statements have to be before one is offered as replacing the other,
+  and how much of one node actually fits in a context, which is the number the read-time shape lives
+  or dies on.
 
 ## Decisions
 
+- **2026-08-13** — refined: ISC-89 to ISC-97 were written to a mechanism and are rewritten to the
+  property. The first wording named links, a reconciliation run and a scope of nodes — a design
+  chosen in one conversation, before anything outside the importer fills `decisions`, written into
+  the file whose job is to say what must be true and not what was built. The properties outlive
+  whatever produces them: what was recorded stays readable, the same question gets the same answer,
+  the answer says how old it is, a change cites a turn, a conflict is not settled by a date, a pass
+  that never ran hides nothing, a person outranks the machine, and neither the read nor the pass
+  grows with the corpus. Every one of those survives all four candidates, which is the test the
+  first wording failed. The mechanism moves to `## Not yet specified`, where it is one candidate and
+  not the answer. One argument used to pick it was overstated and does not survive: that the
+  decisions of one node would not fit in a context at three hundred meetings. Scoped to a node they
+  probably do, and what is left standing for maintaining the state is determinism and citability —
+  the same question answered the same way, and a change that points at a turn — not size.
+- **2026-08-13** — Whether a decision still stands is maintained when a meeting arrives, never
+  recomputed when somebody asks. Handing an agent every decision in the corpus and letting it work
+  out what survived was the shape to beat, and it loses three ways: at three hundred meetings it
+  does not fit in a context, it answers the same question differently on two days because the
+  ordering is re-derived each time, and it has nothing to cite — the evidence that a decision
+  survived is that nothing contradicted it, and an absence has no turn. Reconciling on arrival costs
+  one bounded pass per meeting instead, because the only candidates are what stands and the only new
+  evidence is the meeting that just landed. A link is pairwise and one of three kinds: `replaces`
+  ends standing, `refines` keeps it and adds to it, `contradicts` marks a conflict and hides neither
+  side. So a thread is a chain of links rather than a clustering pass over the whole corpus, which
+  is the part that neither scales nor can be trusted. `decisions` stays derived and untouched — it
+  is the evidence of what was said, and `corpus-db.md` §2 is what a half-derived table costs. The
+  run proposes and its links count, since a corpus that will not say anything until somebody
+  confirms it is one nobody keeps up with; a person's word outranks them and survives a rebuild,
+  which is the `action_items` and `action_item_progress` split again. Two things it may not do on
+  its own: settle a contradiction by date, and hide anything for want of having run. It is its own
+  job after the extraction rather than a wider extraction prompt — `arquitectura.md` §7.2 gives each
+  meeting a clean process and §7.3 refuses an extraction that mixes another meeting's content, and a
+  second job asking one narrow question is the more reliable prompt besides.
+- **2026-08-13** — The recovery card carries five fields and no more: the meeting's id, when it
+  started, its profile, its language and its title. Those are what says *which meeting this folder
+  is*, which is the one question the folder cannot answer for itself — the files in it are named
+  after what they hold, so the card listing them would only repeat the directory. Everything else a
+  person typed is the backup's job and not the card's, which is what `arquitectura.md` §4.1 means
+  by a card that does not stand in for SQLite; the line has to fall somewhere and identity is a
+  line that holds, where "the human layer that happens to be short" is not.
+- **2026-08-13** — The card lives in `Infrastructure/Artifacts` beside the write it is made of, not
+  in `Processing/Intake` where the first caller was. Nothing in it belongs to processing a response
+  — it reads a meetings row and writes a file — and the place it has to stay reachable from is
+  every layer that changes one of the five fields, which includes `HumanLayer` renaming a meeting.
+  A card only ingestion could write is a card that goes stale the first time somebody uses the
+  product, with the layer that made it stale unable to say so. `HumanLayer` still does not write it
+  — it holds no corpus root, and giving it one is a decision about what that type is for — so the
+  refresh a rename needs is `rebuild` today and a task on the board.
+- **2026-08-13** — A rebuild writes every meeting's card, which is what makes the promise hold of a
+  folder rather than of a moment. Intake only ever reaches the meeting being filed, so without this
+  every meeting that existed before the card did would keep having none, and no command would ever
+  give it one. It also writes the card for a meeting whose response is missing and cannot be
+  rendered, which is deliberate: that is precisely the meeting worth being able to recognise.
+- **2026-08-13** — refined: ISC-27 said *a source artifact is never written over*, and that turned
+  out to forbid the one thing the recovery card is for. The rule worth keeping is narrower — an
+  artifact that **cannot be produced again** is never written over — and the manifest is the single
+  source that fails that test, since the corpus regenerates it from the meetings row every time. So
+  `Artifacts.MayBeReplaced` now answers the overwrite question directly instead of `IsRebuildable`
+  inferring it from the origin, and the two questions the origin used to answer at once — *is this
+  in the backup* and *would a second write destroy something* — are separate. A card that may not
+  be corrected is not a safer card: it is one that keeps whatever it said the first time, and is
+  missing forever if the write that would have created it never happened.
 - **2026-08-07** — The command line has no way of its own to do anything. Every command is a call
   into the service the application would have called, and the one thing that had no service was
   filing a response that has no meeting yet: `MeetingIntake` is that, in `Processing`. It is not
@@ -403,3 +494,8 @@ Board: 7 · Distribución y backup
 - ISC-34 — `CommandLineTests` green 2026-08-07: `status` answers for a corpus this build has moved past, and `check` names the file the corpus claims and does not have
 - ISC-84 — `CliWalkthroughTests.A_response_becomes_a_meeting_that_renders_rebuilds_and_is_found_again` green 2026-08-07
 - ISC-85 — `CliWalkthroughTests.The_same_response_imported_twice_is_one_meeting` green 2026-08-07
+- ISC-86 — `MeetingManifestTests.Filing_a_response_leaves_a_card_recorded_as_a_source` and `CorpusImporterTests.An_imported_meeting_arrives_with_the_card_that_names_it` green 2026-08-13, covering both doors a meeting comes in through
+- ISC-87 — `MeetingManifestTests.A_meeting_is_recognised_from_its_card_with_nothing_else_left` green 2026-08-13: the corpus is disposed and deleted before the card is read, so only the copied file can answer
+- ISC-88 — `MeetingManifestTests.Filing_again_writes_the_card_as_the_corpus_now_says_it_is` and `.A_card_that_is_gone_comes_back_when_the_response_is_filed_again` green 2026-08-13; `DurableWriteTests.The_recovery_card_is_the_source_a_second_write_replaces` pins the rule under them, and `.A_source_is_never_written_over` still holds for the response
+- ISC-98 — `CorpusRebuildTests.A_rebuild_leaves_every_meeting_with_the_card_that_names_it` and `.A_rebuild_brings_a_card_up_to_a_title_somebody_changed_since` green 2026-08-13, the first starting from a corpus with no manifest row at all
+- ISC-99 — `DurableWriteTests.A_write_that_calls_a_path_something_it_is_not_is_refused_before_the_file_moves` green 2026-08-13: a manifest addressed at `deepgram.json` is refused and the paid bytes are still there afterwards. `ArtifactsTests.The_manifest_is_the_only_source_a_second_write_may_replace` holds the exception to one kind

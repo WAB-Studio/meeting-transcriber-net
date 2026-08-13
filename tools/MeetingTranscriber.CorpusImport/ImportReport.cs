@@ -62,6 +62,13 @@ public sealed class ImportReport
     public int TurnsProjected => Count(ImportCounter.Turn);
 
     /// <summary>
+    /// Meetings left with the card that names them without the database. Zero for the same reason
+    /// as the renders: registering the sources where they already sit creates no meeting folder to
+    /// put a card in, and the Python corpus is not somewhere this tool writes.
+    /// </summary>
+    public int ManifestsWritten => Count(ImportCounter.Manifest);
+
+    /// <summary>
     /// Files left where they are on purpose, by name and how many meetings had one. They are this
     /// application's to render again, so there are three per meeting and none of them is news.
     /// </summary>
@@ -129,6 +136,7 @@ public sealed class ImportReport
         report.AppendLine($"corrections   {CorrectionsImported}");
         report.AppendLine($"extractions   {ExtractionRunsImported} with the run they came out of");
         report.AppendLine($"derivatives   {MeetingsRendered} meetings rendered, {TurnsProjected} turns projected");
+        report.AppendLine($"manifests     {ManifestsWritten} meetings recognisable without the database");
 
         if (skipped.Count > 0)
         {
@@ -176,4 +184,5 @@ public enum ImportCounter
     ExtractionRun,
     Rendered,
     Turn,
+    Manifest,
 }
