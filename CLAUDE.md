@@ -65,7 +65,7 @@ something here has stopped earning its place, and the fix is to move a section o
 | Where the rest lives | Open it when |
 | --- | --- |
 | `arquitectura.md` | The design as a whole, in Spanish. Written in the destination, not the present. |
-| `docs/layout.md` | Looking for where something lives. |
+| `docs/layout.md` | Looking for where something lives, or what a project may reference. |
 | `docs/shell.md` | A command by hand did something other than what it looks like it did. |
 | `docs/migrations.md` | Adding or editing an EF migration. |
 | `docs/packages.md` | Adding, bumping or choosing a package. |
@@ -87,14 +87,6 @@ and `dotnet test --no-build`, each on its own line so a failure stops the pass. 
 exactly what CI runs on `windows-latest`. Warnings fail the build in CI only; locally they show up
 and do not block. `dotnet format` has to pass clean.
 
-## Layout
-
-`src/` is the product and `tools/` is run by hand beside it: nothing under `src/` may reference
-`tools/` or know the Python system existed, so deleting the importer deletes two folders rather
-than untangling the application. The seven-project split in `arquitectura.md` §3 is the
-destination — a project appears when there is code for it, dependencies point inwards, and
-`MeetingTranscriber.Domain` stays free of Windows references, with tests asserting exactly that.
-
 ## How work starts and ends
 
 `ISA.md` says what done means and the board says what to do next. **A claim closes on a probe that
@@ -110,6 +102,12 @@ about whether the code or the claim is wrong.
 4. A diff over 50 lines that are not comments runs `/adversarial-review` first, and what the
    verdict confirms gets fixed in the same pass. The task then moves to `in review` with the
    evidence and the verdict in a comment. Closing it is the user's.
+5. A session leaves nothing of its own open: `gh pr merge --merge --delete-branch`, `main` pulled,
+   the local branch gone and the tree clean, so the next one cuts a branch from a current `main`
+   instead of inheriting the last one and writing over it. Merging the PR is the session's;
+   closing the card stays the user's, and `main` is where they read the work because nothing has
+   shipped. A red command or a confirmed finding still unfixed stops the merge — then the PR
+   stays open and the session's last words are that it did and why.
 
 ## The contract
 
