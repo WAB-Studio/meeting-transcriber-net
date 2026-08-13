@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 68/106
+progress: 69/107
 updated: 2026-08-13
 ---
 
@@ -55,6 +55,7 @@ Board: —
 - [x] ISC-17: A meeting, a turn and a job come back off disk as the types they went in as.
 - [x] ISC-105: A corpus says which folder it is, and it is the folder its database sits in.
 - [x] ISC-106: Anti: nothing that writes a corpus can be handed one corpus's database and another one's folder.
+- [x] ISC-107: Anti: closing a corpus cannot drop a connection another corpus has pooled.
 
 ### F1 · Contracts and characterisation
 Why: what the Python system learned is specified in .NET before any of it is rebuilt, so the
@@ -213,6 +214,15 @@ Board: 7 · Distribución y backup
   or dies on.
 
 ## Decisions
+
+- **2026-08-13** — A corpus lets go of its own pooled connections and nobody else's, against the
+  other candidate of taking test connections out of the pool entirely. Pooling off would have made
+  the suites stop exercising the connection settings the design leans on, and it needs the way a
+  corpus is opened to grow a flag that exists for tests; clearing one corpus's pools needs no flag,
+  because a pool is found by connection string and the two strings a corpus can be opened under are
+  already built in one place. That is also why the clearing lives next to them rather than at the
+  test helper: spelled out a second time, it would still be clearing the right pool right up until
+  something is added to the first spelling.
 
 - **2026-08-13** — refined: copying the sources in is what importing is, against a first pass where
   `--copy` was an option. `/adversarial-review` found all three reviewers on the same thing, and
@@ -468,6 +478,21 @@ Board: 7 · Distribución y backup
 
 ## Learning
 
+- **conjecture** — A helper every test opens a corpus through is where a rule about corpora is
+  held, so mending the process-wide pool clear inside it mends it everywhere.
+- **refuted-by** — A second call sat in `CorpusSchemaTests`, in a test that opens a corpus
+  read-only after a writer, and it was found by an adversarial reviewer rather than by anything
+  going red. The suite passed twenty times over the half-fix, because what the call breaks is
+  another test that happened to be between putting a connection back and taking it out again.
+- **learned** — A rule saying what nothing may call is not held by fixing the place it was called.
+  The helper concentrates how a corpus is opened, which is why the rule looked contained; it has
+  no say over a suite that reaches for the provider's static method directly, and that call reads
+  as harmless everywhere it appears.
+- **criterion-now** — The test tree is swept for `ClearAllPools` and the sweep names the file, so
+  the second one costs a red test at the moment it is written. A test lets go of its own corpus
+  through `CorpusDatabase.ClearPoolsFor`, which is also the only place that knows both connection
+  strings a corpus can be pooled under.
+
 - **conjecture** — A `corpus.db` that is there is either a corpus or a permissions problem, and
   SQLite's error says which.
 - **refuted-by** — A file of zero bytes is neither. SQLite reads it as an empty database and
@@ -544,6 +569,7 @@ Board: 7 · Distribución y backup
 - ISC-17 — `CorpusStorageTests` green 2026-08-07
 - ISC-105 — `CorpusIsOneThingTests.A_corpus_says_which_folder_it_is` green 2026-08-13
 - ISC-106 — `CorpusIsOneThingTests` in `Cli.Tests` and `CorpusImport.Tests` green 2026-08-13, each red against a signature taking both in the assemblies it covers
+- ISC-107 — `TemporaryCorpusTests` green 2026-08-13, and the whole suite twenty times over: `Closing_a_corpus_leaves_another_corpus_the_connection_it_had_pooled` red against `SqliteConnection.ClearAllPools` on a different handle coming back, `No_test_empties_the_pools_of_every_corpus_in_the_process` red naming `CorpusSchemaTests.cs`, which was the second call site and the one no test had ever caught
 - ISC-18 — `FixtureParsingTests` green 2026-08-07
 - ISC-19 — `DeepgramFixtureTests` green 2026-08-07
 - ISC-20 — `ReferenceBehaviourTests` green 2026-08-07

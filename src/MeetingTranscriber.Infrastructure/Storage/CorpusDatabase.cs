@@ -39,16 +39,30 @@ public static class CorpusDatabase
     }
 
     /// <summary>
+    /// How this corpus is named to SQLite, in each of the two ways it can be opened. Both, because
+    /// a connection pool is keyed by the exact string that opened it, so read-only is a second pool
+    /// holding the same file — and a corpus reached both ways is holding it twice.
+    /// </summary>
+    private static IEnumerable<string> ConnectionStringsFor(DirectoryInfo root)
+    {
+        yield return ConnectionStringFor(root, readOnly: false);
+        yield return ConnectionStringFor(root, readOnly: true);
+    }
+
+    private static string ConnectionStringFor(DirectoryInfo root, bool readOnly) =>
+        new SqliteConnectionStringBuilder
+        {
+            DataSource = PathIn(root),
+            Mode = readOnly ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWriteCreate,
+        }.ToString();
+
+    /// <summary>
     /// Internal because the way in is a folder. A caller composing its own options could open a
     /// database anywhere, which is a corpus whose folder is not one this product laid out.
     /// </summary>
     internal static DbContextOptions<CorpusDbContext> OptionsFor(DirectoryInfo root, bool readOnly = false)
     {
-        var connectionString = new SqliteConnectionStringBuilder
-        {
-            DataSource = PathIn(root),
-            Mode = readOnly ? SqliteOpenMode.ReadOnly : SqliteOpenMode.ReadWriteCreate,
-        }.ToString();
+        var connectionString = ConnectionStringFor(root, readOnly);
 
         var options = new DbContextOptionsBuilder<CorpusDbContext>()
             .UseSqlite(connectionString, sqlite => sqlite.MigrationsHistoryTable(MigrationsHistoryTable))
@@ -76,5 +90,26 @@ public static class CorpusDatabase
         var context = Open(root);
         context.Database.Migrate();
         return context;
+    }
+
+    /// <summary>
+    /// Drops the idle connections this corpus left pooled, so its file is no longer held open and
+    /// the folder can be deleted or moved.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than at the caller because a pool is found by connection string and this class
+    /// is the only thing that builds them: a caller spelling the string out itself would go on
+    /// emptying a pool nothing is in the day a setting is added here, and the file would quietly
+    /// stay held. It reaches this corpus and no other, which is the whole point —
+    /// <c>SqliteConnection.ClearAllPools</c> disposes the idle connections of every corpus in the
+    /// process, including the one another thread is about to take out of the pool and open.
+    /// </remarks>
+    public static void ClearPoolsFor(DirectoryInfo root)
+    {
+        foreach (var connectionString in ConnectionStringsFor(root))
+        {
+            using var connection = new SqliteConnection(connectionString);
+            SqliteConnection.ClearPool(connection);
+        }
     }
 }

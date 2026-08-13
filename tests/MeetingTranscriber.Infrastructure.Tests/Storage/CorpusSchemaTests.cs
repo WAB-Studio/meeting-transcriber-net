@@ -548,7 +548,10 @@ public class CorpusSchemaTests
             InsertMeeting(writing);
         }
 
-        SqliteConnection.ClearAllPools();
+        // The writer has to be gone before the reader arrives, or the read-only connection is
+        // reading a WAL somebody still owns. This corpus's pools and no other's: the corpora of
+        // the tests running beside this one are not this test's to close.
+        CorpusDatabase.ClearPoolsFor(corpus.Root);
         using var reading = CorpusDatabase.OpenReadOnly(corpus.Root);
 
         Sql.Scalar(reading, "SELECT count(*) FROM meetings;").ShouldBe(1L);

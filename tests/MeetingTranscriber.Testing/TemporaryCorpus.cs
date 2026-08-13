@@ -1,7 +1,5 @@
 using MeetingTranscriber.Infrastructure.Storage;
 
-using Microsoft.Data.Sqlite;
-
 namespace MeetingTranscriber.Testing;
 
 /// <summary>
@@ -42,11 +40,11 @@ public sealed class TemporaryCorpus : IDisposable
 
     public void Dispose()
     {
-        // Without this the pooled connection still holds the file and the delete fails. It empties
-        // every pool in the process, so it also reaches the corpora of the tests running alongside
-        // this one — which costs them a reconnection and nothing else: a connection somebody is
-        // holding is not closed underneath them, only kept out of the pool once they hand it back.
-        SqliteConnection.ClearAllPools();
+        // Without this the pooled connection still holds the file and the delete fails. Only this
+        // corpus's pools: emptying every pool in the process disposes the idle connections of the
+        // corpora belonging to the tests running alongside this one, and the one that then hands
+        // a disposed connection to a test that never touched this corpus fails it.
+        CorpusDatabase.ClearPoolsFor(Root);
 
         try
         {
