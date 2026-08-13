@@ -1,22 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- Follows the project under test, which is Windows because recording is. -->
+    <!-- Follows the project under test. -->
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\MeetingTranscriber.Cli\MeetingTranscriber.Cli.csproj" />
-    <ProjectReference Include="..\MeetingTranscriber.Testing\MeetingTranscriber.Testing.csproj" />
+    <ProjectReference Include="..\..\src\MeetingTranscriber.Audio\MeetingTranscriber.Audio.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="Shouldly" />
-    <Using Include="MeetingTranscriber.Testing" />
   </ItemGroup>
 
   <ItemGroup>

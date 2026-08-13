@@ -29,7 +29,7 @@ in a hurry later, mid-task.
 | SQLite and migrations | `Microsoft.EntityFrameworkCore.Sqlite` |
 | Process capture and other Win32 APIs | `Microsoft.Windows.CsWin32` |
 | Windows credentials | `Meziantou.Framework.Win32.CredentialManager` |
-| Audio | `NAudio` |
+| Audio | `NAudio.Wasapi` |
 | Deepgram | `HttpClient` + `System.Text.Json`, no SDK |
 | MCP | `ModelContextProtocol` |
 | MVVM | `CommunityToolkit.Mvvm` |

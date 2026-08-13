@@ -37,7 +37,10 @@ public class CommandLineTests
 
         run.Code.ShouldBe(Cli.Ok);
         foreach (var command in new[]
-            { "migrate", "status", "check", "sweep", "restore", "compact", "import", "render", "rebuild", "search" })
+        {
+            "migrate", "status", "check", "sweep", "restore", "compact", "import", "render", "rebuild",
+            "devices", "capture", "search",
+        })
         {
             run.Output.ShouldContain(command);
         }

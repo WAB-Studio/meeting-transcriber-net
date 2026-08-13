@@ -5,7 +5,8 @@ map you open when you need to know where something lives.
 
 ```text
 src/MeetingTranscriber.App/               WinUI 3, packaged as MSIX
-src/MeetingTranscriber.Cli/               diagnosis, import, rebuild and recovery from a prompt
+src/MeetingTranscriber.Audio/             WASAPI: the devices, the two streams and their levels
+src/MeetingTranscriber.Cli/               diagnosis, import, rebuild, recovery and capture from a prompt
 src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
 src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
@@ -15,8 +16,11 @@ tests/MeetingTranscriber.Testing/         what a test opens: corpus, SQL, fixtur
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```
 
-Domain, Infrastructure, Processing and CorpusImport each have their tests under
-`tests/<project>.Tests/`.
+Domain, Audio, Infrastructure, Processing and CorpusImport each have their tests under
+`tests/<project>.Tests/`. What `Audio.Tests` can hold is bounded by there being no device on a
+build agent: the rules — which endpoint a typed name means, what a block of bytes is worth on a
+meter — are tested there, and that two streams really open at once is a probe somebody runs with
+`capture`, recorded in the ISA like a paid one.
 
 `tests/MeetingTranscriber.Testing/` holds no test. It is where `TemporaryCorpus`, the raw-SQL
 helpers and the inventory of the Deepgram fixtures live, so a suite that opens a corpus or walks
@@ -26,7 +30,9 @@ there to `Processing` would let a domain rule be proved against the parser's own
 
 `MeetingTranscriber.Cli` is the product's other front end and holds no rule of its own: every
 command is a call into the same service the application calls, and what it adds is argument
-parsing, a report and an exit code. It is where the whole path from a paid response to an answer
+parsing, a report and an exit code. It targets Windows because `capture` does, and `capture` is
+there rather than only in the window because drift is claimed over two hours — a measurement
+nobody repeats by clicking. It is where the whole path from a paid response to an answer
 can be exercised without automating a window — `tests/MeetingTranscriber.Cli.Tests/` walks it —
 and it is the half of the alias that exists: nothing packages it yet, so an installed build has no
 `meeting-transcriber` on the PATH until ISC-64 is closed.

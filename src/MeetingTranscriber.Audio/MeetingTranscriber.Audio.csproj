@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- WASAPI is Win32, and capturing one process needs Windows 11: the same floor the packaged
+         application declares, so CA1416 says so while compiling rather than a recording finding
+         out. -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <RootNamespace>MeetingTranscriber.Audio</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The channel contract, the instants and the lengths. Nothing else: this project is the
+         device side of it, and knows nothing about a corpus. -->
+    <ProjectReference Include="..\MeetingTranscriber.Domain\MeetingTranscriber.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio.Wasapi" />
+  </ItemGroup>
+
+</Project>
