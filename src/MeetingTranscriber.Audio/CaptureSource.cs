@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
@@ -84,10 +86,12 @@ public sealed class CaptureSource : IDisposable
     public LevelReading Level() => meter.Read();
 
     /// <summary>
-    /// Stops the stream and finishes the file. A stream that had already ended by itself throws
-    /// here, carrying the reason it ended.
+    /// Asks the stream to stop, and comes back without waiting for it to. Separate from
+    /// <see cref="Finish"/> so that a session can ask both of its sources before waiting on
+    /// either: waiting on one first leaves the other recording for however long that took, which
+    /// is a difference between the two files invented by the order they were stopped in.
     /// </summary>
-    public void Stop()
+    internal void AskToStop()
     {
         if (!running)
         {
@@ -96,7 +100,14 @@ public sealed class CaptureSource : IDisposable
 
         running = false;
         client.StopRecording();
+    }
 
+    /// <summary>
+    /// Waits for the stream to be over and finishes the file. A stream that had already ended by
+    /// itself throws here, carrying the reason it ended.
+    /// </summary>
+    internal void Finish()
+    {
         if (!ended.Wait(StopsWithin))
         {
             throw new AudioCaptureException(
@@ -129,21 +140,41 @@ public sealed class CaptureSource : IDisposable
     /// <summary>
     /// Closes a source that never became part of a recording and takes its file with it. What it
     /// leaves behind would otherwise be a file with nothing in it, standing exactly where the
-    /// next attempt wants to write.
+    /// next attempt wants to write — so a capture that failed once would go on failing for a
+    /// reason that is no longer the reason.
     /// </summary>
+    /// <remarks>
+    /// Nothing here throws. It runs while a session is already failing, and what the caller has
+    /// to hear is why that happened, not that a handle would not close on the way out.
+    /// </remarks>
     internal void Discard()
     {
-        Dispose();
-        File.Refresh();
-        if (File.Exists)
+        LetGo();
+        Erase(File);
+    }
+
+    /// <summary>
+    /// Closes everything this source holds and keeps its file. Like <see cref="Discard"/> it does
+    /// not throw: it is how a session lets go of every source it has, and one handle refusing to
+    /// close is not a reason to leave the next source recording.
+    /// </summary>
+    internal void LetGo()
+    {
+        try
         {
-            File.Delete();
+            Dispose();
+        }
+        catch (Exception letGo) when (letGo is IOException or UnauthorizedAccessException or COMException)
+        {
+            // Swallowed on purpose, and only here: see the summary. What a source has to say
+            // about how it ended is said by Finish, which the session calls before this.
         }
     }
 
     /// <summary>
     /// Opens <paramref name="device"/> onto <paramref name="channel"/> and starts recording it.
-    /// Anything the machine refuses comes back as a throw with nothing left open.
+    /// Anything the machine refuses comes back as a throw, with nothing left open and no file
+    /// left behind.
     /// </summary>
     internal static CaptureSource Open(
         AudioChannel channel,
@@ -155,31 +186,90 @@ public sealed class CaptureSource : IDisposable
         ArgumentNullException.ThrowIfNull(file);
         ArgumentNullException.ThrowIfNull(stream);
 
-        if (file.Exists)
-        {
-            throw new AudioCaptureException(
-                $"'{file.FullName}' is already there, and a recording is not written over another one.");
-        }
-
         var endpoint = AudioDevices.Open(device);
         WasapiCapture? client = null;
         WaveFileWriter? writer = null;
+        var claimed = false;
+
+        void LetGo()
+        {
+            writer?.Dispose();
+            client?.Dispose();
+            endpoint.Dispose();
+
+            if (claimed)
+            {
+                Erase(file);
+            }
+        }
+
         try
         {
             client = stream(endpoint);
             var format = StreamFormat.Of(client.WaveFormat);
-            writer = new WaveFileWriter(file.FullName, client.WaveFormat);
+
+            // Asked before the device is started rather than answered by its first block: a width
+            // nothing here can read is knowable now, and a capture that dies a second in is one
+            // somebody has already started holding a meeting into.
+            Levels.EnsureMeterable(format);
+
+            var bytes = Claim(file);
+            claimed = true;
+            writer = new WaveFileWriter(bytes, client.WaveFormat);
 
             var source = new CaptureSource(channel, device, format, file, endpoint, client, writer);
             source.Start();
             return source;
         }
+        catch (COMException refused)
+        {
+            LetGo();
+            throw new AudioCaptureException(
+                $"Windows would not record '{device.Name}': {refused.Message}", refused);
+        }
         catch
         {
-            writer?.Dispose();
-            client?.Dispose();
-            endpoint.Dispose();
+            LetGo();
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Takes the path for this recording, or says it is taken. The file system answers rather
+    /// than a question asked a moment earlier: NAudio opens a path by truncating whatever is
+    /// there, so a check and then a create is a window in which the other capture's WAV is the
+    /// thing being truncated.
+    /// </summary>
+    private static FileStream Claim(FileInfo file)
+    {
+        try
+        {
+            return new FileStream(file.FullName, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+        }
+        catch (IOException taken) when (System.IO.File.Exists(file.FullName))
+        {
+            throw new AudioCaptureException(
+                $"'{file.FullName}' is already there, and a recording is not written over another one.", taken);
+        }
+    }
+
+    /// <summary>
+    /// Removes the file of an attempt that never became a recording. A file that will not delete
+    /// is not worth replacing the reason the attempt failed with, so it does not throw either.
+    /// </summary>
+    private static void Erase(FileInfo file)
+    {
+        try
+        {
+            file.Refresh();
+            if (file.Exists)
+            {
+                file.Delete();
+            }
+        }
+        catch (Exception left) when (left is IOException or UnauthorizedAccessException)
+        {
+            // Swallowed on purpose: see the summary.
         }
     }
 

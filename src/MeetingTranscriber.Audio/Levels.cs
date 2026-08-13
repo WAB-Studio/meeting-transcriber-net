@@ -32,6 +32,17 @@ public static class Levels
         });
     }
 
+    /// <summary>
+    /// Refuses a format no block of which could be metered, and does it by metering no bytes at
+    /// all — so what is checked before a device is opened is the same rule, and not a second copy
+    /// of it that can fall out of step.
+    /// </summary>
+    /// <remarks>
+    /// Worth checking early because the alternative is a capture that opens, starts and dies on
+    /// its first block, which is a recording somebody has already begun holding.
+    /// </remarks>
+    public static void EnsureMeterable(StreamFormat format) => Peak([], format);
+
     private static float LoudestFloat(ReadOnlySpan<byte> block)
     {
         var peak = 0f;

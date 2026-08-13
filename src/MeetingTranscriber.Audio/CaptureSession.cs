@@ -23,8 +23,13 @@ namespace MeetingTranscriber.Audio;
 public sealed class CaptureSession : IDisposable
 {
     private readonly CaptureSource[] sources;
+    private readonly SilentPlayback silence;
 
-    private CaptureSession(CaptureSource[] sources) => this.sources = sources;
+    private CaptureSession(CaptureSource[] sources, SilentPlayback silence)
+    {
+        this.sources = sources;
+        this.silence = silence;
+    }
 
     /// <summary>Both sources, in channel order.</summary>
     public IReadOnlyList<CaptureSource> Sources => sources;
@@ -46,6 +51,10 @@ public sealed class CaptureSession : IDisposable
 
         folder.Create();
 
+        // Before channel 0 opens, so the endpoint is already handing packets over by the time
+        // anything is listening for them.
+        var silence = SilentPlayback.On(playback);
+
         var opened = new List<CaptureSource>();
         try
         {
@@ -58,22 +67,14 @@ public sealed class CaptureSession : IDisposable
         {
             foreach (var source in opened)
             {
-                try
-                {
-                    source.Discard();
-                }
-                catch (Exception left) when (left is IOException or UnauthorizedAccessException)
-                {
-                    // Why this one is swallowed: what the caller needs is the reason the session
-                    // could not start, and a file that would not delete is a smaller problem than
-                    // that reason arriving as "the file is in use".
-                }
+                source.Discard();
             }
 
+            silence.Dispose();
             throw;
         }
 
-        return new CaptureSession([.. opened]);
+        return new CaptureSession([.. opened], silence);
     }
 
     /// <summary>The source feeding <paramref name="channel"/>.</summary>
@@ -82,28 +83,31 @@ public sealed class CaptureSession : IDisposable
         ?? throw new AudioContractException($"This capture has no {channel} source.");
 
     /// <summary>
-    /// Stops both streams and finishes both files. Every source is stopped even when one of them
-    /// has something to say about how it ended, because the other one's file is a recording
-    /// somebody wants either way.
+    /// Stops both streams and finishes both files. Every source is asked to stop before either is
+    /// waited on, and every one of them is stopped even when another has something to say about
+    /// how it ended — the other one's file is a recording somebody wants either way.
     /// </summary>
     public void Stop()
     {
         var failures = new List<Exception>();
+
+        // Both asked, then both waited on. The other way round leaves the second source recording
+        // for however long the first one took to let go, which is a difference between the two
+        // files that nothing in the meeting put there.
         foreach (var source in sources)
         {
-            try
-            {
-                source.Stop();
-            }
-            catch (AudioCaptureException failure)
-            {
-                failures.Add(failure);
-            }
+            Collect(source.AskToStop, failures);
+        }
+
+        foreach (var source in sources)
+        {
+            Collect(source.Finish, failures);
         }
 
         if (failures.Count == 1)
         {
-            throw failures[0];
+            throw failures[0] as AudioCaptureException
+                ?? new AudioCaptureException(failures[0].Message, failures[0]);
         }
 
         if (failures.Count > 1)
@@ -117,7 +121,28 @@ public sealed class CaptureSession : IDisposable
     {
         foreach (var source in sources)
         {
-            source.Dispose();
+            // Every source, whatever the one before it did with its last block: this is where the
+            // handles are let go, and Stop is where a failure is reported.
+            source.LetGo();
+        }
+
+        silence.Dispose();
+    }
+
+    /// <summary>
+    /// Runs one step of stopping and keeps what it threw, so that the step after it still runs.
+    /// Broad on purpose: a source left recording because another one failed is the outcome this
+    /// exists to prevent, and nothing is lost — what was caught is what gets thrown.
+    /// </summary>
+    private static void Collect(Action step, List<Exception> failures)
+    {
+        try
+        {
+            step();
+        }
+        catch (Exception failed)
+        {
+            failures.Add(failed);
         }
     }
 

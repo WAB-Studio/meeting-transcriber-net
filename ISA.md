@@ -219,6 +219,19 @@ Board: 7 · Distribución y backup
 
 ## Decisions
 
+- **2026-08-13** — Channel 0 keeps a silent stream playing into the endpoint it is recording, for
+  as long as it records it. Loopback hands over nothing at all — not silence, no packets — while an
+  endpoint plays nothing, so the alternative was a channel 0 holding only the stretches something
+  happened to be playing, spliced end to end: a meeting nobody shared their screen in for ten
+  minutes comes back ten minutes short with everything after it moved earlier, which is worse than
+  a missing recording because it looks like a recording. The other candidate was to let the gaps
+  happen and write each block's device position and QPC timestamp so the timeline could put them
+  back, and that is not rejected — it is ISC-35 and ISC-37's, it is what `arquitectura.md` §6.3
+  asks for, and it is needed anyway for drift. What decided it is that the spike would otherwise
+  close ISC-108 on a claim that is false on a quiet machine, and holding a silent stream open is
+  about forty lines against a spool format. Neither closes the other: the timestamps still have to
+  arrive, and the keepalive means what arrives is continuous.
+
 - **2026-08-13** — A corpus lets go of its own pooled connections and nobody else's, against the
   other candidate of taking test connections out of the pool entirely. Pooling off would have made
   the suites stop exercising the connection settings the design leans on, and it needs the way a
@@ -595,10 +608,10 @@ Board: 7 · Distribución y backup
 - ISC-66 — `HumanLayerTests.Every_table_of_the_human_layer_has_a_way_in` green 2026-08-07
 - ISC-67 — `HumanLayerTests.Exactly_one_person_is_the_user_of_this_install` green 2026-08-07
 - ISC-68 — `HumanLayerTests.A_label_the_recording_settled_does_not_overwrite_one_a_person_resolved` green 2026-08-07
-- ISC-108 — `capture --out … --seconds 12` on this machine 2026-08-13: the two streams opened 32 ms apart and each wrote 4,654,138 bytes of 48 kHz float32, the loopback of the default playback endpoint and a fifine microphone
-- ISC-109 — the same run: `ch0 device`/`ch0 format` named 'Altavoces (High Definition Audio Device)' at 48000 Hz, 2 ch, 32 bit float before a sample was written, and `ch1` its microphone. `StreamFormatTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-13 for the extensible format WASAPI really hands over
-- ISC-110 — `LevelsTests` and `SourceMeterTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-13; the same run metered both sources every second, between −7.5 and −58.8 dBFS
-- ISC-111 — `AudioDevicesTests` green 2026-08-13, and two runs 2026-08-13: `--microphone "blue yeti"` refused with exit 1 and no file written, and a channel 1 whose file was already there refused with exit 1 after channel 0 had opened, leaving nothing of channel 0 behind
+- ISC-108 — `capture` runs of 8, 12 and 24 seconds on this machine 2026-08-13: the two streams opened within 32 ms of each other and their files ended within 60 ms of each other, a difference that did not grow with length (60 ms over 8 s, 10 ms over 24 s), so it is start and stop jitter and not accumulated drift, which is ISC-35's to measure. Both files parse as IEEE float WAVs, 48 kHz 2 ch 32 bit, their data chunk ending exactly at the last byte
+- ISC-109 — the same runs: `ch0 device` and `ch0 format` named 'Altavoces (High Definition Audio Device)' at 48000 Hz, 2 ch, 32 bit float, and `ch1` its microphone. `StreamFormatTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-13 for the extensible format WASAPI really hands over, which reads as neither integer nor float until it is reduced
+- ISC-110 — `LevelsTests` and `SourceMeterTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-13; the same runs metered both sources every second, between −7.5 and −65.6 dBFS. A width no block of which could be metered is refused before a device is opened rather than on its first block, which `LevelsTests.A_format_that_could_never_be_metered_is_refused_before_anything_is_recorded` holds
+- ISC-111 — `AudioDevicesTests` green 2026-08-13, and three runs 2026-08-13: `--microphone "blue yeti"` refused with exit 1 and nothing opened; a channel 1 whose file was already there refused with exit 1 after channel 0 had opened; and a channel 1 whose path could not be claimed at all — a directory standing in its place — refused with exit 1 after channel 0 was already recording, left nothing of channel 0 behind, and let the next attempt succeed once the obstacle was gone
 - ISC-69 — `CorpusSearchTests.A_hit_carries_the_meeting_the_date_the_title_a_snippet_and_where_it_was_said` green 2026-08-07
 - ISC-70 — `CorpusSearchTests.A_meeting_being_deleted_is_not_something_search_offers` green 2026-08-07
 - ISC-71 — `CorpusSearchTests.Throwing_both_indexes_away_and_rebuilding_them_answers_exactly_the_same` green 2026-08-07

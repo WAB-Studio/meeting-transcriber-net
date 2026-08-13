@@ -104,6 +104,21 @@ public class LevelsTests
             .Message.ShouldContain("24 bit");
     }
 
+    /// <summary>
+    /// The same refusal, asked before a device is opened rather than answered by its first block.
+    /// A capture that started and died a second in is one somebody has already begun holding a
+    /// meeting into.
+    /// </summary>
+    [Fact]
+    public void A_format_that_could_never_be_metered_is_refused_before_anything_is_recorded()
+    {
+        Should.Throw<AudioCaptureException>(
+            () => Levels.EnsureMeterable(new StreamFormat(48_000, 2, 24, SampleEncoding.Pcm)));
+
+        Should.NotThrow(() => Levels.EnsureMeterable(Float));
+        Should.NotThrow(() => Levels.EnsureMeterable(Pcm));
+    }
+
     private static byte[] Floats(params float[] samples)
     {
         var block = new byte[samples.Length * 4];
