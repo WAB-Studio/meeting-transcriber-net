@@ -35,7 +35,10 @@ namespace MeetingTranscriber.Infrastructure.Storage;
 /// card in <see cref="MeetingManifest"/>. A human layer that could not reach the folder would be
 /// one whose renames go stale on disk with nothing able to say so. The folder comes from the
 /// corpus itself rather than from whoever constructs this, which is what makes it the folder these
-/// rows are in and not one a caller named.
+/// rows are in and not one a caller named. A layer above this one, holding the folder and calling
+/// <see cref="Describe"/> as its database half, keeps this type about rows and leaves the bug
+/// where it was: <see cref="Describe"/> stays public, so the rename that changes the title and not
+/// the card is still one call away.
 /// </para>
 /// </remarks>
 public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)

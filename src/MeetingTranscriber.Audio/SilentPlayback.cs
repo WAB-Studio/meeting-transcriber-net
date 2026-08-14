@@ -19,6 +19,12 @@ namespace MeetingTranscriber.Audio;
 /// Something silent playing is what keeps the endpoint handing packets over, and silence mixed
 /// into what the machine plays changes nothing about what anybody hears.
 /// </para>
+/// <para>
+/// Letting the gaps happen and writing each block's device position and clock timestamp, so the
+/// timeline can put them back, is not the alternative to this — it is arriving anyway, because
+/// drift is measured from those timestamps and a spool recovers by them. The two do different
+/// jobs: the timestamps say where what arrived belongs, and this is what makes something arrive.
+/// </para>
 /// </remarks>
 internal sealed class SilentPlayback : IDisposable
 {

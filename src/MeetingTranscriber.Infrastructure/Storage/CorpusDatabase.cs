@@ -103,6 +103,10 @@ public static class CorpusDatabase
     /// stay held. It reaches this corpus and no other, which is the whole point —
     /// <c>SqliteConnection.ClearAllPools</c> disposes the idle connections of every corpus in the
     /// process, including the one another thread is about to take out of the pool and open.
+    /// The other way to stop a test corpus holding its file is to take its connections out of the
+    /// pool altogether, and it costs more than it looks: pooling off is a flag on the way a corpus
+    /// is opened that exists for tests alone, and the suites stop exercising the connection the
+    /// product actually uses.
     /// </remarks>
     public static void ClearPoolsFor(DirectoryInfo root)
     {

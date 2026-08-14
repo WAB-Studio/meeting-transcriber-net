@@ -59,7 +59,7 @@ public class IsaStructureTests
 
         isa.Claims.ShouldAllBe(claim => claim.Closed);
         isa.Fog.ShouldBeEmpty(
-            "fog graduates to a claim or dies in Decisions; it cannot be carried past the close.");
+            "fog graduates to a claim or is dropped; it cannot be carried past the close.");
     }
 
     [Fact]
@@ -81,7 +81,7 @@ public class IsaStructureTests
     public void No_claim_id_is_used_twice()
     {
         // IDs never renumber, so a duplicate means a split reused a number rather than nesting
-        // under it — and Verification, Decisions and the board all key on the ID.
+        // under it — and Verification and the board both key on the ID.
         isa.Claims.Select(claim => claim.Id).ShouldBeUnique();
     }
 
@@ -158,7 +158,6 @@ public class IsaStructureTests
             "## Goal",
             "## Features",
             "## Not yet specified",
-            "## Decisions",
             "## Learning",
             "## Verification",
         ];
@@ -167,7 +166,10 @@ public class IsaStructureTests
             .Where(line => line.StartsWith("## ", StringComparison.Ordinal))
             .ToArray();
 
-        // Optional sections may be absent; what may not happen is two of them swapping places.
+        // Optional sections may be absent; what may not happen is two of them swapping places, or
+        // a sixth appearing. That second half is what holds `## Decisions` out of this file now
+        // that it has been retired — a decision has somewhere better to be read, and a section
+        // nothing refuses is one that comes back the next time somebody has one to write down.
         present.ShouldBeSubsetOf(expected);
         present.ShouldBe([.. expected.Where(present.Contains)]);
     }

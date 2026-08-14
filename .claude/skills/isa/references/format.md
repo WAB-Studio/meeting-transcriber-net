@@ -29,16 +29,31 @@ Order is fixed. An empty section is excluded from the file entirely.
 | 1 | `## Goal` | The hard-to-vary spine. 1–3 sentences naming verifiable done. | always |
 | 2 | `## Features` | Claims, grouped as `### F<n> · <name>` blocks. | always |
 | 3 | `## Not yet specified` | Fog — in-scope questions too dim to be claims. | when populated |
-| 4 | `## Decisions` | Dated log, including dead ends. | recommended |
-| 5 | `## Learning` | Conjecture / refuted-by / learned / criterion-now. | when understanding changed |
-| 6 | `## Verification` | One-line provenance stub per closed claim. | always |
+| 4 | `## Learning` | Conjecture / refuted-by / learned / criterion-now. | when understanding changed |
+| 5 | `## Verification` | One-line provenance stub per closed claim. | always |
 
 **`## Test Strategy` is deliberately absent.** LifeOS gives every claim a table row naming its
 probe; here that was sixty-five rows of near-identical `dotnet test … --filter-class`
-boilerplate, and it was dropped on 2026-08-07 (ISA `## Decisions`). The consequence is worth
+boilerplate, and it was dropped on 2026-08-07. The consequence is worth
 knowing rather than forgetting: an open claim does not carry the probe it will close on, so
 whoever picks the work up decides what would falsify it. A closed claim still names its evidence
 — that is what the `## Verification` stub is.
+
+**`## Decisions` is deliberately absent**, and it was here until 2026-08-13. A decision has a
+place it is read, and the ISA is not it: a rejected alternative is re-proposed by somebody
+editing the file where it would go, not by somebody reading the claims surface, so the entry
+that would have stopped them was filed where they were never going to look. Thirty-five of them
+had accumulated, over half already said in the code, in `docs/`, in `## Learning` or in a claim,
+and the section was reaching a third of the file. Where each kind goes now:
+
+- **A rejected alternative** — a comment in the file where somebody would try it again. That is
+  the one destination the ISA cannot serve.
+- **What changed a claim** — the claim itself. `refined:` recorded that a claim had been rewritten
+  in a log nobody diffs; `git log -- ISA.md` is that, exactly.
+- **What a probe taught** — `## Learning`, whole entries only.
+- **What the product is and why** — `arquitectura.md`, which is what it is for.
+- **How one session got somewhere** — the commit message and the board comment. Neither is read on
+  every task, which is the point.
 
 **Problem, Vision, Out of Scope, Principles and Constraints are deliberately absent.** They are
 `arquitectura.md` — §1 decisions, §2 overview, §16 deferred decisions — and duplicating them
@@ -80,7 +95,9 @@ Board: 3 · Grabador WinUI
   goal with no failure mode worth naming is under-specified.
 - Nested IDs (`ISC-7.1`) organise a split; the atomicity rule applies at the leaves.
 - **IDs never renumber.** A split keeps the parent as container. A drop leaves a tombstone:
-  `- [ ] ISC-9: [DROPPED — see Decisions 2026-08-07]`, so references elsewhere stay valid.
+  `- [ ] ISC-9: [DROPPED 2026-08-07: what stopped being true]`, so references elsewhere stay
+  valid. The line says why in itself — a tombstone pointing at a section for the reason is one
+  more thing that can go missing, and `git log -- ISA.md` holds the rest.
 
 ## Verification stubs
 

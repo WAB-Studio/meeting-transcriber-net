@@ -38,7 +38,11 @@ public sealed record Restoration(
 /// restored only where the corpus already says those exact bytes belong, which makes putting a
 /// different file under a paid artifact's row impossible rather than guarded against. It is also
 /// the address — a loose <c>deepgram.json</c> in a backup folder does not say which meeting it is,
-/// and the corpus does.
+/// and the corpus does. Naming the meeting and the path alongside the file is the same rule with a
+/// second address bolted on, and the second one is what weakens it: two things that can disagree,
+/// one of them typed. The cost of taking only the hash is somebody holding <em>a</em> response for
+/// a meeting rather than <em>the</em> one, and being told nothing in this corpus is those bytes is
+/// the right answer — that file is a re-transcription, to be paid for and filed as its own version.
 /// </para>
 /// <para>
 /// Which is why nothing here takes a row from its caller. A method handed an

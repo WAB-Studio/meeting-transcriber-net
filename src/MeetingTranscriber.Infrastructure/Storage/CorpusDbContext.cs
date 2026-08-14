@@ -50,7 +50,10 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
     /// that — <c>SetConnectionString</c> while the connection is closed — and it is the one way
     /// left to make the two halves disagree: a write staged against the folder of one corpus and
     /// committed into the rows of another. Nothing in this product moves a context, so this is
-    /// what makes that stay true rather than a repair for something being done.
+    /// what makes that stay true rather than a repair for something being done. A handle type
+    /// holding the two halves and refusing to be reseated would close the same hole, and it puts a
+    /// second type between every caller and the corpus to do it; the refusal here is the same
+    /// promise with nothing to pass around.
     /// </para>
     /// </remarks>
     public DirectoryInfo Root

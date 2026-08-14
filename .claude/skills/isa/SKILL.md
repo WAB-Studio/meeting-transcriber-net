@@ -32,8 +32,8 @@ moving to `in review`, not on a build succeeding nearby, not on "should work". A
 carries a one-line provenance stub in `## Verification` — a test name, a commit, a probe ref.
 
 When a probe fails, the question is always *is the code wrong, or is the claim wrong?* Both
-answers are progress. A claim that mis-stated done gets fixed in the ISA and logged in
-`## Decisions`; that is not cheating, that is the articulation improving.
+answers are progress. A claim that mis-stated done gets rewritten in place, and the commit says
+what it used to say; that is not cheating, that is the articulation improving.
 
 ## The board and the ISA
 
@@ -108,18 +108,21 @@ rather than re-checking them by eye. What only a reading catches:
 
 Report gaps; do not silently fix them.
 
-### Append — the three append-only sections
+### Append — the two append-only sections
 
-`## Decisions`, `## Learning` and `## Verification` are written through here so their shape does
-not drift into free prose.
+`## Learning` and `## Verification` are written through here so their shape does not drift into
+free prose.
 
-- **Decisions** — dated, including dead ends. `refined:` prefix when a Goal or claim changed
-  shape rather than status.
 - **Learning** — only when understanding changed, and only complete: conjecture / refuted-by /
   learned / criterion-now. A partial entry does not get written. This is not a changelog; `git
   log -- ISA.md` is that.
 - **Verification** — one line per closed claim. The proof lives in git and CI; the ISA points at
   it. An entry that grows into a paragraph gets collapsed back.
+
+**A decision does not go in this file at all**, and the section that held them was removed on
+2026-08-13. A rejected alternative goes as a comment in the file where somebody would try it
+again, which is the one place it is read in time to stop them; the rest goes to `arquitectura.md`,
+to the commit message, or into the claim it changed. `references/format.md` has the full table.
 
 ## Probes
 
