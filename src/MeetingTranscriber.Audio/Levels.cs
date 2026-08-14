@@ -1,11 +1,14 @@
-using System.Buffers.Binary;
-
 namespace MeetingTranscriber.Audio;
 
 /// <summary>
 /// How loud a block of captured bytes was. The one place a device's bytes become a number a
 /// person reads, so a format nothing here can decode is refused rather than metered as silence.
 /// </summary>
+/// <remarks>
+/// Which formats those are is <see cref="Samples"/>'s to say, not this file's. A build that could
+/// meter a width it could not resample would show a healthy level for a whole meeting and fail
+/// once it was over.
+/// </remarks>
 public static class Levels
 {
     /// <summary>
@@ -24,12 +27,22 @@ public static class Levels
                 $"A block of {block.Length} bytes is not whole samples of {format}.");
         }
 
-        return new LevelReading((format.Encoding, format.BitsPerSample) switch
+        var read = Samples.ReaderFor(format);
+        var peak = 0f;
+        for (var offset = 0; offset + width <= block.Length; offset += width)
         {
-            (SampleEncoding.IeeeFloat, 32) => LoudestFloat(block),
-            (SampleEncoding.Pcm, 16) => LoudestPcm16(block),
-            _ => throw new AudioCaptureException($"This build cannot meter {format}."),
-        });
+            var sample = read(block.Slice(offset, width));
+
+            // A device is free to hand over anything a float holds, and a NaN wins every
+            // comparison it takes part in — a meter stuck on NaN for the rest of a two hour
+            // recording is a worse answer than skipping the sample that poisoned it.
+            if (float.IsFinite(sample))
+            {
+                peak = MathF.Max(peak, MathF.Abs(sample));
+            }
+        }
+
+        return new LevelReading(peak);
     }
 
     /// <summary>
@@ -42,39 +55,4 @@ public static class Levels
     /// its first block, which is a recording somebody has already begun holding.
     /// </remarks>
     public static void EnsureMeterable(StreamFormat format) => Peak([], format);
-
-    private static float LoudestFloat(ReadOnlySpan<byte> block)
-    {
-        var peak = 0f;
-        for (var offset = 0; offset + 4 <= block.Length; offset += 4)
-        {
-            var sample = BinaryPrimitives.ReadSingleLittleEndian(block.Slice(offset, 4));
-
-            // A device is free to hand over anything a float holds, and a NaN wins every
-            // comparison it takes part in — a meter stuck on NaN for the rest of a two hour
-            // recording is a worse answer than skipping the sample that poisoned it.
-            if (float.IsFinite(sample))
-            {
-                peak = MathF.Max(peak, MathF.Abs(sample));
-            }
-        }
-
-        return peak;
-    }
-
-    private static float LoudestPcm16(ReadOnlySpan<byte> block)
-    {
-        var peak = 0;
-        for (var offset = 0; offset + 2 <= block.Length; offset += 2)
-        {
-            // Widened before it is made absolute: short.MinValue has no positive twin, and
-            // Math.Abs over a short of it throws.
-            int sample = BinaryPrimitives.ReadInt16LittleEndian(block.Slice(offset, 2));
-            peak = Math.Max(peak, Math.Abs(sample));
-        }
-
-        // Full scale is the negative side, which reaches one step further than the positive one,
-        // so the loudest sample a device can send reads as 1.0 rather than as 1.00003.
-        return peak / -(float)short.MinValue;
-    }
 }

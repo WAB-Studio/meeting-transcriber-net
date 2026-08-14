@@ -5,7 +5,7 @@ map you open when you need to know where something lives.
 
 ```text
 src/MeetingTranscriber.App/               WinUI 3, packaged as MSIX
-src/MeetingTranscriber.Audio/             WASAPI: the devices, the two streams and their levels
+src/MeetingTranscriber.Audio/             WASAPI: the devices and streams, and the timeline they meet on
 src/MeetingTranscriber.Cli/               diagnosis, import, rebuild, recovery and capture from a prompt
 src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
@@ -21,6 +21,12 @@ Domain, Audio, Infrastructure, Processing and CorpusImport each have their tests
 build agent: the rules — which endpoint a typed name means, what a block of bytes is worth on a
 meter — are tested there, and that two streams really open at once is a probe somebody runs with
 `capture`, recorded in the ISA like a paid one.
+
+`SharedTimeline` is the exception that boundary was drawn around. It takes packets rather than
+opening streams, so two hours of a clock running fast is arithmetic in `Audio.Tests` instead of a
+meeting on a machine nobody has — which is the only way the product's largest technical risk gets
+tested at all. Nothing in it touches WASAPI, and `Fabricated` is where the devices that never
+existed are written.
 
 `tests/MeetingTranscriber.Testing/` holds no test. It is where `TemporaryCorpus`, the raw-SQL
 helpers and the inventory of the Deepgram fixtures live, so a suite that opens a corpus or walks

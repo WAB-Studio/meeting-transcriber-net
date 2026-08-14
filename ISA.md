@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 73/111
+progress: 80/118
 updated: 2026-08-13
 ---
 
@@ -115,6 +115,13 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-109: A capture names each source's device and the format that device handed it.
 - [x] ISC-110: A source's level is measured from the samples that arrived, so a source that heard nothing reads as silent.
 - [x] ISC-111: Anti: a capture that cannot open both of its sources stops, rather than recording one of them.
+- [x] ISC-112: Two sources become one aligned pair of channels from fabricated packets alone, with no audio device opened.
+- [x] ISC-113: A packet lands where its device position puts it, not immediately after the packet before it.
+- [x] ISC-114: A stretch a source never delivered stays a gap of the length its device positions say, rather than being closed up.
+- [x] ISC-115: Whatever rate, width and channel count a source arrives with, it leaves the timeline at one internal rate and one sample format.
+- [x] ISC-116: Anti: a source whose clock runs fast or slow is pulled back gradually, so alignment holds throughout the recording and not only at its end.
+- [x] ISC-117: A source that goes quiet does not hold the rest of the meeting, and the whole of it is reported as missing.
+- [x] ISC-118: Anti: a device whose frame counter and clock disagree by more than any crystal drifts stops the recording rather than being clamped into looking aligned.
 - [ ] ISC-35: Two hours of capture end with under 50 ms of measured drift between the two channels.
 - [ ] ISC-36: Anti: the produced WAV never carries the microphone on channel 0.
 - [ ] ISC-37: A spool cut off mid-block recovers to its last complete block.
@@ -290,6 +297,22 @@ Board: 7 · Distribución y backup
   a bare `--filter-class` makes the three non-matching projects exit non-zero on zero tests. No
   row is trusted until it has been run once and seen to select what it claims.
 
+- **conjecture** — WASAPI's per-packet flags have no reader here, so leaving them off
+  `CapturePacket` is the rule about abstractions built for callers that do not exist.
+- **refuted-by** — The same pass added a check that stops a recording when a device's frame
+  counter and its clock disagree. `TIMESTAMP_ERROR` is the device saying it cannot vouch for the
+  pair that check reads, so the check is that flag's reader — and without it a device that flags
+  one bad packet loses the whole meeting. An adversarial reviewer found it; nothing went red,
+  because no fabricated packet has ever set the flag.
+- **learned** — A field's caller can be added in the same pass as the field, and a check that can
+  refuse work is exactly the kind of caller that appears late. The rule asks whether a caller
+  exists, and the honest question is whether one exists *once this change lands*, which is not
+  the same question when the change adds a failure the flag exists to suppress.
+- **criterion-now** — A field carrying a device's own "do not trust this" is added when something
+  in the same change would otherwise act on the untrustworthy value. `DATA_DISCONTINUITY` stays
+  off the packet on the original grounds and the reason sits in the type, since a lost stretch is
+  a jump in the device position and a flag nothing reads can disagree with the number beside it.
+
 ## Verification
 
 - ISC-1 — `AudioChannelTests` green 2026-08-07
@@ -336,6 +359,13 @@ Board: 7 · Distribución y backup
 - ISC-109 — the same runs: `ch0 device` and `ch0 format` named 'Altavoces (High Definition Audio Device)' at 48000 Hz, 2 ch, 32 bit float, and `ch1` its microphone. `StreamFormatTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-13 for the extensible format WASAPI really hands over, which reads as neither integer nor float until it is reduced
 - ISC-110 — `LevelsTests` and `SourceMeterTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-13; the same runs metered both sources every second, between −7.5 and −65.6 dBFS. A width no block of which could be metered is refused before a device is opened rather than on its first block, which `LevelsTests.A_format_that_could_never_be_metered_is_refused_before_anything_is_recorded` holds
 - ISC-111 — `AudioDevicesTests` green 2026-08-13, and three runs 2026-08-13: `--microphone "blue yeti"` refused with exit 1 and nothing opened; a channel 1 whose file was already there refused with exit 1 after channel 0 had opened; and a channel 1 whose path could not be claimed at all — a directory standing in its place — refused with exit 1 after channel 0 was already recording, left nothing of channel 0 behind, and let the next attempt succeed once the obstacle was gone
+- ISC-112 — `SharedTimelineTests.Two_fabricated_sources_come_out_as_one_pair_of_channels` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-13
+- ISC-113 — `SharedTimelineTests.A_packet_after_a_gap_lands_where_its_position_says` green 2026-08-13
+- ISC-114 — `SharedTimelineTests.A_stretch_the_device_never_delivered_stays_a_gap_of_its_own_length` green 2026-08-13
+- ISC-115 — `SharedTimelineTests.Sources_that_agree_on_nothing_come_out_at_one_rate_and_one_width` green 2026-08-13
+- ISC-116 — `SharedTimelineTests.A_fast_clock_is_pulled_back_throughout_and_not_at_the_end` green 2026-08-13; with the measurement disabled the same probe puts the microphone's first marker 20 ms out at 10 s and reports 48000 Hz for a device running at 48096
+- ISC-117 — `SharedTimelineTests.A_source_that_goes_quiet_does_not_hold_the_rest_of_the_meeting` and `A_source_the_recording_left_behind_is_refused_rather_than_inserted` green 2026-08-13
+- ISC-118 — `SharedTimelineTests.A_device_whose_two_counters_disagree_stops_the_recording_rather_than_being_clamped` and `A_source_whose_clock_goes_backwards_stops_the_recording` green 2026-08-13
 - ISC-69 — `CorpusSearchTests.A_hit_carries_the_meeting_the_date_the_title_a_snippet_and_where_it_was_said` green 2026-08-07
 - ISC-70 — `CorpusSearchTests.A_meeting_being_deleted_is_not_something_search_offers` green 2026-08-07
 - ISC-71 — `CorpusSearchTests.Throwing_both_indexes_away_and_rebuilding_them_answers_exactly_the_same` green 2026-08-07
