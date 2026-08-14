@@ -21,16 +21,38 @@ namespace MeetingTranscriber.Audio;
 /// difference is real: it is the gap between two devices being handed over, and closing it up
 /// would move one side of the conversation against the other for the whole meeting.
 /// </para>
+/// <para>
+/// <b>One thread hands the packets over.</b> This is not the capture callback and never runs on
+/// one: the recording is rebuilt from the spool when somebody stops it, in one pass, in the order
+/// the devices read the packets. Nothing here is locked, because a lock would let two capture
+/// threads through and quietly produce a recording with frames duplicated and frames missing —
+/// so a second thread arriving is refused instead, loudly, where a lock would have hidden it.
+/// </para>
 /// </remarks>
 public sealed class SharedTimeline
 {
     /// <summary>How many frames are handed on in one write.</summary>
     private const int WriteFrames = 4096;
 
+    /// <summary>
+    /// How far behind the rest of the recording a source may fall before the recording goes on
+    /// without it.
+    /// </summary>
+    /// <remarks>
+    /// Both streams open within tens of milliseconds of each other and neither goes quiet on its
+    /// own — <see cref="SilentPlayback"/> exists so that the loopback endpoint keeps handing over
+    /// packets through a silent meeting. Half a minute of one device saying nothing while the other
+    /// records is that device gone, and waiting for it is what turns a streaming component into one
+    /// that holds two hours of the survivor in memory and then loses the meeting to it.
+    /// </remarks>
+    private static readonly long Stalls = 30L * CapturedAudio.SampleRate;
+
     private readonly TimelineSource[] sources;
     private readonly IAlignedAudio into;
     private readonly long[] offsets;
+    private readonly bool[] gone;
     private readonly short[][] blocks;
+    private int inside;
     private bool anchored;
     private bool closed;
     private long emitted;
@@ -40,6 +62,7 @@ public sealed class SharedTimeline
         this.sources = sources;
         this.into = into;
         offsets = new long[sources.Length];
+        gone = new bool[sources.Length];
         blocks = [.. sources.Select(_ => new short[WriteFrames])];
     }
 
@@ -69,13 +92,29 @@ public sealed class SharedTimeline
     {
         ArgumentNullException.ThrowIfNull(packet);
 
-        if (closed)
+        Alone();
+        try
         {
-            throw new AudioCaptureException($"A {packet.Channel} packet arrived after the timeline was closed.");
-        }
+            if (closed)
+            {
+                throw new AudioCaptureException($"A {packet.Channel} packet arrived after the timeline was closed.");
+            }
 
-        sources[CapturedAudio.IndexOf(packet.Channel)].Take(packet);
-        Emit(flushing: false);
+            var index = CapturedAudio.IndexOf(packet.Channel);
+            if (gone[index])
+            {
+                throw new AudioCaptureException(
+                    $"The {packet.Channel} source went quiet for {Stalls / CapturedAudio.SampleRate} seconds "
+                    + "and the recording went on without it, so this packet has nowhere left to go.");
+            }
+
+            sources[index].Take(packet);
+            Emit(flushing: false);
+        }
+        finally
+        {
+            Leave();
+        }
     }
 
     /// <summary>
@@ -84,21 +123,69 @@ public sealed class SharedTimeline
     /// </summary>
     public TimelineSummary Close()
     {
-        if (closed)
+        Alone();
+        try
         {
-            throw new AudioCaptureException("This timeline is already closed.");
+            if (closed)
+            {
+                throw new AudioCaptureException("This timeline is already closed.");
+            }
+
+            closed = true;
+
+            foreach (var source in sources)
+            {
+                source.Finish();
+            }
+
+            Emit(flushing: true);
+
+            return new TimelineSummary(
+                Length(emitted),
+                [.. sources.Select(Summarise)]);
         }
-
-        closed = true;
-        Emit(flushing: true);
-
-        return new TimelineSummary(
-            Length(emitted),
-            [.. sources.Select((source, index) => source.Summarise(Length(offsets[index])))]);
+        finally
+        {
+            Leave();
+        }
     }
 
     private static Duration Length(long frames) =>
         Duration.FromMilliseconds(frames * 1000 / CapturedAudio.SampleRate);
+
+    /// <summary>
+    /// Refuses a second thread rather than serialising it. See the class remarks: one caller hands
+    /// the packets over, and the failure mode of getting that wrong is silent.
+    /// </summary>
+    private void Alone()
+    {
+        if (Interlocked.Increment(ref inside) != 1)
+        {
+            Interlocked.Decrement(ref inside);
+            throw new AudioCaptureException(
+                "Two callers reached this timeline at once. It is rebuilt in one pass on one "
+                + "thread, in the order the devices read the packets.");
+        }
+    }
+
+    private void Leave() => Interlocked.Decrement(ref inside);
+
+    /// <summary>
+    /// What one source turned out to be. Everything of the recording it produced nothing for is
+    /// missing audio, whether that is a stretch the device dropped, the wait before it opened or
+    /// the rest of the meeting after it went quiet — so a source that never spoke reports the whole
+    /// recording, which is the plainest thing the numbers can say.
+    /// </summary>
+    private SourceSummary Summarise(TimelineSource source, int index)
+    {
+        var covered = source.Started ? offsets[index] + source.Produced : 0;
+
+        return new SourceSummary(
+            source.Channel,
+            source.Rate,
+            Length(source.Missing + offsets[index] + Math.Max(0, emitted - covered)),
+            Length(offsets[index]));
+    }
 
     /// <summary>
     /// Writes out every frame both sources cover — or, at the close, every frame either of them
@@ -110,10 +197,11 @@ public sealed class SharedTimeline
         {
             // Until both sources have spoken there is no origin to measure from, and guessing one
             // would put the whole of the other source at the wrong offset for good. At the close
-            // that wait is over: whatever arrived is the recording.
-            var ready = flushing
-                ? Array.Exists(sources, source => source.Started)
-                : Array.TrueForAll(sources, source => source.Started);
+            // that wait is over, and so it is once a source that has spoken has half a minute of
+            // the meeting nobody can be handed: whatever arrived is the recording.
+            var ready = Array.TrueForAll(sources, source => source.Started)
+                || ((flushing || Array.Exists(sources, source => source.Produced > Stalls))
+                    && Array.Exists(sources, source => source.Started));
 
             if (!ready)
             {
@@ -123,11 +211,29 @@ public sealed class SharedTimeline
             Anchor();
         }
 
-        var limit = flushing ? long.MinValue : long.MaxValue;
+        var furthest = long.MinValue;
         for (var index = 0; index < sources.Length; index++)
         {
-            var covers = offsets[index] + sources[index].Produced;
-            limit = flushing ? Math.Max(limit, covers) : Math.Min(limit, covers);
+            furthest = Math.Max(furthest, Covers(index));
+        }
+
+        // A source the rest of the recording has left this far behind is a device that stopped,
+        // and the meeting goes on without it rather than being held — and then lost — waiting.
+        for (var index = 0; index < sources.Length; index++)
+        {
+            gone[index] |= furthest - Covers(index) > Stalls;
+        }
+
+        var limit = flushing ? furthest : long.MaxValue;
+        if (!flushing)
+        {
+            for (var index = 0; index < sources.Length; index++)
+            {
+                if (!gone[index])
+                {
+                    limit = Math.Min(limit, Covers(index));
+                }
+            }
         }
 
         while (emitted < limit)
@@ -135,6 +241,10 @@ public sealed class SharedTimeline
             Write((int)Math.Min(WriteFrames, limit - emitted));
         }
     }
+
+    /// <summary>The first frame of the recording this source has nothing to say about yet.</summary>
+    private long Covers(int index) =>
+        sources[index].Started ? offsets[index] + sources[index].Produced : 0;
 
     /// <summary>Fixes the origin at the earlier of the sources' first frames.</summary>
     private void Anchor()

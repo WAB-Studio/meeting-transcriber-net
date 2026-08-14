@@ -17,6 +17,16 @@ namespace MeetingTranscriber.Audio;
 /// shorter than the one that happened.
 /// </para>
 /// <para>
+/// WASAPI reports two flags with a packet and only one of them is here. It sets a timestamp error
+/// when it cannot vouch for the position and instant it just handed over, and that has to be on
+/// the packet: the timeline stops a recording whose clock does not add up, so a device saying "do
+/// not measure against this one" is the difference between skipping an observation and throwing
+/// away a meeting. It also sets a data discontinuity when a glitch cost the stream some audio, and
+/// that one is deliberately not here — a lost stretch is a jump in <see cref="DevicePosition"/>,
+/// which is the same news arriving with its length attached, and a flag nothing reads is one more
+/// thing that can disagree with the number beside it.
+/// </para>
+/// <para>
 /// The format is not on the packet: a source declares it once when the timeline is built, because
 /// a device that changes format mid recording is a new stretch of the recording rather than an odd
 /// packet, and nothing yet asks the timeline for that.
@@ -26,8 +36,13 @@ namespace MeetingTranscriber.Audio;
 /// <param name="DevicePosition">Frames the device had produced before this block's first frame.</param>
 /// <param name="CapturedAt">When the device read that position, on the shared monotonic clock.</param>
 /// <param name="Samples">The block's bytes, in the source's own format.</param>
+/// <param name="TimingIsSound">
+/// Whether the device vouched for the two numbers above. False is WASAPI's timestamp error: the
+/// samples are still the meeting, and only the observation is thrown away.
+/// </param>
 public sealed record CapturePacket(
     AudioChannel Channel,
     long DevicePosition,
     MonotonicInstant CapturedAt,
-    ReadOnlyMemory<byte> Samples);
+    ReadOnlyMemory<byte> Samples,
+    bool TimingIsSound = true);

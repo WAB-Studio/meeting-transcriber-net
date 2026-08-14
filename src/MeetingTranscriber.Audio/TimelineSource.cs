@@ -49,15 +49,20 @@ internal sealed class TimelineSource
     private short[] written = [];
     private float[] silence = [];
     private long nextPosition;
-    private long missingFrames;
+    private long missing;
 
     internal TimelineSource(AudioChannel channel, StreamFormat format)
     {
         ArgumentNullException.ThrowIfNull(format);
 
+        // Asked before a packet can arrive rather than answered by the first one: a width nothing
+        // here can read is knowable now, and a source that never speaks would otherwise close as
+        // clean silence on a format this build cannot read at all.
+        Samples.ReaderFor(format);
+
         this.channel = channel;
         this.format = format;
-        clock = new SourceClock(format.SampleRate);
+        clock = new SourceClock(channel, format.SampleRate);
 
         // Interpolation with two filter passes rather than a windowed sinc. This runs over the
         // whole meeting at the moment somebody stops it, and sixty-four taps across two hours of
@@ -77,6 +82,9 @@ internal sealed class TimelineSource
     /// <summary>When this source's first frame was read, on the shared clock.</summary>
     internal MonotonicInstant Anchor => clock.Anchor;
 
+    /// <summary>What the device really ran at, against that clock.</summary>
+    internal double Rate => clock.Rate;
+
     /// <summary>Frames of the interchange format this source has produced since its first one.</summary>
     internal long Produced { get; private set; }
 
@@ -86,12 +94,32 @@ internal sealed class TimelineSource
     /// <summary>Takes the oldest <paramref name="into"/>.Length frames this source produced.</summary>
     internal void Read(Span<short> into) => buffer.Take(into);
 
-    /// <summary>What this source turned out to be, once its last packet is in.</summary>
-    internal SourceSummary Summarise(Duration waited) => new(
-        channel,
-        clock.Rate,
-        Duration.FromMilliseconds(missingFrames * 1000 / format.SampleRate),
-        waited);
+    /// <summary>
+    /// Frames of the recording this source produced nothing for, counted in the frames the silence
+    /// really became rather than in the frames the device would have sent. The gap goes through the
+    /// same resampling as the audio around it, so counting it at the label instead would misreport
+    /// a ten minute dropout by seconds against the silence actually written.
+    /// </summary>
+    internal long Missing => missing;
+
+    /// <summary>
+    /// Empties the resampler of what it was still holding. It keeps the last of its input back
+    /// until something follows it, so without this the end of every recording is quietly a few
+    /// milliseconds short of the meeting — and a recording of one packet is nothing at all.
+    /// </summary>
+    internal void Finish()
+    {
+        if (!clock.Started)
+        {
+            return;
+        }
+
+        // Asking for room and then handing over less than was asked for is how the resampler is
+        // told there is no more coming.
+        resampler.ResamplePrepare(1, 1, out _, out _);
+        EnsureResampled(FeedFrames);
+        Keep(resampler.ResampleOut(resampled, 0, 0, resampled.Length, 1));
+    }
 
     /// <summary>
     /// Takes one packet. A position ahead of where the last packet ended is a stretch the device
@@ -105,7 +133,20 @@ internal sealed class TimelineSource
 
         var frames = Samples.FramesIn(packet.Samples.Length, format);
         var first = !clock.Started;
-        clock.Observe(packet.DevicePosition, packet.CapturedAt);
+
+        if (first && !packet.TimingIsSound)
+        {
+            throw new AudioCaptureException(
+                $"The {channel} source opened with a packet whose position and instant the device "
+                + "would not vouch for, and there is nothing to measure the rest of it against.");
+        }
+
+        // An unsound packet's samples are still the meeting; only its two numbers are worthless,
+        // and a measurement taken against them would be worse than the label it replaced.
+        if (packet.TimingIsSound)
+        {
+            clock.Observe(packet.DevicePosition, packet.CapturedAt);
+        }
 
         if (first)
         {
@@ -118,9 +159,9 @@ internal sealed class TimelineSource
         }
         else if (packet.DevicePosition > nextPosition)
         {
-            var missing = packet.DevicePosition - nextPosition;
-            missingFrames += missing;
-            FeedSilence(missing, nextPosition);
+            var before = Produced;
+            FeedSilence(packet.DevicePosition - nextPosition, nextPosition);
+            missing += Produced - before;
         }
 
         if (frames > 0)
@@ -193,14 +234,21 @@ internal sealed class TimelineSource
             fed += taken;
 
             EnsureResampled(taken);
-            var made = resampler.ResampleOut(resampled, 0, taken, resampled.Length, 1);
-            if (made > 0)
-            {
-                Samples.ToPcm16(resampled.AsSpan(0, made), written);
-                buffer.Add(written.AsSpan(0, made));
-                Produced += made;
-            }
+            Keep(resampler.ResampleOut(resampled, 0, taken, resampled.Length, 1));
         }
+    }
+
+    /// <summary>Puts what the resampler just made into the interchange format and queues it.</summary>
+    private void Keep(int made)
+    {
+        if (made <= 0)
+        {
+            return;
+        }
+
+        Samples.ToPcm16(resampled.AsSpan(0, made), written);
+        buffer.Add(written.AsSpan(0, made));
+        Produced += made;
     }
 
     private void EnsureDecoded(int frames)
