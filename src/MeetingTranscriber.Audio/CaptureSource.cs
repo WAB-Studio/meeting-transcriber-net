@@ -285,6 +285,22 @@ public sealed class CaptureSource : IDisposable
         running = true;
     }
 
+    /// <remarks>
+    /// This is where a <see cref="CapturePacket"/> would be built, and it cannot be built here.
+    /// WASAPI reports a device position and a performance counter reading with every packet, and
+    /// NAudio's <see cref="WasapiCapture"/> asks for neither: it calls the two-argument overload of
+    /// <c>IAudioCaptureClient::GetBuffer</c>, keeps the flags to zero-fill a silent block, and
+    /// hands on a <see cref="WaveInEventArgs"/> that is bytes and a count. Its capture loop is
+    /// private and not virtual, so there is nothing to override.
+    /// <para>
+    /// Deriving the two numbers here is the trap, not the fix. A position counted from the bytes
+    /// that arrived is exact only while nothing is ever lost, and a counter read on this thread
+    /// says when the application looked rather than when the device did — which are the same number
+    /// right up to the moment a slow disk holds this callback, which is the moment they are needed.
+    /// Getting the real ones means driving the loop over <c>AudioClient</c> and
+    /// <c>AudioCaptureClient</c> directly, which is public NAudio and its own piece of work.
+    /// </para>
+    /// </remarks>
     private void Captured(object? sender, WaveInEventArgs block)
     {
         if (block.BytesRecorded <= 0)
