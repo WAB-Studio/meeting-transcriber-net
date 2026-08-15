@@ -3,14 +3,19 @@
 Four ways a command on this machine does something other than what it looks like it did. Each one
 costs an hour the first time because the failure names the wrong cause.
 
-## PowerShell rewrites a file it round-trips
+## PowerShell re-encodes a UTF-8 file it reads
 
 `Get-Content file | ... | Set-Content file` re-encodes as the system ANSI codepage, so every dash
 and accent comes back double-encoded — and the file still opens, still builds, and only shows up
 as mojibake later. `arquitectura.md`, `ISA.md` and half the comments in this repo are full of both.
 
+The damage is done on the read, so it is not only files going back to disk: `Get-Content -Raw`
+handed to a program is the same corruption, and it lands somewhere no diff will ever show it. A
+ClickUp description written that way reached the board double-encoded while the same text sent
+from `bash` with `"$(cat file)"` arrived intact.
+
 Use `[System.IO.File]::ReadAllText` and `::WriteAllText`, which are byte-faithful and default to
-UTF-8, or the editor. Never `Get-Content`/`Set-Content` for a file that is going back to disk.
+UTF-8, or the editor, or the Bash tool. Never `Get-Content` for text that has to survive.
 
 ## PowerShell splits a long argument that holds quotes
 
