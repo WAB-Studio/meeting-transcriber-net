@@ -44,6 +44,12 @@ internal sealed class WasapiStream : IDisposable
 
     private readonly AudioChannel channel;
     private readonly AudioClient client;
+
+    /// <summary>The endpoint the client came from, or nothing when it came from a process.</summary>
+    private readonly IDisposable? endpoint;
+
+    /// <summary>Where each packet goes, or nothing when the device numbers its own frames.</summary>
+    private readonly FramePositions? positions;
     private readonly byte[] block;
     private readonly int bytesPerFrame;
     private readonly int pollMs;
@@ -54,10 +60,17 @@ internal sealed class WasapiStream : IDisposable
     private Thread? loop;
     private volatile bool running;
 
-    private WasapiStream(AudioChannel channel, AudioClient client, WaveFormat format)
+    private WasapiStream(
+        AudioChannel channel,
+        AudioClient client,
+        WaveFormat format,
+        IDisposable? endpoint,
+        bool numbersFrames)
     {
         this.channel = channel;
         this.client = client;
+        this.endpoint = endpoint;
+        positions = numbersFrames ? null : new FramePositions(format.SampleRate);
         WaveFormat = format;
         bytesPerFrame = format.Channels * format.BitsPerSample / 8;
         block = new byte[client.BufferSize * bytesPerFrame];
@@ -71,18 +84,18 @@ internal sealed class WasapiStream : IDisposable
     internal WaveFormat WaveFormat { get; }
 
     /// <summary>
-    /// Opens <paramref name="endpoint"/> for capture onto <paramref name="channel"/>, in the format
+    /// Opens <paramref name="device"/> for capture onto <paramref name="channel"/>, in the format
     /// the machine is already mixing at.
     /// </summary>
-    /// <param name="endpoint">The device to record, already opened.</param>
+    /// <param name="device">The endpoint to record.</param>
     /// <param name="channel">
     /// Which of the two channels its blocks feed, which is also the whole of what decides how the
     /// endpoint is opened: channel 0 records what it is playing and channel 1 what it hears. Passed
     /// as one thing rather than as a channel and a direction, because the two can only ever agree.
     /// </param>
-    internal static WasapiStream On(MMDevice endpoint, AudioChannel channel)
+    internal static WasapiStream On(AudioDevice device, AudioChannel channel)
     {
-        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentNullException.ThrowIfNull(device);
 
         var direction = channel switch
         {
@@ -91,25 +104,78 @@ internal sealed class WasapiStream : IDisposable
             _ => throw new AudioContractException($"There is no way to capture '{channel}'."),
         };
 
-        // Activated here and let go here if anything after it refuses. Windows hands the client
-        // over before it will say whether it can record in this format or at all — another
-        // application holding the device in exclusive mode is the ordinary way to hear no — and a
-        // capture somebody retries after closing that application would otherwise leave one behind
-        // every time it failed.
-        var client = endpoint.AudioClient;
+        // Opened here and let go here if anything after it refuses. Windows hands the endpoint and
+        // its client over before it will say whether it can record in this format or at all —
+        // another application holding the device in exclusive mode is the ordinary way to hear no —
+        // and a capture somebody retries after closing that application would otherwise leave one
+        // behind every time it failed.
+        var endpoint = AudioDevices.Open(device);
         try
         {
-            var format = client.MixFormat;
+            var client = endpoint.AudioClient;
+            return Ready(channel, client, client.MixFormat, direction, endpoint, numbersFrames: true);
+        }
+        catch
+        {
+            endpoint.Dispose();
+            throw;
+        }
+    }
 
+    /// <summary>
+    /// Opens what <paramref name="process"/> and the processes it started are playing, onto channel
+    /// 0. There is no endpoint behind it, so the format is the one the audio engine is mixing at
+    /// rather than one a device named: the virtual client will not say what it mixes at, and asking
+    /// for what the engine already produces is what keeps channel 0 the same file either way.
+    /// </summary>
+    internal static WasapiStream Following(AudioProcess process)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+
+        var client = ProcessLoopback.For(process);
+
+        // Set even though the format asked for is the one the engine mixes at, so that a machine
+        // mixing at something this cannot ask for gets a conversion instead of a refusal.
+        const AudioClientStreamFlags converting =
+            AudioClientStreamFlags.Loopback
+            | AudioClientStreamFlags.AutoConvertPcm
+            | AudioClientStreamFlags.SrcDefaultQuality;
+
+        // It numbers nothing: every packet comes back at frame zero, measured on this machine over
+        // ten seconds of a program playing a tone. See FramePositions for what stands in.
+        return Ready(
+            AudioChannel.Loopback,
+            client,
+            AudioDevices.EngineFormat(),
+            converting,
+            endpoint: null,
+            numbersFrames: false);
+    }
+
+    /// <summary>
+    /// Initialises a client somebody else obtained and wraps it, letting the client go if Windows
+    /// refuses the format or the mode. Where the client came from is the only thing the two ways in
+    /// disagree about; from here on there is one stream.
+    /// </summary>
+    private static WasapiStream Ready(
+        AudioChannel channel,
+        AudioClient client,
+        WaveFormat format,
+        AudioClientStreamFlags how,
+        IDisposable? endpoint,
+        bool numbersFrames)
+    {
+        try
+        {
             client.Initialize(
                 AudioClientShareMode.Shared,
-                direction,
+                how,
                 BufferedMs * TicksPerMillisecond,
                 0,
                 format,
                 Guid.Empty);
 
-            return new WasapiStream(channel, client, format);
+            return new WasapiStream(channel, client, format, endpoint, numbersFrames);
         }
         catch
         {
@@ -169,6 +235,7 @@ internal sealed class WasapiStream : IDisposable
         loop = null;
 
         client.Dispose();
+        endpoint?.Dispose();
         started.Dispose();
     }
 
@@ -267,12 +334,15 @@ internal sealed class WasapiStream : IDisposable
 
             if (frames > 0)
             {
+                var at = MonotonicInstant.FromTicks(instant);
+                var vouched = !flags.HasFlag(AudioClientBufferFlags.TimestampError);
+
                 captured?.Invoke(new CapturePacket(
                     channel,
-                    position,
-                    MonotonicInstant.FromTicks(instant),
+                    positions?.For(at, vouched, frames) ?? position,
+                    at,
                     block.AsMemory(0, length),
-                    !flags.HasFlag(AudioClientBufferFlags.TimestampError)));
+                    vouched));
             }
         }
     }

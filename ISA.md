@@ -1,7 +1,7 @@
 ---
 phase: climbing
-progress: 78/116
-updated: 2026-08-14
+progress: 80/118
+updated: 2026-08-15
 ---
 
 # ISA — meeting-transcriber-net
@@ -131,6 +131,8 @@ Board: 2 · Spike y motor de audio
 - [ ] ISC-76: Finishing the same recording twice produces the same file.
 - [ ] ISC-77: Capture falls back to the full loopback when the meeting's process cannot be followed.
 - [ ] ISC-78: A device changing mid-recording does not end the recording.
+- [x] ISC-117: A recording that follows one application carries what that application played, including what the processes it started played.
+- [x] ISC-118: Anti: a recording that follows one application carries nothing another application played over it.
 
 ### F4 · WinUI recorder
 Why: the application replaces OBS. Recording, pausing, stopping and recovering happen in one
@@ -388,3 +390,5 @@ Board: 7 · Distribución y backup
 - ISC-95 — `CorpusSearchTests.A_meeting_being_deleted_is_not_something_search_offers` green 2026-08-07
 - ISC-96 — `CorpusSearchTests.Throwing_both_indexes_away_and_rebuilding_them_answers_exactly_the_same` and `CorpusIntegrityTests.Compacting_leaves_search_answering_exactly_what_it_answered_before` green 2026-08-07
 - ISC-97 — `CorpusSearchTests.A_query_the_index_cannot_parse_says_so_and_names_it` green 2026-08-07
+- ISC-117 — `capture --process` runs on this machine 2026-08-15. A program that played nothing itself while a process it started looped a 440 Hz tone: 10 s at −8.7 dBFS every second, covering 0:00:10 over 1002 packets 10 ms apart with nothing lost — so it is the tree and not the process. Edge and Firefox playing the same tone from a page: 6 s each at −12.0 dBFS, the name resolving to the browser process out of 17 and 10 of that name. `AudioProcessesTests` holds that resolution and `FramePositionsTests` the placement the virtual device leaves to be worked out (`tests/MeetingTranscriber.Audio.Tests`), green 2026-08-15
+- ISC-118 — the same session: following a program that played nothing while another program looped the tone left channel 0 silent for all 8 s and its file loudest silent, over 802 packets with nothing lost. Eight seconds later the whole machine's loopback heard that same tone at −13.9 dBFS, so it was there to record and the followed program's file did not have it

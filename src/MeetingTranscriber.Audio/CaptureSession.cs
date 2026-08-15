@@ -16,34 +16,53 @@ namespace MeetingTranscriber.Audio;
 /// source closes the first one and says so.
 /// </para>
 /// <para>
-/// It captures the whole machine, not one process: which application to follow is the next
-/// question and it changes only how channel 0 is opened.
+/// Channel 0 is either everything the machine plays or one program and what it started, and that
+/// is the only thing the two shapes of recording disagree about. A program that cannot be followed
+/// is not a failed recording: the meeting still happened, so channel 0 falls back to the whole
+/// machine and the session says it did, which is a warning about notifications and other
+/// applications being in the file rather than a reason to record nothing.
 /// </para>
 /// </remarks>
 public sealed class CaptureSession : IDisposable
 {
     private readonly CaptureSource[] sources;
-    private readonly SilentPlayback silence;
+    private readonly SilentPlayback? silence;
 
-    private CaptureSession(CaptureSource[] sources, SilentPlayback silence)
+    private CaptureSession(CaptureSource[] sources, SilentPlayback? silence, string? fellBack)
     {
         this.sources = sources;
         this.silence = silence;
+        FellBack = fellBack;
     }
 
     /// <summary>Both sources, in channel order.</summary>
     public IReadOnlyList<CaptureSource> Sources => sources;
 
-    /// <summary>How channel 0 was obtained. Everything the machine plays, for now.</summary>
-    public CaptureMode Mode => CaptureMode.FullLoopback;
+    /// <summary>
+    /// Why channel 0 is not following the program it was asked to, or nothing when it is — or when
+    /// no program was named.
+    /// </summary>
+    public string? FellBack { get; }
+
+    /// <summary>How channel 0 was obtained, read off what it actually opened.</summary>
+    public CaptureMode Mode => On(AudioChannel.Loopback).Listening is CaptureTarget.Program
+        ? CaptureMode.ProcessLoopback
+        : CaptureMode.FullLoopback;
 
     /// <summary>
     /// Opens both streams into <paramref name="folder"/>, one file each, and starts recording.
     /// </summary>
     /// <param name="folder">Where the two files go. Made if it is not there.</param>
-    /// <param name="playback">The endpoint channel 0 listens to.</param>
+    /// <param name="playback">The endpoint channel 0 listens to, and falls back to.</param>
     /// <param name="microphone">The device channel 1 listens to.</param>
-    public static CaptureSession Start(DirectoryInfo folder, AudioDevice playback, AudioDevice microphone)
+    /// <param name="follow">
+    /// The program channel 0 should follow, or nothing to record the whole machine.
+    /// </param>
+    public static CaptureSession Start(
+        DirectoryInfo folder,
+        AudioDevice playback,
+        AudioDevice microphone,
+        AudioProcess? follow = null)
     {
         ArgumentNullException.ThrowIfNull(folder);
         ArgumentNullException.ThrowIfNull(playback);
@@ -51,16 +70,36 @@ public sealed class CaptureSession : IDisposable
 
         folder.Create();
 
-        // Before channel 0 opens, so the endpoint is already handing packets over by the time
-        // anything is listening for them.
-        var silence = SilentPlayback.On(playback);
-
+        SilentPlayback? silence = null;
         var opened = new List<CaptureSource>();
+        string? fellBack = null;
+
+        CaptureSource Open(AudioChannel channel, CaptureTarget target)
+        {
+            // Only ever for the whole machine's loopback, and before it opens, so the endpoint is
+            // already handing packets over by the time anything is listening for them. A program's
+            // audio needs none of it: silence played by this process is not that program's.
+            if (channel == AudioChannel.Loopback && target is CaptureTarget.Endpoint)
+            {
+                silence ??= SilentPlayback.On(playback);
+            }
+
+            return CaptureSource.Open(channel, target, FileFor(folder, channel));
+        }
+
         try
         {
-            foreach (var (channel, device) in InChannelOrder(playback, microphone))
+            foreach (var (channel, target) in InChannelOrder(Others(follow, playback), microphone))
             {
-                opened.Add(CaptureSource.Open(channel, device, FileFor(folder, channel)));
+                try
+                {
+                    opened.Add(Open(channel, target));
+                }
+                catch (AudioCaptureException cannot) when (target is CaptureTarget.Program)
+                {
+                    fellBack = cannot.Message;
+                    opened.Add(Open(channel, new CaptureTarget.Endpoint(playback)));
+                }
             }
         }
         catch
@@ -70,11 +109,11 @@ public sealed class CaptureSession : IDisposable
                 source.Discard();
             }
 
-            silence.Dispose();
+            silence?.Dispose();
             throw;
         }
 
-        return new CaptureSession([.. opened], silence);
+        return new CaptureSession([.. opened], silence, fellBack);
     }
 
     /// <summary>The source feeding <paramref name="channel"/>.</summary>
@@ -126,7 +165,7 @@ public sealed class CaptureSession : IDisposable
             source.LetGo();
         }
 
-        silence.Dispose();
+        silence?.Dispose();
     }
 
     /// <summary>
@@ -146,17 +185,21 @@ public sealed class CaptureSession : IDisposable
         }
     }
 
+    /// <summary>What channel 0 was asked to listen to, before anything says whether it can.</summary>
+    private static CaptureTarget Others(AudioProcess? follow, AudioDevice playback) =>
+        follow is null ? new CaptureTarget.Endpoint(playback) : new CaptureTarget.Program(follow);
+
     /// <summary>
-    /// Which device feeds which channel, ordered by the contract rather than by the order these
-    /// two are written in, so channel 0 is opened first because it is channel 0.
+    /// What feeds which channel, ordered by the contract rather than by the order these two are
+    /// written in, so channel 0 is opened first because it is channel 0.
     /// </summary>
-    private static IEnumerable<(AudioChannel Channel, AudioDevice Device)> InChannelOrder(
-        AudioDevice playback,
+    private static IEnumerable<(AudioChannel Channel, CaptureTarget Target)> InChannelOrder(
+        CaptureTarget others,
         AudioDevice microphone) =>
         new[]
         {
-            (Channel: AudioChannel.Microphone, Device: microphone),
-            (Channel: AudioChannel.Loopback, Device: playback),
+            (Channel: AudioChannel.Microphone, Target: (CaptureTarget)new CaptureTarget.Endpoint(microphone)),
+            (Channel: AudioChannel.Loopback, Target: others),
         }.OrderBy(source => CapturedAudio.IndexOf(source.Channel));
 
     private static FileInfo FileFor(DirectoryInfo folder, AudioChannel channel) =>

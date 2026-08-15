@@ -58,6 +58,7 @@ public static class AudioCommands
         var folder = new DirectoryInfo(arguments.Required("--out"));
         var seconds = arguments.Number("--seconds", 0);
         var wanted = arguments.Optional("--microphone");
+        var program = arguments.Optional("--process");
         arguments.EnsureNothingLeftOver();
 
         if (seconds == 0)
@@ -67,14 +68,21 @@ public static class AudioCommands
 
         var playback = AudioDevices.Playback();
         var microphone = AudioDevices.Choose(AudioDevices.Microphones(), wanted);
+        var follow = program is null ? null : AudioProcesses.Choose(AudioProcesses.Running(), program);
 
-        using var session = CaptureSession.Start(folder, playback, microphone);
+        using var session = CaptureSession.Start(folder, playback, microphone, follow);
 
         Report.Line(output, "folder", folder.FullName);
         Report.Line(output, "channel 0", session.Mode.ToString());
+
+        if (session.FellBack is not null)
+        {
+            Report.Line(output, "fell back", session.FellBack);
+        }
+
         foreach (var source in session.Sources)
         {
-            Report.Line(output, $"{Name(source)} device", source.Device.Name);
+            Report.Line(output, $"{Name(source)} hears", source.Listening.Name);
             Report.Line(output, $"{Name(source)} format", source.Format.ToString());
             Report.Line(output, $"{Name(source)} opened", source.StartedAt.ToString());
         }

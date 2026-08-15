@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 
 using NAudio.CoreAudioApi;
+using NAudio.Wave;
 
 namespace MeetingTranscriber.Audio;
 
@@ -79,6 +80,25 @@ public static class AudioDevices
                 $"'{wanted}' names {named.Length} microphones: {Names(named)}. Say which by its id."),
         };
     }
+
+    /// <summary>
+    /// The format the audio engine is mixing at, which is the format everything being played is
+    /// already in. Asked of the playback endpoint because that is where the mix goes; a capture that
+    /// follows a process has no endpoint of its own to ask.
+    /// </summary>
+    internal static WaveFormat EngineFormat() => Ask(() =>
+    {
+        using var enumerator = new MMDeviceEnumerator();
+        if (!enumerator.HasDefaultAudioEndpoint(DataFlow.Render, Role.Console))
+        {
+            throw new AudioCaptureException(
+                "Windows names no playback device, so nothing says what the machine is mixing at.");
+        }
+
+        using var endpoint = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Console);
+        using var client = endpoint.AudioClient;
+        return client.MixFormat;
+    });
 
     /// <summary>Reopens a device the machine described earlier, ready to be captured from.</summary>
     internal static MMDevice Open(AudioDevice device)
