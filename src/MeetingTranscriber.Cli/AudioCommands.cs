@@ -89,12 +89,25 @@ public static class AudioCommands
                 $"{Name(source)} wrote",
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"{source.File.Name}, {Report.Offset(source.Recorded)}, "
+                    $"{source.File.Name}, {Report.Offset(source.Packets.Covers)}, "
                     + $"{source.Bytes / 1024d / 1024d:0.0} MB, loudest {source.Loudest}"));
+
+            Report.Line(output, $"{Name(source)} clock", Clocking(source.Packets));
         }
 
         return Cli.Ok;
     }
+
+    /// <summary>
+    /// What the device said about its own packets, which is the measurement the two files are not.
+    /// The two numbers that matter are how much of the meeting it counted and never handed over,
+    /// and how far apart it read one packet from the next: instants stamped where the application
+    /// collected them would read as a burst of no time at all and then the whole of one poll.
+    /// </summary>
+    private static string Clocking(PacketTally packets) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{packets.Packets} packets, {packets.Closest.Milliseconds} to {packets.Furthest.Milliseconds} ms apart, "
+        + $"{packets.Lost.Milliseconds} ms lost, {packets.Unvouched} unvouched");
 
     /// <summary>
     /// One line a second, so what is being written is visible while it is being written rather
