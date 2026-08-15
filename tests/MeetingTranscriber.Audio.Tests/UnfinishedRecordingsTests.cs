@@ -159,6 +159,47 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// ISC-126. A meeting somebody is in the middle of is the last thing to leave off a list, and
+    /// the last thing to offer as one to decide about — two of the three outcomes would read a
+    /// file that is still growing and the third would throw away a meeting that is still
+    /// happening. So it is said, and it is said before anything can be chosen.
+    /// </summary>
+    [Fact]
+    public void A_meeting_still_being_recorded_is_said_to_be_rather_than_offered_as_one_to_decide_about()
+    {
+        Recorded("daily", both: true);
+
+        using (var writing = Recording(AudioChannel.Loopback))
+        {
+            UnfinishedRecordings.In(root).ShouldHaveSingleItem().Running.ShouldBeTrue();
+            UnfinishedRecordings.At(Folder("daily")).Running.ShouldBeTrue();
+        }
+
+        // The same folder the moment nothing holds it: what was running is now waiting.
+        UnfinishedRecordings.In(root).ShouldHaveSingleItem().Running.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The other half of ISC-126: saying so is not enough on its own, because what is offered is
+    /// what somebody acts on. All three outcomes refuse a meeting that is still being recorded.
+    /// </summary>
+    [Fact]
+    public void None_of_the_three_outcomes_lands_on_a_meeting_that_is_still_being_recorded()
+    {
+        Recorded("daily", both: true);
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+        using var writing = Recording(AudioChannel.Loopback);
+
+        Should.Throw<AudioCaptureException>(() => recording.Keep()).Message.ShouldContain("still running");
+        Should.Throw<AudioCaptureException>(() => recording.Export(Folder("out")))
+            .Message.ShouldContain("still running");
+        Should.Throw<AudioCaptureException>(recording.Discard).Message.ShouldContain("still running");
+
+        Folder("daily").Exists.ShouldBeTrue();
+        Folder("out").EnumerateFiles().ShouldBeEmpty();
+    }
+
+    /// <summary>
     /// A meeting still being recorded is not a recording nobody stopped. Throwing one away would
     /// be the worst of the three outcomes landing on the one recording somebody is in the middle
     /// of, so it is refused where the refusal can still name what is happening.
@@ -286,6 +327,16 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     }
 
     private DirectoryInfo Folder(string name) => new(Path.Combine(root.FullName, name));
+
+    /// <summary>
+    /// The handle a capture holds on its own spool while a meeting is being recorded: writing it,
+    /// and letting nothing else write.
+    /// </summary>
+    private FileStream Recording(AudioChannel channel) => new(
+        BlockSpool.FileFor(Folder("daily"), channel).FullName,
+        FileMode.Open,
+        FileAccess.Write,
+        FileShare.Read);
 
     /// <summary>A recording left exactly as killing the process during one leaves it.</summary>
     private Guid Recorded(string name, bool both, bool card = true)

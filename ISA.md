@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 88/125
+progress: 89/126
 updated: 2026-08-15
 ---
 
@@ -137,9 +137,10 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-120: A recording says in its own folder which device fed each of its channels.
 - [x] ISC-121: A recording whose channel 0 could not follow the program it was asked to says so in its own folder, and says why.
 - [x] ISC-122: Anti: what a recording's folder says about it is what was true when it started, and nothing that happens while it records rewrites it.
-- [x] ISC-123: Every recording nobody got to stop is found again from the folder recordings are written into, each saying which meeting it is and what each of its sources holds.
-- [x] ISC-124: A recording nobody stopped is kept, has its audio taken out, or is thrown away — and which of the three happens is somebody's choice every time.
-- [x] ISC-125: Anti: a recording that was cut off is removed by nothing but somebody choosing to remove it.
+- [x] ISC-123: Every recording sitting in the folder recordings are written into is found again, each saying which meeting it is and what each of its sources holds.
+- [x] ISC-124: A recording waiting in that folder is kept, has its audio taken out, or is thrown away — and which of the three happens is somebody's choice every time.
+- [x] ISC-125: Anti: a recording waiting in that folder is removed by nothing but somebody choosing to remove it.
+- [x] ISC-126: Anti: a meeting that is still being recorded is never offered as one to decide about.
 
 ### F4 · WinUI recorder
 Why: the application replaces OBS. Recording, pausing, stopping and recovering happen in one
@@ -404,6 +405,7 @@ Board: 7 · Distribución y backup
 - ISC-120 — `SpoolManifestTests.A_recording_says_which_device_fed_each_of_its_channels` green 2026-08-15, reading both endpoints back in channel order out of a file listing them in the other one
 - ISC-121 — `SpoolManifestTests.A_recording_whose_channel_0_could_not_follow_its_program_says_so_and_says_why` and `.A_recording_that_followed_its_program_says_that_instead_of_naming_a_device` green 2026-08-15: both sides of it, the second holding that which one it was is decided by the absent device id and by nothing beside it
 - ISC-122 — `SpoolManifestTests.What_a_recording_says_about_itself_is_written_once` green 2026-08-15, the second write refused and the first card still saying what it said. `.A_folder_that_already_says_what_it_holds_takes_no_recording` holds the same rule where it costs nothing — before a device is opened
-- ISC-123 — `AbandonedRecordingsTests.Every_recording_nobody_stopped_is_found_again_with_what_it_is_and_what_is_in_it` and `.A_recording_with_no_card_is_offered_all_the_same` green 2026-08-15, over a root holding one recording with both sources, one with a single source and a folder that is not a recording at all. `RecoveryCommandTests.What_is_waiting_says_which_meeting_it_is_and_what_each_source_holds` (`tests/MeetingTranscriber.Cli.Tests`) holds it at the surface a person meets it at
-- ISC-124 — `AbandonedRecordingsTests` and `RecoveryCommandTests` green 2026-08-15: kept, the recording is read through and every file is still there afterwards; taken out, the audio lands where it was asked for and the blocks stay; thrown away, the folder is gone. `RecoveryCommandTests.Deciding_nothing_about_a_recording_is_a_misuse` and `.Deciding_two_things_about_a_recording_is_a_misuse` hold that there is no default
-- ISC-125 — `AbandonedRecordingsTests.Nothing_but_a_decision_about_one_recording_removes_a_folder` and `.Nothing_in_the_audio_engine_removes_a_file_it_did_not_just_create` green 2026-08-15, each red 2026-08-15 against a `Directory.Delete` and a `Delete(` planted in a source file that has no business holding one
+- ISC-123 — `UnfinishedRecordingsTests.Every_recording_nobody_stopped_is_found_again_with_what_it_is_and_what_is_in_it` and `.A_recording_with_no_card_is_offered_all_the_same` green 2026-08-15, over a root holding one recording with both sources, one with a single source and a folder that is not a recording at all. `RecoveryCommandTests.What_is_waiting_says_which_meeting_it_is_and_what_each_source_holds` (`tests/MeetingTranscriber.Cli.Tests`) holds it at the surface a person meets it at
+- ISC-124 — `UnfinishedRecordingsTests` and `RecoveryCommandTests` green 2026-08-15: kept, the recording is read through and every file is still there afterwards; taken out, the audio lands where it was asked for and the blocks stay; thrown away, the folder is gone. `RecoveryCommandTests.Deciding_nothing_about_a_recording_is_a_misuse` and `.Deciding_two_things_about_a_recording_is_a_misuse` hold that there is no default
+- ISC-125 — `UnfinishedRecordingsTests.Nothing_but_a_decision_about_one_recording_removes_a_folder` and `.Nothing_in_the_audio_engine_removes_a_file_it_did_not_just_create` green 2026-08-15, each red 2026-08-15 against a `Directory.Delete` and a `Delete(` planted in a source file that has no business holding one
+- ISC-126 — `UnfinishedRecordingsTests.A_meeting_still_being_recorded_is_said_to_be_rather_than_offered_as_one_to_decide_about` and `.None_of_the_three_outcomes_lands_on_a_meeting_that_is_still_being_recorded` green 2026-08-15, over the handle a capture holds on its own spool — the same folder reading as waiting the moment nothing holds it. The first red 2026-08-15 against a build that answered that nothing was ever being written
