@@ -1,4 +1,4 @@
-﻿using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Audio;
 
 namespace MeetingTranscriber.Audio.Tests;
 
@@ -287,6 +287,128 @@ public class SharedTimelineTests
 
         Should.Throw<AudioCaptureException>(() => timeline.Take(late))
             .Message.ShouldContain("went quiet");
+    }
+
+    /// <summary>
+    /// ISC-125. The other way a source can stop: not for so long that the recording gives it up,
+    /// just before the other one. Somebody hits stop and one device's last packets are already in
+    /// — the meeting is as long as the last thing anybody said, and cutting it where the first
+    /// device stopped would drop the end of a conversation with nothing saying so.
+    /// </summary>
+    [Fact]
+    public void A_source_that_stopped_early_does_not_cut_the_meeting_short()
+    {
+        var collected = new Collected();
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, collected);
+
+        Feed(
+            timeline,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 20, Fabricated.Bursts(1)),
+            Fabricated.Packets(AudioChannel.Microphone, MonoFloat, 48_000, 0, 15, Fabricated.Bursts(1)));
+
+        var summary = timeline.Close();
+
+        // Five seconds is inside the half minute of Stalls, so the microphone was never given up
+        // on: the whole of its absence is written at the close rather than as the recording ran.
+        summary.Length.Milliseconds.ShouldBeInRange(19_940, 20_060);
+        summary.On(AudioChannel.Microphone).Missing.Milliseconds.ShouldBeInRange(4_940, 5_060);
+        summary.On(AudioChannel.Loopback).Missing.Milliseconds.ShouldBe(0);
+
+        // The microphone's last whole packet is the one before it stopped, so its last marker is
+        // the one at fourteen seconds; the loopback goes on marking every second to the end.
+        collected.OnsetAfter(AudioChannel.Microphone, 13.9).ShouldNotBeNull().ShouldBe(14, tolerance: 0.005);
+        collected.Loudest(AudioChannel.Microphone, 14.5, 20).ShouldBe(0);
+        collected.OnsetAfter(AudioChannel.Loopback, 18.9).ShouldNotBeNull().ShouldBe(19, tolerance: 0.005);
+    }
+
+    /// <summary>
+    /// ISC-124. Two devices are drained by two threads on a machine doing other things, so which
+    /// source's packet reaches the timeline first is the operating system's business and changes
+    /// from one meeting to the next. Up to the half minute the timeline waits, only what a packet
+    /// says may decide where its audio goes.
+    /// </summary>
+    [Fact]
+    public void Handing_a_source_over_in_clumps_seconds_late_records_the_same_meeting()
+    {
+        // That the two runs were really handed over differently, before anything is concluded from
+        // their coming out the same: a clumping that quietly did nothing would pass every
+        // assertion below.
+        // Both devices hand over 10 ms at a time, so a smooth delivery alternates; the run of five
+        // is the loopback's head start before the microphone opened.
+        LongestRun(Delivery(clumpedIntoSeconds: 0)).ShouldBeLessThan(10);
+        LongestRun(Delivery(clumpedIntoSeconds: 5)).ShouldBeGreaterThan(100);
+
+        var smooth = Record(clumpedIntoSeconds: 0);
+        var jittery = Record(clumpedIntoSeconds: 5);
+
+        jittery.Recording.Frames.ShouldBe(smooth.Recording.Frames);
+        jittery.Recording.FirstDifferenceFrom(smooth.Recording).ShouldBeNull();
+        jittery.Summary.Length.ShouldBe(smooth.Summary.Length);
+        jittery.Summary.On(AudioChannel.Microphone).Waited
+            .ShouldBe(smooth.Summary.On(AudioChannel.Microphone).Waited);
+    }
+
+    /// <summary>
+    /// And the far side of that bound, which is where the claim stops: a source handed over later
+    /// than the timeline waits is a device the recording has already gone on without, and the same
+    /// packets that record a meeting when they arrive on time have nowhere to go when they do not.
+    /// The bound is a promise about how late a capture may be, not a detail of one.
+    /// </summary>
+    [Fact]
+    public void Handing_a_source_over_later_than_the_timeline_waits_gives_that_source_up()
+    {
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, new Collected());
+
+        var refused = Should.Throw<AudioCaptureException>(() =>
+        {
+            foreach (var packet in Fabricated.Merged(
+                Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 60, Fabricated.Quiet),
+                Fabricated.Packets(AudioChannel.Microphone, MonoFloat, 48_000, 0, 60, Fabricated.Quiet),
+                clumpedIntoSeconds: 35))
+            {
+                timeline.Take(packet);
+            }
+        });
+
+        refused.Message.ShouldContain("went quiet");
+    }
+
+    /// <summary>The two sources of one minute, as one delivery would hand them over.</summary>
+    private static IEnumerable<CapturePacket> Delivery(double clumpedIntoSeconds) =>
+        Fabricated.Merged(
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 60, Fabricated.Bursts(1)),
+            Fabricated.Packets(
+                AudioChannel.Microphone, CheapMicrophone, 44_100, 0.04, 60, Fabricated.Bursts(1), packetFrames: 441),
+            clumpedIntoSeconds);
+
+    /// <summary>The most packets of one source that arrived before the other one got a turn.</summary>
+    private static int LongestRun(IEnumerable<CapturePacket> delivery)
+    {
+        var longest = 0;
+        var run = 0;
+        AudioChannel? last = null;
+
+        foreach (var packet in delivery)
+        {
+            run = packet.Channel == last ? run + 1 : 1;
+            last = packet.Channel;
+            longest = Math.Max(longest, run);
+        }
+
+        return longest;
+    }
+
+    private static (Collected Recording, TimelineSummary Summary) Record(double clumpedIntoSeconds)
+    {
+        var collected = new Collected();
+        var timeline = SharedTimeline.Of(StereoFloat, CheapMicrophone, collected);
+
+        foreach (var packet in Delivery(clumpedIntoSeconds))
+        {
+            timeline.Take(packet);
+        }
+
+        return (collected, timeline.Close());
     }
 
     /// <summary>

@@ -27,7 +27,7 @@ opening streams, so two hours of a clock running fast is arithmetic in `Audio.Te
 meeting on a machine nobody has — which is the only way the product's largest technical risk gets
 tested at all. Nothing in it touches WASAPI, and `Fabricated` is where the devices that never
 existed are written. That arithmetic is why `Audio.Tests` takes about a minute where every other
-suite takes seconds: `TimelineDriftTests` really does run the two hours ISC-35 claims, half a
+suite takes seconds: `TimelineDriftTests` really does run the two hours ISC-126 claims, half a
 billion frames of it, and a shorter one would be a different claim.
 
 `tests/MeetingTranscriber.Testing/` holds no test. It is where `TemporaryCorpus`, the raw-SQL

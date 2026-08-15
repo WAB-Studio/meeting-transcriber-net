@@ -16,7 +16,7 @@ internal sealed class Collected : IAlignedAudio
 
     /// <summary>The sample of <paramref name="channel"/> at <paramref name="frame"/>, full scale at one.</summary>
     internal float At(AudioChannel channel, int frame) =>
-        interleaved[(frame * CapturedAudio.ChannelCount) + CapturedAudio.IndexOf(channel)] / -(float)short.MinValue;
+        Loudness.Of(interleaved[(frame * CapturedAudio.ChannelCount) + CapturedAudio.IndexOf(channel)]);
 
     /// <summary>The loudest <paramref name="channel"/> gets between two seconds of the recording.</summary>
     internal float Loudest(AudioChannel channel, double fromSeconds, double toSeconds)
@@ -35,15 +35,16 @@ internal sealed class Collected : IAlignedAudio
     /// seconds of the recording, or null if it never does.
     /// </summary>
     /// <remarks>
-    /// Half of full scale as the line: a resampled edge takes a millisecond or two to get there
-    /// and rings around it afterwards, and anything that crosses half was a burst rather than the
-    /// filter thinking about one.
+    /// The first loud frame after an instant the caller names, and deliberately not the rising edge
+    /// <see cref="Onsets"/> looks for: a test asking this one already knows which marker it means
+    /// and where to start looking, so what is quiet before that instant is its business and not
+    /// this method's. <see cref="Loudness"/> holds the line both of them read.
     /// </remarks>
     internal double? OnsetAfter(AudioChannel channel, double fromSeconds)
     {
         for (var frame = Frame(fromSeconds); frame < Frames; frame++)
         {
-            if (MathF.Abs(At(channel, frame)) > 0.5f)
+            if (MathF.Abs(At(channel, frame)) > Loudness.Loud)
             {
                 return frame / (double)CapturedAudio.SampleRate;
             }

@@ -8,11 +8,11 @@ namespace MeetingTranscriber.Audio.Tests;
 /// channel, and what the drift measurement asks of it is where a few hundred markers landed.
 /// </summary>
 /// <remarks>
-/// An onset is a rising edge — the first frame over half of full scale after the channel has been
-/// under it for <see cref="QuietFrames"/>. The line and the reason for it are
-/// <see cref="Collected.OnsetAfter"/>'s: a resampled edge takes a millisecond or two to get there
-/// and rings around it afterwards, so anything quieter was the filter thinking about a burst rather
-/// than a burst.
+/// An onset here is a rising edge — a loud frame after <see cref="QuietFrames"/> of quiet — which
+/// is a stricter rule than <see cref="Collected.OnsetAfter"/>'s first loud frame after an instant
+/// the caller names. It has to be: nothing tells this sink where to look, so without the silence in
+/// front of it every frame of a marker would be an onset of its own. Both read
+/// <see cref="Loudness"/> for where loud starts.
 /// </remarks>
 internal sealed class Onsets : IAlignedAudio
 {
@@ -47,10 +47,7 @@ internal sealed class Onsets : IAlignedAudio
         {
             for (var channel = 0; channel < CapturedAudio.ChannelCount; channel++)
             {
-                var sample = interleaved[(frame * CapturedAudio.ChannelCount) + channel]
-                    / -(float)short.MinValue;
-
-                if (MathF.Abs(sample) > 0.5f)
+                if (Loudness.IsLoud(interleaved[(frame * CapturedAudio.ChannelCount) + channel]))
                 {
                     if (quiet[channel] >= QuietFrames)
                     {
