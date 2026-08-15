@@ -83,6 +83,21 @@ public class FramePositionsTests
         positions.For(At(300), timingIsSound: true, Packet).ShouldBe(200 * Rate / 1000);
     }
 
+    /// <summary>
+    /// Every later packet is measured from the first instant the device vouched for, so opening on
+    /// one it disowned must not become the anchor: a reading nothing stands behind would put the
+    /// whole recording wherever that number happened to fall.
+    /// </summary>
+    [Fact]
+    public void A_stream_that_opens_with_an_unvouched_instant_is_not_anchored_to_it()
+    {
+        var positions = new FramePositions(Rate);
+
+        positions.For(At(999_999), timingIsSound: false, Packet).ShouldBe(0);
+        positions.For(At(100), timingIsSound: true, Packet).ShouldBe(Packet);
+        positions.For(At(110), timingIsSound: true, Packet).ShouldBe(Packet + (10 * Rate / 1000));
+    }
+
     [Fact]
     public void A_source_arriving_at_no_rate_at_all_is_refused()
     {

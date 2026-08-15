@@ -41,7 +41,7 @@ machine's loopback heard at −18.9 dBFS.
 | A program whose **child** plays | **Works.** −8.7 dBFS steady over 10 s, 1002 packets, nothing lost. The parent plays nothing itself, so this is the tree and not the process. |
 | **Edge** (Chromium), Web Audio tone | **Works.** −12.0 dBFS over 6 s. The name resolved to the browser process out of 17; the audio comes from its audio-service child. |
 | **Firefox**, the same page | **Works.** −12.0 dBFS over 6 s, resolved out of 10 processes. |
-| **Teams** (WebView2, MSIX) | **Opens.** The name resolves to the window process, activation succeeds and the stream runs. Whether a meeting's audio lands in it is **not probed** — that needs a signed-in account and somebody on the other end. |
+| **Teams** (WebView2, MSIX) | **Opens.** The name resolves to the window process, activation succeeds and the stream runs. Whether a meeting's audio lands in it is **not probed** — that needs a signed-in account and somebody on the other end, and there are reports against Microsoft's own sample of the desktop client rendering where a process loopback of its tree hears nothing. Until somebody holds a meeting through it, treat Teams as unproven and not as working. |
 | **Zoom** | **Not probed.** Not installed on this machine. |
 
 Two things the runs settled that are not in the table:

@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 
 using NAudio.CoreAudioApi;
@@ -70,7 +71,7 @@ internal static class ProcessLoopback
         // a callback: an apartment that delivers calls through a message pump would have to pump it,
         // and this waits instead of pumping. The window's thread is exactly such an apartment.
         AudioClient? client = null;
-        Exception? refused = null;
+        ExceptionDispatchInfo? refused = null;
 
         var activating = new Thread(() =>
         {
@@ -80,7 +81,7 @@ internal static class ProcessLoopback
             }
             catch (Exception no)
             {
-                refused = no;
+                refused = ExceptionDispatchInfo.Capture(no);
             }
         })
         {
@@ -92,12 +93,11 @@ internal static class ProcessLoopback
         activating.Start();
         activating.Join();
 
-        if (refused is not null)
-        {
-            throw refused as AudioCaptureException
-                ?? new AudioCaptureException(
-                    $"Windows would not hand over the audio of {process}: {refused.Message}", refused);
-        }
+        // Thrown as it was caught, and never widened into "this machine cannot follow a process".
+        // A capture reads that answer as permission to record everything instead — so an interop
+        // defect wrapped in it would come back as a wider recording that looks like a supported
+        // fallback, which is the one outcome nobody would go looking for.
+        refused?.Throw();
 
         return client!;
     }
@@ -135,15 +135,27 @@ internal static class ProcessLoopback
 
             if (!handler.Answered(ActivatesWithin))
             {
+                // Left undisposed on purpose, and it is the one place here that leaks. The callback
+                // may still be coming, and setting an event somebody has already disposed would
+                // take the process down from a COM thread this code does not own.
                 throw new AudioCaptureException(
                     $"Windows did not answer about the audio of {process} within "
                     + $"{ActivatesWithin.TotalSeconds:0} seconds.");
             }
 
-            attempt.GetActivateResult(out var result, out var activated);
-            Marshal.ThrowExceptionForHR(result);
+            handler.Dispose();
 
-            return new AudioClient((IAudioClient)activated);
+            try
+            {
+                attempt.GetActivateResult(out var result, out var activated);
+                Marshal.ThrowExceptionForHR(result);
+
+                return new AudioClient((IAudioClient)activated);
+            }
+            finally
+            {
+                Marshal.ReleaseComObject(attempt);
+            }
         }
         catch (COMException no)
         {
@@ -169,11 +181,13 @@ internal static class ProcessLoopback
     /// What Windows calls back on when the activation is over. It carries no result: the operation
     /// handed back by the call is the same one passed here, and asking it is where the answer is.
     /// </summary>
-    private sealed class Activation : IActivateAudioInterfaceCompletionHandler
+    private sealed class Activation : IActivateAudioInterfaceCompletionHandler, IDisposable
     {
         private readonly ManualResetEventSlim over = new(initialState: false);
 
         public void ActivateCompleted(IActivateAudioInterfaceAsyncOperation attempt) => over.Set();
+
+        public void Dispose() => over.Dispose();
 
         internal bool Answered(TimeSpan within) => over.Wait(within);
     }

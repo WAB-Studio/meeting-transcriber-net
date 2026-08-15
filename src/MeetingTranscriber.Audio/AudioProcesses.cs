@@ -16,13 +16,23 @@ namespace MeetingTranscriber.Audio;
 /// <para>
 /// The rule that matters is the last one. A meeting in a browser is a dozen processes of the same
 /// name, and the audio comes out of a child the person never heard of — so what a typed name has
-/// to resolve to is the root of that tree, and every match whose parent is also a match is one of
-/// its children rather than another candidate.
+/// to resolve to is the root of that tree, and any match standing under another one, however far
+/// down, is part of that answer rather than another candidate.
 /// </para>
 /// </remarks>
 public static class AudioProcesses
 {
     private const uint SnapshotOfProcesses = 0x00000002;
+
+    /// <summary>ERROR_NO_MORE_FILES: the walk reached the end, which is the only ordinary stop.</summary>
+    private const int WalkedThemAll = 18;
+
+    /// <summary>
+    /// How far up a parent chain is followed before it is taken for a loop. Process ids are reused,
+    /// so a snapshot really can describe a cycle, and a walk that trusted it would not come back.
+    /// </summary>
+    private const int Ancestors = 64;
+
     private static readonly IntPtr NoSnapshot = new(-1);
 
     /// <summary>Every process this session can see, with the id of whatever started each one.</summary>
@@ -52,6 +62,18 @@ public static class AudioProcesses
                     (int)entry.ProcessId,
                     Path.GetFileNameWithoutExtension(entry.ExeFile),
                     (int)entry.ParentProcessId));
+            }
+
+            // A walk that stopped for any other reason is a list with programs missing from it, and
+            // a missing parent is what turns one tree into two candidates and refuses a capture that
+            // had one answer. Half an inventory is worse than none, because it reads as an answer.
+            var stopped = Marshal.GetLastWin32Error();
+            if (stopped != WalkedThemAll)
+            {
+                throw new AudioCaptureException(
+                    "Windows stopped part way through saying what is running, so there is no telling "
+                    + "which program owns which.",
+                    new Win32Exception(stopped));
             }
 
             return running;
@@ -96,7 +118,7 @@ public static class AudioProcesses
                 .ToArray();
         }
 
-        var roots = Roots(named);
+        var roots = Roots(named, processes);
 
         return roots.Length switch
         {
@@ -108,13 +130,52 @@ public static class AudioProcesses
     }
 
     /// <summary>
-    /// The matches that nothing else in the match started. A tree is followed from its root, so a
-    /// child among the candidates is not a candidate — it is part of the answer already.
+    /// The matches that no other match started, however far down. A tree is followed from its root,
+    /// so a match anywhere under another one is not a candidate — it is part of that answer already.
     /// </summary>
-    private static AudioProcess[] Roots(AudioProcess[] named)
+    /// <remarks>
+    /// Walked through <paramref name="processes"/> and not through the matches, because the step
+    /// between two of one name is usually a process of another: an application launches a helper
+    /// and the helper launches the window. Stopping at the immediate parent would call both of them
+    /// roots and refuse a capture that had exactly one answer.
+    /// </remarks>
+    private static AudioProcess[] Roots(AudioProcess[] named, IReadOnlyList<AudioProcess> processes)
     {
-        var ids = named.Select(process => process.Id).ToHashSet();
-        return [.. named.Where(process => !ids.Contains(process.StartedBy))];
+        var matched = named.Select(process => process.Id).ToHashSet();
+        var byId = processes.ToLookup(process => process.Id);
+
+        bool UnderAnother(AudioProcess process)
+        {
+            var above = process.StartedBy;
+
+            for (var step = 0; step < Ancestors; step++)
+            {
+                // Nothing is its own ancestor. Reused ids let a snapshot describe a chain that
+                // comes back round, and reading that as "this one stands under a match" would drop
+                // the only candidate there was.
+                if (above == process.Id)
+                {
+                    return false;
+                }
+
+                if (matched.Contains(above))
+                {
+                    return true;
+                }
+
+                var parent = byId[above].FirstOrDefault();
+                if (parent is null || parent.StartedBy == above)
+                {
+                    return false;
+                }
+
+                above = parent.StartedBy;
+            }
+
+            return false;
+        }
+
+        return [.. named.Where(process => !UnderAnother(process))];
     }
 
     private static string Names(IReadOnlyList<AudioProcess> processes) =>

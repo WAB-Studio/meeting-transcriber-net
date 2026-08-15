@@ -132,7 +132,10 @@ internal sealed class WasapiStream : IDisposable
     {
         ArgumentNullException.ThrowIfNull(process);
 
-        var client = ProcessLoopback.For(process);
+        // Asked for before anything is activated, and that order is the point: it is the one step
+        // here that can fail without a client to let go of, and a client obtained first would be
+        // left open by a machine that had just lost its playback endpoint.
+        var format = AudioDevices.EngineFormat();
 
         // Set even though the format asked for is the one the engine mixes at, so that a machine
         // mixing at something this cannot ask for gets a conversion instead of a refusal.
@@ -145,8 +148,8 @@ internal sealed class WasapiStream : IDisposable
         // ten seconds of a program playing a tone. See FramePositions for what stands in.
         return Ready(
             AudioChannel.Loopback,
-            client,
-            AudioDevices.EngineFormat(),
+            ProcessLoopback.For(process),
+            format,
             converting,
             endpoint: null,
             numbersFrames: false);

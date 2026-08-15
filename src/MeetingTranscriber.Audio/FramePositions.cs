@@ -19,13 +19,22 @@ namespace MeetingTranscriber.Audio;
 /// having: a real dropout, where the instants jump by more than the audio between them, still opens
 /// the gap it was, and gets recorded as silence of that length rather than closed up.
 /// </para>
+/// <para>
+/// A consequence worth saying out loud: a source placed this way measures its own rate as exactly
+/// the rate it was opened at, so the check that stops a device whose two counters disagree can
+/// never fire on it. That is right rather than a hole. The disagreement that check exists for is a
+/// crystal running at its own speed, and there is no crystal here — the audio engine mixes at one
+/// rate and hands over what it mixed. Frames short against the clock are a dropout and not a slow
+/// device, which is exactly what opening the gap says.
+/// </para>
 /// </remarks>
 public sealed class FramePositions
 {
     private readonly int sampleRate;
     private MonotonicInstant anchor;
+    private long anchoredAt;
     private long next;
-    private bool started;
+    private bool anchored;
 
     /// <summary>Positions for a source arriving at <paramref name="sampleRate"/> frames a second.</summary>
     public FramePositions(int sampleRate)
@@ -42,7 +51,10 @@ public sealed class FramePositions
     /// <param name="timingIsSound">
     /// Whether the device vouched for that instant. When it did not there is nothing to place the
     /// packet by, so it goes immediately after the packet before it — the samples are still the
-    /// meeting, and dropping them over a clock reading would lose a real block of it.
+    /// meeting, and dropping them over a clock reading would lose a real block of it. A stream that
+    /// opens with one of those is not anchored to it either: every later packet is measured from
+    /// the anchor, so anchoring on a reading the device disowned would put the whole recording
+    /// wherever that number happened to fall.
     /// </param>
     /// <param name="frames">How many frames the packet carries.</param>
     public long For(MonotonicInstant at, bool timingIsSound, int frames)
@@ -54,15 +66,22 @@ public sealed class FramePositions
 
     private long Where(MonotonicInstant at, bool timingIsSound)
     {
-        if (!started)
+        if (!timingIsSound)
         {
-            started = true;
-            anchor = at;
-            return 0;
+            return next;
         }
 
-        return timingIsSound
-            ? Math.Max(next, at.Since(anchor) * sampleRate / MonotonicInstant.TicksPerSecond)
-            : next;
+        if (!anchored)
+        {
+            anchored = true;
+            anchor = at;
+
+            // Whatever the packets before this one covered, which is nothing unless the stream
+            // opened with instants the device disowned.
+            anchoredAt = next;
+            return next;
+        }
+
+        return Math.Max(next, anchoredAt + (at.Since(anchor) * sampleRate / MonotonicInstant.TicksPerSecond));
     }
 }

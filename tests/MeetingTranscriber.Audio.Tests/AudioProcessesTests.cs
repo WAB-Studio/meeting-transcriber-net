@@ -50,6 +50,33 @@ public class AudioProcessesTests
     }
 
     /// <summary>
+    /// And the step between two processes of one name is usually a process of another: an
+    /// application launches a helper and the helper launches what plays the audio. Stopping at the
+    /// immediate parent would call both ends of that roots and refuse a name with one answer.
+    /// </summary>
+    [Fact]
+    public void A_name_reappearing_under_a_helper_is_still_one_tree()
+    {
+        var helper = new AudioProcess(1010, "msedgewebview2", Browser.Id);
+        var again = new AudioProcess(1011, "msedge", helper.Id);
+
+        AudioProcesses.Choose([again, helper, Browser], "msedge").ShouldBe(Browser);
+    }
+
+    /// <summary>
+    /// Process ids are reused, so a snapshot can describe a parent chain that loops. Walking it
+    /// has to end whatever the machine says.
+    /// </summary>
+    [Fact]
+    public void A_parent_chain_that_loops_is_not_walked_forever()
+    {
+        var one = new AudioProcess(5000, "msedge", 5001);
+        var two = new AudioProcess(5001, "helper", 5000);
+
+        AudioProcesses.Choose([one, two], "msedge").ShouldBe(one);
+    }
+
+    /// <summary>
     /// An exact name wins over a part of another one, so a program cannot be made unreachable by
     /// another whose name contains its own.
     /// </summary>
