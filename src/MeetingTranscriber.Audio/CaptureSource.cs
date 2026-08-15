@@ -21,7 +21,6 @@ public sealed class CaptureSource : IDisposable
 {
     private static readonly TimeSpan StopsWithin = TimeSpan.FromSeconds(5);
 
-    private readonly MMDevice endpoint;
     private readonly WasapiStream stream;
     private readonly WaveFileWriter writer;
     private readonly SourceMeter meter = new();
@@ -33,18 +32,16 @@ public sealed class CaptureSource : IDisposable
 
     private CaptureSource(
         AudioChannel channel,
-        AudioDevice device,
+        CaptureTarget listening,
         StreamFormat format,
         FileInfo file,
-        MMDevice endpoint,
         WasapiStream stream,
         WaveFileWriter writer)
     {
         Channel = channel;
-        Device = device;
+        Listening = listening;
         Format = format;
         File = file;
-        this.endpoint = endpoint;
         this.stream = stream;
         this.writer = writer;
         tally = new PacketTally(format);
@@ -53,8 +50,8 @@ public sealed class CaptureSource : IDisposable
     /// <summary>Which of the two channels this device feeds.</summary>
     public AudioChannel Channel { get; }
 
-    /// <summary>The device Windows opened for it.</summary>
-    public AudioDevice Device { get; }
+    /// <summary>What Windows opened for it: an endpoint, or one program's audio.</summary>
+    public CaptureTarget Listening { get; }
 
     /// <summary>The format that device handed over.</summary>
     public StreamFormat Format { get; }
@@ -120,7 +117,7 @@ public sealed class CaptureSource : IDisposable
         if (failure is not null)
         {
             throw new AudioCaptureException(
-                $"The {Channel} stream on '{Device.Name}' ended by itself: {failure.Message}", failure);
+                $"The {Channel} stream on '{Listening.Name}' ended by itself: {failure.Message}", failure);
         }
     }
 
@@ -133,7 +130,6 @@ public sealed class CaptureSource : IDisposable
         // What patches the WAV header with the length actually written, which is why a capture
         // that was killed still leaves a file something can play.
         writer.Dispose();
-        endpoint.Dispose();
         ended.Dispose();
         running = false;
     }
@@ -173,16 +169,15 @@ public sealed class CaptureSource : IDisposable
     }
 
     /// <summary>
-    /// Opens <paramref name="device"/> onto <paramref name="channel"/> and starts recording it.
+    /// Opens <paramref name="listening"/> onto <paramref name="channel"/> and starts recording it.
     /// Anything the machine refuses comes back as a throw, with nothing left open and no file
     /// left behind.
     /// </summary>
-    internal static CaptureSource Open(AudioChannel channel, AudioDevice device, FileInfo file)
+    internal static CaptureSource Open(AudioChannel channel, CaptureTarget listening, FileInfo file)
     {
-        ArgumentNullException.ThrowIfNull(device);
+        ArgumentNullException.ThrowIfNull(listening);
         ArgumentNullException.ThrowIfNull(file);
 
-        var endpoint = AudioDevices.Open(device);
         WasapiStream? stream = null;
         WaveFileWriter? writer = null;
         var claimed = false;
@@ -191,7 +186,6 @@ public sealed class CaptureSource : IDisposable
         {
             writer?.Dispose();
             stream?.Dispose();
-            endpoint.Dispose();
 
             if (claimed)
             {
@@ -201,7 +195,7 @@ public sealed class CaptureSource : IDisposable
 
         try
         {
-            stream = WasapiStream.On(endpoint, channel);
+            stream = listening.Open(channel);
             var format = StreamFormat.Of(stream.WaveFormat);
 
             // Asked before the device is started rather than answered by its first block: a width
@@ -213,7 +207,7 @@ public sealed class CaptureSource : IDisposable
             claimed = true;
             writer = new WaveFileWriter(bytes, stream.WaveFormat);
 
-            var source = new CaptureSource(channel, device, format, file, endpoint, stream, writer);
+            var source = new CaptureSource(channel, listening, format, file, stream, writer);
             source.Start();
             return source;
         }
@@ -221,7 +215,7 @@ public sealed class CaptureSource : IDisposable
         {
             LetGo();
             throw new AudioCaptureException(
-                $"Windows would not record '{device.Name}': {refused.Message}", refused);
+                $"Windows would not record '{listening.Name}': {refused.Message}", refused);
         }
         catch
         {

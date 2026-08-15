@@ -552,6 +552,11 @@ Si el proceso seleccionado no produce audio o la API no está disponible, la UI
 ofrece loopback completo y advierte que puede incluir notificaciones y otras
 aplicaciones.
 
+Un proceso que no se puede seguir no falla: Windows acepta cualquier PID y
+entrega un flujo silencioso. Lo que detecta un proceso equivocado es el medidor,
+nunca un error, y por eso el nivel de canal 0 es parte de la pantalla de
+grabación y no un detalle de diagnóstico.
+
 La aplicación declara y comprueba su versión mínima de Windows en instalación y
 al iniciar; no espera a que la grabación falle para descubrir una API ausente.
 

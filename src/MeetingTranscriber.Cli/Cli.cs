@@ -99,8 +99,8 @@ public static class Cli
             AudioCommands.Devices),
         new(
             "capture",
-            "capture --out <directory> --seconds <n> [--microphone <name-or-id>]",
-            "record what the machine plays and what the microphone hears, at the same time",
+            "capture --out <directory> --seconds <n> [--microphone <name-or-id>] [--process <name-or-pid>]",
+            "record what the machine plays, or one program, and what the microphone hears at once",
             AudioCommands.Capture),
         new(
             "search",
