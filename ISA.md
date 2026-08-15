@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 84/122
+progress: 89/127
 updated: 2026-08-14
 ---
 
@@ -126,6 +126,11 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-120: A block leaving the capture carries the instant its device reported reading that position at, and never the moment the application collected it.
 - [x] ISC-121: A recording a device dropped audio from says how much it lost, rather than coming back shorter with nothing saying so.
 - [x] ISC-122: Anti: a stretch of a meeting nobody played into is recorded as the silence it was, and not as whatever the device's buffer last held.
+- [x] ISC-126: Two hours of packets from two devices whose crystals disagree leave the channels under 50 ms apart at every marker both of them heard, and not only at the last one.
+- [x] ISC-123: A source that opened late reports how long the recording waited for it, apart from the rate its clock ran at.
+- [x] ISC-127: Anti: a constant offset between the two devices is never taken for drift and corrected away, so audio that was already in the right place stays there.
+- [x] ISC-124: Anti: how late a source's packets are handed over cannot change the recording, up to the half minute after which the timeline gives that source up.
+- [x] ISC-125: A recording is as long as the last packet of either source, so a device that stopped inside that half minute does not cut the end off the meeting.
 - [ ] ISC-35: Two hours of capture end with under 50 ms of measured drift between the two channels.
 - [ ] ISC-36: Anti: the produced WAV never carries the microphone on channel 0.
 - [ ] ISC-37: A spool cut off mid-block recovers to its last complete block.
@@ -205,9 +210,6 @@ Board: 7 · Distribución y backup
   `Turns.Group` and the timeline arithmetic are the two places it would pay. The question is
   statable; the probe is not, because no library is chosen — naming one now would be inventing a
   row rather than writing one. Decide when F3 starts, since drift is where examples run out.
-- **What the 50 ms in ISC-35 is measured against.** A synthetic packet suite is on the board,
-  but the reference signal, the sample rate and where the measurement is taken are not settled,
-  and those three decide whether the number means anything.
 - **How a summary citation anchors.** ISC-52 says a citation resolves to a turn; whether it
   stores the turn id or an offset into the transcript changes what happens when turns are
   regrouped. `docs/reference-behaviour.md` has the grouping rules but not this.
@@ -374,6 +376,11 @@ Board: 7 · Distribución y backup
 - ISC-120 — the same runs: 2015 and 1352 loopback packets reported 9 to 10 and 9 to 20 ms apart, over a loop that polls the device every 50 ms — five packets a poll, which instants stamped where the application collected them could not have spaced at all. `PacketTallyTests.Packets_are_as_far_apart_as_the_device_read_them`, `A_packet_whose_instant_the_device_would_not_vouch_for_still_counts_as_meeting` and `A_source_that_opened_with_an_unvouched_packet_still_covers_it` green 2026-08-14
 - ISC-121 — `PacketTallyTests.The_same_bytes_are_a_hole_or_a_shorter_source_depending_on_the_positions` green 2026-08-14: ninety packets either way, one covering a second of meeting with a tenth of it lost and the other nine tenths of a second with nothing lost. `capture` prints the number on its own line per source, and both runs printed 0 ms
 - ISC-122 — the 14 s run 2026-08-14 played a 440 Hz tone from second 2 to second 12 into the endpoint channel 0 was recording. Its WAV peaks at 0.167 over 5–6 s and is exactly zero over 0–1 s and from 12.5 s to the end, with 1352 packets arriving throughout and nothing lost, so the stretches nothing played into are the silence they were rather than the tone still standing in the device's buffer
+- ISC-126 — `TimelineDriftTests.Two_hours_of_two_devices_that_disagree_stay_under_fifty_milliseconds_apart` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-14: two hours of a 48 kHz loopback 50 ppm slow against a 44.1 kHz microphone 200 ppm fast, each packet's instant jittered by up to a millisecond, measured on 120 markers both devices heard a minute apart. The committed assertion is the claim's 50 ms; tightening it by hand in this run put the worst of the 120 markers 0.69 ms from the other channel and 1.5 ms from where the shared clock says the sound happened, so the slack is the product's and not the measurement's. Resampling each source at its label instead of its measured rate puts the same run over 50 ms at the fourth marker and 1.8 s apart by the end
+- ISC-123 — `TimelineDriftTests.A_source_that_opened_late_and_runs_fast_reports_the_wait_apart_from_the_rate` green 2026-08-14: a microphone opening 250 ms late and running 2000 ppm fast reports the 250 ms as waited and 48096 Hz as its rate, neither absorbing the other
+- ISC-127 — the same test green 2026-08-14 for the other half: all five markers the late microphone heard land within 5 ms of where the loopback heard them, where a quarter second read as drift would have pulled every one of them off
+- ISC-124 — `SharedTimelineTests.Handing_a_source_over_in_clumps_seconds_late_records_the_same_meeting` green 2026-08-14: the same minute delivered smoothly and in five second clumps is the same recording sample for sample, with the two deliveries first shown to differ — runs of one source of under 5 packets against over 100. `.Handing_a_source_over_later_than_the_timeline_waits_gives_that_source_up` holds the far side of the bound, where the same packets in 35 second clumps are refused
+- ISC-125 — `SharedTimelineTests.A_source_that_stopped_early_does_not_cut_the_meeting_short` green 2026-08-14: a microphone that stops at 15 s of a 20 s recording leaves the recording 20 s long with 5 s reported missing, rather than ending where it stopped
 - ISC-69 — `CorpusSearchTests.A_hit_carries_the_meeting_the_date_the_title_a_snippet_and_where_it_was_said` green 2026-08-07
 - ISC-70 — `CorpusSearchTests.A_meeting_being_deleted_is_not_something_search_offers` green 2026-08-07
 - ISC-71 — `CorpusSearchTests.Throwing_both_indexes_away_and_rebuilding_them_answers_exactly_the_same` green 2026-08-07

@@ -16,7 +16,7 @@ internal sealed class Collected : IAlignedAudio
 
     /// <summary>The sample of <paramref name="channel"/> at <paramref name="frame"/>, full scale at one.</summary>
     internal float At(AudioChannel channel, int frame) =>
-        interleaved[(frame * CapturedAudio.ChannelCount) + CapturedAudio.IndexOf(channel)] / -(float)short.MinValue;
+        Loudness.Of(interleaved[(frame * CapturedAudio.ChannelCount) + CapturedAudio.IndexOf(channel)]);
 
     /// <summary>The loudest <paramref name="channel"/> gets between two seconds of the recording.</summary>
     internal float Loudest(AudioChannel channel, double fromSeconds, double toSeconds)
@@ -35,21 +35,47 @@ internal sealed class Collected : IAlignedAudio
     /// seconds of the recording, or null if it never does.
     /// </summary>
     /// <remarks>
-    /// Half of full scale as the line: a resampled edge takes a millisecond or two to get there
-    /// and rings around it afterwards, and anything that crosses half was a burst rather than the
-    /// filter thinking about one.
+    /// The first loud frame after an instant the caller names, and deliberately not the rising edge
+    /// <see cref="Onsets"/> looks for: a test asking this one already knows which marker it means
+    /// and where to start looking, so what is quiet before that instant is its business and not
+    /// this method's. <see cref="Loudness"/> holds the line both of them read.
     /// </remarks>
     internal double? OnsetAfter(AudioChannel channel, double fromSeconds)
     {
         for (var frame = Frame(fromSeconds); frame < Frames; frame++)
         {
-            if (MathF.Abs(At(channel, frame)) > 0.5f)
+            if (MathF.Abs(At(channel, frame)) > Loudness.Loud)
             {
                 return frame / (double)CapturedAudio.SampleRate;
             }
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The first frame where this recording and <paramref name="other"/> hold different samples, or
+    /// null if they hold the same ones throughout. Reported as a frame rather than asserted sample
+    /// by sample because two recordings that differ are millions of samples of difference, and the
+    /// one number worth reading is where they parted.
+    /// </summary>
+    internal int? FirstDifferenceFrom(Collected other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        for (var frame = 0; frame < Math.Min(Frames, other.Frames); frame++)
+        {
+            for (var channel = 0; channel < CapturedAudio.ChannelCount; channel++)
+            {
+                var at = (frame * CapturedAudio.ChannelCount) + channel;
+                if (interleaved[at] != other.interleaved[at])
+                {
+                    return frame;
+                }
+            }
+        }
+
+        return Frames == other.Frames ? null : Math.Min(Frames, other.Frames);
     }
 
     private static int Frame(double seconds) => Math.Max(0, (int)(seconds * CapturedAudio.SampleRate));
