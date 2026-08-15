@@ -29,9 +29,8 @@ says to read from stdin. When the tool has no stdin form, write the text with si
 
 ## `git push` has no credentials, `gh` does
 
-`git push` dies with `could not read Username for 'https://github.com'` while `gh pr create` and
-`gh pr merge` work, which makes it read as a permission problem. Git simply has no credential
-helper configured here.
+`git push` dies with `could not read Username for 'https://github.com'` while `gh pr create` works,
+which makes it read as a permission problem. Git simply has no credential helper configured here.
 
 Borrow gh's for the one command rather than writing it into the machine's git config:
 

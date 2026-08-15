@@ -4,5 +4,25 @@
     "dotnet-data@dotnet-agent-skills": true,
     "dotnet@dotnet-agent-skills": true,
     "dotnet-diag@dotnet-agent-skills": true
+  },
+  "permissions": {
+    "allow": [
+      "PowerShell(dotnet:*)",
+      "Bash(dotnet:*)",
+      "PowerShell(git:*)",
+      "Bash(git:*)",
+      "PowerShell(gh pr:*)",
+      "PowerShell(gh run:*)",
+      "PowerShell(gh issue:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh run:*)",
+      "Bash(gh issue:*)"
+    ],
+    "deny": [
+      "Edit(**/deepgram.json)",
+      "Edit(.claude/settings.json)",
+      "PowerShell(git push --force:*)",
+      "Bash(git push --force:*)"
+    ]
   }
 }
