@@ -68,7 +68,35 @@ it reads as verified.
 
 ### Scaffold — a new claim
 
-Write the claim, then check the Splitting Test:
+**Read every claim in `## Features` before touching one.** All of them, not the feature the work
+is in — before writing, splitting, rewording or closing. It is one read of one file, and it is
+what stands between the articulation and its one degenerative failure: two IDs over one truth. A
+duplicate never reads as a duplicate. It reads as coverage, it earns its own `[x]`, and it raises
+the count with a claim whose probe was green before any work was done.
+
+**A new ID is issued only when no existing claim encapsulates the statement.** When one does,
+there are three honest moves and none of them is a new number:
+
+- the existing claim says it less precisely → sharpen that claim in place, keeping its ID;
+- the statement is one case of a claim already there → it becomes a leaf, `ISC-7.1` under `ISC-7`;
+- the statement adds nothing → nothing is written. The tell is the probe: if it would close on
+  evidence already in `## Verification`, the claim already exists under another number.
+
+**An ID is immutable.** Issued once, at the end of the sequence, and after that never renumbered,
+never reused, never moved to another claim. A claim that stops being true is tombstoned where it
+stands rather than removed, because a board task, a commit message and a `## Verification` stub
+all key on the number and none of them gets rewritten when the ISA does. `IsaStructureTests` holds
+both halves — no ID twice, and no number missing between the first and the last.
+
+**A claim says what has to be true, never what makes it true.** No type, method, project or test
+name in the text — those are the design, and the design gets rewritten under a claim that should
+outlive it. `Turns.Group` is the only thing that ends a turn is a sentence about the code; where a
+turn ends is decided the same way for every meeting is the same rule stated as the product's. The
+test name belongs in the evidence stub, one section down, where it is a pointer and not a promise.
+The tell that a claim has drifted into design: it would have to be reworded by a refactor that
+changed nothing a person recording a meeting could notice.
+
+Then write the claim and check the Splitting Test:
 
 - Contains "and" / "with" / "including" joining two verifiable things → split.
 - Part A can pass while part B fails independently → split.
@@ -97,6 +125,11 @@ vision → `## Out of Scope` in `arquitectura.md` §16.
 Structural checks are the gate test's job; run `dotnet test --filter "FullyQualifiedName~IsaStructureTests"`
 rather than re-checking them by eye. What only a reading catches:
 
+- A claim that names a type, a method or a test instead of the truth it is there to hold. A
+  refactor that changes nothing a person would notice should not touch a single claim.
+- Two claims over one truth. Read for it directly: claims closing on the same probe, a claim that
+  is one case of a wider one already there, the general rule and its instance filed under separate
+  features. The count is what pays for it — a duplicate holds an `[x]` nothing had to earn.
 - A subsystem named in the Goal with no claim covering it — the coverage gate, assessed at close.
 - A claim with no anti-claim anywhere near it. A goal with zero failure modes worth naming is
   under-specified.

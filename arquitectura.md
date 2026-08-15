@@ -758,6 +758,39 @@ que la proyección reproduce a partir del mismo `deepgram.json`, y por eso es lo
 reunión no se guarda aparte: es la de la decisión o la acción que lleva la cita, así que no hay
 forma de citar un turno de otra reunión.
 
+### 7.4 Corrección guiada
+
+Un modelo devuelve JSON casi siempre y casi nunca todas las veces. Rechazar y reintentar la
+extracción entera gasta lo mismo que corregirla y tira la parte que estaba bien, así que una
+extracción rechazada se devuelve **una vez**, con qué falló, y lo que vuelve pasa por las mismas
+condiciones de §7.3 que la primera.
+
+La corrección va en un proceso nuevo que recibe la salida anterior y los errores, nunca reanudando
+la sesión anterior: los flags y el envelope de la CLI cambian, y el intento tiene que poder
+probarse con un ejecutable fake. Va por el mismo adaptador y el mismo workspace, así que una
+corrección no ve más de la reunión ni del corpus que el intento que corrige.
+
+Qué se puede corregir es la decisión que importa, y son dos clases:
+
+- **La forma.** No es JSON, no cumple el esquema, falta un campo, un tipo no es el que dice ser.
+  Se devuelve y se acepta corregida como cualquier otra.
+- **Lo que la reunión no sostiene.** Una cita a un turno que no existe, un texto citado que no
+  está en ese turno, un speaker que la reunión no tiene, un participante o un contenido que no
+  salió de esta reunión. Se devuelve pidiendo **quitar el enunciado**, y sólo se acepta sin él. Si
+  vuelve con el mismo enunciado apuntando a otra cosa, se rechaza.
+
+Esa segunda regla es el punto entero. Pedirle a un modelo que arregle una cita que no resuelve es
+invitarlo a buscar una que sí pase el chequeo, y una cita elegida para pasar el chequeo es
+exactamente lo que la validación existe para atrapar: el corpus quedaría lleno de enunciados con
+evidencia plausible y falsa, que es peor que no tener el enunciado. Un enunciado sin respaldo se
+cae; no se le busca respaldo.
+
+Un `input_hash` que no coincide no se corrige: la respuesta no se produjo contra la entrada que se
+preparó, y no hay nada ahí que corregir. Es corrida fallida directa.
+
+Una sola corrección, y después corrida fallida. Un segundo intento sobre el mismo contexto rara
+vez trae algo nuevo y cada uno gasta cuota del usuario, que la app no promete gratis (§7.2).
+
 Un error deja el job reintentable y no modifica la última extracción aceptada.
 Reintentar un summary nunca llama otra vez a Deepgram.
 

@@ -37,7 +37,7 @@ public class TimelineDriftTests
     private const double JitterMs = 1;
 
     /// <summary>
-    /// ISC-126. The headline measurement, and it is taken at every marker rather than at the last
+    /// ISC-66. The headline measurement, and it is taken at every marker rather than at the last
     /// one: a recording that comes back together only at its end was wrong for two hours, and every
     /// citation inside it lands on the wrong words.
     /// </summary>
@@ -47,7 +47,7 @@ public class TimelineDriftTests
     /// recording — <see cref="Onsets"/> watches it go past — and nothing keeps the packets, which
     /// is what <see cref="Fabricated.Merged"/> streams for. The packets are 10 ms of audio because
     /// that is what the endpoints on this machine really handed over: 2015 of them over 20 seconds,
-    /// recorded under ISC-120.
+    /// recorded under ISC-65.
     /// </para>
     /// <para>
     /// 50 ms is the product's number and not the measurement's, and the slack is not the probe
@@ -103,7 +103,7 @@ public class TimelineDriftTests
     }
 
     /// <summary>
-    /// ISC-123 and ISC-127. A device handed over late and a device running fast are two different
+    /// ISC-67, both halves of it. A device handed over late and a device running fast are two different
     /// numbers, and the recording keeps them apart. Read as one, a quarter second of a stream
     /// opening late looks like a clock that needs correcting, and the correction it triggers moves
     /// the audio that was already in the right place.
@@ -128,13 +128,13 @@ public class TimelineDriftTests
 
         var summary = timeline.Close();
 
-        // ISC-123: the wait is reported as the wait it is, and it is not in the rate.
+        // The wait is reported as the wait it is, and it is not in the rate.
         summary.On(AudioChannel.Microphone).Waited.Milliseconds.ShouldBeInRange(246, 254);
         summary.On(AudioChannel.Microphone).MeasuredRate.ShouldBe(Fast, tolerance: 20);
         summary.On(AudioChannel.Loopback).Waited.Milliseconds.ShouldBe(0);
         summary.On(AudioChannel.Loopback).MeasuredRate.ShouldBe(48_000, tolerance: 20);
 
-        // ISC-127: and the rate is not in the wait. The microphone missed the marker at zero
+        // And the rate is not in the wait. The microphone missed the marker at zero
         // because it was not open yet, and every marker it did hear is where the loopback heard it
         // — a quarter second read as drift would have pulled all five of them off instead.
         var loopback = onsets.On(AudioChannel.Loopback);

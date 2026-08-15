@@ -14,7 +14,7 @@ public class SharedTimelineTests
     private static readonly StreamFormat CheapMicrophone = new(44_100, 1, 16, SampleEncoding.Pcm);
 
     /// <summary>
-    /// ISC-112. Nothing is opened, nothing is played, and the two devices are arithmetic â€” and a
+    /// ISC-60. Nothing is opened, nothing is played, and the two devices are arithmetic â€” and a
     /// recording comes out with both of them on it.
     /// </summary>
     [Fact]
@@ -37,7 +37,7 @@ public class SharedTimelineTests
     }
 
     /// <summary>
-    /// ISC-112. The gap between two devices being handed over is part of the recording. Closing it
+    /// ISC-60. The gap between two devices being handed over is part of the recording. Closing it
     /// up would move one side of the conversation against the other for the whole meeting.
     /// </summary>
     [Fact]
@@ -60,7 +60,7 @@ public class SharedTimelineTests
     }
 
     /// <summary>
-    /// ISC-113. The packet after the hole carries a position half a second further on than the one
+    /// ISC-61. The packet after the hole carries a position half a second further on than the one
     /// before it, and that is where its audio goes. Laying it down where it arrived would pull the
     /// rest of the meeting half a second early and every citation in it with them.
     /// </summary>
@@ -89,7 +89,7 @@ public class SharedTimelineTests
     }
 
     /// <summary>
-    /// ISC-114. What the device produced and nobody received is half a second of the meeting, and
+    /// ISC-62. What the device produced and nobody received is half a second of the meeting, and
     /// it stays half a second long â€” silent, named in the summary, and not closed up.
     /// </summary>
     [Fact]
@@ -119,7 +119,7 @@ public class SharedTimelineTests
     }
 
     /// <summary>
-    /// ISC-115. A meeting is recorded on whatever two devices the machine has, and they agree on
+    /// ISC-63. A meeting is recorded on whatever two devices the machine has, and they agree on
     /// nothing: different rates, different widths, one of them mono. One recording comes out.
     /// </summary>
     [Fact]
@@ -141,7 +141,7 @@ public class SharedTimelineTests
     }
 
     /// <summary>
-    /// ISC-116. A microphone two hundred parts per million fast is a fifth of a second out by the
+    /// ISC-66. A microphone two hundred parts per million fast is a fifth of a second out by the
     /// end of a quarter hour. What this asserts is not that it comes back at the end but that it
     /// was never away: every marker of the recording lands on both channels together, so a
     /// citation an hour in is on the right words rather than only the last one being.
@@ -290,7 +290,7 @@ public class SharedTimelineTests
     }
 
     /// <summary>
-    /// ISC-125. The other way a source can stop: not for so long that the recording gives it up,
+    /// ISC-71. The other way a source can stop: not for so long that the recording gives it up,
     /// just before the other one. Somebody hits stop and one device's last packets are already in
     /// — the meeting is as long as the last thing anybody said, and cutting it where the first
     /// device stopped would drop the end of a conversation with nothing saying so.
@@ -322,7 +322,7 @@ public class SharedTimelineTests
     }
 
     /// <summary>
-    /// ISC-124. Two devices are drained by two threads on a machine doing other things, so which
+    /// ISC-72. Two devices are drained by two threads on a machine doing other things, so which
     /// source's packet reaches the timeline first is the operating system's business and changes
     /// from one meeting to the next. Up to the half minute the timeline waits, only what a packet
     /// says may decide where its audio goes.
