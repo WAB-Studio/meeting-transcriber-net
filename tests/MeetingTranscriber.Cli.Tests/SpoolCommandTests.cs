@@ -1,4 +1,4 @@
-using MeetingTranscriber.Audio;
+﻿using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
 
 namespace MeetingTranscriber.Cli.Tests;

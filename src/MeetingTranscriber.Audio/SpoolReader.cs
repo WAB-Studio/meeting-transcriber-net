@@ -56,12 +56,27 @@ public sealed class SpoolReader : IDisposable
     /// Opens a spool, refusing a file that is not one rather than reading whatever it holds as
     /// audio.
     /// </summary>
+    /// <remarks>
+    /// It asks for the file to itself, so a recording still being written cannot be read. Reading
+    /// one would answer about a file that is changing underneath the answer — a block half handed
+    /// over reported as the cut-off tail, a length measured after the blocks were counted — and the
+    /// person would be told a meeting still going on had ended where the reader happened to look.
+    /// </remarks>
     public static SpoolReader Open(FileInfo file)
     {
         ArgumentNullException.ThrowIfNull(file);
 
-        var stream = new FileStream(
-            file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        FileStream stream;
+        try
+        {
+            stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.Read);
+        }
+        catch (IOException held) when (File.Exists(file.FullName))
+        {
+            throw new AudioCaptureException(
+                $"'{file.FullName}' is open elsewhere, which on this machine means a recording that "
+                + "is still running. What it holds can be read once it stops.", held);
+        }
 
         try
         {
@@ -78,6 +93,9 @@ public sealed class SpoolReader : IDisposable
                 throw new AudioCaptureException($"'{file.FullName}' is not a spool of recorded blocks.");
             }
 
+            // The version is read before anything is checked against it, because it is what says
+            // where the rest of the header is — a later layout could keep its checksum somewhere
+            // else entirely, and refusing it for not hashing would be answering the wrong question.
             var version = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(8));
             if (version != BlockSpool.Version)
             {
@@ -87,12 +105,23 @@ public sealed class SpoolReader : IDisposable
                     + "moved would be a recording made up rather than recovered.");
             }
 
+            var stated = BlockSpool.HeaderBytes - BlockSpool.ChecksumBytes;
+            if (BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(stated))
+                != BlockSpool.Checksum(header.AsSpan(8, stated - 8), []))
+            {
+                throw new AudioCaptureException(
+                    $"'{file.FullName}' does not hash to what its header says. Every sample in it is "
+                    + "read through those bytes, so a recording read out of them would be invented.");
+            }
+
             var channel = CapturedAudio.ChannelAt(BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(12)));
-            var format = new StreamFormat(
-                BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(16)),
-                BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(20)),
-                BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(24)),
-                Encoding(file, BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(28))));
+            var format = Readable(
+                file,
+                new StreamFormat(
+                    BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(16)),
+                    BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(20)),
+                    BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(24)),
+                    Encoding(file, BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(28)))));
 
             return new SpoolReader(stream, channel, format);
         }
@@ -124,8 +153,12 @@ public sealed class SpoolReader : IDisposable
                 break;
             }
 
+            // Whole frames of this file's own format, because a device hands over frames: a length
+            // that is not is a length read out of something that is not a block, and half a frame
+            // of audio would shift every sample after it onto the wrong channel.
             var samples = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(20));
-            if (samples is <= 0 or > BlockSpool.MostBytesInABlock)
+            if (samples is <= 0 or > BlockSpool.MostBytesInABlock
+                || (samples % (Format.Channels * Format.BytesPerSample)) != 0)
             {
                 break;
             }
@@ -155,6 +188,33 @@ public sealed class SpoolReader : IDisposable
     }
 
     public void Dispose() => file.Dispose();
+
+    /// <summary>
+    /// The format, if a block of it could be read at all. Checked here rather than left to whatever
+    /// meets it first: a header saying no channels or an eight bit width would otherwise open, and
+    /// come back as a resampler dividing by zero or a WAV nothing will play — a failure about the
+    /// recording, arriving somewhere that cannot say which file was wrong.
+    /// </summary>
+    private static StreamFormat Readable(FileInfo file, StreamFormat format)
+    {
+        if (format.SampleRate <= 0 || format.Channels <= 0)
+        {
+            throw new AudioCaptureException(
+                $"'{file.FullName}' says its samples arrived at {format.SampleRate} Hz on "
+                + $"{format.Channels} channels, which is not a recording.");
+        }
+
+        try
+        {
+            Levels.EnsureMeterable(format);
+        }
+        catch (AudioCaptureException unreadable)
+        {
+            throw new AudioCaptureException($"'{file.FullName}': {unreadable.Message}", unreadable);
+        }
+
+        return format;
+    }
 
     private static SampleEncoding Encoding(FileInfo file, int stored) =>
         stored == (int)SampleEncoding.Pcm || stored == (int)SampleEncoding.IeeeFloat

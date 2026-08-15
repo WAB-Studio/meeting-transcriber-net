@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
@@ -23,7 +23,6 @@ public sealed class CaptureSource : IDisposable
     private readonly SourceMeter meter = new();
     private readonly PacketTally tally;
     private readonly ManualResetEventSlim ended = new(initialState: false);
-    private long bytes;
     private Exception? failure;
     private bool running;
 
@@ -66,7 +65,7 @@ public sealed class CaptureSource : IDisposable
     public PacketTally Packets => tally;
 
     /// <summary>How many bytes of samples have been spooled, not counting what frames them.</summary>
-    public long Bytes => Interlocked.Read(ref bytes);
+    public long Bytes => spool.Bytes;
 
     /// <summary>The loudest this source has been since it opened.</summary>
     public LevelReading Loudest => meter.Loudest;
@@ -118,18 +117,34 @@ public sealed class CaptureSource : IDisposable
         }
     }
 
+    /// <summary>
+    /// Lets go of everything this source holds, in an order and with a guarantee: the stream first,
+    /// because it is what would otherwise still be handing blocks over, and every one of them
+    /// whatever the one before it did. A device that will not close is exactly the case where a
+    /// spool left open would refuse the next attempt at the same folder — so the first failure is
+    /// what the caller hears, and the rest still happen.
+    /// </summary>
     public void Dispose()
     {
-        // First, and on purpose: this stops the stream and waits for its loop, so once it returns
-        // nothing is still handing blocks to the spool.
-        stream.Dispose();
-
-        // Closing a spool finishes nothing and completes nothing: every block was already whole
-        // when it was written, which is why a capture that was killed rather than stopped still
-        // leaves a recording worth everything that reached the disk.
-        spool.Dispose();
-        ended.Dispose();
-        running = false;
+        try
+        {
+            stream.Dispose();
+        }
+        finally
+        {
+            try
+            {
+                // Closing a spool finishes nothing and completes nothing: every block was already
+                // whole when it was written, which is why a capture that was killed rather than
+                // stopped still leaves a recording worth everything that reached the disk.
+                spool.Dispose();
+            }
+            finally
+            {
+                ended.Dispose();
+                running = false;
+            }
+        }
     }
 
     /// <summary>
@@ -182,12 +197,23 @@ public sealed class CaptureSource : IDisposable
 
         void LetGo()
         {
-            spool?.Dispose();
-            stream?.Dispose();
-
-            if (claimed)
+            try
             {
-                Erase(file);
+                spool?.Dispose();
+            }
+            finally
+            {
+                try
+                {
+                    stream?.Dispose();
+                }
+                finally
+                {
+                    if (claimed)
+                    {
+                        Erase(file);
+                    }
+                }
             }
         }
 
@@ -265,7 +291,6 @@ public sealed class CaptureSource : IDisposable
         tally.Add(packet);
         meter.Add(Levels.Peak(packet.Samples.Span, Format));
         spool.Write(packet);
-        Interlocked.Add(ref bytes, packet.Samples.Length);
     }
 
     private void Ended(Exception? stopped)

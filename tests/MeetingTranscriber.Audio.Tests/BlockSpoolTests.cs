@@ -1,4 +1,4 @@
-using MeetingTranscriber.Domain.Audio;
+﻿using MeetingTranscriber.Domain.Audio;
 
 using NAudio.Wave;
 
@@ -161,13 +161,15 @@ public sealed class BlockSpoolTests : IDisposable
     public void A_spool_pours_back_into_a_file_of_the_format_its_device_handed_over()
     {
         var written = Spooled(AudioChannel.Microphone, CheapMicrophone, seconds: 1);
-        var wav = new FileInfo(Path.Combine(folder.FullName, "microphone.wav"));
 
-        var replayed = BlockSpool.ToWav(File(AudioChannel.Microphone), wav);
+        var replayed = BlockSpool.ToWav(File(AudioChannel.Microphone));
 
+        replayed.Format.ShouldBe(CheapMicrophone);
         replayed.Blocks.ShouldBe(written.Count);
         replayed.Discarded.ShouldBe(0);
 
+        var wav = BlockSpool.PlaybackFor(File(AudioChannel.Microphone));
+        wav.Name.ShouldBe("microphone.wav");
         using var played = new WaveFileReader(wav.FullName);
         StreamFormat.Of(played.WaveFormat).ShouldBe(CheapMicrophone);
         played.Length.ShouldBe(written.Sum(packet => (long)packet.Samples.Length));
@@ -191,6 +193,67 @@ public sealed class BlockSpoolTests : IDisposable
 
         Should.Throw<AudioCaptureException>(() => SpoolReader.Open(File(AudioChannel.Loopback)))
             .Message.ShouldContain("version");
+    }
+
+    /// <summary>
+    /// The header decides how every sample in the file is read, so it is checked the way a block
+    /// is. A rate one digit out would otherwise open, and come back as a recording.
+    /// </summary>
+    [Fact]
+    public void A_spool_whose_header_is_not_the_one_that_was_written_is_refused()
+    {
+        Spooled(AudioChannel.Loopback, StereoFloat, seconds: 1);
+        Corrupt(AudioChannel.Loopback, 16);
+
+        Should.Throw<AudioCaptureException>(() => SpoolReader.Open(File(AudioChannel.Loopback)))
+            .Message.ShouldContain("does not hash to what its header says");
+    }
+
+    /// <summary>
+    /// The two the header's own checksum cannot catch, because they are what the writer would have
+    /// had to be handed: a format no block of which could be read.
+    /// </summary>
+    [Theory]
+    [InlineData(0, 2, 32, "0 Hz")]
+    [InlineData(48_000, 0, 32, "0 channels")]
+    [InlineData(48_000, 2, 24, "cannot read")]
+    public void A_spool_of_a_format_no_block_of_which_could_be_read_is_refused(
+        int rate, int channels, int bits, string says)
+    {
+        var file = File(AudioChannel.Loopback);
+        using (SpoolWriter.Create(file, AudioChannel.Loopback, new StreamFormat(
+            rate, channels, bits, SampleEncoding.IeeeFloat)))
+        {
+        }
+
+        Should.Throw<AudioCaptureException>(() => SpoolReader.Open(file)).Message.ShouldContain(says);
+    }
+
+    /// <summary>
+    /// Half a frame of audio would shift every sample after it onto the other channel, so it is
+    /// refused where it can still be a defect rather than a recording.
+    /// </summary>
+    [Fact]
+    public void A_packet_that_is_not_whole_frames_of_its_format_is_refused_by_a_spool()
+    {
+        using var writer = SpoolWriter.Create(File(AudioChannel.Loopback), AudioChannel.Loopback, StereoFloat);
+        var half = new CapturePacket(
+            AudioChannel.Loopback, 0, MonotonicInstant.FromMilliseconds(0), new byte[30]);
+
+        Should.Throw<AudioContractException>(() => writer.Write(half));
+    }
+
+    /// <summary>
+    /// A recording still being written is not something to answer about: what came back would be
+    /// however far the writer had got, reported as the meeting having ended there.
+    /// </summary>
+    [Fact]
+    public void A_spool_still_being_recorded_into_is_not_read()
+    {
+        using var writer = SpoolWriter.Create(File(AudioChannel.Loopback), AudioChannel.Loopback, StereoFloat);
+
+        Should.Throw<AudioCaptureException>(() => SpoolReader.Open(File(AudioChannel.Loopback)))
+            .Message.ShouldContain("still running");
     }
 
     [Fact]
@@ -246,6 +309,30 @@ public sealed class BlockSpoolTests : IDisposable
         BlockSpool.FileFor(folder, AudioChannel.Loopback).Name.ShouldBe("loopback.blocks");
         BlockSpool.FileFor(folder, AudioChannel.Microphone).Name.ShouldBe("microphone.blocks");
         Should.Throw<AudioContractException>(() => BlockSpool.FileFor(folder, (AudioChannel)7));
+    }
+
+    /// <summary>
+    /// The playback is replaced every time it is produced, which is right for a file made again
+    /// from the spool beside it and wrong for one a previous recording left. What keeps the second
+    /// case from arising is that a recording will not start in a folder holding either file.
+    /// </summary>
+    [Theory]
+    [InlineData("loopback.blocks")]
+    [InlineData("loopback.wav")]
+    [InlineData("microphone.blocks")]
+    [InlineData("microphone.wav")]
+    public void A_recording_does_not_start_in_a_folder_holding_another_ones_files(string left)
+    {
+        System.IO.File.WriteAllBytes(Path.Combine(folder.FullName, left), [1, 2, 3]);
+
+        Should.Throw<AudioCaptureException>(() => BlockSpool.EnsureNothingRecordedIn(folder))
+            .Message.ShouldContain(left);
+    }
+
+    [Fact]
+    public void A_folder_nothing_was_recorded_into_takes_a_recording()
+    {
+        Should.NotThrow(() => BlockSpool.EnsureNothingRecordedIn(folder));
     }
 
     public void Dispose()

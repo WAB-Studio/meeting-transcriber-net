@@ -1,4 +1,4 @@
-using MeetingTranscriber.Domain.Audio;
+﻿using MeetingTranscriber.Domain.Audio;
 
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
@@ -69,6 +69,7 @@ public sealed class CaptureSession : IDisposable
         ArgumentNullException.ThrowIfNull(microphone);
 
         folder.Create();
+        BlockSpool.EnsureNothingRecordedIn(folder);
 
         SilentPlayback? silence = null;
         var opened = new List<CaptureSource>();

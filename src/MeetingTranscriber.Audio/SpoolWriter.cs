@@ -26,34 +26,39 @@ public sealed class SpoolWriter : IDisposable
 {
     private readonly FileStream file;
     private readonly AudioChannel channel;
+    private readonly int frameBytes;
     private byte[] block;
     private long bytes;
-    private int blocks;
 
-    private SpoolWriter(FileStream file, AudioChannel channel, StreamFormat format)
+    private SpoolWriter(FileStream file, AudioChannel channel, int frameBytes)
     {
         this.file = file;
         this.channel = channel;
-        Format = format;
+        this.frameBytes = frameBytes;
         block = new byte[BlockSpool.BlockHeaderBytes + 8192 + BlockSpool.ChecksumBytes];
     }
 
-    /// <summary>The format the device hands over, as this file's header declares it.</summary>
-    public StreamFormat Format { get; }
-
-    /// <summary>Samples written, not counting what the format around them costs.</summary>
+    /// <summary>
+    /// Samples written, not counting what the format around them costs. Read while the recording
+    /// thread is still writing, which is what it is for.
+    /// </summary>
     public long Bytes => Interlocked.Read(ref bytes);
-
-    /// <summary>Blocks written, which is packets the device handed over.</summary>
-    public int Blocks => Volatile.Read(ref blocks);
 
     /// <summary>
     /// Starts a spool for <paramref name="channel"/> at <paramref name="file"/>, refusing to write
     /// over a recording that is already there.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The file system answers rather than a question asked a moment earlier: a check and then a
     /// create is a window in which the recording being truncated is the other capture's.
+    /// </para>
+    /// <para>
+    /// The format is written down as the caller declares it rather than judged here. Whether this
+    /// build can read a device's format is settled before the device is opened, which is earlier
+    /// than a spool exists; what this file has to do is say what it holds, and what decides whether
+    /// a spool can be read is the boundary a spool is read at.
+    /// </para>
     /// </remarks>
     public static SpoolWriter Create(FileInfo file, AudioChannel channel, StreamFormat format)
     {
@@ -86,24 +91,30 @@ public sealed class SpoolWriter : IDisposable
             BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(20), format.Channels);
             BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(24), format.BitsPerSample);
             BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(28), (int)format.Encoding);
+
+            // The same treatment every block gets, and for the same reason: these thirty two bytes
+            // decide how every sample in the file is read, so a header that says 44 101 Hz where
+            // 44 100 was written would come back as a recording rather than as a refusal.
+            BinaryPrimitives.WriteUInt64LittleEndian(
+                header.AsSpan(BlockSpool.HeaderBytes - BlockSpool.ChecksumBytes),
+                BlockSpool.Checksum(header.AsSpan(8, BlockSpool.HeaderBytes - BlockSpool.ChecksumBytes - 8), []));
             stream.Write(header);
 
-            return new SpoolWriter(stream, channel, format);
+            return new SpoolWriter(stream, channel, format.Channels * format.BytesPerSample);
         }
         catch
         {
             // The file was made here, so a header that never landed is this method's mess and not
             // a recording: what it would otherwise leave is an empty file standing exactly where
-            // the next attempt wants to write.
-            stream.Dispose();
+            // the next attempt wants to write. The delete happens whatever closing the handle did,
+            // because a handle that would not close is the case that leaves the file behind.
             try
             {
-                File.Delete(file.FullName);
+                stream.Dispose();
             }
-            catch (Exception left) when (left is IOException or UnauthorizedAccessException)
+            finally
             {
-                // Swallowed on purpose: what the caller has to hear is why the spool would not
-                // open, not that a handle would not close on the way out.
+                Erase(file);
             }
 
             throw;
@@ -130,6 +141,16 @@ public sealed class SpoolWriter : IDisposable
                 + "produced a stretch of no audio, which is not something that happens.");
         }
 
+        // A device hands over frames, so half of one is not something a device produced. Refused
+        // here, where it is still a defect: written down, it would shift every sample after it onto
+        // the other channel of a recording nothing else could tell was wrong.
+        if (frameBytes <= 0 || (samples.Length % frameBytes) != 0)
+        {
+            throw new AudioContractException(
+                $"A {channel} packet of {samples.Length} bytes is not whole frames of {frameBytes} "
+                + "bytes, so it is not what this source's device hands over.");
+        }
+
         var length = BlockSpool.BlockHeaderBytes + samples.Length + BlockSpool.ChecksumBytes;
         if (block.Length < length)
         {
@@ -152,11 +173,26 @@ public sealed class SpoolWriter : IDisposable
 
         file.Write(whole);
         Interlocked.Add(ref bytes, samples.Length);
-        Volatile.Write(ref blocks, blocks + 1);
     }
 
     /// <summary>Hands over whatever is still held here, without asking the disk to commit it.</summary>
     public void Flush() => file.Flush();
 
     public void Dispose() => file.Dispose();
+
+    /// <summary>
+    /// Removes a file that never became a spool. It does not throw: it runs while the creation is
+    /// already failing, and what the caller has to hear is why that happened.
+    /// </summary>
+    private static void Erase(FileInfo file)
+    {
+        try
+        {
+            File.Delete(file.FullName);
+        }
+        catch (Exception left) when (left is IOException or UnauthorizedAccessException)
+        {
+            // Swallowed on purpose: see the summary.
+        }
+    }
 }

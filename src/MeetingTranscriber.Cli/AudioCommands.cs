@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
@@ -71,38 +71,48 @@ public static class AudioCommands
         var microphone = AudioDevices.Choose(AudioDevices.Microphones(), wanted);
         var follow = program is null ? null : AudioProcesses.Choose(AudioProcesses.Running(), program);
 
-        using var session = CaptureSession.Start(folder, playback, microphone, follow);
-
-        Report.Line(output, "folder", folder.FullName);
-        Report.Line(output, "channel 0", session.Mode.ToString());
-
-        if (session.FellBack is not null)
+        // The session is let go of before anything reads its spools back, and the scope is what
+        // says so: a recording still being written is a file this build refuses to read, which is
+        // the same refusal that stops somebody being told a meeting still going on had ended.
+        var spools = new List<(AudioChannel Channel, FileInfo Blocks)>();
+        using (var session = CaptureSession.Start(folder, playback, microphone, follow))
         {
-            Report.Line(output, "fell back", session.FellBack);
+            Report.Line(output, "folder", folder.FullName);
+            Report.Line(output, "channel 0", session.Mode.ToString());
+
+            if (session.FellBack is not null)
+            {
+                Report.Line(output, "fell back", session.FellBack);
+            }
+
+            foreach (var source in session.Sources)
+            {
+                Report.Line(output, $"{Name(source.Channel)} hears", source.Listening.Name);
+                Report.Line(output, $"{Name(source.Channel)} format", source.Format.ToString());
+                Report.Line(output, $"{Name(source.Channel)} opened", source.StartedAt.ToString());
+            }
+
+            Meter(session, seconds, output);
+            session.Stop();
+
+            foreach (var source in session.Sources)
+            {
+                Report.Line(
+                    output,
+                    $"{Name(source.Channel)} wrote",
+                    string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"{source.File.Name}, {Report.Offset(source.Packets.Covers)}, "
+                        + $"{source.Bytes / 1024d / 1024d:0.0} MB, loudest {source.Loudest}"));
+
+                Report.Line(output, $"{Name(source.Channel)} clock", Clocking(source.Packets));
+                spools.Add((source.Channel, source.File));
+            }
         }
 
-        foreach (var source in session.Sources)
+        foreach (var (channel, blocks) in spools)
         {
-            Report.Line(output, $"{Name(source)} hears", source.Listening.Name);
-            Report.Line(output, $"{Name(source)} format", source.Format.ToString());
-            Report.Line(output, $"{Name(source)} opened", source.StartedAt.ToString());
-        }
-
-        Meter(session, seconds, output);
-        session.Stop();
-
-        foreach (var source in session.Sources)
-        {
-            Report.Line(
-                output,
-                $"{Name(source)} wrote",
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"{source.File.Name}, {Report.Offset(source.Packets.Covers)}, "
-                    + $"{source.Bytes / 1024d / 1024d:0.0} MB, loudest {source.Loudest}"));
-
-            Report.Line(output, $"{Name(source)} clock", Clocking(source.Packets));
-            Report.Line(output, $"{Name(source)} played back", PlayedBack(source.File));
+            Report.Line(output, $"{Name(channel)} played back", PlayedBack(blocks));
         }
 
         return Cli.Ok;
@@ -137,14 +147,14 @@ public static class AudioCommands
             var blocks = BlockSpool.FileFor(folder, channel);
             if (!blocks.Exists)
             {
-                Report.Line(output, $"ch{CapturedAudio.IndexOf(channel)}", $"no {blocks.Name}");
+                Report.Line(output, Name(channel), $"no {blocks.Name}");
                 continue;
             }
 
             found++;
-            using var spool = SpoolReader.Open(blocks);
-            Report.Line(output, $"ch{CapturedAudio.IndexOf(channel)} format", spool.Format.ToString());
-            Report.Line(output, $"ch{CapturedAudio.IndexOf(channel)} recovered", PlayedBack(blocks));
+            var replayed = BlockSpool.ToWav(blocks);
+            Report.Line(output, $"{Name(channel)} format", replayed.Format.ToString());
+            Report.Line(output, $"{Name(channel)} recovered", Says(blocks, replayed));
         }
 
         return found == 0
@@ -159,16 +169,18 @@ public static class AudioCommands
     /// channels on the shared timeline, and that is a different file — but it is read through the
     /// same path a recovery takes, so every capture is a run of the code a crash will depend on.
     /// </summary>
-    private static string PlayedBack(FileInfo blocks)
+    private static string PlayedBack(FileInfo blocks) => Says(blocks, BlockSpool.ToWav(blocks));
+
+    /// <summary>What one spool turned out to hold, on the line a person reads it off.</summary>
+    private static string Says(FileInfo blocks, Replayed replayed)
     {
-        var wav = new FileInfo(Path.ChangeExtension(blocks.FullName, ".wav"));
-        var replayed = BlockSpool.ToWav(blocks, wav);
         var cut = replayed.Discarded > 0
             ? string.Create(CultureInfo.InvariantCulture, $", {replayed.Discarded} bytes discarded")
             : string.Empty;
 
         return string.Create(
-            CultureInfo.InvariantCulture, $"{wav.Name}, {replayed.Blocks} blocks{cut}");
+            CultureInfo.InvariantCulture,
+            $"{BlockSpool.PlaybackFor(blocks).Name}, {replayed.Blocks} blocks{cut}");
     }
 
     /// <summary>
@@ -214,7 +226,7 @@ public static class AudioCommands
                 Report.Line(
                     output,
                     Report.Offset(Duration.FromMilliseconds(second * 1000L)),
-                    string.Join("   ", session.Sources.Select(source => $"{Name(source)} {source.Level()}")));
+                    string.Join("   ", session.Sources.Select(source => $"{Name(source.Channel)} {source.Level()}")));
 
                 if (session.Sources.Any(source => source.HasEnded))
                 {
@@ -232,5 +244,5 @@ public static class AudioCommands
     /// A source under its channel number, which is the contract everything downstream reads —
     /// Deepgram included — and not the name of the device it happens to be.
     /// </summary>
-    private static string Name(CaptureSource source) => $"ch{CapturedAudio.IndexOf(source.Channel)}";
+    private static string Name(AudioChannel channel) => $"ch{CapturedAudio.IndexOf(channel)}";
 }
