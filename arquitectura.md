@@ -623,10 +623,20 @@ exportar o descartar explícitamente la grabación. Nunca la descarta en silenci
 El inicio lee la ficha y el tamaño de cada spool, y nunca los bloques: dos horas
 son cientos de megabytes por fuente, y una lista que los recorriera sería una que
 nadie espera. Leer una grabación entera es lo que hace conservarla o exportarla,
-sobre una sola, porque alguien lo pidió. Una carpeta sin ficha sigue siendo una
-grabación —cada archivo declara su formato— y saltearla sería justo el descarte
-silencioso que esto existe para impedir. Descartar es lo único en el producto que
+sobre una sola, porque alguien lo pidió. Descartar es lo único en el producto que
 borra una grabación, y sólo se llega desde esa decisión sobre esa grabación.
+
+Nada saca una carpeta de la lista. Una sin ficha sigue siendo una grabación
+—cada archivo declara su formato—, y una cuya ficha quedó partida al medio se
+ofrece diciendo por qué no puede nombrarse: que una carpeta dañada tirara abajo
+la lista sería el cierre abrupto ganando dos veces. Lo que sí se dice aparte es
+la que todavía se está grabando, porque las tres decisiones la rechazan: dos
+leerían un archivo que sigue creciendo y la tercera tiraría una reunión que
+está pasando.
+
+Mientras nada convierta un spool en reunión, una grabación que alguien paró y
+una que la máquina cortó son la misma carpeta. Se ofrecen las dos: afirmar una
+diferencia que el disco no registra sería inventarla.
 
 ### 6.5 Puertas de coste
 

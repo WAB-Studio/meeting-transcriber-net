@@ -169,6 +169,70 @@ public sealed class SpoolManifestTests : IDisposable
         Should.Throw<AudioCaptureException>(() => SpoolManifest.Read(card)).Message.ShouldContain(says);
     }
 
+    /// <summary>
+    /// The card's job is to say what fed each channel, so a list naming one of them twice has
+    /// stopped being able to do it — and what comes back would be a recording with a channel whose
+    /// device is the other one's, which is worse than one with none.
+    /// </summary>
+    [Fact]
+    public void A_card_naming_one_of_its_channels_twice_is_refused()
+    {
+        SpoolManifest.Write(folder, Card());
+        var card = SpoolManifest.In(folder);
+        File.WriteAllText(
+            card.FullName,
+            File.ReadAllText(card.FullName).Replace("\"channel\": 1", "\"channel\": 0", StringComparison.Ordinal));
+
+        Should.Throw<AudioCaptureException>(() => SpoolManifest.Read(card))
+            .Message.ShouldContain("twice");
+    }
+
+    /// <summary>
+    /// A source that says nothing about which channel it was is not channel 0 by default. Reading
+    /// it as one would put the microphone's device on the loopback's line.
+    /// </summary>
+    [Fact]
+    public void A_card_whose_source_names_no_channel_is_refused_rather_than_read_as_channel_0()
+    {
+        SpoolManifest.Write(folder, Card());
+        var card = SpoolManifest.In(folder);
+        File.WriteAllText(
+            card.FullName,
+            File.ReadAllText(card.FullName).Replace("\"channel\": 1", "\"was\": 1", StringComparison.Ordinal));
+
+        Should.Throw<AudioCaptureException>(() => SpoolManifest.Read(card))
+            .Message.ShouldContain("channel");
+    }
+
+    /// <summary>
+    /// However many sources it lists, it has to be the number the profile promises: a capture is
+    /// two channels, and a card naming one of them describes audio this application never made.
+    /// </summary>
+    [Fact]
+    public void A_card_naming_fewer_channels_than_its_profile_promises_is_refused()
+    {
+        SpoolManifest.Write(folder, Card() with
+        {
+            Sources = [new SpooledSource(AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.0}.speakers")],
+        });
+
+        Should.Throw<AudioCaptureException>(() => SpoolManifest.Find(folder))
+            .Message.ShouldContain("sources");
+    }
+
+    [Fact]
+    public void A_card_naming_no_source_at_all_is_refused()
+    {
+        SpoolManifest.Write(folder, Card());
+        var card = SpoolManifest.In(folder);
+        File.WriteAllText(
+            card.FullName,
+            File.ReadAllText(card.FullName).Replace("\"sources\"", "\"was\"", StringComparison.Ordinal));
+
+        Should.Throw<AudioCaptureException>(() => SpoolManifest.Read(card))
+            .Message.ShouldContain("sources");
+    }
+
     [Fact]
     public void A_card_naming_a_channel_this_build_does_not_have_is_refused()
     {

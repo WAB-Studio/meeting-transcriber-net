@@ -63,6 +63,48 @@ public sealed class UnfinishedRecordingsTests : IDisposable
         waiting[0].Sources.Count.ShouldBe(2);
     }
 
+    /// <summary>
+    /// A card torn in half is the crash this whole path is for, arriving in the one file that was
+    /// meant to explain it. The recording is still offered, saying why it cannot name itself — and
+    /// so is every other recording beside it, because one damaged folder taking the list down with
+    /// it would be the crash winning twice.
+    /// </summary>
+    [Fact]
+    public void A_recording_whose_card_was_torn_in_half_is_offered_and_takes_no_other_one_with_it()
+    {
+        Recorded("torn", both: true);
+        var whole = Recorded("whole", both: true);
+        var card = SpoolManifest.In(Folder("torn"));
+        using (var cut = card.Open(FileMode.Open, FileAccess.Write))
+        {
+            cut.SetLength(card.Length / 2);
+        }
+
+        var waiting = UnfinishedRecordings.In(root);
+
+        waiting.Select(recording => recording.Folder.Name).ShouldBe(["torn", "whole"]);
+        waiting[0].Card.ShouldBeNull();
+        waiting[0].Unreadable.ShouldNotBeNull().ShouldContain(SpoolManifest.FileName);
+        waiting[0].Sources.Count.ShouldBe(2);
+        waiting[1].Card.ShouldNotBeNull().MeetingId.ShouldBe(whole);
+        waiting[1].Unreadable.ShouldBeNull();
+    }
+
+    /// <summary>
+    /// The same recording, named directly rather than found: a card that will not read is not a
+    /// reason to refuse a decision about the blocks beside it.
+    /// </summary>
+    [Fact]
+    public void A_recording_whose_card_was_torn_in_half_can_still_be_decided_about()
+    {
+        Recorded("torn", both: true);
+        File.WriteAllText(SpoolManifest.In(Folder("torn")).FullName, "{ \"meeting\": ");
+
+        UnfinishedRecordings.At(Folder("torn")).Keep().Count.ShouldBe(2);
+        Should.NotThrow(() => UnfinishedRecordings.At(Folder("torn")).Discard());
+        Folder("torn").Exists.ShouldBeFalse();
+    }
+
     [Fact]
     public void A_machine_that_has_never_recorded_has_nothing_waiting()
     {
@@ -144,6 +186,24 @@ public sealed class UnfinishedRecordingsTests : IDisposable
             .Message.ShouldContain("microphone.wav");
 
         into.EnumerateFiles("loopback.wav").ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Half of a recording somebody asked for is worse than a refusal, and worse still because the
+    /// half that landed is what makes the second attempt refuse the folder. So a source that
+    /// cannot be read takes back what the sources before it wrote, and asking again is a thing
+    /// somebody can do.
+    /// </summary>
+    [Fact]
+    public void Audio_taken_out_leaves_nothing_behind_when_a_later_source_cannot_be_read()
+    {
+        Recorded("daily", both: true);
+        Corrupt(BlockSpool.FileFor(Folder("daily"), AudioChannel.Microphone), at: 16);
+        var into = Folder("taken out");
+
+        Should.Throw<AudioCaptureException>(() => UnfinishedRecordings.At(Folder("daily")).Export(into));
+
+        into.EnumerateFiles().ShouldBeEmpty();
     }
 
     /// <summary>ISC-124, the third, and the only one of them that takes anything away.</summary>
@@ -318,6 +378,16 @@ public sealed class UnfinishedRecordingsTests : IDisposable
         Path.GetDirectoryName(ThisFile())!, "..", "..", "src")));
 
     private static string ThisFile([System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
+
+    /// <summary>Changes one byte, the way a disk that did not keep what it was given would.</summary>
+    private static void Corrupt(FileInfo file, long at)
+    {
+        using var stream = file.Open(FileMode.Open, FileAccess.ReadWrite);
+        stream.Position = at;
+        var was = stream.ReadByte();
+        stream.Position = at;
+        stream.WriteByte((byte)(was ^ 0xFF));
+    }
 
     /// <summary>Cuts the last block short, the way killing a process mid write cuts one short.</summary>
     private static void CutOffMidBlock(FileInfo blocks)
