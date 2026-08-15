@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 78/114
+progress: 78/116
 updated: 2026-08-14
 ---
 
@@ -159,6 +159,8 @@ Board: 5 · Summaries
 - [ ] ISC-89: Anti: recording, transcription, rendering, search and recovery all work with Claude Code absent.
 - [ ] ISC-90: A summary that fails validation is stored as a failed run, not as a summary.
 - [x] ISC-91: A second extraction leaves the first one's state alone and starts its own blank.
+- [ ] ISC-115: A rejected summary is handed back once, saying what was wrong with it.
+- [ ] ISC-116: Anti: a statement nothing said supports can come back only without that statement — one that comes back pointing at something else for the same statement is refused.
 
 ### F7 · Local knowledge
 Why: people and agents query the corpus with no server, no network and no cloud, and every
