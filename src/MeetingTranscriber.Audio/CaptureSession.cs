@@ -28,21 +28,26 @@ public sealed class CaptureSession : IDisposable
     private readonly CaptureSource[] sources;
     private readonly SilentPlayback? silence;
 
-    private CaptureSession(CaptureSource[] sources, SilentPlayback? silence, string? fellBack)
+    private CaptureSession(CaptureSource[] sources, SilentPlayback? silence, SpoolCard card)
     {
         this.sources = sources;
         this.silence = silence;
-        FellBack = fellBack;
+        Card = card;
     }
 
     /// <summary>Both sources, in channel order.</summary>
     public IReadOnlyList<CaptureSource> Sources => sources;
 
     /// <summary>
+    /// What this recording's folder says about it, as it was written when the devices opened.
+    /// </summary>
+    public SpoolCard Card { get; }
+
+    /// <summary>
     /// Why channel 0 is not following the program it was asked to, or nothing when it is — or when
     /// no program was named.
     /// </summary>
-    public string? FellBack { get; }
+    public string? FellBack => Card.FellBack;
 
     /// <summary>How channel 0 was obtained, read off what it actually opened.</summary>
     public CaptureMode Mode => On(AudioChannel.Loopback).Listening is CaptureTarget.Program
@@ -50,9 +55,17 @@ public sealed class CaptureSession : IDisposable
         : CaptureMode.FullLoopback;
 
     /// <summary>
-    /// Opens both streams into <paramref name="folder"/>, one spool each, and starts recording.
+    /// Opens both streams into <paramref name="folder"/>, one spool each, writes the card saying
+    /// what the recording is, and starts recording.
     /// </summary>
-    /// <param name="folder">Where the two spools go. Made if it is not there.</param>
+    /// <remarks>
+    /// The card is written once both devices are open, because until then nothing knows whether
+    /// channel 0 got the program it was asked for. A recording whose folder cannot be made to say
+    /// what it is does not go on: what it would leave behind is blocks nobody can attach to a
+    /// meeting, which is the case this whole path exists to prevent.
+    /// </remarks>
+    /// <param name="folder">Where the two spools and the card go. Made if it is not there.</param>
+    /// <param name="meetingId">The meeting being recorded, fixed before any of this is called.</param>
     /// <param name="playback">The endpoint channel 0 listens to, and falls back to.</param>
     /// <param name="microphone">The device channel 1 listens to.</param>
     /// <param name="follow">
@@ -60,6 +73,7 @@ public sealed class CaptureSession : IDisposable
     /// </param>
     public static CaptureSession Start(
         DirectoryInfo folder,
+        Guid meetingId,
         AudioDevice playback,
         AudioDevice microphone,
         AudioProcess? follow = null)
@@ -102,6 +116,22 @@ public sealed class CaptureSession : IDisposable
                     opened.Add(Open(channel, new CaptureTarget.Endpoint(playback)));
                 }
             }
+
+            var card = new SpoolCard(
+                meetingId,
+                Guid.NewGuid(),
+                opened.Min(source => source.StartedAt),
+                CapturedAudio.Profile,
+                [.. opened
+                    .OrderBy(source => CapturedAudio.IndexOf(source.Channel))
+                    .Select(source => new SpooledSource(
+                        source.Channel,
+                        source.Listening.Name,
+                        (source.Listening as CaptureTarget.Endpoint)?.Device.Id))],
+                fellBack);
+
+            SpoolManifest.Write(folder, card);
+            return new CaptureSession([.. opened], silence, card);
         }
         catch
         {
@@ -113,8 +143,6 @@ public sealed class CaptureSession : IDisposable
             silence?.Dispose();
             throw;
         }
-
-        return new CaptureSession([.. opened], silence, fellBack);
     }
 
     /// <summary>The source feeding <paramref name="channel"/>.</summary>

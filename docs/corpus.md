@@ -20,8 +20,17 @@ meetings/<meeting_id>/
   transcript.md          derived
   utterances.jsonl       derived
   summary.md             derived
-spool/<meeting_id>/      source     while the blocks are the only recoverable copy
+spool/<meeting_id>/
+  manifest.json          source     what the recording said about itself when it started
+  <channel>.blocks       source     while the blocks are the only recoverable copy
 ```
+
+**Two files are called `manifest.json` and they are not the same card.** The one in a meeting's
+folder is produced from the corpus every time and may be replaced; the one beside a spool is
+written once when the devices open and never again, because there is no corpus to produce it from
+— it is the only record of which meeting a folder of blocks belongs to and what was on each
+channel. Neither is deletable and neither is rebuildable, and a backup that carried one and not
+the other would restore a recording nobody could attach to a meeting.
 
 `manifest.json` is a source even though the database could regenerate it. It exists for the case
 where the database is gone, and a recovery card that can only be rebuilt from the thing it is

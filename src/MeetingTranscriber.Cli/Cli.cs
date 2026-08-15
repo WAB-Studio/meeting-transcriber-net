@@ -99,14 +99,20 @@ public static class Cli
             AudioCommands.Devices),
         new(
             "capture",
-            "capture --out <directory> --seconds <n> [--microphone <name-or-id>] [--process <name-or-pid>]",
+            "capture --out <directory> --seconds <n> [--meeting <id>] [--microphone <name-or-id>]"
+            + " [--process <name-or-pid>]",
             "record what the machine plays, or one program, and what the microphone hears at once",
             AudioCommands.Capture),
         new(
-            "spool",
-            "spool --in <directory>",
-            "what a recording left behind is worth, and a file of each source to listen to",
-            AudioCommands.Spool),
+            "recordings",
+            "recordings --spool <directory>",
+            "which recordings nobody got to stop are waiting, and what each one is",
+            AudioCommands.Recordings),
+        new(
+            "recover",
+            "recover --in <directory> (--keep | --export <directory> | --discard)",
+            "keep one of them as it stands, take its audio out, or throw it away",
+            AudioCommands.Recover),
         new(
             "search",
             $"search <query> {Corpus.Option} <directory> [--limit <n>]",

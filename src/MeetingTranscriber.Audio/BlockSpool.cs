@@ -106,7 +106,8 @@ public static class BlockSpool
 
     /// <summary>
     /// Throws unless <paramref name="folder"/> is free of everything a recording writes into it:
-    /// both sources' blocks, and the file each one is played back into.
+    /// both sources' blocks, the file each one is played back into, and the card saying what the
+    /// recording is.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -127,6 +128,7 @@ public static class BlockSpool
         var taken = new[] { AudioChannel.Loopback, AudioChannel.Microphone }
             .Select(channel => FileFor(folder, channel))
             .SelectMany(blocks => new[] { blocks, PlaybackFor(blocks) })
+            .Append(SpoolManifest.In(folder))
             .FirstOrDefault(file => file.Exists);
 
         if (taken is not null)
@@ -154,10 +156,17 @@ public static class BlockSpool
     /// file, and this being the only thing that names the pairing.
     /// </para>
     /// </remarks>
-    public static Replayed ToWav(FileInfo blocks)
+    public static Replayed ToWav(FileInfo blocks) => ToWav(blocks, PlaybackFor(blocks));
+
+    /// <summary>
+    /// The same, into a file somebody named rather than the one beside the blocks. What taking a
+    /// recording out of the application writes.
+    /// </summary>
+    public static Replayed ToWav(FileInfo blocks, FileInfo wav)
     {
+        ArgumentNullException.ThrowIfNull(wav);
+
         using var spool = SpoolReader.Open(blocks);
-        var wav = PlaybackFor(blocks);
         using var writer = new WaveFileWriter(wav.FullName, WaveFormatOf(spool.Format));
 
         var written = 0;
