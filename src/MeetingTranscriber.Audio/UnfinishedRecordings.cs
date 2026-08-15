@@ -3,11 +3,11 @@ using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Audio;
 
-/// <summary>One source of a recording nobody stopped, as the folder shows it before anything is read.</summary>
+/// <summary>One source of a recording, as the folder shows it before anything is read.</summary>
 /// <param name="Channel">Which of the two channels it fed.</param>
 /// <param name="Blocks">The file its blocks are in.</param>
 /// <param name="Bytes">What that file occupies, which is what says a source recorded anything at all.</param>
-public sealed record AbandonedSource(AudioChannel Channel, FileInfo Blocks, long Bytes);
+public sealed record UnfinishedSource(AudioChannel Channel, FileInfo Blocks, long Bytes);
 
 /// <summary>What one source turned out to be worth once its blocks were read through.</summary>
 /// <param name="Channel">Which of the two channels it fed.</param>
@@ -35,7 +35,8 @@ public sealed record SurvivingSource(
 public sealed record ExportedSource(AudioChannel Channel, FileInfo Wav, int Blocks, long Discarded);
 
 /// <summary>
-/// A recording the application never got to stop, and the three things that may happen to it.
+/// A recording sitting in the folder recordings are written into, and the three things that may
+/// happen to it.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -48,13 +49,30 @@ public sealed record ExportedSource(AudioChannel Channel, FileInfo Wav, int Bloc
 /// <para>
 /// Keeping it does not produce a file, and that is not an omission: the blocks already are the
 /// recording, whole up to the packet the machine died in. What the choice settles is that
-/// somebody has seen it and it stays.
+/// somebody has seen what survived and it stays.
+/// </para>
+/// <para>
+/// A recording that is still being written is one of these too, and it is marked rather than
+/// hidden — a meeting somebody is in the middle of is the last thing to leave off a list. What it
+/// is not is something to decide about: all three outcomes refuse it, because two of them read a
+/// file that is still growing and the third would throw away a meeting that is still happening.
 /// </para>
 /// </remarks>
-public sealed record AbandonedRecording(
+/// <param name="Folder">Where the recording is.</param>
+/// <param name="Card">What it says about itself, or nothing when it never said.</param>
+/// <param name="Unreadable">
+/// Why the card here could not be read, or nothing when there was one and it read, or none. A
+/// recording whose card was torn in half is still a recording, so this is said rather than thrown:
+/// one damaged folder that stopped the others being offered would be the crash winning twice.
+/// </param>
+/// <param name="Running">Whether a capture still holds these files, which on this machine means a meeting in progress.</param>
+/// <param name="Sources">What is on disk for each channel, in channel order.</param>
+public sealed record UnfinishedRecording(
     DirectoryInfo Folder,
     SpoolCard? Card,
-    IReadOnlyList<AbandonedSource> Sources)
+    string? Unreadable,
+    bool Running,
+    IReadOnlyList<UnfinishedSource> Sources)
 {
     /// <summary>
     /// Reads every source through and says what survived, changing nothing. The recording is still
@@ -67,42 +85,58 @@ public sealed record AbandonedRecording(
     /// its device handed over, and leaves the recording where it is.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// One file per source, unaligned and unresampled — what a person plays to hear what each
     /// device caught. It is not the meeting's audio: two sources become one pair of channels on
     /// the shared timeline, and that file is made when a recording is finished rather than when it
     /// is taken out.
+    /// </para>
+    /// <para>
+    /// Every destination is claimed from the file system before any audio is poured, and anything
+    /// that goes wrong afterwards takes back what this call made. Half of a recording somebody
+    /// asked for is worse than a refusal — worse still because the half that landed is what makes
+    /// the second attempt refuse the folder.
+    /// </para>
     /// </remarks>
     public IReadOnlyList<ExportedSource> Export(DirectoryInfo into)
     {
         ArgumentNullException.ThrowIfNull(into);
 
         into.Create();
-        var wavs = Sources.ToDictionary(
-            source => source.Channel,
-            source => new FileInfo(Path.Combine(into.FullName, BlockSpool.PlaybackFor(source.Blocks).Name)));
-
-        // Every destination before the first one is written: a source that lands and a second that
-        // is refused would leave somebody holding half of a recording they asked to take out.
-        foreach (var wav in wavs.Values.Where(wav => wav.Exists))
+        var claimed = new List<FileInfo>();
+        try
         {
-            throw new AudioCaptureException(
-                $"'{wav.FullName}' is already there. A recording taken out of the application is "
-                + "not written over another one — name a folder of its own.");
-        }
-
-        return
-        [
-            .. Sources.Select(source =>
+            foreach (var source in Sources)
             {
-                var wav = wavs[source.Channel];
-                var replayed = BlockSpool.ToWav(source.Blocks, wav);
+                var wav = new FileInfo(Path.Combine(
+                    into.FullName, BlockSpool.PlaybackFor(source.Blocks).Name));
 
-                // The handle asked whether it was there before it was written, and the answer it
-                // cached is the one a caller would read off what came back.
-                wav.Refresh();
-                return new ExportedSource(source.Channel, wav, replayed.Blocks, replayed.Discarded);
-            }),
-        ];
+                Claim(wav);
+                claimed.Add(wav);
+            }
+
+            return
+            [
+                .. Sources.Zip(claimed, (source, wav) =>
+                {
+                    var replayed = BlockSpool.ToWav(source.Blocks, wav);
+
+                    // The handle answered whether the file was there before it held anything, and
+                    // that answer is the one a caller would read off what came back.
+                    wav.Refresh();
+                    return new ExportedSource(source.Channel, wav, replayed.Blocks, replayed.Discarded);
+                }),
+            ];
+        }
+        catch
+        {
+            foreach (var wav in claimed)
+            {
+                BlockSpool.Erase(wav);
+            }
+
+            throw;
+        }
     }
 
     /// <summary>
@@ -111,16 +145,36 @@ public sealed record AbandonedRecording(
     /// <remarks>
     /// The only thing in this product that removes a recording, and it is reachable only from a
     /// choice somebody made about this one recording. Everything else that looks at a spool reads
-    /// it and leaves it — see <see cref="AbandonedRecordings"/> for what that rule costs and what
+    /// it and leaves it — see <see cref="UnfinishedRecordings"/> for what that rule costs and what
     /// it buys.
     /// </remarks>
     public void Discard()
     {
-        AbandonedRecordings.EnsureNothingIsRecordingInto(this);
+        UnfinishedRecordings.EnsureRemovable(this);
         Folder.Delete(recursive: true);
     }
 
-    private SurvivingSource Survived(AbandonedSource source)
+    /// <summary>
+    /// Claims a name from the file system rather than asking whether it is free. The two are not
+    /// the same answer: between a question and a write there is a window in which the file that
+    /// appears is somebody else's, and what this is guarding is that nothing here writes over it.
+    /// </summary>
+    private static void Claim(FileInfo wav)
+    {
+        try
+        {
+            using var claim = new FileStream(
+                wav.FullName, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        }
+        catch (IOException taken) when (File.Exists(wav.FullName))
+        {
+            throw new AudioCaptureException(
+                $"'{wav.FullName}' is already there. A recording taken out of the application is "
+                + "not written over another one — name a folder of its own.", taken);
+        }
+    }
+
+    private SurvivingSource Survived(UnfinishedSource source)
     {
         using var spool = SpoolReader.Open(source.Blocks);
         var tally = new PacketTally(spool.Format);
@@ -138,7 +192,7 @@ public sealed record AbandonedRecording(
 }
 
 /// <summary>
-/// The recordings waiting in the folder recordings are written into — what a start that follows a
+/// The recordings sitting in the folder recordings are written into — what a start that follows a
 /// crash has to offer somebody before anything else happens.
 /// </summary>
 /// <remarks>
@@ -150,19 +204,26 @@ public sealed record AbandonedRecording(
 /// keeping or taking one out does, to one recording, because somebody asked.
 /// </para>
 /// <para>
-/// A folder with no card is still a recording. Each spool declares its own format, so the blocks
-/// are readable without one, and dropping a folder for want of a card would be exactly the silent
-/// discard this whole path exists to make impossible.
+/// Every folder holding a spool is one of these, and it says which of them are still being
+/// recorded rather than leaving them out. Nothing yet turns a spool into a meeting — until that
+/// exists, a recording somebody stopped and one the machine died in the middle of are the same
+/// folder, and the honest thing is to offer both rather than to claim a difference nothing on disk
+/// records.
+/// </para>
+/// <para>
+/// A folder with no card is still a recording, and so is one whose card cannot be read. Each spool
+/// declares its own format, so the blocks are readable without one; dropping a folder for want of
+/// a readable card would be exactly the silent discard this whole path exists to make impossible.
 /// </para>
 /// </remarks>
-public static class AbandonedRecordings
+public static class UnfinishedRecordings
 {
     /// <summary>
     /// Every recording sitting in <paramref name="root"/>, in the order their folders are named.
     /// A root that is not there holds none, which is a machine that has never recorded and not a
     /// failure.
     /// </summary>
-    public static IReadOnlyList<AbandonedRecording> In(DirectoryInfo root)
+    public static IReadOnlyList<UnfinishedRecording> In(DirectoryInfo root)
     {
         ArgumentNullException.ThrowIfNull(root);
 
@@ -177,7 +238,7 @@ public static class AbandonedRecordings
             .. root.EnumerateDirectories()
                 .OrderBy(folder => folder.Name, StringComparer.Ordinal)
                 .Select(Found)
-                .OfType<AbandonedRecording>(),
+                .OfType<UnfinishedRecording>(),
         ];
     }
 
@@ -186,7 +247,7 @@ public static class AbandonedRecordings
     /// no spool is refused: what somebody typed is then a folder, and acting on it as a recording
     /// is how the wrong directory gets thrown away.
     /// </summary>
-    public static AbandonedRecording At(DirectoryInfo folder)
+    public static UnfinishedRecording At(DirectoryInfo folder)
     {
         ArgumentNullException.ThrowIfNull(folder);
 
@@ -202,15 +263,16 @@ public static class AbandonedRecordings
     }
 
     /// <summary>
-    /// Throws when a capture still holds any of this recording's spools, which on this machine
-    /// means a meeting that is still being recorded.
+    /// Throws unless every one of this recording's files is a spool nobody is writing.
     /// </summary>
     /// <remarks>
-    /// Asked before a recording is thrown away rather than left to the delete: what the file
-    /// system says when a handle is open is that a file is in use, and somebody who has just
-    /// discarded a recording still going on deserves to be told that is what happened.
+    /// This is what stands between <c>--discard</c> and a folder it should never have removed. It
+    /// opens each source the way reading one does, so both of the ways a folder can fail to be
+    /// what it looks like stop the delete before anything goes: a file named like a spool that is
+    /// not one, and a spool a capture is still writing, which on this machine is a meeting still
+    /// happening.
     /// </remarks>
-    internal static void EnsureNothingIsRecordingInto(AbandonedRecording recording)
+    internal static void EnsureRemovable(UnfinishedRecording recording)
     {
         foreach (var source in recording.Sources)
         {
@@ -223,16 +285,35 @@ public static class AbandonedRecordings
     /// recording — a capture that was refused its devices can leave one — and neither is a folder
     /// somebody made by hand.
     /// </summary>
-    private static AbandonedRecording? Found(DirectoryInfo folder)
+    private static UnfinishedRecording? Found(DirectoryInfo folder)
     {
         var sources = new[] { AudioChannel.Loopback, AudioChannel.Microphone }
             .Select(channel => (Channel: channel, Blocks: BlockSpool.FileFor(folder, channel)))
             .Where(source => source.Blocks.Exists)
-            .Select(source => new AbandonedSource(source.Channel, source.Blocks, source.Blocks.Length))
+            .Select(source => new UnfinishedSource(source.Channel, source.Blocks, source.Blocks.Length))
             .ToArray();
 
-        return sources.Length == 0
-            ? null
-            : new AbandonedRecording(folder, SpoolManifest.Find(folder), sources);
+        if (sources.Length == 0)
+        {
+            return null;
+        }
+
+        SpoolCard? card = null;
+        string? unreadable = null;
+        try
+        {
+            card = SpoolManifest.Find(folder);
+        }
+        catch (AudioCaptureException torn)
+        {
+            unreadable = torn.Message;
+        }
+
+        return new UnfinishedRecording(
+            folder,
+            card,
+            unreadable,
+            Array.Exists(sources, source => BlockSpool.IsStillBeingWritten(source.Blocks)),
+            sources);
     }
 }

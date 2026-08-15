@@ -117,24 +117,13 @@ public sealed class CaptureSession : IDisposable
                 }
             }
 
-            var card = new SpoolCard(
-                meetingId,
-                Guid.NewGuid(),
-                opened.Min(source => source.StartedAt),
-                CapturedAudio.Profile,
-                [.. opened
-                    .OrderBy(source => CapturedAudio.IndexOf(source.Channel))
-                    .Select(source => new SpooledSource(
-                        source.Channel,
-                        source.Listening.Name,
-                        (source.Listening as CaptureTarget.Endpoint)?.Device.Id))],
-                fellBack);
-
-            SpoolManifest.Write(folder, card);
-            return new CaptureSession([.. opened], silence, card);
         }
         catch
         {
+            // A session that cannot open both of its sources is not a half recording, so the
+            // source that did open takes its file with it. That is the one place a spool is
+            // erased, and it is erased because there is no recording — the other source never
+            // started, and what this one caught is the moment before Windows refused.
             foreach (var source in opened)
             {
                 source.Discard();
@@ -143,6 +132,40 @@ public sealed class CaptureSession : IDisposable
             silence?.Dispose();
             throw;
         }
+
+        var card = new SpoolCard(
+            meetingId,
+            Guid.NewGuid(),
+            opened.Min(source => source.StartedAt),
+            CapturedAudio.Profile,
+            [.. opened
+                .OrderBy(source => CapturedAudio.IndexOf(source.Channel))
+                .Select(source => new SpooledSource(
+                    source.Channel,
+                    source.Listening.Name,
+                    (source.Listening as CaptureTarget.Endpoint)?.Device.Id))],
+            fellBack);
+
+        try
+        {
+            SpoolManifest.Write(folder, card);
+        }
+        catch
+        {
+            // Both devices are recording by the time this runs, so what is on disk is a meeting
+            // and not a failed attempt: it is let go of and left, and it comes back as a recording
+            // with nothing saying what it is — a case recovery already has. Erasing it here would
+            // be this product deleting audio nobody decided about.
+            foreach (var source in opened)
+            {
+                source.LetGo();
+            }
+
+            silence?.Dispose();
+            throw;
+        }
+
+        return new CaptureSession([.. opened], silence, card);
     }
 
     /// <summary>The source feeding <paramref name="channel"/>.</summary>

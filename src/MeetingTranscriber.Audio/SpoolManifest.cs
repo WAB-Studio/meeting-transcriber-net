@@ -109,15 +109,26 @@ public static class SpoolManifest
     /// Writes the card of a recording that is starting, refusing a folder that already has one.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The file system answers rather than a check made a moment earlier, for the same reason a
     /// spool is created and not tested for: between the two there is a window in which the card
     /// being replaced is another recording's.
+    /// </para>
+    /// <para>
+    /// The whole card reaches the file in one write, the way a block does. It is written at the
+    /// instant a meeting starts, which is a moment a process really does die in, and a card
+    /// serialised straight down the stream would leave half a sentence of JSON where the recording
+    /// says what it is. A power cut can still tear it, and what covers that is the reader being
+    /// allowed to say so rather than throw — a recording is not lost for the card beside it.
+    /// </para>
     /// </remarks>
     public static void Write(DirectoryInfo folder, SpoolCard card)
     {
         ArgumentNullException.ThrowIfNull(card);
 
         var file = In(folder);
+        var written = JsonSerializer.SerializeToUtf8Bytes(Stored(card), Readable);
+
         FileStream stream;
         try
         {
@@ -134,15 +145,15 @@ public static class SpoolManifest
         {
             using (stream)
             {
-                JsonSerializer.Serialize(stream, Stored(card), Readable);
+                stream.Write(written);
             }
         }
         catch
         {
-            // The file was made here, so half a card is this method's mess and not a recording:
-            // what it would otherwise leave is a folder no later capture may record into, refused
-            // for a card that never said anything.
-            Erase(file);
+            // The file was made here, so a card that never landed is this method's mess and not a
+            // recording: what it would otherwise leave is a folder no later capture may record
+            // into, refused for a card that never said anything.
+            BlockSpool.Erase(file);
             throw;
         }
     }
@@ -190,50 +201,60 @@ public static class SpoolManifest
             throw new AudioCaptureException($"'{file.FullName}' holds nothing, so it names no recording.");
         }
 
+        var profile = Parsed(
+            file,
+            "source_profile",
+            () => SourceProfiles.FromWireName(Required(file, "source_profile", card.SourceProfile)));
+
         return new SpoolCard(
             Identifier(file, "meeting", card.Meeting),
             Identifier(file, "capture_run", card.CaptureRun),
             Parsed(file, "started_at", () => UtcTimestamp.Parse(Required(file, "started_at", card.StartedAt))),
-            Parsed(file, "source_profile", () => SourceProfiles.FromWireName(Required(file, "source_profile", card.SourceProfile))),
-            Sources(file, card),
+            profile,
+            Sources(file, card, profile),
             card.FellBack);
     }
 
-    /// <summary>The sources in channel order, however the file happened to list them.</summary>
-    private static SpooledSource[] Sources(FileInfo file, Card card)
+    /// <summary>
+    /// The sources in channel order, however the file happened to list them — one per channel the
+    /// profile promises, and no channel twice.
+    /// </summary>
+    /// <remarks>
+    /// The card's job is to say what fed <em>each</em> channel, so a list that names one of them,
+    /// or names one of them twice, has stopped being able to do it. Both are what a card edited by
+    /// hand or half rewritten looks like, and either would come back as a recording with a channel
+    /// whose device nobody knows — or with the wrong one, which is worse. The count is the
+    /// profile's own rule rather than a number written here.
+    /// </remarks>
+    private static SpooledSource[] Sources(FileInfo file, Card card, SourceProfile profile)
     {
-        if (card.Sources is not { Count: > 0 })
-        {
-            throw new AudioCaptureException(
-                $"'{file.FullName}' names no source, so it does not say what was recorded.");
-        }
-
-        return [.. card.Sources
+        var listed = card.Sources ?? [];
+        var sources = listed
             .Select(source => new SpooledSource(
-                Parsed(file, "channel", () => CapturedAudio.ChannelAt(source.Channel)),
+                Parsed(
+                    file,
+                    "channel",
+                    () => CapturedAudio.ChannelAt(
+                        source.Channel ?? throw new AudioContractException("A source names no channel."))),
                 Required(file, "heard", source.Heard),
                 source.DeviceId))
-            .OrderBy(source => CapturedAudio.IndexOf(source.Channel))];
-    }
+            .OrderBy(source => CapturedAudio.IndexOf(source.Channel))
+            .ToArray();
 
-    /// <summary>
-    /// Removes a card that never finished being written. One that will not delete is not worth
-    /// replacing the reason the write failed with, so it does not throw either.
-    /// </summary>
-    private static void Erase(FileInfo file)
-    {
-        try
+        Parsed(file, "sources", () =>
         {
-            file.Refresh();
-            if (file.Exists)
-            {
-                file.Delete();
-            }
-        }
-        catch (Exception left) when (left is IOException or UnauthorizedAccessException)
+            profile.EnsureChannelCount(sources.Length);
+            return sources;
+        });
+
+        if (sources.Select(source => source.Channel).Distinct().Count() != sources.Length)
         {
-            // Swallowed on purpose: see the summary.
+            throw new AudioCaptureException(
+                $"'{file.FullName}' names one of its channels twice, so it does not say what fed "
+                + "the other one.");
         }
+
+        return sources;
     }
 
     private static Card Stored(SpoolCard card) => new(
@@ -289,7 +310,7 @@ public static class SpoolManifest
         [property: JsonPropertyName("fell_back")] string? FellBack);
 
     private sealed record Source(
-        [property: JsonPropertyName("channel")] int Channel,
+        [property: JsonPropertyName("channel")] int? Channel,
         [property: JsonPropertyName("heard")] string? Heard,
         [property: JsonPropertyName("device")] string? DeviceId);
 }

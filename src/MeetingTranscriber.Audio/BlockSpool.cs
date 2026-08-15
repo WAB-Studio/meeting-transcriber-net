@@ -162,6 +162,11 @@ public static class BlockSpool
     /// The same, into a file somebody named rather than the one beside the blocks. What taking a
     /// recording out of the application writes.
     /// </summary>
+    /// <remarks>
+    /// It replaces what is at that name, here as above. Whether the name was somebody else's is
+    /// not a question a pour can answer — it is answered by whoever claimed the name, which for an
+    /// export is the file system.
+    /// </remarks>
     public static Replayed ToWav(FileInfo blocks, FileInfo wav)
     {
         ArgumentNullException.ThrowIfNull(wav);
@@ -177,6 +182,65 @@ public static class BlockSpool
         }
 
         return new Replayed(spool.Format, written, spool.Discarded);
+    }
+
+    /// <summary>
+    /// Whether a capture still holds <paramref name="blocks"/>, which on this machine means a
+    /// meeting that is still being recorded.
+    /// </summary>
+    /// <remarks>
+    /// The same question a reader answers by failing to open, asked without reading a header:
+    /// what a listing needs to know is that a folder is a meeting in progress, and that is worth
+    /// one open and no bytes. A file that will not open for any other reason is not this — it is
+    /// something the caller will meet again the moment it reads.
+    /// </remarks>
+    public static bool IsStillBeingWritten(FileInfo blocks)
+    {
+        ArgumentNullException.ThrowIfNull(blocks);
+
+        try
+        {
+            using var reading = new FileStream(
+                blocks.FullName, FileMode.Open, FileAccess.Read, FileShare.Read);
+            return false;
+        }
+        catch (IOException)
+        {
+            return File.Exists(blocks.FullName);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Removes a file that never became part of a recording — a spool whose stream would not open,
+    /// a card whose write was cut off, an export that could not be finished. It does not throw: it
+    /// runs while something is already failing, and what the caller has to hear is why that
+    /// happened rather than that a handle would not close on the way out.
+    /// </summary>
+    /// <remarks>
+    /// One of these, here, rather than one per file that needs it. What may be taken away and what
+    /// may not is the rule this whole path is built on, and a copy of it in each of four files is
+    /// four chances for the fifth to be written differently.
+    /// </remarks>
+    internal static void Erase(FileInfo file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        try
+        {
+            file.Refresh();
+            if (file.Exists)
+            {
+                file.Delete();
+            }
+        }
+        catch (Exception left) when (left is IOException or UnauthorizedAccessException)
+        {
+            // Swallowed on purpose: see the summary.
+        }
     }
 
     /// <summary>

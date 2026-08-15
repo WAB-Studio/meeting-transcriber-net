@@ -141,7 +141,7 @@ public static class AudioCommands
 
         Report.Line(output, "spool", root.FullName);
 
-        var waiting = AbandonedRecordings.In(root);
+        var waiting = UnfinishedRecordings.In(root);
         if (waiting.Count == 0)
         {
             Report.Line(output, "waiting", "none");
@@ -184,7 +184,7 @@ public static class AudioCommands
                 + "happens to a recording is a decision, so this command does not have a default.");
         }
 
-        var recording = AbandonedRecordings.At(folder);
+        var recording = UnfinishedRecordings.At(folder);
         Report.Line(output, "recording", recording.Folder.FullName);
         Describe(recording, output);
 
@@ -218,9 +218,18 @@ public static class AudioCommands
     /// What a recording says about itself before anything is decided: its card if it has one, and
     /// what each source's file holds.
     /// </summary>
-    private static void Describe(AbandonedRecording recording, TextWriter output)
+    private static void Describe(UnfinishedRecording recording, TextWriter output)
     {
-        if (recording.Card is { } card)
+        if (recording.Running)
+        {
+            Report.Line(output, "still", "being recorded, so there is nothing to decide about it yet");
+        }
+
+        if (recording.Unreadable is { } torn)
+        {
+            Report.Line(output, "meeting", $"unnamed: {torn}");
+        }
+        else if (recording.Card is { } card)
         {
             Report.Line(output, "meeting", card.MeetingId.ToString());
             Report.Line(output, "started", card.StartedAt.ToStorage());

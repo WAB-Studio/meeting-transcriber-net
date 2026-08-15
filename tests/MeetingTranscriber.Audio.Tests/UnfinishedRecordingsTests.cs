@@ -11,7 +11,7 @@ namespace MeetingTranscriber.Audio.Tests;
 /// the process leaves. No device is opened: what is being probed is the decision, and a decision
 /// that needed hardware to test would be one nobody could hold to.
 /// </remarks>
-public sealed class AbandonedRecordingsTests : IDisposable
+public sealed class UnfinishedRecordingsTests : IDisposable
 {
     private static readonly StreamFormat StereoFloat = new(48_000, 2, 32, SampleEncoding.IeeeFloat);
     private static readonly StreamFormat CheapMicrophone = new(44_100, 1, 16, SampleEncoding.Pcm);
@@ -19,7 +19,7 @@ public sealed class AbandonedRecordingsTests : IDisposable
     private readonly DirectoryInfo root = new(Path.Combine(
         Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
 
-    public AbandonedRecordingsTests() => root.Create();
+    public UnfinishedRecordingsTests() => root.Create();
 
     /// <summary>
     /// ISC-123. Every one of them, each saying which meeting it is and what each source holds —
@@ -32,7 +32,7 @@ public sealed class AbandonedRecordingsTests : IDisposable
         Recorded("2026-08-15-uno", both: false);
         root.CreateSubdirectory("not-a-recording");
 
-        var waiting = AbandonedRecordings.In(root);
+        var waiting = UnfinishedRecordings.In(root);
 
         waiting.Select(recording => recording.Folder.Name)
             .ShouldBe(["2026-08-15-daily", "2026-08-15-uno"]);
@@ -56,7 +56,7 @@ public sealed class AbandonedRecordingsTests : IDisposable
     {
         Recorded("nameless", both: true, card: false);
 
-        var waiting = AbandonedRecordings.In(root);
+        var waiting = UnfinishedRecordings.In(root);
 
         waiting.Count.ShouldBe(1);
         waiting[0].Card.ShouldBeNull();
@@ -66,7 +66,7 @@ public sealed class AbandonedRecordingsTests : IDisposable
     [Fact]
     public void A_machine_that_has_never_recorded_has_nothing_waiting()
     {
-        AbandonedRecordings.In(new DirectoryInfo(Path.Combine(root.FullName, "nowhere"))).ShouldBeEmpty();
+        UnfinishedRecordings.In(new DirectoryInfo(Path.Combine(root.FullName, "nowhere"))).ShouldBeEmpty();
     }
 
     /// <summary>
@@ -77,7 +77,7 @@ public sealed class AbandonedRecordingsTests : IDisposable
     public void A_recording_that_is_kept_says_what_survived_and_is_still_there_afterwards()
     {
         var written = Recorded("daily", both: true);
-        var recording = AbandonedRecordings.At(Folder("daily"));
+        var recording = UnfinishedRecordings.At(Folder("daily"));
 
         var survived = recording.Keep();
 
@@ -103,7 +103,7 @@ public sealed class AbandonedRecordingsTests : IDisposable
         Recorded("daily", both: true);
         CutOffMidBlock(BlockSpool.FileFor(Folder("daily"), AudioChannel.Microphone));
 
-        var survived = AbandonedRecordings.At(Folder("daily")).Keep();
+        var survived = UnfinishedRecordings.At(Folder("daily")).Keep();
 
         survived[0].Discarded.ShouldBe(0);
         survived[1].Discarded.ShouldBeGreaterThan(0);
@@ -119,7 +119,7 @@ public sealed class AbandonedRecordingsTests : IDisposable
         Recorded("daily", both: true);
         var into = new DirectoryInfo(Path.Combine(root.FullName, "somewhere else"));
 
-        var exported = AbandonedRecordings.At(Folder("daily")).Export(into);
+        var exported = UnfinishedRecordings.At(Folder("daily")).Export(into);
 
         exported.Select(source => source.Wav.Name).ShouldBe(["loopback.wav", "microphone.wav"]);
         exported.ShouldAllBe(source => source.Wav.Exists && source.Blocks > 0);
@@ -140,7 +140,7 @@ public sealed class AbandonedRecordingsTests : IDisposable
         var into = root.CreateSubdirectory("taken out");
         File.WriteAllBytes(Path.Combine(into.FullName, "microphone.wav"), [1, 2, 3]);
 
-        Should.Throw<AudioCaptureException>(() => AbandonedRecordings.At(Folder("daily")).Export(into))
+        Should.Throw<AudioCaptureException>(() => UnfinishedRecordings.At(Folder("daily")).Export(into))
             .Message.ShouldContain("microphone.wav");
 
         into.EnumerateFiles("loopback.wav").ShouldBeEmpty();
@@ -152,10 +152,10 @@ public sealed class AbandonedRecordingsTests : IDisposable
     {
         Recorded("daily", both: true);
 
-        AbandonedRecordings.At(Folder("daily")).Discard();
+        UnfinishedRecordings.At(Folder("daily")).Discard();
 
         Folder("daily").Exists.ShouldBeFalse();
-        AbandonedRecordings.In(root).ShouldBeEmpty();
+        UnfinishedRecordings.In(root).ShouldBeEmpty();
     }
 
     /// <summary>
@@ -167,7 +167,7 @@ public sealed class AbandonedRecordingsTests : IDisposable
     public void A_recording_still_being_written_is_not_thrown_away()
     {
         Recorded("daily", both: true);
-        var recording = AbandonedRecordings.At(Folder("daily"));
+        var recording = UnfinishedRecordings.At(Folder("daily"));
 
         // The handle a capture holds on its own spool: writing it, and letting nothing else write.
         using var writing = new FileStream(
@@ -189,9 +189,9 @@ public sealed class AbandonedRecordingsTests : IDisposable
     {
         var empty = root.CreateSubdirectory("empty");
 
-        Should.Throw<AudioCaptureException>(() => AbandonedRecordings.At(empty))
+        Should.Throw<AudioCaptureException>(() => UnfinishedRecordings.At(empty))
             .Message.ShouldContain("no spool");
-        Should.Throw<AudioCaptureException>(() => AbandonedRecordings.At(Folder("nowhere")))
+        Should.Throw<AudioCaptureException>(() => UnfinishedRecordings.At(Folder("nowhere")))
             .Message.ShouldContain("no folder");
     }
 
@@ -203,7 +203,7 @@ public sealed class AbandonedRecordingsTests : IDisposable
     [Fact]
     public void Nothing_but_a_decision_about_one_recording_removes_a_folder()
     {
-        var allowed = Path.Combine("MeetingTranscriber.Audio", "AbandonedRecordings.cs");
+        var allowed = Path.Combine("MeetingTranscriber.Audio", "UnfinishedRecordings.cs");
 
         var offenders = Sources()
             .Where(file => File.ReadAllText(file.FullName) is var text
@@ -228,19 +228,14 @@ public sealed class AbandonedRecordingsTests : IDisposable
     {
         string[] allowed =
         [
-            // The spool of a source whose stream would not open: an empty file standing exactly
-            // where the next attempt wants to write.
-            "SpoolWriter.cs",
-
-            // The same, for a source a session gave up on before the recording existed.
-            "CaptureSource.cs",
-
-            // A card whose write was cut off, which would otherwise refuse the folder forever for
-            // something that never said anything.
-            "SpoolManifest.cs",
+            // The one place a file this product made is taken back when it never became anything:
+            // a spool whose stream would not open, a card whose write was cut off, an export that
+            // could not be finished. One copy of that rule, so the fifth caller cannot write its
+            // own.
+            "BlockSpool.cs",
 
             // The one decision that removes a recording.
-            "AbandonedRecordings.cs",
+            "UnfinishedRecordings.cs",
         ];
 
         var offenders = Sources()
