@@ -103,6 +103,11 @@ public static class Cli
             "record what the machine plays, or one program, and what the microphone hears at once",
             AudioCommands.Capture),
         new(
+            "spool",
+            "spool --in <directory>",
+            "what a recording left behind is worth, and a file of each source to listen to",
+            AudioCommands.Spool),
+        new(
             "search",
             $"search <query> {Corpus.Option} <directory> [--limit <n>]",
             "ask the corpus, in the index's own query syntax",

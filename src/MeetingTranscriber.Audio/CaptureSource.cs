@@ -3,13 +3,10 @@ using System.Runtime.InteropServices;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
-using NAudio.CoreAudioApi;
-using NAudio.Wave;
-
 namespace MeetingTranscriber.Audio;
 
 /// <summary>
-/// One device being recorded onto one channel: the stream, the file it lands in and how loud it
+/// One device being recorded onto one channel: the stream, the spool it lands in and how loud it
 /// has been. Nothing here knows there is another one.
 /// </summary>
 /// <remarks>
@@ -22,7 +19,7 @@ public sealed class CaptureSource : IDisposable
     private static readonly TimeSpan StopsWithin = TimeSpan.FromSeconds(5);
 
     private readonly WasapiStream stream;
-    private readonly WaveFileWriter writer;
+    private readonly SpoolWriter spool;
     private readonly SourceMeter meter = new();
     private readonly PacketTally tally;
     private readonly ManualResetEventSlim ended = new(initialState: false);
@@ -36,14 +33,14 @@ public sealed class CaptureSource : IDisposable
         StreamFormat format,
         FileInfo file,
         WasapiStream stream,
-        WaveFileWriter writer)
+        SpoolWriter spool)
     {
         Channel = channel;
         Listening = listening;
         Format = format;
         File = file;
         this.stream = stream;
-        this.writer = writer;
+        this.spool = spool;
         tally = new PacketTally(format);
     }
 
@@ -56,7 +53,7 @@ public sealed class CaptureSource : IDisposable
     /// <summary>The format that device handed over.</summary>
     public StreamFormat Format { get; }
 
-    /// <summary>Where its samples are being written.</summary>
+    /// <summary>The spool its blocks are being written to.</summary>
     public FileInfo File { get; }
 
     /// <summary>When its stream opened.</summary>
@@ -68,7 +65,7 @@ public sealed class CaptureSource : IDisposable
     /// </summary>
     public PacketTally Packets => tally;
 
-    /// <summary>How many bytes have been written to <see cref="File"/>.</summary>
+    /// <summary>How many bytes of samples have been spooled, not counting what frames them.</summary>
     public long Bytes => Interlocked.Read(ref bytes);
 
     /// <summary>The loudest this source has been since it opened.</summary>
@@ -101,8 +98,8 @@ public sealed class CaptureSource : IDisposable
     }
 
     /// <summary>
-    /// Waits for the stream to be over and finishes the file. A stream that had already ended by
-    /// itself throws here, carrying the reason it ended.
+    /// Waits for the stream to be over and hands the last blocks on. A stream that had already
+    /// ended by itself throws here, carrying the reason it ended.
     /// </summary>
     internal void Finish()
     {
@@ -112,7 +109,7 @@ public sealed class CaptureSource : IDisposable
                 $"The {Channel} stream did not stop within {StopsWithin.TotalSeconds:0} seconds.");
         }
 
-        writer.Flush();
+        spool.Flush();
 
         if (failure is not null)
         {
@@ -124,12 +121,13 @@ public sealed class CaptureSource : IDisposable
     public void Dispose()
     {
         // First, and on purpose: this stops the stream and waits for its loop, so once it returns
-        // nothing is still handing blocks to the writer.
+        // nothing is still handing blocks to the spool.
         stream.Dispose();
 
-        // What patches the WAV header with the length actually written, which is why a capture
-        // that was killed still leaves a file something can play.
-        writer.Dispose();
+        // Closing a spool finishes nothing and completes nothing: every block was already whole
+        // when it was written, which is why a capture that was killed rather than stopped still
+        // leaves a recording worth everything that reached the disk.
+        spool.Dispose();
         ended.Dispose();
         running = false;
     }
@@ -179,12 +177,12 @@ public sealed class CaptureSource : IDisposable
         ArgumentNullException.ThrowIfNull(file);
 
         WasapiStream? stream = null;
-        WaveFileWriter? writer = null;
+        SpoolWriter? spool = null;
         var claimed = false;
 
         void LetGo()
         {
-            writer?.Dispose();
+            spool?.Dispose();
             stream?.Dispose();
 
             if (claimed)
@@ -203,11 +201,10 @@ public sealed class CaptureSource : IDisposable
             // somebody has already started holding a meeting into.
             Levels.EnsureMeterable(format);
 
-            var bytes = Claim(file);
+            spool = SpoolWriter.Create(file, channel, format);
             claimed = true;
-            writer = new WaveFileWriter(bytes, stream.WaveFormat);
 
-            var source = new CaptureSource(channel, listening, format, file, stream, writer);
+            var source = new CaptureSource(channel, listening, format, file, stream, spool);
             source.Start();
             return source;
         }
@@ -221,25 +218,6 @@ public sealed class CaptureSource : IDisposable
         {
             LetGo();
             throw;
-        }
-    }
-
-    /// <summary>
-    /// Takes the path for this recording, or says it is taken. The file system answers rather
-    /// than a question asked a moment earlier: NAudio opens a path by truncating whatever is
-    /// there, so a check and then a create is a window in which the other capture's WAV is the
-    /// thing being truncated.
-    /// </summary>
-    private static FileStream Claim(FileInfo file)
-    {
-        try
-        {
-            return new FileStream(file.FullName, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
-        }
-        catch (IOException taken) when (System.IO.File.Exists(file.FullName))
-        {
-            throw new AudioCaptureException(
-                $"'{file.FullName}' is already there, and a recording is not written over another one.", taken);
         }
     }
 
@@ -286,7 +264,7 @@ public sealed class CaptureSource : IDisposable
 
         tally.Add(packet);
         meter.Add(Levels.Peak(packet.Samples.Span, Format));
-        writer.Write(packet.Samples.Span);
+        spool.Write(packet);
         Interlocked.Add(ref bytes, packet.Samples.Length);
     }
 

@@ -50,9 +50,9 @@ public sealed class CaptureSession : IDisposable
         : CaptureMode.FullLoopback;
 
     /// <summary>
-    /// Opens both streams into <paramref name="folder"/>, one file each, and starts recording.
+    /// Opens both streams into <paramref name="folder"/>, one spool each, and starts recording.
     /// </summary>
-    /// <param name="folder">Where the two files go. Made if it is not there.</param>
+    /// <param name="folder">Where the two spools go. Made if it is not there.</param>
     /// <param name="playback">The endpoint channel 0 listens to, and falls back to.</param>
     /// <param name="microphone">The device channel 1 listens to.</param>
     /// <param name="follow">
@@ -84,7 +84,7 @@ public sealed class CaptureSession : IDisposable
                 silence ??= SilentPlayback.On(playback);
             }
 
-            return CaptureSource.Open(channel, target, FileFor(folder, channel));
+            return CaptureSource.Open(channel, target, BlockSpool.FileFor(folder, channel));
         }
 
         try
@@ -122,7 +122,7 @@ public sealed class CaptureSession : IDisposable
         ?? throw new AudioContractException($"This capture has no {channel} source.");
 
     /// <summary>
-    /// Stops both streams and finishes both files. Every source is asked to stop before either is
+    /// Stops both streams and finishes both spools. Every source is asked to stop before either is
     /// waited on, and every one of them is stopped even when another has something to say about
     /// how it ended — the other one's file is a recording somebody wants either way.
     /// </summary>
@@ -201,7 +201,4 @@ public sealed class CaptureSession : IDisposable
             (Channel: AudioChannel.Microphone, Target: (CaptureTarget)new CaptureTarget.Endpoint(microphone)),
             (Channel: AudioChannel.Loopback, Target: others),
         }.OrderBy(source => CapturedAudio.IndexOf(source.Channel));
-
-    private static FileInfo FileFor(DirectoryInfo folder, AudioChannel channel) =>
-        new(Path.Combine(folder.FullName, $"{channel.ToString().ToLowerInvariant()}.wav"));
 }

@@ -7,8 +7,9 @@ using MeetingTranscriber.Domain.Time;
 namespace MeetingTranscriber.Cli;
 
 /// <summary>
-/// What this machine can record and what it actually records: the two commands that answer
-/// whether the audio side of a meeting works here, before a window is built over it.
+/// What this machine can record, what it actually records, and what a recording that was cut off
+/// is worth: the commands that answer whether the audio side of a meeting works here, before a
+/// window is built over it.
 /// </summary>
 /// <remarks>
 /// A capture from a prompt is not scaffolding for the recorder — it is how a capture gets
@@ -46,9 +47,9 @@ public static class AudioCommands
     }
 
     /// <summary>
-    /// Records both sources at once, saying what each one is and how loud it is while it runs.
-    /// Ctrl+C stops it early with both files finished, which is not what killing the process
-    /// does.
+    /// Records both sources at once, saying what each one is and how loud it is while it runs, and
+    /// reads each spool back into a file somebody can listen to. Ctrl+C stops it early and still
+    /// reports; killing the process leaves the spools, which is the point of them.
     /// </summary>
     public static int Capture(Arguments arguments, TextWriter output)
     {
@@ -101,9 +102,73 @@ public static class AudioCommands
                     + $"{source.Bytes / 1024d / 1024d:0.0} MB, loudest {source.Loudest}"));
 
             Report.Line(output, $"{Name(source)} clock", Clocking(source.Packets));
+            Report.Line(output, $"{Name(source)} played back", PlayedBack(source.File));
         }
 
         return Cli.Ok;
+    }
+
+    /// <summary>
+    /// What a folder of blocks holds, for a recording nobody got to stop: how much of it survived,
+    /// what the machine cut off, and a file of each source to listen to.
+    /// </summary>
+    /// <remarks>
+    /// It reports and writes beside what is there, and removes nothing. A spool may be the only
+    /// copy of a meeting, so what happens to one is a person's decision and not a command's.
+    /// </remarks>
+    public static int Spool(Arguments arguments, TextWriter output)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        ArgumentNullException.ThrowIfNull(output);
+
+        var folder = new DirectoryInfo(arguments.Required("--in"));
+        arguments.EnsureNothingLeftOver();
+
+        if (!folder.Exists)
+        {
+            throw new CommandException($"There is no folder at '{folder.FullName}'.");
+        }
+
+        Report.Line(output, "folder", folder.FullName);
+
+        var found = 0;
+        foreach (var channel in new[] { AudioChannel.Loopback, AudioChannel.Microphone })
+        {
+            var blocks = BlockSpool.FileFor(folder, channel);
+            if (!blocks.Exists)
+            {
+                Report.Line(output, $"ch{CapturedAudio.IndexOf(channel)}", $"no {blocks.Name}");
+                continue;
+            }
+
+            found++;
+            using var spool = SpoolReader.Open(blocks);
+            Report.Line(output, $"ch{CapturedAudio.IndexOf(channel)} format", spool.Format.ToString());
+            Report.Line(output, $"ch{CapturedAudio.IndexOf(channel)} recovered", PlayedBack(blocks));
+        }
+
+        return found == 0
+            ? throw new CommandException(
+                $"'{folder.FullName}' holds no spool, so there is no recording in it to recover.")
+            : Cli.Ok;
+    }
+
+    /// <summary>
+    /// Reads one source's spool back into a file somebody can listen to, in the format its device
+    /// handed over. It is a diagnostic and not the recording — the two sources become one pair of
+    /// channels on the shared timeline, and that is a different file — but it is read through the
+    /// same path a recovery takes, so every capture is a run of the code a crash will depend on.
+    /// </summary>
+    private static string PlayedBack(FileInfo blocks)
+    {
+        var wav = new FileInfo(Path.ChangeExtension(blocks.FullName, ".wav"));
+        var replayed = BlockSpool.ToWav(blocks, wav);
+        var cut = replayed.Discarded > 0
+            ? string.Create(CultureInfo.InvariantCulture, $", {replayed.Discarded} bytes discarded")
+            : string.Empty;
+
+        return string.Create(
+            CultureInfo.InvariantCulture, $"{wav.Name}, {replayed.Blocks} blocks{cut}");
     }
 
     /// <summary>
@@ -128,8 +193,9 @@ public static class AudioCommands
 
         void Interrupt(object? sender, ConsoleCancelEventArgs pressed)
         {
-            // Without this the process dies where it stands, and a WAV whose header was never
-            // written back is a recording nothing will open.
+            // Without this the process dies where it stands. The spool survives that — every block
+            // in it is whole — but nothing would report what was recorded or read it back, and the
+            // run is a measurement rather than only a recording.
             pressed.Cancel = true;
             interrupted.Set();
         }
