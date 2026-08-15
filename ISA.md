@@ -1,7 +1,7 @@
 ---
 phase: climbing
-progress: 80/118
-updated: 2026-08-13
+progress: 84/122
+updated: 2026-08-14
 ---
 
 # ISA — meeting-transcriber-net
@@ -122,6 +122,10 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-116: Anti: a source whose clock runs fast or slow is pulled back gradually, so alignment holds throughout the recording and not only at its end.
 - [x] ISC-117: A source that goes quiet does not hold the rest of the meeting, and the whole of it is reported as missing.
 - [x] ISC-118: Anti: a device whose frame counter and clock disagree by more than any crystal drifts stops the recording rather than being clamped into looking aligned.
+- [x] ISC-119: A block leaving the capture carries the frame position its device reported for it, and what a source covers is counted from those and never from how many bytes reached the application.
+- [x] ISC-120: A block leaving the capture carries the instant its device reported reading that position at, and never the moment the application collected it.
+- [x] ISC-121: A recording a device dropped audio from says how much it lost, rather than coming back shorter with nothing saying so.
+- [x] ISC-122: Anti: a stretch of a meeting nobody played into is recorded as the silence it was, and not as whatever the device's buffer last held.
 - [ ] ISC-35: Two hours of capture end with under 50 ms of measured drift between the two channels.
 - [ ] ISC-36: Anti: the produced WAV never carries the microphone on channel 0.
 - [ ] ISC-37: A spool cut off mid-block recovers to its last complete block.
@@ -366,6 +370,10 @@ Board: 7 · Distribución y backup
 - ISC-116 — `SharedTimelineTests.A_fast_clock_is_pulled_back_throughout_and_not_at_the_end` green 2026-08-13; with the measurement disabled the same probe puts the microphone's first marker 20 ms out at 10 s and reports 48000 Hz for a device running at 48096
 - ISC-117 — `SharedTimelineTests.A_source_that_goes_quiet_does_not_hold_the_rest_of_the_meeting` and `A_source_the_recording_left_behind_is_refused_rather_than_inserted` green 2026-08-13
 - ISC-118 — `SharedTimelineTests.A_device_whose_two_counters_disagree_stops_the_recording_rather_than_being_clamped` and `A_source_whose_clock_goes_backwards_stops_the_recording` green 2026-08-13
+- ISC-119 — `PacketTallyTests` green 2026-08-14, and `The_same_bytes_are_a_hole_or_a_shorter_source_depending_on_the_positions` red against a tally advancing on frames instead of positions: it read 900 ms for the second of meeting it was given. Two `capture` runs on this machine 2026-08-14, of 20 s and 14 s, covered 0:00:20 and 0:00:14 on both sources with nothing lost on any of the four
+- ISC-120 — the same runs: 2015 and 1352 loopback packets reported 9 to 10 and 9 to 20 ms apart, over a loop that polls the device every 50 ms — five packets a poll, which instants stamped where the application collected them could not have spaced at all. `PacketTallyTests.Packets_are_as_far_apart_as_the_device_read_them`, `A_packet_whose_instant_the_device_would_not_vouch_for_still_counts_as_meeting` and `A_source_that_opened_with_an_unvouched_packet_still_covers_it` green 2026-08-14
+- ISC-121 — `PacketTallyTests.The_same_bytes_are_a_hole_or_a_shorter_source_depending_on_the_positions` green 2026-08-14: ninety packets either way, one covering a second of meeting with a tenth of it lost and the other nine tenths of a second with nothing lost. `capture` prints the number on its own line per source, and both runs printed 0 ms
+- ISC-122 — the 14 s run 2026-08-14 played a 440 Hz tone from second 2 to second 12 into the endpoint channel 0 was recording. Its WAV peaks at 0.167 over 5–6 s and is exactly zero over 0–1 s and from 12.5 s to the end, with 1352 packets arriving throughout and nothing lost, so the stretches nothing played into are the silence they were rather than the tone still standing in the device's buffer
 - ISC-69 — `CorpusSearchTests.A_hit_carries_the_meeting_the_date_the_title_a_snippet_and_where_it_was_said` green 2026-08-07
 - ISC-70 — `CorpusSearchTests.A_meeting_being_deleted_is_not_something_search_offers` green 2026-08-07
 - ISC-71 — `CorpusSearchTests.Throwing_both_indexes_away_and_rebuilding_them_answers_exactly_the_same` green 2026-08-07

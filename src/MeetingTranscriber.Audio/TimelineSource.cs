@@ -141,8 +141,10 @@ internal sealed class TimelineSource
                 + "would not vouch for, and there is nothing to measure the rest of it against.");
         }
 
-        // An unsound packet's samples are still the meeting; only its two numbers are worthless,
-        // and a measurement taken against them would be worse than the label it replaced.
+        // An unsound packet's samples are still the meeting and its position is still where they
+        // go; only the instant beside it is worthless, and a rate measured against that would be
+        // worse than the label it replaced. So the packet is laid out below like any other and it
+        // is the observation, and only the observation, that is skipped.
         if (packet.TimingIsSound)
         {
             clock.Observe(packet.DevicePosition, packet.CapturedAt);

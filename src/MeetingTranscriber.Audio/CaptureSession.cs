@@ -60,7 +60,7 @@ public sealed class CaptureSession : IDisposable
         {
             foreach (var (channel, device) in InChannelOrder(playback, microphone))
             {
-                opened.Add(CaptureSource.Open(channel, device, FileFor(folder, channel), StreamOf(channel)));
+                opened.Add(CaptureSource.Open(channel, device, FileFor(folder, channel)));
             }
         }
         catch
@@ -158,13 +158,6 @@ public sealed class CaptureSession : IDisposable
             (Channel: AudioChannel.Microphone, Device: microphone),
             (Channel: AudioChannel.Loopback, Device: playback),
         }.OrderBy(source => CapturedAudio.IndexOf(source.Channel));
-
-    private static Func<MMDevice, WasapiCapture> StreamOf(AudioChannel channel) => channel switch
-    {
-        AudioChannel.Loopback => endpoint => new WasapiLoopbackCapture(endpoint),
-        AudioChannel.Microphone => endpoint => new WasapiCapture(endpoint),
-        _ => throw new AudioContractException($"There is no way to capture '{channel}'."),
-    };
 
     private static FileInfo FileFor(DirectoryInfo folder, AudioChannel channel) =>
         new(Path.Combine(folder.FullName, $"{channel.ToString().ToLowerInvariant()}.wav"));

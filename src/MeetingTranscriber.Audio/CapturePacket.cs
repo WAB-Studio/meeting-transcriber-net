@@ -18,9 +18,10 @@ namespace MeetingTranscriber.Audio;
 /// </para>
 /// <para>
 /// WASAPI reports two flags with a packet and only one of them is here. It sets a timestamp error
-/// when it cannot vouch for the position and instant it just handed over, and that has to be on
-/// the packet: the timeline stops a recording whose clock does not add up, so a device saying "do
-/// not measure against this one" is the difference between skipping an observation and throwing
+/// when it cannot say when it read the position it just handed over — the position itself still
+/// stands, and it is only the instant beside it that is not the device's word — and that has to be
+/// on the packet: the timeline stops a recording whose clock does not add up, so a device saying
+/// "do not measure against this one" is the difference between skipping an observation and throwing
 /// away a meeting. It also sets a data discontinuity when a glitch cost the stream some audio, and
 /// that one is deliberately not here — a lost stretch is a jump in <see cref="DevicePosition"/>,
 /// which is the same news arriving with its length attached, and a flag nothing reads is one more
@@ -37,8 +38,9 @@ namespace MeetingTranscriber.Audio;
 /// <param name="CapturedAt">When the device read that position, on the shared monotonic clock.</param>
 /// <param name="Samples">The block's bytes, in the source's own format.</param>
 /// <param name="TimingIsSound">
-/// Whether the device vouched for the two numbers above. False is WASAPI's timestamp error: the
-/// samples are still the meeting, and only the observation is thrown away.
+/// Whether the device vouched for <see cref="CapturedAt"/>. False is WASAPI's timestamp error: the
+/// samples are still the meeting and <see cref="DevicePosition"/> is still where they go, and only
+/// the observation of how fast this device runs is thrown away.
 /// </param>
 public sealed record CapturePacket(
     AudioChannel Channel,

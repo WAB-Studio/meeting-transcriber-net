@@ -22,11 +22,11 @@ public sealed class CaptureSource : IDisposable
     private static readonly TimeSpan StopsWithin = TimeSpan.FromSeconds(5);
 
     private readonly MMDevice endpoint;
-    private readonly WasapiCapture client;
+    private readonly WasapiStream stream;
     private readonly WaveFileWriter writer;
     private readonly SourceMeter meter = new();
+    private readonly PacketTally tally;
     private readonly ManualResetEventSlim ended = new(initialState: false);
-    private readonly int bytesPerSecond;
     private long bytes;
     private Exception? failure;
     private bool running;
@@ -37,7 +37,7 @@ public sealed class CaptureSource : IDisposable
         StreamFormat format,
         FileInfo file,
         MMDevice endpoint,
-        WasapiCapture client,
+        WasapiStream stream,
         WaveFileWriter writer)
     {
         Channel = channel;
@@ -45,9 +45,9 @@ public sealed class CaptureSource : IDisposable
         Format = format;
         File = file;
         this.endpoint = endpoint;
-        this.client = client;
+        this.stream = stream;
         this.writer = writer;
-        bytesPerSecond = client.WaveFormat.AverageBytesPerSecond;
+        tally = new PacketTally(format);
     }
 
     /// <summary>Which of the two channels this device feeds.</summary>
@@ -65,10 +65,11 @@ public sealed class CaptureSource : IDisposable
     /// <summary>When its stream opened.</summary>
     public UtcTimestamp StartedAt { get; private set; }
 
-    /// <summary>How much audio has arrived, from the bytes that have actually been written.</summary>
-    public Duration Recorded => bytesPerSecond > 0
-        ? Duration.FromMilliseconds(Interlocked.Read(ref bytes) * 1000 / bytesPerSecond)
-        : Duration.Zero;
+    /// <summary>
+    /// What this source's packets add up to: the stretch of the meeting they cover, how much of it
+    /// never arrived, and how the device's own clock behaved while they did.
+    /// </summary>
+    public PacketTally Packets => tally;
 
     /// <summary>How many bytes have been written to <see cref="File"/>.</summary>
     public long Bytes => Interlocked.Read(ref bytes);
@@ -99,7 +100,7 @@ public sealed class CaptureSource : IDisposable
         }
 
         running = false;
-        client.StopRecording();
+        stream.Stop();
     }
 
     /// <summary>
@@ -125,9 +126,9 @@ public sealed class CaptureSource : IDisposable
 
     public void Dispose()
     {
-        // First, and on purpose: NAudio stops the stream and waits for its thread, so once this
-        // returns nothing is still handing blocks to the writer.
-        client.Dispose();
+        // First, and on purpose: this stops the stream and waits for its loop, so once it returns
+        // nothing is still handing blocks to the writer.
+        stream.Dispose();
 
         // What patches the WAV header with the length actually written, which is why a capture
         // that was killed still leaves a file something can play.
@@ -176,25 +177,20 @@ public sealed class CaptureSource : IDisposable
     /// Anything the machine refuses comes back as a throw, with nothing left open and no file
     /// left behind.
     /// </summary>
-    internal static CaptureSource Open(
-        AudioChannel channel,
-        AudioDevice device,
-        FileInfo file,
-        Func<MMDevice, WasapiCapture> stream)
+    internal static CaptureSource Open(AudioChannel channel, AudioDevice device, FileInfo file)
     {
         ArgumentNullException.ThrowIfNull(device);
         ArgumentNullException.ThrowIfNull(file);
-        ArgumentNullException.ThrowIfNull(stream);
 
         var endpoint = AudioDevices.Open(device);
-        WasapiCapture? client = null;
+        WasapiStream? stream = null;
         WaveFileWriter? writer = null;
         var claimed = false;
 
         void LetGo()
         {
             writer?.Dispose();
-            client?.Dispose();
+            stream?.Dispose();
             endpoint.Dispose();
 
             if (claimed)
@@ -205,8 +201,8 @@ public sealed class CaptureSource : IDisposable
 
         try
         {
-            client = stream(endpoint);
-            var format = StreamFormat.Of(client.WaveFormat);
+            stream = WasapiStream.On(endpoint, channel);
+            var format = StreamFormat.Of(stream.WaveFormat);
 
             // Asked before the device is started rather than answered by its first block: a width
             // nothing here can read is knowable now, and a capture that dies a second in is one
@@ -215,9 +211,9 @@ public sealed class CaptureSource : IDisposable
 
             var bytes = Claim(file);
             claimed = true;
-            writer = new WaveFileWriter(bytes, client.WaveFormat);
+            writer = new WaveFileWriter(bytes, stream.WaveFormat);
 
-            var source = new CaptureSource(channel, device, format, file, endpoint, client, writer);
+            var source = new CaptureSource(channel, device, format, file, endpoint, stream, writer);
             source.Start();
             return source;
         }
@@ -275,47 +271,34 @@ public sealed class CaptureSource : IDisposable
 
     private void Start()
     {
-        client.DataAvailable += Captured;
-        client.RecordingStopped += Ended;
-
-        // NAudio initialises the device on this thread, so a device Windows will not hand over
-        // throws here rather than on a capture thread nobody is watching.
-        client.StartRecording();
+        // The device was already initialised on this thread, so one Windows will not hand over
+        // threw before here rather than on a capture loop nobody is watching.
+        stream.Start(Captured, Ended);
         StartedAt = UtcTimestamp.From(TimeProvider.System.GetUtcNow());
         running = true;
     }
 
-    /// <remarks>
-    /// This is where a <see cref="CapturePacket"/> would be built, and it cannot be built here.
-    /// WASAPI reports a device position and a performance counter reading with every packet, and
-    /// NAudio's <see cref="WasapiCapture"/> asks for neither: it calls the two-argument overload of
-    /// <c>IAudioCaptureClient::GetBuffer</c>, keeps the flags to zero-fill a silent block, and
-    /// hands on a <see cref="WaveInEventArgs"/> that is bytes and a count. Its capture loop is
-    /// private and not virtual, so there is nothing to override.
-    /// <para>
-    /// Deriving the two numbers here is the trap, not the fix. A position counted from the bytes
-    /// that arrived is exact only while nothing is ever lost, and a counter read on this thread
-    /// says when the application looked rather than when the device did — which are the same number
-    /// right up to the moment a slow disk holds this callback, which is the moment they are needed.
-    /// Getting the real ones means driving the loop over <c>AudioClient</c> and
-    /// <c>AudioCaptureClient</c> directly, which is public NAudio and its own piece of work.
-    /// </para>
-    /// </remarks>
-    private void Captured(object? sender, WaveInEventArgs block)
+    /// <summary>
+    /// One block, as the device reported it. Everything about where it belongs is on the packet
+    /// and nothing here infers any of it — see <see cref="WasapiStream"/> for why that matters and
+    /// <see cref="PacketTally"/> for what the positions then add up to.
+    /// </summary>
+    private void Captured(CapturePacket packet)
     {
-        if (block.BytesRecorded <= 0)
+        if (packet.Samples.Length <= 0)
         {
             return;
         }
 
-        meter.Add(Levels.Peak(block.Buffer.AsSpan(0, block.BytesRecorded), Format));
-        writer.Write(block.Buffer, 0, block.BytesRecorded);
-        Interlocked.Add(ref bytes, block.BytesRecorded);
+        tally.Add(packet);
+        meter.Add(Levels.Peak(packet.Samples.Span, Format));
+        writer.Write(packet.Samples.Span);
+        Interlocked.Add(ref bytes, packet.Samples.Length);
     }
 
-    private void Ended(object? sender, StoppedEventArgs stopped)
+    private void Ended(Exception? stopped)
     {
-        failure = stopped.Exception;
+        failure = stopped;
         ended.Set();
     }
 }
