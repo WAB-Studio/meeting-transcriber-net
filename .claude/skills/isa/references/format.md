@@ -90,14 +90,29 @@ Board: 3 · Grabador WinUI
 
 ## Claims
 
+- **The text says what must be true, not what makes it true.** No type, method, project or test
+  name in a claim — a claim outlives the design under it, and the evidence stub is where the test
+  is named. A claim a rename would falsify was never about the product.
 - `- [x]` closed, `- [ ]` open. A claim closes on evidence, never on a task's status.
 - `Anti:` prefixes a claim about what must *not* happen. At least one is required overall — a
   goal with no failure mode worth naming is under-specified.
 - Nested IDs (`ISC-7.1`) organise a split; the atomicity rule applies at the leaves.
-- **IDs never renumber.** A split keeps the parent as container. A drop leaves a tombstone:
-  `- [ ] ISC-9: [DROPPED 2026-08-07: what stopped being true]`, so references elsewhere stay
-  valid. The line says why in itself — a tombstone pointing at a section for the reason is one
-  more thing that can go missing, and `git log -- ISA.md` holds the rest.
+- **An ID is immutable.** Issued once as the next number after the highest, and after that never
+  renumbered, never reused for a different claim, never moved. A split keeps the parent as
+  container. A drop leaves a tombstone: `- [ ] ISC-9: [DROPPED 2026-08-07: what stopped being
+  true]`, so references elsewhere stay valid. The line says why in itself — a tombstone pointing
+  at a section for the reason is one more thing that can go missing, and `git log -- ISA.md` holds
+  the rest.
+- **The numbering was reset once, on 2026-08-14**, when the claims were rewritten to say what must
+  be true rather than which type makes it so, and the duplicates that had accumulated were merged.
+  127 claims became 114 and every ID moved. Anything written before that date — a commit message,
+  a board comment, a review — names a claim by a number that now belongs to another one, so an ID
+  read out of history is checked against `git show` of the ISA at that commit and never against
+  the file as it stands. It is the only reset, and the rule above is what makes it the last.
+- **A new ID is issued only when nothing here already says it.** The gate cannot check that, so
+  the skill's Scaffold workflow carries it as a rule on the writer: every claim is read before one
+  is added, and a statement an existing claim encapsulates sharpens that claim or becomes a leaf
+  under it. What the gate can check is the arithmetic of immutability, which is check 10.
 
 ## Verification stubs
 
@@ -142,6 +157,12 @@ Mechanical, enforced by `IsaStructureTests`, and hard failures:
 7. Every bullet inside a feature block parses as a claim line.
 8. Every non-blank line under `## Verification` parses as a stub.
 9. `## Learning` is whole entries of four labels in order, and nothing else.
+10. No number is missing between the first ID and the last, at the root and under every parent.
+
+Check 10 is the other hand of check 4. A duplicate ID is a number issued twice; a hole is a claim
+deleted instead of tombstoned, or a run of them shifted down to close one — which silently
+re-points every board task and stub that named the old number. Together they leave one shape a
+renumber cannot take.
 
 Checks 7 to 9 exist because a parser that skips what it does not recognise reports a spliced
 section as a sound one. On 2026-08-13 an append landed on the first line of an existing entry and

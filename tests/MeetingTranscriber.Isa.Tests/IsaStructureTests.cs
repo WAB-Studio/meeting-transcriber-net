@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace MeetingTranscriber.Isa.Tests;
 
 /// <summary>
@@ -83,6 +85,35 @@ public class IsaStructureTests
         // IDs never renumber, so a duplicate means a split reused a number rather than nesting
         // under it — and Verification and the board both key on the ID.
         isa.Claims.Select(claim => claim.Id).ShouldBeUnique();
+    }
+
+    [Fact]
+    public void No_number_is_missing_between_the_first_claim_and_the_last()
+    {
+        // The other hand of the check above. A duplicate is a number issued twice; a hole is a
+        // claim deleted instead of tombstoned, or a run of them shifted down to close one — and a
+        // shift re-points every board task, commit and stub that named the old number at somebody
+        // else's claim, silently, because each of those still reads as a valid ID. Between the
+        // two checks, the only shape left is the one where an ID means forever what it meant when
+        // it was issued.
+        var levels = isa.Claims
+            .Select(claim => claim.Id["ISC-".Length..].Split('.'))
+            .GroupBy(
+                parts => string.Join('.', parts[..^1]),
+                parts => int.Parse(parts[^1], CultureInfo.InvariantCulture),
+                StringComparer.Ordinal);
+
+        foreach (var level in levels)
+        {
+            var prefix = level.Key.Length == 0 ? "ISC-" : $"ISC-{level.Key}.";
+            var missing = Enumerable.Range(1, level.Max()).Except(level)
+                .Select(number => prefix + number.ToString(CultureInfo.InvariantCulture));
+
+            missing.ShouldBeEmpty(
+                "a claim is gone without leaving a tombstone, or the ones after it were "
+                + "renumbered down over the hole. Either way an ID that a board task, a commit or "
+                + "a stub points at now means something other than what it meant.");
+        }
     }
 
     [Fact]

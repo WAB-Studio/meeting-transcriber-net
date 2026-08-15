@@ -14,7 +14,7 @@ public class PacketTallyTests
     /// <summary>The frames one fabricated packet carries, and therefore 10 ms of a 48 kHz device.</summary>
     private const int PacketFrames = 480;
 
-    /// <summary>ISC-119. Nothing lost, and the stretch covered is exactly what the positions span.</summary>
+    /// <summary>ISC-64. Nothing lost, and the stretch covered is exactly what the positions span.</summary>
     [Fact]
     public void A_source_that_lost_nothing_covers_what_its_positions_span()
     {
@@ -27,7 +27,7 @@ public class PacketTallyTests
     }
 
     /// <summary>
-    /// ISC-119 and ISC-121. Ninety packets either way, so the two files are byte for byte the same
+    /// ISC-64 and ISC-70. Ninety packets either way, so the two files are byte for byte the same
     /// length — and one of them is a second of a meeting with a tenth of it missing while the other
     /// is nine tenths of a second with nothing missing at all. A tally counting what arrived cannot
     /// tell them apart, which is what makes the shorter recording the silent failure it is.
@@ -48,7 +48,7 @@ public class PacketTallyTests
     }
 
     /// <summary>
-    /// ISC-120. The device reads a packet every ten milliseconds, and the one after a hole a
+    /// ISC-65. The device reads a packet every ten milliseconds, and the one after a hole a
     /// hundred and ten milliseconds after the one before it — the hundred nobody was handed plus
     /// the ten the last delivered packet was itself worth. Instants stamped where the application
     /// collected the packets would put a whole poll's worth of them at no distance at all.
@@ -67,7 +67,7 @@ public class PacketTallyTests
     }
 
     /// <summary>
-    /// ISC-120. A timestamp error is the device saying it cannot say <em>when</em> it read the
+    /// ISC-65. A timestamp error is the device saying it cannot say <em>when</em> it read the
     /// count, never that the count is wrong. So the block is still placed by its position and still
     /// part of the length, and only the step across it goes unmeasured — dropping it instead would
     /// lose ten milliseconds of a meeting over a clock reading nothing here needs.
@@ -90,7 +90,7 @@ public class PacketTallyTests
     }
 
     /// <summary>
-    /// ISC-121. The device disowning its clock from the first packet onwards is not the recording
+    /// ISC-70. The device disowning its clock from the first packet onwards is not the recording
     /// being empty. Measuring the length from the first instant it vouched for would report nothing
     /// at all for a file with a meeting in it.
     /// </summary>
