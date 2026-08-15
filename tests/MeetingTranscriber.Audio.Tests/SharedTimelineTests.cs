@@ -461,17 +461,13 @@ public class SharedTimelineTests
         collected.Loudest(AudioChannel.Loopback, 1, 2).ShouldBeGreaterThan(0.5f);
     }
 
-    /// <summary>
-    /// Hands both sources over the way a capture does: whichever packet was read at the earlier
-    /// instant goes first, so the timeline sees them interleaved rather than one source and then
-    /// the other.
-    /// </summary>
+    /// <summary>Hands both sources over the way a capture does.</summary>
     private static void Feed(
         SharedTimeline timeline,
         IEnumerable<CapturePacket> loopback,
         IEnumerable<CapturePacket> microphone)
     {
-        foreach (var packet in loopback.Concat(microphone).OrderBy(packet => packet.CapturedAt.Ticks))
+        foreach (var packet in Fabricated.Merged(loopback, microphone))
         {
             timeline.Take(packet);
         }

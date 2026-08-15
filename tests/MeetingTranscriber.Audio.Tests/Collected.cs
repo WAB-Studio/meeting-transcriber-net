@@ -52,5 +52,30 @@ internal sealed class Collected : IAlignedAudio
         return null;
     }
 
+    /// <summary>
+    /// The first frame where this recording and <paramref name="other"/> hold different samples, or
+    /// null if they hold the same ones throughout. Reported as a frame rather than asserted sample
+    /// by sample because two recordings that differ are millions of samples of difference, and the
+    /// one number worth reading is where they parted.
+    /// </summary>
+    internal int? FirstDifferenceFrom(Collected other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+
+        for (var frame = 0; frame < Math.Min(Frames, other.Frames); frame++)
+        {
+            for (var channel = 0; channel < CapturedAudio.ChannelCount; channel++)
+            {
+                var at = (frame * CapturedAudio.ChannelCount) + channel;
+                if (interleaved[at] != other.interleaved[at])
+                {
+                    return frame;
+                }
+            }
+        }
+
+        return Frames == other.Frames ? null : Math.Min(Frames, other.Frames);
+    }
+
     private static int Frame(double seconds) => Math.Max(0, (int)(seconds * CapturedAudio.SampleRate));
 }
