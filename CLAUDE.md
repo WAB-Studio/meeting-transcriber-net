@@ -103,12 +103,11 @@ about whether the code or the claim is wrong.
 4. A diff over 50 lines that are not comments runs `/adversarial-review` first, and what the
    verdict confirms gets fixed in the same pass. The task then moves to `in review` with the
    evidence and the verdict in a comment. Closing it is the user's.
-5. A session leaves nothing of its own open: `gh pr merge --merge --delete-branch`, `main` pulled,
-   the local branch gone and the tree clean, so the next one cuts a branch from a current `main`
-   instead of inheriting the last one and writing over it. Merging the PR is the session's;
-   closing the card stays the user's, and `main` is where they read the work because nothing has
-   shipped. A red command or a confirmed finding still unfixed stops the merge — then the PR
-   stays open and the session's last words are that it did and why.
+5. A session ends on the PR opened and never merged: `gh pr create`, then `main` checked out and
+   pulled with the tree clean, so the next one cuts a branch from a current `main` instead of
+   inheriting the last one and writing over it. The branch and the PR stay where the user reads
+   them; merging is theirs and so is closing the card. A red command or a confirmed finding still
+   unfixed stops the PR — then the session's last words are that it did not open one, and why.
 
 ## The contract
 
