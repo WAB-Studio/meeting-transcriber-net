@@ -208,7 +208,7 @@ MeetingTranscriber/
   spool/
     <meeting_id>/
       manifest.json
-      others.blocks
+      loopback.blocks
       microphone.blocks
   backups/
   logs/
@@ -515,12 +515,14 @@ created_at
 source_profile
 capture_run_id
 dispositivos
-formatos
-rutas de bloques
-últimos timestamps
-hashes disponibles
-errores de recuperación
 ```
+
+Se escribe una vez y no se vuelve a tocar. Todo lo que cambia mientras se graba
+—hasta dónde llegó cada fuente, qué se pudo recuperar— vive en los bloques, que
+es donde una escritura cortada cuesta un paquete; un manifiesto reescrito a cada
+bloque sería exactamente la escritura torcida que el spool existe para evitar. No
+lista los archivos que tiene al lado ni sus formatos: están nombrados por la
+fuente que llevan y cada uno declara el suyo.
 
 La identidad no depende del título, el nombre de un archivo ni la conexión a un
 proveedor.
@@ -585,7 +587,20 @@ latencia constante de entrada/salida y la deriva acumulada.
 
 Durante la grabación se escriben bloques independientes por fuente junto con sus
 timestamps. Un bloque incompleto puede descartarse sin perder los anteriores. No
-se depende de cerrar correctamente un WAV para conservar la reunión.
+se depende de cerrar correctamente un WAV para conservar la reunión: la longitud
+de un WAV vive en una cabecera que se escribe al cerrarlo, así que una grabación
+sólo sería legible en el momento exacto que un cierre abrupto se lleva.
+
+Cada bloque lleva lo mismo que el paquete que lo originó — la posición de frames
+del dispositivo, el instante en que la leyó y si el dispositivo la avala — porque
+eso es lo que ubica el audio, y un spool que sólo guardara muestras volvería como
+una grabación con todos los huecos cerrados. Cada archivo declara su propio
+formato en su cabecera: un archivo alcanza para leer una fuente, y no hay una
+segunda ruta por la que perderla.
+
+Un bloque llega al disco en una sola escritura, de modo que un proceso muerto
+deja bloques enteros y no medio bloque. Lo que un corte de luz sí puede dejar —
+una cola que enmarca bien y no es audio — lo detecta el checksum de cada bloque.
 
 Al detener:
 

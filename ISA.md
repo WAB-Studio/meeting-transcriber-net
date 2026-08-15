@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 80/118
+progress: 81/118
 updated: 2026-08-15
 ---
 
@@ -127,7 +127,7 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-72: Anti: how late a source's audio is handed over cannot change the recording, up to the half minute after which that source is given up.
 - [x] ISC-73: Anti: a stretch of a meeting nobody played into is recorded as the silence it was, and not as whatever the device's buffer last held.
 - [ ] ISC-74: Anti: the recorded file never carries the microphone on channel 0.
-- [ ] ISC-75: A recording cut off mid-block comes back to its last whole block.
+- [x] ISC-75: A recording cut off mid-block comes back to its last whole block.
 - [ ] ISC-76: Finishing the same recording twice produces the same file.
 - [ ] ISC-77: Capture falls back to the full loopback when the meeting's process cannot be followed.
 - [ ] ISC-78: A device changing mid-recording does not end the recording.
@@ -384,6 +384,7 @@ Board: 7 · Distribución y backup
 - ISC-71 — `SharedTimelineTests.A_source_that_stopped_early_does_not_cut_the_meeting_short` green 2026-08-14: a microphone that stops at 15 s of a 20 s recording leaves the recording 20 s long with 5 s reported missing, rather than ending where it stopped
 - ISC-72 — `SharedTimelineTests.Handing_a_source_over_in_clumps_seconds_late_records_the_same_meeting` green 2026-08-14: the same minute delivered smoothly and in five second clumps is the same recording sample for sample, with the two deliveries first shown to differ — runs of one source of under 5 packets against over 100. `.Handing_a_source_over_later_than_the_timeline_waits_gives_that_source_up` holds the far side of the bound, where the same packets in 35 second clumps are refused
 - ISC-73 — the 14 s run 2026-08-14 played a 440 Hz tone from second 2 to second 12 into the endpoint channel 0 was recording. Its WAV peaks at 0.167 over 5–6 s and is exactly zero over 0–1 s and from 12.5 s to the end, with 1352 packets arriving throughout and nothing lost, so the stretches nothing played into are the silence they were rather than the tone still standing in the device's buffer
+- ISC-75 — `BlockSpoolTests` (`tests/MeetingTranscriber.Audio.Tests`) and `SpoolCommandTests` (`tests/MeetingTranscriber.Cli.Tests`) green 2026-08-15, over a file cut inside a block, one cut before its samples, a tail of zeroes and a block changed after it was written — each costing that block and none of the ones before it. `.A_block_the_disk_did_not_keep_is_dropped_and_the_ones_before_it_are_not` red against a reader that skipped the checksum. Four `capture` runs on this machine 2026-08-15 killed at 4, 7, 8 and 11 s of 60 came back through `spool` whole, nothing discarded on any of the eight sources — 341, 636, 793 and 996 blocks on channel 0, about 90 a second either way — so a block reaching the disk in one write is what a killed process leaves. 1500 bytes then taken off one of those files' tails cost the 2376 byte block they were inside and left the 792 before it
 - ISC-91 — `CorpusRebuildTests.A_second_extraction_leaves_the_first_ones_state_alone_and_starts_its_own_blank` green 2026-08-07
 - ISC-92 — `CorpusIntegrityTests.Search_is_the_index_answering_and_not_the_table` green 2026-08-07
 - ISC-94 — `CorpusSearchTests.A_hit_carries_the_meeting_the_date_the_title_a_snippet_and_where_it_was_said` green 2026-08-07
