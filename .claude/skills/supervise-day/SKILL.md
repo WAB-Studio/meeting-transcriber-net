@@ -101,3 +101,11 @@ theirs, and so is merging anything the day left open.
 
 If they were away the whole time, `report.md` is what they read instead of you. It comes off the
 same stream you were reading, so it cannot say anything different.
+
+## 8 · Be honest about what you cannot do
+
+**You only report while this conversation is alive.** The day is detached on purpose, so it
+outlives you — and when it does, nothing reaches out to anybody. A run started by the scheduled
+task has no supervisor at all. Say this once when you launch, rather than letting somebody walk
+away believing they will be told: what is guaranteed is `report.md` on disk and the day stopping
+itself on anything unsound, not a message arriving.

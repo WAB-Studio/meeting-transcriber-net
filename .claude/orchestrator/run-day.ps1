@@ -52,17 +52,41 @@ function Stop-Day([string]$Reason) {
   Write-Day "=== the day ends: $Reason ==="
 }
 
-# Two runs over the same working tree collide: same checkout, same card, same files. A doc saying
-# "do not run two" serialises nothing, so it is serialised here.
+<#
+  Two runs over the same working tree collide: same checkout, same card, same files. A doc saying
+  "do not run two" serialises nothing, so it is serialised here.
+
+  The handle is opened exclusively and held for the life of the day, which is the whole mechanism:
+  Test-Path followed by Set-Content is a check-then-create, and two launches in the same second --
+  the scheduled one and yours -- can both see no lock and both proceed. Holding it also means the
+  OS releases it when the process dies however it dies, so a stale file is one that can simply be
+  opened again rather than one whose PID has to be believed.
+#>
+$script:LockHandle = $null
+
 function Enter-Lock {
-  if (Test-Path $Lock) {
-    $owner = (Get-Content $Lock -Raw).Trim()
-    $alive = Get-Process -Id $owner -ErrorAction SilentlyContinue
-    if ($alive) { return "a day is already running (PID $owner)" }
-    Write-Day "orphan lock from PID $owner -- discarded"
+  try {
+    $script:LockHandle = [System.IO.File]::Open(
+      $Lock, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::Write,
+      [System.IO.FileShare]::None)
+  } catch {
+    $owner = "?"
+    try { $owner = (Get-Content $Lock -Raw -ErrorAction SilentlyContinue).Trim() } catch { }
+    return "a day is already running (PID $owner)"
   }
-  Set-Content -Path $Lock -Value $PID -Encoding ascii
+  $script:LockHandle.SetLength(0)
+  $bytes = [System.Text.Encoding]::ASCII.GetBytes([string]$PID)
+  $script:LockHandle.Write($bytes, 0, $bytes.Length)
+  $script:LockHandle.Flush()
   return ""
+}
+
+function Exit-Lock {
+  if ($script:LockHandle) {
+    try { $script:LockHandle.Dispose() } catch { }
+    $script:LockHandle = $null
+  }
+  Remove-Item $Lock -ErrorAction SilentlyContinue
 }
 
 <#
@@ -140,36 +164,53 @@ function Invoke-Session {
     cycle = $Cycle; role = $Role; stream = (Split-Path -Leaf $StreamPath); prompt = $Prompt
   } | Out-Null
 
+  # A session that died is the case where what it collected matters most: 27 denials and then a
+  # timeout is a worse day than 27 denials and a clean exit, and reading them only off a healthy
+  # result would throw away exactly the ones worth having.
+  function Close-Session([string]$Kind, [string]$Reason) {
+    $a = Get-SessionActivity $StreamPath
+    New-DayEvent -LogDir $LogDir -Kind $Kind -Data @{
+      cycle = $Cycle; role = $Role; reason = $Reason
+      denials = $a.Denials; denial_detail = @($a.DenialDetail); rate_limit = $a.RateLimit
+    } | Out-Null
+  }
+
   $started = Get-Date
-  $p = Start-Process -FilePath "claude" -ArgumentList $args -NoNewWindow -PassThru `
-                     -RedirectStandardOutput $StreamPath -RedirectStandardInput $EmptyStdin
-  $null = $p.Handle
+  try {
+    $p = Start-Process -FilePath "claude" -ArgumentList $args -NoNewWindow -PassThru `
+                       -RedirectStandardOutput $StreamPath -RedirectStandardInput $EmptyStdin
+    $null = $p.Handle
+  } catch {
+    # `claude` missing from PATH, or a redirection that cannot be opened. Without this the
+    # exception escapes past an already-written session_started, and every later reader believes a
+    # session is running that was never launched.
+    Write-Day "  the session could not be launched: $($_.Exception.Message)"
+    Close-Session "session_failed" "could not be launched: $($_.Exception.Message)"
+    return $null
+  }
+
   if (-not $p.WaitForExit($SessionTimeout.TotalMilliseconds)) {
     Write-Day "  the session passed $($SessionTimeout.TotalMinutes) min -- killed"
     try { $p.Kill() } catch { }
-    New-DayEvent -LogDir $LogDir -Kind "session_killed" -Data @{
-      cycle = $Cycle; role = $Role; minutes = $SessionTimeout.TotalMinutes
-      reason = "passed $($SessionTimeout.TotalMinutes) min"
-    } | Out-Null
+    Close-Session "session_killed" "passed $($SessionTimeout.TotalMinutes) min"
     return $null
   }
   if ($p.ExitCode -ne 0) {
     Write-Day "  claude exited with code $($p.ExitCode)"
-    New-DayEvent -LogDir $LogDir -Kind "session_failed" -Data @{
-      cycle = $Cycle; role = $Role; reason = "exit $($p.ExitCode)"
-    } | Out-Null
+    Close-Session "session_failed" "exit $($p.ExitCode)"
     return $null
   }
 
   $r = Get-SessionResult $StreamPath
   if ($null -eq $r) {
-    New-DayEvent -LogDir $LogDir -Kind "session_failed" -Data @{
-      cycle = $Cycle; role = $Role; reason = "the stream carries no result line"
-    } | Out-Null
+    Close-Session "session_failed" "the stream carries no result line"
     return $null
   }
 
   $denials = @(Get-ResultDenials $r)
+  # The window is only ever announced mid-stream, so it is carried onto the event or it is lost the
+  # moment the session closes -- and it is one of the three things that legitimately end a day.
+  $live = Get-SessionActivity $StreamPath
   New-DayEvent -LogDir $LogDir -Kind "session_ended" -Data @{
     cycle         = $Cycle
     role          = $Role
@@ -180,6 +221,7 @@ function Invoke-Session {
     seconds       = [int]((Get-Date) - $started).TotalSeconds
     denials       = $denials.Count
     denial_detail = $denials
+    rate_limit    = $live.RateLimit
   } | Out-Null
 
   # The loudest thing this script prints, because it is what costs the most without being seen: a
@@ -192,6 +234,39 @@ function Invoke-Session {
   }
 
   return $r
+}
+
+<#
+  The reader says what is out of range and the script acts on it, which is the same split as the
+  verdict: labelling a condition `stop` and then merging anyway would make the level decoration.
+
+  Called after every session and before anything irreversible -- before the audit, and before the
+  merge -- so a worker that spent the session groping around a denied permission never reaches
+  `main`. Whatever it did instead of the thing it was refused, nobody asked for it.
+#>
+function Test-Halt {
+  param([Parameter(Mandatory)]$Status)
+  $halt = @(Get-HaltingAnomalies -Status $Status)
+  if ($halt.Count -eq 0) { return "" }
+  foreach ($a in $halt) {
+    Write-Day "  !! [$($a.code)] $($a.text)"
+    New-DayEvent -LogDir $LogDir -Kind "anomaly" -Data @{
+      level = $a.level; code = $a.code; text = $a.text
+    } | Out-Null
+  }
+  return ($halt | ForEach-Object { $_.code }) -join ", "
+}
+
+# Anomalies that do not halt still go on the stream, because most of them cannot be recomputed once
+# the state that produced them is gone, and the morning report promises every one that fired.
+function Save-Anomalies {
+  param([Parameter(Mandatory)]$Status)
+  foreach ($a in @($Status.Anomalies | Where-Object { $_.level -ne "stop" })) {
+    New-DayEvent -LogDir $LogDir -Kind "anomaly" -Data @{
+      level = $a.level; code = $a.code; text = $a.text
+    } | Out-Null
+    Write-Day "  [$($a.code)] $($a.text)"
+  }
 }
 
 $HandoffKeys = @("outcome","task_id","pr_number","isc_closed","probes",
@@ -222,7 +297,7 @@ if ($stop -ne "") { Write-Host $stop; exit 1 }
 try {
   # No session count and no dollar ceiling: the day runs until the work, the usage window or the
   # audit ends it. Those are real limits; a number picked in advance is a guess about them.
-  New-DayEvent -LogDir $LogDir -Kind "day_started" -Data @{ repo = $Repo; dry_run = [bool]$DryRun } | Out-Null
+  New-DayEvent -LogDir $LogDir -Kind "day_started" -Data @{ repo = $Repo; dry_run = [bool]$DryRun; pid = $PID } | Out-Null
   Write-Day "=== day starts: runs until the board, the window or a verdict stops it ==="
   $i = 0
 
@@ -274,6 +349,10 @@ try {
     # blind is what CLAUDE.md forbids for a job that may already have been charged.
     if ($w.is_error) { Stop-Day "the worker ended in error"; break }
 
+    $halted = Test-Halt -Status $status
+    if ($halted -ne "") { Stop-Day "the worker's session is not sound: $halted"; break }
+    Save-Anomalies -Status $status
+
     $r = Read-SessionContract -Result $w -Path $handoff -Required $HandoffKeys `
                               -Field "outcome" -Allowed @("pr_opened","blocked","no_tasks")
     if ($r.error) {
@@ -287,7 +366,10 @@ try {
       cycle = $i; outcome = [string]$h.outcome; task_id = [string]$h.task_id
       pr_number = $h.pr_number; head_sha = [string]$h.head_sha
       deferred = @($h.decisions_deferred).Count; skipped = @($h.skipped).Count
-      probes_red = @($h.probes | Where-Object { -not $_.passed }).Count
+      # Test-JsonTrue and not `-not $_.passed`: a probe that came back as the string "false" is
+      # truthy in PowerShell, and would be counted as green in the one place that counts red ones.
+      probes_red = @($h.probes | Where-Object { -not (Test-JsonTrue $_.passed) }).Count
+      left_out = @($h.left_out); deferred_detail = @($h.decisions_deferred); skipped_detail = @($h.skipped)
     } | Out-Null
 
     Write-Day ("[$i] handoff: {0}  task={1}  pr=#{2}  deferred={3}  skipped={4}" -f `
@@ -308,6 +390,10 @@ try {
     $status = Get-DayStatus -LogDir $LogDir
     Write-Day ("[$i] audit done: usd={0:N2}  running={1:N2}" -f $a.total_cost_usd, $status.Cost)
     if ($a.is_error) { Stop-Day "the audit ended in error"; break }
+
+    $halted = Test-Halt -Status $status
+    if ($halted -ne "") { Stop-Day "the audit's session is not sound: $halted"; break }
+    Save-Anomalies -Status $status
 
     $r = Read-SessionContract -Result $a -Path $verdictFile -Required $VerdictKeys `
                               -Field "verdict" -Allowed @("pass","pass_with_followup","hold")
@@ -332,6 +418,8 @@ try {
       isc_unproved = @($v.isc_unproved).Count
       followups = @($v.followups_created).Count
       reasons = @($v.reasons)
+      actions_taken = @($v.actions_taken); followups_created = @($v.followups_created)
+      undeclared_detail = @($v.unreported_decisions); isc_unproved_detail = @($v.isc_unproved)
     } | Out-Null
 
     Write-Day ("[$i] VERDICT {0}  undeclared={1}  isc-unproved={2}  followups={3}" -f `
@@ -365,19 +453,48 @@ try {
     Start-Sleep -Seconds $CooldownSeconds
   }
 
+  # `gh ... | Tee-Object -Append` wrote UTF-16 over a UTF-8 file, which is why this section of
+  # day.log used to come out with a space between every letter. It goes on the stream too: the
+  # report is generated from events, so a fact that only ever reached day.log is a fact the morning
+  # report cannot carry.
+  $prs = @()
+  $raw = gh pr list --state open --limit 20 --json number,title,headRefName 2>$null | Out-String
+  if ($LASTEXITCODE -eq 0 -and $raw.Trim()) {
+    # Projected one by one rather than `@($raw | ConvertFrom-Json)`: on 5.1 that wraps the array in
+    # its own PSObject, and what lands on the event is {"value":[...],"Count":1} -- which reads
+    # back as one PR with no number and no title.
+    try {
+      foreach ($p in (ConvertFrom-Json $raw)) {
+        $prs += [pscustomobject]@{ number = $p.number; title = [string]$p.title; branch = [string]$p.headRefName }
+      }
+    } catch { $prs = @() }
+  }
+  New-DayEvent -LogDir $LogDir -Kind "open_prs" -Data @{ prs = $prs } | Out-Null
+
   $final = Get-DayStatus -LogDir $LogDir
   Write-Day ("=== cycle $i | {0:N2} USD ===" -f $final.Cost)
   foreach ($an in $final.Anomalies) { Write-Day ("    [{0}] {1}" -f $an.level, $an.text) }
 
-  $report = Write-DayReport -LogDir $LogDir
-  Write-Day "report: $report"
-
   Write-Day "Open PRs waiting on the user:"
-  # `gh ... | Tee-Object -Append` wrote UTF-16 over a UTF-8 file, which is why this section of
-  # day.log used to come out with a space between every letter.
-  $prs = gh pr list --state open --limit 20 | Out-String
-  foreach ($line in ($prs -split "`r?`n")) { if ($line.Trim()) { Write-Day "    $line" } }
+  foreach ($pr in $prs) { Write-Day ("    #{0}  {1}  ({2})" -f $pr.number, $pr.title, $pr.branch) }
+
+  Write-Day ("report: " + (Write-DayReport -LogDir $LogDir))
+}
+catch {
+  # Without this the exception escapes past an already-written session_started, and every later
+  # reader believes a session is still running that died minutes ago -- the silent ending this
+  # whole change exists to remove, reintroduced by the one path nobody plans for.
+  $msg = $_.Exception.Message
+  try {
+    New-DayEvent -LogDir $LogDir -Kind "day_crashed" -Data @{
+      reason = $msg; where = [string]$_.InvocationInfo.PositionMessage
+    } | Out-Null
+    Write-Day "the day threw: $msg"
+    Stop-Day "the executor threw: $msg"
+    Write-Day ("report: " + (Write-DayReport -LogDir $LogDir))
+  } catch { }
+  throw
 }
 finally {
-  Remove-Item $Lock -ErrorAction SilentlyContinue
+  Exit-Lock
 }

@@ -46,7 +46,16 @@ function New-QuietStatus {
     Running = $false; QuietForMinutes = $null; Cycle = 1; Role = "worker"
     Denials = 0; DenialsByTool = @(); CycleCosts = @(); LastCycleCost = $null
     Killed = $false; RateLimit = $null; Ended = $false; EndReason = ""
+    ProcessGone = $false; ExecutorPid = $null; Past = @(); Anomalies = @()
   }
+}
+
+# What the executor actually does with a status, asked of the same function the executor asks, so
+# the two cannot drift. The question here is always "would this have stopped the day", never "is
+# the label right" -- a label the loop ignores is what the review caught the first time round.
+function Test-WouldHalt {
+  param($Status)
+  return @(Get-HaltingAnomalies -Status $Status).Count -gt 0
 }
 
 $HandoffKeys = @("outcome","task_id","pr_number","isc_closed","probes",
@@ -211,7 +220,7 @@ Check "the live stream attributes a denial to the tool that asked" {
 Write-Host ""
 Write-Host "  permission denials"
 
-Check "the ones on the result group by tool" {
+Check "the ones on the result come off it counted and grouped" {
   $r = '{"permission_denials":[
     {"tool_name":"PowerShell","tool_input":{"command":"$env:X = 1; python a.py"}},
     {"tool_name":"PowerShell","tool_input":{"command":"python a.py --another-way"}},
@@ -219,9 +228,10 @@ Check "the ones on the result group by tool" {
   $d = Get-ResultDenials $r
   if ($d.Count -ne 3) { return "counted $($d.Count)" }
   $g = Group-Denials $d
-  if ($g.Count -ne 2) { return "grouped into $($g.Count) tools" }
-  $ps = $g | Where-Object { $_.tool -eq "PowerShell" }
-  if ($ps.count -ne 2) { return "PowerShell came out with $($ps.count)" }
+  if ($g.Count -ne 2) { return "grouped into $($g.Count): $(($g | ForEach-Object { $_.tool }) -join ' / ')" }
+  $ps = @($g | Where-Object { $_.tool -eq "PowerShell python" })
+  if ($ps.Count -ne 1) { return "the two python spellings did not land together" }
+  if ($ps[0].count -ne 2) { return "python came out with $($ps[0].count)" }
   ""
 }
 
@@ -246,6 +256,71 @@ Check "two attempts at one tool stop the day, one only warns" {
 Check "no denial fires no denial rule" {
   $a = Get-DayAnomalies -Status (New-QuietStatus)
   if (@($a | Where-Object { $_.code -eq "denials" }).Count) { return "fired with none" }
+  ""
+}
+
+Check "the same program refused twice groups as one, however it was spelled" {
+  $d = @(
+    (New-Denial -Tool "PowerShell" -Command '$env:PYTHONIOENCODING = "utf-8"; python clickup.py lists'),
+    (New-Denial -Tool "PowerShell" -Command 'python "C:\x\clickup.py" tasks'),
+    (New-Denial -Tool "Bash" -Command 'cd /c/repo && python clickup.py lists'))
+  $g = Group-Denials $d
+  $ps = @($g | Where-Object { $_.tool -eq "PowerShell python" })
+  if ($ps.Count -ne 1) { return "the two PowerShell spellings did not group: $(($g | ForEach-Object { $_.tool }) -join ' / ')" }
+  if ($ps[0].count -ne 2) { return "grouped $($ps[0].count) of them" }
+  if (-not @($g | Where-Object { $_.tool -eq "Bash python" }).Count) { return "the Bash one lost its program" }
+  ""
+}
+
+Check "two different programs refused once each is not groping" {
+  $d = @(
+    (New-Denial -Tool "PowerShell" -Command 'python clickup.py lists'),
+    (New-Denial -Tool "PowerShell" -Command 'codex exec --skip-git-repo-check "review"'))
+  $g = Group-Denials $d
+  if ($g.Count -ne 2) { return "grouped two unrelated rules into $($g.Count)" }
+
+  $st = New-QuietStatus
+  $st.Denials = 2; $st.DenialsByTool = $g
+  $st.Anomalies = Get-DayAnomalies -Status $st
+  if (Test-WouldHalt $st) { return "two unrelated denials stopped the day" }
+  ""
+}
+
+Check "groping does not just get labelled -- it stops the day" {
+  $st = New-QuietStatus
+  $st.Denials = 2
+  $st.DenialsByTool = @([pscustomobject]@{ tool = "PowerShell python"; count = 2; commands = @("python clickup.py lists") })
+  $st.Anomalies = Get-DayAnomalies -Status $st
+  if (-not (Test-WouldHalt $st)) { return "the executor would have carried on to the merge" }
+  ""
+}
+
+Check "a single denial is loud but does not stop the day" {
+  $st = New-QuietStatus
+  $st.Denials = 1
+  $st.DenialsByTool = @([pscustomobject]@{ tool = "Bash cat"; count = 1; commands = @("cat x") })
+  $st.Anomalies = Get-DayAnomalies -Status $st
+  if (-not @($st.Anomalies | Where-Object { $_.code -eq "denials" }).Count) { return "it was not even reported" }
+  if (Test-WouldHalt $st) { return "one denial stopped the day" }
+  ""
+}
+
+Check "a closed window stops the day, and so does a killed session" {
+  foreach ($case in @("window", "killed")) {
+    $st = New-QuietStatus
+    if ($case -eq "window") { $st.RateLimit = [pscustomobject]@{ status = "rejected"; resetsAt = 1786926600 } }
+    else { $st.Killed = $true }
+    $st.Anomalies = Get-DayAnomalies -Status $st
+    if (-not (Test-WouldHalt $st)) { return "$case did not stop the day" }
+  }
+  ""
+}
+
+Check "a probe that says the string false is red, not green" {
+  if (Test-JsonTrue "false") { return "the string false read as true" }
+  if (Test-JsonTrue $null) { return "null read as true" }
+  if (-not (Test-JsonTrue $true)) { return "true read as false" }
+  if (-not (Test-JsonTrue "true")) { return "the string true read as false" }
   ""
 }
 
@@ -383,6 +458,96 @@ Check "a session's denials reach the report from the event" {
     $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
     if ($md -notmatch "Permissions denied") { return "the report has no denials section" }
     if ($md -notmatch "clickup") { return "the report does not say what was denied" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "an anomaly that fired survives the state that produced it" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    # Cycle 4 costs triple the median and the rule fires. Cycle 5 is cheap, which moves the median
+    # and makes cycle 4 look ordinary -- so without the written event the morning report loses it.
+    New-DayEvent -LogDir $box -Kind "anomaly" -Data @{ level = "warn"; code = "cost"; text = "cycle 4 spent 30.00 USD against a median of 2.00" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "session_ended" -Data @{ cycle = 5; role = "worker"; cost = 2.0; denials = 0 } | Out-Null
+    New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "no_tasks" } | Out-Null
+
+    $st = Get-DayStatus -LogDir $box
+    if (-not @($st.Anomalies | Where-Object { $_.code -eq "cost" }).Count) { return "the anomaly was lost" }
+    $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
+    if ($md -notmatch "cycle 4 spent") { return "the report does not carry it" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "a session that died still reports what it collected" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker"; stream = "worker-1.stream.jsonl" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "session_killed" -Data @{
+      cycle = 1; role = "worker"; reason = "passed 90 min"; denials = 2
+      denial_detail = @(
+        @{ tool = "PowerShell"; command = "python clickup.py lists" },
+        @{ tool = "PowerShell"; command = "python clickup.py tasks" })
+    } | Out-Null
+    New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "the worker left no result" } | Out-Null
+
+    $st = Get-DayStatus -LogDir $box
+    if ($st.Denials -ne 2) { return "a killed session's denials were thrown away: counted $($st.Denials)" }
+    $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
+    if ($md -notmatch "clickup") { return "the report lost them" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "a run whose process is gone is not still running" {
+  $box = New-Sandbox
+  try {
+    # A PID that cannot exist: Windows PIDs are multiples of 4 and this is the reserved idle slot's
+    # neighbour, never assigned.
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x"; pid = 999999 } | Out-Null
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker"; stream = "worker-1.stream.jsonl" } | Out-Null
+
+    $st = Get-DayStatus -LogDir $box
+    if ($st.Running) { return "it still reads as running" }
+    if (-not $st.ProcessGone) { return "it did not notice the process is gone" }
+    $v = @($st.Anomalies | Where-Object { $_.code -eq "vanished" })
+    if (-not $v.Count) { return "no anomaly for a day that died without an ending" }
+    if ($v[0].level -ne "stop") { return "came out as $($v[0].level)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "a live run with its process alive still reads as running" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x"; pid = $PID } | Out-Null
+    $s = Join-Path $box "worker-1.stream.jsonl"
+    [System.IO.File]::WriteAllLines($s, @('{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"dotnet test"}}]}}'))
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker"; stream = "worker-1.stream.jsonl" } | Out-Null
+
+    $st = Get-DayStatus -LogDir $box
+    if (-not $st.Running) { return "a live day reads as dead" }
+    if ($st.ProcessGone) { return "it thinks the process is gone" }
+    if ($st.LastTool -notmatch "dotnet test") { return "it cannot say what the session is doing: '$($st.LastTool)'" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "a list of PRs survives the round trip through the event" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    $prs = @()
+    $prs += [pscustomobject]@{ number = 36; title = "Ancla estable"; branch = "feat/ancla" }
+    $prs += [pscustomobject]@{ number = 37; title = "Otra cosa"; branch = "feat/otra" }
+    New-DayEvent -LogDir $box -Kind "open_prs" -Data @{ prs = $prs } | Out-Null
+    New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "no_tasks" } | Out-Null
+
+    $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
+    if ($md -notmatch "#36 Ancla estable") { return "the PR lost its number or its title" }
+    if ($md -notmatch "#37") { return "only the first one came back" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }

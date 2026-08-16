@@ -29,8 +29,16 @@ Everything else in that folder is derived from it or feeds it:
 | `events.jsonl` | every transition the executor made, append-only |
 | `worker-N.stream.jsonl`, `audit-N.stream.jsonl` | what each session emitted, **as it emitted it** |
 | `handoff-N.json`, `verdict-N.json` | the contracts, written by the script from what the session said |
-| `day.log` | a render to read down the side of |
-| `report.md` | written at close, from the same stream |
+| `day.log` | a running commentary for a person scrolling — not authoritative |
+| `report.md` | written at close, computed from the stream |
+
+Everything anybody decides anything on is computed from `events.jsonl`, so `day-status.ps1` and
+`report.md` cannot disagree. `day.log` is not a render of it and does not try to be: it is prose
+written alongside. The consequence is a rule when adding to this — **a fact that reaches only
+`day.log` is a fact the morning report cannot carry**, so what matters goes on the stream first and
+is echoed to the log second. Anomalies are written down when they fire for the same reason: a
+twenty-minute silence stops existing the moment the session ends, and a cycle that cost triple the
+median stops looking like one as soon as the next cycle moves the median.
 
 Sessions run with `--output-format stream-json --verbose`, so a session's file grows while it
 works. That is what makes a working session distinguishable from a stuck one, and it is why
@@ -71,9 +79,14 @@ session then does the same job by a worse route, or drops it, and says nothing a
 That same day one cycle collected 27 of them, starting with the board CLI, and ended with the
 cross-model review this repo requires over a large diff never having run. So:
 
-- the executor prints them and puts them on the event, per tool and with the command attempted;
-- the reader raises **two attempts at the same tool to `stop`** — that is not a missing tool, that
-  is a model groping for a way around;
+- the executor prints them and puts them on the event, per program and with the command attempted;
+- the reader raises **two refused attempts at the same program to `stop`** — that is not a missing
+  tool, that is a model groping for a way around. Grouping is by program rather than by tool
+  because that is what a missing rule is about: `$env:X = "utf-8"; python …` and `python …` are one
+  rule refused twice, while a `python` and a `codex` refused through the same PowerShell are two;
+- **the executor stops the day on it**, after the session and before the audit and the merge, so a
+  worker that spent its turns going around a refusal never reaches `main`. The verdict decides
+  whether good work merges; this decides whether the session was sound enough to be worth judging;
 - `report.md` lists every one, because each row is a permission rule missing from
   `.claude/orchestrator/settings.json`;
 - `next-task` records a required step it could not run as a red probe, and `audit-session` **holds
@@ -98,6 +111,11 @@ The loop stops — it never retries — and both `day.log` and `report.md` name 
 - **`head_sha` different from `audited_head_sha`**: the audit read a different commit than was
   delivered.
 - **`verdict: hold`**, or `blocked` / `no_tasks` from the worker.
+- **A session that is not sound**: a program refused twice, a closed usage window, a session the
+  clock killed. Checked after each session, before the audit and before the merge.
+- **The executor throwing.** It writes `day_crashed`, an ending and a report before it goes, so a
+  run never sits there looking alive. If it is killed outright it cannot do that, so the reader
+  checks the executor's own PID and reports a day whose process is gone as `vanished`.
 
 `no_tasks` is the ending to expect on a good day, and the usage window is the one to expect on a
 long one: running out of it surfaces as `is_error`, which stops the day rather than waiting it

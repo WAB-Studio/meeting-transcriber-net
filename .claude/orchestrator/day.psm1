@@ -4,8 +4,11 @@
   decide what is abnormal. `run-day.ps1` writes through it, `day-status.ps1` reads through it, and
   `test-day.ps1` proves the parts that do not need a session to run.
 
-  One source of truth per run: `events.jsonl`. `day.log` and `report.md` are renders of it, never
-  the original, so a reader added later cannot tell a different story than the one the log tells.
+  One source of truth per run: `events.jsonl`. Everything anybody decides anything on -- the
+  status, the anomalies, the report -- is computed from it, so two readers cannot disagree.
+  `day.log` is not that: it is a running commentary written alongside, for a person scrolling. A
+  fact that reaches only the log is a fact the report cannot carry, which is why the things worth
+  reading in the morning are on the stream first and echoed there second.
 
   Nothing here launches a session or judges code. The thresholds are thresholds: what they mean,
   and whether one is worth interrupting somebody over, belongs to the skill that reads them.
@@ -83,7 +86,7 @@ function Get-SessionResult {
   for ($i = $lines.Count - 1; $i -ge 0; $i--) {
     $l = $lines[$i]
     if ([string]::IsNullOrWhiteSpace($l)) { continue }
-    if ($l.IndexOf('"type":"result"') -lt 0) { continue }
+    if ($l.IndexOf('"result"') -lt 0) { continue }   # a cheap skip, not the test: the test is $o.type
     try { $o = $l | ConvertFrom-Json } catch { continue }
     if ($o.type -eq "result") { return $o }
   }
@@ -181,15 +184,41 @@ function Get-ResultDenials {
 }
 
 <#
-  Grouped by tool: three denied attempts at the same tool are not three errors, they are a model
-  groping for a way around a permission it does not have.
+  What identifies "the same thing refused again" is the program, not the tool that carried it. Two
+  denied `python` calls spelled differently are one missing rule and a model groping for a way
+  around it; a denied `python` and a denied `codex` through the same PowerShell are two unrelated
+  rules and grouping them would raise a false alarm on both.
+
+  So: skip leading assignments and `cd`, take the first real word of the first real segment, and
+  key on its file name. `$env:X = "utf-8"; python clickup.py lists` and `python clickup.py tasks`
+  land on the same key, which is what the 27 denials of 2026-08-16 actually were.
 #>
+function Get-DenialKey {
+  param([string]$Tool, [string]$Command)
+  $skip = @('cd', 'set', 'call', 'then', 'do', 'sudo', 'exec')
+  foreach ($seg in ($Command -split '\s*(?:;|&&|\|\|)\s*')) {
+    if ([string]::IsNullOrWhiteSpace($seg)) { continue }
+    if ($seg -match '^\s*\$?[\w:]+\s*=') { continue }          # an assignment, not the command
+    foreach ($tok in ($seg -split '\s+')) {
+      $t = $tok.Trim('"', "'", '(', ')', '&')
+      if ([string]::IsNullOrWhiteSpace($t)) { continue }
+      # A segment that only sets the ground -- `cd somewhere` -- is not the command; its argument
+      # is not either, so the whole segment is abandoned rather than its first word.
+      if ($skip -contains $t.ToLower()) { break }
+      $leaf = [System.IO.Path]::GetFileName(($t -replace '\\', '/'))
+      if ([string]::IsNullOrWhiteSpace($leaf)) { $leaf = $t }
+      return "$Tool $leaf"
+    }
+  }
+  return $Tool
+}
+
 function Group-Denials {
   param($Denials)
   $g = @{}
   foreach ($d in @($Denials)) {
     if (-not $d) { continue }
-    $k = [string]$d.tool
+    $k = Get-DenialKey -Tool ([string]$d.tool) -Command ([string]$d.command)
     if (-not $g.ContainsKey($k)) { $g[$k] = New-Object System.Collections.ArrayList }
     $null = $g[$k].Add($d.command)
   }
@@ -202,6 +231,18 @@ function Group-Denials {
     })
   }
   return $out.ToArray()
+}
+
+<#
+  JSON says `false`, a session under pressure sometimes says `"false"`, and in PowerShell that
+  string is truthy -- which would count a red probe as green in the one place it matters.
+#>
+function Test-JsonTrue {
+  param($Value)
+  if ($null -eq $Value) { return $false }
+  if ($Value -is [bool]) { return $Value }
+  if ($Value -is [string]) { return @('true', '1', 'yes') -contains $Value.ToLower() }
+  return [bool]$Value
 }
 
 <#
@@ -355,7 +396,37 @@ function Get-DayAnomalies {
     $null = $out.Add((New-Anomaly "stop" "stopped" ("the day ended on: {0}" -f $Status.EndReason)))
   }
 
+  # The one ending nothing else can report, because the process that would have reported it is the
+  # one that is gone: killed by hand, killed by the machine, or dead of an exception the executor
+  # could not write down.
+  if ($Status.ProcessGone) {
+    $null = $out.Add((New-Anomaly "stop" "vanished" (
+      "the day's process ({0}) is gone and it never wrote an ending" -f $Status.ExecutorPid)))
+  }
+
+  # Anomalies already written to the stream come back even when the state that produced them is
+  # gone. Deduplicated on their text, so a rule that fires twice over the same condition reads once.
+  $seen = @{}
+  foreach ($a in $out) { $seen[[string]$a.text] = $true }
+  foreach ($p in @($Status.Past)) {
+    if ($p -and -not $seen.ContainsKey([string]$p.text)) {
+      $null = $out.Add((New-Anomaly $p.level $p.code $p.text))
+      $seen[[string]$p.text] = $true
+    }
+  }
+
   return $out.ToArray()
+}
+
+<#
+  Which anomalies end the day, as one function so the executor and the probe cannot drift apart. A
+  level of `stop` means stop: labelling a condition and then merging anyway would make the level
+  decoration, which is what it was before this existed. `stopped` is excluded because it is the
+  day's own ending being reported back, not a reason to end it again.
+#>
+function Get-HaltingAnomalies {
+  param([Parameter(Mandatory)]$Status)
+  return @($Status.Anomalies | Where-Object { $_.level -eq "stop" -and $_.code -ne "stopped" })
 }
 
 function Get-Median {
@@ -398,6 +469,9 @@ function Get-DayStatus {
     Started         = $null
     Ended           = $false
     EndReason       = ""
+    ExecutorPid     = $null
+    ProcessGone     = $false
+    Past            = @()
     Cycle           = 0
     Role            = ""
     Running         = $false
@@ -424,8 +498,13 @@ function Get-DayStatus {
 
   foreach ($e in $ev) {
     switch ($e.kind) {
-      "day_started" { $st.Started = $e.ts }
+      "day_started" { $st.Started = $e.ts; $st.ExecutorPid = $e.pid }
       "day_ended"   { $st.Ended = $true; $st.EndReason = [string]$e.reason }
+      # An anomaly is written down when it fires, because most of them cannot be recomputed later:
+      # a 20-minute silence disappears the moment the session ends, and a cycle that cost triple
+      # the median stops looking like one as soon as another cycle moves the median. The morning
+      # report promises every anomaly that fired, so every anomaly that fired is on the stream.
+      "anomaly"     { $st.Past += [pscustomobject]@{ level = [string]$e.level; code = [string]$e.code; text = [string]$e.text } }
       "session_started" {
         $st.Cycle = [int]$e.cycle
         $st.Role = [string]$e.role
@@ -475,16 +554,28 @@ function Get-DayStatus {
     }
   }
 
-  # A finished session's denials arrive counted and with the command it tried, so the executor
-  # leaves them on the event and nothing has to be rebuilt from the stream here.
+  # A closed session's denials arrive counted and with the command it tried, so the executor leaves
+  # them on the event. All three terminal kinds carry them: a session that collected 27 denials and
+  # then timed out is the case where they matter most, and reading only `session_ended` would have
+  # thrown exactly those away.
   foreach ($e in $ev) {
-    if ($e.kind -ne "session_ended") { continue }
+    if (@("session_ended", "session_failed", "session_killed") -notcontains $e.kind) { continue }
     if ($null -ne $e.denials) { $st.Denials += [int]$e.denials }
     if ($e.denial_detail) { $st.DenialDetail += @($e.denial_detail) }
     if ($e.rate_limit) { $st.RateLimit = $e.rate_limit }
   }
 
   $st.DenialsByTool = Group-Denials $st.DenialDetail
+
+  # A session cannot be running if the process that launched it is gone. Without this, a day killed
+  # with Stop-Process -- which the skill tells people to use -- reads as "running" forever, and the
+  # silence rule slowly counts up over a session that ended hours ago.
+  if ($st.ExecutorPid -and -not $st.Ended) {
+    if (-not (Get-Process -Id ([int]$st.ExecutorPid) -ErrorAction SilentlyContinue)) {
+      $st.ProcessGone = $true
+      $st.Running = $false
+    }
+  }
 
   $ordered = @($cycles.Keys | Sort-Object)
   $st.Cycles = @($ordered | ForEach-Object { [pscustomobject]$cycles[$_] })
@@ -535,6 +626,30 @@ function Write-DayReport {
     $null = $L.Add("")
   }
 
+  # What the day left for a person to act on, which is the reason they open this file at all.
+  $leftOut = @($ev | Where-Object { $_.kind -eq "handoff" } | ForEach-Object { @($_.left_out) } | Where-Object { $_ })
+  $actions = @($ev | Where-Object { $_.kind -eq "verdict" } | ForEach-Object { @($_.actions_taken) } | Where-Object { $_ })
+  if ($leftOut.Count -gt 0) {
+    $null = $L.Add("## Left out")
+    $null = $L.Add("")
+    foreach ($x in $leftOut) { $null = $L.Add("- " + [string]$x) }
+    $null = $L.Add("")
+  }
+  if ($actions.Count -gt 0) {
+    $null = $L.Add("## What the audit did")
+    $null = $L.Add("")
+    foreach ($x in $actions) { $null = $L.Add("- " + [string]$x) }
+    $null = $L.Add("")
+  }
+
+  $open = @($ev | Where-Object { $_.kind -eq "open_prs" } | Select-Object -Last 1)
+  if ($open.Count -gt 0 -and @($open[0].prs).Count -gt 0) {
+    $null = $L.Add("## Open PRs waiting on you")
+    $null = $L.Add("")
+    foreach ($pr in @($open[0].prs)) { $null = $L.Add(("- #{0} {1}" -f $pr.number, $pr.title)) }
+    $null = $L.Add("")
+  }
+
   # This section comes before everything else that went wrong because it is the only part of this
   # file anybody acts on by editing one line: each row is a permission rule that is missing.
   if ($st.DenialsByTool.Count -gt 0) {
@@ -575,6 +690,7 @@ function Write-DayReport {
 }
 
 Export-ModuleMember -Function Add-Utf8Line, Get-EventsPath, New-DayEvent, Read-DayEvents,
-  Get-SessionResult, Get-ContractFromText, Test-DayContract, Get-SessionActivity,
-  New-Denial, Get-ResultDenials, Group-Denials,
-  Get-DayRules, Get-DayAnomalies, Get-Median, Find-LatestRun, Get-DayStatus, Write-DayReport
+  Get-SessionResult, Get-ContractFromText, Test-DayContract, Test-JsonTrue, Get-SessionActivity,
+  New-Denial, Get-ResultDenials, Get-DenialKey, Group-Denials,
+  Get-DayRules, Get-DayAnomalies, Get-HaltingAnomalies, Get-Median,
+  Find-LatestRun, Get-DayStatus, Write-DayReport
