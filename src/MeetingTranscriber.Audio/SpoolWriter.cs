@@ -114,7 +114,7 @@ public sealed class SpoolWriter : IDisposable
             }
             finally
             {
-                Erase(file);
+                BlockSpool.Erase(file);
             }
 
             throw;
@@ -179,20 +179,4 @@ public sealed class SpoolWriter : IDisposable
     public void Flush() => file.Flush();
 
     public void Dispose() => file.Dispose();
-
-    /// <summary>
-    /// Removes a file that never became a spool. It does not throw: it runs while the creation is
-    /// already failing, and what the caller has to hear is why that happened.
-    /// </summary>
-    private static void Erase(FileInfo file)
-    {
-        try
-        {
-            File.Delete(file.FullName);
-        }
-        catch (Exception left) when (left is IOException or UnauthorizedAccessException)
-        {
-            // Swallowed on purpose: see the summary.
-        }
-    }
 }

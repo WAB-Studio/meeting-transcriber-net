@@ -160,7 +160,7 @@ public sealed class CaptureSource : IDisposable
     internal void Discard()
     {
         LetGo();
-        Erase(File);
+        BlockSpool.Erase(File);
     }
 
     /// <summary>
@@ -211,7 +211,7 @@ public sealed class CaptureSource : IDisposable
                 {
                     if (claimed)
                     {
-                        Erase(file);
+                        BlockSpool.Erase(file);
                     }
                 }
             }
@@ -244,26 +244,6 @@ public sealed class CaptureSource : IDisposable
         {
             LetGo();
             throw;
-        }
-    }
-
-    /// <summary>
-    /// Removes the file of an attempt that never became a recording. A file that will not delete
-    /// is not worth replacing the reason the attempt failed with, so it does not throw either.
-    /// </summary>
-    private static void Erase(FileInfo file)
-    {
-        try
-        {
-            file.Refresh();
-            if (file.Exists)
-            {
-                file.Delete();
-            }
-        }
-        catch (Exception left) when (left is IOException or UnauthorizedAccessException)
-        {
-            // Swallowed on purpose: see the summary.
         }
     }
 

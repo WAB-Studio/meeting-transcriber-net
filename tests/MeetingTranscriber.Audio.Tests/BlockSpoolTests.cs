@@ -321,6 +321,7 @@ public sealed class BlockSpoolTests : IDisposable
     [InlineData("loopback.wav")]
     [InlineData("microphone.blocks")]
     [InlineData("microphone.wav")]
+    [InlineData("audio.wav")]
     public void A_recording_does_not_start_in_a_folder_holding_another_ones_files(string left)
     {
         System.IO.File.WriteAllBytes(Path.Combine(folder.FullName, left), [1, 2, 3]);
