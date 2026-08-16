@@ -10,9 +10,6 @@
 #>
 [CmdletBinding()]
 param(
-  [int]$MaxSessions      = 4,
-  [double]$MaxUsdSession = 15,
-  [double]$MaxUsdDay     = 60,
   [switch]$DryRun
 )
 
@@ -98,8 +95,7 @@ function Invoke-Session([string]$Prompt, [string]$OutFile) {
 
   $args = @("-p", (Quote $Prompt), "--output-format", "json",
             "--permission-mode", "acceptEdits",
-            "--settings", (Quote $Extra), "--fallback-model", "sonnet",
-            "--max-budget-usd", $MaxUsdSession)
+            "--settings", (Quote $Extra), "--fallback-model", "sonnet")
   $p = Start-Process -FilePath "claude" -ArgumentList $args -NoNewWindow -PassThru `
                      -RedirectStandardOutput $OutFile -RedirectStandardInput $EmptyStdin
   $null = $p.Handle
@@ -140,19 +136,17 @@ $stop = Enter-Lock
 if ($stop -ne "") { Write-Host $stop; exit 1 }
 
 try {
-  Write-Day "=== day starts: up to $MaxSessions sessions, ceiling $MaxUsdDay USD ==="
+  # No session count and no dollar ceiling: the day runs until the work, the usage window or the
+  # audit ends it. Those are real limits; a number picked in advance is a guess about them.
+  Write-Day "=== day starts: runs until the board, the window or a verdict stops it ==="
   $spent = 0.0
+  $i     = 0
 
-  for ($i = 1; $i -le $MaxSessions; $i++) {
+  while ($true) {
+    $i++
 
     $blocked = Test-Preflight
     if ($blocked -ne "") { Write-Day "[$i] preflight: $blocked -- day stops"; break }
-
-    # The ceiling reserves both sessions of the cycle, not just the one about to run.
-    if (($spent + 2 * $MaxUsdSession) -gt $MaxUsdDay) {
-      Write-Day ("[$i] another cycle does not fit under the ceiling ({0:N2} of {1} USD) -- stops" -f $spent, $MaxUsdDay)
-      break
-    }
 
     # --- worker ---------------------------------------------------------------------------
     $handoff = Join-Path $LogDir "handoff-$i.json"
@@ -217,13 +211,24 @@ try {
     # One thing decides whether the day goes on, and it is the verdict.
     if ($v.verdict -eq "hold") { Write-Day "[$i] the audit halts the day"; break }
 
-    if ($i -lt $MaxSessions) {
-      Write-Day "[$i] cooling $($CooldownSeconds / 60) min"
-      Start-Sleep -Seconds $CooldownSeconds
+    # The verdict decides, the script acts. Integrating here rather than inside the audit keeps
+    # it mechanical -- it cannot be forgotten, cannot happen twice, and lands in the day log --
+    # and it is what lets the next session see this one: the preflight below fast-forwards local
+    # main, so cycle N+1 branches from a base that already carries cycle N instead of stacking
+    # another PR against code it cannot see.
+    Write-Day "[$i] integrating PR #$($h.pr_number)"
+    gh pr merge $h.pr_number --merge --delete-branch
+    if ($LASTEXITCODE -ne 0) {
+      Write-Day "[$i] the merge failed ($LASTEXITCODE) -- day stops, the PR is left open"
+      break
     }
+    Write-Day "[$i] PR #$($h.pr_number) integrated"
+
+    Write-Day "[$i] cooling $($CooldownSeconds / 60) min"
+    Start-Sleep -Seconds $CooldownSeconds
   }
 
-  Write-Day ("=== day ends: {0:N2} USD ===" -f $spent)
+  Write-Day ("=== day ends in cycle $i : {0:N2} USD ===" -f $spent)
   Write-Day "Open PRs waiting on the user:"
   gh pr list --state open --limit 20 | Tee-Object -FilePath $DayLog -Append
 }

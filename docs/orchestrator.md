@@ -4,10 +4,14 @@ A day of work with nobody in the loop: fresh sessions chained one after another,
 task off the board and leaving it in an open PR that somebody who did not write it has read.
 
 ```powershell
-.\.claude\orchestrator\run-day.ps1                  # 4 sessions
-.\.claude\orchestrator\run-day.ps1 -MaxSessions 8 -MaxUsdDay 120
+.\.claude\orchestrator\run-day.ps1
 .\.claude\orchestrator\run-day.ps1 -DryRun          # preflight and what it would launch
 ```
+
+There is no session count and no dollar ceiling. The day runs until something real ends it —
+the board, the usage window, or a verdict — because a number picked in the morning is a guess
+about those and stops the run either too early or too late. What is spent is logged all the same;
+reporting a cost and capping it are different jobs.
 
 Each run writes to `.claude/orchestrator/log/<date>_<time>/`, ignored by git: `day.log` — the
 thing read in the morning — plus each session's `handoff-N.json` and `verdict-N.json`.
@@ -45,7 +49,15 @@ The loop stops — it never retries — and `day.log` names which:
 - **`head_sha` different from `audited_head_sha`**: the audit read a different commit than was
   delivered.
 - **`verdict: hold`**, or `blocked` / `no_tasks` from the worker.
-- **The dollar ceiling**, which reserves both sessions of a cycle before starting it.
+
+`no_tasks` is the ending to expect on a good day, and the usage window is the one to expect on a
+long one: running out of it surfaces as `is_error`, which stops the day rather than waiting it
+out, because a worker that errored may already have moved a card or opened a PR.
+
+One thing to watch, since nothing caps the run: the audit files followups as `Open`, so they land
+back in the pool the worker draws from. What brakes that is your merges — `next-task` skips a task
+building on an unmerged PR, so as PRs stack the candidates thin out and the day reaches
+`no_tasks`. If a day ever seems to feed itself, that is where to look first.
 
 ## One day at a time
 
@@ -53,16 +65,25 @@ The loop stops — it never retries — and `day.log` names which:
 lock whose process no longer exists is discarded on its own. Without it, the 9am scheduled task
 and a run you start by hand would share a checkout, a card and a set of files.
 
-## PRs stay open
+## The PR is integrated on a green verdict
 
-The session ends at the PR and **merging stays the user's**, exactly as by hand — `CLAUDE.md`,
-"How work starts and ends". The audit does not change that: it leaves a comment on the PR with
-what it reviewed and found, so the morning merge reads quickly.
+`pass` and `pass_with_followup` merge the PR; `hold` leaves it open and stops the day. The
+**script** runs the merge, not the audit — the verdict decides and the script acts, the same split
+as everywhere else here. It cannot be forgotten, cannot happen twice, and shows up in `day.log`.
 
-The practical consequence: each session branches from the same `main`, so session 3 cannot see
-what session 1 did. `next-task` looks at the open PRs and skips a task building on unmerged work,
-but that shrinks the problem rather than removing it. Hence a default of 4 rather than 12 — the
-right number is the one that fits between two of your merges.
+That is what makes a chain of sessions work at all. The next preflight fast-forwards local `main`,
+so cycle N+1 branches from a base already carrying cycle N. Without it every session would branch
+from the same stale `main` and each PR after the first would be written against code it could not
+see. A merge that fails — a conflict, a branch protection — stops the day with the PR left open.
+
+**This is the one place the unattended mode departs from a hand-run session**, where `CLAUDE.md`
+leaves merging to the user. What replaces the user here is the audit, and it is a weaker
+guarantee: it reads the diff, the board and the ISA, and it waits for CI, but it is not a person.
+The lever that tunes this is the audit's own bar — a `hold` costs the rest of the day, and a bad
+`pass` costs `main` plus whatever gets built on it, so the skill is written to hold when unsure.
+
+Closing the card is still the user's. `in review` is where they pile up, and that is deliberate:
+the board is where you see what a day did.
 
 ## What no session can do
 

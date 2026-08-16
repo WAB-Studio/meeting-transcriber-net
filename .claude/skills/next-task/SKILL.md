@@ -89,7 +89,8 @@ log. Do not open a half PR to show progress.
 
 ## 4 · Delivering
 
-Branch, commit, `gh pr create`. The PR **is not merged**: it stays for the user. Then:
+Branch, commit, `gh pr create`. You do not merge it — the audit's verdict does that, and only if
+it passes. Then:
 
 ```powershell
 python $S move <id> --status "in review"

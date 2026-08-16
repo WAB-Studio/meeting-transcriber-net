@@ -85,11 +85,17 @@ diff doing something the task did not ask for inside `Domain/Audio/`, `Domain/Ti
 
 It is the only field deciding whether the day goes on. No second field repeats it.
 
-## 5 · What you do and what you do not
+## 5 · What your verdict costs
 
-**The PR stays open and the card stays in `in review`, always.** Merging and closing are the
-user's — `CLAUDE.md` says so. What you leave is a PR they can read knowing somebody who did not
-write it has already looked.
+**A `pass` integrates the PR into `main`.** The orchestrator merges on it — you are not asked to
+run the command, but nothing stands between your verdict and the branch everything else is built
+on. There is no second reader after you, and the next session starts from what you let through.
+
+That is the whole reason to be slow here. `hold` is cheap: it costs the rest of the day, and the
+work survives in an open PR for a person to look at. Letting a bad diff into `main` costs the day
+plus everything built on top of it before anybody notices. **When you are unsure, hold.**
+
+The card stays in `in review` either way — closing it is still the user's.
 
 On all three verdicts, comment on the PR with what you reviewed and found; on `hold`, comment on
 the card as well, which is what gets read in the morning.
