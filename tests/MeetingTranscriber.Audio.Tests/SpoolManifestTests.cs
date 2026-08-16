@@ -75,7 +75,7 @@ public sealed class SpoolManifestTests : IDisposable
         SpoolManifest.Write(folder, asked);
 
         var read = SpoolManifest.Find(folder).ShouldNotBeNull();
-        read.FellBack.ShouldContain("teams (pid 8124)");
+        read.FellBack.ShouldNotBeNull().ShouldContain("teams (pid 8124)");
         read.Mode.ShouldBe(CaptureMode.FullLoopback);
     }
 
