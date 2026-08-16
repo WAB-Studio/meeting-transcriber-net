@@ -46,6 +46,45 @@ public static class Levels
     }
 
     /// <summary>
+    /// The loudest sample of one channel of <paramref name="block"/>, where the other channels
+    /// interleaved with it are a different source rather than the same one in stereo.
+    /// </summary>
+    /// <remarks>
+    /// The meter a person watches while a meeting runs wants the whole of what one device handed
+    /// over, which is what <see cref="Peak(ReadOnlySpan{byte}, StreamFormat)"/> answers. A finished
+    /// recording is the other case: its two channels are the two sources, and one number over both
+    /// of them would call a recording that lost the microphone entirely a healthy one.
+    /// </remarks>
+    public static LevelReading Peak(ReadOnlySpan<byte> block, StreamFormat format, int channel)
+    {
+        ArgumentNullException.ThrowIfNull(format);
+
+        if (channel < 0 || channel >= format.Channels)
+        {
+            throw new AudioCaptureException($"{format} has no channel {channel} to meter.");
+        }
+
+        Samples.FramesIn(block.Length, format);
+
+        var read = Samples.ReaderFor(format);
+        var width = format.BytesPerSample;
+        var frame = width * format.Channels;
+        var peak = 0f;
+        for (var offset = channel * width; offset + width <= block.Length; offset += frame)
+        {
+            var sample = read(block.Slice(offset, width));
+
+            // Skipped rather than taken, for the reason the reading across every channel skips it.
+            if (float.IsFinite(sample))
+            {
+                peak = MathF.Max(peak, MathF.Abs(sample));
+            }
+        }
+
+        return new LevelReading(peak);
+    }
+
+    /// <summary>
     /// Refuses a format no block of which could be metered, and does it by metering no bytes at
     /// all — so what is checked before a device is opened is the same rule, and not a second copy
     /// of it that can fall out of step.

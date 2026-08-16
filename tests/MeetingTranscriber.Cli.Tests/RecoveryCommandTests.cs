@@ -85,7 +85,8 @@ public sealed class RecoveryCommandTests : IDisposable
 
     /// <summary>
     /// A recording the machine died in the middle of is worth every block that landed, and keeping
-    /// it says what the last one cost.
+    /// it says what the last one cost — and leaves the meeting those blocks are, which is the whole
+    /// of what a person came to the folder for.
     /// </summary>
     [Fact]
     public void A_recording_that_was_cut_off_is_kept_back_to_its_last_whole_block()
@@ -101,14 +102,19 @@ public sealed class RecoveryCommandTests : IDisposable
         run.Value("ch1 kept").ShouldStartWith("9 blocks");
         run.Value("ch1 kept").ShouldContain("discarded");
         run.Value("ch1 format").ShouldBe(Format.ToString());
+        run.Value("recording").ShouldStartWith($"{MeetingAudio.FileName}, ");
 
+        // The blocks are all still there, and the one file beside them is the recording itself:
+        // keeping a recording is not the moment to write a diagnostic per source.
         Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
-        Folder("daily").EnumerateFiles("*.wav").ShouldBeEmpty();
+        Folder("daily").EnumerateFiles("*.wav").Select(wav => wav.Name)
+            .ShouldBe([MeetingAudio.FileName]);
     }
 
     /// <summary>
     /// A recording with one source is still a recording somebody wants, and keeping it must not
-    /// decide anything about the source that is missing.
+    /// decide anything about the source that is missing — least of all by calling half a meeting
+    /// the meeting.
     /// </summary>
     [Fact]
     public void One_source_on_its_own_is_kept_and_left_where_it_is()
@@ -119,7 +125,9 @@ public sealed class RecoveryCommandTests : IDisposable
 
         run.Code.ShouldBe(Cli.Ok);
         run.Value("ch0 kept").ShouldStartWith("10 blocks");
+        run.Value("recording").ShouldContain("needs both sources");
         BlockSpool.FileFor(Folder("uno"), AudioChannel.Loopback).Exists.ShouldBeTrue();
+        MeetingAudio.In(Folder("uno")).Exists.ShouldBeFalse();
     }
 
     [Fact]
@@ -136,6 +144,10 @@ public sealed class RecoveryCommandTests : IDisposable
         new FileInfo(Path.Combine(into, "loopback.wav")).Exists.ShouldBeTrue();
         new FileInfo(Path.Combine(into, "microphone.wav")).Exists.ShouldBeTrue();
         Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+
+        // Taking the sources out is not finishing the recording: what lands is one file per device,
+        // where somebody asked for it, and the meeting is still a folder nobody has decided about.
+        MeetingAudio.In(Folder("daily")).Exists.ShouldBeFalse();
     }
 
     /// <summary>

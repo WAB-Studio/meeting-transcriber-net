@@ -47,9 +47,11 @@ public sealed record ExportedSource(AudioChannel Channel, FileInfo Wav, int Bloc
 /// away.
 /// </para>
 /// <para>
-/// Keeping it does not produce a file, and that is not an omission: the blocks already are the
-/// recording, whole up to the packet the machine died in. What the choice settles is that
-/// somebody has seen what survived and it stays.
+/// Keeping it produces nothing here, and that is not an omission: the blocks already are the
+/// recording, whole up to the packet the machine died in, and <see cref="Keep"/> is the reading
+/// that says what survived. Turning those blocks into the meeting they are is
+/// <see cref="MeetingAudio"/>'s, made beside them once somebody has kept them — which is why it
+/// takes both sources and this takes whatever is there.
 /// </para>
 /// <para>
 /// A recording that is still being written is one of these too, and it is marked rather than
@@ -205,10 +207,12 @@ public sealed record UnfinishedRecording(
 /// </para>
 /// <para>
 /// Every folder holding a spool is one of these, and it says which of them are still being
-/// recorded rather than leaving them out. Nothing yet turns a spool into a meeting — until that
-/// exists, a recording somebody stopped and one the machine died in the middle of are the same
-/// folder, and the honest thing is to offer both rather than to claim a difference nothing on disk
-/// records.
+/// recorded rather than leaving them out. A folder the recording was already made in is offered
+/// all the same: <see cref="MeetingAudio.FileName"/> beside the blocks says the meeting was
+/// finished, not that anybody has done anything with it, and nothing yet files a spool folder into
+/// the corpus. Until that exists, a recording somebody stopped and one the machine died in the
+/// middle of are the same folder, and the honest thing is to offer both rather than to claim a
+/// difference on the strength of a file keeping one makes.
 /// </para>
 /// <para>
 /// A folder with no card is still a recording, and so is one whose card cannot be read. Each spool

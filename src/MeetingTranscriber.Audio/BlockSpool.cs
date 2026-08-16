@@ -106,8 +106,8 @@ public static class BlockSpool
 
     /// <summary>
     /// Throws unless <paramref name="folder"/> is free of everything a recording writes into it:
-    /// both sources' blocks, the file each one is played back into, and the card saying what the
-    /// recording is.
+    /// both sources' blocks, the file each one is played back into, the recording the two of them
+    /// become, and the card saying what that recording is.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -115,12 +115,12 @@ public static class BlockSpool
     /// that keeps which endpoint a typed name means testable on a machine that has none.
     /// </para>
     /// <para>
-    /// Both files and not only the spools. A spool is refused by the file system when it is
-    /// claimed, which is the check no second writer can slip past; a playback is replaced every
-    /// time it is produced, which is right for a file made again from the spool beside it and
-    /// wrong for one left by a recording whose spool is not here. This is what keeps the second
-    /// case from arising, and it belongs before the meeting starts rather than after it, because
-    /// what is at stake by then is a recording somebody was holding.
+    /// Every file and not only the spools. A spool is refused by the file system when it is
+    /// claimed, which is the check no second writer can slip past; everything read back out of one
+    /// is replaced every time it is produced, which is right for a file made again from the spool
+    /// beside it and wrong for one left by a recording whose spool is not here. This is what keeps
+    /// the second case from arising, and it belongs before the meeting starts rather than after it,
+    /// because what is at stake by then is a recording somebody was holding.
     /// </para>
     /// </remarks>
     public static void EnsureNothingRecordedIn(DirectoryInfo folder)
@@ -128,6 +128,7 @@ public static class BlockSpool
         var taken = new[] { AudioChannel.Loopback, AudioChannel.Microphone }
             .Select(channel => FileFor(folder, channel))
             .SelectMany(blocks => new[] { blocks, PlaybackFor(blocks) })
+            .Append(MeetingAudio.In(folder))
             .Append(SpoolManifest.In(folder))
             .FirstOrDefault(file => file.Exists);
 
@@ -147,7 +148,7 @@ public static class BlockSpool
     /// <para>
     /// One source, unaligned and unresampled — what a person plays to hear whether a device was
     /// recording at all. It is not the recording: two sources become one pair of channels on the
-    /// shared timeline, and that file is made when a meeting is stopped.
+    /// shared timeline, which is <see cref="MeetingAudio"/>'s to make.
     /// </para>
     /// <para>
     /// It replaces whatever is at that name, which is what re-rendering is: the file is produced
@@ -216,9 +217,9 @@ public static class BlockSpool
 
     /// <summary>
     /// Removes a file that never became part of a recording — a spool whose stream would not open,
-    /// a card whose write was cut off, an export that could not be finished. It does not throw: it
-    /// runs while something is already failing, and what the caller has to hear is why that
-    /// happened rather than that a handle would not close on the way out.
+    /// a card whose write was cut off, an export or a recording that could not be finished. It does
+    /// not throw: it runs while something is already failing, and what the caller has to hear is
+    /// why that happened rather than that a handle would not close on the way out.
     /// </summary>
     /// <remarks>
     /// One of these, here, rather than one per file that needs it. What may be taken away and what

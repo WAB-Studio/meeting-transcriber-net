@@ -111,7 +111,7 @@ public static class Cli
         new(
             "recover",
             "recover --in <directory> (--keep | --export <directory> | --discard)",
-            "keep one of them as it stands, take its audio out, or throw it away",
+            "make the recording it becomes and keep it, take each source out, or throw it away",
             AudioCommands.Recover),
         new(
             "search",

@@ -47,9 +47,10 @@ public static class AudioCommands
     }
 
     /// <summary>
-    /// Records both sources at once, saying what each one is and how loud it is while it runs, and
-    /// reads each spool back into a file somebody can listen to. Ctrl+C stops it early and still
-    /// reports; killing the process leaves the spools, which is the point of them.
+    /// Records both sources at once, saying what each one is and how loud it is while it runs,
+    /// reads each spool back into a file somebody can listen to, and makes the recording the two of
+    /// them become. Ctrl+C stops it early and still reports; killing the process leaves the spools,
+    /// which is the point of them.
     /// </summary>
     public static int Capture(Arguments arguments, TextWriter output)
     {
@@ -114,6 +115,12 @@ public static class AudioCommands
             }
         }
 
+        // Before the files to listen to, and that order is not cosmetic: those hold every sample at
+        // the rate its device ran, so two of them are several times the recording itself. A machine
+        // with room for the meeting and not for the diagnostics beside it must end up with the
+        // meeting.
+        Materialise(folder, output);
+
         foreach (var (channel, blocks) in spools)
         {
             Report.Line(output, $"{Name(channel)} played back", PlayedBack(blocks));
@@ -158,8 +165,8 @@ public static class AudioCommands
     }
 
     /// <summary>
-    /// What happens to one recording nobody stopped: it is kept as it stands, its audio is taken
-    /// out to a folder, or it is thrown away.
+    /// What happens to one recording nobody stopped: it is kept — which is where the recording the
+    /// two spools become is made — its sources are taken out to a folder, or it is thrown away.
     /// </summary>
     /// <remarks>
     /// One of the three has to be typed, and there is no default. A spool may be the only copy of
@@ -185,7 +192,7 @@ public static class AudioCommands
         }
 
         var recording = UnfinishedRecordings.At(folder);
-        Report.Line(output, "recording", recording.Folder.FullName);
+        Report.Line(output, "folder", recording.Folder.FullName);
         Describe(recording, output);
 
         if (discard)
@@ -205,6 +212,18 @@ public static class AudioCommands
             return Cli.Ok;
         }
 
+        // A meeting is two sources on one timeline, so half of one is a folder somebody has to look
+        // at rather than a recording to make half of. Either way every source that is there is
+        // read through and reported below, which is what a person keeping one is owed.
+        if (recording.Sources.Count == CapturedAudio.ChannelCount)
+        {
+            Materialise(recording.Folder, output);
+        }
+        else
+        {
+            Report.Line(output, "recording", $"not made: {MeetingAudio.FileName} needs both sources");
+        }
+
         foreach (var survivor in recording.Keep())
         {
             Report.Line(output, $"{Name(survivor.Channel)} format", survivor.Format.ToString());
@@ -212,6 +231,55 @@ public static class AudioCommands
         }
 
         return Cli.Ok;
+    }
+
+    /// <summary>
+    /// Makes the recording the two spools become, and says what it turned out to be: how long it
+    /// is, how loud each channel got over the whole of it, and what each source never delivered.
+    /// </summary>
+    /// <remarks>
+    /// The last three are the numbers a person decides on. A recording whose microphone is silent
+    /// throughout is one somebody has to be told about now, while the meeting is still fresh enough
+    /// to hold again — not after it has been paid to be transcribed.
+    /// </remarks>
+    private static void Materialise(DirectoryInfo folder, TextWriter output)
+    {
+        Materialised recording;
+        try
+        {
+            recording = MeetingAudio.Materialise(folder);
+        }
+        catch (AudioCaptureException cannot)
+        {
+            // The blocks are what a meeting is worth, and they are still there. Said here because
+            // this is the first place a person meets the failure, and what they would otherwise
+            // read is a sentence about a frame counter after an hour of recording.
+            throw new AudioCaptureException(
+                $"{cannot.Message} Every block is still in '{folder.FullName}': what could not be "
+                + "made is the one file the two sources become, and 'recover --in <folder> --keep' "
+                + "makes it again.",
+                cannot);
+        }
+
+        Report.Line(
+            output,
+            "recording",
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"{recording.File.Name}, {Report.Offset(recording.Length)}, {recording.Frames} frames, "
+                + $"{recording.File.Length / 1024d / 1024d:0.0} MB"));
+
+        foreach (var source in recording.Timeline.Sources)
+        {
+            Report.Line(
+                output,
+                $"{Name(source.Channel)} recorded",
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"loudest {recording.Loudest(source.Channel)}, "
+                    + $"{source.Missing.Milliseconds} ms missing, {source.Waited.Milliseconds} ms waited, "
+                    + $"{source.MeasuredRate:0} Hz measured"));
+        }
     }
 
     /// <summary>
