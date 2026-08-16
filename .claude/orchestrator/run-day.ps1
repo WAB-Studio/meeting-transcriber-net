@@ -30,6 +30,8 @@ $CooldownSeconds = 600
 $SessionTimeout  = [TimeSpan]::FromMinutes(90)
 
 New-Item -ItemType Directory -Force $LogDir | Out-Null
+$EmptyStdin = Join-Path $LogDir "empty-stdin"
+New-Item -ItemType File -Force $EmptyStdin | Out-Null
 
 # The scheduled task starts in C:\Windows\System32. Without this, `claude -p` finds no CLAUDE.md,
 # no skills and no .claude/settings.json, and works as if the project did not exist.
@@ -75,23 +77,41 @@ function Test-Preflight {
   return ""
 }
 
+# -ArgumentList joins its elements with a space and quotes nothing, so anything holding a space
+# arrives as several arguments. The prompt is "/next-task <path>", which is exactly that case:
+# unquoted, the session receives "/next-task" and treats the path as a stray positional.
+function Quote([string]$Value) {
+  if ($Value -match '\s') { return '"' + $Value + '"' }
+  return $Value
+}
+
 # A `claude -p` hanging on something external hangs the whole day, and --max-budget-usd bounds
-# tokens, not minutes. Launched with stdin closed and a clock over it.
+# tokens, not minutes. Launched with stdin at EOF and a clock over it.
+#
+# Two more Start-Process traps, both of which fail the FIRST real session and neither of which
+# shows up in a dry run. -RedirectStandardInput does not take "NUL" or "\\.\NUL" -- it resolves
+# them as relative paths and throws -- so stdin comes from a real empty file. And ExitCode stays
+# $null unless .Handle is read before waiting, which would make `-ne 0` true on every clean exit
+# and stop the day on its first success.
 function Invoke-Session([string]$Prompt, [string]$OutFile) {
   if ($DryRun) { Write-Day "  DRY-RUN: claude -p `"$Prompt`""; return $null }
 
-  $args = @("-p", $Prompt, "--output-format", "json", "--permission-mode", "acceptEdits",
-            "--settings", $Extra, "--fallback-model", "sonnet",
+  $args = @("-p", (Quote $Prompt), "--output-format", "json",
+            "--permission-mode", "acceptEdits",
+            "--settings", (Quote $Extra), "--fallback-model", "sonnet",
             "--max-budget-usd", $MaxUsdSession)
   $p = Start-Process -FilePath "claude" -ArgumentList $args -NoNewWindow -PassThru `
-                     -RedirectStandardOutput $OutFile -RedirectStandardInput "NUL"
+                     -RedirectStandardOutput $OutFile -RedirectStandardInput $EmptyStdin
+  $null = $p.Handle
   if (-not $p.WaitForExit($SessionTimeout.TotalMilliseconds)) {
     Write-Day "  the session passed $($SessionTimeout.TotalMinutes) min -- killed"
     try { $p.Kill() } catch { }
     return $null
   }
   if ($p.ExitCode -ne 0) { Write-Day "  claude exited with code $($p.ExitCode)"; return $null }
-  try { return (Get-Content $OutFile -Raw | ConvertFrom-Json) } catch { return $null }
+  # -Encoding UTF8 or the day log comes back mojibake: the CLI writes UTF-8 and Get-Content
+  # defaults to the console codepage, which on this machine is cp1252.
+  try { return (Get-Content $OutFile -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { return $null }
 }
 
 # Presence is not enough: in PowerShell the string "false" is truthy, so a verdict that said
@@ -99,7 +119,7 @@ function Invoke-Session([string]$Prompt, [string]$OutFile) {
 # obeys is validated by value; the rest is for whoever reads the log.
 function Read-Contract([string]$Path, [string[]]$Required, [string]$Field, [string[]]$Allowed) {
   if (-not (Test-Path $Path)) { return @{ error = "the session wrote no $(Split-Path -Leaf $Path)" } }
-  try { $o = Get-Content $Path -Raw | ConvertFrom-Json } catch { return @{ error = "unreadable JSON" } }
+  try { $o = Get-Content $Path -Raw -Encoding UTF8 | ConvertFrom-Json } catch { return @{ error = "unreadable JSON" } }
 
   $missing = @()
   foreach ($k in $Required) { if ($null -eq $o.$k) { $missing += $k } }
