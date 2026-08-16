@@ -1,8 +1,29 @@
 {
+  "disableClaudeAiConnectors": true,
+  "skillOverrides": {
+    "dataviz": "off",
+    "claude-in-chrome": "off",
+    "schedule": "off",
+    "loop": "off",
+    "keybindings-help": "off",
+    "update-config": "off",
+    "fewer-permission-prompts": "off",
+    "artifact-design": "off",
+    "artifact-diagramming": "off",
+    "artifact-capabilities": "off",
+    "claude-api": "off",
+    "init": "off",
+    "run": "off",
+    "supervise-day": "off"
+  },
   "permissions": {
     "allow": [
       "PowerShell(python:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "PowerShell(codex exec:*)",
+      "Bash(codex exec:*)",
+      "Read(//c/Users/pc/.codex/**)",
+      "Read(//c/Users/pc/.claude/skills/**)"
     ]
   }
 }

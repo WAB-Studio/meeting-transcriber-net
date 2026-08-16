@@ -20,8 +20,12 @@ The orchestrator passes the handoff path and the verdict path as arguments.
 
 ```powershell
 $S = "$env:USERPROFILE\.claude\skills\clickup\clickup.py"
-$env:PYTHONIOENCODING = "utf-8"
+python $S task <id>
 ```
+
+**`python` has to be the first word of the command**: the permission rule matches on the start of
+it, and anything before it — an env var, a variable assignment — gets the call denied. Under `-p`
+that does not prompt. `PYTHONIOENCODING` is already exported by the orchestrator.
 
 ## 1 · The evidence, not routed through the worker
 
@@ -77,7 +81,10 @@ stop waiting: `verdict: "hold"`, saying CI did not conclude. Red is `hold` too, 
 **`hold`** — the day stops. Any one of these is enough: CI red or unfinished; a decision —
 declared or not — that resolved the other way would invalidate the diff; any `isc_unproved`; the
 diff doing something the task did not ask for inside `Domain/Audio/`, `Domain/Time/` or
-`Domain/Jobs/`.
+`Domain/Jobs/`; **or a step `CLAUDE.md` requires that did not run** — above all the cross-model
+review over a diff past 50 non-comment lines, which CI cannot stand in for because CI does not
+review anything. A worker that declared the gap honestly still delivered an unreviewed diff, and a
+`pass` merges it. Recompute the line count from the diff rather than trusting either account.
 
 **`pass_with_followup`** — the diff holds up and named work is left over.
 
@@ -115,6 +122,7 @@ belongs to the user is written as the question to put to them, not as an impleme
 
 ## 6 · The output
 
-JSON at the path you were given, and your last message is that same JSON; the shape is in
-`verdict.schema.json`. `actions_taken` lists what you actually did, with IDs — it is the only
-thing the user will read in the morning to learn what happened while they were away.
+**Your last message is the verdict, and nothing else** — one JSON object, no prose around it. The
+orchestrator reads it off what you emitted and writes the file itself; you do not write it. The
+shape is in `verdict.schema.json`. `actions_taken` lists what you actually did, with IDs — with
+`report.md` it is what the user reads in the morning to learn what happened while they were away.
