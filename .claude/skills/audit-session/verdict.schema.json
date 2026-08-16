@@ -3,42 +3,41 @@
   "additionalProperties": false,
   "required": [
     "verdict",
-    "continue_day",
+    "audited_head_sha",
     "reasons",
     "unreported_decisions",
     "isc_unproved",
-    "scope_gap",
     "followups_created",
     "actions_taken"
   ],
   "properties": {
     "verdict": {
       "type": "string",
-      "enum": ["pass", "pass_with_followup", "hold", "nothing_to_review"],
-      "description": "hold frena el día. nothing_to_review es un handoff blocked o no_tasks."
+      "enum": ["pass", "pass_with_followup", "hold"],
+      "description": "The only thing deciding whether the day goes on. hold stops it. No second field says the same: two fields for one decision can contradict each other, and the orchestrator would obey the wrong one."
     },
-    "continue_day": {
-      "type": "boolean",
-      "description": "Verdadero sólo en pass y pass_with_followup. Es lo que lee el orquestador."
+    "audited_head_sha": {
+      "type": "string",
+      "description": "The SHA actually read, taken from the PR and never from the handoff. If it disagrees with the worker's, the day stops: the verdict would be about different code than was delivered."
     },
     "reasons": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Por qué este veredicto y no otro. Una razón por entrada."
+      "description": "Why this verdict and not another. One reason per entry. What the task asked for and the diff does not carry goes here."
     },
     "unreported_decisions": {
       "type": "array",
-      "description": "Decisiones visibles en el diff o en el PR que el worker no declaró. El hallazgo central de esta auditoría.",
+      "description": "Decisions visible in the diff or the PR that the worker did not declare. The central finding of this audit, and a field of its own for that reason: in prose it gets buried, which is the problem it came to solve.",
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["what", "found_in", "invalidates_diff"],
         "properties": {
           "what": { "type": "string" },
-          "found_in": { "type": "string", "description": "Archivo y línea, o dónde del PR." },
+          "found_in": { "type": "string", "description": "File and line, or where in the PR." },
           "invalidates_diff": {
             "type": "boolean",
-            "description": "Verdadero si resolverla al revés tiraría abajo lo que se subió."
+            "description": "True if resolving it the other way would pull down what was pushed. Decided by reading the diff, not by copying the worker's blocks_the_pr."
           }
         }
       }
@@ -46,30 +45,24 @@
     "isc_unproved": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Claims marcados [x] cuyo probe no corrió o no aparece en Verification."
-    },
-    "scope_gap": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Lo que la tarea pedía, el diff no trae y left_out no declara."
+      "description": "Claims marked [x] whose probe could not be corroborated with independent evidence."
     },
     "followups_created": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["task_id", "name", "list"],
+        "required": ["task_id", "name"],
         "properties": {
           "task_id": { "type": "string" },
-          "name": { "type": "string" },
-          "list": { "type": "string" }
+          "name": { "type": "string" }
         }
       }
     },
     "actions_taken": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Lo que se hizo de verdad: comentarios, tarjetas, tareas devueltas a Open."
+      "description": "What was actually done: comments, cards, tasks put back to Open. It is what the user reads in the morning."
     }
   }
 }

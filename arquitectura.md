@@ -1085,6 +1085,13 @@ congelada de algo que cambia todas las semanas, y la foto es la que se termina l
 Qué persigue cada fase —qué tiene que ser cierto cuando termina— está en `ISA.md`, en el bloque
 `### F<n>` que nombra su lista.
 
+Los estados dicen algo más que en qué anda cada tarjeta, porque hay sesiones que eligen su
+trabajo solas: **`Open` es el pool del que se toma la próxima tarea y `pending` significa que
+espera a una persona** — una reunión real, dos placas de audio, una decisión de producto. Mover
+algo a `pending` lo saca del pool hasta que alguien lo destrabe, así que es una afirmación sobre
+el mundo y no una forma de postergar. Una tarjeta en `in progress` es de una sesión que no llegó
+a terminar: la próxima la retoma en vez de empezar otra.
+
 ---
 
 ## 14. Riesgos principales

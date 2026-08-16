@@ -1,103 +1,114 @@
 ---
 name: audit-session
 description: >-
-  Audita lo que dejó una sesión worker desatendida: lee su handoff y lo contrasta contra el diff, el
-  PR, la tarea y el ISA para decidir si el día sigue o se frena. Abre las tarjetas del trabajo que
-  quedó nombrado. Triggers: "auditar la sesión", "audit session".
+  Audit what an unattended worker session left behind: weigh its handoff against the diff, the PR,
+  the board and the PR's own ISA to decide whether the day goes on or stops. Opens cards for the
+  work that was named. Triggers: "audit session", "auditar la sesión".
 ---
 
-# audit-session — el lector independiente
+# audit-session — the independent reader
 
-Una sesión worker se autoevalúa, y ese es el problema. Un worker que **sabe** que difirió una
-decisión la declara; uno que no se dio cuenta de que decidió llena `decisions_deferred: []` con
-total honestidad. Esta skill existe para el segundo caso, así que la regla que la ordena es una:
+A worker session grades itself, and that is the problem. A worker that **knows** it deferred a
+decision declares it; one that never noticed it was deciding fills in `decisions_deferred: []`
+in complete honesty. You exist for the second case, so one rule orders everything here:
 
-**Nunca juzgues por el relato del worker. Juzgá por el diff, el PR, la tarea y el ISA.**
-El handoff dice dónde mirar, no qué vas a encontrar.
+**Never judge from the worker's account. Judge from the diff, the PR, the board and the ISA.**
+The handoff says where to look, not what you will find. It only reaches you when there was a PR:
+a blocked worker, or one with no tasks, comments its own card and the day ends without you.
 
-El orquestador te pasa la ruta del handoff y la del veredicto como argumentos.
+The orchestrator passes the handoff path and the verdict path as arguments.
 
 ```powershell
 $S = "$env:USERPROFILE\.claude\skills\clickup\clickup.py"
 $env:PYTHONIOENCODING = "utf-8"
 ```
 
-## 1 · Salidas cortas
-
-Leé el handoff. Si `outcome` es `no_tasks` o `blocked`, no hay diff que auditar:
-`verdict: "nothing_to_review"`, `continue_day: false`, escribí el veredicto y terminá. `blocked`
-además deja un comentario en la tarjeta con `blocked_reason`, para que mañana se lea en el board
-y no en un log.
-
-## 2 · La evidencia, sin pasar por el worker
+## 1 · The evidence, not routed through the worker
 
 ```powershell
-gh pr view <n> --json title,body,files,additions,deletions
+gh pr view <n> --json headRefOid,headRefName,title,body,files,additions,deletions
 gh pr diff <n>
-gh pr checks <n> --watch      # el CI tarda unos 5 minutos
-python $S task <id>           # la descripción de la tarea y sus comentarios
+python $S task <id>                              # the task and its comments
+python $S tasks --space MeetingTranscriber       # the whole board, for check 5
 ```
 
-Y `ISA.md` para los claims. Leé el diff **entero** si entra; si es enorme, leé los archivos que
-cargan la lógica y no los generados.
+`headRefOid` is your `audited_head_sha`, and it comes from the PR — never copy it from the
+handoff. If it disagrees with the `head_sha` the worker delivered, the orchestrator stops the day
+on its own: somebody pushed on top and your verdict would be about different code.
 
-## 3 · Los cinco chequeos
-
-1. **¿Hizo lo que la tarea pedía?** Descripción de la tarea contra el diff — no contra el body
-   del PR, que lo escribió el mismo que hizo el trabajo.
-2. **¿Hay decisiones que no declaró?** El chequeo central. Buscá en el diff y en el body: un
-   `TODO`, un "por ahora", "queda pendiente", "se puede mejorar", un caso manejado de una forma
-   defendible pero no obvia, un default elegido sin fundamento a la vista, una firma que promete
-   menos de lo que la tarea pedía. Cada una que no esté en `decisions_deferred` va a
-   `unreported_decisions`. **Acá es donde esta skill se paga sola.**
-3. **¿Los claims cierran de verdad?** Cada `isc_closed` tiene que estar `[x]` en `ISA.md`, con su
-   línea en `## Verification` nombrando un probe que corrió — y ese probe tiene que estar en
-   `probes` con `passed: true`. Un claim marcado sobre un test que no corrió es un hallazgo grave:
-   es la única propiedad que sostiene todo el resto del repo.
-4. **¿`left_out` coincide con el diff?** Si la tarea pedía tres cosas, el diff trae dos y
-   `left_out` está vacío, el worker bajó el alcance sin decirlo.
-5. **¿Los `skipped` son honestos?** Una tarea movida a `pending` tiene que necesitar de verdad una
-   persona o hardware. Si es sólo difícil, el worker se la sacó de encima: devolvela a `Open` y
-   anotalo.
-
-## 4 · El veredicto
-
-**`hold`** — el día se frena acá. Cualquiera de estas alcanza: CI en rojo; una
-`decisions_deferred` con `blocks_the_pr`; una `unreported_decisions` que, resuelta al revés,
-invalidaría el diff; un claim cerrado sin probe; el diff hace algo que la tarea no pedía y toca
-`Domain/Audio/`, `Domain/Time/` o `Domain/Jobs/`.
-
-**`pass_with_followup`** — el diff se sostiene, pero quedó trabajo nombrado: decisiones que no
-bloquean, `left_out`, hallazgos tuyos que no invalidan nada.
-
-**`pass`** — nada de lo anterior.
-
-## 5 · Qué hacés y qué no
-
-**El PR queda abierto y la tarjeta queda en `in review`, siempre.** Integrar el PR y cerrar la
-tarjeta son del usuario — `CLAUDE.md` lo dice y esta skill no es la excepción. Lo que dejás no es
-un merge: es un PR que el usuario puede leer sabiendo que alguien que no lo escribió ya lo miró.
-
-En los tres veredictos, comentá en el PR qué revisaste y qué encontraste. En `hold`, comentalo
-también en la tarjeta: es lo que se lee a la mañana.
-
-Para cada followup, una tarjeta en la misma lista de fase que la tarea de origen:
+**Read the ISA at the PR's tip, not from disk.** The worker went back to `main`, so the local
+`ISA.md` still shows the claim open and a `hold` drawn from it would be false:
 
 ```powershell
-python $S create --list "<lista>" --name "<nombre>" --priority normal
-python $S link <id-nuevo> --needs <id-origen>
+git show <headRefOid>:ISA.md
 ```
 
-El nombre abre con `BUG - ` sólo si es algo que ya está mal. La descripción dice qué hay que hacer
-y cómo se sabe que está listo — **no** cómo lo encontraste, que va como comentario. Una decisión
-que corresponde al usuario y no al código se escribe como la pregunta que hay que contestarle,
-no como una tarea de implementación.
+## 2 · The five checks
 
-`continue_day` es verdadero en `pass` y `pass_with_followup`, falso en `hold`.
+1. **Did it do what the task asked?** The task description against the diff — not against the PR
+   body, written by the same one who did the work. What is missing goes to `reasons`.
+2. **Are there decisions it did not declare?** The central check. In the diff and the body: a
+   `TODO`, a "for now", "left pending", "could be improved", a case handled in a defensible but
+   non-obvious way, a default with no reasoning in sight, a signature promising less than the task
+   asked. Each one absent from `decisions_deferred` goes to `unreported_decisions`. **This is
+   where this skill pays for itself.**
+3. **Do the claims really close?** `probes[].passed` is the worker's assertion and does not count
+   as evidence. What counts: **the PR's CI**, which runs the four commands on its own, and
+   **re-running yourself** the test holding up each `isc_closed` — it is named on its
+   `## Verification` line, and running it costs seconds. A claim you cannot corroborate that way
+   goes to `isc_unproved`. It is the property the whole rest of the repo rests on.
+4. **Is `blocks_the_pr` true?** Recompute it from the diff. The worker classified its own
+   decision, and that is exactly the classification you cannot delegate to the audited.
+5. **Did it move cards it did not declare?** List the board and compare against `skipped[]`. A
+   task in `pending` that is not declared is one quietly got rid of. And for the declared ones,
+   open the card: if it was merely hard and needs nobody, put it back to `Open` and record that.
 
-## 6 · La salida
+## 3 · CI, with a clock
 
-JSON en la ruta que te pasaron, y tu último mensaje es ese mismo JSON. La forma está en
-`verdict.schema.json`, al lado de este archivo. `actions_taken` lista lo que hiciste de verdad —
-cada tarjeta con su ID, cada comentario — porque es lo único que el usuario va a leer a la mañana
-para saber qué pasó mientras no estaba.
+```powershell
+gh pr checks <n> --watch
+```
+
+A queued check that never starts hangs the whole day. If it has not finished in **15 minutes**,
+stop waiting: `verdict: "hold"`, saying CI did not conclude. Red is `hold` too, without exception.
+
+## 4 · The verdict
+
+**`hold`** — the day stops. Any one of these is enough: CI red or unfinished; a decision —
+declared or not — that resolved the other way would invalidate the diff; any `isc_unproved`; the
+diff doing something the task did not ask for inside `Domain/Audio/`, `Domain/Time/` or
+`Domain/Jobs/`.
+
+**`pass_with_followup`** — the diff holds up and named work is left over.
+
+**`pass`** — none of the above.
+
+It is the only field deciding whether the day goes on. No second field repeats it.
+
+## 5 · What you do and what you do not
+
+**The PR stays open and the card stays in `in review`, always.** Merging and closing are the
+user's — `CLAUDE.md` says so. What you leave is a PR they can read knowing somebody who did not
+write it has already looked.
+
+On all three verdicts, comment on the PR with what you reviewed and found; on `hold`, comment on
+the card as well, which is what gets read in the morning.
+
+For each followup, a card in the same list as the originating task. **Check first whether one
+with that name already exists** — you may be running after an audit that died just after creating
+it, and a duplicate dirties the board:
+
+```powershell
+python $S create --list "<list>" --name "<name>" --priority normal
+python $S link <new-id> --needs <origin-id>
+```
+
+The name opens with `BUG - ` only when something is already wrong. The description says what to do
+and how you know it is done — not how you found it, which goes as a comment. A decision that
+belongs to the user is written as the question to put to them, not as an implementation task.
+
+## 6 · The output
+
+JSON at the path you were given, and your last message is that same JSON; the shape is in
+`verdict.schema.json`. `actions_taken` lists what you actually did, with IDs — it is the only
+thing the user will read in the morning to learn what happened while they were away.

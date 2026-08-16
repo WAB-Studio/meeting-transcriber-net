@@ -487,5 +487,6 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-# Corridas del orquestador desatendido: handoffs, veredictos y logs del dia.
+# Unattended orchestrator runs: handoffs, verdicts and the day log. The lock is a live PID.
 .claude/orchestrator/log/
+.claude/orchestrator/day.lock

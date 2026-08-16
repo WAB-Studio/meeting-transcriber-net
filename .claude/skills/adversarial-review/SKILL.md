@@ -73,22 +73,37 @@ Determine which model you are, then spawn reviewers on the opposite:
 **If you are Claude** — spawn Codex reviewers via `codex exec`:
 
 ```sh
-codex exec --skip-git-repo-check -o "$REVIEW_DIR/skeptic.md" "prompt" 2>/dev/null
+codex exec --skip-git-repo-check -o "$REVIEW_DIR/skeptic.md" "prompt" \
+  < /dev/null 2> "$REVIEW_DIR/skeptic.err"
 ```
+
+**`< /dev/null` is not optional.** `codex exec` reads stdin *in addition to* the prompt argument
+— it announces `Reading additional input from stdin...` and waits for EOF. In the background,
+where this is meant to run, stdin is a pipe nobody closes, so the reviewer hangs before it reads
+a line of the diff. It looks identical to a slow review: the process is alive, the output file
+is empty, and it stays that way for as long as you let it.
+
+Send stderr to a file rather than to `/dev/null`. It carries the progress trace and whatever the
+CLI would say about auth or a bad flag, and a reviewer that produced nothing is diagnosed there
+or not at all.
 
 Default to the read-only sandbox, which is what `codex exec` already uses. Pass
 `-s workspace-write` only if the reviewer needs to run tests — a reviewer that can write is a
 reviewer that can change what it is reviewing.
 
 Run with `run_in_background: true`, monitor via `TaskOutput` with `block: true, timeout: 600000`.
+A reviewer with an empty output file at the timeout has hung, not thought hard: kill it, read its
+`.err`, and relaunch. Do not extend the timeout.
 
 **If you are Codex** — spawn Claude reviewers via `claude` CLI:
 
 ```sh
-claude -p "prompt" > "$REVIEW_DIR/skeptic.md" 2>/dev/null
+claude -p "prompt" > "$REVIEW_DIR/skeptic.md" \
+  < /dev/null 2> "$REVIEW_DIR/skeptic.err"
 ```
 
-Run with `run_in_background: true`.
+Run with `run_in_background: true`. `< /dev/null` for the same reason as above — `claude -p`
+also reads a piped stdin, so backgrounding it without closing stdin hangs the reviewer.
 
 Name each output file after the lens: `skeptic.md`, `architect.md`, `minimalist.md`.
 

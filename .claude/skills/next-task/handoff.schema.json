@@ -4,11 +4,8 @@
   "required": [
     "outcome",
     "task_id",
-    "task_name",
-    "task_list",
-    "branch",
     "pr_number",
-    "pr_url",
+    "head_sha",
     "isc_closed",
     "probes",
     "decisions_deferred",
@@ -20,47 +17,45 @@
     "outcome": {
       "type": "string",
       "enum": ["pr_opened", "blocked", "no_tasks"],
-      "description": "pr_opened: hay rama y PR. blocked: se trabó, nada que revisar. no_tasks: el pool quedó vacío."
+      "description": "pr_opened: there is a branch and a PR. blocked: stuck, nothing to review. no_tasks: the pool came up empty."
     },
-    "task_id": { "type": "string", "description": "ID de ClickUp, o cadena vacía si no se tomó ninguna." },
-    "task_name": { "type": "string" },
-    "task_list": { "type": "string", "description": "La lista de fase de donde salió." },
-    "branch": { "type": "string", "description": "Rama creada, o cadena vacía." },
-    "pr_number": { "type": "integer", "description": "Número del PR, o 0 si no se abrió." },
-    "pr_url": { "type": "string" },
+    "task_id": { "type": "string", "description": "ClickUp ID, or an empty string if none was taken." },
+    "pr_number": { "type": "integer", "description": "PR number, or 0 if none was opened." },
+    "head_sha": {
+      "type": "string",
+      "description": "Full SHA of the commit left at the branch tip. It fixes WHAT was delivered: the audit returns the one it read and the orchestrator stops if they disagree."
+    },
     "isc_closed": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "IDs tipo ISC-42 marcados [x] en esta sesión. Vacío si no cerró ninguno."
+      "description": "IDs such as ISC-42 marked [x] in this session."
     },
     "probes": {
       "type": "array",
-      "description": "Lo que realmente corrió, no lo que debería haber corrido.",
+      "description": "What actually ran. This is the worker's ASSERTION, not evidence: the audit corroborates it against CI and by re-running whatever holds a claim up.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["command", "passed", "note"],
+        "required": ["command", "passed"],
         "properties": {
           "command": { "type": "string" },
-          "passed": { "type": "boolean" },
-          "note": { "type": "string", "description": "Cadena vacía si no hay nada que aclarar." }
+          "passed": { "type": "boolean" }
         }
       }
     },
     "decisions_deferred": {
       "type": "array",
-      "description": "Bifurcaciones resueltas sin confirmación, o dejadas abiertas. Un array vacío afirma que no hubo ninguna y se chequea contra el diff.",
+      "description": "Forks resolved without confirmation, or left open. An empty array asserts there were none and is checked against the diff.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["what", "chose", "why_not_decided", "blocks_the_pr"],
+        "required": ["what", "chose", "blocks_the_pr"],
         "properties": {
-          "what": { "type": "string", "description": "La bifurcación, en una oración." },
-          "chose": { "type": "string", "description": "Qué se hizo mientras tanto, o cadena vacía si quedó sin hacer." },
-          "why_not_decided": { "type": "string" },
+          "what": { "type": "string", "description": "The fork, in one sentence." },
+          "chose": { "type": "string", "description": "What was done meanwhile, or an empty string if it was left undone." },
           "blocks_the_pr": {
             "type": "boolean",
-            "description": "Verdadero si resolverla al revés invalidaría el diff que se acaba de subir."
+            "description": "True if resolving it the other way would invalidate the diff. The audit recomputes this itself and does not lean on the value."
           }
         }
       }
@@ -68,22 +63,21 @@
     "left_out": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Lo que la tarea pedía y no se entregó."
+      "description": "What the task asked for and was not delivered."
     },
     "skipped": {
       "type": "array",
-      "description": "Tareas movidas a pending por necesitar una persona o hardware.",
+      "description": "Tasks moved to pending for needing a person or hardware. The audit re-lists the board to catch the ones moved and not declared here.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["task_id", "task_name", "needs"],
+        "required": ["task_id", "needs"],
         "properties": {
           "task_id": { "type": "string" },
-          "task_name": { "type": "string" },
-          "needs": { "type": "string", "description": "Qué tiene que traer o hacer una persona." }
+          "needs": { "type": "string", "description": "What a person has to do or bring." }
         }
       }
     },
-    "blocked_reason": { "type": "string", "description": "Cadena vacía salvo que outcome sea blocked." }
+    "blocked_reason": { "type": "string", "description": "Empty string unless outcome is blocked." }
   }
 }
