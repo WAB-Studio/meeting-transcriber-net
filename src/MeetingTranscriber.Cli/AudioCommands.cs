@@ -61,6 +61,9 @@ public static class AudioCommands
         var seconds = arguments.Number("--seconds", 0);
         var wanted = arguments.Optional("--microphone");
         var program = arguments.Optional("--process");
+        var meeting = arguments.Optional("--meeting") is { } typed
+            ? Arguments.Meeting(typed)
+            : Guid.NewGuid();
         arguments.EnsureNothingLeftOver();
 
         if (seconds == 0)
@@ -76,9 +79,10 @@ public static class AudioCommands
         // says so: a recording still being written is a file this build refuses to read, which is
         // the same refusal that stops somebody being told a meeting still going on had ended.
         var spools = new List<(AudioChannel Channel, FileInfo Blocks)>();
-        using (var session = CaptureSession.Start(folder, playback, microphone, follow))
+        using (var session = CaptureSession.Start(folder, meeting, playback, microphone, follow))
         {
             Report.Line(output, "folder", folder.FullName);
+            Report.Line(output, "meeting", session.Card.MeetingId.ToString());
             Report.Line(output, "channel 0", session.Mode.ToString());
 
             if (session.FellBack is not null)
@@ -126,66 +130,104 @@ public static class AudioCommands
     }
 
     /// <summary>
-    /// What a folder of blocks holds, for a recording nobody got to stop: how much of it survived,
-    /// what the machine cut off, a file of each source to listen to, and — when both sources are
-    /// there — the recording itself.
+    /// What recordings nobody got to stop are waiting in the folder recordings are written into:
+    /// which meeting each one is, when it started, what it was listening to and how much is there.
     /// </summary>
     /// <remarks>
-    /// It reports and writes beside what is there, and removes nothing. A spool may be the only
-    /// copy of a meeting, so what happens to one is a person's decision and not a command's.
+    /// This is the start after a crash, without a window over it. It reads and removes nothing:
+    /// what happens to a recording is <see cref="Recover"/>, and that takes somebody saying which
+    /// of the three it is.
     /// </remarks>
-    public static int Spool(Arguments arguments, TextWriter output)
+    public static int Recordings(Arguments arguments, TextWriter output)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        ArgumentNullException.ThrowIfNull(output);
+
+        var root = new DirectoryInfo(arguments.Required("--spool"));
+        arguments.EnsureNothingLeftOver();
+
+        Report.Line(output, "spool", root.FullName);
+
+        var waiting = UnfinishedRecordings.In(root);
+        if (waiting.Count == 0)
+        {
+            Report.Line(output, "waiting", "none");
+            return Cli.Ok;
+        }
+
+        foreach (var recording in waiting)
+        {
+            Report.Line(output, "recording", recording.Folder.Name);
+            Describe(recording, output);
+        }
+
+        return Cli.Ok;
+    }
+
+    /// <summary>
+    /// What happens to one recording nobody stopped: it is kept — which is where the recording the
+    /// two spools become is made — its sources are taken out to a folder, or it is thrown away.
+    /// </summary>
+    /// <remarks>
+    /// One of the three has to be typed, and there is no default. A spool may be the only copy of
+    /// a meeting that happened, so the command exists to carry a decision rather than to make one
+    /// — which is the same reason nothing else in this program deletes one.
+    /// </remarks>
+    public static int Recover(Arguments arguments, TextWriter output)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
 
         var folder = new DirectoryInfo(arguments.Required("--in"));
+        var keep = arguments.Flag("--keep");
+        var into = arguments.Optional("--export");
+        var discard = arguments.Flag("--discard");
         arguments.EnsureNothingLeftOver();
 
-        if (!folder.Exists)
+        if (new[] { keep, into is not null, discard }.Count(chosen => chosen) != 1)
         {
-            throw new CommandException($"There is no folder at '{folder.FullName}'.");
+            throw new UsageException(
+                "One of --keep, --export <directory> or --discard is needed, and only one. What "
+                + "happens to a recording is a decision, so this command does not have a default.");
         }
 
-        Report.Line(output, "folder", folder.FullName);
+        var recording = UnfinishedRecordings.At(folder);
+        Report.Line(output, "folder", recording.Folder.FullName);
+        Describe(recording, output);
 
-        var found = new List<(AudioChannel Channel, FileInfo Blocks)>();
-        foreach (var channel in new[] { AudioChannel.Loopback, AudioChannel.Microphone })
+        if (discard)
         {
-            var blocks = BlockSpool.FileFor(folder, channel);
-            if (blocks.Exists)
-            {
-                found.Add((channel, blocks));
-            }
-            else
-            {
-                Report.Line(output, Name(channel), $"no {blocks.Name}");
-            }
+            recording.Discard();
+            Report.Line(output, "thrown away", recording.Folder.FullName);
+            return Cli.Ok;
         }
 
-        if (found.Count == 0)
+        if (into is not null)
         {
-            throw new CommandException(
-                $"'{folder.FullName}' holds no spool, so there is no recording in it to recover.");
+            foreach (var exported in recording.Export(new DirectoryInfo(into)))
+            {
+                Report.Line(output, $"{Name(exported.Channel)} taken out", Says(exported));
+            }
+
+            return Cli.Ok;
         }
 
         // A meeting is two sources on one timeline, so half of one is a folder somebody has to look
         // at rather than a recording to make half of. Either way every source that is there is
-        // reported below, which is what a person recovering one is owed.
-        if (found.Count == CapturedAudio.ChannelCount)
+        // read through and reported below, which is what a person keeping one is owed.
+        if (recording.Sources.Count == CapturedAudio.ChannelCount)
         {
-            Materialise(folder, output);
+            Materialise(recording.Folder, output);
         }
         else
         {
             Report.Line(output, "recording", $"not made: {MeetingAudio.FileName} needs both sources");
         }
 
-        foreach (var (channel, blocks) in found)
+        foreach (var survivor in recording.Keep())
         {
-            var replayed = BlockSpool.ToWav(blocks);
-            Report.Line(output, $"{Name(channel)} format", replayed.Format.ToString());
-            Report.Line(output, $"{Name(channel)} recovered", Says(blocks, replayed));
+            Report.Line(output, $"{Name(survivor.Channel)} format", survivor.Format.ToString());
+            Report.Line(output, $"{Name(survivor.Channel)} kept", Says(survivor));
         }
 
         return Cli.Ok;
@@ -214,7 +256,7 @@ public static class AudioCommands
             // read is a sentence about a frame counter after an hour of recording.
             throw new AudioCaptureException(
                 $"{cannot.Message} Every block is still in '{folder.FullName}': what could not be "
-                + "made is the one file the two sources become, and running spool over that folder "
+                + "made is the one file the two sources become, and 'recover --in <folder> --keep' "
                 + "makes it again.",
                 cannot);
         }
@@ -241,24 +283,83 @@ public static class AudioCommands
     }
 
     /// <summary>
+    /// What a recording says about itself before anything is decided: its card if it has one, and
+    /// what each source's file holds.
+    /// </summary>
+    private static void Describe(UnfinishedRecording recording, TextWriter output)
+    {
+        if (recording.Running)
+        {
+            Report.Line(output, "still", "being recorded, so there is nothing to decide about it yet");
+        }
+
+        if (recording.Unreadable is { } torn)
+        {
+            Report.Line(output, "meeting", $"unnamed: {torn}");
+        }
+        else if (recording.Card is { } card)
+        {
+            Report.Line(output, "meeting", card.MeetingId.ToString());
+            Report.Line(output, "started", card.StartedAt.ToStorage());
+            Report.Line(output, "profile", card.Profile.ToWireName());
+            Report.Line(output, "channel 0", card.Mode.ToString());
+
+            foreach (var source in card.Sources)
+            {
+                Report.Line(output, $"{Name(source.Channel)} heard", source.Heard);
+            }
+
+            if (card.FellBack is not null)
+            {
+                Report.Line(output, "fell back", card.FellBack);
+            }
+        }
+        else
+        {
+            Report.Line(output, "meeting", $"unnamed, there is no {SpoolManifest.FileName} here");
+        }
+
+        foreach (var source in recording.Sources)
+        {
+            Report.Line(
+                output,
+                $"{Name(source.Channel)} holds",
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{source.Blocks.Name}, {source.Bytes / 1024d / 1024d:0.0} MB"));
+        }
+    }
+
+    /// <summary>
     /// Reads one source's spool back into a file somebody can listen to, in the format its device
     /// handed over. It is a diagnostic and not the recording — the two sources become one pair of
     /// channels on the shared timeline, and that is a different file — but it is read through the
     /// same path a recovery takes, so every capture is a run of the code a crash will depend on.
     /// </summary>
-    private static string PlayedBack(FileInfo blocks) => Says(blocks, BlockSpool.ToWav(blocks));
-
-    /// <summary>What one spool turned out to hold, on the line a person reads it off.</summary>
-    private static string Says(FileInfo blocks, Replayed replayed)
+    private static string PlayedBack(FileInfo blocks)
     {
-        var cut = replayed.Discarded > 0
-            ? string.Create(CultureInfo.InvariantCulture, $", {replayed.Discarded} bytes discarded")
-            : string.Empty;
+        var replayed = BlockSpool.ToWav(blocks);
 
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{BlockSpool.PlaybackFor(blocks).Name}, {replayed.Blocks} blocks{cut}");
+            $"{BlockSpool.PlaybackFor(blocks).Name}, {replayed.Blocks} blocks{Cut(replayed.Discarded)}");
     }
+
+    /// <summary>What one source turned out to be worth, on the line a person reads it off.</summary>
+    private static string Says(SurvivingSource survivor) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{survivor.Blocks} blocks, {Report.Offset(survivor.Covers)}, "
+        + $"{survivor.Lost.Milliseconds} ms lost{Cut(survivor.Discarded)}");
+
+    /// <summary>The same for a source somebody took out of the application.</summary>
+    private static string Says(ExportedSource exported) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{exported.Wav.FullName}, {exported.Blocks} blocks{Cut(exported.Discarded)}");
+
+    /// <summary>What the recording being cut off cost, said only when it cost something.</summary>
+    private static string Cut(long discarded) => discarded > 0
+        ? string.Create(CultureInfo.InvariantCulture, $", {discarded} bytes discarded")
+        : string.Empty;
 
     /// <summary>
     /// What the device said about its own packets, which is the measurement the two files are not.

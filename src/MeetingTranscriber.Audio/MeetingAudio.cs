@@ -99,7 +99,9 @@ public static class MeetingAudio
         }
         catch
         {
-            Erase(unfinished);
+            // A recording that never became one, taken back by the one thing in the engine allowed
+            // to take a file away — see BlockSpool.Erase for why there is only ever one.
+            BlockSpool.Erase(unfinished);
             throw;
         }
     }
@@ -287,22 +289,6 @@ public static class MeetingAudio
         }
 
         return [.. peaks.Select(peak => new LevelReading(peak))];
-    }
-
-    /// <summary>
-    /// Removes a recording that never became one. It does not throw: what the caller has to hear is
-    /// why the recording failed, and an unfinished file left behind is only litter.
-    /// </summary>
-    private static void Erase(FileInfo unfinished)
-    {
-        try
-        {
-            File.Delete(unfinished.FullName);
-        }
-        catch (Exception left) when (left is IOException or UnauthorizedAccessException)
-        {
-            // Swallowed on purpose: see the summary.
-        }
     }
 
     /// <summary>The timeline's frames on their way into a WAV, counted as they pass.</summary>
