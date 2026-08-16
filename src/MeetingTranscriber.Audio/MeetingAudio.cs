@@ -27,8 +27,9 @@ namespace MeetingTranscriber.Audio;
 /// <para>
 /// It lands under its own name only after it has been read back off the disk. A half-written
 /// <c>audio.wav</c> is worse than none — it is the file everything downstream would take for the
-/// meeting — so what a failure leaves is the recording's name still free and the spools still
-/// there.
+/// meeting — so a failure leaves whatever that name held before it and never half of something:
+/// nothing at all the first time, and the recording those same spools already made every time
+/// after, which is the same recording this would have produced.
 /// </para>
 /// </remarks>
 public static class MeetingAudio
@@ -74,8 +75,8 @@ public static class MeetingAudio
         var recording = In(folder);
         var unfinished = new FileInfo(recording.FullName + Unfinished);
 
-        using var loopback = SpoolReader.Open(BlockSpool.FileFor(folder, AudioChannel.Loopback));
-        using var microphone = SpoolReader.Open(BlockSpool.FileFor(folder, AudioChannel.Microphone));
+        using var loopback = Spool(folder, AudioChannel.Loopback);
+        using var microphone = Spool(folder, AudioChannel.Microphone);
 
         try
         {
@@ -99,6 +100,41 @@ public static class MeetingAudio
         catch
         {
             Erase(unfinished);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// One source's spool, opened under the name that source's blocks go by and held to what its
+    /// own header says it holds.
+    /// </summary>
+    /// <remarks>
+    /// The name is how the file is found and the header is what it is. Everything below binds a
+    /// format to a source by which file it came out of while the timeline lays each packet out by
+    /// the channel written inside it, so a pair somebody swapped while recovering a meeting would
+    /// decode one device's bytes as the other's — quietly, and as a recording rather than as a
+    /// refusal. The header is checksummed and the name is not, so the header decides.
+    /// </remarks>
+    private static SpoolReader Spool(DirectoryInfo folder, AudioChannel channel)
+    {
+        var file = BlockSpool.FileFor(folder, channel);
+        var spool = SpoolReader.Open(file);
+
+        try
+        {
+            if (spool.Channel != channel)
+            {
+                throw new AudioCaptureException(
+                    $"'{file.Name}' says it holds the {spool.Channel} source. A spool carries which "
+                    + "source it is, and a recording built on the name instead would put one "
+                    + "device's audio on the other one's channel.");
+            }
+
+            return spool;
+        }
+        catch
+        {
+            spool.Dispose();
             throw;
         }
     }
@@ -131,10 +167,20 @@ public static class MeetingAudio
     /// The two spools as one run of packets, in the order the devices read them.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Merged rather than one whole source and then the other. The timeline hands on every frame
     /// both sources cover and holds back what only one of them does, so a spool arriving before the
     /// other one had started would be two hours of a meeting held in memory. Both files are already
     /// in their own order, so keeping them in the shared one costs a packet of each.
+    /// </para>
+    /// <para>
+    /// A packet whose instant the device would not vouch for is placed by the last instant that
+    /// source did vouch for, and never by its own. Its samples and its position are still the
+    /// meeting — that is the whole point of the flag — but its instant is a number the device
+    /// disowned, and one that happened to land an hour ahead would hold this source back until the
+    /// timeline had given it up and refused everything after it. A recording is not lost over a
+    /// value nothing was going to read.
+    /// </para>
     /// </remarks>
     private static IEnumerable<CapturePacket> InOrder(
         IEnumerable<CapturePacket> loopback,
@@ -145,9 +191,25 @@ public static class MeetingAudio
         var hasOthers = others.MoveNext();
         var hasMine = mine.MoveNext();
 
+        // The last instant each source was placed by. Only ever read for the packet at the head of
+        // that source, which is the one being compared, so a vouched head writing its own instant
+        // here is what the unvouched packet behind it will be placed by.
+        var placed = new long[CapturedAudio.ChannelCount];
+
+        long Placing(CapturePacket packet)
+        {
+            var index = CapturedAudio.IndexOf(packet.Channel);
+            if (packet.TimingIsSound)
+            {
+                placed[index] = packet.CapturedAt.Ticks;
+            }
+
+            return placed[index];
+        }
+
         while (hasOthers || hasMine)
         {
-            if (hasOthers && (!hasMine || others.Current.CapturedAt.Ticks <= mine.Current.CapturedAt.Ticks))
+            if (hasOthers && (!hasMine || Placing(others.Current) <= Placing(mine.Current)))
             {
                 yield return others.Current;
                 hasOthers = others.MoveNext();
@@ -166,10 +228,23 @@ public static class MeetingAudio
     /// channel got.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Read again rather than counted while writing. What a writer believes it wrote is not
     /// evidence about a file, and a WAV is the container where that gap is widest: its length lives
-    /// in a header patched at the close, so a recording whose last write never landed is exactly
-    /// the case a number kept in memory cannot see.
+    /// in a header patched at the close, so what says the file is that long is a number the writer
+    /// put there and not the audio behind it.
+    /// </para>
+    /// <para>
+    /// Which is why the header is asked and then the bytes are counted. A file that says it holds
+    /// two hours and stops after twenty minutes agrees with itself on every question but that one,
+    /// and it is the one downstream reads the length off.
+    /// </para>
+    /// <para>
+    /// What this cannot say is that the disk kept it: nothing here asks for a flush, so the bytes
+    /// read back may be the operating system's. That is deliberate. The recording is produced again
+    /// from the spools beside it whenever anybody asks, which is the whole of what makes it
+    /// replaceable — the durability ceremony belongs to what cannot be obtained twice.
+    /// </para>
     /// </remarks>
     private static IReadOnlyList<LevelReading> Verify(FileInfo wav, long frames)
     {
@@ -186,20 +261,29 @@ public static class MeetingAudio
         if (played.Length != frames * frameBytes)
         {
             throw new AudioCaptureException(
-                $"The recording came back {played.Length / frameBytes} frames long and the timeline "
+                $"The recording says it is {played.Length / frameBytes} frames long and the timeline "
                 + $"handed over {frames}. What is on the disk is not the recording that was made.");
         }
 
         var peaks = new float[CapturedAudio.ChannelCount];
         var block = new byte[frameBytes * 4096];
+        var counted = 0L;
         int read;
         while ((read = played.Read(block, 0, block.Length)) > 0)
         {
+            counted += read;
             for (var channel = 0; channel < peaks.Length; channel++)
             {
                 peaks[channel] = MathF.Max(
                     peaks[channel], Levels.Peak(block.AsSpan(0, read), Interchange, channel).Peak);
             }
+        }
+
+        if (counted != frames * frameBytes)
+        {
+            throw new AudioCaptureException(
+                $"The recording says it is {frames} frames long and gives up {counted / frameBytes}. "
+                + "What is on the disk is not the recording that was made.");
         }
 
         return [.. peaks.Select(peak => new LevelReading(peak))];

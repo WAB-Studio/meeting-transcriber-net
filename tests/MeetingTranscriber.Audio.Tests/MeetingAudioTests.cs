@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Time;
 
 using NAudio.Wave;
 
@@ -19,6 +20,12 @@ public sealed class MeetingAudioTests : IDisposable
 {
     private static readonly StreamFormat StereoFloat = new(48_000, 2, 32, SampleEncoding.IeeeFloat);
     private static readonly StreamFormat CheapMicrophone = new(44_100, 1, 16, SampleEncoding.Pcm);
+
+    /// <summary>
+    /// Past the half minute after which the recording goes on without a source that has said
+    /// nothing, which is the bound a source held back has to cross before anything goes wrong.
+    /// </summary>
+    private const double LongEnoughToBeGivenUp = 35;
 
     private readonly DirectoryInfo folder = new(Path.Combine(
         Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
@@ -122,6 +129,45 @@ public sealed class MeetingAudioTests : IDisposable
     }
 
     /// <summary>
+    /// A device that cannot say when it read one packet costs that packet's instant and nothing
+    /// else. Ordering the two spools by an instant the device disowned would hold its source back
+    /// past the half minute after which the recording goes on without it, and then refuse
+    /// everything it had left to hand over — losing a meeting over a number nothing was going to
+    /// read.
+    /// </summary>
+    /// <remarks>
+    /// Both spools run past that half minute, because that is the bound the failure needs. The two
+    /// runs differ only in the instant on the unvouched packet, which nothing measures against
+    /// either way, so the recording has to come back sample for sample the same.
+    /// </remarks>
+    [Fact]
+    public void A_packet_the_device_would_not_vouch_for_does_not_hold_its_source_back()
+    {
+        var wandered = Materialised(Unvouched(at: 40, aheadSeconds: 3_600));
+        var beside = Materialised(Unvouched(at: 40, aheadSeconds: 0));
+
+        wandered.Length.ShouldBe(beside.Length);
+        wandered.Bytes.ShouldBe(beside.Bytes);
+    }
+
+    /// <summary>
+    /// The name says which file to open and the header says which source it holds. A pair somebody
+    /// swapped while recovering a meeting would otherwise decode each device's bytes as the other
+    /// one's — and come back as a recording rather than as a refusal.
+    /// </summary>
+    [Fact]
+    public void A_spool_under_the_other_sources_name_is_refused_rather_than_decoded_as_it()
+    {
+        Record(Fabricated.Bursts(0.5), Fabricated.Bursts(0.5), seconds: 1);
+        Swap();
+
+        Should.Throw<AudioCaptureException>(() => MeetingAudio.Materialise(folder))
+            .Message.ShouldContain("says it holds the");
+
+        MeetingAudio.In(folder).Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
     /// The file is put under its own name only once it has been read back, so a recording that could
     /// not be made leaves that name free rather than a file everything downstream would take for the
     /// meeting — and leaves nothing half written beside it either.
@@ -130,10 +176,11 @@ public sealed class MeetingAudioTests : IDisposable
     public void A_recording_that_could_not_be_made_leaves_no_file_pretending_to_be_one()
     {
         Write(
+            folder,
             AudioChannel.Loopback,
             StereoFloat,
             Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 1, Fabricated.Quiet));
-        Write(AudioChannel.Microphone, CheapMicrophone, GoesBackwards());
+        Write(folder, AudioChannel.Microphone, CheapMicrophone, GoesBackwards());
 
         Should.Throw<AudioCaptureException>(() => MeetingAudio.Materialise(folder))
             .Message.ShouldContain("went back from frame");
@@ -206,22 +253,81 @@ public sealed class MeetingAudioTests : IDisposable
         return packets;
     }
 
+    /// <summary>
+    /// The microphone's packets for a recording long enough for a source to be given up in, with
+    /// the one at <paramref name="at"/> carrying an instant the device would not vouch for — its
+    /// own, or one that many seconds ahead of where the device really was.
+    /// </summary>
+    private static List<CapturePacket> Unvouched(int at, double aheadSeconds)
+    {
+        var packets = Fabricated
+            .Packets(AudioChannel.Microphone, CheapMicrophone, 44_100, 0, LongEnoughToBeGivenUp, Fabricated.Bursts(5))
+            .ToList();
+
+        packets[at] = packets[at] with
+        {
+            CapturedAt = MonotonicInstant.FromTicks(
+                packets[at].CapturedAt.Ticks + (long)(aheadSeconds * MonotonicInstant.TicksPerSecond)),
+            TimingIsSound = false,
+        };
+
+        return packets;
+    }
+
+    /// <summary>
+    /// How long the recording those microphone packets make is, and the bytes it came out as. Each
+    /// run gets a folder of its own, so neither can read what the other left.
+    /// </summary>
+    private (Duration Length, byte[] Bytes) Materialised(IEnumerable<CapturePacket> microphone)
+    {
+        var into = folder.CreateSubdirectory(Guid.NewGuid().ToString("n"));
+
+        Write(
+            into,
+            AudioChannel.Loopback,
+            StereoFloat,
+            Fabricated.Packets(
+                AudioChannel.Loopback, StereoFloat, 48_000, 0, LongEnoughToBeGivenUp, Fabricated.Bursts(5)));
+        Write(into, AudioChannel.Microphone, CheapMicrophone, microphone);
+
+        var recording = MeetingAudio.Materialise(into);
+        return (recording.Length, File.ReadAllBytes(recording.File.FullName));
+    }
+
     /// <summary>Both spools of one recording, each source hearing what it is given.</summary>
     private void Record(Func<double, float> loopback, Func<double, float> microphone, double seconds)
     {
         Write(
+            folder,
             AudioChannel.Loopback,
             StereoFloat,
             Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, seconds, loopback));
         Write(
+            folder,
             AudioChannel.Microphone,
             CheapMicrophone,
             Fabricated.Packets(AudioChannel.Microphone, CheapMicrophone, 44_100, 0, seconds, microphone));
     }
 
-    private void Write(AudioChannel channel, StreamFormat format, IEnumerable<CapturePacket> packets)
+    /// <summary>Puts each source's blocks under the other one's name.</summary>
+    private void Swap()
     {
-        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, format);
+        var aside = Path.Combine(folder.FullName, "aside");
+        var loopback = BlockSpool.FileFor(folder, AudioChannel.Loopback).FullName;
+        var microphone = BlockSpool.FileFor(folder, AudioChannel.Microphone).FullName;
+
+        File.Move(loopback, aside);
+        File.Move(microphone, loopback);
+        File.Move(aside, microphone);
+    }
+
+    private void Write(
+        DirectoryInfo into,
+        AudioChannel channel,
+        StreamFormat format,
+        IEnumerable<CapturePacket> packets)
+    {
+        using var writer = SpoolWriter.Create(BlockSpool.FileFor(into, channel), channel, format);
         foreach (var packet in packets)
         {
             writer.Write(packet);

@@ -111,12 +111,17 @@ public static class AudioCommands
             }
         }
 
+        // Before the files to listen to, and that order is not cosmetic: those hold every sample at
+        // the rate its device ran, so two of them are several times the recording itself. A machine
+        // with room for the meeting and not for the diagnostics beside it must end up with the
+        // meeting.
+        Materialise(folder, output);
+
         foreach (var (channel, blocks) in spools)
         {
             Report.Line(output, $"{Name(channel)} played back", PlayedBack(blocks));
         }
 
-        Materialise(folder, output);
         return Cli.Ok;
     }
 
@@ -144,38 +149,43 @@ public static class AudioCommands
 
         Report.Line(output, "folder", folder.FullName);
 
-        var found = 0;
+        var found = new List<(AudioChannel Channel, FileInfo Blocks)>();
         foreach (var channel in new[] { AudioChannel.Loopback, AudioChannel.Microphone })
         {
             var blocks = BlockSpool.FileFor(folder, channel);
-            if (!blocks.Exists)
+            if (blocks.Exists)
+            {
+                found.Add((channel, blocks));
+            }
+            else
             {
                 Report.Line(output, Name(channel), $"no {blocks.Name}");
-                continue;
             }
-
-            found++;
-            var replayed = BlockSpool.ToWav(blocks);
-            Report.Line(output, $"{Name(channel)} format", replayed.Format.ToString());
-            Report.Line(output, $"{Name(channel)} recovered", Says(blocks, replayed));
         }
 
-        if (found == 0)
+        if (found.Count == 0)
         {
             throw new CommandException(
                 $"'{folder.FullName}' holds no spool, so there is no recording in it to recover.");
         }
 
         // A meeting is two sources on one timeline, so half of one is a folder somebody has to look
-        // at rather than a recording to make half of. What is already reported above is every
-        // source that is there, which is what a person recovering one is owed either way.
-        if (found == CapturedAudio.ChannelCount)
+        // at rather than a recording to make half of. Either way every source that is there is
+        // reported below, which is what a person recovering one is owed.
+        if (found.Count == CapturedAudio.ChannelCount)
         {
             Materialise(folder, output);
         }
         else
         {
             Report.Line(output, "recording", $"not made: {MeetingAudio.FileName} needs both sources");
+        }
+
+        foreach (var (channel, blocks) in found)
+        {
+            var replayed = BlockSpool.ToWav(blocks);
+            Report.Line(output, $"{Name(channel)} format", replayed.Format.ToString());
+            Report.Line(output, $"{Name(channel)} recovered", Says(blocks, replayed));
         }
 
         return Cli.Ok;
