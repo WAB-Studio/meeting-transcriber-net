@@ -40,6 +40,11 @@ public sealed class SpoolCommandTests : IDisposable
 
         new FileInfo(Path.Combine(folder.FullName, "loopback.wav")).Exists.ShouldBeTrue();
         new FileInfo(Path.Combine(folder.FullName, "microphone.wav")).Exists.ShouldBeTrue();
+
+        // And the recording the two of them are, which is the one a meeting is made of.
+        run.Value("recording").ShouldStartWith("audio.wav, 0:00:00, ");
+        run.Value("ch0 recorded").ShouldContain("loudest silent");
+        MeetingAudio.In(folder).Exists.ShouldBeTrue();
     }
 
     /// <summary>
@@ -56,7 +61,9 @@ public sealed class SpoolCommandTests : IDisposable
         run.Code.ShouldBe(Cli.Ok);
         run.Value("ch0 recovered").ShouldStartWith("loopback.wav, 3 blocks");
         run.Value("ch1").ShouldBe("no microphone.blocks");
+        run.Value("recording").ShouldContain("needs both sources");
         BlockSpool.FileFor(folder, AudioChannel.Loopback).Exists.ShouldBeTrue();
+        MeetingAudio.In(folder).Exists.ShouldBeFalse();
     }
 
     [Fact]

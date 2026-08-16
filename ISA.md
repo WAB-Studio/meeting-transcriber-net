@@ -1,7 +1,7 @@
 ---
 phase: climbing
-progress: 81/118
-updated: 2026-08-15
+progress: 83/118
+updated: 2026-08-16
 ---
 
 # ISA — meeting-transcriber-net
@@ -126,9 +126,9 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-71: A recording is as long as the last audio of either source, so one that stopped early does not cut the end off the meeting.
 - [x] ISC-72: Anti: how late a source's audio is handed over cannot change the recording, up to the half minute after which that source is given up.
 - [x] ISC-73: Anti: a stretch of a meeting nobody played into is recorded as the silence it was, and not as whatever the device's buffer last held.
-- [ ] ISC-74: Anti: the recorded file never carries the microphone on channel 0.
+- [x] ISC-74: Anti: the recorded file never carries the microphone on channel 0.
 - [x] ISC-75: A recording cut off mid-block comes back to its last whole block.
-- [ ] ISC-76: Finishing the same recording twice produces the same file.
+- [x] ISC-76: Finishing the same recording twice produces the same file.
 - [ ] ISC-77: Capture falls back to the full loopback when the meeting's process cannot be followed.
 - [ ] ISC-78: A device changing mid-recording does not end the recording.
 - [x] ISC-117: A recording that follows one application carries what that application played, including what the processes it started played.
@@ -310,6 +310,24 @@ Board: 7 · Distribución y backup
   off the packet on the original grounds and the reason sits in the type, since a lost stretch is
   a jump in the device position and a flag nothing reads can disagree with the number beside it.
 
+- **conjecture** — A device's reported position and the frames it hands over are counted in the
+  same unit, so a position that goes backwards is a driver whose counter is broken.
+- **refuted-by** — A webcam microphone on this machine, opened at the endpoint's 48 kHz mix
+  format, hands over 480 frames a packet and advances its position by 160 — its own 16 kHz frames,
+  while the samples arrive converted. Its first packet of 463 frames put the next expected frame
+  at 463 and its second packet said 160, so an 8 s recording came back as a refusal about a
+  counter going backwards. The other microphone on the same machine, which runs at 48 kHz
+  natively, records fine, so the whole difference is what the device runs at.
+- **learned** — Where a stretch of audio belongs is two numbers in two units, and only one of them
+  is the client's. A shared-mode client is converted to the format it asked for; the position
+  counter is not, so a position means nothing on the recording's timeline until it has been scaled
+  by the rate that device really counts in.
+- **criterion-now** — A capture is not assumed to number its frames in the format it was opened
+  at, and a device whose positions cannot be laid out refuses the recording at the moment it is
+  stopped, with every block still on disk and the message saying so. Recording such a device
+  rather than refusing it is a board task, and it is the one thing a person with that microphone
+  needs.
+
 ## Verification
 
 - ISC-1 — `AudioChannelTests` green 2026-08-07
@@ -384,7 +402,9 @@ Board: 7 · Distribución y backup
 - ISC-71 — `SharedTimelineTests.A_source_that_stopped_early_does_not_cut_the_meeting_short` green 2026-08-14: a microphone that stops at 15 s of a 20 s recording leaves the recording 20 s long with 5 s reported missing, rather than ending where it stopped
 - ISC-72 — `SharedTimelineTests.Handing_a_source_over_in_clumps_seconds_late_records_the_same_meeting` green 2026-08-14: the same minute delivered smoothly and in five second clumps is the same recording sample for sample, with the two deliveries first shown to differ — runs of one source of under 5 packets against over 100. `.Handing_a_source_over_later_than_the_timeline_waits_gives_that_source_up` holds the far side of the bound, where the same packets in 35 second clumps are refused
 - ISC-73 — the 14 s run 2026-08-14 played a 440 Hz tone from second 2 to second 12 into the endpoint channel 0 was recording. Its WAV peaks at 0.167 over 5–6 s and is exactly zero over 0–1 s and from 12.5 s to the end, with 1352 packets arriving throughout and nothing lost, so the stretches nothing played into are the silence they were rather than the tone still standing in the device's buffer
+- ISC-74 — `MeetingAudioTests.The_recording_never_carries_the_microphone_on_channel_0` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-16, both ways round: with only the loopback loud the recording read back off disk peaks above half scale at position 0 of every frame and exactly zero at position 1, and with only the microphone loud it is the other way — so a build that swapped the contract and the recording together still fails one of the two. The 8 s `capture` run on this machine 2026-08-16 recorded −18.5 dBFS on channel 0 with its microphone silent, which is the source that was playing landing on channel 0 on real devices
 - ISC-75 — `BlockSpoolTests` (`tests/MeetingTranscriber.Audio.Tests`) and `SpoolCommandTests` (`tests/MeetingTranscriber.Cli.Tests`) green 2026-08-15, over a file cut inside a block, one cut before its samples, a tail of zeroes and a block changed after it was written — each costing that block and none of the ones before it. `.A_block_the_disk_did_not_keep_is_dropped_and_the_ones_before_it_are_not` red against a reader that skipped the checksum. Four `capture` runs on this machine 2026-08-15 killed at 4, 7, 8 and 11 s of 60 came back through `spool` whole, nothing discarded on any of the eight sources — 341, 636, 793 and 996 blocks on channel 0, about 90 a second either way — so a block reaching the disk in one write is what a killed process leaves. 1500 bytes then taken off one of those files' tails cost the 2376 byte block they were inside and left the 792 before it
+- ISC-76 — `MeetingAudioTests.Finishing_the_same_recording_twice_produces_the_same_file` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-16: the same two spools finished twice are the same bytes, the same length and the same levels. On this machine 2026-08-16 an 8 s capture's `audio.wav` and the one `spool` produced from those same blocks afterwards both hashed to `03aaad46b9e9d5e96cb4c25ff52eea4f07047a31bfa6c1a7dc29184896267a6b`, 130563 frames either way
 - ISC-91 — `CorpusRebuildTests.A_second_extraction_leaves_the_first_ones_state_alone_and_starts_its_own_blank` green 2026-08-07
 - ISC-92 — `CorpusIntegrityTests.Search_is_the_index_answering_and_not_the_table` green 2026-08-07
 - ISC-94 — `CorpusSearchTests.A_hit_carries_the_meeting_the_date_the_title_a_snippet_and_where_it_was_said` green 2026-08-07

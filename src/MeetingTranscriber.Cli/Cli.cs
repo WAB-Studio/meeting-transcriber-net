@@ -105,7 +105,7 @@ public static class Cli
         new(
             "spool",
             "spool --in <directory>",
-            "what a recording left behind is worth, and a file of each source to listen to",
+            "what a recording left behind is worth, source by source and as the recording it becomes",
             AudioCommands.Spool),
         new(
             "search",

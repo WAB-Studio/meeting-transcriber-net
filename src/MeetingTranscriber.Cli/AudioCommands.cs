@@ -47,9 +47,10 @@ public static class AudioCommands
     }
 
     /// <summary>
-    /// Records both sources at once, saying what each one is and how loud it is while it runs, and
-    /// reads each spool back into a file somebody can listen to. Ctrl+C stops it early and still
-    /// reports; killing the process leaves the spools, which is the point of them.
+    /// Records both sources at once, saying what each one is and how loud it is while it runs,
+    /// reads each spool back into a file somebody can listen to, and makes the recording the two of
+    /// them become. Ctrl+C stops it early and still reports; killing the process leaves the spools,
+    /// which is the point of them.
     /// </summary>
     public static int Capture(Arguments arguments, TextWriter output)
     {
@@ -115,12 +116,14 @@ public static class AudioCommands
             Report.Line(output, $"{Name(channel)} played back", PlayedBack(blocks));
         }
 
+        Materialise(folder, output);
         return Cli.Ok;
     }
 
     /// <summary>
     /// What a folder of blocks holds, for a recording nobody got to stop: how much of it survived,
-    /// what the machine cut off, and a file of each source to listen to.
+    /// what the machine cut off, a file of each source to listen to, and — when both sources are
+    /// there — the recording itself.
     /// </summary>
     /// <remarks>
     /// It reports and writes beside what is there, and removes nothing. A spool may be the only
@@ -157,10 +160,74 @@ public static class AudioCommands
             Report.Line(output, $"{Name(channel)} recovered", Says(blocks, replayed));
         }
 
-        return found == 0
-            ? throw new CommandException(
-                $"'{folder.FullName}' holds no spool, so there is no recording in it to recover.")
-            : Cli.Ok;
+        if (found == 0)
+        {
+            throw new CommandException(
+                $"'{folder.FullName}' holds no spool, so there is no recording in it to recover.");
+        }
+
+        // A meeting is two sources on one timeline, so half of one is a folder somebody has to look
+        // at rather than a recording to make half of. What is already reported above is every
+        // source that is there, which is what a person recovering one is owed either way.
+        if (found == CapturedAudio.ChannelCount)
+        {
+            Materialise(folder, output);
+        }
+        else
+        {
+            Report.Line(output, "recording", $"not made: {MeetingAudio.FileName} needs both sources");
+        }
+
+        return Cli.Ok;
+    }
+
+    /// <summary>
+    /// Makes the recording the two spools become, and says what it turned out to be: how long it
+    /// is, how loud each channel got over the whole of it, and what each source never delivered.
+    /// </summary>
+    /// <remarks>
+    /// The last three are the numbers a person decides on. A recording whose microphone is silent
+    /// throughout is one somebody has to be told about now, while the meeting is still fresh enough
+    /// to hold again — not after it has been paid to be transcribed.
+    /// </remarks>
+    private static void Materialise(DirectoryInfo folder, TextWriter output)
+    {
+        Materialised recording;
+        try
+        {
+            recording = MeetingAudio.Materialise(folder);
+        }
+        catch (AudioCaptureException cannot)
+        {
+            // The blocks are what a meeting is worth, and they are still there. Said here because
+            // this is the first place a person meets the failure, and what they would otherwise
+            // read is a sentence about a frame counter after an hour of recording.
+            throw new AudioCaptureException(
+                $"{cannot.Message} Every block is still in '{folder.FullName}': what could not be "
+                + "made is the one file the two sources become, and running spool over that folder "
+                + "makes it again.",
+                cannot);
+        }
+
+        Report.Line(
+            output,
+            "recording",
+            string.Create(
+                CultureInfo.InvariantCulture,
+                $"{recording.File.Name}, {Report.Offset(recording.Length)}, {recording.Frames} frames, "
+                + $"{recording.File.Length / 1024d / 1024d:0.0} MB"));
+
+        foreach (var source in recording.Timeline.Sources)
+        {
+            Report.Line(
+                output,
+                $"{Name(source.Channel)} recorded",
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"loudest {recording.Loudest(source.Channel)}, "
+                    + $"{source.Missing.Milliseconds} ms missing, {source.Waited.Milliseconds} ms waited, "
+                    + $"{source.MeasuredRate:0} Hz measured"));
+        }
     }
 
     /// <summary>
