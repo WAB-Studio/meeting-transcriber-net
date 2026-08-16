@@ -1,0 +1,271 @@
+using MeetingTranscriber.Audio;
+using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Time;
+
+namespace MeetingTranscriber.Cli.Tests;
+
+/// <summary>
+/// The start that follows a crash, without a window over it: what is waiting, and what somebody
+/// decides happens to it.
+/// </summary>
+/// <remarks>
+/// This one does record, in the sense that matters here: no device is opened, but the blocks are
+/// written the way a capture writes them and one of them is cut off the way a killed process cuts
+/// one off. That is the whole path a person's recovery goes through, and it is deterministic —
+/// unlike the run on real hardware, which is a probe somebody watches, recorded in the ISA.
+/// </remarks>
+public sealed class RecoveryCommandTests : IDisposable
+{
+    private static readonly StreamFormat Format = new(48_000, 1, 16, SampleEncoding.Pcm);
+
+    private readonly DirectoryInfo root = new(Path.Combine(
+        Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
+
+    public RecoveryCommandTests() => root.Create();
+
+    /// <summary>ISC-123, through the surface a person actually meets it at.</summary>
+    [Fact]
+    public void What_is_waiting_says_which_meeting_it_is_and_what_each_source_holds()
+    {
+        var meeting = Recorded("daily", both: true);
+
+        var run = CommandLine.Of("recordings", "--spool", root.FullName);
+
+        run.Code.ShouldBe(Cli.Ok);
+        run.Value("recording").ShouldBe("daily");
+        run.Value("meeting").ShouldBe(meeting.ToString());
+        run.Value("started").ShouldBe("2026-08-15T09:41:07.250Z");
+        run.Value("profile").ShouldBe("multichannel");
+        run.Value("ch0 heard").ShouldBe("Speakers (Realtek)");
+        run.Value("ch1 heard").ShouldBe("Jabra Evolve 65");
+        run.Value("ch0 holds").ShouldStartWith("loopback.blocks,");
+        run.Value("ch1 holds").ShouldStartWith("microphone.blocks,");
+    }
+
+    [Fact]
+    public void A_machine_with_nothing_waiting_says_so_rather_than_saying_nothing()
+    {
+        var run = CommandLine.Of("recordings", "--spool", root.FullName);
+
+        run.Code.ShouldBe(Cli.Ok);
+        run.Value("waiting").ShouldBe("none");
+    }
+
+    /// <summary>
+    /// ISC-124. Nothing happens to a recording until somebody says which of the three it is, so a
+    /// command with no decision on it is a misuse rather than a default.
+    /// </summary>
+    [Fact]
+    public void Deciding_nothing_about_a_recording_is_a_misuse()
+    {
+        Recorded("daily", both: true);
+
+        var run = CommandLine.Of("recover", "--in", Folder("daily").FullName);
+
+        run.Code.ShouldBe(Cli.Misused);
+        run.Error.ShouldContain("--discard");
+        BlockSpool.FileFor(Folder("daily"), AudioChannel.Loopback).Exists.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Two decisions is no decision: which of them ran would be decided by the order they are read
+    /// in, and one of the three throws the recording away.
+    /// </summary>
+    [Fact]
+    public void Deciding_two_things_about_a_recording_is_a_misuse()
+    {
+        Recorded("daily", both: true);
+
+        var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--keep", "--discard");
+
+        run.Code.ShouldBe(Cli.Misused);
+        run.Error.ShouldContain("only one");
+        Folder("daily").Exists.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// A recording the machine died in the middle of is worth every block that landed, and keeping
+    /// it says what the last one cost.
+    /// </summary>
+    [Fact]
+    public void A_recording_that_was_cut_off_is_kept_back_to_its_last_whole_block()
+    {
+        Recorded("daily", both: true);
+        CutOffMidBlock(AudioChannel.Microphone);
+
+        var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--keep");
+
+        run.Code.ShouldBe(Cli.Ok);
+        run.Value("ch0 kept").ShouldStartWith("10 blocks");
+        run.Value("ch0 kept").ShouldNotContain("discarded");
+        run.Value("ch1 kept").ShouldStartWith("9 blocks");
+        run.Value("ch1 kept").ShouldContain("discarded");
+        run.Value("ch1 format").ShouldBe(Format.ToString());
+
+        Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+        Folder("daily").EnumerateFiles("*.wav").ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A recording with one source is still a recording somebody wants, and keeping it must not
+    /// decide anything about the source that is missing.
+    /// </summary>
+    [Fact]
+    public void One_source_on_its_own_is_kept_and_left_where_it_is()
+    {
+        Recorded("uno", both: false);
+
+        var run = CommandLine.Of("recover", "--in", Folder("uno").FullName, "--keep");
+
+        run.Code.ShouldBe(Cli.Ok);
+        run.Value("ch0 kept").ShouldStartWith("10 blocks");
+        BlockSpool.FileFor(Folder("uno"), AudioChannel.Loopback).Exists.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Audio_taken_out_lands_where_it_was_asked_for_and_the_recording_stays()
+    {
+        Recorded("daily", both: true);
+        var into = Path.Combine(root.FullName, "taken out");
+
+        var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--export", into);
+
+        run.Code.ShouldBe(Cli.Ok);
+        run.Value("ch0 taken out").ShouldContain("loopback.wav");
+        run.Value("ch1 taken out").ShouldContain("microphone.wav");
+        new FileInfo(Path.Combine(into, "loopback.wav")).Exists.ShouldBeTrue();
+        new FileInfo(Path.Combine(into, "microphone.wav")).Exists.ShouldBeTrue();
+        Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+    }
+
+    /// <summary>
+    /// ISC-125, at the surface: the one command that removes a recording, and it removes it only
+    /// because somebody typed the word.
+    /// </summary>
+    [Fact]
+    public void A_recording_is_thrown_away_only_by_somebody_saying_so()
+    {
+        Recorded("daily", both: true);
+
+        var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--discard");
+
+        run.Code.ShouldBe(Cli.Ok);
+        run.Value("thrown away").ShouldBe(Folder("daily").FullName);
+        Folder("daily").Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Everything a recording says about itself is reported before it goes, so the last thing on
+    /// the screen names what was thrown away rather than only that something was.
+    /// </summary>
+    [Fact]
+    public void What_is_thrown_away_is_said_before_it_goes()
+    {
+        var meeting = Recorded("daily", both: true);
+
+        var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--discard");
+
+        run.Value("meeting").ShouldBe(meeting.ToString());
+        run.Value("ch0 holds").ShouldStartWith("loopback.blocks,");
+    }
+
+    [Fact]
+    public void A_folder_holding_no_recording_is_refused()
+    {
+        root.CreateSubdirectory("empty");
+
+        var run = CommandLine.Of("recover", "--in", Folder("empty").FullName, "--keep");
+
+        run.Code.ShouldBe(Cli.Refused);
+        run.Error.ShouldContain("no spool");
+    }
+
+    [Fact]
+    public void A_folder_that_is_not_there_is_refused()
+    {
+        var run = CommandLine.Of("recover", "--in", Folder("nowhere").FullName, "--keep");
+
+        run.Code.ShouldBe(Cli.Refused);
+        run.Error.ShouldContain("nowhere");
+    }
+
+    [Fact]
+    public void Deciding_about_a_recording_without_saying_which_is_a_misuse()
+    {
+        var run = CommandLine.Of("recover", "--keep");
+
+        run.Code.ShouldBe(Cli.Misused);
+        run.Error.ShouldContain("--in");
+    }
+
+    [Fact]
+    public void A_flag_this_command_does_not_read_is_a_misuse()
+    {
+        var run = CommandLine.Of("recordings", "--spool", root.FullName, "--corpus", ".");
+
+        run.Code.ShouldBe(Cli.Misused);
+        run.Error.ShouldContain("--corpus");
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            root.Delete(recursive: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A leftover temp directory is not worth failing a green test over.
+        }
+    }
+
+    private DirectoryInfo Folder(string name) => new(Path.Combine(root.FullName, name));
+
+    /// <summary>A recording left exactly as killing the process during one leaves it.</summary>
+    private Guid Recorded(string name, bool both)
+    {
+        var folder = Folder(name);
+        folder.Create();
+        var meeting = Guid.NewGuid();
+
+        Spool(folder, AudioChannel.Loopback);
+        if (both)
+        {
+            Spool(folder, AudioChannel.Microphone);
+        }
+
+        SpoolManifest.Write(folder, new SpoolCard(
+            meeting,
+            Guid.NewGuid(),
+            UtcTimestamp.Parse("2026-08-15T09:41:07.250Z"),
+            SourceProfile.Multichannel,
+            [
+                new SpooledSource(AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.0}.speakers"),
+                new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.0}.jabra"),
+            ],
+            null));
+
+        return meeting;
+    }
+
+    private void Spool(DirectoryInfo folder, AudioChannel channel)
+    {
+        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Format);
+        for (var block = 0; block < 10; block++)
+        {
+            writer.Write(new CapturePacket(
+                channel,
+                block * 480L,
+                MonotonicInstant.FromMilliseconds(block * 10d),
+                new byte[480 * Format.BytesPerSample]));
+        }
+    }
+
+    /// <summary>Takes the tail off the way a process being killed mid write takes it off.</summary>
+    private void CutOffMidBlock(AudioChannel channel)
+    {
+        var file = BlockSpool.FileFor(Folder("daily"), channel);
+        using var stream = file.Open(FileMode.Open, FileAccess.Write);
+        stream.SetLength(file.Length - 32);
+    }
+}

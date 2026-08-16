@@ -39,7 +39,7 @@ public class CommandLineTests
         foreach (var command in new[]
         {
             "migrate", "status", "check", "sweep", "restore", "compact", "import", "render", "rebuild",
-            "devices", "capture", "search",
+            "devices", "capture", "recordings", "recover", "search",
         })
         {
             run.Output.ShouldContain(command);

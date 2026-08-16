@@ -511,11 +511,16 @@ El manifiesto contiene:
 
 ```text
 meeting_id
-created_at
-source_profile
 capture_run_id
-dispositivos
+started_at
+source_profile
+qué oyó cada canal, con el id del dispositivo
+por qué el canal 0 no siguió el programa que se le pidió
 ```
+
+El id del dispositivo falta exactamente cuando el canal seguía un programa, y eso es lo único
+que dice cuál de las dos formas fue: un campo aparte diciendo lo mismo podría contradecirlo, y
+el día que se contradijeran nada sabría bajo cuál se grabó.
 
 Se escribe una vez y no se vuelve a tocar. Todo lo que cambia mientras se graba
 —hasta dónde llegó cada fuente, qué se pudo recuperar— vive en los bloques, que
@@ -614,6 +619,24 @@ Al detener:
 
 Si la aplicación termina abruptamente, el siguiente inicio ofrece recuperar,
 exportar o descartar explícitamente la grabación. Nunca la descarta en silencio.
+
+El inicio lee la ficha y el tamaño de cada spool, y nunca los bloques: dos horas
+son cientos de megabytes por fuente, y una lista que los recorriera sería una que
+nadie espera. Leer una grabación entera es lo que hace conservarla o exportarla,
+sobre una sola, porque alguien lo pidió. Descartar es lo único en el producto que
+borra una grabación, y sólo se llega desde esa decisión sobre esa grabación.
+
+Nada saca una carpeta de la lista. Una sin ficha sigue siendo una grabación
+—cada archivo declara su formato—, y una cuya ficha quedó partida al medio se
+ofrece diciendo por qué no puede nombrarse: que una carpeta dañada tirara abajo
+la lista sería el cierre abrupto ganando dos veces. Lo que sí se dice aparte es
+la que todavía se está grabando, porque las tres decisiones la rechazan: dos
+leerían un archivo que sigue creciendo y la tercera tiraría una reunión que
+está pasando.
+
+Mientras nada convierta un spool en reunión, una grabación que alguien paró y
+una que la máquina cortó son la misma carpeta. Se ofrecen las dos: afirmar una
+diferencia que el disco no registra sería inventarla.
 
 ### 6.5 Puertas de coste
 
