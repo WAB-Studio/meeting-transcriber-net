@@ -1,3 +1,4 @@
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Domain.Meetings;
@@ -189,10 +190,11 @@ public class SpeakerAssignment
 /// finds one. A person re-reading the summary they asked for again is the honest outcome.
 /// </para>
 /// </remarks>
-public class ActionItemProgress
+public class ActionItemProgress : IExtractionPosition
 {
     public Guid ExtractionRunId { get; set; }
 
+    /// <inheritdoc cref="IExtractionPosition.Ordinal"/>
     public int Ordinal { get; set; }
 
     public ActionItemState State { get; set; } = ActionItemState.Open;

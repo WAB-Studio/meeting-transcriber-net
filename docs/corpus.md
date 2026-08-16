@@ -62,14 +62,20 @@ first and leave a meeting whose card was never written without one for good.
 
 ## In the database
 
-Derived tables — `utterances`, `summaries`, `decisions`, `action_items`, and both FTS5 indexes.
-They are projections of `deepgram.json` and the accepted extractions.
+Derived tables — `utterances`, `summaries`, `decisions`, `action_items`, `open_questions`, and both
+FTS5 indexes. They are projections of `deepgram.json` and the accepted extractions.
 
 Derived means derived all the way down, so an action's row holds only what the extraction
 proposed. Where it stands and who owns it are moved by a person and live in
 `action_item_progress`, keyed on the extraction run and the action's position inside it — never on
 an action's id, because a rebuild mints new ones. Deleting every `action_items` row and projecting
 the same extraction again puts each action back under the state it was left in.
+
+That is the rule for every projected row somebody can annotate, not only for actions, so a
+decision and an open question carry the position too — whether a decision still stands is a
+person's word and has the same problem to solve. The database refuses two rows at one position of
+one run: two would not be a visible error, they would be a note that reads against either of them,
+and the writer projecting the extraction is the one with no way to notice.
 
 A citation names its turn by the meeting and the turn's position in it, never by a turn's id — for
 the same reason, one step further in. The ids belong to the projection, so a rebuild deletes them
@@ -88,8 +94,8 @@ reprojected inside one transaction with `PRAGMA defer_foreign_keys`, so the turn
 under the same positions while the claims stay where they are, and the check happens at the commit.
 That is not a way around the constraint — it is what makes it useful: a rebuild that renumbered a
 turn fails at the end instead of quietly rewriting what every stored claim points at. Summaries,
-decisions and actions are left alone rather than reprojected, because nothing reads an accepted
-extraction back into rows yet; when something does, it becomes a step in there.
+decisions, actions and open questions are left alone rather than reprojected, because nothing reads
+an accepted extraction back into rows yet; when something does, it becomes a step in there.
 
 The FTS5 indexes are external content keyed on rowid, and a `VACUUM` may renumber the rowids of the
 tables they index, after which search answers with the wrong rows and says nothing. So nothing

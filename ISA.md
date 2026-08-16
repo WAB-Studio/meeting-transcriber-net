@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 91/126
+progress: 92/127
 updated: 2026-08-16
 ---
 
@@ -103,6 +103,7 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-53: The corpus's state can be read from the command line without opening the application.
 - [x] ISC-54: Exactly one person is the user of this install.
 - [x] ISC-55: Anti: a speaker somebody resolved is never overwritten by what the recording settled.
+- [x] ISC-127: Anti: two things one extraction produced never share a position in it, so what somebody pinned to a position cannot come to mean another one.
 
 ### F3 · Audio engine
 Why: two sources become one timeline a person can trust. This is the largest technical risk in
@@ -429,3 +430,4 @@ Board: 7 · Distribución y backup
 - ISC-124 — `UnfinishedRecordingsTests` and `RecoveryCommandTests` green 2026-08-15: kept, the recording is read through and every file is still there afterwards; taken out, the audio lands where it was asked for and the blocks stay; thrown away, the folder is gone. `RecoveryCommandTests.Deciding_nothing_about_a_recording_is_a_misuse` and `.Deciding_two_things_about_a_recording_is_a_misuse` hold that there is no default
 - ISC-125 — `UnfinishedRecordingsTests.Nothing_but_a_decision_about_one_recording_removes_a_folder` and `.Nothing_in_the_audio_engine_removes_a_file_it_did_not_just_create` green 2026-08-15, each red 2026-08-15 against a `Directory.Delete` and a `Delete(` planted in a source file that has no business holding one
 - ISC-126 — `UnfinishedRecordingsTests.A_meeting_still_being_recorded_is_said_to_be_rather_than_offered_as_one_to_decide_about` and `.None_of_the_three_outcomes_lands_on_a_meeting_that_is_still_being_recorded` green 2026-08-15, over the handle a capture holds on its own spool — the same folder reading as waiting the moment nothing holds it. The first red 2026-08-15 against a build that answered that nothing was ever being written
+- ISC-127 — `ExtractionPositionTests` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-08-16, over `decisions`, `action_items` and `open_questions` alike, and `.A_position_in_an_extraction_belongs_to_one_row_wherever_it_is_stored` reads the rule off the schema so a table carrying a position and no uniqueness fails without anybody listing it. Both it and `.One_extraction_cannot_put_two_things_in_the_same_position` red 2026-08-16 against a corpus with `ix_decisions_extraction_run_id_ordinal` dropped. `CorpusRebuildTests.Rebuilding_puts_everything_an_extraction_produced_back_at_its_own_position` holds the other side, with no row id in common across the rebuild

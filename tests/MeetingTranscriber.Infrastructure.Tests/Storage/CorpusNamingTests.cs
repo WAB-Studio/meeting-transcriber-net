@@ -225,7 +225,7 @@ public partial class CorpusNamingTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
 
-        foreach (var table in new[] { "decisions", "action_items" })
+        foreach (var table in new[] { "decisions", "action_items", "open_questions" })
         {
             var columns = Sql.Strings(context, $"SELECT name FROM pragma_table_info('{table}');");
 
@@ -250,7 +250,7 @@ public partial class CorpusNamingTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
 
-        foreach (var table in new[] { "decisions", "action_items" })
+        foreach (var table in new[] { "decisions", "action_items", "open_questions" })
         {
             var columns = Sql.Strings(context, $"SELECT name FROM pragma_table_info('{table}');");
 

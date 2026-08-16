@@ -7,6 +7,31 @@ namespace MeetingTranscriber.Domain.Knowledge;
 // Everything here is rebuildable from deepgram.json and the accepted extractions. Deleting all
 // of it and rendering again has to stay a safe thing to do.
 
+/// <summary>
+/// A row an extraction produced, named by the run it came out of and where it sat inside it.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The pair is the identity, and an id is not: projecting the same accepted extraction again
+/// deletes these rows and mints new ids, so anything a person pinned to one would be pointing at a
+/// row that no longer exists. The position is the order of the items in the file, never the order
+/// rows happened to be written in — which is the whole of what makes projecting twice reproduce it.
+/// </para>
+/// <para>
+/// Carried as a contract rather than as three tables that happen to agree, because what enforces it
+/// is a uniqueness the writer never sees: two rows at one position would make somebody's note
+/// ambiguous rather than wrong, which is the harder kind of bug to see. Everything implementing this
+/// is held to that by the storage layer at once, so a row added later is anchored without anybody
+/// remembering to anchor it.
+/// </para>
+/// </remarks>
+public interface IExtractionPosition
+{
+    Guid ExtractionRunId { get; }
+
+    int Ordinal { get; }
+}
+
 /// <summary>One speaker turn, ordered on the meeting timeline.</summary>
 public class Utterance
 {
@@ -92,13 +117,21 @@ public class Summary
 }
 
 /// <summary>Something the meeting settled.</summary>
-public class Decision
+/// <remarks>
+/// Anchored by <see cref="IExtractionPosition"/> for the same reason an action is: whether a
+/// decision still stands is a person's word and not the extraction's, so it is written down
+/// somewhere a rebuild does not reach, and it has to find its decision again afterwards.
+/// </remarks>
+public class Decision : IExtractionPosition
 {
     public Guid Id { get; set; }
 
     public Guid MeetingId { get; set; }
 
     public Guid ExtractionRunId { get; set; }
+
+    /// <inheritdoc cref="IExtractionPosition.Ordinal"/>
+    public int Ordinal { get; set; }
 
     public required string Statement { get; set; }
 
@@ -114,7 +147,7 @@ public class Decision
 /// it stands and who owns it are moved by a person, so they live in
 /// <see cref="ActionItemProgress"/> and this row can be thrown away and projected again.
 /// </summary>
-public class ActionItem
+public class ActionItem : IExtractionPosition
 {
     public Guid Id { get; set; }
 
@@ -122,17 +155,40 @@ public class ActionItem
 
     public Guid ExtractionRunId { get; set; }
 
-    /// <summary>
-    /// Position in the extraction this was read out of. With the run it is the identity a person
-    /// pins their state to, so projecting the same accepted extraction again has to reproduce it:
-    /// it is the order of the items in the file, never the order rows happened to be written in.
-    /// </summary>
+    /// <inheritdoc cref="IExtractionPosition.Ordinal"/>
     public int Ordinal { get; set; }
 
     public required string Statement { get; set; }
 
     /// <summary>A calendar day, not an instant, so it is stored as written.</summary>
     public DateOnly? DueDate { get; set; }
+
+    public required Citation Evidence { get; set; }
+
+    public UtcTimestamp CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Something the meeting raised and did not settle, exactly as the extraction proposed it.
+/// </summary>
+/// <remarks>
+/// It carries evidence like a decision and an action do. A question nothing said supports is a
+/// sentence the model wrote with nothing in the meeting to check it against, which is what the
+/// citation rules exist to keep out of the corpus — and the turn it was raised at is what somebody
+/// reading it months later opens to find out whether it ever got answered.
+/// </remarks>
+public class OpenQuestion : IExtractionPosition
+{
+    public Guid Id { get; set; }
+
+    public Guid MeetingId { get; set; }
+
+    public Guid ExtractionRunId { get; set; }
+
+    /// <inheritdoc cref="IExtractionPosition.Ordinal"/>
+    public int Ordinal { get; set; }
+
+    public required string Question { get; set; }
 
     public required Citation Evidence { get; set; }
 

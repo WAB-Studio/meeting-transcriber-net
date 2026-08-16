@@ -95,6 +95,8 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
     public DbSet<ActionItem> ActionItems => Set<ActionItem>();
 
+    public DbSet<OpenQuestion> OpenQuestions => Set<OpenQuestion>();
+
     public DbSet<ActionItemProgress> ActionItemProgress => Set<ActionItemProgress>();
 
     public DbSet<Node> Nodes => Set<Node>();
@@ -488,17 +490,19 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
         modelBuilder.Entity<Decision>(decision =>
         {
-            decision.ToTable("decisions", table => table.HasCheckConstraint(
-                "ck_decisions_evidence_span",
-                "start_ms >= 0 AND end_ms >= start_ms"));
+            decision.ToTable("decisions", table =>
+            {
+                Positioned(table);
+                table.HasCheckConstraint("ck_decisions_evidence_span", "start_ms >= 0 AND end_ms >= start_ms");
+            });
+
             decision.HasKey(entity => entity.Id);
             decision.HasIndex(entity => entity.MeetingId);
             decision.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
                 .OnDelete(DeleteBehavior.Cascade);
-            decision.HasOne<ExtractionRun>().WithMany().HasForeignKey(entity => entity.ExtractionRunId)
-                .OnDelete(DeleteBehavior.Cascade);
             decision.HasOne<Person>().WithMany().HasForeignKey(entity => entity.DecidedByPersonId)
                 .OnDelete(DeleteBehavior.SetNull);
+            Positioned(decision);
             ConfigureEvidence(decision.OwnsOne(entity => entity.Evidence));
         });
 
@@ -506,23 +510,57 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
         {
             action.ToTable("action_items", table =>
             {
-                table.HasCheckConstraint("ck_action_items_ordinal", "ordinal >= 0");
+                Positioned(table);
                 table.HasCheckConstraint("ck_action_items_evidence_span", "start_ms >= 0 AND end_ms >= start_ms");
             });
 
             action.HasKey(entity => entity.Id);
             action.HasIndex(entity => entity.MeetingId);
             action.HasIndex(entity => entity.DueDate);
-            // Unique because it is what a person's state is pinned to. Two actions sharing a
-            // position in one extraction would make that state ambiguous rather than wrong,
-            // which is the harder kind of bug to see.
-            action.HasIndex(entity => new { entity.ExtractionRunId, entity.Ordinal }).IsUnique();
             action.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
                 .OnDelete(DeleteBehavior.Cascade);
-            action.HasOne<ExtractionRun>().WithMany().HasForeignKey(entity => entity.ExtractionRunId)
-                .OnDelete(DeleteBehavior.Cascade);
+            Positioned(action);
             ConfigureEvidence(action.OwnsOne(entity => entity.Evidence));
         });
+
+        modelBuilder.Entity<OpenQuestion>(question =>
+        {
+            question.ToTable("open_questions", table =>
+            {
+                Positioned(table);
+                table.HasCheckConstraint("ck_open_questions_evidence_span", "start_ms >= 0 AND end_ms >= start_ms");
+            });
+
+            question.HasKey(entity => entity.Id);
+            question.HasIndex(entity => entity.MeetingId);
+            question.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            Positioned(question);
+            ConfigureEvidence(question.OwnsOne(entity => entity.Evidence));
+        });
+    }
+
+    /// <summary>
+    /// The anchor <see cref="IExtractionPosition"/> promises, in the two places it is held: the
+    /// column is a position, and a run has one row at each of them.
+    /// </summary>
+    /// <remarks>
+    /// The uniqueness is the half worth centralising. Two rows sharing a position in one extraction
+    /// would make what a person pinned there ambiguous rather than wrong, which is the harder kind
+    /// of bug to see — and it is the writer, projecting an extraction, that has no way to notice.
+    /// <c>action_item_progress</c> goes without this: the pair is its primary key, which says the
+    /// same thing more strongly, and a unique index over a key would be the same promise twice.
+    /// </remarks>
+    private static void Positioned(TableBuilder table) =>
+        table.HasCheckConstraint($"ck_{table.Name}_ordinal", "ordinal >= 0");
+
+    /// <inheritdoc cref="Positioned(TableBuilder)"/>
+    private static void Positioned<TRow>(EntityTypeBuilder<TRow> row)
+        where TRow : class, IExtractionPosition
+    {
+        row.HasIndex(entity => new { entity.ExtractionRunId, entity.Ordinal }).IsUnique();
+        row.HasOne<ExtractionRun>().WithMany().HasForeignKey(entity => entity.ExtractionRunId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 
     private static void ConfigureAppState(ModelBuilder modelBuilder)
