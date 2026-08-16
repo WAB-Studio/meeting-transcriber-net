@@ -1,0 +1,83 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "outcome",
+    "task_id",
+    "pr_number",
+    "head_sha",
+    "isc_closed",
+    "probes",
+    "decisions_deferred",
+    "left_out",
+    "skipped",
+    "blocked_reason"
+  ],
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": ["pr_opened", "blocked", "no_tasks"],
+      "description": "pr_opened: there is a branch and a PR. blocked: stuck, nothing to review. no_tasks: the pool came up empty."
+    },
+    "task_id": { "type": "string", "description": "ClickUp ID, or an empty string if none was taken." },
+    "pr_number": { "type": "integer", "description": "PR number, or 0 if none was opened." },
+    "head_sha": {
+      "type": "string",
+      "description": "Full SHA of the commit left at the branch tip. It fixes WHAT was delivered: the audit returns the one it read and the orchestrator stops if they disagree."
+    },
+    "isc_closed": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "IDs such as ISC-42 marked [x] in this session."
+    },
+    "probes": {
+      "type": "array",
+      "description": "What actually ran. This is the worker's ASSERTION, not evidence: the audit corroborates it against CI and by re-running whatever holds a claim up.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["command", "passed"],
+        "properties": {
+          "command": { "type": "string" },
+          "passed": { "type": "boolean" }
+        }
+      }
+    },
+    "decisions_deferred": {
+      "type": "array",
+      "description": "Forks resolved without confirmation, or left open. An empty array asserts there were none and is checked against the diff.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["what", "chose", "blocks_the_pr"],
+        "properties": {
+          "what": { "type": "string", "description": "The fork, in one sentence." },
+          "chose": { "type": "string", "description": "What was done meanwhile, or an empty string if it was left undone." },
+          "blocks_the_pr": {
+            "type": "boolean",
+            "description": "True if resolving it the other way would invalidate the diff. The audit recomputes this itself and does not lean on the value."
+          }
+        }
+      }
+    },
+    "left_out": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What the task asked for and was not delivered."
+    },
+    "skipped": {
+      "type": "array",
+      "description": "Tasks moved to pending for needing a person or hardware. The audit re-lists the board to catch the ones moved and not declared here.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "needs"],
+        "properties": {
+          "task_id": { "type": "string" },
+          "needs": { "type": "string", "description": "What a person has to do or bring." }
+        }
+      }
+    },
+    "blocked_reason": { "type": "string", "description": "Empty string unless outcome is blocked." }
+  }
+}

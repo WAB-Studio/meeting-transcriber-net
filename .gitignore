@@ -486,3 +486,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Unattended orchestrator runs: handoffs, verdicts and the day log. The lock is a live PID.
+.claude/orchestrator/log/
+.claude/orchestrator/day.lock

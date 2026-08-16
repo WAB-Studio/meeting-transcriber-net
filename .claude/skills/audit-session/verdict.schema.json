@@ -1,0 +1,68 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "audited_head_sha",
+    "reasons",
+    "unreported_decisions",
+    "isc_unproved",
+    "followups_created",
+    "actions_taken"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["pass", "pass_with_followup", "hold"],
+      "description": "The only thing deciding whether the day goes on. hold stops it. No second field says the same: two fields for one decision can contradict each other, and the orchestrator would obey the wrong one."
+    },
+    "audited_head_sha": {
+      "type": "string",
+      "description": "The SHA actually read, taken from the PR and never from the handoff. If it disagrees with the worker's, the day stops: the verdict would be about different code than was delivered."
+    },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Why this verdict and not another. One reason per entry. What the task asked for and the diff does not carry goes here."
+    },
+    "unreported_decisions": {
+      "type": "array",
+      "description": "Decisions visible in the diff or the PR that the worker did not declare. The central finding of this audit, and a field of its own for that reason: in prose it gets buried, which is the problem it came to solve.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["what", "found_in", "invalidates_diff"],
+        "properties": {
+          "what": { "type": "string" },
+          "found_in": { "type": "string", "description": "File and line, or where in the PR." },
+          "invalidates_diff": {
+            "type": "boolean",
+            "description": "True if resolving it the other way would pull down what was pushed. Decided by reading the diff, not by copying the worker's blocks_the_pr."
+          }
+        }
+      }
+    },
+    "isc_unproved": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Claims marked [x] whose probe could not be corroborated with independent evidence."
+    },
+    "followups_created": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "name"],
+        "properties": {
+          "task_id": { "type": "string" },
+          "name": { "type": "string" }
+        }
+      }
+    },
+    "actions_taken": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "What was actually done: comments, cards, tasks put back to Open. It is what the user reads in the morning."
+    }
+  }
+}

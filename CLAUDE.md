@@ -72,6 +72,7 @@ something here has stopped earning its place, and the fix is to move a section o
 | `docs/corpus.md` | Deciding what gets backed up, what is deletable, what is rebuildable. |
 | `docs/process-capture.md` | Channel 0 following one program: what Windows gives, and what was probed. |
 | `docs/reference-behaviour.md` | Grouping turns, and where .NET departs from the Python system. |
+| `docs/orchestrator.md` | Before running, or diagnosing, a day of sessions with nobody in the loop. |
 
 ## Nothing has shipped yet
 
@@ -106,7 +107,8 @@ about whether the code or the claim is wrong.
 5. A session ends on the PR opened and never merged: `gh pr create`, then `main` checked out and
    pulled with the tree clean, so the next one cuts a branch from a current `main` instead of
    inheriting the last one and writing over it. The branch and the PR stay where the user reads
-   them; merging is theirs and so is closing the card. A red command or a confirmed finding still
+   them; merging is theirs and so is closing the card, the unattended loop excepted, which merges
+   on its own audit's verdict — `docs/orchestrator.md`. A red command or a confirmed finding still
    unfixed stops the PR — then the session's last words are that it did not open one, and why.
 
 ## The contract
