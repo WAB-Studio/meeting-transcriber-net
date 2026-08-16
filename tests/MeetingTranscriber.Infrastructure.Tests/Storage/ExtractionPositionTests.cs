@@ -37,9 +37,9 @@ public class ExtractionPositionTests
     /// </summary>
     /// <remarks>
     /// Carrying both columns is what makes a table one of these, so a projection that takes a
-    /// position and forgets the uniqueness fails here at the moment it is written.
-    /// <c>action_item_progress</c> passes on its primary key, which is that pair and says it more
-    /// strongly than an index would.
+    /// position and forgets either half fails here at the moment it is written — the anchor is
+    /// declared in two places and neither is any use alone. <c>action_item_progress</c> passes the
+    /// uniqueness on its primary key, which is that pair and says it more strongly than an index.
     /// </remarks>
     [Fact]
     public void A_position_in_an_extraction_belongs_to_one_row_wherever_it_is_stored()
@@ -66,6 +66,15 @@ public class ExtractionPositionTests
             anchor.ShouldBeTrue(
                 $"'{table}' is named by its extraction and its position, and nothing stops two rows "
                 + "from sharing one — so what somebody pinned there could come to mean either");
+
+            // And that the column is a position at all. Read out of the table's own definition,
+            // since a CHECK is not something SQLite offers a pragma for.
+            Sql.Strings(context, $"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = '{table}';")
+                .ShouldHaveSingleItem()
+                .ShouldContain(
+                    "ordinal >= 0",
+                    Case.Sensitive,
+                    $"'{table}' takes a position that counts from somewhere other than zero");
         }
     }
 
