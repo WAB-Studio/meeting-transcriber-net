@@ -1,0 +1,75 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "continue_day",
+    "reasons",
+    "unreported_decisions",
+    "isc_unproved",
+    "scope_gap",
+    "followups_created",
+    "actions_taken"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": ["pass", "pass_with_followup", "hold", "nothing_to_review"],
+      "description": "hold frena el día. nothing_to_review es un handoff blocked o no_tasks."
+    },
+    "continue_day": {
+      "type": "boolean",
+      "description": "Verdadero sólo en pass y pass_with_followup. Es lo que lee el orquestador."
+    },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Por qué este veredicto y no otro. Una razón por entrada."
+    },
+    "unreported_decisions": {
+      "type": "array",
+      "description": "Decisiones visibles en el diff o en el PR que el worker no declaró. El hallazgo central de esta auditoría.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["what", "found_in", "invalidates_diff"],
+        "properties": {
+          "what": { "type": "string" },
+          "found_in": { "type": "string", "description": "Archivo y línea, o dónde del PR." },
+          "invalidates_diff": {
+            "type": "boolean",
+            "description": "Verdadero si resolverla al revés tiraría abajo lo que se subió."
+          }
+        }
+      }
+    },
+    "isc_unproved": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Claims marcados [x] cuyo probe no corrió o no aparece en Verification."
+    },
+    "scope_gap": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Lo que la tarea pedía, el diff no trae y left_out no declara."
+    },
+    "followups_created": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "name", "list"],
+        "properties": {
+          "task_id": { "type": "string" },
+          "name": { "type": "string" },
+          "list": { "type": "string" }
+        }
+      }
+    },
+    "actions_taken": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Lo que se hizo de verdad: comentarios, tarjetas, tareas devueltas a Open."
+    }
+  }
+}

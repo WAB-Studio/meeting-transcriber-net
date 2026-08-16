@@ -72,6 +72,7 @@ something here has stopped earning its place, and the fix is to move a section o
 | `docs/corpus.md` | Deciding what gets backed up, what is deletable, what is rebuildable. |
 | `docs/process-capture.md` | Channel 0 following one program: what Windows gives, and what was probed. |
 | `docs/reference-behaviour.md` | Grouping turns, and where .NET departs from the Python system. |
+| `docs/orchestrator.md` | A day of sessions ran without anybody in the loop and something surprised you. |
 
 ## Nothing has shipped yet
 

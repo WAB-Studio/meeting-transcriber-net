@@ -486,3 +486,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Corridas del orquestador desatendido: handoffs, veredictos y logs del dia.
+.claude/orchestrator/log/
