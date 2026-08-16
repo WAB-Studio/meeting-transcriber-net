@@ -5,6 +5,11 @@
     "dotnet@dotnet-agent-skills": true,
     "dotnet-diag@dotnet-agent-skills": true
   },
+  "disableClaudeAiConnectors": true,
+  "skillOverrides": {
+    "next-task": "user-invocable-only",
+    "audit-session": "user-invocable-only"
+  },
   "permissions": {
     "allow": [
       "PowerShell(dotnet:*)",
