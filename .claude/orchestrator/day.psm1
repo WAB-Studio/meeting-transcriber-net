@@ -36,6 +36,41 @@ function Add-Utf8Line {
 function Get-EventsPath { param([Parameter(Mandatory)][string]$LogDir) return (Join-Path $LogDir "events.jsonl") }
 
 <#
+  Every file this module reads is one somebody else still has open: a session holds its stream for
+  the whole cycle, and the executor appends to events.jsonl between them. So the reading has to be
+  done through a handle that permits the writer's -- FileShare::ReadWrite -- which is exactly what
+  [System.IO.File]::ReadAllLines does not ask for. On 2026-08-16 every status taken while a session
+  ran threw IOException on the open, and the caller reported zero tool calls and zero denials over
+  it: the loudest rule of the day, blind for precisely as long as it had something to say, and
+  silent about being blind. Nothing here may reach the filesystem any other way.
+
+  A file that is not there yet reads as empty rather than as an error, because the first status can
+  land before the first line does.
+#>
+function Read-OpenFileLines {
+  param([Parameter(Mandatory)][string]$Path)
+  if (-not (Test-Path $Path)) { return @() }
+  $fs = $null
+  $sr = $null
+  try {
+    $fs = New-Object System.IO.FileStream(
+      $Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read,
+      [System.IO.FileShare]::ReadWrite)
+    $sr = New-Object System.IO.StreamReader($fs, [System.Text.Encoding]::UTF8, $true)
+    # Returned unwrapped on purpose: a caller collecting this with @() has to get the lines, and a
+    # comma here would hand it one item that happens to be an array.
+    return ([string]($sr.ReadToEnd()) -split "`r?`n")
+  } catch {
+    # Rethrown rather than left as the framework's error: an exception out of a .NET method is not
+    # reliably catchable by the caller in 5.1, and a caller that cannot catch this one writes down
+    # a zero instead of a failure. `throw` is, so the status can say it could not look.
+    throw ("could not read {0}: {1}" -f $Path, $_.Exception.Message)
+  } finally {
+    if ($sr) { $sr.Dispose() } elseif ($fs) { $fs.Dispose() }
+  }
+}
+
+<#
   One event per transition. `kind` is the only field a reader interprets; everything else travels
   as it comes, so adding a field does not oblige anybody to change this side.
 #>
@@ -61,7 +96,7 @@ function Read-DayEvents {
   $p = Get-EventsPath $LogDir
   if (-not (Test-Path $p)) { return @() }
   $out = New-Object System.Collections.ArrayList
-  foreach ($line in [System.IO.File]::ReadAllLines($p)) {
+  foreach ($line in (Read-OpenFileLines $p)) {
     if ([string]::IsNullOrWhiteSpace($line)) { continue }
     try { $null = $out.Add(($line | ConvertFrom-Json)) } catch { }
   }
@@ -82,7 +117,7 @@ function Read-DayEvents {
 function Get-SessionResult {
   param([Parameter(Mandatory)][string]$StreamPath)
   if (-not (Test-Path $StreamPath)) { return $null }
-  $lines = [System.IO.File]::ReadAllLines($StreamPath)
+  $lines = @(Read-OpenFileLines $StreamPath)
   for ($i = $lines.Count - 1; $i -ge 0; $i--) {
     $l = $lines[$i]
     if ([string]::IsNullOrWhiteSpace($l)) { continue }
@@ -274,7 +309,7 @@ function Get-SessionActivity {
   # several lines above and tied to it by id.
   $asked = @{}
 
-  foreach ($line in [System.IO.File]::ReadAllLines($StreamPath)) {
+  foreach ($line in (Read-OpenFileLines $StreamPath)) {
     if ([string]::IsNullOrWhiteSpace($line)) { continue }
     try { $o = $line | ConvertFrom-Json } catch { continue }
 
@@ -384,6 +419,15 @@ function Get-DayAnomalies {
     $null = $out.Add((New-Anomaly "stop" "killed" "a session passed the executor's clock and was killed"))
   }
 
+  # A status that could not read the live stream knows nothing about that session -- not its
+  # silence, not its denials -- and every one of those fields reads zero. Saying so is the whole
+  # rule: it does not stop the day, because a torn read is not the reader's error and one hiccup is
+  # not worth a paid day, but it never again passes for "nothing abnormal".
+  if ($Status.Unreadable) {
+    $null = $out.Add((New-Anomaly "warn" "unreadable" (
+      "the live session's stream could not be read, so nothing below it was measured -- no silence, no denials, no tool calls: {0}" -f $Status.Unreadable)))
+  }
+
   if ($Status.RateLimit -and $Status.RateLimit.status -and $Status.RateLimit.status -ne "allowed") {
     $reset = ""
     if ($Status.RateLimit.resetsAt) {
@@ -484,6 +528,7 @@ function Get-DayStatus {
     DenialDetail    = @()
     DenialsByTool   = @()
     Killed          = $false
+    Unreadable      = ""
     RateLimit       = $null
     Cost            = 0.0
     LastCycleCost   = $null
@@ -538,12 +583,20 @@ function Get-DayStatus {
     }
   }
 
-  # What only shows by looking at the live session's own file.
+  # What only shows by looking at the live session's own file. A read that fails says so: the status
+  # this produces is the only thing watching a session that is spending money, so "I could not look"
+  # has to arrive as itself and never as a zero, which is what it looked like the whole time
+  # Read-OpenFileLines was reading with the wrong share.
   if ($st.Running -and $openStream) {
     $path = $openStream
     if (-not [System.IO.Path]::IsPathRooted($path)) { $path = Join-Path $LogDir $openStream }
-    $a = Get-SessionActivity $path
-    if ($a.Exists) {
+    $a = $null
+    try {
+      $a = Get-SessionActivity $path
+    } catch {
+      $st.Unreadable = "{0}: {1}" -f (Split-Path -Leaf $path), $_.Exception.Message
+    }
+    if ($a -and $a.Exists) {
       $st.QuietForMinutes = [math]::Round($a.QuietFor.TotalMinutes, 1)
       $st.LastTool = $a.LastTool
       $st.LastText = $a.LastText
@@ -689,7 +742,7 @@ function Write-DayReport {
   return $path
 }
 
-Export-ModuleMember -Function Add-Utf8Line, Get-EventsPath, New-DayEvent, Read-DayEvents,
+Export-ModuleMember -Function Add-Utf8Line, Get-EventsPath, Read-OpenFileLines, New-DayEvent, Read-DayEvents,
   Get-SessionResult, Get-ContractFromText, Test-DayContract, Test-JsonTrue, Get-SessionActivity,
   New-Denial, Get-ResultDenials, Get-DenialKey, Group-Denials,
   Get-DayRules, Get-DayAnomalies, Get-HaltingAnomalies, Get-Median,

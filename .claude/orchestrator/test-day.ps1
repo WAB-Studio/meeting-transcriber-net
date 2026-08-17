@@ -45,7 +45,7 @@ function New-QuietStatus {
   return [pscustomobject]@{
     Running = $false; QuietForMinutes = $null; Cycle = 1; Role = "worker"
     Denials = 0; DenialsByTool = @(); CycleCosts = @(); LastCycleCost = $null
-    Killed = $false; RateLimit = $null; Ended = $false; EndReason = ""
+    Killed = $false; Unreadable = ""; RateLimit = $null; Ended = $false; EndReason = ""
     ProcessGone = $false; ExecutorPid = $null; Past = @(); Anomalies = @()
   }
 }
@@ -215,6 +215,112 @@ Check "the live stream attributes a denial to the tool that asked" {
     if ($a.DenialDetail[0].command -notmatch "clickup") { return "lost the command: $($a.DenialDetail[0].command)" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Write-Host ""
+Write-Host "  a file somebody else still has open"
+
+<#
+  The state every file here is read in: `claude` holds its stream open for the whole cycle, writing,
+  sharing it for reading only. A reader that asks for the default share meets an IOException on the
+  open -- which is what every status taken during a session did until 2026-08-16, reporting zeros
+  for a session it had not managed to read at all.
+#>
+function Open-Writer([string]$Path, [string[]]$Lines) {
+  $fs = New-Object System.IO.FileStream(
+    $Path, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
+  $bytes = [System.Text.Encoding]::UTF8.GetBytes((($Lines -join "`n") + "`n"))
+  $fs.Write($bytes, 0, $bytes.Length)
+  $fs.Flush()
+  return $fs
+}
+
+Check "the event stream reads while the executor still holds it" {
+  $box = New-Sandbox
+  $w = $null
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    $w = Open-Writer (Get-EventsPath $box) @(
+      '{"ts":"2026-08-17T00:00:00Z","kind":"day_started","pid":4188}'
+      '{"ts":"2026-08-17T00:01:00Z","kind":"session_started","cycle":1,"role":"worker","stream":"worker-1.stream.jsonl"}')
+    $ev = @(Read-DayEvents $box)
+    if ($ev.Count -ne 2) { return "read $($ev.Count) events off a file that is still open" }
+    ""
+  } finally {
+    if ($w) { $w.Dispose() }
+    Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+Check "the result line reads off a stream the session still has open" {
+  $box = New-Sandbox
+  $w = $null
+  try {
+    $s = Join-Path $box "worker-1.stream.jsonl"
+    $w = Open-Writer $s @(
+      '{"type":"system","subtype":"init"}'
+      '{"type":"result","subtype":"success","is_error":false,"num_turns":7,"total_cost_usd":1.25,"result":"done"}')
+    $r = Get-SessionResult $s
+    if ($null -eq $r) { return "found no result while the file was open" }
+    if ($r.num_turns -ne 7) { return "turns came out $($r.num_turns)" }
+    ""
+  } finally {
+    if ($w) { $w.Dispose() }
+    Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+Check "a denial is seen while the session is still holding the file" {
+  $box = New-Sandbox
+  $w = $null
+  try {
+    $s = Join-Path $box "worker-1.stream.jsonl"
+    # The whole point of the live read: a denial only shows here until the session ends, and while
+    # it runs is exactly when somebody can still be told.
+    $w = Open-Writer $s @(
+      '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"PowerShell","input":{"command":"python clickup.py lists"}}]}}'
+      '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"Claude requested permissions to use PowerShell, but you haven''t granted it yet."}]}}')
+    $a = Get-SessionActivity $s
+    if ($a.Denials -ne 1) { return "counted $($a.Denials) over an open file" }
+    if ($a.ToolCalls -ne 1) { return "counted $($a.ToolCalls) tool calls" }
+    ""
+  } finally {
+    if ($w) { $w.Dispose() }
+    Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+Check "the status of a live session carries its denials rather than zeros" {
+  $box = New-Sandbox
+  $w = $null
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x"; pid = $PID } | Out-Null
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker"; stream = "worker-1.stream.jsonl" } | Out-Null
+    $w = Open-Writer (Join-Path $box "worker-1.stream.jsonl") @(
+      '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"PowerShell","input":{"command":"python clickup.py lists"}}]}}'
+      '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"Claude requested permissions to use PowerShell, but you haven''t granted it yet."}]}}')
+
+    $st = Get-DayStatus -LogDir $box
+    if ($st.Unreadable) { return "could not read the live stream: $($st.Unreadable)" }
+    if ($st.Denials -ne 1) { return "the status counted $($st.Denials) denials on a running session" }
+    if ($st.ToolCalls -ne 1) { return "the status counted $($st.ToolCalls) tool calls" }
+    if (-not @($st.Anomalies | Where-Object { $_.code -eq "denials" }).Count) { return "nothing fired over it" }
+    ""
+  } finally {
+    if ($w) { $w.Dispose() }
+    Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+Check "a stream that cannot be read is said, not reported as nothing" {
+  $st = New-QuietStatus
+  $st.Running = $true
+  $st.Unreadable = "worker-1.stream.jsonl: could not read it"
+  $an = @(Get-DayAnomalies -Status $st | Where-Object { $_.code -eq "unreadable" })
+  if ($an.Count -ne 1) { return "an unreadable stream fired $($an.Count) anomalies" }
+  if ($an[0].level -ne "warn") { return "it came out at level $($an[0].level)" }
+  if (Test-WouldHalt -Status $st) { return "one unreadable poll stopped a paid day" }
+  ""
 }
 
 Write-Host ""

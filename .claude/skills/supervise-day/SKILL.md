@@ -63,8 +63,10 @@ ends.** A person who asked to be left alone for the day does not want a heartbea
 | `killed` | a session passed 90 minutes and was killed | interrupt; the work is lost, say so |
 | `window` | the usage window closed | interrupt; say when it comes back |
 | `stopped` | the day ended on something other than `no_tasks` | interrupt with the reason |
+| `vanished` | the day's own process is gone and wrote no ending | interrupt; nothing else can report this one |
 | `silence` | a live session has emitted nothing for 15+ min | mention it once, then watch |
 | `cost` | a cycle spent several times the median | mention it with the number |
+| `unreadable` | the live stream could not be read, so nothing in that session was measured | mention it; while it stands, no denial and no silence can reach you |
 
 ## 5 · Denials are the loud one
 
