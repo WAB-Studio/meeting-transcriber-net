@@ -181,6 +181,30 @@ public sealed class RecoveryCommandTests : IDisposable
         run.Value("ch0 holds").ShouldStartWith("loopback.blocks,");
     }
 
+    /// <summary>
+    /// ISC-133 at the one surface a person reads a rate on. A source whose counter was given up on
+    /// is placed by the very clock it is then measured against, so it reports the rate it was
+    /// opened at however fast it really ran — and the word that would have somebody diagnosing two
+    /// channels drifting apart take that number for a measurement must not be beside it.
+    /// </summary>
+    [Fact]
+    public void A_rate_a_counter_was_given_up_on_is_never_reported_as_measured()
+    {
+        Recorded("daily", both: true, microphoneCountsBy: 160);
+
+        var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--keep");
+
+        run.Code.ShouldBe(Cli.Ok);
+        run.Value("ch1 recorded").ShouldContain("counter given up on");
+        run.Value("ch1 recorded").ShouldNotContain("measured");
+
+        // The source beside it in the same recording counted in the frames it handed over, so it
+        // says nothing about a counter — and its rate is not called measured either, because it is
+        // the label until a recording is long enough to say otherwise.
+        run.Value("ch0 recorded").ShouldNotContain("given up");
+        run.Value("ch0 recorded").ShouldNotContain("measured");
+    }
+
     [Fact]
     public void A_folder_holding_no_recording_is_refused()
     {
@@ -233,17 +257,21 @@ public sealed class RecoveryCommandTests : IDisposable
 
     private DirectoryInfo Folder(string name) => new(Path.Combine(root.FullName, name));
 
-    /// <summary>A recording left exactly as killing the process during one leaves it.</summary>
-    private Guid Recorded(string name, bool both)
+    /// <summary>
+    /// A recording left exactly as killing the process during one leaves it. Every source counts
+    /// its position in the frames it hands over unless <paramref name="microphoneCountsBy"/> says
+    /// the microphone's counter runs in its own unit, the way a shared-mode webcam's does.
+    /// </summary>
+    private Guid Recorded(string name, bool both, int microphoneCountsBy = 480)
     {
         var folder = Folder(name);
         folder.Create();
         var meeting = Guid.NewGuid();
 
-        Spool(folder, AudioChannel.Loopback);
+        Spool(folder, AudioChannel.Loopback, 480);
         if (both)
         {
-            Spool(folder, AudioChannel.Microphone);
+            Spool(folder, AudioChannel.Microphone, microphoneCountsBy);
         }
 
         SpoolManifest.Write(folder, new SpoolCard(
@@ -260,14 +288,16 @@ public sealed class RecoveryCommandTests : IDisposable
         return meeting;
     }
 
-    private void Spool(DirectoryInfo folder, AudioChannel channel)
+    private void Spool(DirectoryInfo folder, AudioChannel channel, int countsBy)
     {
         using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Format);
         for (var block = 0; block < 10; block++)
         {
+            // Always 480 frames handed over; the counter beside them advances by whatever this
+            // device counts in, which is the whole of what a webcam microphone does differently.
             writer.Write(new CapturePacket(
                 channel,
-                block * 480L,
+                block * (long)countsBy,
                 MonotonicInstant.FromMilliseconds(block * 10d),
                 new byte[480 * Format.BytesPerSample]));
         }
