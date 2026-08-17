@@ -1,7 +1,7 @@
 #requires -Version 5.1
 <#
   The engine behind the day: the event stream, the contracts sessions speak in, and the rules that
-  decide what is abnormal. `run-day.ps1` writes through it, `day-status.ps1` reads through it, and
+  decide what is abnormal. The atoms write through it, `day-status.ps1` reads through it, and
   `test-day.ps1` proves the parts that do not need a session to run.
 
   One source of truth per run: `events.jsonl`. Everything anybody decides anything on -- the
@@ -191,6 +191,93 @@ function Test-DayContract {
 }
 
 <#
+  What a session has to hand over when it says a decision is owed. One shape for both of them: the
+  worker meets a fork before it builds and knows only what the fork is, the audit meets one in a
+  finished diff and can usually name the options too. `what` is what the grill reads first, so it is
+  the one field nothing may leave out.
+
+  Checked before it reaches a card, because a decision nobody can read is a card that comes back
+  from the next grill in the same state. An unreadable one is taken as a plain hold instead.
+#>
+function Test-DecisionsOwed {
+  param($Owed)
+  $ds = @($Owed)
+  if ($ds.Count -eq 0) { return "it says a decision is owed and names none" }
+  foreach ($d in $ds) {
+    if (-not $d) { return "one of the decisions is empty" }
+    if ([string]::IsNullOrWhiteSpace([string]$d.what)) { return "a decision does not say what it is" }
+    # Filtered, not just wrapped: @($null).Count is 1 in PowerShell, so an absent `options` read as
+    # a decision offering exactly one -- and every worker that named a fork without listing them was
+    # refused for saying too little.
+    $opts = @(@($d.options) | Where-Object { $null -ne $_ })
+    if ($opts.Count -eq 1) { return "'$([string]$d.what)' offers one option, which is not a decision" }
+    foreach ($o in $opts) {
+      if ([string]::IsNullOrWhiteSpace([string]$o)) { return "'$([string]$d.what)' has an empty option" }
+    }
+  }
+  return ""
+}
+
+<#
+  What the day does about a verdict, as a function so the probe asks exactly what the loop asks.
+  Two answers and no third: integrate the PR, or leave it open and put the card somewhere.
+
+  **Nothing here waits for anybody.** An `ask` used to stop the day until a person answered, and the
+  cost of that was the day: the question arrives mid-afternoon, whoever could answer it is out, and
+  every remaining cycle is spent sitting. So a decision the audit cannot make goes onto the card, in
+  writing, and the card goes to `pending` where no worker touches it until a grill settles it. The
+  PR stays open and green and nothing merges it on a guess.
+
+  A verdict that contradicts itself does not merge. An audit that says `pass` and attaches a decision
+  it will not make has said two things, and the reading that costs nothing is the one that does not
+  put an unread diff into `main`.
+#>
+function Resolve-Verdict {
+  param($Verdict)
+  $name = [string]$Verdict.verdict
+  # Filtered, not just wrapped: @($null).Count is 1, so a `pass` that simply omitted the field
+  # read as owing one decision and never merged.
+  $owed = @(@($Verdict.decisions_owed) | Where-Object { $null -ne $_ })
+
+  if ($name -eq "ask") {
+    $bad = Test-DecisionsOwed $owed
+    if ($bad -ne "") {
+      return [pscustomobject]@{ action = "recover"; to = ""; reason = "the audit says a decision is owed but $bad" }
+    }
+    # Always `pending`, never the pool: the pool is where a worker looks, and the one thing that must
+    # not happen to this card is another session building on the decision nobody has made yet.
+    return [pscustomobject]@{ action = "recover"; to = "pending"; reason = "a decision on this card is not the audit's to make" }
+  }
+
+  if ($name -eq "hold") { return [pscustomobject]@{ action = "recover"; to = ""; reason = "the audit held it" } }
+
+  if ($owed.Count -gt 0) {
+    return [pscustomobject]@{
+      action = "recover"; to = ""
+      reason = "the verdict is '$name' and it owes $($owed.Count) decision(s), which are two different answers"
+    }
+  }
+  return [pscustomobject]@{ action = "merge"; to = ""; reason = "" }
+}
+
+<#
+  Where a card goes when its PR is not merged, decided from the recoveries already on the stream
+  rather than from anything the running process remembers. A day that was killed and relaunched used
+  to forget, so a card nothing could land went back in the pool once per restart forever.
+
+  Only a recovery that actually moved the card counts. One that could not reach the board left the
+  card where it was, and charging somebody a strike for it would send the next one to `pending` over
+  a failure of the board CLI rather than of the work.
+#>
+function Get-CardDestination {
+  param($Recovered, [string]$TaskId)
+  if ([string]::IsNullOrWhiteSpace($TaskId)) { return "Open" }
+  $before = @(@($Recovered) | Where-Object { $_ -and [string]$_.task -eq $TaskId -and $_.moved })
+  if ($before.Count -ge 1) { return "pending" }
+  return "Open"
+}
+
+<#
   A denial is counted per tool and per what it tried, never as a number: the number says something
   happened, the list says which permission rule is missing. It is the difference between "there
   were 27" and "the board CLI was denied all session".
@@ -352,14 +439,278 @@ function Get-SessionActivity {
 }
 
 # ---------------------------------------------------------------------------------------------
+# The journal
+# ---------------------------------------------------------------------------------------------
+
+<#
+  What a session knew and nobody else does: what it tried and threw away, where it got to, what it
+  was going to do next. The card keeps conclusions and the stream keeps transitions; neither keeps
+  work half done, which is what the next session repeats.
+
+  The lifecycle is mechanical and the content is not. These move the file; the session writes it.
+#>
+$script:JournalHeadings = @("Where I got to", "Tried and discarded", "What I would do next")
+
+function Get-JournalPath {
+  param([Parameter(Mandatory)][string]$Repo)
+  return (Join-Path $Repo ".scratch\current.md")
+}
+
+<#
+  Is there anything under the headings. Archiving a journal that says nothing files an empty file
+  and loses the only record there was, so this is what the gate asks.
+#>
+function Test-JournalBody {
+  param([Parameter(Mandatory)][string]$Path)
+  if (-not (Test-Path $Path)) { return "there is no journal at $Path" }
+  foreach ($line in (Read-OpenFileLines $Path)) {
+    $t = ([string]$line).Trim()
+    if ($t -eq "" -or $t.StartsWith("#")) { continue }
+    return ""
+  }
+  return "the journal has its headings and nothing under them"
+}
+
+function Get-JournalTask {
+  param([Parameter(Mandatory)][string]$Path)
+  if (-not (Test-Path $Path)) { return "" }
+  foreach ($line in (Read-OpenFileLines $Path)) {
+    if ([string]$line -match '^#\s+(\S+)') { return $Matches[1] }
+  }
+  return ""
+}
+
+<#
+  The shape is laid down before the session starts, so the session only ever adds prose under
+  headings that are already there. A shape a session has to reproduce from memory is one that comes
+  back wrong on the day nobody is watching.
+
+  Whatever was already there is put away first: a cycle that died between its session and its close
+  left a journal nothing has filed, and overwriting it would throw away exactly the case this
+  exists for.
+#>
+function Reset-Journal {
+  param([Parameter(Mandatory)][string]$Repo)
+  $p = Get-JournalPath $Repo
+  $parked = ""
+  if (Test-Path $p) { $parked = Complete-Journal -Repo $Repo }
+  New-Item -ItemType Directory -Force (Split-Path -Parent $p) | Out-Null
+  $lines = New-Object System.Collections.ArrayList
+  $null = $lines.Add("# ")
+  $null = $lines.Add("")
+  foreach ($h in $script:JournalHeadings) {
+    $null = $lines.Add("## $h")
+    $null = $lines.Add("")
+    $null = $lines.Add("")
+  }
+  [System.IO.File]::WriteAllText($p, ($lines -join "`n"), $script:Utf8NoBom)
+  return $parked
+}
+
+<#
+  Parking is what happens unless the work landed, which is what makes a crash come out right
+  without anything having been written for the crash: only a merge archives, and everything else --
+  a hold, a question that ended the cycle, a session that died -- falls through to parked.
+
+  An empty journal is not filed either way. There is nothing in it to find again, and a folder of
+  empty files is how a real one stops being noticed.
+#>
+function Complete-Journal {
+  param([Parameter(Mandatory)][string]$Repo, [switch]$Merged, [string]$TaskId)
+  $p = Get-JournalPath $Repo
+  if (-not (Test-Path $p)) { return "" }
+  if ((Test-JournalBody $p) -ne "") { Remove-Item $p -Force; return "" }
+
+  if (-not $TaskId) { $TaskId = Get-JournalTask $p }
+  if (-not $TaskId) { $TaskId = "unfiled" }
+
+  if ($Merged) {
+    $dir = Join-Path $Repo ".scratch\archive"
+    $name = "{0}-{1}.md" -f (Get-Date -Format "yyyy-MM-dd"), $TaskId
+  } else {
+    $dir = Join-Path $Repo ".scratch\parked"
+    $name = "$TaskId.md"
+  }
+  New-Item -ItemType Directory -Force $dir | Out-Null
+  $dest = Join-Path $dir $name
+
+  # A card can come back more than once, and each attempt knows something the last did not. Moving
+  # over the previous one threw away exactly the history this exists to keep -- and relying on the
+  # session to have copied the old file forward puts the guarantee back in the hands that drop it.
+  if ((Test-Path $dest) -and -not $Merged) {
+    $before = Get-Content $dest -Raw
+    $now = Get-Content $p -Raw
+    $joined = $before.TrimEnd() + "`n`n---`n`n" + $now.TrimEnd() + "`n"
+    [System.IO.File]::WriteAllText($dest, $joined, $script:Utf8NoBom)
+    Remove-Item $p -Force
+    return $dest
+  }
+
+  Move-Item -Path $p -Destination $dest -Force
+  return $dest
+}
+
+# ---------------------------------------------------------------------------------------------
+# One day at a time
+# ---------------------------------------------------------------------------------------------
+
+<#
+  Nothing holds the day open for its whole length any more: what runs is one atom at a time, and
+  between them there is no process to own a handle. So the lock is a claim with a timestamp on it,
+  refreshed by every atom, and a claim nobody has touched in longer than a session can legally take
+  is not a claim.
+
+  That is weaker than a handle the OS releases on death, and the weakness is bounded: a day killed
+  outright keeps the next one out for `LockStaleMinutes` and no longer.
+
+  It also carries the run, which is what lets every atom take no arguments. A command with a path
+  in it is a command something has to spell, and the layer that decides permissions splits on
+  characters that appear in paths -- so the one place the current run is written down is here, and
+  the atoms read it rather than being told.
+#>
+$script:LockStaleMinutes = 150     # the session clock is 90; this leaves room for one plus its close
+
+function Get-LockPath {
+  param([Parameter(Mandatory)][string]$OrchestratorDir)
+  return (Join-Path $OrchestratorDir "day.lock")
+}
+
+<#
+  Taking it is one atomic create and never a check followed by a write. Two `start-day` in the same
+  second -- the scheduled one and yours -- both saw no lock and both proceeded, and from there two
+  orchestrators shared a checkout, a card and a set of files while each believed it owned them.
+
+  Taking over a stale claim is the one path that reads before it writes, and that is sound because
+  stale means nothing has touched it for two and a half hours.
+#>
+function Enter-DayLock {
+  param([Parameter(Mandatory)][string]$OrchestratorDir, [Parameter(Mandatory)][string]$LogDir)
+  $p = Get-LockPath $OrchestratorDir
+  $run = Split-Path -Leaf $LogDir
+
+  if (Test-NewLock -Path $p) {
+    Update-DayLock -OrchestratorDir $OrchestratorDir -LogDir $LogDir
+    return ""
+  }
+
+  $held = $null
+  try { $held = (Get-Content $p -Raw -ErrorAction Stop) | ConvertFrom-Json } catch { $held = $null }
+
+  # Unreadable is not permission. A contender reading during somebody else's write sees exactly
+  # this, and treating it as a free lock is how two days end up sharing a checkout.
+  if ($null -eq $held -or -not [string]$held.run) { return "the lock could not be read, so it is not free" }
+  if ([string]$held.run -eq $run) {
+    Update-DayLock -OrchestratorDir $OrchestratorDir -LogDir $LogDir
+    return ""
+  }
+
+  $age = ((Get-Date).ToUniversalTime() - ([datetime][string]$held.ts).ToUniversalTime()).TotalMinutes
+  if ($age -lt $script:LockStaleMinutes) {
+    return ("the day {0} holds the lock and touched it {1:N0} min ago" -f $held.run, $age)
+  }
+
+  # Taking over goes through the same atomic create as a free lock, so two contenders that both see
+  # the same stale claim cannot both win: overwriting it outright let them.
+  Remove-Item $p -Force -ErrorAction SilentlyContinue
+  if (-not (Test-NewLock -Path $p)) { return "another day took the stale lock first" }
+  Update-DayLock -OrchestratorDir $OrchestratorDir -LogDir $LogDir
+  return ""
+}
+
+# Exclusive creation, which is the only part of taking a lock that has to be indivisible: two
+# `start-day` in the same second both saw no lock and both proceeded.
+function Test-NewLock {
+  param([Parameter(Mandatory)][string]$Path)
+  try {
+    $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::CreateNew,
+                                 [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    $fs.Dispose()
+    return $true
+  } catch { return $false }
+}
+
+function Update-DayLock {
+  param([Parameter(Mandatory)][string]$OrchestratorDir, [Parameter(Mandatory)][string]$LogDir)
+  $o = [pscustomobject][ordered]@{
+    run = (Split-Path -Leaf $LogDir); dir = $LogDir
+    ts  = (Get-Date).ToUniversalTime().ToString("o")
+  }
+  [System.IO.File]::WriteAllText((Get-LockPath $OrchestratorDir), ($o | ConvertTo-Json -Compress), $script:Utf8NoBom)
+}
+
+<#
+  Released by its owner and by nobody else. An unconditional delete let a day that had already lost
+  a stale claim take the lock away from the run that legitimately took it over.
+#>
+function Exit-DayLock {
+  param([Parameter(Mandatory)][string]$OrchestratorDir, [string]$LogDir)
+  $p = Get-LockPath $OrchestratorDir
+  if (-not (Test-Path $p)) { return }
+  if ($LogDir) {
+    $held = $null
+    try { $held = (Get-Content $p -Raw -ErrorAction Stop) | ConvertFrom-Json } catch { $held = $null }
+    if ($held -and [string]$held.run -and [string]$held.run -ne (Split-Path -Leaf $LogDir)) { return }
+  }
+  Remove-Item $p -Force -ErrorAction SilentlyContinue
+}
+
+<#
+  Which run the atoms are working on, off the lock and nothing else. An empty string means no day is
+  open, which every atom but `start-day` treats as its own refusal to act.
+#>
+function Get-CurrentRun {
+  param([Parameter(Mandatory)][string]$OrchestratorDir)
+  $p = Get-LockPath $OrchestratorDir
+  if (-not (Test-Path $p)) { return "" }
+  try { $held = (Get-Content $p -Raw -ErrorAction Stop) | ConvertFrom-Json } catch { return "" }
+  $dir = [string]$held.dir
+  if ($dir -and (Test-Path $dir)) { return $dir }
+  return ""
+}
+
+<#
+  Whether something has already happened to a cycle. What sequences the atoms is a model, so an atom
+  run twice is not a hypothetical -- and the second run was not harmless: closing a cycle twice
+  recorded two recoveries, and because a card's destination is counted off those, the duplicate sent
+  it to `pending` as though two sessions had failed to land it.
+
+  So every atom that changes something asks this first, and a cycle already past that point is left
+  alone rather than done again.
+#>
+function Test-CycleEvent {
+  param([Parameter(Mandatory)][string]$LogDir, [Parameter(Mandatory)][int]$Cycle,
+        [Parameter(Mandatory)][string[]]$Kinds)
+  foreach ($e in (Read-DayEvents $LogDir)) {
+    if ($Kinds -notcontains [string]$e.kind) { continue }
+    if ($null -ne $e.cycle -and [int]$e.cycle -eq $Cycle) { return $true }
+  }
+  return $false
+}
+
+<#
+  Which cycle is in play, counted off the stream rather than passed in. A cycle opens when its
+  worker starts, so the number is the worker sessions already started -- and every atom after that
+  worker is working on the one it opened.
+#>
+function Get-CurrentCycle {
+  param([Parameter(Mandatory)][string]$LogDir)
+  $n = 0
+  foreach ($e in (Read-DayEvents $LogDir)) {
+    if ($e.kind -eq "session_started" -and [string]$e.role -eq "worker") { $n++ }
+  }
+  return $n
+}
+
+# ---------------------------------------------------------------------------------------------
 # The rules
 # ---------------------------------------------------------------------------------------------
 
 $script:DefaultRules = @{
-  SilenceMinutes = 15    # a session emitting nothing for this long is stuck, not thinking
-  DenialGrope    = 2      # two denied attempts at one tool is already groping for a way around
-  CostFactor     = 3.0   # a cycle spending three times the median is in a loop
-  CostSamples    = 3     # with fewer cycles there is no median worth having
+  SilenceMinutes   = 15    # a session emitting nothing for this long is stuck, not thinking
+  DenialGrope      = 2     # two denied attempts at one tool is already groping for a way around
+  CostFactor       = 3.0   # a cycle spending three times the median is in a loop
+  CostSamples      = 3     # with fewer cycles there is no median worth having
+  AbandonedMinutes = 30    # no session up and nothing on the stream: whoever was sequencing is gone
 }
 
 function Get-DayRules { return $script:DefaultRules.Clone() }
@@ -419,6 +770,7 @@ function Get-DayAnomalies {
     $null = $out.Add((New-Anomaly "stop" "killed" "a session passed the executor's clock and was killed"))
   }
 
+
   # A status that could not read the live stream knows nothing about that session -- not its
   # silence, not its denials -- and every one of those fields reads zero. Saying so is the whole
   # rule: it does not stop the day, because a torn read is not the reader's error and one hiccup is
@@ -440,12 +792,14 @@ function Get-DayAnomalies {
     $null = $out.Add((New-Anomaly "stop" "stopped" ("the day ended on: {0}" -f $Status.EndReason)))
   }
 
-  # The one ending nothing else can report, because the process that would have reported it is the
-  # one that is gone: killed by hand, killed by the machine, or dead of an exception the executor
-  # could not write down.
-  if ($Status.ProcessGone) {
-    $null = $out.Add((New-Anomaly "stop" "vanished" (
-      "the day's process ({0}) is gone and it never wrote an ending" -f $Status.ExecutorPid)))
+  # The one ending nothing else can report, because whatever would have reported it is what is
+  # gone. Between cycles the next atom starts within seconds, so a run with no session up and
+  # nothing on its stream for half an hour is one nobody is sequencing any more -- and the lock it
+  # left behind keeps the next day out until it goes stale.
+  if (-not $Status.Ended -and -not $Status.Running -and
+      $null -ne $Status.IdleForMinutes -and $Status.IdleForMinutes -ge $Rules.AbandonedMinutes) {
+    $null = $out.Add((New-Anomaly "stop" "abandoned" (
+      "nothing has happened for {0:N0} min and no session is up: the day was left half way and never wrote an ending" -f $Status.IdleForMinutes)))
   }
 
   # Anomalies already written to the stream come back even when the state that produced them is
@@ -513,8 +867,7 @@ function Get-DayStatus {
     Started         = $null
     Ended           = $false
     EndReason       = ""
-    ExecutorPid     = $null
-    ProcessGone     = $false
+    IdleForMinutes  = $null
     Past            = @()
     Cycle           = 0
     Role            = ""
@@ -535,15 +888,18 @@ function Get-DayStatus {
     CycleCosts      = @()
     Cycles          = @()
     Merged          = @()
+    Owed            = @()
+    Recovered       = @()
     Anomalies       = @()
   }
 
   $cycles = @{}
   $openStream = $null
+  $openPid = $null
 
   foreach ($e in $ev) {
     switch ($e.kind) {
-      "day_started" { $st.Started = $e.ts; $st.ExecutorPid = $e.pid }
+      "day_started" { $st.Started = $e.ts }
       "day_ended"   { $st.Ended = $true; $st.EndReason = [string]$e.reason }
       # An anomaly is written down when it fires, because most of them cannot be recomputed later:
       # a 20-minute silence disappears the moment the session ends, and a cycle that cost triple
@@ -556,10 +912,12 @@ function Get-DayStatus {
         $st.Running = $true
         $st.RunningSince = $e.ts
         $openStream = [string]$e.stream
+        $openPid = $e.pid
       }
       "session_ended" {
         $st.Running = $false
         $openStream = $null
+        $openPid = $null
         if ($null -ne $e.cost) { $st.Cost += [double]$e.cost }
         $c = [int]$e.cycle
         if (-not $cycles.ContainsKey($c)) { $cycles[$c] = [ordered]@{ cycle = $c; cost = 0.0 } }
@@ -580,6 +938,31 @@ function Get-DayStatus {
         $cycles[$c].verdict = [string]$e.verdict
       }
       "merged" { $st.Merged += $e.pr_number }
+      # A PR left open and green because a decision on its card is nobody's here to make. It is the
+      # one outcome worth counting across days: a run of them says the arrangement is wrong, not the
+      # card.
+      "decision_owed" {
+        $st.Owed += [pscustomobject]@{
+          cycle = [int]$e.cycle; task = [string]$e.task_id; pr = $e.pr_number
+          decisions = @($e.decisions); said = [bool]$e.said; retagged = [bool]$e.retagged; moved = [bool]$e.moved
+        }
+      }
+      "recovered" {
+        $st.Recovered += [pscustomobject]@{
+          cycle = [int]$e.cycle; task = [string]$e.task_id; pr = $e.pr_number
+          to = [string]$e.to; reason = [string]$e.reason; moved = [bool]$e.moved
+        }
+      }
+    }
+  }
+
+  # A session cannot be running if the atom that launched it is gone. Without this the stream says
+  # it started, nothing says it stopped, and the day reads as working for as long as anybody looks --
+  # while `abandoned`, which only fires when nothing is running, never gets its turn.
+  if ($st.Running -and $openPid) {
+    if (-not (Get-Process -Id ([int]$openPid) -ErrorAction SilentlyContinue)) {
+      $st.Running = $false
+      $openStream = $null
     }
   }
 
@@ -620,13 +1003,14 @@ function Get-DayStatus {
 
   $st.DenialsByTool = Group-Denials $st.DenialDetail
 
-  # A session cannot be running if the process that launched it is gone. Without this, a day killed
-  # with Stop-Process -- which the skill tells people to use -- reads as "running" forever, and the
-  # silence rule slowly counts up over a session that ended hours ago.
-  if ($st.ExecutorPid -and -not $st.Ended) {
-    if (-not (Get-Process -Id ([int]$st.ExecutorPid) -ErrorAction SilentlyContinue)) {
-      $st.ProcessGone = $true
-      $st.Running = $false
+  # How long since anything happened at all. It is the only thing that can tell a day being
+  # sequenced from one that was left where it stood, now that no single process lives as long as
+  # the run: a session running is measured by its own stream's silence, and between cycles the next
+  # atom starts within seconds.
+  if ($ev.Count -gt 0 -and -not $st.Running) {
+    $last = $ev[$ev.Count - 1].ts
+    if ($last) {
+      $st.IdleForMinutes = [math]::Round(((Get-Date).ToUniversalTime() - ([datetime][string]$last).ToUniversalTime()).TotalMinutes, 1)
     }
   }
 
@@ -676,6 +1060,50 @@ function Write-DayReport {
 
   if ($st.Merged.Count -gt 0) {
     $null = $L.Add("Merged into main: " + (($st.Merged | ForEach-Object { "#$_" }) -join ", "))
+    $null = $L.Add("")
+  }
+
+  # First, because it is the only section naming work that is finished and not in `main`. Each of
+  # these is a green PR held up by one decision nobody here could make, and the card says which.
+  if ($st.Owed.Count -gt 0) {
+    $null = $L.Add("## Parked on a decision")
+    $null = $L.Add("")
+    $null = $L.Add("The PR is open and green. The card is in ``pending`` carrying what has to be settled, and it goes back in the pool once a grill settles it.")
+    $null = $L.Add("")
+    foreach ($o in $st.Owed) {
+      $pr = "-"; if ($o.pr) { $pr = "#" + $o.pr }
+      foreach ($d in @($o.decisions)) {
+        $null = $L.Add(("- {0} {1} - {2}" -f $o.task, $pr, [string]$d.what))
+      }
+      # The one line in this section somebody has to act on. Each of these steps guards the next, so
+      # naming which one stopped says exactly what state the card is in and what has to be redone.
+      if (-not ($o.said -and $o.retagged -and $o.moved)) {
+        $missed = @()
+        if (-not $o.said)     { $missed += "the decision never reached the card" }
+        if (-not $o.retagged) { $missed += "it still reads as grilled" }
+        if (-not $o.moved)    { $missed += "it never reached ``pending``" }
+        $null = $L.Add(("  **{0} was not parked**: {1}." -f $o.task, ($missed -join ", ")))
+      }
+    }
+    $null = $L.Add("")
+  }
+
+  if ($st.Recovered.Count -gt 0) {
+    $null = $L.Add("## Put back rather than merged")
+    $null = $L.Add("")
+    $null = $L.Add("The PR is open and the card moved. The day did not stop over any of these.")
+    $null = $L.Add("")
+    foreach ($r in $st.Recovered) {
+      $pr = "-"; if ($r.pr) { $pr = "#" + $r.pr }
+      if ($r.moved) {
+        $null = $L.Add(("- {0} {1} -> ``{2}`` - {3}" -f $r.task, $pr, $r.to, $r.reason))
+      } else {
+        # The one line in this section somebody has to act on: the day meant to put the card back
+        # and could not, so it is still in `in review` and no worker will pick it up.
+        $null = $L.Add(("- **{0} {1} did not move** - it should be ``{2}`` and the board still says otherwise. {3}" -f `
+          $r.task, $pr, $r.to, $r.reason))
+      }
+    }
     $null = $L.Add("")
   }
 
@@ -744,6 +1172,10 @@ function Write-DayReport {
 
 Export-ModuleMember -Function Add-Utf8Line, Get-EventsPath, Read-OpenFileLines, New-DayEvent, Read-DayEvents,
   Get-SessionResult, Get-ContractFromText, Test-DayContract, Test-JsonTrue, Get-SessionActivity,
+  Test-DecisionsOwed, Resolve-Verdict, Get-CardDestination,
   New-Denial, Get-ResultDenials, Get-DenialKey, Group-Denials,
+  Get-JournalPath, Test-JournalBody, Get-JournalTask, Reset-Journal, Complete-Journal,
+  Get-LockPath, Test-NewLock, Enter-DayLock, Update-DayLock, Exit-DayLock,
+  Get-CurrentRun, Get-CurrentCycle, Test-CycleEvent,
   Get-DayRules, Get-DayAnomalies, Get-HaltingAnomalies, Get-Median,
   Find-LatestRun, Get-DayStatus, Write-DayReport

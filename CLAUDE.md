@@ -72,7 +72,6 @@ something here has stopped earning its place, and the fix is to move a section o
 | `docs/corpus.md` | Deciding what gets backed up, what is deletable, what is rebuildable. |
 | `docs/process-capture.md` | Channel 0 following one program: what Windows gives, and what was probed. |
 | `docs/reference-behaviour.md` | Grouping turns, and where .NET departs from the Python system. |
-| `docs/orchestrator.md` | Before running, or diagnosing, a day of sessions with nobody in the loop. |
 
 ## Nothing has shipped yet
 
@@ -89,6 +88,9 @@ and do not block. `dotnet format` has to pass clean.
 
 ## How work starts and ends
 
+Every line here says **when** to reach for something, so it cannot live in the skill it points at:
+that rule would only be read by whoever already decided. The *how* is the skill's, and is not here.
+
 `ISA.md` says what done means and the board says what to do next. **A claim closes on a probe that
 ran, never on a task moving, and `ISA.md` is never edited by hand: steps 1 and 3 run through the
 `isa` skill**, which owns how a claim is written, scored and closed — and what a failed probe says
@@ -96,18 +98,16 @@ about whether the code or the claim is wrong.
 
 1. Work starts from a board task, and the claims it closes exist in `ISA.md` before anything is
    built — if they do not, they get written first, each stating what would prove it false.
-2. The task names them — `Cierra: ISC-12, ISC-13` — and the pointer only ever goes that way.
-3. Closing is running the probe, marking `[x]`, adding the `## Verification` stub and recounting
-   `progress:`; `IsaStructureTests` fails if the count disagrees.
+2. The task names them, and the pointer only ever goes that way.
+3. Closing is running the probe and marking the claim closed; `IsaStructureTests` fails if the
+   count disagrees.
 4. A diff over 50 lines that are not comments runs `/adversarial-review` first, and what the
    verdict confirms gets fixed in the same pass. The task then moves to `in review` with the
    evidence and the verdict in a comment. Closing it is the user's.
-5. A session ends on the PR opened and never merged: `gh pr create`, then `main` checked out and
-   pulled with the tree clean, so the next one cuts a branch from a current `main` instead of
-   inheriting the last one and writing over it. The branch and the PR stay where the user reads
-   them; merging is theirs and so is closing the card, the unattended loop excepted, which merges
-   on its own audit's verdict — `docs/orchestrator.md`. A red command or a confirmed finding still
-   unfixed stops the PR — then the session's last words are that it did not open one, and why.
+5. A session ends on the PR opened and never merged, standing on a clean `main`, so the next one
+   cuts a branch from a current one instead of writing over it. Merging is the user's, and so is
+   closing the card — the unattended loop excepted, which merges on its own audit's verdict. A red
+   command or an unfixed finding stops the PR, and the session's last words say so, and why.
 
 ## The contract
 

@@ -27,12 +27,28 @@ python $S task <id>
 it, and anything before it — an env var, a variable assignment — gets the call denied. Under `-p`
 that does not prompt. `PYTHONIOENCODING` is already exported by the orchestrator.
 
+**Long prose goes in a file, never on the command line.** `--text` and `--desc` take `@path` and
+read from there. A verdict body carries a semicolon sooner or later, and whatever parses the
+command splits on it without caring that it sits inside quotes — the call is refused, and under
+`-p` that does not prompt.
+
+```powershell
+python $S comment <id> --text @.scratch/verdict.md
+```
+
 ## 0 · You never touch the working tree
 
 Everything you read is reachable without a checkout — `gh pr view`, `gh pr diff`, and
 `git show <headRefOid>:<path>` for any file at the tip. **You do not check the PR out, do not add a
-worktree, and do not build or test locally.** The two things you write go to GitHub and not to
-disk: the comment on the PR and, when there is one, a card.
+worktree, and do not build or test locally.** What you produce goes to GitHub and the board: the
+comment on the PR, the same body on the card when it is not a `pass`, and any card you open.
+
+**Where you may write is `.scratch/`, and nowhere else.** Outside the repo is refused for being
+outside the working directory, and everything under `.claude/` is refused as a sensitive path — the
+orchestrator's own log directory included, so do not try to leave anything beside the stream. The
+scratch is inside the tree because that is the only writable ground and gitignored at the root so
+nothing you leave there reaches a diff or dirties the tree the next preflight reads. Write the
+verdict body there and pass it as `@.scratch/verdict.md`.
 
 That is not tidiness, and it is not weaker evidence. The tree you would check out is the one the
 next worker starts from, so a session that dies mid-audit leaves it on somebody else's commit: on
@@ -115,19 +131,65 @@ which is a `hold`, and the durable fix is a card asking for the probe.
 
 ## 4 · The verdict
 
-**`hold`** — the day stops. Any one of these is enough: CI red or unfinished; a decision —
-declared or not — that resolved the other way would invalidate the diff; any `isc_unproved`; the
-diff doing something the task did not ask for inside `Domain/Audio/`, `Domain/Time/` or
-`Domain/Jobs/`; **or a step `CLAUDE.md` requires that did not run** — above all the cross-model
-review over a diff past 50 non-comment lines, which CI cannot stand in for because CI does not
-review anything. A worker that declared the gap honestly still delivered an unreviewed diff, and a
-`pass` merges it. Recompute the line count from the diff rather than trusting either account.
+Four values, and **none of them ends the day.** That is the change to hold on to if you knew this
+skill before: a verdict is a fact about one PR, never about the hours left.
+
+**`hold`** — the work does not hold up. CI red or unfinished; any `isc_unproved`; the diff doing
+something the task did not ask for inside `Domain/Audio/`, `Domain/Time/` or `Domain/Jobs/`; **or a
+step `CLAUDE.md` requires that did not run** — above all the cross-model review over a diff past 50
+non-comment lines, which CI cannot stand in for because CI does not review anything. A worker that
+declared the gap honestly still delivered an unreviewed diff, and a `pass` merges it. Recompute the
+line count from the diff rather than trusting either account.
+
+The PR is left open, the card goes back to the pool carrying your reasons, and the next cycle takes
+the next task. A card you send back twice in a day lands in `pending` instead, so write `reasons`
+for somebody who has to fix it: what is wrong, where, and what would settle it.
+
+**`ask`** — the diff holds up and one decision in it is not yours or the worker's to make. This is
+the verdict for the fork the task itself said a person picks, for scope the user has to agree to
+cut, for a product question wearing implementation clothes.
+
+**Nothing waits for an answer.** The decisions you write in `decisions_owed` are put on the card,
+the card goes to `pending` tagged `regrill`, and the day takes the next task. The PR stays open and
+green until a grill settles what you named and a later session lands it.
+
+That is why `what` is the field to spend care on: it is what somebody reads, cold, when they sit
+down to grill this card, and it is all they get from you. Name the decision the way somebody who
+has not read the diff would name it, say in `why` what changes depending on the answer, and list
+the options you can see. A `what` like "the frame counting" saves nobody anything.
+
+**The bar is that the day cannot go on being right without it.** A decision you can settle by
+reading the diff is not one — settle it, record it in `reasons`, and let the day run. Most
+undeclared decisions are this: real findings, worth writing down, worth nobody's morning.
+`unreported_decisions` is where they belong. **If you cannot say in one sentence what goes wrong
+when nobody decides, it is not an `ask`.**
+
+**And only about something the card did not already settle.** Every card carries a `**Grilled.**`
+comment where a person settled its product forks before any of this started; read it first. A
+decision that is in there and the diff went the other way is not owed to anybody — it is work
+contradicting its own spec, which is `hold`.
+
+The line against the other two is drawn on one question and it is not a matter of taste: **would a
+different answer change what the code should be?** If no, it is a finding — `pass` and an
+`unreported_decisions` entry. If yes and you can tell which answer is right by reading the repo, it
+is `hold` and the reason says which. If yes and you cannot, because the answer is a preference about
+the product, that is `ask` and nothing else is. `invalidates_diff: true` on a decision nobody
+declared is the same fork: it is `hold` when the diff is wrong and `ask` when it is only unchosen.
+
+**A shape nobody could act on is taken as a plain `hold`.** Each entry needs `what`; options are
+either none or two or more, because one option is not a decision. And `decisions_owed` on a verdict
+that is not `ask` neither merges nor parks — it reads as two answers to one thing and the PR goes
+back.
+
+**The cost is a green PR out of `main` until somebody grills that card, so weigh it.** Two of these
+in a day is two finished PRs parked, and if that becomes normal the answer is not more `ask` — it
+is that the grill is missing things, and somebody should know.
 
 **`pass_with_followup`** — the diff holds up and named work is left over.
 
 **`pass`** — none of the above.
 
-It is the only field deciding whether the day goes on. No second field repeats it.
+It is the only field deciding what happens to the PR. No second field repeats it.
 
 ## 5 · What your verdict costs
 
@@ -135,14 +197,14 @@ It is the only field deciding whether the day goes on. No second field repeats i
 run the command, but nothing stands between your verdict and the branch everything else is built
 on. There is no second reader after you, and the next session starts from what you let through.
 
-That is the whole reason to be slow here. `hold` is cheap: it costs the rest of the day, and the
-work survives in an open PR for a person to look at. Letting a bad diff into `main` costs the day
-plus everything built on top of it before anybody notices. **When you are unsure, hold.**
+**When you are unsure whether it holds up, hold. When it holds up and you are unsure it was yours
+to decide, ask.**
 
-The card stays in `in review` either way — closing it is still the user's.
+The card stays in `in review` on a verdict that merges — closing it is still the user's. On `hold`
+and on `ask` the orchestrator moves it, and you do not.
 
-On all three verdicts, comment on the PR; on `hold`, the same body on the card as well, which is
-what gets read in the morning. The comment exists because the verdict does not survive:
+On all four verdicts, comment on the PR; on anything but `pass`, the same body on the card as well,
+which is what gets read in the morning. The comment exists because the verdict does not survive:
 `verdict-N.json` is gitignored and per-run, and the script merges a green verdict into `main` with
 nobody in the loop, so this is the only durable line on the commit saying who read it.
 
@@ -161,11 +223,18 @@ is empty, and `actions_taken` never appears — that is `report.md`'s job.
 **Unproved claims**
 - ISC-N — <why it could not be corroborated>
 
+**Owed to a person**
+- <`what`> — <`why`>
+
 **Followups**
 - <task_id> <name>
 
 Merged by the orchestrator on this verdict. The card stays in `in review`.
 ```
+
+The last line says what happens next, and it differs by verdict: merged and the card left in
+`in review`; held, so the PR stays open and the card goes back to the pool; or parked, so the PR
+stays open and the card waits in `pending` for a grill to settle what is above.
 
 No headings of your own, no narrative of how you got there, no table of commands you ran. A reason
 that does not fit on one line is two reasons, or it is padding.

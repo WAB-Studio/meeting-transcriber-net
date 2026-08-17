@@ -8,13 +8,19 @@
     "unreported_decisions",
     "isc_unproved",
     "followups_created",
-    "actions_taken"
+    "actions_taken",
+    "decisions_owed"
   ],
   "properties": {
     "verdict": {
       "type": "string",
-      "enum": ["pass", "pass_with_followup", "hold"],
-      "description": "The only thing deciding whether the day goes on. hold stops it. No second field says the same: two fields for one decision can contradict each other, and the orchestrator would obey the wrong one."
+      "enum": [
+        "pass",
+        "pass_with_followup",
+        "ask",
+        "hold"
+      ],
+      "description": "What happens to this PR, and nothing else: none of the four ends the day and none of them waits for anybody. pass and pass_with_followup merge it. hold leaves the PR open and returns the card to the pool with the reasons on it. ask leaves the PR open and sends the card to `pending` tagged `regrill`, carrying the decision nobody here could make. No second field says the same: two fields for one decision can contradict each other, and the day would obey the wrong one."
     },
     "audited_head_sha": {
       "type": "string",
@@ -22,7 +28,9 @@
     },
     "reasons": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Why this verdict and not another. One reason per entry, one sentence each, naming its evidence — the PR comment renders these as one line apiece. What the task asked for and the diff does not carry goes here."
     },
     "unreported_decisions": {
@@ -31,10 +39,19 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["what", "found_in", "invalidates_diff"],
+        "required": [
+          "what",
+          "found_in",
+          "invalidates_diff"
+        ],
         "properties": {
-          "what": { "type": "string" },
-          "found_in": { "type": "string", "description": "File and line, or where in the PR." },
+          "what": {
+            "type": "string"
+          },
+          "found_in": {
+            "type": "string",
+            "description": "File and line, or where in the PR."
+          },
           "invalidates_diff": {
             "type": "boolean",
             "description": "True if resolving it the other way would pull down what was pushed. Decided by reading the diff, not by copying the worker's blocks_the_pr."
@@ -44,7 +61,9 @@
     },
     "isc_unproved": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "Claims marked [x] whose probe could not be corroborated with independent evidence."
     },
     "followups_created": {
@@ -52,17 +71,54 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["task_id", "name"],
+        "required": [
+          "task_id",
+          "name"
+        ],
         "properties": {
-          "task_id": { "type": "string" },
-          "name": { "type": "string" }
+          "task_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
         }
       }
     },
     "actions_taken": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "What was actually done: comments, cards, tasks put back to Open. It is what the user reads in the morning."
+    },
+    "decisions_owed": {
+      "type": "array",
+      "description": "Only when the outcome or verdict says a decision is owed, and empty otherwise. Each one goes onto the card in writing and the card goes to `pending` with the `regrill` tag: nobody is interrupted, and a grill settles it before any session touches the card again. The bar is that the answer changes what the person using the app experiences, not how the code gets there.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "what"
+        ],
+        "properties": {
+          "what": {
+            "type": "string",
+            "description": "The decision, in one sentence, named the way somebody who has not read the code would name it. This is what a grill reads first, so it is the one field nothing may leave out."
+          },
+          "why": {
+            "type": "string",
+            "description": "What is different depending on the answer, in one sentence."
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The answers you can see on offer, if you can see them. Two or more, or none at all -- one option is not a decision. A grill may find others; this is what saves it the rediscovery."
+          }
+        }
+      }
     }
   }
 }
