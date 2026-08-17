@@ -55,8 +55,18 @@ If there is none, walk the phase lists in order and take the first with an eligi
 it, by priority `urgente` → `alta` → `normal` → `baja`.
 
 ```powershell
-python $S tasks --list "0 · Contratos y caracterización" --status Open
+python $S tasks --list "0 · Contratos y caracterización" --status Open --tag grilled
 ```
+
+**`--tag grilled` is not a filter you may drop.** A card without it still has product decisions
+inside it that are not yours, and you have nobody to put them to. It is ineligible however good it
+looks and however empty the pool is; an empty pool is `no_tasks`, which is a legitimate ending.
+
+The tag says a person decided; **what they decided is the `**Grilled.**` comment on the card**, and
+it is the first thing to read after the description. It carries the SHA of `main` it was decided
+against: if the code has moved under one of those decisions since, that decision is an open fork
+again, not a settled one — say so in `decisions_deferred` and use your judgement, which is what
+`CLAUDE.md` asks for anyway.
 
 Two things that are never confused with each other:
 
@@ -101,8 +111,7 @@ eligible however good it looks.
 
 **A task is ineligible when finishing it needs something that is not on this side of the CLI.**
 Today that is nearly all of phase 2: a real meeting, two sound cards, a device unplugged mid
-recording, two hours of drift measured on hardware. So is a decision about the product rather than
-the code, which `CLAUDE.md` says to ask about.
+recording, two hours of drift measured on hardware.
 
 The real risk is not stalling: it is that you produce plausible measurements of a meeting that
 never happened. **A number that did not come out of a run does not get written** — not in the
@@ -118,6 +127,19 @@ that you could not do it: whoever reads it tomorrow needs to know what to bring.
 move goes in the handoff** — the audit re-lists the board and compares, so an undeclared move
 surfaces anyway, as a finding against you.
 
+## 2b · Asking, and only before you build
+
+A grilled card has had its product decisions made. If you meet one it did not settle, **stop and
+ask — before you build anything.** `outcome: "ask"`, the fork as two to four options in
+`questions[]`, and nothing else in that session. The answer comes back on the card and a later
+cycle builds it, so what you spend is a short session instead of a whole diff written against a
+guess.
+
+The bar is `CLAUDE.md`'s and it is narrow: **does the answer change what the person using this app
+experiences, or only how the code gets there?** If it does not show from outside, it is yours —
+decide it, say so in `decisions_deferred`, and carry on. A question you could settle by reading the
+repo is one you are charging a person for.
+
 ## 3 · Working
 
 Like any task, with `CLAUDE.md` in charge: the claims in `ISA.md` before building, the four
@@ -127,6 +149,22 @@ verdict confirms fixed in the same pass. All the unattended mode adds:
 ```powershell
 python $S move <id> --status "in progress"    # on starting, so a crash leaves a trace
 ```
+
+### The journal
+
+`.scratch/current.md` is already there when you start, with its headings and nothing under them.
+**Fill it in as you go, not at the end** — a session that dies has written whatever it had written.
+
+The title line is `# <task-id> · <name>`. Under the headings goes what only you know: where you got
+to, **what you tried and threw away**, and what you would do next. The discarded attempts are the
+most valuable part and the only part nobody else can reconstruct — the card keeps conclusions, the
+PR keeps the diff, and neither keeps the three approaches that did not work.
+
+If `.scratch/parked/<task-id>.md` exists for the card you picked, that is an earlier session on this
+same card: read it first and continue from it into `current.md`.
+
+**Write it, and never move it.** Leave it at `.scratch/current.md`; filing it is not yours. A
+session that opens a PR and leaves that file empty has not finished.
 
 If you get stuck in a way you cannot resolve: `outcome: "blocked"` with `blocked_reason`, **and
 leave the comment on the card yourself** — in the morning that gets read on the board, not in a
