@@ -1,31 +1,42 @@
 ---
 name: github
 description: >-
-  The shape of a pull request here: what the title says, what the body says, and what has no place
-  in it. Use when opening or editing a PR. Triggers: "gh pr create", "open the PR", "PR body",
-  "PR description", "abrí el PR".
+  The shape of a pull request here: what the title says, the three sections of the body, and what
+  has no place in it. Use when opening or editing a PR. Triggers: "gh pr create", "open the PR",
+  "PR body", "PR description", "abrí el PR".
 ---
 
 # The pull request
 
 **Title** — one line, in English, saying what the change does.
 
-**Body** — three things, in this order, and nothing else:
-
-1. **The claims it closes**, as `ISC-N`. `None` when it closed none, and never a claim that is not
-   in `ISA.md`.
-2. **What changed**, said explicitly: the behaviour that is different now, and what it was before.
-   Somebody opening this cold reads it instead of the diff, not before it.
-3. **What to look at**, when one part carries more risk than the rest. Leave it out when none does.
+**Body** — a lead line naming the claims, then three sections of a few lines each:
 
 ```text
 Closes ISC-118, ISC-119.
 
-`Turns.Group` ends a turn when the channel changes, not only on the gap. Two speakers answering
-across each other used to come out as one turn with one label on it.
+## What changed
 
-Worth a look: the gap constant moved into `Turns`, and two callers read it from there now.
+`Turns.Group` ends a turn when the channel changes, not only on the gap. The constant that decides
+the gap moved into `Turns`, and its two callers read it from there.
+
+## Why
+
+Two speakers answering across each other came out as one turn carrying one label, so a citation
+anchored on it put half of what was said in the wrong person's mouth.
+
+## Additional notes
+
+The old behaviour is gone rather than flagged: nothing has shipped, so no recording carries it.
 ```
+
+- **Closes** — `ISC-N` for every claim the work closes, or `None`. Never a claim that is not in
+  `ISA.md`.
+- **What changed** — the behaviour that is different now, and what it was before. Name files when
+  naming them saves a reader a search.
+- **Why** — what was wrong, said as what it cost somebody. Not how it was found.
+- **Additional notes** — the part carrying more risk than the rest, what was left out, what has to
+  happen next. Leave the section out entirely when there is none.
 
 If it does not fit on a screen it is carrying something that belongs somewhere else.
 
