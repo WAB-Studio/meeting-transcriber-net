@@ -236,13 +236,19 @@ Derivados reconstruibles:
 - `transcript.md`;
 - `utterances.jsonl`;
 - `summary.md`;
-- tablas de utterances, summaries, decisiones y acciones;
+- tablas de utterances, summaries, decisiones, acciones y preguntas abiertas;
 - índices FTS5.
 
-Una acción reconstruida vuelve tal como la propuso la extracción. Su estado y su
-responsable no están en esa fila: viven en `action_item_progress`, apuntados a la
-extracción y a la posición dentro de ella, y no al id de la acción, que la
-reproyección vuelve a generar.
+Una fila reconstruida vuelve tal como la propuso la extracción. Lo que una persona
+le anota no está en esa fila: el estado y el responsable de una acción viven en
+`action_item_progress`, apuntados a la extracción y a la posición dentro de ella, y
+no al id, que la reproyección vuelve a generar. Esa es la regla de toda fila
+proyectada que alguien puede anotar —decisión, acción y pregunta abierta llevan la
+posición por eso— y la base rechaza dos decisiones, dos acciones o dos preguntas en
+una misma posición de una misma corrida: dos no serían un error visible, serían una
+nota que se lee contra cualquiera de las dos. La posición cuenta dentro de su propia
+lista, así que la primera decisión y la primera acción de una extracción están las
+dos en la posición cero y lo que las distingue es de qué lista salieron.
 
 Un rerender nunca modifica `deepgram.json` ni una extracción anterior. Una nueva
 extracción crea una versión nueva y conserva la anterior.
@@ -305,6 +311,7 @@ utterances
 summaries
 decisions
 action_items
+open_questions
 action_item_progress
 nodes
 meeting_nodes
@@ -780,7 +787,7 @@ Una extracción solo se acepta si:
 - sus speakers existen en la reunión;
 - cada cita apunta al inicio de un turno existente;
 - el texto citado pertenece a ese turno;
-- decisiones y acciones incluyen evidencia;
+- decisiones, acciones y preguntas abiertas incluyen evidencia;
 - no mezcla IDs, participantes ni contenido de otra reunión;
 - su `input_hash` coincide con la entrada preparada.
 

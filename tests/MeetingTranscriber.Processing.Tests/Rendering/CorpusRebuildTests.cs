@@ -141,13 +141,18 @@ public class CorpusRebuildTests
             .Single(turn => turn.MeetingId == decision.MeetingId
                 && turn.Ordinal == decision.Evidence.UtteranceOrdinal)
             .Text.ShouldBe(cited.Text);
+        var question = context.OpenQuestions.Single();
+        context.Utterances
+            .Single(turn => turn.MeetingId == question.MeetingId
+                && turn.Ordinal == question.Evidence.UtteranceOrdinal)
+            .Text.ShouldBe(cited.Text);
         context.ActionItemProgress.Single().State.ShouldBe(ActionItemState.Done);
     }
 
     /// <summary>
-    /// Summaries, decisions and actions are left alone rather than reprojected. They come from the
-    /// accepted extractions and nothing reads one back into rows yet, so deleting them would be
-    /// losing what this cannot put back.
+    /// Summaries, decisions, actions and open questions are left alone rather than reprojected.
+    /// They come from the accepted extractions and nothing reads one back into rows yet, so
+    /// deleting them would be losing what this cannot put back.
     /// </summary>
     [Fact]
     public void What_the_rebuild_cannot_produce_again_it_does_not_delete()
@@ -163,6 +168,7 @@ public class CorpusRebuildTests
 
         context.Decisions.Count().ShouldBe(1);
         context.ActionItems.Count().ShouldBe(1);
+        context.OpenQuestions.Count().ShouldBe(1);
     }
 
     /// <summary>
@@ -383,7 +389,11 @@ public class CorpusRebuildTests
         return run;
     }
 
-    /// <summary>A decision and an action citing one turn, with somebody's state on the action.</summary>
+    /// <summary>
+    /// A decision, an action and an open question citing one turn, with somebody's state on the
+    /// action. Every one of them is named by the run and its position, which is what a rebuild has
+    /// to leave where it is.
+    /// </summary>
     private static void Claim(CorpusDbContext context, Guid meeting, Guid run, Utterance cited)
     {
         var evidence = new Citation
@@ -402,6 +412,7 @@ public class CorpusRebuildTests
             Id = Guid.NewGuid(),
             MeetingId = meeting,
             ExtractionRunId = run,
+            Ordinal = 0,
             Statement = "lo decidido",
             Evidence = evidence,
             CreatedAt = When,
@@ -413,6 +424,16 @@ public class CorpusRebuildTests
             ExtractionRunId = run,
             Ordinal = 0,
             Statement = "lo pendiente",
+            Evidence = evidence,
+            CreatedAt = When,
+        });
+        context.OpenQuestions.Add(new OpenQuestion
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            ExtractionRunId = run,
+            Ordinal = 0,
+            Question = "lo que quedó abierto",
             Evidence = evidence,
             CreatedAt = When,
         });

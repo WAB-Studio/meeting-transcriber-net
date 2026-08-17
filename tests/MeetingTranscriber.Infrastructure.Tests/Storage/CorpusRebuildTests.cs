@@ -19,8 +19,9 @@ public class CorpusRebuildTests
     private const string When = "2026-08-05T14:00:00.000Z";
     private const string Sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
 
-    /// <summary>The four tables a rebuild empties, and the whole of what it is allowed to empty.</summary>
-    private static readonly string[] Derived = ["action_items", "decisions", "summaries", "utterances"];
+    /// <summary>The tables a rebuild empties, and the whole of what it is allowed to empty.</summary>
+    private static readonly string[] Derived =
+        ["action_items", "decisions", "open_questions", "summaries", "utterances"];
 
     /// <summary>
     /// The tables <c>docs/corpus.md</c> calls the human layer. Spelled out rather than derived,
@@ -125,6 +126,39 @@ public class CorpusRebuildTests
     }
 
     /// <summary>
+    /// The same anchor pointing the other way. A citation names a turn by its position; a note
+    /// somebody makes names a projected row by its position in the extraction it came out of — and
+    /// a rebuild has to leave that alone too, or the note is read against a different line.
+    /// </summary>
+    /// <remarks>
+    /// Every position is compared, not only the action's, because what a person can pin to today is
+    /// an action's state and what they will pin to next is whether a decision still stands. The
+    /// anchor is what makes that possible, so it is held for every row an extraction produces
+    /// rather than for the one that already has a reader.
+    /// </remarks>
+    [Fact]
+    public void Rebuilding_puts_everything_an_extraction_produced_back_at_its_own_position()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Project(context, generation: "first");
+
+        var before = Positions(context);
+        before.Count.ShouldBe(4);
+
+        Rebuild(context);
+
+        // Not one id in common, and every position holding what it held.
+        Sql.Scalar(context, """
+            SELECT count(*) FROM (
+                SELECT id FROM decisions UNION ALL SELECT id FROM action_items
+                UNION ALL SELECT id FROM open_questions)
+            WHERE id LIKE 'first-%';
+            """).ShouldBe(0L);
+        Positions(context).ShouldBe(before);
+    }
+
+    /// <summary>
     /// The promise the anchor has to keep on the way in as well: a claim citing a position the
     /// meeting does not have is refused, so the corpus holds no claim with nothing behind it.
     /// </summary>
@@ -181,6 +215,7 @@ public class CorpusRebuildTests
         Sql.Scalar(context, "SELECT count(*) FROM utterances;").ShouldBe(0L);
         Sql.Scalar(context, "SELECT count(*) FROM action_items;").ShouldBe(0L);
         Sql.Scalar(context, "SELECT count(*) FROM decisions;").ShouldBe(0L);
+        Sql.Scalar(context, "SELECT count(*) FROM open_questions;").ShouldBe(0L);
         Sql.Scalar(context, "SELECT count(*) FROM action_item_progress;").ShouldBe(0L);
         // The person outlives the meeting they were in. Only their state on it goes.
         Sql.Scalar(context, "SELECT count(*) FROM people;").ShouldBe(1L);
@@ -235,21 +270,6 @@ public class CorpusRebuildTests
             .ShouldBe(2L);
     }
 
-    [Fact]
-    public void One_extraction_cannot_put_two_actions_in_the_same_position()
-    {
-        using var corpus = new TemporaryCorpus();
-        using var context = corpus.OpenMigrated();
-        Project(context, generation: "first");
-
-        Should.Throw<SqliteException>(() => InsertAction(
-            context,
-            generation: "collision",
-            ordinal: 0,
-            statement: "send the budget again",
-            utteranceOrdinal: 0));
-    }
-
     /// <summary>
     /// The promise <c>docs/corpus.md</c> makes about the whole corpus and not only about the tables
     /// somebody thought to check: the four derived tables are thrown away and projected again, and
@@ -291,7 +311,20 @@ public class CorpusRebuildTests
     }
 
     /// <summary>
-    /// Every table the corpus holds except the four a rebuild is allowed to empty, each row as text
+    /// Everything the extraction produced, by the run and position it sits at rather than by its
+    /// id — which is the whole point, since the ids are what a rebuild replaces.
+    /// </summary>
+    private static List<string> Positions(CorpusDbContext context) => Sql.Strings(context, """
+        SELECT 'decision|' || extraction_run_id || '|' || ordinal || '|' || statement FROM decisions
+        UNION ALL
+        SELECT 'action|' || extraction_run_id || '|' || ordinal || '|' || statement FROM action_items
+        UNION ALL
+        SELECT 'question|' || extraction_run_id || '|' || ordinal || '|' || question FROM open_questions
+        ORDER BY 1;
+        """);
+
+    /// <summary>
+    /// Every table the corpus holds except the ones a rebuild is allowed to empty, each row as text
     /// with its columns in a fixed order.
     /// </summary>
     private static List<string> Snapshot(CorpusDbContext context) =>
@@ -338,6 +371,7 @@ public class CorpusRebuildTests
     {
         Sql.Execute(context, "DELETE FROM action_items;");
         Sql.Execute(context, "DELETE FROM decisions;");
+        Sql.Execute(context, "DELETE FROM open_questions;");
         Sql.Execute(context, "DELETE FROM summaries;");
         Sql.Execute(context, "DELETE FROM utterances;");
 
@@ -384,9 +418,10 @@ public class CorpusRebuildTests
                 """);
         }
 
-        InsertDecision(context, generation, statement: "the budget goes up", utteranceOrdinal: 0);
+        InsertDecision(context, generation, ordinal: 0, statement: "the budget goes up", utteranceOrdinal: 0);
         InsertAction(context, generation, ordinal: 0, statement: "send the budget", utteranceOrdinal: 0);
         InsertAction(context, generation, ordinal: 1, statement: "book the room", utteranceOrdinal: 1);
+        InsertQuestion(context, generation, ordinal: 0, question: "who signs it off", utteranceOrdinal: 1);
     }
 
     private static void InsertAction(
@@ -408,14 +443,30 @@ public class CorpusRebuildTests
     private static void InsertDecision(
         CorpusDbContext context,
         string generation,
+        int ordinal,
         string statement,
         int utteranceOrdinal) =>
         Sql.Execute(context, $"""
             INSERT INTO decisions (
-                id, meeting_id, extraction_run_id, statement, decided_by_person_id, created_at,
+                id, meeting_id, extraction_run_id, ordinal, statement, decided_by_person_id, created_at,
                 utterance_ordinal, start_ms, end_ms, speaker_label, quoted_text, source_artifact_sha256)
             VALUES (
-                '{generation}-d{utteranceOrdinal}', '{MeetingId}', '{ExtractionRunId}', '{statement}', NULL, '{When}',
+                '{generation}-d{ordinal}', '{MeetingId}', '{ExtractionRunId}', {ordinal}, '{statement}', NULL, '{When}',
                 {utteranceOrdinal}, 0, 1000, 'channel_0', '{statement}', '{Sha256}');
+            """);
+
+    private static void InsertQuestion(
+        CorpusDbContext context,
+        string generation,
+        int ordinal,
+        string question,
+        int utteranceOrdinal) =>
+        Sql.Execute(context, $"""
+            INSERT INTO open_questions (
+                id, meeting_id, extraction_run_id, ordinal, question, created_at,
+                utterance_ordinal, start_ms, end_ms, speaker_label, quoted_text, source_artifact_sha256)
+            VALUES (
+                '{generation}-q{ordinal}', '{MeetingId}', '{ExtractionRunId}', {ordinal}, '{question}', '{When}',
+                {utteranceOrdinal}, 0, 1000, 'channel_0', '{question}', '{Sha256}');
             """);
 }

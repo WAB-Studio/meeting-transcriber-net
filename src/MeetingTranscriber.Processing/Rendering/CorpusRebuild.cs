@@ -45,10 +45,12 @@ public sealed record RebuildReport(
 /// one failure this operation could have that nothing else would notice.
 /// </para>
 /// <para>
-/// Summaries, decisions and actions are left where they are rather than reprojected. They are
-/// derived from the accepted extractions and those files are kept, but nothing reads one back into
-/// rows yet — that arrives with extraction validation — so deleting them would be losing what this
-/// cannot put back. When it arrives, it is a step in here.
+/// Summaries, decisions, actions and open questions are left where they are rather than
+/// reprojected. They are derived from the accepted extractions and those files are kept, but
+/// nothing reads one back into rows yet — that arrives with extraction validation — so deleting
+/// them would be losing what this cannot put back. When it arrives, it is a step in here, and what
+/// makes it safe to add is that every one of those rows is named by its run and its position rather
+/// than by an id this would mint again.
 /// </para>
 /// <para>
 /// EF Core tracking is the write path on purpose, for now. This is the bulk write of the system and
