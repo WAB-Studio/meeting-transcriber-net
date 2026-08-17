@@ -37,10 +37,19 @@ public sealed class FramePositions
     private bool anchored;
 
     /// <summary>Positions for a source arriving at <paramref name="sampleRate"/> frames a second.</summary>
-    public FramePositions(int sampleRate)
+    /// <param name="sampleRate">The frames a second the packets are handed over at.</param>
+    /// <param name="from">
+    /// The frame the first packet placed here goes at. Zero for a device that numbers nothing,
+    /// which is where these positions start out. A source whose device did number its frames, and
+    /// whose numbers were then given up on part way through, seeds this with the frame its first
+    /// packet claimed — so what is placed here and what the device reported before it are the same
+    /// number on the same recording, and the changeover moves nothing that was already laid out.
+    /// </param>
+    public FramePositions(int sampleRate, long from = 0)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);
         this.sampleRate = sampleRate;
+        next = from;
     }
 
     /// <summary>

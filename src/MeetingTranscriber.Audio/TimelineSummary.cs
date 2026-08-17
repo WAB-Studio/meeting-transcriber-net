@@ -22,12 +22,21 @@ public sealed record TimelineSummary(Duration Length, IReadOnlyList<SourceSummar
 /// <param name="Channel">Which channel it fed.</param>
 /// <param name="MeasuredRate">
 /// The frames per second it really ran at against the machine's clock, which is its label until
-/// the recording is long enough to say otherwise. The distance from the label is the drift.
+/// the recording is long enough to say otherwise. The distance from the label is the drift — and
+/// there is none to read when <paramref name="CounterGivenUp"/> is set, because the counter a rate
+/// is measured from is the one that was given up on.
 /// </param>
 /// <param name="Missing">How much of the recording the device never delivered and is silence.</param>
 /// <param name="Waited">How long after the recording's origin this source's first frame was read.</param>
+/// <param name="CounterGivenUp">
+/// Whether this device numbered its frames in something other than the frames it handed over, so
+/// its own counter was given up on and its audio placed by the instants beside it. The recording is
+/// the meeting either way; what is gone is the drift measurement, and a rate that reads as measured
+/// while being the label is the one thing this exists to stop.
+/// </param>
 public sealed record SourceSummary(
     AudioChannel Channel,
     double MeasuredRate,
     Duration Missing,
-    Duration Waited);
+    Duration Waited,
+    bool CounterGivenUp);

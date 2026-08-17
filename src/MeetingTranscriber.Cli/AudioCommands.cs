@@ -278,7 +278,8 @@ public static class AudioCommands
                     CultureInfo.InvariantCulture,
                     $"loudest {recording.Loudest(source.Channel)}, "
                     + $"{source.Missing.Milliseconds} ms missing, {source.Waited.Milliseconds} ms waited, "
-                    + $"{source.MeasuredRate:0} Hz measured"));
+                    + $"{source.MeasuredRate:0} Hz "
+                    + $"{(source.CounterGivenUp ? "assumed, counter given up on" : "measured")}"));
         }
     }
 

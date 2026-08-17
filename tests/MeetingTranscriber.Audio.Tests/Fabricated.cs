@@ -48,6 +48,13 @@ internal static class Fabricated
     /// short window at all. A drift measurement taken without it is taken against a clock the
     /// product does not have.
     /// </param>
+    /// <param name="countsAtRate">
+    /// The rate the device numbers its own frames in, when that is not the rate it hands them over
+    /// at. Zero is the ordinary device, whose two numbers are in one unit. Anything else is the
+    /// webcam microphone this exists for: opened at the endpoint's mix format, handing over frames
+    /// converted to it and a position that was never converted with them, so one packet carries two
+    /// numbers in two units and only one of them is the client's.
+    /// </param>
     internal static IEnumerable<CapturePacket> Packets(
         AudioChannel channel,
         StreamFormat format,
@@ -57,29 +64,34 @@ internal static class Fabricated
         Func<double, float> signal,
         int packetFrames = 480,
         Func<long, bool>? delivers = null,
-        double jitterMs = 0)
+        double jitterMs = 0,
+        double countsAtRate = 0)
     {
         var total = (long)((untilSeconds - fromSeconds) * realRate);
         var mono = new float[packetFrames];
 
-        for (long position = 0; position + packetFrames <= total; position += packetFrames)
+        // Whatever the device counts in, it is the frames it hands over that say how much of the
+        // meeting has gone by — so the loop runs on those and only the reported number is scaled.
+        var counts = countsAtRate > 0 ? countsAtRate / format.SampleRate : 1;
+
+        for (long produced = 0; produced + packetFrames <= total; produced += packetFrames)
         {
-            if (delivers is not null && !delivers(position))
+            if (delivers is not null && !delivers(produced))
             {
                 continue;
             }
 
             for (var frame = 0; frame < packetFrames; frame++)
             {
-                mono[frame] = signal(fromSeconds + ((position + frame) / realRate));
+                mono[frame] = signal(fromSeconds + ((produced + frame) / realRate));
             }
 
             yield return new CapturePacket(
                 channel,
-                position,
+                (long)(produced * counts),
                 MonotonicInstant.FromMilliseconds(
-                    ((CounterStartSeconds + fromSeconds + (position / realRate)) * 1000)
-                    + Jitter(channel, position, jitterMs)),
+                    ((CounterStartSeconds + fromSeconds + (produced / realRate)) * 1000)
+                    + Jitter(channel, produced, jitterMs)),
                 Encode(mono, format));
         }
     }

@@ -26,6 +26,7 @@ public sealed class PacketTally
 
     private readonly Lock gate = new();
     private readonly StreamFormat format;
+    private readonly SourcePositions positions;
     private MonotonicInstant previous;
     private long first;
     private long next;
@@ -43,6 +44,7 @@ public sealed class PacketTally
     {
         ArgumentNullException.ThrowIfNull(format);
         this.format = format;
+        positions = new SourcePositions(format.SampleRate);
     }
 
     /// <summary>How many blocks the device has handed over.</summary>
@@ -147,17 +149,22 @@ public sealed class PacketTally
         {
             packets++;
 
+            // The same numbers the rebuild will lay the recording out on, from the same place, and
+            // it has to be: a device counting in its own rate would otherwise report every packet
+            // of the meeting as lost while the recording it rebuilds into loses nothing.
+            var position = positions.For(packet, frames);
+
             if (started)
             {
-                lost += Math.Max(0, packet.DevicePosition - next);
+                lost += Math.Max(0, position - next);
             }
             else
             {
                 started = true;
-                first = packet.DevicePosition;
+                first = position;
             }
 
-            next = packet.DevicePosition + frames;
+            next = position + frames;
 
             if (!packet.TimingIsSound)
             {

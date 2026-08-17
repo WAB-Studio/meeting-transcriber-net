@@ -180,10 +180,10 @@ public sealed class MeetingAudioTests : IDisposable
             AudioChannel.Loopback,
             StereoFloat,
             Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 1, Fabricated.Quiet));
-        Write(folder, AudioChannel.Microphone, CheapMicrophone, GoesBackwards());
+        Write(folder, AudioChannel.Microphone, CheapMicrophone, CountersDisagree());
 
         Should.Throw<AudioCaptureException>(() => MeetingAudio.Materialise(folder))
-            .Message.ShouldContain("went back from frame");
+            .Message.ShouldContain("44100 Hz");
 
         MeetingAudio.In(folder).Exists.ShouldBeFalse();
         folder.EnumerateFiles("*.partial").ShouldBeEmpty();
@@ -240,18 +240,22 @@ public sealed class MeetingAudioTests : IDisposable
     }
 
     /// <summary>
-    /// A source whose device counter goes back on itself, which the timeline refuses outright — and
-    /// therefore the way a recording is made to fail after it has already begun being written.
+    /// A source whose two counters describe two different devices, which the timeline refuses
+    /// outright — and therefore the way a recording is made to fail after it has already begun
+    /// being written.
     /// </summary>
-    private static List<CapturePacket> GoesBackwards()
-    {
-        var packets = Fabricated
-            .Packets(AudioChannel.Microphone, CheapMicrophone, 44_100, 0, 1, Fabricated.Quiet)
-            .ToList();
-
-        packets[^1] = packets[^1] with { DevicePosition = 0 };
-        return packets;
-    }
+    /// <remarks>
+    /// It used to be the frame counter moved back on itself, and that is no longer a refusal: a
+    /// counter going backwards is the reading a microphone counting in its own rate produces, and
+    /// nothing can tell the two apart, so what is given up on is the counter and not the meeting.
+    /// A rate half the device's label survives as the refusal because it is measured against the
+    /// clock, which is the one number nothing here replaces.
+    /// </remarks>
+    private static List<CapturePacket> CountersDisagree() =>
+    [
+        .. Fabricated.Packets(
+            AudioChannel.Microphone, CheapMicrophone, realRate: 22_050, 0, 8, Fabricated.Quiet),
+    ];
 
     /// <summary>
     /// The microphone's packets for a recording long enough for a source to be given up in, with

@@ -184,7 +184,8 @@ public sealed class SharedTimeline
             source.Channel,
             source.Rate,
             Length(source.Missing + offsets[index] + Math.Max(0, emitted - covered)),
-            Length(offsets[index]));
+            Length(offsets[index]),
+            source.CounterGivenUp);
     }
 
     /// <summary>
