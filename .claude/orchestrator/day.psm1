@@ -784,11 +784,15 @@ function Get-DayRules { return $script:DefaultRules.Clone() }
 function Test-ParkCeiling {
   param([Parameter(Mandatory)]$Status, [hashtable]$Rules)
   if (-not $Rules) { $Rules = Get-DayRules }
-  $n = @($Status.Owed).Count
-  if ($n -lt $Rules.ParksPerDay) { return "" }
-  $cards = (@($Status.Owed | ForEach-Object { [string]$_.task }) -join ", ")
-  return ("$n cards went back for grilling today ($cards) -- the grill is behind the board, " +
-          "and another cycle would only send back a third")
+  # Distinct cards that actually reached `pending`, not park events. One card grilled and met again
+  # the same day is one card the grill is answering, and counting it twice would end a day that is
+  # working. A park whose move never landed is not a card back either -- it is a card still where it
+  # was, which the atom stops over on its own.
+  $cards = @($Status.Owed | Where-Object { $_.moved } | ForEach-Object { [string]$_.task } |
+             Where-Object { $_ -ne "" } | Sort-Object -Unique)
+  if ($cards.Count -lt $Rules.ParksPerDay) { return "" }
+  return ("$($cards.Count) cards went back for grilling today ($($cards -join ', ')) -- the grill " +
+          "is behind the board, and another cycle would only send back a third")
 }
 
 function New-Anomaly {
@@ -864,7 +868,10 @@ function Get-DayAnomalies {
     $null = $out.Add((New-Anomaly "stop" "window" ("the usage window says '{0}'{1}" -f $Status.RateLimit.status, $reset)))
   }
 
-  if ($Status.Ended -and $Status.EndReason -and $Status.EndReason -ne "no_tasks") {
+  # Matched on how the reason starts, not on the bare word. `end-day.ps1` writes the ending as
+  # `no_tasks -- <why>`, so an equality check here called the one ordinary ending a day has an
+  # anomaly, in the report, every time it happened.
+  if ($Status.Ended -and $Status.EndReason -and $Status.EndReason -notmatch '^no_tasks') {
     $null = $out.Add((New-Anomaly "stop" "stopped" ("the day ended on: {0}" -f $Status.EndReason)))
   }
 

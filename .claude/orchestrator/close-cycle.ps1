@@ -59,6 +59,7 @@ if ($act.to -eq "pending") {
   # while it is rare, and two in a day is the grill behind rather than two awkward cards.
   $ceiling = Test-ParkCeiling -Status (Get-DayStatus -LogDir $day.LogDir)
   if ($ceiling -ne "") {
+    New-DayEvent -LogDir $day.LogDir -Kind "no_more_cycles" -Data @{ reason = "blocked -- $ceiling" } | Out-Null
     Write-Day $day "[$cycle] $ceiling"
     Write-Atom @{
       ok = $true; cycle = $cycle; outcome = "blocked"; task_id = [string]$h.task_id

@@ -73,12 +73,14 @@ if ($pool.Stop -ne "") {
   Write-Atom @{ ok = $false; stop = "the board could not say what is eligible: $($pool.Stop)" }
   exit 1
 }
-if ($pool.Resume -eq 0 -and $pool.Grilled -eq 0) {
+if ($pool.Idle) {
+  # On the stream and not only in the RESULT. `end-day.ps1` works out why a day ended by reading
+  # this back, and an ending that lived only in what an atom printed came out of the morning
+  # report as "ended by hand" -- which is the one thing it was not.
+  $why = "no_tasks -- nothing on the board is grilled and nothing was left in progress"
+  New-DayEvent -LogDir $day.LogDir -Kind "no_more_cycles" -Data @{ reason = $why } | Out-Null
   Write-Day $day "nothing in progress and nothing grilled -- no session to spend"
-  Write-Atom @{
-    ok = $true; outcome = "no_tasks"
-    reason = "nothing on the board is grilled and nothing was left in progress"
-  }
+  Write-Atom @{ ok = $true; outcome = "no_tasks"; reason = $why }
   exit 0
 }
 
@@ -168,6 +170,7 @@ if ([string]$c.outcome -eq "needs_grill") {
   # Asked after the park is on the stream, so the card that hit the ceiling is counted in it.
   $ceiling = Test-ParkCeiling -Status (Get-DayStatus -LogDir $day.LogDir)
   if ($ceiling -ne "") {
+    New-DayEvent -LogDir $day.LogDir -Kind "no_more_cycles" -Data @{ reason = "blocked -- $ceiling" } | Out-Null
     Write-Day $day "[$cycle] $ceiling"
     Write-Atom @{
       ok = $true; cycle = $cycle; outcome = "blocked"; task_id = [string]$c.task_id

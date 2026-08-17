@@ -312,11 +312,15 @@ function Write-Elsewhere {
   What the board CLI printed, or `$null` if it did not get to print. Separate from Invoke-BestEffort
   because that one is for recording, where losing the copy is survivable; this is for reading, where
   a failure that comes back as an empty answer is a wrong answer acted on.
+
+  It is a variable so a probe can put its own board behind it. What decides whether a day starts is
+  worth testing, and the only alternative to a seam here is a test that spends real requests on a
+  real board to find out what happens when that board answers badly.
 #>
-function Read-Board {
-  param([Parameter(Mandatory)][scriptblock]$Do)
+$script:Board = {
+  param([string[]]$Argv)
   try {
-    $out = & $Do
+    $out = & python $script:ClickUp $Argv
     if ($LASTEXITCODE -ne 0) { return $null }
     return @($out | ForEach-Object { [string]$_ })
   } catch { return $null }
@@ -327,51 +331,64 @@ function Read-Board {
 
   Two things make one: a card in `in progress` is a session that died and has to be picked back up,
   and a card in `Open` carrying `grilled` is a card somebody has already decided. Nothing else is
-  eligible, so with neither there is no session worth paying for. The worker still decides which
-  card and still refuses the ones that are not grilled -- what this removes is the whole session
-  spent to find that out on a board where the answer was going to be no for every card on it.
+  eligible, so with neither there is no session worth paying for.
 
-  A board that cannot be reached, or one whose statuses no longer answer to these names, comes back
-  as `Stop` and never as zero. The CLI answers an unknown status with an empty list and exit 0, so
-  the difference between "nothing is grilled" and "nothing is called Open any more" is not in the
-  answer -- it has to be asked separately, and it is, or a renamed column would end every day in
-  silence.
+  **This is an emptiness check and not the worker's picking rule**, which is board order, priority,
+  what an open PR is already building, and what no machine can do at all. The two are allowed to
+  disagree in one direction only: this says a session is worth starting and the worker then finds
+  its first card is ungrilled and parks it. That costs a session, and what bounds it is the park
+  ceiling, not this. Making it agree would mean writing board order twice, and the second copy
+  would be the one nothing tests.
+
+  The order of the questions is the cost. A day that has work answers on one or two listings, and
+  only a board that looks empty pays for the tree -- which is where the refresh is, because that
+  reading is the one an ending gets decided on. `tree` is cached, and validating a rename against a
+  cache built this morning is validating nothing.
 #>
 function Get-BoardPool {
-  param([Parameter(Mandatory)]$Day)
+  param([Parameter(Mandatory)]$Day, [scriptblock]$Board)
 
-  if (-not (Test-Path $script:ClickUp)) {
-    return [pscustomobject]@{ Stop = "the board CLI is not at $($script:ClickUp)"; Resume = 0; Grilled = 0 }
+  $none = {
+    param([string]$Why)
+    [pscustomobject]@{ Stop = $Why; Idle = $false; Resume = 0; Grilled = 0 }
   }
 
-  $tree = Read-Board { python $script:ClickUp tree }
-  if ($null -eq $tree) {
-    return [pscustomobject]@{ Stop = "the board could not be read at all"; Resume = 0; Grilled = 0 }
+  # Only asked of the real one. A probe brings its own board and there is no file behind it.
+  if (-not $Board) {
+    $Board = $script:Board
+    if (-not (Test-Path $script:ClickUp)) { return (& $none "the board CLI is not at $($script:ClickUp)") }
   }
+
+  $resume  = Read-BoardCount (& $Board @("tasks", "--space", $script:Space, "--status", "in progress"))
+  $grilled = Read-BoardCount (& $Board @("tasks", "--space", $script:Space, "--status", "Open", "--tag", "grilled"))
+  if ($null -eq $resume -or $null -eq $grilled) {
+    return (& $none "the board CLI answered something this cannot read")
+  }
+
+  if ($resume -gt 0 -or $grilled -gt 0) {
+    New-DayEvent -LogDir $Day.LogDir -Kind "board_pool" -Data @{ resume = $resume; grilled = $grilled } | Out-Null
+    return [pscustomobject]@{ Stop = ""; Idle = $false; Resume = $resume; Grilled = $grilled }
+  }
+
+  # Nothing came back, which is also what a status that no longer exists comes back as: the CLI
+  # answers an unknown one with an empty list and exit 0. So an empty answer is not an ending until
+  # the names it was asked under are still the board's names.
+  $tree = & $Board @("tree", "--refresh")
+  if ($null -eq $tree) { return (& $none "the board could not be read at all") }
 
   $statuses = @(Read-SpaceStatuses -Lines $tree -Space $script:Space)
-  if ($statuses.Count -eq 0) {
-    return [pscustomobject]@{ Stop = "the board has no space called $($script:Space)"; Resume = 0; Grilled = 0 }
-  }
+  if ($statuses.Count -eq 0) { return (& $none "the board has no space called $($script:Space)") }
+
+  # Case-sensitive on purpose: the query sent `Open` and the board answering to `open` would be a
+  # rename this is here to catch, not a spelling of the same thing.
   foreach ($s in @("in progress", "Open")) {
-    if ($statuses -notcontains $s) {
-      return [pscustomobject]@{
-        Stop = "the $($script:Space) board no longer has a '$s' status, so what is eligible cannot be asked"
-        Resume = 0; Grilled = 0
-      }
+    if ($statuses -cnotcontains $s) {
+      return (& $none "the $($script:Space) board no longer has a '$s' status, so what is eligible cannot be asked")
     }
   }
 
-  $resume  = Read-BoardCount (Read-Board { python $script:ClickUp tasks --space $script:Space --status "in progress" })
-  $grilled = Read-BoardCount (Read-Board { python $script:ClickUp tasks --space $script:Space --status "Open" --tag "grilled" })
-  if ($null -eq $resume -or $null -eq $grilled) {
-    return [pscustomobject]@{ Stop = "the board CLI answered something this cannot read"; Resume = 0; Grilled = 0 }
-  }
-
-  New-DayEvent -LogDir $Day.LogDir -Kind "board_pool" -Data @{
-    resume = $resume; grilled = $grilled
-  } | Out-Null
-  return [pscustomobject]@{ Stop = ""; Resume = $resume; Grilled = $grilled }
+  New-DayEvent -LogDir $Day.LogDir -Kind "board_pool" -Data @{ resume = 0; grilled = 0 } | Out-Null
+  return [pscustomobject]@{ Stop = ""; Idle = $true; Resume = 0; Grilled = 0 }
 }
 
 function Move-Card {

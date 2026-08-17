@@ -1292,6 +1292,122 @@ Check "the second card sent back for grilling ends the day" {
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
+# Cards, not events. A card grilled in the morning and met again in the afternoon is one card the
+# grill is answering; counting its two events as two cards ends a day that is working.
+Check "one card back twice is one card, and a park that never landed is none" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{ cycle = 1; task_id = "T1"; moved = $true } | Out-Null
+    New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{ cycle = 2; task_id = "T1"; moved = $true } | Out-Null
+    if ((Test-ParkCeiling -Status (Get-DayStatus -LogDir $box)) -ne "") { return "the same card twice ended the day" }
+
+    New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{ cycle = 3; task_id = "T2"; moved = $false } | Out-Null
+    if ((Test-ParkCeiling -Status (Get-DayStatus -LogDir $box)) -ne "") { return "a card that never reached pending was counted" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The decision itself, over a board that answers whatever the probe wants -- including badly. What
+# it costs to get this wrong is a day that does not run, or a day that runs on nothing.
+$EmptyList = @("ActuallyPanda56's Workspace: sin tareas para ese filtro.")
+$OneCard   = @("ActuallyPanda56's Workspace - 1 tarea(s)", "", "Open (1)",
+               "  86ak1eyev   Medir la deriva de un dispositivo             Open            alta")
+
+function New-FakeBoard {
+  param($InProgress, $Grilled, $Tree, $Calls)
+  return {
+    param([string[]]$Argv)
+    $null = $Calls.Add(($Argv -join " "))
+    if ($Argv -contains "tree")        { return $Tree }
+    if ($Argv -contains "in progress") { return $InProgress }
+    return $Grilled
+  }.GetNewClosure()
+}
+
+Check "a board with nothing eligible is idle, and says so without stopping" {
+  $box = New-Sandbox
+  try {
+    $calls = New-Object System.Collections.ArrayList
+    $pool = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
+                          -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $Tree -Calls $calls)
+    if ($pool.Stop -ne "") { return "an empty board came back as a stop: $($pool.Stop)" }
+    if (-not $pool.Idle)   { return "an empty board did not read as idle" }
+    if (-not @($calls | Where-Object { $_ -match "tree" }).Count) { return "the ending was decided without checking the statuses" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The listings come first because they are what a working day answers on. The tree is a refresh --
+# seven requests -- and paying it every cycle to learn what the first listing already said is the
+# cost this ordering exists to avoid.
+Check "one card in progress is enough, and costs one listing" {
+  $box = New-Sandbox
+  try {
+    $calls = New-Object System.Collections.ArrayList
+    $pool = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
+                          -Board (New-FakeBoard -InProgress $OneCard -Grilled $EmptyList -Tree $Tree -Calls $calls)
+    if ($pool.Idle)         { return "a card left in progress read as an empty board" }
+    if ($pool.Resume -ne 1) { return "it counted $($pool.Resume) in progress" }
+    if (@($calls | Where-Object { $_ -match "tree" }).Count) { return "it paid for the tree on a day that had work" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "a grilled card is enough on its own" {
+  $box = New-Sandbox
+  try {
+    $calls = New-Object System.Collections.ArrayList
+    $pool = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
+                          -Board (New-FakeBoard -InProgress $EmptyList -Grilled $OneCard -Tree $Tree -Calls $calls)
+    if ($pool.Idle)          { return "a grilled card read as an empty board" }
+    if ($pool.Grilled -ne 1) { return "it counted $($pool.Grilled) grilled" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The failure the whole gate turns on. A board that did not answer must never be idle: idle ends
+# the day, and a day ended on a misread is a day of work nobody did.
+Check "a board that did not answer stops the day instead of ending it" {
+  $box = New-Sandbox
+  try {
+    $calls = New-Object System.Collections.ArrayList
+    $dead = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
+                          -Board (New-FakeBoard -InProgress $null -Grilled $EmptyList -Tree $Tree -Calls $calls)
+    if ($dead.Idle)        { return "a CLI that failed read as an empty board" }
+    if ($dead.Stop -eq "") { return "a CLI that failed did not stop the day" }
+
+    $blind = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
+                           -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $null -Calls $calls)
+    if ($blind.Idle)        { return "a tree that failed read as an empty board" }
+    if ($blind.Stop -eq "") { return "a tree that failed did not stop the day" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# A status asked for by name that the board no longer has answers empty and exit 0, which is why
+# the empty answer is only believed once the names are checked against the live tree.
+Check "a renamed status stops the day rather than emptying it" {
+  $box = New-Sandbox
+  try {
+    $calls = New-Object System.Collections.ArrayList
+    $renamed = @("MeetingTranscriber  (901313958747)",
+                 "  estados por defecto: Ready > pending > in progress > Closed")
+    $pool = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
+                          -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $renamed -Calls $calls)
+    if ($pool.Idle)             { return "a renamed status read as an empty board" }
+    if ($pool.Stop -notmatch "Open") { return "it does not name what is missing: $($pool.Stop)" }
+
+    # Same name, different case. The query sent `Open`; a board answering to `open` is a rename.
+    $recased = @("MeetingTranscriber  (901313958747)",
+                 "  estados por defecto: open > pending > in progress > Closed")
+    $lower = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
+                           -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $recased -Calls $calls)
+    if ($lower.Idle) { return "a status renamed only in its case read as an empty board" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 Write-Host ""
 if ($script:Failed -eq 0) {
   Write-Host ("  $($script:Ran) checks, all green") -ForegroundColor Green
