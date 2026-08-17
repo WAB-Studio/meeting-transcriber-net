@@ -60,13 +60,28 @@ Read `references/reviewer-lenses.md` for lens definitions.
 
 ## Step 3 — Detect Model and Spawn Reviewers
 
-Reviewer output goes in a scratch directory outside the repo — never in the working tree, where
-it would show up as untracked files in the very diff under review. Use the session scratchpad
-directory if the environment names one; otherwise:
+Reviewer output goes in a scratch directory, and there is exactly one requirement on it: **it must
+not show up as untracked files in the very diff under review.** Anything ignored by git satisfies
+that. Being outside the repo is one way to get it and not the only one — which matters, because
+here it is the one way that does not work.
+
+In this repo the directory is `/.scratch/`, ignored at the root, and it is inside the working tree
+deliberately:
 
 ```sh
-REVIEW_DIR=$(mktemp -d)
+REVIEW_DIR="$(git rev-parse --show-toplevel)/.scratch/review-$$"
+mkdir -p "$REVIEW_DIR"
 ```
+
+An unattended session has nowhere else to write. `mktemp -d` lands in `/tmp` and is refused for
+being outside the allowed working directory; the session scratchpad the environment names is
+refused for the same reason; and `.claude/` is refused as a sensitive path however the permissions
+read. A worker that meets all three in a row falls back to capturing reviewer output as stdout,
+which does produce a review and quietly costs the two things these files are for: the `.err` that
+diagnoses a reviewer which produced nothing, and the empty output file that says one hung.
+
+`-o` is written by the CLI itself and not by the sandboxed command inside it, so the reviewer's own
+read-only sandbox does not stand in its way.
 
 Determine which model you are, then spawn reviewers on the opposite:
 
@@ -137,5 +152,6 @@ Append the Lead Judgment section to the verdict (see `references/verdict-format.
 
 Vendored from [poteto/noodle](https://github.com/poteto/noodle)
 `.agents/skills/adversarial-review/`. Changes from upstream: the `brain/principles.md` dependency
-is vendored into `references/principles/`, the scratch directory is not hardcoded to `/tmp`, the
-`schedule:` frontmatter key became prose, and the size thresholds count only non-comment lines.
+is vendored into `references/principles/`, the scratch directory moved from `/tmp` to the repo's
+own ignored `/.scratch/` — the only ground an unattended session may write — the `schedule:`
+frontmatter key became prose, and the size thresholds count only non-comment lines.

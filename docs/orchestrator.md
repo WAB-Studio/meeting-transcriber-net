@@ -114,9 +114,23 @@ loses the cycle. The rule to write against it is to reach for a tool rather than
 `Grep` and `Read` are not decomposed and cannot be refused this way.
 
 Two more that look like missing rules and are not: anything under `.claude/**` is refused as a
-sensitive path however the allow list reads, which is why a session's scratch belongs outside the
-repo and not in the gitignored log directory; and a command whose first word is an assignment or a
+sensitive path however the allow list reads; and a command whose first word is an assignment or a
 variable is refused for the expansion, not for the program.
+
+### Where a session may write
+
+Three doors and two of them are shut. Outside the repo is refused for being outside the working
+directory — `/tmp`, `mktemp -d` and the session scratchpad the environment names, all of them.
+`.claude/` is refused as sensitive, the gitignored orchestrator log included. What is left is the
+repo itself, so the scratch is `/.scratch/`, ignored at the root: inside the tree because that is
+the only writable ground, ignored because nothing a session leaves there may reach a diff or dirty
+the tree the next preflight reads.
+
+`adversarial-review` is the skill that needs it — its reviewers write `-o` files and a `.err` each,
+and the `.err` is the only thing that diagnoses a reviewer which produced nothing. On 2026-08-17 a
+worker was refused all three doors in a row, captured reviewer output as stdout instead, and got a
+real review out of it while losing exactly that diagnosis. `-o` is written by the reviewer's CLI
+rather than by the sandboxed command inside it, so its own read-only sandbox is not in the way.
 
 ### The audit reads, it does not build
 

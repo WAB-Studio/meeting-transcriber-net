@@ -490,3 +490,9 @@ $RECYCLE.BIN/
 # Unattended orchestrator runs: handoffs, verdicts and the day log. The lock is a live PID.
 .claude/orchestrator/log/
 .claude/orchestrator/day.lock
+
+# Scratch for a session that has nowhere else to write. Anchored, and deliberately not under
+# .claude/: everything there is refused as a sensitive path, and everything outside the repo is
+# refused for being outside the working directory, so this is the only writable ground an
+# unattended session has. Ignored so what lands here never reaches the diff being reviewed.
+/.scratch/
