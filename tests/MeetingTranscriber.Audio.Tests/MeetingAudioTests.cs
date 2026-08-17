@@ -180,13 +180,47 @@ public sealed class MeetingAudioTests : IDisposable
             AudioChannel.Loopback,
             StereoFloat,
             Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 1, Fabricated.Quiet));
-        Write(folder, AudioChannel.Microphone, CheapMicrophone, GoesBackwards());
+        Write(folder, AudioChannel.Microphone, CheapMicrophone, CountersDisagree());
 
         Should.Throw<AudioCaptureException>(() => MeetingAudio.Materialise(folder))
-            .Message.ShouldContain("went back from frame");
+            .Message.ShouldContain("44100 Hz");
 
         MeetingAudio.In(folder).Exists.ShouldBeFalse();
         folder.EnumerateFiles("*.partial").ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// ISC-132, through the whole path a person's recording takes rather than through the timeline
+    /// alone: blocks written the way a capture writes them, read back the way a recovery reads them,
+    /// and out the other side as the meeting's own file. The microphone is the webcam this was found
+    /// on — opened at 48 kHz, handing over 480 frames a packet and counting by 160 — and what it
+    /// used to produce here was a refusal and no file at all.
+    /// </summary>
+    [Fact]
+    public void A_microphone_that_numbers_its_frames_at_its_own_rate_becomes_the_meetings_file()
+    {
+        Write(
+            folder,
+            AudioChannel.Loopback,
+            StereoFloat,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 4, Fabricated.Bursts(1)));
+        Write(
+            folder,
+            AudioChannel.Microphone,
+            StereoFloat,
+            Fabricated.Packets(
+                AudioChannel.Microphone, StereoFloat, 48_000, 0, 4, Fabricated.Bursts(1), countsAtRate: 16_000));
+
+        var recording = MeetingAudio.Materialise(folder);
+
+        recording.File.Name.ShouldBe("audio.wav");
+        recording.Length.Milliseconds.ShouldBeInRange(3_900, 4_100);
+        recording.Timeline.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeTrue();
+        recording.Timeline.On(AudioChannel.Loopback).CounterGivenUp.ShouldBeFalse();
+
+        // The microphone is on channel 1 and is really on it: a file made of silence would satisfy
+        // every line above and none of this one.
+        Peak(Read(recording.File), CapturedAudio.IndexOf(AudioChannel.Microphone)).ShouldBeGreaterThan(0.5f);
     }
 
     [Fact]
@@ -240,18 +274,22 @@ public sealed class MeetingAudioTests : IDisposable
     }
 
     /// <summary>
-    /// A source whose device counter goes back on itself, which the timeline refuses outright — and
-    /// therefore the way a recording is made to fail after it has already begun being written.
+    /// A source whose two counters describe two different devices, which the timeline refuses
+    /// outright — and therefore the way a recording is made to fail after it has already begun
+    /// being written.
     /// </summary>
-    private static List<CapturePacket> GoesBackwards()
-    {
-        var packets = Fabricated
-            .Packets(AudioChannel.Microphone, CheapMicrophone, 44_100, 0, 1, Fabricated.Quiet)
-            .ToList();
-
-        packets[^1] = packets[^1] with { DevicePosition = 0 };
-        return packets;
-    }
+    /// <remarks>
+    /// It used to be the frame counter moved back on itself, and that is no longer a refusal: a
+    /// counter going backwards is the reading a microphone counting in its own rate produces, and
+    /// nothing can tell the two apart, so what is given up on is the counter and not the meeting.
+    /// A rate half the device's label survives as the refusal because it is measured against the
+    /// clock, which is the one number nothing here replaces.
+    /// </remarks>
+    private static List<CapturePacket> CountersDisagree() =>
+    [
+        .. Fabricated.Packets(
+            AudioChannel.Microphone, CheapMicrophone, realRate: 22_050, 0, 8, Fabricated.Quiet),
+    ];
 
     /// <summary>
     /// The microphone's packets for a recording long enough for a source to be given up in, with

@@ -176,11 +176,13 @@ public class SharedTimelineTests
     }
 
     /// <summary>
-    /// The loud failure. A frame counter that goes backwards cannot be laid out at all, and the
-    /// quiet alternative is a second of the meeting written over by a later one.
+    /// ISC-132. A frame counter that goes back on itself used to be refused as a broken driver.
+    /// Refusing it cost the whole meeting of anybody whose microphone numbers its frames in its own
+    /// rate, because that device produces exactly this reading and nothing can tell the two apart —
+    /// so the counter is what gets given up on, and the recording carries on without it.
     /// </summary>
     [Fact]
-    public void A_source_whose_position_goes_backwards_stops_the_recording()
+    public void A_source_whose_position_goes_backwards_gives_the_counter_up_and_keeps_the_meeting()
     {
         var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, new Collected());
         var packets = Fabricated
@@ -193,12 +195,102 @@ public class SharedTimelineTests
             timeline.Take(packet);
         }
 
-        // The clock goes on forwards, so what is refused here is the frame counter and not the
+        // The clock goes on forwards, so what is given up on here is the frame counter and not the
         // instant beside it.
-        var backwards = packets[4] with { DevicePosition = packets[1].DevicePosition };
+        timeline.Take(packets[4] with { DevicePosition = packets[1].DevicePosition });
 
-        Should.Throw<AudioCaptureException>(() => timeline.Take(backwards))
-            .Message.ShouldContain("went back");
+        timeline.Close().On(AudioChannel.Loopback).CounterGivenUp.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// ISC-132. The microphone this was found on: a webcam opened at the endpoint's 48 kHz mix,
+    /// handing over 480 frames a packet and advancing its counter by 160 — its own 16 kHz frames.
+    /// Every packet after the first read as a counter going backwards, so eight seconds of a
+    /// meeting came back as a refusal, and the person holding that microphone got no recording at
+    /// all. What proves it is not simply "no longer throws" is where the sound lands: the markers
+    /// both devices heard have to come out at the same second on both channels.
+    /// </summary>
+    [Fact]
+    public void A_microphone_that_numbers_its_frames_at_its_own_rate_still_records_the_meeting()
+    {
+        var collected = new Collected();
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, collected);
+
+        Feed(
+            timeline,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 8, Fabricated.Bursts(1)),
+            Fabricated.Packets(
+                AudioChannel.Microphone, MonoFloat, 48_000, 0, 8, Fabricated.Bursts(1), countsAtRate: 16_000));
+
+        var summary = timeline.Close();
+
+        summary.Length.Milliseconds.ShouldBeInRange(7_900, 8_100);
+        summary.On(AudioChannel.Microphone).Missing.Milliseconds.ShouldBeLessThan(100);
+
+        foreach (var second in new[] { 1, 3, 6 })
+        {
+            collected.Loudest(AudioChannel.Microphone, second, second + 0.1).ShouldBeGreaterThan(0.5f);
+            collected.Loudest(AudioChannel.Microphone, second + 0.3, second + 0.9).ShouldBe(0);
+        }
+    }
+
+    /// <summary>
+    /// ISC-132. A source that lost a stretch before it went back on its counter. The stretch the
+    /// device dropped puts its counter ahead of the frames it handed over, and running fast puts it
+    /// ahead of the clock as well — so the position the clock would put the changeover at is behind
+    /// where the last packet already ended. The recording carries on from where it actually got to,
+    /// because sending a source backwards at the changeover is the one thing the counter was given
+    /// up to avoid.
+    /// </summary>
+    [Fact]
+    public void A_source_that_lost_a_stretch_before_giving_its_counter_up_still_records_the_meeting()
+    {
+        var collected = new Collected();
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, collected);
+
+        var microphone = Fabricated
+            .Packets(
+                AudioChannel.Microphone, MonoFloat, realRate: 48_096, 0, 6, Fabricated.Quiet,
+                delivers: Dropping(1, 2))
+            .ToList();
+
+        microphone[^1] = microphone[^1] with { DevicePosition = microphone[^2].DevicePosition };
+
+        Feed(
+            timeline,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 6, Fabricated.Quiet),
+            microphone);
+
+        var summary = timeline.Close();
+
+        summary.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeTrue();
+        summary.Length.Milliseconds.ShouldBeInRange(5_900, 6_100);
+    }
+
+    /// <summary>
+    /// ISC-133. Giving a counter up switches this source's drift correction off, and the rate that
+    /// comes back is then the label rather than anything measured. Reporting that number with
+    /// nothing beside it would read as a device measured at exactly its nominal rate, which is the
+    /// one thing a person diagnosing two channels drifting apart would take at face value.
+    /// </summary>
+    [Fact]
+    public void A_recording_says_which_of_its_sources_had_its_counter_given_up_on()
+    {
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, new Collected());
+
+        Feed(
+            timeline,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 8, Fabricated.Quiet),
+            Fabricated.Packets(
+                AudioChannel.Microphone, MonoFloat, 48_000, 0, 8, Fabricated.Quiet, countsAtRate: 16_000));
+
+        var summary = timeline.Close();
+
+        summary.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeTrue();
+
+        // The other half, and the one that matters: a device whose counter was usable is still
+        // placed by it, so one bad microphone cannot switch the correction off for the recording.
+        summary.On(AudioChannel.Loopback).CounterGivenUp.ShouldBeFalse();
     }
 
     [Fact]

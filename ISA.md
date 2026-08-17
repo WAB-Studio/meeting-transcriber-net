@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 93/131
+progress: 95/133
 updated: 2026-08-16
 ---
 
@@ -146,6 +146,8 @@ Board: 2 · Spike y motor de audio
 - [ ] ISC-129: A source that would not stop is named when a recording stops, together with what was kept of it.
 - [ ] ISC-130: A source that would not stop does not keep the recording's other source from being let go of.
 - [ ] ISC-131: Anti: nothing a source that will not stop is still using is taken away from it.
+- [x] ISC-132: A source whose device counts its frames more slowly than it hands them over is still recorded, rather than costing the meeting it was part of.
+- [x] ISC-133: A recording says which of its sources had their own frame counter given up on, so a rate reported for one of those is never read as a rate that was measured.
 
 ### F4 · WinUI recorder
 Why: the application replaces OBS. Recording, pausing, stopping and recovering happen in one
@@ -341,6 +343,30 @@ Board: 7 · Distribución y backup
   rather than refusing it is a board task, and it is the one thing a person with that microphone
   needs.
 
+- **conjecture** — Recording that device means working out what rate it counts in: inferred from
+  the ratio its two numbers keep, measured against the instants beside them, or read off the
+  endpoint before the stream opens.
+- **refuted-by** — No rate is needed and none is computed. A counter in the frames the client is
+  handed advances by exactly those frames, or by more where a stretch was dropped that nobody was
+  handed — never by less, which would be a device claiming it produced less than it just gave
+  over. So the one reading that used to refuse the recording is already the whole detection, and
+  the fabricated 16 kHz device is recorded correctly by a rule that never learns it is 16 kHz.
+- **learned** — Asking why a number is wrong is a different question from asking whether it can be
+  used, and only the second one had to be answered. A counter in another rate and a driver whose
+  counter is simply broken are one case — this source's numbers cannot be laid out — and the
+  answer to both is to stop reading them and place the source by the clock its packets already
+  carry, which is what a source whose device numbers nothing has always done.
+- **criterion-now** — A counter that goes back on itself is given up on rather than refused, and
+  the recording says which of its sources that happened to, because giving it up switches that
+  source's drift correction off and leaves its rate reading as the label. What still refuses a
+  recording is a device whose frame counter and clock disagree, which is measured against the
+  clock and so survives the counter being replaced — except on a source already given up on,
+  where the positions are computed from that same clock and the comparison is with itself. A
+  device that both counts in its own unit and runs at a rate other than its label is therefore
+  recorded at its label, with the disagreement showing up as the stretch that comes back missing.
+  That, and a counter running finer than the client's rate rather than coarser — which reads as a
+  dropout between every packet and is refused — are both on the board rather than guessed at here.
+
 ## Verification
 
 - ISC-1 — `AudioChannelTests` green 2026-08-07
@@ -435,4 +461,6 @@ Board: 7 · Distribución y backup
 - ISC-125 — `UnfinishedRecordingsTests.Nothing_but_a_decision_about_one_recording_removes_a_folder` and `.Nothing_in_the_audio_engine_removes_a_file_it_did_not_just_create` green 2026-08-15, each red 2026-08-15 against a `Directory.Delete` and a `Delete(` planted in a source file that has no business holding one
 - ISC-126 — `UnfinishedRecordingsTests.A_meeting_still_being_recorded_is_said_to_be_rather_than_offered_as_one_to_decide_about` and `.None_of_the_three_outcomes_lands_on_a_meeting_that_is_still_being_recorded` green 2026-08-15, over the handle a capture holds on its own spool — the same folder reading as waiting the moment nothing holds it. The first red 2026-08-15 against a build that answered that nothing was ever being written
 - ISC-128 — `CaptureLoopTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-16, over a loop body that ignores what it is asked and blocks on a gate nothing sets: waiting comes back at the deadline rather than at a multiple of it, says the loop was given up on, and the loop is still running when it says so. Red 2026-08-16 against the unbounded wait this replaces — that same test was still going at 2m 27s and never finished, which is the bug as the report describes it. ISC-129, ISC-130 and ISC-131 are the rest of that path and stay open: each needs a real device wedged on demand, which is the one thing nothing can arrange. The claim says a source and not a recording on purpose — three waits on the way out of a session are still unbounded, and adversarial review found all three: releasing the audio client and the endpoint, releasing the silence played into the loopback, and waiting for a stream to start at all. They are a wedge in the teardown rather than in the draining, which is a different failure from this one and is on the board
+- ISC-132 — `MeetingAudioTests.A_microphone_that_numbers_its_frames_at_its_own_rate_becomes_the_meetings_file` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-16, which is the claim at the boundary it is about: blocks written as a capture writes them, read back as a recovery reads them, out as `audio.wav` with the microphone audible on channel 1. `SharedTimelineTests.A_microphone_that_numbers_its_frames_at_its_own_rate_still_records_the_meeting`, `.A_source_whose_position_goes_backwards_gives_the_counter_up_and_keeps_the_meeting` and `PacketTallyTests.A_source_numbering_its_frames_at_its_own_rate_covers_the_meeting_and_loses_none_of_it` green the same day over a fabricated webcam handing over 480 frames a packet and advancing its counter by 160 — the machine's own numbers as the board card records them. Those three red 2026-08-16 with the one line that gives a counter up commented out, the timeline pair refusing at "placed at frame 160 after reaching 480" and the tally reporting 340 ms of the second it covers, which is the live face of the same bug; the other twenty tests of the class stayed green over that same edit, so what the change reaches is the case it was written for. `.A_source_that_lost_a_stretch_before_giving_its_counter_up_still_records_the_meeting` holds the changeover itself and was written red: a source that dropped a second and ran 2000 ppm fast was placed at 287808 after reaching 288000 and lost the meeting to the very reversal the counter was given up to avoid. Adversarial review found that one independently and all three reviewers named it. The claim says more slowly and not simply cannot be laid out because a counter running finer reads as a dropout between every packet and is still refused — that is a board task, not something this closes
+- ISC-133 — `SharedTimelineTests.A_recording_says_which_of_its_sources_had_its_counter_given_up_on` green 2026-08-16, asserting both halves: the microphone that counts in its own rate says so, and the loopback beside it in the same recording does not. Red 2026-08-16 against the same commented-out line. Giving a counter up switches that source's drift correction off and leaves its reported rate at the label, so a rate printed as measured would be the one number a person diagnosing two channels drifting apart would take at face value. `RecoveryCommandTests.A_rate_a_counter_was_given_up_on_is_never_reported_as_measured` (`tests/MeetingTranscriber.Cli.Tests`) green 2026-08-17 holds the second half where a person actually reads it, over a recovery whose microphone hands over 480 frames a packet and counts by 160: red the same day with `measured` put back on that line, and the other forty-two tests of the project green over that edit
 - ISC-127 — `ExtractionPositionTests` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-08-16, over `decisions`, `action_items`, `open_questions` and the note pinned to one alike: each refuses a second row at a position it already holds and a position that counts from before the first, and `.A_position_in_an_extraction_belongs_to_one_row_wherever_it_is_stored` reads the anchored set off the model rather than off a list, so a row type that took the anchor and mapped half of it fails there. `.Nothing_the_model_anchors_goes_unprobed` red 2026-08-16 with `action_item_progress` left off the probed list, the sweep red naming `decisions` against a corpus whose `ix_decisions_extraction_run_id_ordinal` was dropped, and `.A_position_that_is_not_a_position_is_refused_of_a_note_as_well` red against position zero, so it hangs on the CHECK and not on the shape of the statement. `CorpusRebuildTests.Rebuilding_puts_everything_an_extraction_produced_back_at_its_own_position` holds the other side over a delete-and-reproject written in the test, with no row id in common; that the production rebuild leaves these rows alone instead is `MeetingTranscriber.Processing.Tests`' `.What_the_rebuild_cannot_produce_again_it_does_not_delete`

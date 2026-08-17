@@ -107,6 +107,24 @@ public class PacketTallyTests
         tally.Furthest.Milliseconds.ShouldBe(0);
     }
 
+    /// <summary>
+    /// ISC-132. The tally counts on the same numbers the rebuild lays the recording out on, and it
+    /// has to: a microphone numbering its frames in its own rate advances its counter by a third of
+    /// what it hands over, so read as the device's own the second of meeting this covers reads as a
+    /// third of a second with two thirds of it lost — a person watching a meeting record being told
+    /// live that most of it is going missing while the file it becomes loses nothing at all.
+    /// </summary>
+    [Fact]
+    public void A_source_numbering_its_frames_at_its_own_rate_covers_the_meeting_and_loses_none_of_it()
+    {
+        var tally = Take(Fabricated.Packets(
+            AudioChannel.Loopback, StereoFloat, 48_000, 0, 1, Fabricated.Quiet, PacketFrames, countsAtRate: 16_000));
+
+        tally.Packets.ShouldBe(100);
+        tally.Covers.Milliseconds.ShouldBe(1_000);
+        tally.Lost.Milliseconds.ShouldBe(0);
+    }
+
     /// <summary>A tally nothing reached says so rather than saying a length it cannot know.</summary>
     [Fact]
     public void A_source_that_never_spoke_covers_nothing()

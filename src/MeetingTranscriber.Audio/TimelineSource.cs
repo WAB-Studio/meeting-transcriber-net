@@ -42,6 +42,7 @@ internal sealed class TimelineSource
     private readonly AudioChannel channel;
     private readonly StreamFormat format;
     private readonly SourceClock clock;
+    private readonly SourcePositions positions;
     private readonly WdlResampler resampler = new();
     private readonly SampleBuffer buffer = new();
     private float[] decoded = [];
@@ -63,6 +64,7 @@ internal sealed class TimelineSource
         this.channel = channel;
         this.format = format;
         clock = new SourceClock(channel, format.SampleRate);
+        positions = new SourcePositions(format.SampleRate);
 
         // Interpolation with two filter passes rather than a windowed sinc. This runs over the
         // whole meeting at the moment somebody stops it, and sixty-four taps across two hours of
@@ -84,6 +86,13 @@ internal sealed class TimelineSource
 
     /// <summary>What the device really ran at, against that clock.</summary>
     internal double Rate => clock.Rate;
+
+    /// <summary>
+    /// Whether this source's device numbered its frames in something other than the frames it
+    /// handed over, and its counter was given up on. <see cref="Rate"/> is then the label and not a
+    /// measurement, because what a rate is measured from is the counter that was given up on.
+    /// </summary>
+    internal bool CounterGivenUp => positions.CounterGivenUp;
 
     /// <summary>Frames of the interchange format this source has produced since its first one.</summary>
     internal long Produced { get; private set; }
@@ -123,9 +132,9 @@ internal sealed class TimelineSource
 
     /// <summary>
     /// Takes one packet. A position ahead of where the last packet ended is a stretch the device
-    /// dropped and becomes silence of exactly that length; a position behind it is a stream that
-    /// cannot be laid out at all, which stops here rather than quietly overwriting a second of the
-    /// meeting with a later one.
+    /// dropped and becomes silence of exactly that length; a position behind it is a device whose
+    /// counter is not in the frames it hands over, and <see cref="SourcePositions"/> is what decides
+    /// that and what is placed instead — so nothing here has to know which of the two happened.
     /// </summary>
     internal void Take(CapturePacket packet)
     {
@@ -141,28 +150,37 @@ internal sealed class TimelineSource
                 + "would not vouch for, and there is nothing to measure the rest of it against.");
         }
 
+        // Settled before anything reads it. The clock below measures how fast this device ran from
+        // the positions it is given, so handing it the device's own number for a device that counts
+        // in another rate would measure that rate and stop a recording this now records.
+        var position = positions.For(packet, frames);
+
         // An unsound packet's samples are still the meeting and its position is still where they
         // go; only the instant beside it is worthless, and a rate measured against that would be
         // worse than the label it replaced. So the packet is laid out below like any other and it
         // is the observation, and only the observation, that is skipped.
         if (packet.TimingIsSound)
         {
-            clock.Observe(packet.DevicePosition, packet.CapturedAt);
+            clock.Observe(position, packet.CapturedAt);
         }
 
         if (first)
         {
-            nextPosition = packet.DevicePosition;
+            nextPosition = position;
         }
-        else if (packet.DevicePosition < nextPosition)
+        else if (position < nextPosition)
         {
+            // Not reachable from any device: positions come back from one place and that place
+            // never goes back on itself. It is here because the alternative to saying so is a
+            // second of the meeting quietly written over by a later one.
             throw new AudioCaptureException(
-                $"The {channel} source went back from frame {nextPosition} to {packet.DevicePosition}.");
+                $"The {channel} source was placed at frame {position} after reaching {nextPosition}, "
+                + "which is a fault in this build rather than anything the device did.");
         }
-        else if (packet.DevicePosition > nextPosition)
+        else if (position > nextPosition)
         {
             var before = Produced;
-            FeedSilence(packet.DevicePosition - nextPosition, nextPosition);
+            FeedSilence(position - nextPosition, nextPosition);
             missing += Produced - before;
         }
 
@@ -170,10 +188,10 @@ internal sealed class TimelineSource
         {
             EnsureDecoded(frames);
             Samples.ToMono(packet.Samples.Span, format, decoded);
-            Feed(decoded.AsSpan(0, frames), packet.DevicePosition);
+            Feed(decoded.AsSpan(0, frames), position);
         }
 
-        nextPosition = packet.DevicePosition + frames;
+        nextPosition = position + frames;
     }
 
     /// <summary>Puts <paramref name="frames"/> of nothing where the device delivered nothing.</summary>
