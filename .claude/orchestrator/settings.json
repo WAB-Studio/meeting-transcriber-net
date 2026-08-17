@@ -50,7 +50,12 @@
       "PowerShell(Get-Content:*)",
       "PowerShell(Get-Process:*)",
       "PowerShell(Out-String:*)",
-      "PowerShell(New-Item:*)"
+      "PowerShell(New-Item:*)",
+      "PowerShell(codex:*)",
+      "Bash(codex:*)",
+      "PowerShell(Get-Command:*)",
+      "Bash(command:*)",
+      "Bash(sed:*)"
     ]
   }
 }
