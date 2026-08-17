@@ -29,15 +29,18 @@ if ($null -eq $h) { Write-Atom @{ ok = $false; reason = "cycle $cycle has no han
 
 # Closing twice was not harmless: it recorded a second recovery, and because a card's destination is
 # counted off those, the duplicate sent it to `pending` as though two sessions had failed to land it.
-if (Test-CycleEvent -LogDir $day.LogDir -Cycle $cycle -Kinds @("merged","recovered","decision_owed")) {
+# A close that did not reach the board is not one of those -- it is the case this atom is run again
+# for, and `Test-CycleClosed` is what tells the two apart.
+if (Test-CycleClosed -LogDir $day.LogDir -Cycle $cycle) {
   Write-Atom @{ ok = $true; cycle = $cycle; action = "already closed" }
   exit 0
 }
 
 $v = Read-Contract $day "verdict-$cycle.json"
 if ($null -eq $v) {
-  $to = Invoke-Recover -Day $day -Handoff $h -Reason "no verdict was reached for this cycle"
-  Write-Atom @{ ok = $true; cycle = $cycle; action = "recovered"; to = $to }
+  $rec = Invoke-Recover -Day $day -Handoff $h -Reason "no verdict was reached for this cycle"
+  if ($rec.Lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $rec.Lost }; exit 1 }
+  Write-Atom @{ ok = $true; cycle = $cycle; action = "recovered"; to = $rec.To }
   exit 0
 }
 
@@ -49,8 +52,8 @@ $act = Resolve-Verdict $v
 # the card, in writing, and the card goes to `pending` where no worker touches it until a grill has
 # settled it. The PR stays open and green; nothing merges it on a guess.
 if ($act.to -eq "pending") {
-  $lost = Request-Grill -Day $day -TaskId ([string]$h.task_id) -Owed @($v.decisions_owed) -PrNumber $h.pr_number
-  if ($lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $lost }; exit 1 }
+  $park = Request-Grill -Day $day -TaskId ([string]$h.task_id) -Owed @($v.decisions_owed) -PrNumber $h.pr_number
+  if ($park.Lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $park.Lost }; exit 1 }
   $parked = Complete-Journal -Repo $day.Repo -TaskId ([string]$h.task_id)
   if ($parked) { New-DayEvent -LogDir $day.LogDir -Kind "journal_parked" -Data @{ to = $parked } | Out-Null }
   Write-Day $day "[$cycle] PR #$($h.pr_number) left open -- card $($h.task_id) owes a decision and goes to pending"
@@ -64,11 +67,12 @@ if ($act.to -eq "pending") {
 if ($act.action -eq "recover") {
   $why = $act.reason
   if ([string]$v.verdict -eq "hold") { $why += " -- " + ((@($v.reasons) | Select-Object -First 2) -join " ") }
-  $to = Invoke-Recover -Day $day -Handoff $h -Reason $why
-  Write-Atom @{ ok = $true; cycle = $cycle; action = "recovered"; to = $to }
+  $rec = Invoke-Recover -Day $day -Handoff $h -Reason $why
+  if ($rec.Lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $rec.Lost }; exit 1 }
+  Write-Atom @{ ok = $true; cycle = $cycle; action = "recovered"; to = $rec.To }
   exit 0
 }
 
-$failed = Invoke-Merge -Day $day -Handoff $h
-if ($failed -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $failed }; exit 1 }
+$merge = Invoke-Merge -Day $day -Handoff $h
+if ($merge.Lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $merge.Lost }; exit 1 }
 Write-Atom @{ ok = $true; cycle = $cycle; action = "merged"; pr_number = $h.pr_number }

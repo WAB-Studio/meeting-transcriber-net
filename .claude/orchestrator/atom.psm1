@@ -265,7 +265,13 @@ function Invoke-BestEffort {
   param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)][string]$What, [Parameter(Mandatory)][scriptblock]$Do)
   $why = ""
   try {
-    & $Do
+    # `$null =` and not a bare call. Whatever the command prints on stdout is part of what a
+    # PowerShell function returns, so a CLI that says "comentario agregado" came back as
+    # @("comentario agregado", $true) -- and one that printed why it failed came back as
+    # @("error ...", $false), which is a two-element array and therefore TRUE to every caller that
+    # guards on it. The guards downstream are the whole safety of putting a card back; they were
+    # reading a truth value that could not be false.
+    $null = & $Do
     if ($LASTEXITCODE -ne 0) { $why = "exit $LASTEXITCODE" }
   } catch {
     $why = $_.Exception.Message
@@ -332,6 +338,21 @@ function Set-CardTags {
 }
 
 <#
+  What the three ways of closing a cycle answer, and they answer the same shape because they are
+  asked the same question. `Lost` empty is "it landed"; anything else is what the board was not
+  told, in words a person reads in the morning. `To` is where the card ended up, for the ones that
+  move a card.
+
+  One shape and not three, because two of them used to return a bare string and the comparison a
+  caller writes for that -- `-ne ""` -- silently says "failed" when handed anything else. The same
+  comparison against an array is what made a successful merge report as a failed one.
+#>
+function New-CloseResult {
+  param([string]$Lost = "", [string]$To = "")
+  return [pscustomobject]@{ Lost = $Lost; To = $To }
+}
+
+<#
   A card that still holds a decision nobody here can make -- met by the worker before it built, or
   by the audit in a diff already finished. Both land here, because the answer to both is the same
   and it is not a question put to somebody at four in the afternoon: it is a card that goes back to
@@ -389,12 +410,158 @@ function Request-Grill {
     decisions = @($Owed); said = $said; retagged = $retagged; moved = $moved
   } | Out-Null
 
-  if ($said -and $retagged -and $moved) { return "" }
+  if ($said -and $retagged -and $moved) { return (New-CloseResult -To "pending") }
   $lost = @()
   if (-not $said)     { $lost += "the decision never reached the card" }
   if (-not $retagged) { $lost += "the card still reads as grilled" }
   if (-not $moved)    { $lost += "the card never reached pending" }
-  return ("the board could not be told what this card owes: " + ($lost -join ", "))
+  return (New-CloseResult -Lost ("the board could not be told what this card owes: " + ($lost -join ", ")))
+}
+
+<#
+  The PR is integrated here rather than by whatever decided it should be: it cannot be forgotten,
+  cannot happen twice, and lands on the stream. The next preflight fast-forwards local `main`, so
+  the cycle after this one branches from a base already carrying this one.
+
+  Archiving the journal is part of the same act and not a step beside it. **Only a merge archives**
+  -- everything else falls through to parked -- which is what makes a cycle that died come out right
+  without anything having been written for the case.
+
+  Nothing after the merge can undo it, so nothing after the merge fails the cycle. What the card
+  does not get said on it is written down and the day goes on: the diff is in `main` either way, and
+  refusing to admit that would leave a merged PR reported as a failure nobody can act on.
+#>
+function Invoke-Merge {
+  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)]$Handoff)
+  Write-Day $Day "integrating PR #$($Handoff.pr_number)"
+
+  # --match-head-commit is what makes the audit's verdict a fact about what lands. Between the audit
+  # reading the head and this running, the branch can move -- and the gap is at its widest exactly
+  # when a card went back for a decision, which can take hours. Without it the merge takes whatever
+  # is at the tip now, which is code nobody read.
+  #
+  # Captured rather than left to print. What a native command writes on stdout is part of what the
+  # function returns, and the caller tests that return against "" -- so gh saying it merged came
+  # back as @("Merged pull request #42", "") and read as a failure over a PR that is in `main`.
+  $out = gh pr merge $Handoff.pr_number --merge --delete-branch --match-head-commit $Handoff.head_sha
+  $code = $LASTEXITCODE
+
+  # A merge is the one act here that cannot be taken back, and `gh` failing does not mean it did not
+  # happen: the request can land and the answer be lost. So a failure asks GitHub what is actually
+  # true before reporting one, and a PR that is already merged is the state this wanted -- whether
+  # this call did it or the one that died before writing its event. Without this, a day that
+  # crashed between the merge and the stream could never close that cycle again.
+  if ($code -ne 0) {
+    $state = ""
+    $seen = gh pr view $Handoff.pr_number --json state --jq .state
+    if ($LASTEXITCODE -eq 0) { $state = ([string]$seen).Trim() }
+    if ($state -ne "MERGED") {
+      New-DayEvent -LogDir $Day.LogDir -Kind "merge_failed" -Data @{
+        cycle = $Day.Cycle; pr_number = $Handoff.pr_number
+        reason = "gh exited with $code"; said = (($out | Select-Object -First 3) -join " "); state = $state
+      } | Out-Null
+      return (New-CloseResult -Lost "the merge failed ($code) -- the PR is left open, and the head may have moved since it was audited")
+    }
+    Write-Day $Day "  gh reported $code and the PR is merged -- taking GitHub's word for it"
+  }
+
+  New-DayEvent -LogDir $Day.LogDir -Kind "merged" -Data @{ cycle = $Day.Cycle; pr_number = $Handoff.pr_number } | Out-Null
+  Write-Day $Day "PR #$($Handoff.pr_number) integrated"
+
+  # Everything from here is after the irreversible act, so nothing here may fail the cycle -- not by
+  # returning and not by throwing, which with $ErrorActionPreference = Stop is the likelier of the
+  # two. A merged PR reported as a failed merge is a day stopped over work that landed.
+  try {
+    # The journal is local and gitignored, so filing it is not keeping it. What the next person can
+    # still read is the card, which is remote and survives the clone.
+    $filed = Complete-Journal -Repo $Day.Repo -Merged -TaskId ([string]$Handoff.task_id)
+    if ($filed) {
+      New-DayEvent -LogDir $Day.LogDir -Kind "journal_filed" -Data @{ to = $filed } | Out-Null
+      if (-not [string]$Handoff.task_id) {
+        Write-Day $Day "  the handoff names no card, so the journal is only at $filed, which is gitignored"
+      } else {
+        $body = "**What the session tried, and what it threw away.**`n`n" + (Get-Content $filed -Raw)
+        $said = Write-Elsewhere $Day -TaskId ([string]$Handoff.task_id) -Body $body -Name "journal-$($Day.Cycle).md"
+        if (-not $said) { Write-Day $Day "  the journal did not reach card $($Handoff.task_id) -- it is only at $filed, which is gitignored" }
+      }
+    }
+  } catch {
+    New-DayEvent -LogDir $Day.LogDir -Kind "record_failed" -Data @{
+      reason = "filing the journal after the merge -- " + $_.Exception.Message
+    } | Out-Null
+    Write-Day $Day "  the journal could not be filed: $($_.Exception.Message)"
+  }
+  return (New-CloseResult)
+}
+
+<#
+  What used to end the day. A verdict saying this PR does not hold up is a fact about one PR and not
+  about the hours left: the PR stays open for a person to read, the card goes back to the pool
+  carrying the reason, and the next cycle takes the next task.
+
+  Twice is a different fact. A card that comes back a second time is one two sessions could not
+  land, and returning it to the pool again is how a day spends itself going in a circle -- so the
+  second time it goes to `pending`, which is where work waits on a person.
+
+  **The comment guards the move**, the same way it does for a card that owes a decision. What tells
+  the next worker this card already has a PR is the `**Not merged.**` comment on it; a card that
+  reached the pool without one is a card somebody starts over, and the day ends with two PRs against
+  one task. So a comment that did not land leaves the card where it is -- in `in review`, where a
+  person will find it -- and the caller is told, rather than the card being moved on the strength of
+  a record that does not exist.
+#>
+function Invoke-Recover {
+  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)]$Handoff, [Parameter(Mandatory)][string]$Reason)
+
+  $task = [string]$Handoff.task_id
+  # Read off the stream and not out of anything still running: a day relaunched used to forget, and
+  # a card nothing could land went back in the pool once per restart forever.
+  $to = Get-CardDestination -Recovered (Get-DayStatus -LogDir $Day.LogDir).Recovered -TaskId $task
+
+  if (-not $task) {
+    New-DayEvent -LogDir $Day.LogDir -Kind "recovered" -Data @{
+      cycle = $Day.Cycle; task_id = ""; pr_number = $Handoff.pr_number; to = $to
+      reason = $Reason; said = $false; moved = $false
+    } | Out-Null
+    return (New-CloseResult -To $to -Lost "the handoff names no card, so there is nothing to put back")
+  }
+
+  $say = New-Object System.Collections.ArrayList
+  $null = $say.Add("**Not merged.** $Reason")
+  $null = $say.Add("")
+  if ($Handoff.pr_number) {
+    $null = $say.Add("PR #$($Handoff.pr_number) is left open and this card goes back to ``$to``. Pick it up on that PR's own branch rather than opening a second one. The day did not stop over it.")
+  } else {
+    $null = $say.Add("This card goes back to ``$to``. The day did not stop over it.")
+  }
+  if ($to -eq "pending") {
+    $null = $say.Add("")
+    $null = $say.Add("Second time it has come back, so it waits on a person rather than going back in the pool.")
+  }
+
+  $said  = Write-Elsewhere $Day -TaskId $task -PrNumber $Handoff.pr_number -Body ($say -join "`n") -Name "recovered-$($Day.Cycle).md"
+  $moved = $false
+  if ($said) { $moved = Move-Card $Day -TaskId $task -To $to }
+
+  # What was meant and what happened. Recording the intention as the outcome left a card in
+  # `in review`, where no worker looks for it, while the report called it recovered.
+  New-DayEvent -LogDir $Day.LogDir -Kind "recovered" -Data @{
+    cycle = $Day.Cycle; task_id = $task; pr_number = $Handoff.pr_number; to = $to
+    reason = $Reason; said = $said; moved = $moved
+  } | Out-Null
+
+  $parked = Complete-Journal -Repo $Day.Repo -TaskId $task
+  if ($parked) { New-DayEvent -LogDir $Day.LogDir -Kind "journal_parked" -Data @{ to = $parked } | Out-Null }
+
+  if ($said -and $moved) {
+    Write-Day $Day "not merged -- PR #$($Handoff.pr_number) left open, card $task -> $to"
+    return (New-CloseResult -To $to)
+  }
+  $lost = @()
+  if (-not $said)  { $lost += "the reason never reached the card, so nothing says its PR is already open" }
+  if (-not $moved) { $lost += "the card never reached $to" }
+  Write-Day $Day "not merged -- PR #$($Handoff.pr_number) left open, and card $task stayed where it was"
+  return (New-CloseResult -To $to -Lost ("the board could not be told this PR did not land: " + ($lost -join ", ")))
 }
 
 function Read-Contract {
@@ -406,6 +573,7 @@ function Read-Contract {
 
 Export-ModuleMember -Function (@(
   "Get-Repo", "New-DayRun", "Open-Day", "Enter-AtomLease", "Write-Day", "Write-Atom", "Write-AtomCrash", "Invoke-Session",
-  "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Move-Card", "Set-CardTags", "Request-Grill",
+  "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Move-Card", "Set-CardTags",
+  "New-CloseResult", "Request-Grill",
   "Invoke-Merge", "Invoke-Recover", "Read-Contract"
 ) + @($script:DayModule.ExportedFunctions.Keys))
