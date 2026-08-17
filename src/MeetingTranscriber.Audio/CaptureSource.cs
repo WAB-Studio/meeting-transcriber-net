@@ -16,8 +16,6 @@ namespace MeetingTranscriber.Audio;
 /// </remarks>
 public sealed class CaptureSource : IDisposable
 {
-    private static readonly TimeSpan StopsWithin = TimeSpan.FromSeconds(5);
-
     private readonly WasapiStream stream;
     private readonly SpoolWriter spool;
     private readonly SourceMeter meter = new();
@@ -98,14 +96,29 @@ public sealed class CaptureSource : IDisposable
 
     /// <summary>
     /// Waits for the stream to be over and hands the last blocks on. A stream that had already
-    /// ended by itself throws here, carrying the reason it ended.
+    /// ended by itself throws here, carrying the reason it ended, and so does one that will not end
+    /// at all — which is the only thing anybody gets to do about that one.
     /// </summary>
     internal void Finish()
     {
-        if (!ended.Wait(StopsWithin))
+        // One wait, and it is the thread's: a source is over exactly when the loop draining it comes
+        // back, and joining it is also what makes everything that loop wrote visible here. Waiting
+        // on the gate first and then on the thread would spend the deadline twice over one wedged
+        // device, and a session stopping two of them would spend it four times — so "five seconds"
+        // would name none of the times anybody actually waits.
+        if (!stream.Stopped())
         {
+            // Nothing is flushed and nothing is closed on the way out of here: the stream is still
+            // inside the device and is still the thread that would write the next block. So this
+            // says what is left of the source instead of doing anything to it. The count is the one
+            // number that means something — every block already written went to the operating
+            // system as it was written, so what it names is a recording that is really there and
+            // really readable, and not a file somebody has to be told to go looking for.
             throw new AudioCaptureException(
-                $"The {Channel} stream did not stop within {StopsWithin.TotalSeconds:0} seconds.");
+                $"The {Channel} stream on '{Listening.Name}' did not stop within "
+                + $"{CaptureLoop.StopsWithin.TotalSeconds:0} seconds. Its {Bytes} bytes of audio "
+                + $"are in '{File.Name}' and stay there, and nothing it is still using is taken "
+                + "away from it while it is in there.");
         }
 
         spool.Flush();
@@ -124,6 +137,16 @@ public sealed class CaptureSource : IDisposable
     /// spool left open would refuse the next attempt at the same folder — so the first failure is
     /// what the caller hears, and the rest still happen.
     /// </summary>
+    /// <remarks>
+    /// Unless the stream was given up on, and then none of it happens. Both of these are things the
+    /// draining thread uses and it is still running: the spool is what it writes each block to, and
+    /// the gate is what it sets on its way out — and setting a gate that has been disposed throws
+    /// on that thread, where nothing is catching, which ends the process and the meeting with it.
+    /// So the source keeps its handle and says so through <see cref="Finish"/>. Closing a spool
+    /// finishes nothing and completes nothing anyway: every block was already whole when it was
+    /// written, which is why a capture that was killed rather than stopped still leaves a recording
+    /// worth everything that reached the disk, and why one left open leaves the same.
+    /// </remarks>
     public void Dispose()
     {
         try
@@ -132,18 +155,19 @@ public sealed class CaptureSource : IDisposable
         }
         finally
         {
-            try
+            if (!stream.Abandoned)
             {
-                // Closing a spool finishes nothing and completes nothing: every block was already
-                // whole when it was written, which is why a capture that was killed rather than
-                // stopped still leaves a recording worth everything that reached the disk.
-                spool.Dispose();
+                try
+                {
+                    spool.Dispose();
+                }
+                finally
+                {
+                    ended.Dispose();
+                }
             }
-            finally
-            {
-                ended.Dispose();
-                running = false;
-            }
+
+            running = false;
         }
     }
 
@@ -154,8 +178,16 @@ public sealed class CaptureSource : IDisposable
     /// reason that is no longer the reason.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Nothing here throws. It runs while a session is already failing, and what the caller has
     /// to hear is why that happened, not that a handle would not close on the way out.
+    /// </para>
+    /// <para>
+    /// A source whose stream was given up on keeps its file, because the handle is open and a live
+    /// thread is writing through it. So the next attempt at that folder is refused by the blocks
+    /// still standing in it — which is the truth: this process really is still recording into that
+    /// file, and a folder it cleared would be one two threads then wrote to.
+    /// </para>
     /// </remarks>
     internal void Discard()
     {
