@@ -82,6 +82,20 @@ there are three honest moves and none of them is a new number:
 - the statement adds nothing → nothing is written. The tell is the probe: if it would close on
   evidence already in `## Verification`, the claim already exists under another number.
 
+**Issuing an ID means naming the claim it is not.** Before the number goes down, say which existing
+claim comes closest and what it fails to cover — one line, in the commit message. Failing to find
+one is not evidence there is none; it means the read at the top of this section did not happen, and
+that read is what the rule is made of. *A meeting left without a summary says which condition
+failed* beside *a rejected summary is handed back saying what was wrong with it* is one truth
+written twice, and only the comparison catches it.
+
+**A batch is checked one statement at a time.** Claims arriving together — a grill of the whole
+board, a seeding pass — are where duplicates get in, because the check blurs into a single glance
+at twelve statements: each is held against the file, none against the other eleven. Run the three
+moves above per statement, and expect most of a batch to end on the first one. A sitting that
+issues a fresh number for every decision it took is reporting its own size, not the articulation's
+growth.
+
 **An ID is immutable.** Issued once, at the end of the sequence, and after that never renumbered,
 never reused, never moved to another claim. A claim that stops being true is tombstoned where it
 stands rather than removed, because a board task, a commit message and a `## Verification` stub
