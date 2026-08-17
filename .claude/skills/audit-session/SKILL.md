@@ -27,6 +27,21 @@ python $S task <id>
 it, and anything before it — an env var, a variable assignment — gets the call denied. Under `-p`
 that does not prompt. `PYTHONIOENCODING` is already exported by the orchestrator.
 
+## 0 · You never touch the working tree
+
+Everything you read is reachable without a checkout — `gh pr view`, `gh pr diff`, and
+`git show <headRefOid>:<path>` for any file at the tip. **You do not check the PR out, do not add a
+worktree, and do not build or test locally.** The two things you write go to GitHub and not to
+disk: the comment on the PR and, when there is one, a card.
+
+That is not tidiness, and it is not weaker evidence. The tree you would check out is the one the
+next worker starts from, so a session that dies mid-audit leaves it on somebody else's commit: on
+2026-08-17 an audit that was refused a worktree fell back to detaching the main checkout, and got
+away with it only by finishing. And a build you run here runs on the machine the worker just used,
+with its caches and its leftovers, while the PR's CI ran the same four commands on a clean
+`windows-latest` under an identity the worker cannot forge. Re-running them buys nothing and costs
+the tree.
+
 ## 1 · The evidence, not routed through the worker
 
 ```powershell
@@ -57,24 +72,46 @@ git show <headRefOid>:ISA.md
    asked. Each one absent from `decisions_deferred` goes to `unreported_decisions`. **This is
    where this skill pays for itself.**
 3. **Do the claims really close?** `probes[].passed` is the worker's assertion and does not count
-   as evidence. What counts: **the PR's CI**, which runs the four commands on its own, and
-   **re-running yourself** the test holding up each `isc_closed` — it is named on its
-   `## Verification` line, and running it costs seconds. A claim you cannot corroborate that way
-   goes to `isc_unproved`. It is the property the whole rest of the repo rests on.
+   as evidence. What counts is **the PR's CI**, which runs the four commands on its own. Each
+   `isc_closed` names its probe on its `## Verification` line, and the chain that closes it without
+   running anything is three links: the test **exists** at the tip, which you read out of the diff;
+   its assembly came back green with **`Skipped: 0`**, which the run's log says per assembly; and a
+   green assembly with nothing skipped means every test in it ran and passed, that one included.
+
+   Whether it passes *vacuously* is read, not timed. The assertion is in the diff: one that says
+   `elapsed.ShouldBeGreaterThanOrEqualTo(StopsWithin)` cannot be green unless the deadline was
+   really spent, and one that would hold with the behaviour removed is the finding — reading it
+   settles that, and a stopwatch on your machine only corroborates what the assertion already says.
+
+   A claim you cannot corroborate that way goes to `isc_unproved`. It is the property the whole
+   rest of the repo rests on.
 4. **Is `blocks_the_pr` true?** Recompute it from the diff. The worker classified its own
    decision, and that is exactly the classification you cannot delegate to the audited.
 5. **Did it move cards it did not declare?** List the board and compare against `skipped[]`. A
    task in `pending` that is not declared is one quietly got rid of. And for the declared ones,
    open the card: if it was merely hard and needs nobody, put it back to `Open` and record that.
 
-## 3 · CI, with a clock
+## 3 · CI is your probe, with a clock
 
 ```powershell
 gh pr checks <n> --watch
+gh run view <run-id> --log        # what each step actually printed
 ```
 
 A queued check that never starts hangs the whole day. If it has not finished in **15 minutes**,
 stop waiting: `verdict: "hold"`, saying CI did not conclude. Red is `hold` too, without exception.
+
+Name the run in `reasons`, not just its colour: the four commands, the per-assembly counts, and
+the commit. Which commit matters — on a `pull_request` the checkout is the **merge commit**, so
+the log reads `HEAD is now at <x> Merge <head> into <base>`. What CI proves is therefore about what
+would land, not literally about `audited_head_sha`, and that is the stronger of the two questions.
+Say which one your evidence is about rather than letting the morning reader assume.
+
+The log stops at the assembly: counts, skips and durations per test DLL, never a test name. That is
+enough for check 3 and it is the whole of what you get. **If a claim needs a probe CI does not run
+at all**, you do not run it here to fill the gap — the gap is that the repo has no probe for it,
+and a green command on your machine hides that rather than reporting it. It goes to `isc_unproved`,
+which is a `hold`, and the durable fix is a card asking for the probe.
 
 ## 4 · The verdict
 

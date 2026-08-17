@@ -118,6 +118,29 @@ sensitive path however the allow list reads, which is why a session's scratch be
 repo and not in the gitignored log directory; and a command whose first word is an assignment or a
 variable is refused for the expansion, not for the program.
 
+### The audit reads, it does not build
+
+A session may only write inside the repo, and that is the boundary the audit ran into on
+2026-08-17: it added a worktree at `C:\Users\pc\audit-39` to review the PR in isolation, had every
+command in it refused as *outside allowed working directories*, removed the worktree and detached
+the **main** checkout onto the PR head instead. It put the tree back and its verdict was sound, so
+the whole detour cost nothing — this time. The next one dies halfway and leaves the tree on
+somebody else's commit for the next worker to build on.
+
+The grant that would have let it work — `additionalDirectories` over a worktree root — is not the
+fix, because the writing was not necessary in the first place. Reading a PR needs no checkout:
+`gh pr diff` and `git show <sha>:<path>` reach every file at the tip. **The only thing that wanted
+a tree was re-running the build and the tests, and CI already ran them** — on a clean
+`windows-latest`, under an identity a worker cannot forge, over the merge commit rather than the
+bare head, which is the stronger question anyway. So `audit-session` is read-only on disk and takes
+CI as its probe, and the run's log is where the evidence is quoted from.
+
+What the log gives is per assembly and never per test: counts, skips, durations for a whole DLL. It
+is enough, because a green assembly reporting `Skipped: 0` means every test in it ran and passed,
+and whether one of them passes *vacuously* is settled by reading its assertion in the diff rather
+than by timing it anywhere. A claim needing a probe CI does not run is not a reason to build
+locally: it is a missing probe, it holds the PR, and it becomes a card.
+
 ## What stops the day
 
 The loop stops — it never retries — and both `day.log` and `report.md` name which:
