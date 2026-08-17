@@ -1,9 +1,9 @@
 ---
 name: next-task
 description: >-
-  Take the next task off the board and carry it to an open PR with nobody in the loop. This is the
-  worker session of the unattended orchestrator: it picks, works, proves, opens the PR and hands
-  off a structured record. Triggers: "next task", "próxima tarea", "keep going on the board".
+  Carry one named board task to an open PR with nobody in the loop. Given a card, it works it,
+  proves it, opens the PR and hands off a structured record. Triggers: "next task",
+  "próxima tarea", "keep going on the board".
 ---
 
 # next-task — one unattended working session
@@ -11,12 +11,17 @@ description: >-
 A run is **one board task carried to an open PR**, and nothing else. `CLAUDE.md` governs the work
 itself; what is here is only what changes when nobody is beside you.
 
-The orchestrator passes the handoff path as an argument, and writes that file itself from what you
-emit — see §5. Nothing here writes it.
+**This session has two inputs and one output.** In: a path to a JSON file naming the card — its
+`task_id`, and a `pr_number` when that card already has work in flight. Out: the handoff, §5, which
+is your last message and which the caller writes to the second path. Nothing here writes a file to
+either path.
+
+Everything you do to the board is done to that one card — read it, move it, comment on it — so the
+CLI is only ever addressed by id:
 
 ```powershell
 $S = "$env:USERPROFILE\.claude\skills\clickup\clickup.py"
-python $S tasks --mine
+python $S task <id>
 ```
 
 **Call the CLI with `python` as the first word of the command, always.** The permission rule that
@@ -42,110 +47,72 @@ Clean tree, standing on a current `main`. If it is not, fix nothing: `outcome: "
 the handoff, stop. An unattended session that tidies up what another left half-done is the fastest
 way to lose work.
 
-## 1 · Picking
+## 1 · The card
 
-The board's conventions — which list is which, what each state means — are in `arquitectura.md`
-§13. What matters here: **`Open` is the pool and `pending` waits on a person.**
-
-**Look at `in progress` first.** A task sitting there belongs to a session that died halfway, and
-it is your task, not a new one: pick it back up. Starting another leaves the first abandoned in a
-state that already took it out of the pool.
-
-If there is none, walk the phase lists in order and take the first candidate; inside a list, by
-priority `urgente` → `alta` → `normal` → `baja`.
+**The card is an input, not a choice.** Read the file you were given, then read the card, then
+start:
 
 ```powershell
-python $S tasks --list "0 · Contratos y caracterización" --status Open
+python $S task <task_id>
 ```
 
-**The first candidate in order is the task, and whether it is grilled does not change that.** The
-board is ordered because later work stands on earlier work, so skipping past an ungrilled card to a
-grilled one further down builds the second floor of a house whose first floor is still a decision.
-That is worse than losing the session.
+**Which card is the right one is not a question this session has open**, and going to the board to
+satisfy yourself about it is the one detour worth naming. It costs a quarter of the session, and it
+re-decides from one card what was decided from the board — so it is slower and worse at once. Which
+list is which and what each state means is `arquitectura.md` §13, and you should not need any of it.
 
-So: **a candidate without the `grilled` tag is `outcome: "needs_grill"`** — §2b, with an empty
-`decisions_owed[]` if you have not read far enough to name what is open, and with entries if you
-have. You do not take the next one instead.
+**What the card was grilled into is the `**Grilled.**` comment**, and it is the first thing to read
+after the description. It carries the SHA of `main` it was decided against: if the code has moved
+under one of those decisions since, that decision is an open fork again, not a settled one — say so
+in `decisions_deferred` and use your judgement, which is what `CLAUDE.md` asks for anyway.
 
-The one thing that is passed over is a card **nobody** could build — a real meeting, two sound
-cards, hardware. That is §2, it goes to `pending` declared in `skipped[]`, and the next candidate
-is fair game, because no grill would make it buildable either.
+Two things are yours to refuse with, and both are about the work rather than the choice:
 
-The tag says a person decided; **what they decided is the `**Grilled.**` comment on the card**, and
-it is the first thing to read after the description. It carries the SHA of `main` it was decided
-against: if the code has moved under one of those decisions since, that decision is an open fork
-again, not a settled one — say so in `decisions_deferred` and use your judgement, which is what
-`CLAUDE.md` asks for anyway.
+- **The card holds a decision the grill did not settle** → `outcome: "needs_grill"`, §2b.
+- **You cannot start at all** — the tree is dirty, the branch you were given is gone, the card
+  describes something no session can finish without hardware nobody plugged in → `outcome:
+  "blocked"` with `blocked_reason`, and leave the comment on the card yourself.
 
-Two things that are never confused with each other:
+### When a PR number comes with it
 
-- **No list has an eligible task** → `outcome: "no_tasks"`. A legitimate ending.
-- **A list does not resolve** — renamed, moved — → `outcome: "blocked"` naming which. A board that
-  changed shape is not an empty board, and confusing the two closes the day in silence exactly
-  when there is work.
+`pr_number` set means the card already has work in flight: a PR that was read and not let through,
+or one parked on a decision that has since been answered. **The card's own comments say which** —
+a `**Not merged.**` comment naming the defect, and where it was parked, a `**Grilled.**` one
+carrying the answer the branch now has to be brought in line with. Read which before you assume you
+are patching: a hold expects the same approach to land properly, while an answered `ask` may take
+the diff down to the studs.
 
-**Look at the open PRs too** (`gh pr list`). Every session branches from the same `main`, so you
-cannot see what the previous one did. If your candidate **actually builds on** work sitting in an
-unmerged PR, skip it and say so in `skipped[]`: that one waits on a merge, not on a person.
-
-That is the one rule that outranks board order, and it is narrow on purpose. It is about a real
-dependency you can point at in the code, not about position — "it comes after it on the board" is
-not one. Judge each candidate against every open PR, including the ones parked on a decision, which
-accumulate.
-
-**If every remaining candidate was skipped for that reason, the board is not empty — it is blocked.**
-Say `outcome: "no_tasks"` and put the reason in `blocked_reason`, naming the PRs everything is
-waiting behind. A day that reports an empty board when the work is sitting behind a decision you
-owe tells you the wrong thing in the morning.
-
-### A card that came back
-
-**A card in `Open` carrying a `**Not merged.**` comment is work in progress, not a fresh task**, and
-the comment names the PR that is still open. The audit read that PR and did not let it through, or
-it held a decision that had to be grilled first; either way the comment says which, and it is the
-first thing to read. When it was the second, the grill's answer is on the card too, under
-`**Grilled.**`, and it is what the branch has to be brought in line with. That card is the strongest candidate there is — ahead of anything in the pool,
-and second only to `in progress` — because leaving it produces a second PR against the same task.
-
-Check the PR is still open before believing the comment: a card worked months ago and reopened now
-carries the same words about a PR long since closed. `gh pr view <n> --json state` settles it, and a
-closed one means the comment is history and the card is an ordinary candidate.
-
-Pick it up on its own branch rather than a new one, and push to the PR that exists:
+Continue on that PR's branch rather than cutting a new one — a second branch means a second PR
+against one card:
 
 ```powershell
 git fetch origin
 git checkout <branch-from-the-PR>
 ```
 
-Then hand off **that** PR number and the new tip. What you are fixing is named in the comment: a
-`hold` names a defect and expects the same approach to land properly, while a rejected `ask` names a
-decision that was wrong, and the answer beside it may take the diff down to the studs. Read which
-before you assume you are patching. If the answer means the branch is worth nothing, say so in
-`decisions_deferred`, close the PR and start it properly — that is a judgement, and it is yours.
-
-The exception is a card in `pending`: it came back twice, it waits on a person now, and it is not
-eligible however good it looks.
+Then hand off **that** PR number and the new tip. If the answer means the branch is worth nothing,
+say so in `decisions_deferred`, close the PR and start it properly — that is a judgement, and it is
+yours.
 
 ## 2 · What cannot be done alone
 
-**A task is ineligible when finishing it needs something that is not on this side of the CLI.**
-Today that is nearly all of phase 2: a real meeting, two sound cards, a device unplugged mid
-recording, two hours of drift measured on hardware.
+**A task cannot be finished when it needs something that is not on this side of the CLI** — a real
+meeting, two sound cards, a device unplugged mid recording, two hours of drift measured on hardware.
+Nearly all of phase 2 is this, and most of it is caught before a card ever reaches here.
 
-The real risk is not stalling: it is that you produce plausible measurements of a meeting that
-never happened. **A number that did not come out of a run does not get written** — not in the
-code, not in the ISA, not in a board comment.
+When it is not, and you find out from inside the card: `outcome: "blocked"` with `blocked_reason`
+saying what is missing, plus the comment on the card yourself, in terms of what somebody has to
+bring:
 
 ```powershell
 python $S move <id> --status pending
 python $S comment <id> --text "Needs <what exactly> — <what a person has to do or bring>."
 ```
 
-Record it in `skipped[]` and move to the next candidate. The comment says what is missing, not
-that you could not do it: whoever reads it tomorrow needs to know what to bring. **Every card you
-move goes in the handoff** — the audit re-lists the board and compares, so an undeclared move
-surfaces anyway, as a finding against you.
+The real risk here is not stalling. It is that you produce plausible measurements of a meeting that
+never happened. **A number that did not come out of a run does not get written** — not in the code,
+not in the ISA, not in a board comment. **Every card you move goes in the handoff**: the audit
+re-lists the board and compares, so an undeclared move surfaces anyway, as a finding against you.
 
 ## 2b · A card that still holds a decision
 
@@ -184,8 +151,8 @@ to, **what you tried and threw away**, and what you would do next. The discarded
 most valuable part and the only part nobody else can reconstruct — the card keeps conclusions, the
 PR keeps the diff, and neither keeps the three approaches that did not work.
 
-If `.scratch/parked/<task-id>.md` exists for the card you picked, that is an earlier session on this
-same card: read it first and continue from it into `current.md`.
+If `.scratch/parked/<task-id>.md` exists for your card, that is an earlier session on this same
+card: read it first and continue from it into `current.md`.
 
 **Write it, and never move it.** Leave it at `.scratch/current.md`; filing it is not yours. A
 session that opens a PR and leaves that file empty has not finished.

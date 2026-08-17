@@ -339,12 +339,16 @@ $script:Board = {
   and a card in `Open` carrying `grilled` is a card somebody has already decided. Nothing else is
   eligible, so with neither there is no session worth paying for.
 
-  **This is an emptiness check and not the worker's picking rule**, which is board order, priority,
-  what an open PR is already building, and what no machine can do at all. The two are allowed to
-  disagree in one direction only: this says a session is worth starting and the worker then finds
-  its first card is ungrilled and parks it. That costs a session, and what bounds it is the park
-  ceiling, not this. Making it agree would mean writing board order twice, and the second copy
-  would be the one nothing tests.
+  **This is an emptiness check and not the picking rule**, which is board order, priority, what an
+  open PR is already building, and what no machine can do at all. That rule is written in exactly
+  one place -- the picker session, `run-picker.ps1` -- because it is a judgement over card text and
+  not something a script can hold. This only decides whether that session is worth paying for.
+
+  The two were once allowed to disagree, and the disagreement had a cost: this counted grilled cards
+  while the worker took the first card in board order whether grilled or not, so a board whose first
+  phase held one ungrilled card sent it to `pending` -- a paid session, and one of the day's two
+  parks -- with every grilled card behind it untouched. What replaced that is not agreement here but
+  a single author there.
 
   The order of the questions is the cost. A day that has work answers on one or two listings, and
   only a board that looks empty pays for the tree -- which is where the refresh is, because that
@@ -395,6 +399,48 @@ function Get-BoardPool {
 
   New-DayEvent -LogDir $Day.LogDir -Kind "board_pool" -Data @{ resume = 0; grilled = 0 } | Out-Null
   return [pscustomobject]@{ Stop = ""; Idle = $true; Resume = 0; Grilled = 0 }
+}
+
+<#
+  A checkout fit to start from: clean, on `main`, and level with origin. Asked by the two atoms that
+  begin a cycle -- the picker before it spends a session deciding, the worker before it spends one
+  building -- and here rather than in either of them so the two cannot come to mean different things
+  by the same word.
+
+  Every command is judged by its own exit code. $ErrorActionPreference does not turn a native exe
+  failure into an exception, so a `git` that never ran would read as a clean tree -- the observing
+  tool failing, dressed up as a healthy state.
+#>
+function Test-Preflight {
+  param([Parameter(Mandatory)]$Day)
+  $dirty = git -C $Day.Repo status --porcelain
+  if ($LASTEXITCODE -ne 0) { return "git status failed ($LASTEXITCODE)" }
+  if ($dirty)              { return "the tree was left dirty" }
+  $branch = git -C $Day.Repo rev-parse --abbrev-ref HEAD
+  if ($LASTEXITCODE -ne 0) { return "git rev-parse failed ($LASTEXITCODE)" }
+  if ($branch -ne "main")  { return "left standing on $branch" }
+  git -C $Day.Repo fetch origin main --quiet
+  if ($LASTEXITCODE -ne 0) { return "git fetch failed -- main never checked against origin" }
+  git -C $Day.Repo merge --ff-only origin/main --quiet
+  if ($LASTEXITCODE -ne 0) { return "local main has diverged from origin" }
+  return ""
+}
+
+<#
+  A cycle that was never closed is not replaced by opening another one. What sequences these is a
+  model, so calling an atom again after an audit or a close was skipped is not a hypothetical -- and
+  the next cycle would take a new card while the last one's PR sat open with its card in
+  `in progress`, which is the abandonment the whole arrangement exists to prevent.
+#>
+function Test-CycleStillOpen {
+  param([Parameter(Mandatory)]$Day)
+  if ($Day.Cycle -le 0) { return "" }
+  $open = Read-Contract $Day "handoff-$($Day.Cycle).json"
+  if ($open -and [string]$open.outcome -eq "pr_opened" -and
+      -not (Test-CycleClosed -LogDir $Day.LogDir -Cycle $Day.Cycle)) {
+    return "cycle $($Day.Cycle) is still open -- close it before opening another"
+  }
+  return ""
 }
 
 function Move-Card {
@@ -662,6 +708,7 @@ function Read-Contract {
 Export-ModuleMember -Function (@(
   "Get-Repo", "New-DayRun", "Open-Day", "Enter-AtomLease", "Write-Day", "Write-Atom", "Write-AtomCrash", "Invoke-Session",
   "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Get-BoardPool", "Move-Card", "Set-CardTags",
+  "Test-Preflight", "Test-CycleStillOpen",
   "New-CloseResult", "Request-Grill",
   "Invoke-Merge", "Invoke-Recover", "Read-Contract"
 ) + @($script:DayModule.ExportedFunctions.Keys))

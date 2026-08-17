@@ -1037,6 +1037,14 @@ function Get-DayStatus {
       }
       "session_killed" { $st.Killed = $true; $st.Running = $false; $openStream = $null }
       "session_failed" { $st.Running = $false; $openStream = $null }
+      # Seeded here as well as from the handoff, so a cycle that ended at the pick -- no card taken,
+      # no worker run -- still has a row saying which card it was looking at and what it cost.
+      "pick" {
+        $c = [int]$e.cycle
+        if (-not $cycles.ContainsKey($c)) { $cycles[$c] = [ordered]@{ cycle = $c; cost = 0.0 } }
+        $cycles[$c].task = [string]$e.task_id
+        $cycles[$c].outcome = [string]$e.outcome
+      }
       "handoff" {
         $c = [int]$e.cycle
         if (-not $cycles.ContainsKey($c)) { $cycles[$c] = [ordered]@{ cycle = $c; cost = 0.0 } }

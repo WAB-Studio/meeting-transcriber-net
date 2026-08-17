@@ -62,7 +62,7 @@ function Test-WouldHalt {
   return @(Get-HaltingAnomalies -Status $Status).Count -gt 0
 }
 
-$HandoffKeys = @("outcome","task_id","pr_number","isc_closed","probes",
+$HandoffKeys = @("outcome","task_id","isc_closed","probes",
                  "decisions_deferred","left_out","skipped","blocked_reason","head_sha")
 
 $HandoffJson = @'
@@ -152,6 +152,120 @@ Check "a hold cannot pass for a pass" {
   $e = Test-DayContract -Contract $c -Required @("verdict","audited_head_sha") -Field "verdict" -Allowed @("pass","pass_with_followup")
   if ($e -eq "") { return "a hold passed a list that does not include it" }
   ""
+}
+
+Write-Host ""
+Write-Host "  the pick: which card, said once and by one thing"
+
+$PickKeys = @("outcome","task_id","why","skipped","blocked_reason")
+
+$PickJson = @'
+{
+  "outcome": "picked",
+  "task_id": "86ak1ejve",
+  "pr_number": null,
+  "why": "first grilled card in board order",
+  "skipped": [],
+  "blocked_reason": ""
+}
+'@
+
+Check "a pick reads and validates" {
+  $c = Get-ContractFromText $PickJson
+  $e = Test-DayContract -Contract $c -Required $PickKeys -Field "outcome" -Allowed @("picked","blocked","no_tasks")
+  if ($e -ne "") { return $e }
+  if ($c.task_id -ne "86ak1ejve") { return "the card came out $($c.task_id)" }
+  ""
+}
+
+# `pr_number: null` is the ordinary case -- a card with no work in flight -- and a presence check
+# cannot tell it from a field the session forgot, because in PowerShell a JSON null is $null. So it
+# is not a required key, in either contract, and this is what says so: the day used to stop over a
+# `blocked` handoff that correctly had no PR to name.
+Check "a card with no PR is not a session that forgot a field" {
+  $c = Get-ContractFromText $PickJson
+  if ($null -ne $c.pr_number) { return "pr_number came out $($c.pr_number)" }
+  if ((Test-DayContract -Contract $c -Required $PickKeys -Field "outcome" -Allowed @("picked")) -ne "") {
+    return "a null PR number was read as absent in a pick"
+  }
+
+  $h = ($HandoffJson | ConvertFrom-Json)
+  $h.outcome = "blocked"; $h.pr_number = $null; $h.head_sha = ""
+  if ((Test-DayContract -Contract $h -Required $HandoffKeys -Field "outcome" -Allowed @("pr_opened","blocked")) -ne "") {
+    return "a blocked handoff with no PR to name was refused as malformed"
+  }
+  ""
+}
+
+Check "an outcome the picker does not have is refused" {
+  $c = ($PickJson | ConvertFrom-Json)
+  $c.outcome = "maybe_this_one"
+  if ((Test-DayContract -Contract $c -Required $PickKeys -Field "outcome" -Allowed @("picked","blocked","no_tasks")) -eq "") {
+    return "it was accepted"
+  }
+  ""
+}
+
+# The one failure that reads as success everywhere downstream: the worker is launched with an empty
+# id, goes looking for a card of its own, and the whole split is undone in silence.
+Check "a pick that names no card is caught by the same rule the atom applies" {
+  $c = ($PickJson | ConvertFrom-Json)
+  $c.task_id = ""
+  $e = Test-DayContract -Contract $c -Required $PickKeys -Field "outcome" -Allowed @("picked","blocked","no_tasks")
+  if ($e -ne "") { return "the contract check should pass and the atom's own check should catch it: $e" }
+  if (-not ([string]$c.outcome -eq "picked" -and -not [string]$c.task_id)) {
+    return "the atom's condition did not fire on an empty card id"
+  }
+  ""
+}
+
+Check "a blocked pick that does not say what by is caught" {
+  $c = ($PickJson | ConvertFrom-Json)
+  $c.outcome = "blocked"; $c.task_id = ""; $c.blocked_reason = ""
+  if (-not ([string]$c.outcome -eq "blocked" -and -not [string]$c.blocked_reason)) {
+    return "an unexplained block passed the atom's condition"
+  }
+  ""
+}
+
+# A cycle that ends at the pick never reaches a handoff, so without this the day it looked at leaves
+# no row and the morning report cannot say which card stopped it.
+Check "a cycle that ended at the pick still reaches the report" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "session_ended" -Data @{ cycle = 1; role = "picker"; cost = 0.4; denials = 0 } | Out-Null
+    New-DayEvent -LogDir $box -Kind "pick" -Data @{
+      cycle = 1; outcome = "blocked"; task_id = "86ak1fw7d"; why = ""
+      blocked_reason = "86ak1fw7d is ungrilled and the next grilled card is built on it"
+    } | Out-Null
+    New-DayEvent -LogDir $box -Kind "no_more_cycles" -Data @{ reason = "blocked -- 86ak1fw7d is ungrilled" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "blocked -- 86ak1fw7d is ungrilled" } | Out-Null
+
+    $st = Get-DayStatus -LogDir $box
+    if ($st.Cycles.Count -ne 1) { return "counted $($st.Cycles.Count) cycles" }
+    if ($st.Cycles[0].task -ne "86ak1fw7d") { return "the cycle row lost the card: $($st.Cycles[0].task)" }
+    if ([math]::Abs($st.Cost - 0.4) -gt 0.001) { return "the picker's cost came out $($st.Cost)" }
+
+    $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
+    if ($md -notmatch "86ak1fw7d") { return "the report does not name the card the day stopped on" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The picker's session must not advance the cycle: the worker computes the same number when it comes
+# to consume the pick, and a picker that counted would leave every pick written for a cycle no
+# worker ever reads.
+Check "a picker session does not open a cycle" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "picker"; stream = "picker-1.stream.jsonl" } | Out-Null
+    if ((Get-CurrentCycle -LogDir $box) -ne 0) { return "the picker advanced the cycle to $(Get-CurrentCycle -LogDir $box)" }
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker"; stream = "worker-1.stream.jsonl" } | Out-Null
+    if ((Get-CurrentCycle -LogDir $box) -ne 1) { return "the worker did not open cycle 1" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 Write-Host ""

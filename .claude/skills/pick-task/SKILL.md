@@ -1,0 +1,145 @@
+---
+name: pick-task
+description: >-
+  Decide which board card the next unattended working session takes, and return only that. This is
+  the picker session of the orchestrator: it reads the board and the open PRs, applies the order,
+  and emits one card id — or says the day cannot go past what is standing in front of the pool.
+  Triggers: "pick the next task", "qué tarea sigue", "which card is next".
+---
+
+# pick-task — which card, and nothing else
+
+One question: **which card does the next session take?** You do not read the code it will touch,
+you do not plan the work, and you do not start it. What you emit is a card id or a reason there
+isn't one.
+
+This is a session of its own because picking and working fail differently. A bad pick is cheap and
+found in seconds; a bad session is fifty minutes and a diff. Keeping them apart also means the
+judgement below is made cold, by something that has not spent an hour inside one feature and does
+not have its ending to defend.
+
+```powershell
+$S = "$env:USERPROFILE\.claude\skills\clickup\clickup.py"
+python $S tasks --space MeetingTranscriber --status Open --tag grilled
+```
+
+**Call the CLI with `python` as the first word of the command, always.** The permission rule that
+allows it matches on the start of the command, so `$env:X = "utf-8"; python ...` does not match it
+and is denied — and under `-p` a denial does not prompt, it denies, and you carry on as if the tool
+did not exist. If a call is refused anyway, that is a missing rule in
+`.claude/orchestrator/settings.json`: say so in `blocked_reason` and stop, rather than spelling your
+way around it.
+
+**Every query carries `--space MeetingTranscriber`.** The workspace holds other people's projects,
+and the filters that do not name a space — `--mine` above all — answer across all of them. An
+`in progress` card from another board then reads as a session of ours that died halfway.
+
+## 1 · The order
+
+Take the first of these that answers:
+
+1. **A card in `in progress`.** It belongs to a session that died halfway; it is not a new task and
+   it is not up for reconsideration. `outcome: "picked"`.
+2. **A card whose PR is still open.** `gh pr list --state open` is how you find these — its branches
+   and bodies name their cards, and the card carries a `**Not merged.**` comment saying whether the
+   audit held it or a grill answered it. Emit the card **and** `pr_number`, so the worker pushes to
+   the branch that exists rather than opening a second PR against one task. Check the PR is still
+   open before believing an old comment.
+3. **The grilled pool, in board order.** Walk the phase lists in order and take the first list that
+   answers; inside a list, `urgente` → `alta` → `normal` → `baja`.
+
+```powershell
+python $S tasks --space MeetingTranscriber --status "in progress"
+python $S tasks --list "0 · Contratos y caracterización" --status Open --tag grilled
+```
+
+`Open` is the pool and `pending` waits on a person: a card in `pending` is never eligible, however
+good it looks. The lists and what each state means are `arquitectura.md` §13.
+
+**No list has anything eligible** → `outcome: "no_tasks"`. **A list does not resolve** — renamed,
+moved — → `outcome: "blocked"` naming which: a board that changed shape is not an empty board, and
+confusing the two ends the day in silence exactly when there is work.
+
+## 2 · The ungrilled card in front
+
+Walking the lists you will meet `Open` cards without `grilled`. The tag is what says a person
+settled what the card leaves open, so an ungrilled card is not a candidate — it is the grill's
+queue, and the grill reads `--status Open`, so it is already in that queue and needs nothing from
+you. **You do not send it anywhere.** Moving it to `pending` would take it out of the one pool the
+grill reads.
+
+The question is only whether the day may walk past it, and that is the one judgement this session
+exists to make:
+
+> **Would the first grilled candidate be built on top of something this card is about to change?**
+
+- **No** → walk past it and go on down the board. Most are this. A card being earlier on the board
+  is not by itself a reason: position is how the board is ordered, not a dependency you can point
+  at.
+- **Yes** → `outcome: "blocked"`, and `blocked_reason` names the card, what about it is unsettled,
+  and which grilled card would be built on it. The day ends there. It has to: the alternative is a
+  session building a floor on a decision nobody has made, and that work is thrown away twice — once
+  when the decision lands, and once by whoever has to work out which parts to keep.
+
+A card tagged `bloqueante` is a person having already answered that question with **yes**. Take
+their word for it and do not relitigate it from the card text.
+
+That is the same narrow standard the open-PR rule uses, and it is narrow for the same reason: this
+outcome ends a day that may have twelve grilled cards behind it. It should be rare, and when it
+fires it should name something a person can settle in one sitting.
+
+## 3 · What nobody could build
+
+**A card is ineligible when finishing it needs something that is not on this side of the CLI** —
+a real meeting, two sound cards, a device unplugged mid recording, two hours of drift measured on
+hardware. Today that is nearly all of phase 2.
+
+That one you *do* move, because no grill would make it buildable either:
+
+```powershell
+python $S move <id> --status pending
+python $S comment <id> --text "Needs <what exactly> — <what a person has to do or bring>."
+```
+
+Record it in `skipped[]` and go on to the next candidate. The comment says what is missing, not
+that you could not do it: whoever reads it tomorrow needs to know what to bring. Every card you
+move goes in `skipped[]` — the audit re-lists the board and compares, so an undeclared move
+surfaces anyway, as a finding.
+
+The real risk here is not stalling. It is a session producing plausible measurements of a meeting
+that never happened, so a card that needs a number off real hardware is one nothing on this side
+may invent.
+
+## 4 · Building on a PR that has not merged
+
+Every session branches from the same `main`, so a candidate that **actually builds on** work sitting
+in an unmerged PR waits on a merge, not on a person. Skip it and take the next one, declaring it in
+`skipped[]` — no board move, since nothing about the card changed.
+
+Judge each candidate against every open PR, including the ones parked on a decision, which
+accumulate. If every remaining candidate was skipped for that reason the board is not empty, it is
+blocked: `outcome: "blocked"` naming the PRs everything is waiting behind.
+
+## 5 · What you emit
+
+**Your last message is the pick, and nothing else.** One JSON object, no prose around it; the
+orchestrator reads it off what you emitted and writes the file itself. The shape is in
+`pick.schema.json`, next to this file.
+
+```json
+{
+  "outcome": "picked",
+  "task_id": "86ak1ejve",
+  "pr_number": null,
+  "why": "first grilled card in board order; phase 0's only Open card is ungrilled and nothing in phase 2 builds on it",
+  "skipped": [],
+  "blocked_reason": ""
+}
+```
+
+`why` is one sentence and it is not decoration: it goes on the day's stream, so an ordering rule
+that is picking the wrong thing shows up in the morning report instead of inside a transcript
+nobody opens. Say what you took **and what you passed to get to it**.
+
+Do not move the card you picked. The worker moves it to `in progress` when it starts, so a pick
+nothing consumes leaves the board exactly as it found it.
