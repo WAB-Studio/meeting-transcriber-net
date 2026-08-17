@@ -1,7 +1,7 @@
 ---
 phase: climbing
-progress: 95/133
-updated: 2026-08-16
+progress: 95/145
+updated: 2026-08-17
 ---
 
 # ISA — meeting-transcriber-net
@@ -61,6 +61,8 @@ Board: —
 - [x] ISC-21: What goes into the corpus comes back out of it as what it was.
 - [x] ISC-22: A corpus is one thing — a database and the folder it sits in — and nothing can be handed half of one and half of another.
 - [x] ISC-23: Anti: letting go of one corpus cannot break another that is open.
+- [ ] ISC-134: Anti: no test of this repo fails because of something changed outside it.
+- [ ] ISC-135: A clean clone is enough to build, test and know what this repo requires of a change, with no board behind it and no particular assistant installed.
 
 ### F1 · Contracts and characterisation
 Why: what the Python system learned is specified in .NET before any of it is rebuilt, so the
@@ -130,7 +132,7 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-74: Anti: the recorded file never carries the microphone on channel 0.
 - [x] ISC-75: A recording cut off mid-block comes back to its last whole block.
 - [x] ISC-76: Finishing the same recording twice produces the same file.
-- [ ] ISC-77: Capture falls back to the full loopback when the meeting's process cannot be followed.
+- [ ] ISC-77: A recording following one application that brings back no audio offers the whole machine's audio in its place, while the meeting is still running.
 - [ ] ISC-78: A device changing mid-recording does not end the recording.
 - [x] ISC-117: A recording that follows one application carries what that application played, including what the processes it started played.
 - [x] ISC-118: Anti: a recording that follows one application carries nothing another application played over it.
@@ -148,6 +150,11 @@ Board: 2 · Spike y motor de audio
 - [ ] ISC-131: Anti: nothing a source that will not stop is still using is taken away from it.
 - [x] ISC-132: A source whose device counts its frames more slowly than it hands them over is still recorded, rather than costing the meeting it was part of.
 - [x] ISC-133: A recording says which of its sources had their own frame counter given up on, so a rate reported for one of those is never read as a rate that was measured.
+- [ ] ISC-136: Stopping a recording ends at a deadline even when the device being let go of never answers.
+- [ ] ISC-137: Starting a recording ends at a deadline even when a device never starts.
+- [ ] ISC-138: A recording that did not start names the device that did not answer.
+- [ ] ISC-139: Anti: nothing moves a recording from the application it is following to the whole machine's audio without somebody choosing it.
+- [ ] ISC-140: A source whose device counts its frames in a rate of its own has its drift measured and corrected like any other source's, rather than being recorded at the rate its label claims.
 
 ### F4 · WinUI recorder
 Why: the application replaces OBS. Recording, pausing, stopping and recovering happen in one
@@ -158,6 +165,7 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-81: Record, pause and stop produce one continuous timeline.
 - [ ] ISC-82: The queue shows each job's state and what it is waiting for.
 - [ ] ISC-83: A mono or stereo file from disk becomes a meeting.
+- [ ] ISC-141: A recording whose device changed says so while the meeting is still running, naming what it moved to.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly
@@ -178,6 +186,8 @@ Board: 5 · Summaries
 - [x] ISC-91: A second extraction leaves the first one's state alone and starts its own blank.
 - [ ] ISC-115: A rejected summary is handed back once, saying what was wrong with it.
 - [ ] ISC-116: Anti: a statement nothing said supports can come back only without that statement — one that comes back pointing at something else for the same statement is refused.
+- [ ] ISC-142: Anti: what an extraction produced without validating is never shown as the meeting's summary.
+- [ ] ISC-143: A meeting left without a summary says which condition failed and on which statement.
 
 ### F7 · Local knowledge
 Why: people and agents query the corpus with no server, no network and no cloud, and every
@@ -203,6 +213,8 @@ Board: 6 · Conocimiento local
 - [ ] ISC-107: Anti: nothing is hidden for want of a pass having run over it — a decision stands until something says otherwise.
 - [ ] ISC-108: A person's word on whether a decision stands outranks whatever the machine concluded, and survives a rebuild.
 - [ ] ISC-109: Deciding what an arriving meeting changed reads a bounded part of the corpus, and what bounds it does not grow as meetings accumulate.
+- [ ] ISC-144: Asking for a node brings back the statements of its meetings in the order they were said, each carrying the meeting and the date it came from.
+- [ ] ISC-145: A node's answer includes the statements of everything hanging off its children.
 
 ### F8 · Distribution and backup
 Why: the application installs, upgrades and comes back from a lost disk, because the corpus
@@ -234,7 +246,11 @@ Board: 7 · Distribución y backup
   extraction that fills `decisions` outside the importer is F6 and unbuilt. Two things would have
   to be measured before choosing: how close two statements have to be before one is offered as
   replacing the other, and how much of one node actually fits in a context, which is the number
-  the read-time shape lives or dies on.
+  the read-time shape lives or dies on. Deferred deliberately on 2026-08-17 rather than left
+  dim: none of the four shapes is built, and neither measurement is taken, until reading a
+  node's whole history stops answering the question. Until then ISC-144 and ISC-145 are what a
+  person reads and judges from, and ISC-104 is the only one of ISC-101 and ISC-104 to ISC-108
+  that holds without any of them — which is also the shape that can hide nothing.
 
 ## Learning
 
