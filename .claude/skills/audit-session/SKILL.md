@@ -19,21 +19,16 @@ a blocked worker, or one with no tasks, comments its own card and the day ends w
 The orchestrator passes the handoff path and the verdict path as arguments.
 
 ```powershell
-$S = "$env:USERPROFILE\.claude\skills\clickup\clickup.py"
-python $S task <id>
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>
 ```
 
-**`python` has to be the first word of the command**: the permission rule matches on the start of
-it, and anything before it — an env var, a variable assignment — gets the call denied. Under `-p`
-that does not prompt. `PYTHONIOENCODING` is already exported by the orchestrator.
+**`python` is the first word of the command and the path goes whole.** `PYTHONIOENCODING` is already
+exported by the orchestrator.
 
-**Long prose goes in a file, never on the command line.** `--text` and `--desc` take `@path` and
-read from there. A verdict body carries a semicolon sooner or later, and whatever parses the
-command splits on it without caring that it sits inside quotes — the call is refused, and under
-`-p` that does not prompt.
+**Long prose goes in a file, never on the command line.** `--text` and `--desc` take `@path`.
 
 ```powershell
-python $S comment <id> --text @.scratch/verdict.md
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text @.scratch/verdict.md
 ```
 
 ## 0 · You never touch the working tree
@@ -63,8 +58,8 @@ the tree.
 ```powershell
 gh pr view <n> --json headRefOid,headRefName,title,body,files,additions,deletions
 gh pr diff <n>
-python $S task <id>                              # the task and its comments
-python $S tasks --space MeetingTranscriber       # the whole board, for check 5
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>                              # the task and its comments
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --space MeetingTranscriber       # the whole board, for check 5
 ```
 
 `headRefOid` is your `audited_head_sha`, and it comes from the PR — never copy it from the
@@ -244,8 +239,8 @@ with that name already exists** — you may be running after an audit that died 
 it, and a duplicate dirties the board:
 
 ```powershell
-python $S create --list "<list>" --name "<name>" --priority normal
-python $S link <new-id> --needs <origin-id>
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" create --list "<list>" --name "<name>" --priority normal
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" link <new-id> --needs <origin-id>
 ```
 
 The name opens with `BUG - ` only when something is already wrong. The description says what to do

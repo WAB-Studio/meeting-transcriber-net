@@ -49,14 +49,13 @@ build it. A card asking for the wrong thing is not made right by being answered 
 rewritten or closed.
 
 ```powershell
-$S = "$env:USERPROFILE\.claude\skills\clickup\clickup.py"
-python $S update <id> --desc @.scratch/desc.md
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" update <id> --desc @.scratch/desc.md
 ```
 
 ## 3 · Start with the ones that already cost a session
 
 ```powershell
-python $S tasks --space MeetingTranscriber --tag regrill
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --space MeetingTranscriber --tag regrill
 ```
 
 A card tagged `regrill` is one a session took and stopped on, and its latest comment names exactly
@@ -71,8 +70,8 @@ first of all**: settling one lands work that already exists.
 Then the rest, in board order.
 
 ```powershell
-python $S tasks --space MeetingTranscriber --status Open
-python $S task <id>
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --space MeetingTranscriber --status Open
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>
 ```
 
 ## 4 · Reading before asking
@@ -88,7 +87,7 @@ Then one question at a time, with the options you actually see and what each cos
 command line:
 
 ```powershell
-python $S comment <id> --text @.scratch/grill-<id>.md
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text @.scratch/grill-<id>.md
 ```
 
 ```markdown
@@ -116,7 +115,7 @@ probe. Commit `ISA.md` straight to `main`, and take `git rev-parse main` after t
 **The tag, last.**
 
 ```powershell
-python $S tag <id> --add grilled --rm regrill
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tag <id> --add grilled --rm regrill
 ```
 
 Comment first, tags second, always: the comment is what makes the tag mean anything, and a card
@@ -129,7 +128,7 @@ next grill for a decision that has already been made.
 A card in `pending` also goes back to `Open`, or nothing will take it:
 
 ```powershell
-python $S move <id> --status Open
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" move <id> --status Open
 ```
 
 ## 6 · How many

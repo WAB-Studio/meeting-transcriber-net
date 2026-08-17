@@ -19,16 +19,12 @@ judgement below is made cold, by something that has not spent an hour inside one
 not have its ending to defend.
 
 ```powershell
-$S = "$env:USERPROFILE\.claude\skills\clickup\clickup.py"
-python $S tasks --space MeetingTranscriber --status Open --tag grilled
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --space MeetingTranscriber --status Open --tag grilled
 ```
 
-**Call the CLI with `python` as the first word of the command, always.** The permission rule that
-allows it matches on the start of the command, so `$env:X = "utf-8"; python ...` does not match it
-and is denied — and under `-p` a denial does not prompt, it denies, and you carry on as if the tool
-did not exist. If a call is refused anyway, that is a missing rule in
-`.claude/orchestrator/settings.json`: say so in `blocked_reason` and stop, rather than spelling your
-way around it.
+**Every call starts with the word `python` and carries the path whole.** A refused call is a missing
+rule in `.claude/orchestrator/settings.json`: say so in `blocked_reason` and stop, rather than
+spelling your way around it.
 
 **Every query carries `--space MeetingTranscriber`.** The workspace holds other people's projects,
 and the filters that do not name a space — `--mine` above all — answer across all of them. An
@@ -54,12 +50,12 @@ filtering by `--tag grilled` would hand you a clean candidate list with the card
 of it invisible, and §2 — the one judgement this session exists to make — would never come up.
 
 ```powershell
-python $S tasks --space MeetingTranscriber --status "in progress"
-python $S tasks --list "0 · Contratos y caracterización" --status Open
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --space MeetingTranscriber --status "in progress"
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --list "0 · Contratos y caracterización" --status Open
 ```
 
-`tasks` does not print tags, so a card whose tags decide something gets read: `python $S task <id>`
-says `tags:` and the description with it. Read the ones you are about to act on, not the whole list.
+`tasks` does not print tags, so a card whose tags decide something gets read: `task <id>` says
+`tags:` and the description with it. Read the ones you are about to act on, not the whole list.
 
 `Open` is the pool and `pending` waits on a person: a card in `pending` is never eligible, however
 good it looks. The lists and what each state means are `arquitectura.md` §13.
