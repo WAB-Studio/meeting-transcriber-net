@@ -1208,6 +1208,91 @@ Check "parking a card twice keeps both attempts" {
 }
 
 Write-Host ""
+Write-Host "  what the board says is eligible, before a session is spent"
+
+# The listings the CLI prints, as it prints them. Fixtures and not the CLI: a probe that asks the
+# real board is a probe that fails on a Tuesday for a reason that is not this code's.
+$Listing = @(
+  "ActuallyPanda56's Workspace - 3 tarea(s)",
+  "",
+  "Open (3)",
+  "  86ak1eyev   Medir la deriva de un dispositivo             Open            normal",
+  "  86ak1ec9m   Normalizar el uso de IA en el repo            Open            baja      @ActuallyPanda56",
+  "  86ajw65xr   Seleccion de fuentes de audio                 Open            normal")
+
+$Tree = @(
+  "",
+  "GhostKitchen  (901312438189)",
+  "  estados por defecto: Open > concept > in progress > running > review > Closed",
+  "    901323649709 Pre-Lanzamiento / Contratacion Chef",
+  "MeetingTranscriber  (901313958747)",
+  "  estados por defecto: Open > pending > in progress > completed > in review > rejected > Closed",
+  "      901328089857 0 - Contratos y caracterizacion",
+  "      901328089858 1 - Nucleo .NET desde artefactos")
+
+Check "a listing is counted by its rows" {
+  $n = Read-BoardCount $Listing
+  if ($n -ne 3) { return "counted $n" }
+  ""
+}
+
+Check "the empty answer is zero and not silence" {
+  $n = Read-BoardCount @("ActuallyPanda56's Workspace: sin tareas para ese filtro.")
+  if ($null -eq $n) { return "an empty board read as unreadable" }
+  if ($n -ne 0) { return "counted $n" }
+  ""
+}
+
+# The one that matters. A CLI that failed, or one whose output changed shape, must not come back as
+# an empty board: the caller ends the day on zero, and a day ended on a misread is a day of work
+# nobody did while the board said there was nothing to do.
+Check "an answer this cannot read is not an empty board" {
+  if ($null -ne (Read-BoardCount @("Traceback (most recent call last):", "  File x, line 3"))) {
+    return "a crash read as zero tasks"
+  }
+  if ($null -ne (Read-BoardCount @())) { return "no output at all read as zero tasks" }
+  ""
+}
+
+Check "a space's statuses are read off the tree, and only that space's" {
+  $st = @(Read-SpaceStatuses -Lines $Tree -Space "MeetingTranscriber")
+  if ($st -notcontains "Open")        { return "Open is not among them: $($st -join ', ')" }
+  if ($st -notcontains "in progress") { return "in progress is not among them: $($st -join ', ')" }
+  if ($st -contains "concept")        { return "another space's statuses leaked in" }
+  if (@(Read-SpaceStatuses -Lines $Tree -Space "Landaje").Count -ne 0) { return "a space that is not there answered" }
+  ""
+}
+
+# A status asked for by name that the board no longer has comes back as an empty list and exit 0, so
+# the rename is indistinguishable from an empty board unless the names are checked first.
+Check "a renamed status is visible as a rename" {
+  $renamed = @("MeetingTranscriber  (901313958747)",
+               "  estados por defecto: Abierta > pending > en curso > Closed")
+  $st = @(Read-SpaceStatuses -Lines $renamed -Space "MeetingTranscriber")
+  if ($st -contains "Open")        { return "Open still reads as present" }
+  if ($st -contains "in progress") { return "in progress still reads as present" }
+  ""
+}
+
+# Parking is cheap only while it is rare. Nothing made it rare: the board that has nothing grilled
+# parks every card the worker reaches, one paid session each, and says the board was empty.
+Check "the second card sent back for grilling ends the day" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{ cycle = 1; task_id = "T1"; moved = $true } | Out-Null
+    if ((Test-ParkCeiling -Status (Get-DayStatus -LogDir $box)) -ne "") { return "one park ended the day" }
+
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 2; role = "worker"; stream = "worker-2.stream.jsonl"; pid = 999999 } | Out-Null
+    New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{ cycle = 2; task_id = "T2"; moved = $true } | Out-Null
+    $hit = Test-ParkCeiling -Status (Get-DayStatus -LogDir $box)
+    if ($hit -eq "") { return "the second park did not end the day" }
+    if ($hit -notmatch "T1" -or $hit -notmatch "T2") { return "it does not name the cards: $hit" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Write-Host ""
 if ($script:Failed -eq 0) {
   Write-Host ("  $($script:Ran) checks, all green") -ForegroundColor Green
   Write-Host ""

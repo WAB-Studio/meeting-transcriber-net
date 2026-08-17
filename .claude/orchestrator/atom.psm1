@@ -24,9 +24,14 @@ $script:DayModule = Import-Module (Join-Path $PSScriptRoot "day.psm1") -Force -D
 
 $script:SessionTimeout = [TimeSpan]::FromMinutes(90)
 
-# The board CLI. An atom talks to the board only to act on something already decided: recording a
-# decision a person made, and putting a card back. It judges nothing.
+# The board CLI. An atom acts on the board only for something already decided -- recording a
+# decision a person made, putting a card back -- and asks it one thing: whether there is anything
+# for a session to do at all. Which card, and whether that card is ready, stays the worker's.
 $script:ClickUp = Join-Path $env:USERPROFILE ".claude\skills\clickup\clickup.py"
+
+# The space this repo's board lives in. `docs/layout.md` and arquitectura.md 13 say what the lists
+# are; the only thing needed here is which board to ask.
+$script:Space = "MeetingTranscriber"
 
 function Get-Repo { return (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) }
 
@@ -303,6 +308,72 @@ function Write-Elsewhere {
   return (Invoke-BestEffort $Day "the comment on card $TaskId" { python $script:ClickUp comment $TaskId --text "@$f" })
 }
 
+<#
+  What the board CLI printed, or `$null` if it did not get to print. Separate from Invoke-BestEffort
+  because that one is for recording, where losing the copy is survivable; this is for reading, where
+  a failure that comes back as an empty answer is a wrong answer acted on.
+#>
+function Read-Board {
+  param([Parameter(Mandatory)][scriptblock]$Do)
+  try {
+    $out = & $Do
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return @($out | ForEach-Object { [string]$_ })
+  } catch { return $null }
+}
+
+<#
+  Is there anything a worker could do -- asked before a session is spent rather than after.
+
+  Two things make one: a card in `in progress` is a session that died and has to be picked back up,
+  and a card in `Open` carrying `grilled` is a card somebody has already decided. Nothing else is
+  eligible, so with neither there is no session worth paying for. The worker still decides which
+  card and still refuses the ones that are not grilled -- what this removes is the whole session
+  spent to find that out on a board where the answer was going to be no for every card on it.
+
+  A board that cannot be reached, or one whose statuses no longer answer to these names, comes back
+  as `Stop` and never as zero. The CLI answers an unknown status with an empty list and exit 0, so
+  the difference between "nothing is grilled" and "nothing is called Open any more" is not in the
+  answer -- it has to be asked separately, and it is, or a renamed column would end every day in
+  silence.
+#>
+function Get-BoardPool {
+  param([Parameter(Mandatory)]$Day)
+
+  if (-not (Test-Path $script:ClickUp)) {
+    return [pscustomobject]@{ Stop = "the board CLI is not at $($script:ClickUp)"; Resume = 0; Grilled = 0 }
+  }
+
+  $tree = Read-Board { python $script:ClickUp tree }
+  if ($null -eq $tree) {
+    return [pscustomobject]@{ Stop = "the board could not be read at all"; Resume = 0; Grilled = 0 }
+  }
+
+  $statuses = @(Read-SpaceStatuses -Lines $tree -Space $script:Space)
+  if ($statuses.Count -eq 0) {
+    return [pscustomobject]@{ Stop = "the board has no space called $($script:Space)"; Resume = 0; Grilled = 0 }
+  }
+  foreach ($s in @("in progress", "Open")) {
+    if ($statuses -notcontains $s) {
+      return [pscustomobject]@{
+        Stop = "the $($script:Space) board no longer has a '$s' status, so what is eligible cannot be asked"
+        Resume = 0; Grilled = 0
+      }
+    }
+  }
+
+  $resume  = Read-BoardCount (Read-Board { python $script:ClickUp tasks --space $script:Space --status "in progress" })
+  $grilled = Read-BoardCount (Read-Board { python $script:ClickUp tasks --space $script:Space --status "Open" --tag "grilled" })
+  if ($null -eq $resume -or $null -eq $grilled) {
+    return [pscustomobject]@{ Stop = "the board CLI answered something this cannot read"; Resume = 0; Grilled = 0 }
+  }
+
+  New-DayEvent -LogDir $Day.LogDir -Kind "board_pool" -Data @{
+    resume = $resume; grilled = $grilled
+  } | Out-Null
+  return [pscustomobject]@{ Stop = ""; Resume = $resume; Grilled = $grilled }
+}
+
 function Move-Card {
   param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)][string]$TaskId, [Parameter(Mandatory)][string]$To)
   if (-not (Test-Path $script:ClickUp)) { return $false }
@@ -406,6 +477,6 @@ function Read-Contract {
 
 Export-ModuleMember -Function (@(
   "Get-Repo", "New-DayRun", "Open-Day", "Enter-AtomLease", "Write-Day", "Write-Atom", "Write-AtomCrash", "Invoke-Session",
-  "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Move-Card", "Set-CardTags", "Request-Grill",
+  "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Get-BoardPool", "Move-Card", "Set-CardTags", "Request-Grill",
   "Invoke-Merge", "Invoke-Recover", "Read-Contract"
 ) + @($script:DayModule.ExportedFunctions.Keys))

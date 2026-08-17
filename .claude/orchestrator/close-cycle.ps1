@@ -54,6 +54,19 @@ if ($act.to -eq "pending") {
   $parked = Complete-Journal -Repo $day.Repo -TaskId ([string]$h.task_id)
   if ($parked) { New-DayEvent -LogDir $day.LogDir -Kind "journal_parked" -Data @{ to = $parked } | Out-Null }
   Write-Day $day "[$cycle] PR #$($h.pr_number) left open -- card $($h.task_id) owes a decision and goes to pending"
+
+  # The same ceiling the worker's park is held to, and for the same reason: parking is cheap only
+  # while it is rare, and two in a day is the grill behind rather than two awkward cards.
+  $ceiling = Test-ParkCeiling -Status (Get-DayStatus -LogDir $day.LogDir)
+  if ($ceiling -ne "") {
+    Write-Day $day "[$cycle] $ceiling"
+    Write-Atom @{
+      ok = $true; cycle = $cycle; outcome = "blocked"; task_id = [string]$h.task_id
+      pr_number = $h.pr_number; blocked_reason = $ceiling; decisions = @($v.decisions_owed)
+    }
+    exit 0
+  }
+
   Write-Atom @{
     ok = $true; cycle = $cycle; action = "parked"; task_id = [string]$h.task_id
     pr_number = $h.pr_number; decisions = @($v.decisions_owed)

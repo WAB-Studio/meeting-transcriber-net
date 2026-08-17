@@ -61,6 +61,27 @@ if ($day.Cycle -gt 0) {
   }
 }
 
+# Nothing eligible on the board is an ending, and it is one that costs a request rather than a
+# session. Without this the day found out the expensive way: the worker takes the first card in
+# board order, and an ungrilled one is `needs_grill`, so a board with nothing grilled sent every
+# card it reached to `pending` -- one paid session each -- and reported an empty board in the
+# morning after emptying it itself.
+$pool = Get-BoardPool -Day $day
+if ($pool.Stop -ne "") {
+  New-DayEvent -LogDir $day.LogDir -Kind "board_unreadable" -Data @{ reason = $pool.Stop } | Out-Null
+  Write-Day $day "the board: $($pool.Stop)"
+  Write-Atom @{ ok = $false; stop = "the board could not say what is eligible: $($pool.Stop)" }
+  exit 1
+}
+if ($pool.Resume -eq 0 -and $pool.Grilled -eq 0) {
+  Write-Day $day "nothing in progress and nothing grilled -- no session to spend"
+  Write-Atom @{
+    ok = $true; outcome = "no_tasks"
+    reason = "nothing on the board is grilled and nothing was left in progress"
+  }
+  exit 0
+}
+
 $cycle = $day.Cycle + 1
 $day.Cycle = $cycle
 
@@ -143,6 +164,18 @@ if ([string]$c.outcome -eq "needs_grill") {
   if ($lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $lost }; exit 1 }
   foreach ($d in @($c.decisions_owed)) { Write-Day $day ("  ? " + [string]$d.what) }
   Write-Day $day "[$cycle] card $($c.task_id) needs grilling before anything is built on it"
+
+  # Asked after the park is on the stream, so the card that hit the ceiling is counted in it.
+  $ceiling = Test-ParkCeiling -Status (Get-DayStatus -LogDir $day.LogDir)
+  if ($ceiling -ne "") {
+    Write-Day $day "[$cycle] $ceiling"
+    Write-Atom @{
+      ok = $true; cycle = $cycle; outcome = "blocked"; task_id = [string]$c.task_id
+      blocked_reason = $ceiling; decisions = @($c.decisions_owed)
+    }
+    exit 0
+  }
+
   Write-Atom @{
     ok = $true; cycle = $cycle; action = "parked"; task_id = [string]$c.task_id
     decisions = @($c.decisions_owed)

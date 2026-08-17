@@ -33,7 +33,7 @@ What each `RESULT` means:
 | Field | What you do |
 | --- | --- |
 | `stop` | the day is unsound — `end-day.ps1`, then report |
-| `outcome: no_tasks` | nothing grilled is left — `end-day.ps1`, then report |
+| `outcome: no_tasks` | nothing eligible is left — `end-day.ps1`, then report |
 | `outcome: blocked` | `end-day.ps1`, then report; the reason is on the card already |
 | `action: merged` / `recovered` | say it in one line and start the next cycle |
 | `action: parked` | a decision is owed on that card — §2 — and the next cycle starts |
@@ -41,6 +41,11 @@ What each `RESULT` means:
 
 **Nothing else ends the day.** A `hold` costs one PR a rerun and the next cycle takes the next task;
 a verdict is a fact about one PR and never about the hours left.
+
+`run-worker.ps1` asks the board what is eligible before it spends anything, so `no_tasks` can come
+back in seconds and with no session run: a card in `in progress` is one to pick back up, a card in
+`Open` tagged `grilled` is one to take, and with neither there is nothing to pay for. It is the same
+ending either way — what changes is that an unstarted day costs a request instead of a session.
 
 `day-status.ps1` says what a run is doing at any moment and takes no arguments either. Nothing here
 depends on it — it is for a person who wants to look.
@@ -65,11 +70,15 @@ waiting on a grill rather than on a merge.
 
 Say it in one line when it happens — the card, the PR, and what has to be settled — and go on.
 
-**This is the arrangement's soft spot, so watch it.** Every parked PR is finished work that is not
-in `main`, and the reason it is acceptable is that it should be rare: the grill exists to make it
-rare. A day that parks two, and then another day that parks two, is not a run of awkward cards —
-it means the grill is not catching what it should and the audit ought to go back to stopping the
-day. Say so plainly when you see it; do not let it become the normal shape of a day.
+**This is the arrangement's soft spot, and it is no longer yours to watch.** Every parked PR is
+finished work that is not in `main`, and the reason it is acceptable is that it should be rare: the
+grill exists to make it rare. So the second card sent back in one day ends it — `outcome: blocked`,
+naming both cards — because two in a day is the grill behind the board, and a third would only be
+one more card moved by a session that built nothing.
+
+What is still yours is the shape across days. A day that ends on that ceiling, and then another,
+means the grill is not catching what it should and the audit ought to go back to stopping the day.
+Say so plainly when you see it; do not let it become the normal shape of a day.
 
 ## 3 · What you say, and when
 

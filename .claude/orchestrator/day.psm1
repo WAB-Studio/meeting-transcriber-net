@@ -702,6 +702,62 @@ function Get-CurrentCycle {
 }
 
 # ---------------------------------------------------------------------------------------------
+# The board, read off the CLI that prints it
+# ---------------------------------------------------------------------------------------------
+
+<#
+  How many tasks the board CLI just listed. **Zero and "this cannot be read" are different answers**
+  and keeping them apart is the whole reason this is a function: the caller spends a session on the
+  first and ends the day on the second, and a reader that rounds an output it no longer understands
+  down to an empty board would end every day in silence exactly when there is work.
+
+  A row is two spaces, the id, and the columns after it; the empty answer says so in words. Anything
+  else is `$null`, which is "the CLI said something this does not understand".
+#>
+function Read-BoardCount {
+  param($Lines)
+  $rows  = 0
+  $empty = $false
+  foreach ($l in @($Lines)) {
+    $t = [string]$l
+    if     ($t -match '^\s{2}[0-9a-z]{6,14}\s{2,}\S') { $rows++ }
+    elseif ($t -match 'sin tareas')                   { $empty = $true }
+  }
+  if ($rows -gt 0) { return $rows }
+  if ($empty)      { return 0 }
+  return $null
+}
+
+<#
+  The statuses a space actually has, off `tree`. The filters are asked for by name and **the CLI
+  answers an unknown status with an empty list and exit 0** -- so a status that was renamed on the
+  board reads exactly like a board with nothing on it. Whoever filters by name checks the name is
+  still there first.
+
+  The separator between them is an arrow the CLI prints as UTF-8 and this shell reads through the
+  console codepage, so what arrives here is either the arrow or two or three bytes of nonsense. That
+  is why the split is on everything that is not a plain letter, digit or space rather than on the
+  character itself: the names being looked up are ASCII, and a name that is not survives as pieces,
+  which is a wrong answer nobody asks for rather than a right one nobody gets.
+#>
+function Read-SpaceStatuses {
+  param($Lines, [Parameter(Mandatory)][string]$Space)
+  $inSpace = $false
+  foreach ($l in @($Lines)) {
+    $t = [string]$l
+    # A space heads its block at the left margin, `Name  (id)`; everything under it is indented.
+    if ($t -match '^(\S.*?)\s+\(\d+\)\s*$') {
+      $inSpace = ($matches[1].Trim() -eq $Space)
+      continue
+    }
+    if ($inSpace -and $t -match 'estados por defecto:\s*(.+)$') {
+      return @($matches[1] -split '[^A-Za-z0-9 ]+' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne "" })
+    }
+  }
+  return @()
+}
+
+# ---------------------------------------------------------------------------------------------
 # The rules
 # ---------------------------------------------------------------------------------------------
 
@@ -711,9 +767,29 @@ $script:DefaultRules = @{
   CostFactor       = 3.0   # a cycle spending three times the median is in a loop
   CostSamples      = 3     # with fewer cycles there is no median worth having
   AbandonedMinutes = 30    # no session up and nothing on the stream: whoever was sequencing is gone
+  ParksPerDay      = 2     # the second card sent back for grilling is the grill behind, not the board
 }
 
 function Get-DayRules { return $script:DefaultRules.Clone() }
+
+<#
+  Whether the day has sent back as many cards as it is allowed to. Parking is cheap by design -- one
+  PR waits on a grill instead of on a merge -- but it is only cheap while it is rare, and nothing in
+  the arrangement made it rare: a board with nothing grilled parks every card it reaches, one paid
+  session each, and reports an empty board in the morning after emptying it itself.
+
+  So the ceiling is here rather than in whoever reads the day: the second card back is the grill
+  being behind, and the answer to that is a grill, not another cycle.
+#>
+function Test-ParkCeiling {
+  param([Parameter(Mandatory)]$Status, [hashtable]$Rules)
+  if (-not $Rules) { $Rules = Get-DayRules }
+  $n = @($Status.Owed).Count
+  if ($n -lt $Rules.ParksPerDay) { return "" }
+  $cards = (@($Status.Owed | ForEach-Object { [string]$_.task }) -join ", ")
+  return ("$n cards went back for grilling today ($cards) -- the grill is behind the board, " +
+          "and another cycle would only send back a third")
+}
 
 function New-Anomaly {
   param([string]$Level, [string]$Code, [string]$Text)
@@ -1177,5 +1253,6 @@ Export-ModuleMember -Function Add-Utf8Line, Get-EventsPath, Read-OpenFileLines, 
   Get-JournalPath, Test-JournalBody, Get-JournalTask, Reset-Journal, Complete-Journal,
   Get-LockPath, Test-NewLock, Enter-DayLock, Update-DayLock, Exit-DayLock,
   Get-CurrentRun, Get-CurrentCycle, Test-CycleEvent,
-  Get-DayRules, Get-DayAnomalies, Get-HaltingAnomalies, Get-Median,
+  Read-BoardCount, Read-SpaceStatuses,
+  Get-DayRules, Get-DayAnomalies, Get-HaltingAnomalies, Get-Median, Test-ParkCeiling,
   Find-LatestRun, Get-DayStatus, Write-DayReport
