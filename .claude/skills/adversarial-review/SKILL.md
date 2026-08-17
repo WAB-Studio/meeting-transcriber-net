@@ -65,11 +65,13 @@ not show up as untracked files in the very diff under review.** Anything ignored
 that. Being outside the repo is one way to get it and not the only one — which matters, because
 here it is the one way that does not work.
 
-In this repo the directory is `/.scratch/`, ignored at the root, and it is inside the working tree
-deliberately:
+In this repo it is `/.scratch/reviews/`, inside the working tree deliberately and ignored at the
+root. **One folder per review, and all of them under `reviews/`** — the scratch root is where a
+session keeps the thing it is working on right now, and a review that leaves its own directory
+beside that buries it.
 
 ```sh
-REVIEW_DIR="$(git rev-parse --show-toplevel)/.scratch/review-$$"
+REVIEW_DIR="$(git rev-parse --show-toplevel)/.scratch/reviews/$$"
 mkdir -p "$REVIEW_DIR"
 ```
 
@@ -153,5 +155,5 @@ Append the Lead Judgment section to the verdict (see `references/verdict-format.
 Vendored from [poteto/noodle](https://github.com/poteto/noodle)
 `.agents/skills/adversarial-review/`. Changes from upstream: the `brain/principles.md` dependency
 is vendored into `references/principles/`, the scratch directory moved from `/tmp` to the repo's
-own ignored `/.scratch/` — the only ground an unattended session may write — the `schedule:`
+own ignored `/.scratch/reviews/` — the only ground an unattended session may write — the `schedule:`
 frontmatter key became prose, and the size thresholds count only non-comment lines.
