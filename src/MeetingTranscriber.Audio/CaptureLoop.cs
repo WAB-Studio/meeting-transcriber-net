@@ -86,15 +86,13 @@ public sealed class CaptureLoop : IDisposable
     /// </summary>
     public void Dispose()
     {
-        // A loop already given up on is not waited for a second time. Every holder of something it
-        // touches calls this on the way out, and each of them waiting its own five seconds would
-        // turn one wedged device into a shutdown measured in minutes.
-        if (Abandoned)
-        {
-            return;
-        }
-
         running = false;
-        Abandoned = !thread.Join(StopsWithin);
+
+        // Nothing given up on is waited for again: every holder of something this touches calls
+        // here on the way out, and each of them spending its own five seconds would turn one wedged
+        // device into a shutdown measured in minutes. Asked again rather than skipped, though —
+        // a loop that came back a moment after the deadline is one whose handles are free after
+        // all, and whoever calls this next is the only thing that can find that out.
+        Abandoned = !thread.Join(Abandoned ? TimeSpan.Zero : StopsWithin);
     }
 }

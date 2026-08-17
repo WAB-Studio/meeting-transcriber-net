@@ -210,6 +210,16 @@ public sealed class CaptureSession : IDisposable
 
     public void Dispose()
     {
+        // Asked first, all of them, for the same reason Stop asks before it waits — and here it
+        // matters more, because disposing is an exit path in its own right. A caller that never
+        // reached Stop, or whose Stop threw on the first source, arrives with both devices still
+        // recording; letting go of the first before the second has even been asked leaves the
+        // second recording for however long the first takes to be given up on.
+        foreach (var source in sources)
+        {
+            source.AskToStop();
+        }
+
         foreach (var source in sources)
         {
             // Every source, whatever the one before it did with its last block: this is where the

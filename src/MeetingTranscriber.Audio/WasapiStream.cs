@@ -58,6 +58,7 @@ internal sealed class WasapiStream : IDisposable
     private Action<Exception?>? finished;
     private Exception? refused;
     private CaptureLoop? loop;
+    private bool freed;
 
     private WasapiStream(
         AudioChannel channel,
@@ -234,6 +235,21 @@ internal sealed class WasapiStream : IDisposable
     internal void Stop() => loop?.AskToStop();
 
     /// <summary>
+    /// Asks the loop to stop and waits the one deadline for it, letting go of nothing. True when it
+    /// came back, and then everything the loop wrote is visible here — joining a thread is what
+    /// makes it so, which is why nothing else has to be waited on to read why it ended.
+    /// </summary>
+    /// <remarks>
+    /// The whole of the waiting a source does on the way out, so that a device is given up on once
+    /// rather than once per holder. <see cref="Dispose"/> after this costs nothing either way.
+    /// </remarks>
+    internal bool Stopped()
+    {
+        loop?.Dispose();
+        return !Abandoned;
+    }
+
+    /// <summary>
     /// Waits for the loop, bounded, and then lets go of what the loop was using — in that order,
     /// because the order is the guarantee: once this returns without <see cref="Abandoned"/>,
     /// nothing is still handing blocks to whoever subscribed, so a file can be closed under it.
@@ -249,12 +265,16 @@ internal sealed class WasapiStream : IDisposable
     {
         loop?.Dispose();
 
-        if (Abandoned)
+        // The loop is kept rather than dropped, so that a second call still knows whether it was
+        // given up on — and so that a loop which came back late is noticed and its handles freed
+        // by whoever calls next, instead of being held to the end of the process over a deadline
+        // that was missed by a moment.
+        if (Abandoned || freed)
         {
             return;
         }
 
-        loop = null;
+        freed = true;
         client.Dispose();
         endpoint?.Dispose();
         started.Dispose();

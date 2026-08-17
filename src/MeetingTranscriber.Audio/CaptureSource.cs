@@ -101,7 +101,12 @@ public sealed class CaptureSource : IDisposable
     /// </summary>
     internal void Finish()
     {
-        if (!ended.Wait(CaptureLoop.StopsWithin))
+        // One wait, and it is the thread's: a source is over exactly when the loop draining it comes
+        // back, and joining it is also what makes everything that loop wrote visible here. Waiting
+        // on the gate first and then on the thread would spend the deadline twice over one wedged
+        // device, and a session stopping two of them would spend it four times — so "five seconds"
+        // would name none of the times anybody actually waits.
+        if (!stream.Stopped())
         {
             // Nothing is flushed and nothing is closed on the way out of here: the stream is still
             // inside the device and is still the thread that would write the next block. So this

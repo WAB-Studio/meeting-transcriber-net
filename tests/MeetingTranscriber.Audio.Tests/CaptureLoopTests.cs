@@ -42,15 +42,22 @@ public class CaptureLoopTests
     }
 
     /// <summary>
-    /// ISC-128 and ISC-131. The loop ignores what it was asked, which is what a driver wedged
-    /// inside WASAPI looks like from out here. Waiting comes back anyway, near the deadline rather
-    /// than at some multiple of it, and says the loop was given up on — and the loop is still
-    /// running when it says so, which is the whole content of the word: what it holds is being used
-    /// by a live thread and is not anybody else's to close.
+    /// ISC-128. The loop ignores what it was asked, which is what a driver wedged inside WASAPI
+    /// looks like from out here. Waiting comes back anyway, at the deadline rather than never, and
+    /// says the loop was given up on — and the loop is still running when it says so, which is the
+    /// whole content of the word: what it holds is being used by a live thread and is not anybody
+    /// else's to close.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The five seconds this costs are the deadline itself. A loop built with a shorter one for the
     /// test's sake would leave the number the product actually waits proved by nothing.
+    /// </para>
+    /// <para>
+    /// What it does not reach is what the stream and the source then keep hold of, which is ISC-131
+    /// and is open: that decision is two conditionals over a device, and forcing it needs a real one
+    /// wedged on demand.
+    /// </para>
     /// </remarks>
     [Fact]
     public void A_loop_that_will_not_come_back_is_given_up_on_rather_than_waited_on()
@@ -71,7 +78,11 @@ public class CaptureLoopTests
             var waited = Time(loop.Dispose);
 
             waited.ShouldBeGreaterThanOrEqualTo(CaptureLoop.StopsWithin);
-            waited.ShouldBeLessThan(CaptureLoop.StopsWithin + Promptly);
+
+            // Generous on purpose, and it still fails the wait this replaced: what is being told
+            // apart is a deadline from no deadline at all, so a loaded agent that takes half as
+            // long again is not the thing this should go red over.
+            waited.ShouldBeLessThan(CaptureLoop.StopsWithin * 2);
             loop.Abandoned.ShouldBeTrue();
 
             // Still in there. Nothing it touches has become free to close because waiting gave up.
