@@ -57,8 +57,7 @@ internal sealed class WasapiStream : IDisposable
     private Action<CapturePacket>? captured;
     private Action<Exception?>? finished;
     private Exception? refused;
-    private Thread? loop;
-    private volatile bool running;
+    private CaptureLoop? loop;
 
     private WasapiStream(
         AudioChannel channel,
@@ -82,6 +81,13 @@ internal sealed class WasapiStream : IDisposable
 
     /// <summary>The format the device handed over, in NAudio's terms.</summary>
     internal WaveFormat WaveFormat { get; }
+
+    /// <summary>
+    /// Whether the draining loop was given up on, so this stream is still inside the device and
+    /// everything it holds is still being used by a thread nothing can stop. What a caller reads
+    /// before letting go of anything of its own that the loop hands blocks to.
+    /// </summary>
+    internal bool Abandoned => loop is { Abandoned: true };
 
     /// <summary>
     /// Opens <paramref name="device"/> for capture onto <paramref name="channel"/>, in the format
@@ -207,17 +213,16 @@ internal sealed class WasapiStream : IDisposable
 
         captured = onPacket;
         finished = onEnd;
-        running = true;
 
-        loop = new Thread(Run) { IsBackground = true, Name = $"{channel} capture" };
-        loop.Start();
+        loop = CaptureLoop.Draining($"{channel} capture", Run);
         started.Wait();
 
         if (refused is not null)
         {
-            loop.Join();
+            // The loop returned before it set this, so there is nothing left to wait for and the
+            // stream never became one anybody was handed.
+            loop.Dispose();
             loop = null;
-            running = false;
 
             // Thrown as it was caught, so what Windows said about this device is still a
             // COMException by the time the caller turns it into a sentence about that device.
@@ -226,23 +231,36 @@ internal sealed class WasapiStream : IDisposable
     }
 
     /// <summary>Asks the loop to stop, and comes back without waiting for it to.</summary>
-    internal void Stop() => running = false;
+    internal void Stop() => loop?.AskToStop();
 
+    /// <summary>
+    /// Waits for the loop, bounded, and then lets go of what the loop was using — in that order,
+    /// because the order is the guarantee: once this returns without <see cref="Abandoned"/>,
+    /// nothing is still handing blocks to whoever subscribed, so a file can be closed under it.
+    /// </summary>
+    /// <remarks>
+    /// A loop that did not come back keeps every one of these. The client is what it is blocked
+    /// inside, the endpoint is underneath that client, and the gate is what it would touch on its
+    /// way out if it ever took one — so releasing a COM object here would not be tidying up after a
+    /// dead thread, it would be pulling the floor out from under a live one. What that costs is one
+    /// device held until the process ends, and the recording is on disk either way.
+    /// </remarks>
     public void Dispose()
     {
-        running = false;
+        loop?.Dispose();
 
-        // Waited for on purpose: once this returns, nothing is still handing blocks to whoever
-        // subscribed, so a file can be closed under it.
-        loop?.Join();
+        if (Abandoned)
+        {
+            return;
+        }
+
         loop = null;
-
         client.Dispose();
         endpoint?.Dispose();
         started.Dispose();
     }
 
-    private void Run()
+    private void Run(CaptureLoop loop)
     {
         AudioCaptureClient capture;
         try
@@ -266,7 +284,7 @@ internal sealed class WasapiStream : IDisposable
         {
             try
             {
-                while (running)
+                while (loop.Running)
                 {
                     Thread.Sleep(pollMs);
                     Drain(capture);
@@ -286,7 +304,9 @@ internal sealed class WasapiStream : IDisposable
         }
         finally
         {
-            running = false;
+            // Asked here as well as by whoever stopped it, so that a loop which ended on its own
+            // reads as over rather than as one still meaning to take another pass.
+            loop.AskToStop();
             finished?.Invoke(failure);
         }
     }
