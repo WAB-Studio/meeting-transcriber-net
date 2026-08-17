@@ -1097,7 +1097,7 @@ function Write-DayReport {
   if ($st.Owed.Count -gt 0) {
     $null = $L.Add("## Parked on a decision")
     $null = $L.Add("")
-    $null = $L.Add("The PR is open and green. The card is in ``pending`` carrying what has to be settled, and it goes back in the pool once a grill settles it.")
+    $null = $L.Add("The PR is open and green, and the card carries what has to be settled. Each one that reached ``pending`` goes back in the pool once a grill settles it; any that did not is called out under its own line.")
     $null = $L.Add("")
     foreach ($o in $st.Owed) {
       $pr = "-"; if ($o.pr) { $pr = "#" + $o.pr }
@@ -1120,7 +1120,7 @@ function Write-DayReport {
   if ($st.Recovered.Count -gt 0) {
     $null = $L.Add("## Put back rather than merged")
     $null = $L.Add("")
-    $null = $L.Add("The PR is open and the card moved. The day did not stop over any of these.")
+    $null = $L.Add("The PR is open. A card that moved cost the day nothing; one that did not is where the day stopped, and it says so on its own line.")
     $null = $L.Add("")
     foreach ($r in $st.Recovered) {
       $pr = "-"; if ($r.pr) { $pr = "#" + $r.pr }

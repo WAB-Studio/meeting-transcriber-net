@@ -52,8 +52,8 @@ $act = Resolve-Verdict $v
 # the card, in writing, and the card goes to `pending` where no worker touches it until a grill has
 # settled it. The PR stays open and green; nothing merges it on a guess.
 if ($act.to -eq "pending") {
-  $lost = Request-Grill -Day $day -TaskId ([string]$h.task_id) -Owed @($v.decisions_owed) -PrNumber $h.pr_number
-  if ($lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $lost }; exit 1 }
+  $park = Request-Grill -Day $day -TaskId ([string]$h.task_id) -Owed @($v.decisions_owed) -PrNumber $h.pr_number
+  if ($park.Lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $park.Lost }; exit 1 }
   $parked = Complete-Journal -Repo $day.Repo -TaskId ([string]$h.task_id)
   if ($parked) { New-DayEvent -LogDir $day.LogDir -Kind "journal_parked" -Data @{ to = $parked } | Out-Null }
   Write-Day $day "[$cycle] PR #$($h.pr_number) left open -- card $($h.task_id) owes a decision and goes to pending"
@@ -73,6 +73,6 @@ if ($act.action -eq "recover") {
   exit 0
 }
 
-$failed = Invoke-Merge -Day $day -Handoff $h
-if ($failed -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $failed }; exit 1 }
+$merge = Invoke-Merge -Day $day -Handoff $h
+if ($merge.Lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $merge.Lost }; exit 1 }
 Write-Atom @{ ok = $true; cycle = $cycle; action = "merged"; pr_number = $h.pr_number }

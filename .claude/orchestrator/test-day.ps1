@@ -1231,6 +1231,38 @@ Check "parking a card twice keeps both attempts" {
 }
 
 Write-Host ""
+Write-Host "  what a recorded step says it did"
+
+# Everything that guards a card on the board reads this one boolean, and it could not be false: what
+# a command prints on stdout is part of what a PowerShell function returns, so a board CLI that
+# printed why it failed came back as @("error ...", $false) -- two elements, and therefore true.
+Check "a step that printed and failed still comes back false" {
+  $box = New-Sandbox
+  try {
+    $day = [pscustomobject]@{ LogDir = $box; Repo = $box }
+    $ok = Invoke-BestEffort $day "a step that works" { cmd /c "echo done" }
+    if ($ok -isnot [bool]) { return "a step that worked returned $($ok.GetType().Name), not a boolean" }
+    if (-not $ok) { return "a step that worked came back false" }
+
+    $bad = Invoke-BestEffort $day "a step that fails loudly" { cmd /c "echo something broke & exit 3" }
+    if ($bad -isnot [bool]) { return "a failed step returned $($bad.GetType().Name), not a boolean" }
+    if ($bad) { return "a step that failed came back true" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# One shape for the three ways a cycle closes. Two of them used to answer with a bare string, and
+# the comparison that goes with it -- `-ne ""` -- calls anything else a failure.
+Check "a close says whether it landed in one shape" {
+  $r = New-CloseResult
+  if ($r.Lost -ne "") { return "an untroubled close came back with something lost" }
+  if ($r.To -ne "")   { return "it invented a destination" }
+  $l = New-CloseResult -To "pending" -Lost "the board said no"
+  if ($l.Lost -ne "the board said no" -or $l.To -ne "pending") { return "it did not carry what it was given" }
+  ""
+}
+
+Write-Host ""
 Write-Host "  the atoms call things that exist"
 
 <#
@@ -1246,37 +1278,45 @@ Write-Host "  the atoms call things that exist"
   are judged, which is what leaves `git`, `gh`, `python` and `dotnet` out of it.
 #>
 Check "no atom calls a function that does not exist" {
-  $defined = @{}
-  $called = New-Object System.Collections.ArrayList
+  # Resolved the way the atom will resolve it at run time, not against every name in the folder: an
+  # atom sees its own functions, whatever `atom.psm1` exports, and the shell's cmdlets. A helper
+  # that lives in a file nobody imports is not in scope, and pooling the whole directory would call
+  # that a definition and pass over the same hole this exists to find.
+  $mod = Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking -PassThru
+  $exported = @{}
+  foreach ($k in $mod.ExportedFunctions.Keys) { $exported[$k] = $true }
+
+  $bad = @()
   foreach ($f in (Get-ChildItem $PSScriptRoot -File | Where-Object { $_.Extension -in @(".ps1", ".psm1") })) {
     $errors = $null
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors)
     if ($errors -and $errors.Count -gt 0) { return "$($f.Name) does not parse: $($errors[0].Message)" }
+
+    $local = @{}
     foreach ($d in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
-      $defined[$d.Name] = $true
+      $local[$d.Name] = $true
     }
+    # The modules are each other's scope: day.psm1 is imported whole by atom.psm1, and a name
+    # exported from there is what an atom gets. For the two modules the pair is the scope.
+    if ($f.Extension -eq ".psm1") {
+      $peer = Join-Path $PSScriptRoot $(if ($f.Name -eq "atom.psm1") { "day.psm1" } else { "atom.psm1" })
+      $peerAst = [System.Management.Automation.Language.Parser]::ParseFile($peer, [ref]$null, [ref]$null)
+      foreach ($d in $peerAst.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
+        $local[$d.Name] = $true
+      }
+    }
+
     foreach ($c in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true)) {
       $name = $c.GetCommandName()
-      if ($name -and $name -match '^[A-Za-z]+-[A-Za-z]+$') { $null = $called.Add($name) }
+      if (-not $name -or $name -notmatch '^[A-Za-z]+-[A-Za-z]+$') { continue }   # leaves git, gh, python out
+      if ($local.ContainsKey($name) -or $exported.ContainsKey($name)) { continue }
+      # Cmdlets and aliases only. A function some module on this machine happens to export would
+      # make the check pass here and fail on a runner that does not have it.
+      if (Get-Command $name -CommandType Cmdlet, Alias -ErrorAction SilentlyContinue) { continue }
+      $bad += "$($f.Name) calls $name"
     }
   }
-  $missing = @($called | Sort-Object -Unique | Where-Object {
-    -not $defined.ContainsKey($_) -and -not (Get-Command $_ -ErrorAction SilentlyContinue)
-  })
-  if ($missing.Count -gt 0) { return "called and defined nowhere: " + ($missing -join ", ") }
-  ""
-}
-
-# Exported by name and defined nowhere is the same hole seen from the other side: the export list is
-# what says an atom may call it, and a name on that list with nothing behind it promises a function
-# that is not there.
-Check "every name the atoms export is a function that exists" {
-  $mod = Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking -PassThru
-  $empty = @($mod.ExportedFunctions.Keys | Where-Object { -not $mod.ExportedFunctions[$_].ScriptBlock })
-  if ($empty.Count -gt 0) { return "exported with nothing behind them: " + ($empty -join ", ") }
-  foreach ($n in @("Invoke-Merge", "Invoke-Recover", "Request-Grill")) {
-    if (-not $mod.ExportedFunctions.ContainsKey($n)) { return "$n is not exported at all" }
-  }
+  if ($bad.Count -gt 0) { return ($bad | Sort-Object -Unique) -join "; " }
   ""
 }
 
