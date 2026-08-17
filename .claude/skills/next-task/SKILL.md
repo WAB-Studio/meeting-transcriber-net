@@ -11,13 +11,20 @@ description: >-
 A run is **one board task carried to an open PR**, and nothing else. `CLAUDE.md` governs the work
 itself; what is here is only what changes when nobody is beside you.
 
-The orchestrator passes the handoff path as an argument. With none given, use
-`.claude/orchestrator/log/handoff.json`.
+The orchestrator passes the handoff path as an argument, and writes that file itself from what you
+emit — see §5. Nothing here writes it.
 
 ```powershell
 $S = "$env:USERPROFILE\.claude\skills\clickup\clickup.py"
-$env:PYTHONIOENCODING = "utf-8"   # without this the CLI dies printing accents and arrows
+python $S tasks --mine
 ```
+
+**Call the CLI with `python` as the first word of the command, always.** The permission rule that
+allows it matches on the start of the command, so `$env:X = "utf-8"; python ...` does not match it
+and is denied — and under `-p` a denial does not prompt, it denies, and you carry on as if the
+tool did not exist. The orchestrator already exported `PYTHONIOENCODING`, so there is nothing to
+set. If a call is refused anyway, that is a missing rule in `.claude/orchestrator/settings.json`:
+**say so in `left_out` and stop trying to spell your way around it.**
 
 ## 0 · Before touching anything
 
@@ -102,8 +109,12 @@ Return to `main` with a clean tree, and take the branch tip — `git rev-parse <
 
 ## 5 · The handoff
 
-JSON at the path you were given, and your **last message is that same JSON**. The shape is in
-`handoff.schema.json`, next to this file. Four fields are the whole point:
+**Your last message is the handoff, and nothing else.** One JSON object, no prose around it; the
+orchestrator reads it off what you emitted and writes the file itself. You do not write that file
+— a session that said the whole handoff and forgot to write it once killed a day with the work
+done and the PR open, so the step that could be forgotten was removed rather than repeated.
+
+The shape is in `handoff.schema.json`, next to this file. Four fields are the whole point:
 
 - **`decisions_deferred`** — every fork you resolved without anybody confirming it, and every one
   you left open. `[]` is not silence: **it asserts there were none**, and somebody checks that
@@ -112,7 +123,10 @@ JSON at the path you were given, and your **last message is that same JSON**. Th
 - **`left_out`** — what the task asked for and you did not deliver. Cutting scope is the user's.
 - **`probes`** — what actually ran. It is taken as your claim, not as evidence: the audit
   corroborates it against CI and by re-running whatever holds a claim up. Writing `passed: true`
-  over something that never ran saves you nothing and stops the day.
+  over something that never ran saves you nothing and stops the day. **A step `CLAUDE.md` requires
+  and you could not run — the cross-model review over a large diff, most of all — is a probe with
+  `passed: false` saying it did not run and why.** Substituting something weaker and not saying so
+  is the one failure this whole arrangement exists to catch; the audit holds the PR over it.
 - **`head_sha`** — the exact commit you delivered. The audit returns the one it read and the
   orchestrator stops if they disagree.
 
