@@ -26,25 +26,20 @@ Everything you do to the board is done to that one card — read it, move it, co
 CLI is only ever addressed by id:
 
 ```powershell
-$S = "$env:USERPROFILE\.claude\skills\clickup\clickup.py"
-python $S task <id>
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>
 ```
 
-**Call the CLI with `python` as the first word of the command, always.** The permission rule that
-allows it matches on the start of the command, so `$env:X = "utf-8"; python ...` does not match it
-and is denied — and under `-p` a denial does not prompt, it denies, and you carry on as if the
-tool did not exist. The orchestrator already exported `PYTHONIOENCODING`, so there is nothing to
-set. If a call is refused anyway, that is a missing rule in `.claude/orchestrator/settings.json`:
-**say so in `left_out` and stop trying to spell your way around it.**
+**`python` is the first word of the command and the path goes whole**, and `PYTHONIOENCODING` is
+already exported. A refused call is a missing rule in `.claude/orchestrator/settings.json`: **say so
+in `left_out` and stop trying to spell your way around it.**
 
-**Long prose goes in a file, never on the command line.** `--text` and `--desc` take `@path`. The
-same splitting refuses a comment whose text contains a semicolon, which any real explanation
-eventually does. Write it to `.scratch/` — the only place you may write outside the source tree,
+**Long prose goes in a file, never on the command line.** `--text` and `--desc` take `@path`.
+Write it to `.scratch/` — the only place you may write outside the source tree,
 gitignored at the root, and the reason `/tmp` and the session scratchpad are both refused is that
 they are outside the working directory.
 
 ```powershell
-python $S comment <id> --text @.scratch/note.md
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text @.scratch/note.md
 ```
 
 ## 0 · Before touching anything
@@ -59,7 +54,7 @@ way to lose work.
 start:
 
 ```powershell
-python $S task <task_id>
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <task_id>
 ```
 
 **Which card is the right one is not a question this session has open**, and going to the board to
@@ -112,7 +107,7 @@ bring. Comment, and leave the card where it is — a card moved to `pending` by 
 ends is a card out of every pool, and putting it back there is not this session's call:
 
 ```powershell
-python $S comment <id> --text "Needs <what exactly> — <what a person has to do or bring>."
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text "Needs <what exactly> — <what a person has to do or bring>."
 ```
 
 The real risk here is not stalling. It is that you produce plausible measurements of a meeting that
@@ -145,7 +140,7 @@ commands each on its own line, `/adversarial-review` over 50 non-comment lines a
 verdict confirms fixed in the same pass. All the unattended mode adds:
 
 ```powershell
-python $S move <id> --status "in progress"    # on starting, so a crash leaves a trace
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" move <id> --status "in progress"    # on starting, so a crash leaves a trace
 ```
 
 ### The journal
@@ -174,8 +169,8 @@ Branch, commit, `gh pr create`. You do not merge it — the audit's verdict does
 it passes. Then:
 
 ```powershell
-python $S move <id> --status "in review"
-python $S comment <id> --text "<probes that ran, review verdict, PR>"
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" move <id> --status "in review"
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text "<probes that ran, review verdict, PR>"
 ```
 
 Return to `main` with a clean tree, and take the branch tip — `git rev-parse <branch>` — for
