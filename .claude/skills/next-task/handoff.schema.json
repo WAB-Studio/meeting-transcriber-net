@@ -19,18 +19,17 @@
       "enum": [
         "pr_opened",
         "needs_grill",
-        "blocked",
-        "no_tasks"
+        "blocked"
       ],
-      "description": "pr_opened: there is a branch and a PR. needs_grill: the card still holds a product decision that is not yours, met BEFORE building, so a short session is lost instead of a whole diff. blocked: stuck, nothing to review. no_tasks: the pool came up empty."
+      "description": "pr_opened: there is a branch and a PR. needs_grill: the card still holds a product decision that is not yours, met BEFORE building, so a short session is lost instead of a whole diff. blocked: stuck, nothing to review. There is no outcome for an empty board: this session is handed one card and cannot discover anything about the rest."
     },
     "task_id": {
       "type": "string",
-      "description": "ClickUp ID, or an empty string if none was taken."
+      "description": "The ClickUp ID you were given. It is echoed back, never chosen: a handoff naming a different card stops the day."
     },
     "pr_number": {
-      "type": "integer",
-      "description": "PR number, or 0 if none was opened."
+      "type": ["integer", "null"],
+      "description": "PR number, or null if none was opened. The field is always said, even when it is null."
     },
     "head_sha": {
       "type": "string",

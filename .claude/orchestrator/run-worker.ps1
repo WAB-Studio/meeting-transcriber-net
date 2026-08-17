@@ -1,9 +1,13 @@
 #requires -Version 5.1
 <#
-  One working session: the checkout is checked, a fresh journal is laid down, `/next-task` runs, and
-  what it emitted becomes this cycle's handoff.
+  One working session: the checkout is checked, a fresh journal is laid down, `/next-task` runs on
+  the card `run-picker.ps1` chose, and what it emitted becomes this cycle's handoff.
 
-    .\run-worker.ps1
+    .\run-picker.ps1     # first -- which card
+    .\run-worker.ps1     # then -- the work on it
+
+  **This does not decide which card.** That is the picker's, in one place, and a worker that went
+  looking for its own would be the second copy of a rule whose two copies already disagreed once.
 #>
 [CmdletBinding()]
 param()
@@ -15,31 +19,19 @@ Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking
 $script:Day = $null
 trap { Write-AtomCrash -Message $_.Exception.Message -Day $script:Day; exit 1 }
 
-$HandoffKeys = @("outcome","task_id","pr_number","isc_closed","probes",
+$HandoffKeys = @("outcome","task_id","isc_closed","probes",
                  "decisions_deferred","left_out","skipped","blocked_reason","head_sha")
+
+# Said, but allowed to be null: a `blocked` handoff has no PR to name and says so by writing null,
+# and refusing that would stop the day over a field it was right to leave empty. The outcome that
+# must carry a number, `pr_opened`, is checked for one by value further down.
+$HandoffPresent = @("pr_number")
 
 $day = Open-Day
 $script:Day = $day
 if ($day.Error -ne "") { Write-Host $day.Error; Write-Atom @{ ok = $false; reason = $day.Error }; exit 1 }
 
-# Every command is judged by its own exit code. $ErrorActionPreference does not turn a native exe
-# failure into an exception, so a `git` that never ran would read as a clean tree -- the observing
-# tool failing, dressed up as a healthy state.
-function Test-Preflight {
-  $dirty = git -C $day.Repo status --porcelain
-  if ($LASTEXITCODE -ne 0) { return "git status failed ($LASTEXITCODE)" }
-  if ($dirty)              { return "the tree was left dirty" }
-  $branch = git -C $day.Repo rev-parse --abbrev-ref HEAD
-  if ($LASTEXITCODE -ne 0) { return "git rev-parse failed ($LASTEXITCODE)" }
-  if ($branch -ne "main")  { return "left standing on $branch" }
-  git -C $day.Repo fetch origin main --quiet
-  if ($LASTEXITCODE -ne 0) { return "git fetch failed -- main never checked against origin" }
-  git -C $day.Repo merge --ff-only origin/main --quiet
-  if ($LASTEXITCODE -ne 0) { return "local main has diverged from origin" }
-  return ""
-}
-
-$blocked = Test-Preflight
+$blocked = Test-Preflight -Day $day
 if ($blocked -ne "") {
   New-DayEvent -LogDir $day.LogDir -Kind "preflight_failed" -Data @{ reason = $blocked } | Out-Null
   Write-Day $day "preflight: $blocked"
@@ -48,44 +40,26 @@ if ($blocked -ne "") {
 }
 New-DayEvent -LogDir $day.LogDir -Kind "preflight_ok" | Out-Null
 
-# A cycle that was never closed is not replaced by opening another one. What sequences these is a
-# model, so calling this again after an audit or a close was skipped is not a hypothetical -- and
-# the second worker would take a new card while the first one's PR sat open with its card in
-# `in progress`, which is the abandonment the whole arrangement exists to prevent.
-if ($day.Cycle -gt 0) {
-  $open = Read-Contract $day "handoff-$($day.Cycle).json"
-  if ($open -and [string]$open.outcome -eq "pr_opened" -and
-      -not (Test-CycleClosed -LogDir $day.LogDir -Cycle $day.Cycle)) {
-    Write-Atom @{ ok = $false; reason = "cycle $($day.Cycle) is still open -- close it before opening another" }
-    exit 1
-  }
-}
-
-# Nothing eligible on the board is an ending, and it is one that costs a request rather than a
-# session. Without this the day found out the expensive way: the worker takes the first card in
-# board order, and an ungrilled one is `needs_grill`, so a board with nothing grilled sent every
-# card it reached to `pending` -- one paid session each -- and reported an empty board in the
-# morning after emptying it itself.
-$pool = Get-BoardPool -Day $day
-if ($pool.Stop -ne "") {
-  New-DayEvent -LogDir $day.LogDir -Kind "board_unreadable" -Data @{ reason = $pool.Stop } | Out-Null
-  Write-Day $day "the board: $($pool.Stop)"
-  Write-Atom @{ ok = $false; stop = "the board could not say what is eligible: $($pool.Stop)" }
-  exit 1
-}
-if ($pool.Idle) {
-  # On the stream and not only in the RESULT. `end-day.ps1` works out why a day ended by reading
-  # this back, and an ending that lived only in what an atom printed came out of the morning
-  # report as "ended by hand" -- which is the one thing it was not.
-  $why = "no_tasks -- nothing on the board is grilled and nothing was left in progress"
-  New-DayEvent -LogDir $day.LogDir -Kind "no_more_cycles" -Data @{ reason = $why } | Out-Null
-  Write-Day $day "nothing in progress and nothing grilled -- no session to spend"
-  Write-Atom @{ ok = $true; outcome = "no_tasks"; reason = $why }
-  exit 0
-}
+$still = Test-CycleStillOpen -Day $day
+if ($still -ne "") { Write-Atom @{ ok = $false; reason = $still }; exit 1 }
 
 $cycle = $day.Cycle + 1
 $day.Cycle = $cycle
+
+# The card comes from the picker and is never chosen here. A pick that is not there is not an
+# ending and not a failure of the work: it is a step of the cycle that has not been run, so this
+# says which one rather than going and doing it -- a worker that picked its own card would be the
+# second copy of a rule whose two copies disagreed once already, and the copy nothing tests.
+$pickfile = Join-Path $day.LogDir "pick-$cycle.json"
+$pick = Read-Contract $day "pick-$cycle.json"
+if ($null -eq $pick) {
+  Write-Atom @{ ok = $false; reason = "cycle $cycle has no pick -- run-picker.ps1 chooses the card" }
+  exit 1
+}
+if ([string]$pick.outcome -ne "picked" -or -not [string]$pick.task_id) {
+  Write-Atom @{ ok = $false; reason = "the pick for cycle $cycle names no card to work ($([string]$pick.outcome))" }
+  exit 1
+}
 
 # Laid down before the session, so the session only adds prose under headings already there.
 # Whatever a dead cycle left is parked first rather than overwritten.
@@ -98,8 +72,8 @@ if ($parked) {
 $handoff = Join-Path $day.LogDir "handoff-$cycle.json"
 Remove-Item $handoff -ErrorAction SilentlyContinue   # so a stale file cannot pass as fresh
 
-Write-Day $day "[$cycle] worker: /next-task"
-$w = Invoke-Session -Day $day -Role "worker" -Prompt "/next-task $handoff" -Cycle $cycle
+Write-Day $day "[$cycle] worker: /next-task on $($pick.task_id)"
+$w = Invoke-Session -Day $day -Role "worker" -Prompt "/next-task $handoff $pickfile" -Cycle $cycle
 if ($null -eq $w) { Write-Atom @{ ok = $false; stop = "the worker left no result" }; exit 1 }
 
 $status = Get-DayStatus -LogDir $day.LogDir
@@ -116,8 +90,14 @@ if ($unsound -ne "") { Write-Atom @{ ok = $false; stop = "the worker's session i
 # The contract is derived from what the session emitted, and this writes the file. Having the
 # session also remember to write it was a second way to fail without being a second guarantee: a
 # worker once said the whole handoff, did not write it, and the day died with the PR open.
+# `no_tasks` is not among them any more. A session handed one card cannot discover that the board is
+# empty, and while it was allowed it was the quiet way out of the whole arrangement: a worker that
+# failed to read its pick, or fell back on looking at the board itself, returned it with an empty
+# card id -- which named no card, so it slipped past the mismatch check below, and the day moved on
+# leaving the picked card untouched.
 $c = Get-ContractFromText ([string]$w.result)
-$bad = Test-DayContract -Contract $c -Required $HandoffKeys -Field "outcome" -Allowed @("pr_opened","needs_grill","blocked","no_tasks")
+$bad = Test-DayContract -Contract $c -Required $HandoffKeys -Present $HandoffPresent `
+                        -Field "outcome" -Allowed @("pr_opened","needs_grill","blocked")
 if ($bad -ne "") {
   New-DayEvent -LogDir $day.LogDir -Kind "handoff_invalid" -Data @{ cycle = $cycle; reason = $bad } | Out-Null
   Write-Atom @{ ok = $false; stop = "invalid handoff: $bad" }
@@ -137,6 +117,28 @@ New-DayEvent -LogDir $day.LogDir -Kind "handoff" -Data @{
 
 Write-Day $day ("[$cycle] handoff: {0}  task={1}  pr=#{2}  deferred={3}  skipped={4}" -f `
                 $c.outcome, $c.task_id, $c.pr_number, @($c.decisions_deferred).Count, @($c.skipped).Count)
+
+# The worker was handed a card and came back holding another one. This stops the day, and the whole
+# arrangement rests on it: a boundary that logs its own violation and carries on is a suggestion.
+# What the next atoms would otherwise do is audit and merge a card nobody chose, which is exactly
+# the failure the split was built to prevent -- and it would land in `main` before anybody read the
+# warning that said so.
+#
+# Nothing is thrown away by stopping. The PR the worker opened is open, its card is where the worker
+# left it, and the handoff is on disk; what a person finds in the morning is a finished PR against
+# an unchosen card, named in the report, rather than that card already in `main`.
+if ([string]$c.task_id -ne [string]$pick.task_id) {
+  New-DayEvent -LogDir $day.LogDir -Kind "anomaly" -Data @{
+    level = "stop"; code = "pick_ignored"
+    text = "cycle $cycle was picked $([string]$pick.task_id) and the worker came back holding '$([string]$c.task_id)'"
+  } | Out-Null
+  Write-Day $day "  !! picked $($pick.task_id) and the worker worked '$($c.task_id)'"
+  Write-Atom @{
+    ok = $false; cycle = $cycle
+    stop = "the worker did not work the card it was given: picked $([string]$pick.task_id), came back with '$([string]$c.task_id)'"
+  }
+  exit 1
+}
 
 # The card still holds a decision that is not the worker's, met before anything was built. The
 # worker does not put it to anybody: it says the card needs grilling, and grilling is where product

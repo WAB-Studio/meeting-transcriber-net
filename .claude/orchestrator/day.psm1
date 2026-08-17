@@ -176,13 +176,25 @@ function Test-DayContract {
     $Contract,
     [Parameter(Mandatory)][string[]]$Required,
     [Parameter(Mandatory)][string]$Field,
-    [Parameter(Mandatory)][string[]]$Allowed
+    [Parameter(Mandatory)][string[]]$Allowed,
+    [string[]]$Present = @()
   )
   if ($null -eq $Contract) { return "the session emitted no JSON that can be read" }
 
   $missing = @()
   foreach ($k in $Required) { if ($null -eq $Contract.$k) { $missing += $k } }
-  if ($missing.Count -gt 0) { return "missing fields: " + ($missing -join ", ") }
+
+  # A field whose empty value is an answer -- `pr_number: null` is "this card has no PR", which is
+  # most of them. Requiring it by value would refuse the ordinary case, and dropping it from the
+  # contract would let a session that simply forgot the field through, which is the one that costs:
+  # a card with an open PR picked up as fresh work opens a second PR against it. So the question
+  # asked here is whether the session said anything at all, which is what `PSObject.Properties`
+  # answers and what `$null -eq` cannot.
+  $names = @()
+  if ($Contract.PSObject -and $Contract.PSObject.Properties) { $names = @($Contract.PSObject.Properties.Name) }
+  foreach ($k in $Present) { if ($names -notcontains $k) { $missing += $k } }
+
+  if ($missing.Count -gt 0) { return "missing fields: " + (@($missing | Sort-Object -Unique) -join ", ") }
 
   if ($Allowed -notcontains [string]$Contract.$Field) {
     return "$Field='$($Contract.$Field)' is not a value in the contract"
@@ -1037,6 +1049,14 @@ function Get-DayStatus {
       }
       "session_killed" { $st.Killed = $true; $st.Running = $false; $openStream = $null }
       "session_failed" { $st.Running = $false; $openStream = $null }
+      # Seeded here as well as from the handoff, so a cycle that ended at the pick -- no card taken,
+      # no worker run -- still has a row saying which card it was looking at and what it cost.
+      "pick" {
+        $c = [int]$e.cycle
+        if (-not $cycles.ContainsKey($c)) { $cycles[$c] = [ordered]@{ cycle = $c; cost = 0.0 } }
+        $cycles[$c].task = [string]$e.task_id
+        $cycles[$c].outcome = [string]$e.outcome
+      }
       "handoff" {
         $c = [int]$e.cycle
         if (-not $cycles.ContainsKey($c)) { $cycles[$c] = [ordered]@{ cycle = $c; cost = 0.0 } }

@@ -1,0 +1,48 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "outcome",
+    "task_id",
+    "pr_number",
+    "why",
+    "skipped",
+    "blocked_reason"
+  ],
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": ["picked", "blocked", "no_tasks"],
+      "description": "picked: task_id is the card the worker takes. blocked: nothing may be taken until a person acts, and blocked_reason says what. no_tasks: the board has nothing eligible left."
+    },
+    "task_id": {
+      "type": "string",
+      "description": "The card the worker is to take. Empty on anything but `picked`."
+    },
+    "pr_number": {
+      "type": ["integer", "null"],
+      "description": "Set only when the pick already has an open PR to continue -- a card that came back. The worker checks out that PR's branch instead of cutting a new one."
+    },
+    "why": {
+      "type": "string",
+      "description": "One sentence: why this card and not the one before it. It goes on the day's stream, so a wrong ordering rule is visible in the morning without opening a transcript."
+    },
+    "skipped": {
+      "type": "array",
+      "description": "Cards passed over and moved to `pending` because nobody could build them -- hardware, a real meeting. Not cards merely further down the board.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "why"],
+        "properties": {
+          "task_id": { "type": "string" },
+          "why": { "type": "string", "description": "What is missing, in terms of what a person has to bring." }
+        }
+      }
+    },
+    "blocked_reason": {
+      "type": "string",
+      "description": "On `blocked`: which card stands in front of the pool, and what about it has to be settled before anything behind it is built. Empty otherwise."
+    }
+  }
+}

@@ -8,7 +8,7 @@ description: >-
 
 # run-day — you are the day
 
-Five scripts do everything that must not be forgotten. **You sequence them and you do the telling**,
+Six scripts do everything that must not be forgotten. **You sequence them and you do the telling**,
 and those are the only two things you do. Every script takes no arguments and prints a last line
 starting with `RESULT` — that line is what you act on; everything above it is for the person.
 
@@ -20,13 +20,14 @@ $O = "$PWD\.claude\orchestrator"
 ## 1 · The loop
 
 ```powershell
-& "$O\run-worker.ps1"      # preflight, /next-task, the handoff
+& "$O\run-picker.ps1"      # preflight, the board, /pick-task: which card
+& "$O\run-worker.ps1"      # /next-task on that card, the handoff
 & "$O\run-audit.ps1"       # /audit-session, the verdict
 & "$O\close-cycle.ps1"     # merge the PR, or leave it open and file the card
 ```
 
-Then start again at `run-worker.ps1`. Nothing paces this and nothing needs to: a cycle is two
-sessions of twenty to sixty minutes each.
+Then start again at `run-picker.ps1`. Nothing paces this and nothing needs to: a cycle is one short
+session and two of twenty to sixty minutes.
 
 What each `RESULT` means:
 
@@ -34,7 +35,8 @@ What each `RESULT` means:
 | --- | --- |
 | `stop` | the day is unsound — `end-day.ps1`, then report |
 | `outcome: no_tasks` | nothing eligible is left — `end-day.ps1`, then report |
-| `outcome: blocked` | `end-day.ps1`, then report; the reason is on the card already |
+| `outcome: blocked` | `end-day.ps1`, then report; `blocked_reason` says what has to happen |
+| `outcome: picked` | say the card and the `why` in one line, then `run-worker.ps1` |
 | `action: merged` / `recovered` | say it in one line and start the next cycle |
 | `action: parked` | a decision is owed on that card — §2 — and the next cycle starts |
 | `reason` with no `stop` | not an ending: it names what the run needs instead. Do that. |
@@ -42,10 +44,14 @@ What each `RESULT` means:
 **Nothing else ends the day.** A `hold` costs one PR a rerun and the next cycle takes the next task;
 a verdict is a fact about one PR and never about the hours left.
 
-`run-worker.ps1` asks the board what is eligible before it spends anything, so `no_tasks` can come
-back in seconds and with no session run: a card in `in progress` is one to pick back up, a card in
-`Open` tagged `grilled` is one to take, and with neither there is nothing to pay for. It is the same
-ending either way — what changes is that an unstarted day costs a request instead of a session.
+**`run-picker.ps1` is what says which card, and no other atom answers that.** A `picked` carries the
+card and a one-sentence `why`; say both and run the worker on it. A `blocked` carries
+`blocked_reason` and ends the day — it is the board being out of order, so what it needs is a
+grill, not another cycle.
+
+It asks the board what is eligible before it spends anything, so `no_tasks` can come back in
+seconds with no session run. It is the same ending either way — what changes is that an unstarted
+day costs a request instead of a session.
 
 `day-status.ps1` says what a run is doing at any moment and takes no arguments either. Nothing here
 depends on it — it is for a person who wants to look.
@@ -82,8 +88,11 @@ Say so plainly when you see it; do not let it become the normal shape of a day.
 
 ## 3 · What you say, and when
 
-**Silence is the default.** You speak when a cycle closes, when a rule fires, and when the day
-ends. Somebody who asked to be left alone for the day does not want a heartbeat.
+**Silence is the default.** You speak when a card is picked, when a cycle closes, when a rule fires,
+and when the day ends. Somebody who asked to be left alone for the day does not want a heartbeat.
+
+A pick is one line: the card, its name, and the `why`. It goes out **before** you run the worker,
+and you do not wait to be told to go on.
 
 A cycle closing is one line: the card, the PR, the verdict, what happened to it.
 
@@ -94,7 +103,7 @@ carries on as if the tool did not exist. Say which tool and what it tried. Never
 
 ## 4 · Do not touch the repo while it runs
 
-Any edit to a tracked file leaves the tree dirty and the next `run-worker.ps1` stops on it —
+Any edit to a tracked file leaves the tree dirty and the next `run-picker.ps1` stops on it —
 including the fix you just found. Write it on a card and let a later day take it.
 
 ## 5 · When it ends
