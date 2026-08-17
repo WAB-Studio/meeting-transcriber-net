@@ -687,6 +687,35 @@ function Test-CycleEvent {
   return $false
 }
 
+# The three ways a cycle is finished with, in one place because two atoms ask and a fourth way added
+# to one of them would otherwise be missing from the other.
+$script:CycleClosers = @("merged", "recovered", "decision_owed")
+
+<#
+  Whether this cycle is finished with -- asked before closing one and before opening the next.
+
+  **A close counts only if it landed.** Closing a cycle is a merge or a card put somewhere, and the
+  card half goes over a network: the comment can reach the board and the move fail behind it. That
+  event is written either way, because what happened is what gets recorded, and a guard that read it
+  as "closed" left the only repair there is -- running the atom again -- answering `already closed`
+  over a card still sitting in `in review`, where no worker looks for it.
+
+  So a rerun after a half close does the whole close again. It costs a second copy of the comment on
+  the card, which somebody reads twice, and it converges: the card ends where it belongs. A merge
+  needs no such test -- there is no board write between deciding it and it being true -- and `gh`
+  refuses the second one anyway.
+#>
+function Test-CycleClosed {
+  param([Parameter(Mandatory)][string]$LogDir, [Parameter(Mandatory)][int]$Cycle)
+  foreach ($e in (Read-DayEvents $LogDir)) {
+    if ($script:CycleClosers -notcontains [string]$e.kind) { continue }
+    if ($null -eq $e.cycle -or [int]$e.cycle -ne $Cycle) { continue }
+    if ([string]$e.kind -ne "merged" -and -not $e.moved) { continue }
+    return $true
+  }
+  return $false
+}
+
 <#
   Which cycle is in play, counted off the stream rather than passed in. A cycle opens when its
   worker starts, so the number is the worker sessions already started -- and every atom after that
@@ -1176,6 +1205,6 @@ Export-ModuleMember -Function Add-Utf8Line, Get-EventsPath, Read-OpenFileLines, 
   New-Denial, Get-ResultDenials, Get-DenialKey, Group-Denials,
   Get-JournalPath, Test-JournalBody, Get-JournalTask, Reset-Journal, Complete-Journal,
   Get-LockPath, Test-NewLock, Enter-DayLock, Update-DayLock, Exit-DayLock,
-  Get-CurrentRun, Get-CurrentCycle, Test-CycleEvent,
+  Get-CurrentRun, Get-CurrentCycle, Test-CycleEvent, Test-CycleClosed,
   Get-DayRules, Get-DayAnomalies, Get-HaltingAnomalies, Get-Median,
   Find-LatestRun, Get-DayStatus, Write-DayReport

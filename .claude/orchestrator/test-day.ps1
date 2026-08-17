@@ -1135,9 +1135,8 @@ Check "a cycle parked on a decision counts as closed" {
   try {
     New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
     New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{ cycle = 1; task_id = "T1"; moved = $true } | Out-Null
-    $terminal = @("merged", "recovered", "decision_owed")
-    if (-not (Test-CycleEvent -LogDir $box -Cycle 1 -Kinds $terminal)) { return "a parked cycle still reads as open" }
-    if (Test-CycleEvent -LogDir $box -Cycle 2 -Kinds $terminal) { return "it closed the wrong cycle" }
+    if (-not (Test-CycleClosed -LogDir $box -Cycle 1)) { return "a parked cycle still reads as open" }
+    if (Test-CycleClosed -LogDir $box -Cycle 2) { return "it closed the wrong cycle" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
@@ -1146,10 +1145,34 @@ Check "a cycle already acted on is recognised rather than acted on again" {
   $box = New-Sandbox
   try {
     New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
-    if (Test-CycleEvent -LogDir $box -Cycle 1 -Kinds @("merged","recovered")) { return "an untouched cycle read as closed" }
+    if (Test-CycleClosed -LogDir $box -Cycle 1) { return "an untouched cycle read as closed" }
     New-DayEvent -LogDir $box -Kind "recovered" -Data @{ cycle = 1; task_id = "T1"; to = "Open"; moved = $true } | Out-Null
-    if (-not (Test-CycleEvent -LogDir $box -Cycle 1 -Kinds @("merged","recovered"))) { return "a closed cycle read as open" }
-    if (Test-CycleEvent -LogDir $box -Cycle 2 -Kinds @("merged","recovered")) { return "cycle 2 was closed by cycle 1's event" }
+    if (-not (Test-CycleClosed -LogDir $box -Cycle 1)) { return "a closed cycle read as open" }
+    if (Test-CycleClosed -LogDir $box -Cycle 2) { return "cycle 2 was closed by cycle 1's event" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# Running the atom again is the only repair a half-landed close has. A guard that read the event
+# rather than what the event says happened answered `already closed` over a card still sitting in
+# `in review`, and the cycle was finished with while the board had never been told.
+Check "a close that never reached the board leaves the cycle open" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "recovered" -Data @{ cycle = 1; task_id = "T1"; to = "Open"; said = $true; moved = $false } | Out-Null
+    if (Test-CycleClosed -LogDir $box -Cycle 1) { return "a card that never moved closed its cycle" }
+
+    New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{ cycle = 2; task_id = "T2"; said = $true; retagged = $true; moved = $false } | Out-Null
+    if (Test-CycleClosed -LogDir $box -Cycle 2) { return "a park that never reached pending closed its cycle" }
+
+    # The retry lands, and now it is closed.
+    New-DayEvent -LogDir $box -Kind "recovered" -Data @{ cycle = 1; task_id = "T1"; to = "Open"; said = $true; moved = $true } | Out-Null
+    if (-not (Test-CycleClosed -LogDir $box -Cycle 1)) { return "the repair did not close it" }
+
+    # A merge has no board write between deciding it and it being true.
+    New-DayEvent -LogDir $box -Kind "merged" -Data @{ cycle = 3; pr_number = 7 } | Out-Null
+    if (-not (Test-CycleClosed -LogDir $box -Cycle 3)) { return "a merge did not close its cycle" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
@@ -1205,6 +1228,56 @@ Check "parking a card twice keeps both attempts" {
     if ($body -notmatch "second attempt") { return "the later attempt was not kept" }
     ""
   } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Write-Host ""
+Write-Host "  the atoms call things that exist"
+
+<#
+  The one check here that reads the code rather than running it, because running it is exactly what
+  does not happen: PowerShell resolves a command when the line executes, so a function deleted out
+  from under its callers is not a load error, not a parse error, and not visible to any probe that
+  does not reach that branch. `Invoke-Merge` and `Invoke-Recover` were deleted with their three
+  callers left standing and their names left in the export list; every check stayed green, and what
+  it cost was the merge and both recoveries -- two of the three ways a cycle can end.
+
+  Names are taken off the syntax tree rather than a regular expression: a call is a CommandAst and
+  nothing else is, so a name inside a string or a comment cannot count as one. Only Verb-Noun names
+  are judged, which is what leaves `git`, `gh`, `python` and `dotnet` out of it.
+#>
+Check "no atom calls a function that does not exist" {
+  $defined = @{}
+  $called = New-Object System.Collections.ArrayList
+  foreach ($f in (Get-ChildItem $PSScriptRoot -File | Where-Object { $_.Extension -in @(".ps1", ".psm1") })) {
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors)
+    if ($errors -and $errors.Count -gt 0) { return "$($f.Name) does not parse: $($errors[0].Message)" }
+    foreach ($d in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
+      $defined[$d.Name] = $true
+    }
+    foreach ($c in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true)) {
+      $name = $c.GetCommandName()
+      if ($name -and $name -match '^[A-Za-z]+-[A-Za-z]+$') { $null = $called.Add($name) }
+    }
+  }
+  $missing = @($called | Sort-Object -Unique | Where-Object {
+    -not $defined.ContainsKey($_) -and -not (Get-Command $_ -ErrorAction SilentlyContinue)
+  })
+  if ($missing.Count -gt 0) { return "called and defined nowhere: " + ($missing -join ", ") }
+  ""
+}
+
+# Exported by name and defined nowhere is the same hole seen from the other side: the export list is
+# what says an atom may call it, and a name on that list with nothing behind it promises a function
+# that is not there.
+Check "every name the atoms export is a function that exists" {
+  $mod = Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking -PassThru
+  $empty = @($mod.ExportedFunctions.Keys | Where-Object { -not $mod.ExportedFunctions[$_].ScriptBlock })
+  if ($empty.Count -gt 0) { return "exported with nothing behind them: " + ($empty -join ", ") }
+  foreach ($n in @("Invoke-Merge", "Invoke-Recover", "Request-Grill")) {
+    if (-not $mod.ExportedFunctions.ContainsKey($n)) { return "$n is not exported at all" }
+  }
+  ""
 }
 
 Write-Host ""
