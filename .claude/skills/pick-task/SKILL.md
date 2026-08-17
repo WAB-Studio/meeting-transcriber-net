@@ -45,13 +45,21 @@ Take the first of these that answers:
    audit held it or a grill answered it. Emit the card **and** `pr_number`, so the worker pushes to
    the branch that exists rather than opening a second PR against one task. Check the PR is still
    open before believing an old comment.
-3. **The grilled pool, in board order.** Walk the phase lists in order and take the first list that
-   answers; inside a list, `urgente` → `alta` → `normal` → `baja`.
+3. **The first grilled card in board order.** Walk the phase lists in order; inside a list,
+   `urgente` → `alta` → `normal` → `baja`.
+
+**Walk the lists with `--status Open` and no tag filter.** Every `Open` card in the list comes back
+and you sort them yourself, because the ungrilled ones are half of what you are here to look at:
+filtering by `--tag grilled` would hand you a clean candidate list with the card standing in front
+of it invisible, and §2 — the one judgement this session exists to make — would never come up.
 
 ```powershell
 python $S tasks --space MeetingTranscriber --status "in progress"
-python $S tasks --list "0 · Contratos y caracterización" --status Open --tag grilled
+python $S tasks --list "0 · Contratos y caracterización" --status Open
 ```
+
+`tasks` does not print tags, so a card whose tags decide something gets read: `python $S task <id>`
+says `tags:` and the description with it. Read the ones you are about to act on, not the whole list.
 
 `Open` is the pool and `pending` waits on a person: a card in `pending` is never eligible, however
 good it looks. The lists and what each state means are `arquitectura.md` §13.
@@ -94,17 +102,14 @@ fires it should name something a person can settle in one sitting.
 a real meeting, two sound cards, a device unplugged mid recording, two hours of drift measured on
 hardware. Today that is nearly all of phase 2.
 
-That one you *do* move, because no grill would make it buildable either:
+**Put it in `skipped[]` and go on to the next candidate. Do not move it yourself.** The `why` is what
+somebody reads tomorrow, so write it as what they have to bring — "needs two sound cards in one
+machine", not "could not be done" — because that entry is what reaches the card.
 
-```powershell
-python $S move <id> --status pending
-python $S comment <id> --text "Needs <what exactly> — <what a person has to do or bring>."
-```
-
-Record it in `skipped[]` and go on to the next candidate. The comment says what is missing, not
-that you could not do it: whoever reads it tomorrow needs to know what to bring. Every card you
-move goes in `skipped[]` — the audit re-lists the board and compares, so an undeclared move
-surfaces anyway, as a finding.
+Moving it is the orchestrator's, after your answer is recorded, and the split is not tidiness: a
+session that moves a card and then dies has taken it out of the pool with nothing anywhere saying
+why, and `pending` is not a place anything looks again. Declared, the worst case is a card still in
+the pool, which the next pick meets again.
 
 The real risk here is not stalling. It is a session producing plausible measurements of a meeting
 that never happened, so a card that needs a number off real hardware is one nothing on this side
@@ -141,5 +146,10 @@ orchestrator reads it off what you emitted and writes the file itself. The shape
 that is picking the wrong thing shows up in the morning report instead of inside a transcript
 nobody opens. Say what you took **and what you passed to get to it**.
 
-Do not move the card you picked. The worker moves it to `in progress` when it starts, so a pick
-nothing consumes leaves the board exactly as it found it.
+`pr_number` is said either way — the number, or `null`. Leaving the field out reads as a picker that
+found an open PR and did not mention it, and it is refused, because that card gets picked up as
+fresh work and a second PR opened against it.
+
+**This session writes nothing to the board.** Not the card you picked — the worker moves that to
+`in progress` when it starts — and not the ones you skipped. A pick nothing consumes leaves the
+board exactly as it found it.

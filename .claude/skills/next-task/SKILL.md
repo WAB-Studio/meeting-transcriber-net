@@ -11,10 +11,16 @@ description: >-
 A run is **one board task carried to an open PR**, and nothing else. `CLAUDE.md` governs the work
 itself; what is here is only what changes when nobody is beside you.
 
-**This session has two inputs and one output.** In: a path to a JSON file naming the card — its
-`task_id`, and a `pr_number` when that card already has work in flight. Out: the handoff, §5, which
-is your last message and which the caller writes to the second path. Nothing here writes a file to
-either path.
+**You are given two paths, in this order:**
+
+1. **Where the handoff goes.** You do not write it — §5, your last message, is the handoff, and the
+   caller writes that file itself. The path is passed so it can be named in what it writes.
+2. **The card.** A JSON file that exists and is yours to read: `task_id`, and `pr_number` — a number
+   when that card already has work in flight, `null` when it does not.
+
+**Read the second one.** The first does not exist yet, and a session that opens it, finds nothing
+and goes looking for work of its own has quietly become something else; the day stops when it comes
+back holding a card other than the one it was given.
 
 Everything you do to the board is done to that one card — read it, move it, comment on it — so the
 CLI is only ever addressed by id:
@@ -101,18 +107,19 @@ meeting, two sound cards, a device unplugged mid recording, two hours of drift m
 Nearly all of phase 2 is this, and most of it is caught before a card ever reaches here.
 
 When it is not, and you find out from inside the card: `outcome: "blocked"` with `blocked_reason`
-saying what is missing, plus the comment on the card yourself, in terms of what somebody has to
-bring:
+saying what is missing, and the comment on the card yourself, in terms of what somebody has to
+bring. Comment, and leave the card where it is — a card moved to `pending` by a session that then
+ends is a card out of every pool, and putting it back there is not this session's call:
 
 ```powershell
-python $S move <id> --status pending
 python $S comment <id> --text "Needs <what exactly> — <what a person has to do or bring>."
 ```
 
 The real risk here is not stalling. It is that you produce plausible measurements of a meeting that
 never happened. **A number that did not come out of a run does not get written** — not in the code,
-not in the ISA, not in a board comment. **Every card you move goes in the handoff**: the audit
-re-lists the board and compares, so an undeclared move surfaces anyway, as a finding against you.
+not in the ISA, not in a board comment. **Any card you touched at all goes in the handoff**: the
+audit re-lists the board and compares, so an undeclared move or comment surfaces anyway, as a
+finding against you.
 
 ## 2b · A card that still holds a decision
 

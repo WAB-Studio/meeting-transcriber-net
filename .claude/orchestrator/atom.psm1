@@ -333,6 +333,28 @@ $script:Board = {
 }
 
 <#
+  The PRs still open, as numbers, or `$null` if GitHub could not be asked. A seam for the same
+  reason the board is one: what decides whether a day starts is worth testing, and the alternative
+  is a probe that talks to GitHub.
+
+  `$null` and "none" are kept apart here too. A `gh` that did not run coming back as an empty list
+  would read as "nothing in flight" -- which is the answer that ends the day, said by the tool that
+  failed to look.
+
+  The answer is wrapped in an object because a bare list cannot carry that distinction: a scriptblock
+  that returns `@()` puts nothing on the pipeline, so the caller receives `$null` -- the same value
+  that means "it could not look". Written the obvious way, a repo with no open PRs stopped the day
+  every morning. A property on an object survives being empty.
+#>
+$script:OpenPrs = {
+  try {
+    $out = & gh pr list --state open --json number --jq ".[].number"
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return [pscustomobject]@{ Numbers = @($out | Where-Object { $_ -ne "" } | ForEach-Object { [string]$_ }) }
+  } catch { return $null }
+}
+
+<#
   Is there anything a worker could do -- asked before a session is spent rather than after.
 
   Two things make one: a card in `in progress` is a session that died and has to be picked back up,
@@ -356,7 +378,7 @@ $script:Board = {
   cache built this morning is validating nothing.
 #>
 function Get-BoardPool {
-  param([Parameter(Mandatory)]$Day, [scriptblock]$Board)
+  param([Parameter(Mandatory)]$Day, [scriptblock]$Board, [scriptblock]$Prs)
 
   $none = {
     param([string]$Why)
@@ -368,6 +390,7 @@ function Get-BoardPool {
     $Board = $script:Board
     if (-not (Test-Path $script:ClickUp)) { return (& $none "the board CLI is not at $($script:ClickUp)") }
   }
+  if (-not $Prs) { $Prs = $script:OpenPrs }
 
   $resume  = Read-BoardCount (& $Board @("tasks", "--space", $script:Space, "--status", "in progress"))
   $grilled = Read-BoardCount (& $Board @("tasks", "--space", $script:Space, "--status", "Open", "--tag", "grilled"))
@@ -378,6 +401,22 @@ function Get-BoardPool {
   if ($resume -gt 0 -or $grilled -gt 0) {
     New-DayEvent -LogDir $Day.LogDir -Kind "board_pool" -Data @{ resume = $resume; grilled = $grilled } | Out-Null
     return [pscustomobject]@{ Stop = ""; Idle = $false; Resume = $resume; Grilled = $grilled }
+  }
+
+  # An open PR is work in flight, and the card behind it can be sitting anywhere -- `in review` most
+  # of all, where a cycle that died before its close left it. Neither listing above sees that card,
+  # so without this the day answered `no_tasks` over a finished PR nobody had merged, and answered it
+  # again every morning until somebody looked at GitHub. It is asked third because it is the rarest
+  # and because the two listings above cost less.
+  # `$inFlight` and not `$prs`: variable names here are case-insensitive, so a local called `$prs`
+  # is the `[scriptblock]$Prs` parameter, and assigning a list to it throws a conversion error from
+  # a line that looks like it only reads.
+  $open = & $Prs
+  if ($null -eq $open) { return (& $none "GitHub could not say what is still open") }
+  $inFlight = @($open.Numbers)
+  if ($inFlight.Count -gt 0) {
+    New-DayEvent -LogDir $Day.LogDir -Kind "board_pool" -Data @{ resume = 0; grilled = 0; open_prs = $inFlight.Count } | Out-Null
+    return [pscustomobject]@{ Stop = ""; Idle = $false; Resume = 0; Grilled = 0 }
   }
 
   # Nothing came back, which is also what a status that no longer exists comes back as: the CLI
@@ -441,6 +480,44 @@ function Test-CycleStillOpen {
     return "cycle $($Day.Cycle) is still open -- close it before opening another"
   }
   return ""
+}
+
+<#
+  A card nobody on this side of the CLI could finish -- it needs a real meeting, two sound cards, a
+  device unplugged mid recording. It goes to `pending`, where work waits on a person.
+
+  **The session that met it declares it and does not move it.** A session moving cards is a session
+  whose crash leaves the board somewhere nobody wrote down: the card had left the pool, the contract
+  that would have said why was never emitted, and no rerun finds it again because `pending` is not a
+  place anything looks. So the decision comes back in the contract and the move happens here, after
+  it is on the stream, in the order the rest of this file uses -- the comment first, because it is
+  what tells whoever finds the card what to bring, and the move only if the comment landed.
+
+  Failing to record does not stop the day: the caller is told which cards it could not put back, and
+  a card still in the pool is recoverable in a way a card in `pending` with nothing on it is not.
+#>
+function Skip-Card {
+  param([Parameter(Mandatory)]$Day, $Skipped)
+  $lost = @()
+  foreach ($s in @($Skipped)) {
+    $id = [string]$s.task_id
+    if (-not $id) { continue }
+    $body = "**Needs somebody.** " + [string]$s.why + "`n`nMoved to ``pending``: nothing unattended can " +
+            "finish this, so it waits on a person rather than being picked again tomorrow."
+    $said = Write-Elsewhere $Day -TaskId $id -Body $body -Name "skipped-$($Day.Cycle)-$id.md"
+    $moved = $false
+    if ($said) { $moved = Move-Card $Day -TaskId $id -To "pending" }
+    New-DayEvent -LogDir $Day.LogDir -Kind "skipped" -Data @{
+      cycle = $Day.Cycle; task_id = $id; why = [string]$s.why; said = $said; moved = $moved
+    } | Out-Null
+    if ($said -and $moved) {
+      Write-Day $Day ("  skipped " + $id + ": " + [string]$s.why)
+    } else {
+      $lost += $id
+      Write-Day $Day ("  !! " + $id + " could not be put in pending, so it is still in the pool")
+    }
+  }
+  return @($lost)
 }
 
 function Move-Card {
@@ -708,7 +785,7 @@ function Read-Contract {
 Export-ModuleMember -Function (@(
   "Get-Repo", "New-DayRun", "Open-Day", "Enter-AtomLease", "Write-Day", "Write-Atom", "Write-AtomCrash", "Invoke-Session",
   "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Get-BoardPool", "Move-Card", "Set-CardTags",
-  "Test-Preflight", "Test-CycleStillOpen",
+  "Test-Preflight", "Test-CycleStillOpen", "Skip-Card",
   "New-CloseResult", "Request-Grill",
   "Invoke-Merge", "Invoke-Recover", "Read-Contract"
 ) + @($script:DayModule.ExportedFunctions.Keys))

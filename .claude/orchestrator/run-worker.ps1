@@ -19,13 +19,13 @@ Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking
 $script:Day = $null
 trap { Write-AtomCrash -Message $_.Exception.Message -Day $script:Day; exit 1 }
 
-# `pr_number` is deliberately not among them, for the same reason it is not among the picker's. A
-# required field is checked for presence, and a JSON null is indistinguishable from an absent one --
-# so a `blocked` handoff, which has no PR to name and says so by writing null, would have been
-# refused as malformed and stopped the day over a field it was right to leave empty. Nothing is lost
-# by it: the one outcome that must carry a PR number, `pr_opened`, is checked for one by value below.
 $HandoffKeys = @("outcome","task_id","isc_closed","probes",
                  "decisions_deferred","left_out","skipped","blocked_reason","head_sha")
+
+# Said, but allowed to be null: a `blocked` handoff has no PR to name and says so by writing null,
+# and refusing that would stop the day over a field it was right to leave empty. The outcome that
+# must carry a number, `pr_opened`, is checked for one by value further down.
+$HandoffPresent = @("pr_number")
 
 $day = Open-Day
 $script:Day = $day
@@ -90,8 +90,14 @@ if ($unsound -ne "") { Write-Atom @{ ok = $false; stop = "the worker's session i
 # The contract is derived from what the session emitted, and this writes the file. Having the
 # session also remember to write it was a second way to fail without being a second guarantee: a
 # worker once said the whole handoff, did not write it, and the day died with the PR open.
+# `no_tasks` is not among them any more. A session handed one card cannot discover that the board is
+# empty, and while it was allowed it was the quiet way out of the whole arrangement: a worker that
+# failed to read its pick, or fell back on looking at the board itself, returned it with an empty
+# card id -- which named no card, so it slipped past the mismatch check below, and the day moved on
+# leaving the picked card untouched.
 $c = Get-ContractFromText ([string]$w.result)
-$bad = Test-DayContract -Contract $c -Required $HandoffKeys -Field "outcome" -Allowed @("pr_opened","needs_grill","blocked","no_tasks")
+$bad = Test-DayContract -Contract $c -Required $HandoffKeys -Present $HandoffPresent `
+                        -Field "outcome" -Allowed @("pr_opened","needs_grill","blocked")
 if ($bad -ne "") {
   New-DayEvent -LogDir $day.LogDir -Kind "handoff_invalid" -Data @{ cycle = $cycle; reason = $bad } | Out-Null
   Write-Atom @{ ok = $false; stop = "invalid handoff: $bad" }
@@ -112,16 +118,26 @@ New-DayEvent -LogDir $day.LogDir -Kind "handoff" -Data @{
 Write-Day $day ("[$cycle] handoff: {0}  task={1}  pr=#{2}  deferred={3}  skipped={4}" -f `
                 $c.outcome, $c.task_id, $c.pr_number, @($c.decisions_deferred).Count, @($c.skipped).Count)
 
-# The worker was handed a card and came back holding another one. It does not fail the cycle -- the
-# work is done and the handoff describes what was actually built, which is what the audit reads --
-# but it is the one symptom that says the picker is being ignored, and it is invisible everywhere
-# else: the board, the PR and the handoff all agree with each other and only disagree with the pick.
-if ([string]$c.task_id -and [string]$c.task_id -ne [string]$pick.task_id) {
+# The worker was handed a card and came back holding another one. This stops the day, and the whole
+# arrangement rests on it: a boundary that logs its own violation and carries on is a suggestion.
+# What the next atoms would otherwise do is audit and merge a card nobody chose, which is exactly
+# the failure the split was built to prevent -- and it would land in `main` before anybody read the
+# warning that said so.
+#
+# Nothing is thrown away by stopping. The PR the worker opened is open, its card is where the worker
+# left it, and the handoff is on disk; what a person finds in the morning is a finished PR against
+# an unchosen card, named in the report, rather than that card already in `main`.
+if ([string]$c.task_id -ne [string]$pick.task_id) {
   New-DayEvent -LogDir $day.LogDir -Kind "anomaly" -Data @{
-    level = "warn"; code = "pick_ignored"
-    text = "cycle $cycle was picked $([string]$pick.task_id) and worked $([string]$c.task_id)"
+    level = "stop"; code = "pick_ignored"
+    text = "cycle $cycle was picked $([string]$pick.task_id) and the worker came back holding '$([string]$c.task_id)'"
   } | Out-Null
-  Write-Day $day "  !! picked $($pick.task_id) and the worker worked $($c.task_id)"
+  Write-Day $day "  !! picked $($pick.task_id) and the worker worked '$($c.task_id)'"
+  Write-Atom @{
+    ok = $false; cycle = $cycle
+    stop = "the worker did not work the card it was given: picked $([string]$pick.task_id), came back with '$([string]$c.task_id)'"
+  }
+  exit 1
 }
 
 # The card still holds a decision that is not the worker's, met before anything was built. The

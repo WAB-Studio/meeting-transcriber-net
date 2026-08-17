@@ -157,7 +157,8 @@ Check "a hold cannot pass for a pass" {
 Write-Host ""
 Write-Host "  the pick: which card, said once and by one thing"
 
-$PickKeys = @("outcome","task_id","why","skipped","blocked_reason")
+$PickKeys    = @("outcome","task_id","why","skipped","blocked_reason")
+$PickPresent = @("pr_number")
 
 $PickJson = @'
 {
@@ -178,22 +179,39 @@ Check "a pick reads and validates" {
   ""
 }
 
-# `pr_number: null` is the ordinary case -- a card with no work in flight -- and a presence check
-# cannot tell it from a field the session forgot, because in PowerShell a JSON null is $null. So it
-# is not a required key, in either contract, and this is what says so: the day used to stop over a
-# `blocked` handoff that correctly had no PR to name.
-Check "a card with no PR is not a session that forgot a field" {
+# Three states, not two, and the middle one is why `Present` exists. `pr_number: null` is a card
+# with no PR and is the ordinary answer; the field left out entirely is a session that may have
+# found an open PR and not said so, and that card gets picked up as fresh work with a second PR
+# opened against it. `$null -eq` cannot tell those apart and would have had to accept both.
+Check "a null PR number is an answer and an absent one is not" {
   $c = Get-ContractFromText $PickJson
   if ($null -ne $c.pr_number) { return "pr_number came out $($c.pr_number)" }
-  if ((Test-DayContract -Contract $c -Required $PickKeys -Field "outcome" -Allowed @("picked")) -ne "") {
-    return "a null PR number was read as absent in a pick"
+  if ((Test-DayContract -Contract $c -Required $PickKeys -Present $PickPresent -Field "outcome" -Allowed @("picked")) -ne "") {
+    return "a null PR number was refused"
   }
+
+  $gone = '{"outcome":"picked","task_id":"T1","why":"w","skipped":[],"blocked_reason":""}' | ConvertFrom-Json
+  $e = Test-DayContract -Contract $gone -Required $PickKeys -Present $PickPresent -Field "outcome" -Allowed @("picked")
+  if ($e -eq "") { return "a pick that never mentioned pr_number was accepted" }
+  if ($e -notmatch "pr_number") { return "it did not say which field: $e" }
 
   $h = ($HandoffJson | ConvertFrom-Json)
   $h.outcome = "blocked"; $h.pr_number = $null; $h.head_sha = ""
-  if ((Test-DayContract -Contract $h -Required $HandoffKeys -Field "outcome" -Allowed @("pr_opened","blocked")) -ne "") {
+  if ((Test-DayContract -Contract $h -Required $HandoffKeys -Present @("pr_number") -Field "outcome" -Allowed @("pr_opened","blocked")) -ne "") {
     return "a blocked handoff with no PR to name was refused as malformed"
   }
+  ""
+}
+
+# A worker handed one card cannot discover that the board is empty, and while it could say so it was
+# the quiet way out of the whole arrangement: an empty task_id names no card, so it slipped past the
+# mismatch check and the day moved on with the picked card untouched.
+Check "a worker cannot come back saying the board is empty" {
+  $h = ($HandoffJson | ConvertFrom-Json)
+  $h.outcome = "no_tasks"; $h.task_id = ""
+  $e = Test-DayContract -Contract $h -Required $HandoffKeys -Present @("pr_number") `
+                        -Field "outcome" -Allowed @("pr_opened","needs_grill","blocked")
+  if ($e -eq "") { return "no_tasks was accepted from a worker" }
   ""
 }
 
@@ -1451,6 +1469,10 @@ $EmptyList = @("ActuallyPanda56's Workspace: sin tareas para ese filtro.")
 $OneCard   = @("ActuallyPanda56's Workspace - 1 tarea(s)", "", "Open (1)",
                "  86ak1eyev   Medir la deriva de un dispositivo             Open            alta")
 
+# GitHub answers the probe too, and never the network. `$NoPrs` is "nothing in flight", which is
+# what every case below except its own assumes.
+$NoPrs = { return [pscustomobject]@{ Numbers = @() } }
+
 function New-FakeBoard {
   param($InProgress, $Grilled, $Tree, $Calls)
   return {
@@ -1467,7 +1489,7 @@ Check "a board with nothing eligible is idle, and says so without stopping" {
   try {
     $calls = New-Object System.Collections.ArrayList
     $pool = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
-                          -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $Tree -Calls $calls)
+                          -Prs $NoPrs -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $Tree -Calls $calls)
     if ($pool.Stop -ne "") { return "an empty board came back as a stop: $($pool.Stop)" }
     if (-not $pool.Idle)   { return "an empty board did not read as idle" }
     if (-not @($calls | Where-Object { $_ -match "tree" }).Count) { return "the ending was decided without checking the statuses" }
@@ -1483,10 +1505,56 @@ Check "one card in progress is enough, and costs one listing" {
   try {
     $calls = New-Object System.Collections.ArrayList
     $pool = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
-                          -Board (New-FakeBoard -InProgress $OneCard -Grilled $EmptyList -Tree $Tree -Calls $calls)
+                          -Prs $NoPrs -Board (New-FakeBoard -InProgress $OneCard -Grilled $EmptyList -Tree $Tree -Calls $calls)
     if ($pool.Idle)         { return "a card left in progress read as an empty board" }
     if ($pool.Resume -ne 1) { return "it counted $($pool.Resume) in progress" }
     if (@($calls | Where-Object { $_ -match "tree" }).Count) { return "it paid for the tree on a day that had work" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# A cycle that died before its close leaves the card in `in review`, which neither listing sees. The
+# day then answered `no_tasks` over finished work nobody had merged -- and answered it again every
+# morning, because nothing about the state it was reading ever changed.
+Check "an open PR is work in flight, whatever the board says" {
+  $box = New-Sandbox
+  try {
+    $calls = New-Object System.Collections.ArrayList
+    $pool = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) -Prs { return [pscustomobject]@{ Numbers = @("42") } } `
+                          -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $Tree -Calls $calls)
+    if ($pool.Stop -ne "") { return "it stopped instead of running: $($pool.Stop)" }
+    if ($pool.Idle) { return "a day with an open PR and an empty board read as nothing to do" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The same rule the board listings follow: a tool that could not look does not get to answer "there
+# is nothing". `gh` failing and returning an empty list would end the day, said by the thing that
+# failed to check.
+Check "GitHub failing to answer is not an empty GitHub" {
+  $box = New-Sandbox
+  try {
+    $calls = New-Object System.Collections.ArrayList
+    $pool = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) -Prs { return $null } `
+                          -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $Tree -Calls $calls)
+    if ($pool.Idle) { return "a gh that never ran ended the day" }
+    if ($pool.Stop -eq "") { return "it did not stop over a GitHub it could not read" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# GitHub is asked last and only when both listings came up empty: a working day answers on the
+# cheaper questions, and paying for a third every cycle to learn what the first already said is the
+# cost this ordering exists to avoid.
+Check "a day with work does not ask GitHub anything" {
+  $box = New-Sandbox
+  try {
+    $asked = $false
+    $calls = New-Object System.Collections.ArrayList
+    $pool = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) -Prs { $script:asked = $true; return [pscustomobject]@{ Numbers = @() } } `
+                          -Board (New-FakeBoard -InProgress $OneCard -Grilled $EmptyList -Tree $Tree -Calls $calls)
+    if ($pool.Idle) { return "a card in progress read as an empty board" }
+    if ($script:asked) { return "it paid for a GitHub call on a day that already had work" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
@@ -1496,7 +1564,7 @@ Check "a grilled card is enough on its own" {
   try {
     $calls = New-Object System.Collections.ArrayList
     $pool = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
-                          -Board (New-FakeBoard -InProgress $EmptyList -Grilled $OneCard -Tree $Tree -Calls $calls)
+                          -Prs $NoPrs -Board (New-FakeBoard -InProgress $EmptyList -Grilled $OneCard -Tree $Tree -Calls $calls)
     if ($pool.Idle)          { return "a grilled card read as an empty board" }
     if ($pool.Grilled -ne 1) { return "it counted $($pool.Grilled) grilled" }
     ""
@@ -1510,12 +1578,12 @@ Check "a board that did not answer stops the day instead of ending it" {
   try {
     $calls = New-Object System.Collections.ArrayList
     $dead = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
-                          -Board (New-FakeBoard -InProgress $null -Grilled $EmptyList -Tree $Tree -Calls $calls)
+                          -Prs $NoPrs -Board (New-FakeBoard -InProgress $null -Grilled $EmptyList -Tree $Tree -Calls $calls)
     if ($dead.Idle)        { return "a CLI that failed read as an empty board" }
     if ($dead.Stop -eq "") { return "a CLI that failed did not stop the day" }
 
     $blind = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
-                           -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $null -Calls $calls)
+                           -Prs $NoPrs -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $null -Calls $calls)
     if ($blind.Idle)        { return "a tree that failed read as an empty board" }
     if ($blind.Stop -eq "") { return "a tree that failed did not stop the day" }
     ""
@@ -1531,7 +1599,7 @@ Check "a renamed status stops the day rather than emptying it" {
     $renamed = @("MeetingTranscriber  (901313958747)",
                  "  estados por defecto: Ready > pending > in progress > Closed")
     $pool = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
-                          -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $renamed -Calls $calls)
+                          -Prs $NoPrs -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $renamed -Calls $calls)
     if ($pool.Idle)             { return "a renamed status read as an empty board" }
     if ($pool.Stop -notmatch "Open") { return "it does not name what is missing: $($pool.Stop)" }
 
@@ -1539,7 +1607,7 @@ Check "a renamed status stops the day rather than emptying it" {
     $recased = @("MeetingTranscriber  (901313958747)",
                  "  estados por defecto: open > pending > in progress > Closed")
     $lower = Get-BoardPool -Day ([pscustomobject]@{ LogDir = $box }) `
-                           -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $recased -Calls $calls)
+                           -Prs $NoPrs -Board (New-FakeBoard -InProgress $EmptyList -Grilled $EmptyList -Tree $recased -Calls $calls)
     if ($lower.Idle) { return "a status renamed only in its case read as an empty board" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }

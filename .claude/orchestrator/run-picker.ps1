@@ -31,11 +31,12 @@ Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking
 $script:Day = $null
 trap { Write-AtomCrash -Message $_.Exception.Message -Day $script:Day; exit 1 }
 
-# `pr_number` is deliberately not among them. A required field is checked for presence, and in
-# PowerShell a JSON null is indistinguishable from an absent one -- so requiring it would refuse
-# every pick of an ordinary card, which is a card with no PR and says so by writing null. There is
-# nothing to catch there either: absent and null mean the same thing to everything downstream.
 $PickKeys = @("outcome","task_id","why","skipped","blocked_reason")
+
+# Said, but allowed to be null. `pr_number: null` is "this card has no PR in flight" and is the
+# ordinary answer; a picker that omitted the field entirely is one that may have found an open PR
+# and not mentioned it, and that card gets picked up as fresh work and opened a second PR against.
+$PickPresent = @("pr_number")
 
 $day = Open-Day
 $script:Day = $day
@@ -84,7 +85,20 @@ $cycle = $day.Cycle + 1
 $day.Cycle = $cycle
 
 $pickfile = Join-Path $day.LogDir "pick-$cycle.json"
-Remove-Item $pickfile -ErrorAction SilentlyContinue   # so a stale file cannot pass as fresh
+
+# A pick already made is returned, not made again. What sequences these is a model, so this atom
+# running twice before its worker is not a hypothetical -- and recomputing was not harmless: it
+# spends a second session, and the board it reads has moved, so the answer it prints can differ from
+# the one already announced. The card somebody was told about would then not be the card worked.
+$done = Read-Contract $day "pick-$cycle.json"
+if ($done -and [string]$done.outcome) {
+  Write-Day $day ("[$cycle] pick already made: {0} {1} -- {2}" -f $done.outcome, $done.task_id, $done.why)
+  Write-Atom @{
+    ok = $true; cycle = $cycle; outcome = [string]$done.outcome; task_id = [string]$done.task_id
+    pr_number = $done.pr_number; why = [string]$done.why; blocked_reason = [string]$done.blocked_reason
+  }
+  exit 0
+}
 
 Write-Day $day "[$cycle] picker: /pick-task"
 $k = Invoke-Session -Day $day -Role "picker" -Prompt "/pick-task $pickfile" -Cycle $cycle
@@ -102,7 +116,8 @@ $unsound = Test-Sound -Day $day
 if ($unsound -ne "") { Write-Atom @{ ok = $false; stop = "the picker's session is not sound: $unsound" }; exit 1 }
 
 $c = Get-ContractFromText ([string]$k.result)
-$bad = Test-DayContract -Contract $c -Required $PickKeys -Field "outcome" -Allowed @("picked","blocked","no_tasks")
+$bad = Test-DayContract -Contract $c -Required $PickKeys -Present $PickPresent `
+                        -Field "outcome" -Allowed @("picked","blocked","no_tasks")
 # A pick naming no card is the one failure that reads as success everywhere downstream: the worker
 # would be launched with an empty id and would go back to picking one itself, which is the whole
 # arrangement undone in silence.
@@ -129,8 +144,16 @@ New-DayEvent -LogDir $day.LogDir -Kind "pick" -Data @{
 # The line that says whether the ordering rule is picking the right thing, and the only place it
 # shows without opening a transcript.
 Write-Day $day ("[$cycle] pick: {0} {1} -- {2}" -f $c.outcome, $c.task_id, $c.why)
-foreach ($s in @($c.skipped)) {
-  Write-Day $day ("  skipped " + [string]$s.task_id + ": " + [string]$s.why)
+
+# After the contract is on disk and on the stream, and never before: the session declares what
+# nobody could build and this is what moves it, so a crash anywhere in the pick leaves those cards
+# in the pool rather than in `pending` with nothing saying why they went there.
+$stranded = @(Skip-Card -Day $day -Skipped @($c.skipped))
+if ($stranded.Count -gt 0) {
+  New-DayEvent -LogDir $day.LogDir -Kind "anomaly" -Data @{
+    level = "warn"; code = "skip_failed"
+    text = "cycle $cycle could not put " + ($stranded -join ", ") + " in pending, so the next pick meets them again"
+  } | Out-Null
 }
 
 if ([string]$c.outcome -eq "no_tasks") {
