@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 92/127
+progress: 93/131
 updated: 2026-08-16
 ---
 
@@ -142,6 +142,10 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-124: A recording waiting in that folder is kept, has its audio taken out, or is thrown away — and which of the three happens is somebody's choice every time.
 - [x] ISC-125: Anti: a recording waiting in that folder is removed by nothing but somebody choosing to remove it.
 - [x] ISC-126: Anti: a meeting that is still being recorded is never offered as one to decide about.
+- [x] ISC-128: A source that will not stop is given up on at a deadline, rather than waited on for as long as it takes.
+- [ ] ISC-129: A source that would not stop is named when a recording stops, together with what was kept of it.
+- [ ] ISC-130: A source that would not stop does not keep the recording's other source from being let go of.
+- [ ] ISC-131: Anti: nothing a source that will not stop is still using is taken away from it.
 
 ### F4 · WinUI recorder
 Why: the application replaces OBS. Recording, pausing, stopping and recovering happen in one
@@ -430,4 +434,5 @@ Board: 7 · Distribución y backup
 - ISC-124 — `UnfinishedRecordingsTests` and `RecoveryCommandTests` green 2026-08-15: kept, the recording is read through and every file is still there afterwards; taken out, the audio lands where it was asked for and the blocks stay; thrown away, the folder is gone. `RecoveryCommandTests.Deciding_nothing_about_a_recording_is_a_misuse` and `.Deciding_two_things_about_a_recording_is_a_misuse` hold that there is no default
 - ISC-125 — `UnfinishedRecordingsTests.Nothing_but_a_decision_about_one_recording_removes_a_folder` and `.Nothing_in_the_audio_engine_removes_a_file_it_did_not_just_create` green 2026-08-15, each red 2026-08-15 against a `Directory.Delete` and a `Delete(` planted in a source file that has no business holding one
 - ISC-126 — `UnfinishedRecordingsTests.A_meeting_still_being_recorded_is_said_to_be_rather_than_offered_as_one_to_decide_about` and `.None_of_the_three_outcomes_lands_on_a_meeting_that_is_still_being_recorded` green 2026-08-15, over the handle a capture holds on its own spool — the same folder reading as waiting the moment nothing holds it. The first red 2026-08-15 against a build that answered that nothing was ever being written
+- ISC-128 — `CaptureLoopTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-16, over a loop body that ignores what it is asked and blocks on a gate nothing sets: waiting comes back at the deadline rather than at a multiple of it, says the loop was given up on, and the loop is still running when it says so. Red 2026-08-16 against the unbounded wait this replaces — that same test was still going at 2m 27s and never finished, which is the bug as the report describes it. ISC-129, ISC-130 and ISC-131 are the rest of that path and stay open: each needs a real device wedged on demand, which is the one thing nothing can arrange. The claim says a source and not a recording on purpose — three waits on the way out of a session are still unbounded, and adversarial review found all three: releasing the audio client and the endpoint, releasing the silence played into the loopback, and waiting for a stream to start at all. They are a wedge in the teardown rather than in the draining, which is a different failure from this one and is on the board
 - ISC-127 — `ExtractionPositionTests` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-08-16, over `decisions`, `action_items`, `open_questions` and the note pinned to one alike: each refuses a second row at a position it already holds and a position that counts from before the first, and `.A_position_in_an_extraction_belongs_to_one_row_wherever_it_is_stored` reads the anchored set off the model rather than off a list, so a row type that took the anchor and mapped half of it fails there. `.Nothing_the_model_anchors_goes_unprobed` red 2026-08-16 with `action_item_progress` left off the probed list, the sweep red naming `decisions` against a corpus whose `ix_decisions_extraction_run_id_ordinal` was dropped, and `.A_position_that_is_not_a_position_is_refused_of_a_note_as_well` red against position zero, so it hangs on the CHECK and not on the shape of the statement. `CorpusRebuildTests.Rebuilding_puts_everything_an_extraction_produced_back_at_its_own_position` holds the other side over a delete-and-reproject written in the test, with no row id in common; that the production rebuild leaves these rows alone instead is `MeetingTranscriber.Processing.Tests`' `.What_the_rebuild_cannot_produce_again_it_does_not_delete`
