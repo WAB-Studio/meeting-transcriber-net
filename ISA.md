@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 95/145
+progress: 95/146
 updated: 2026-08-17
 ---
 
@@ -225,6 +225,7 @@ Board: 7 · Distribución y backup
 - [ ] ISC-112: An upgrade over an installed build leaves the corpus intact.
 - [ ] ISC-113: The CLI and the MCP server are reachable by app execution alias.
 - [ ] ISC-114: The corpus location is configurable and validated at startup.
+- [ ] ISC-146: The package installs and uninstalls on a machine that is not the one it was built on.
 
 ## Not yet specified
 
