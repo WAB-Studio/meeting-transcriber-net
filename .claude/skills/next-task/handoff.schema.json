@@ -16,53 +16,31 @@
   "properties": {
     "outcome": {
       "type": "string",
-      "enum": ["pr_opened", "ask", "blocked", "no_tasks"],
-      "description": "pr_opened: there is a branch and a PR. ask: a product decision the card does not settle, met BEFORE building, so a short session is lost instead of a whole diff. blocked: stuck, nothing to review. no_tasks: the pool came up empty."
+      "enum": [
+        "pr_opened",
+        "needs_grill",
+        "blocked",
+        "no_tasks"
+      ],
+      "description": "pr_opened: there is a branch and a PR. needs_grill: the card still holds a product decision that is not yours, met BEFORE building, so a short session is lost instead of a whole diff. blocked: stuck, nothing to review. no_tasks: the pool came up empty."
     },
-    "questions": {
-      "type": "array",
-      "description": "Only for `ask`, and empty otherwise. Each one stops this cycle until a person answers it, so the bar is that you cannot go on being right without the answer. A question nobody could read is refused and the outcome is taken as blocked.",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["id", "question", "why", "options"],
-        "properties": {
-          "id": { "type": "string", "description": "Short and unique within the handoff, e.g. q1." },
-          "question": {
-            "type": "string",
-            "description": "One sentence, answerable by somebody who has not read the code. It names the decision, never the implementation."
-          },
-          "why": {
-            "type": "string",
-            "description": "What is different depending on the answer, in one sentence."
-          },
-          "options": {
-            "type": "array",
-            "minItems": 2,
-            "maxItems": 4,
-            "description": "The answers on offer, with distinct labels. No option carries an effect: nothing has been built yet, so an answer decides what gets built and not what happens to a PR.",
-            "items": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["label"],
-              "properties": {
-                "label": { "type": "string", "description": "What the user sees. A few words, no code." },
-                "detail": { "type": "string", "description": "One line on what picking this means." }
-              }
-            }
-          }
-        }
-      }
+    "task_id": {
+      "type": "string",
+      "description": "ClickUp ID, or an empty string if none was taken."
     },
-    "task_id": { "type": "string", "description": "ClickUp ID, or an empty string if none was taken." },
-    "pr_number": { "type": "integer", "description": "PR number, or 0 if none was opened." },
+    "pr_number": {
+      "type": "integer",
+      "description": "PR number, or 0 if none was opened."
+    },
     "head_sha": {
       "type": "string",
       "description": "Full SHA of the commit left at the branch tip. It fixes WHAT was delivered: the audit returns the one it read and the orchestrator stops if they disagree."
     },
     "isc_closed": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "IDs such as ISC-42 marked [x] in this session."
     },
     "probes": {
@@ -71,10 +49,17 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["command", "passed"],
+        "required": [
+          "command",
+          "passed"
+        ],
         "properties": {
-          "command": { "type": "string" },
-          "passed": { "type": "boolean" }
+          "command": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          }
         }
       }
     },
@@ -84,10 +69,20 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["what", "chose", "blocks_the_pr"],
+        "required": [
+          "what",
+          "chose",
+          "blocks_the_pr"
+        ],
         "properties": {
-          "what": { "type": "string", "description": "The fork, in one sentence." },
-          "chose": { "type": "string", "description": "What was done meanwhile, or an empty string if it was left undone." },
+          "what": {
+            "type": "string",
+            "description": "The fork, in one sentence."
+          },
+          "chose": {
+            "type": "string",
+            "description": "What was done meanwhile, or an empty string if it was left undone."
+          },
           "blocks_the_pr": {
             "type": "boolean",
             "description": "True if resolving it the other way would invalidate the diff. The audit recomputes this itself and does not lean on the value."
@@ -97,7 +92,9 @@
     },
     "left_out": {
       "type": "array",
-      "items": { "type": "string" },
+      "items": {
+        "type": "string"
+      },
       "description": "What the task asked for and was not delivered."
     },
     "skipped": {
@@ -106,13 +103,52 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["task_id", "needs"],
+        "required": [
+          "task_id",
+          "needs"
+        ],
         "properties": {
-          "task_id": { "type": "string" },
-          "needs": { "type": "string", "description": "What a person has to do or bring." }
+          "task_id": {
+            "type": "string"
+          },
+          "needs": {
+            "type": "string",
+            "description": "What a person has to do or bring."
+          }
         }
       }
     },
-    "blocked_reason": { "type": "string", "description": "Empty string unless outcome is blocked." }
+    "blocked_reason": {
+      "type": "string",
+      "description": "Empty string unless outcome is blocked."
+    },
+    "decisions_owed": {
+      "type": "array",
+      "description": "Only when the outcome or verdict says a decision is owed, and empty otherwise. Each one goes onto the card in writing and the card goes to `pending` with the `regrill` tag: nobody is interrupted, and a grill settles it before any session touches the card again. The bar is that the answer changes what the person using the app experiences, not how the code gets there.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "what"
+        ],
+        "properties": {
+          "what": {
+            "type": "string",
+            "description": "The decision, in one sentence, named the way somebody who has not read the code would name it. This is what a grill reads first, so it is the one field nothing may leave out."
+          },
+          "why": {
+            "type": "string",
+            "description": "What is different depending on the answer, in one sentence."
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The answers you can see on offer, if you can see them. Two or more, or none at all -- one option is not a decision. A grill may find others; this is what saves it the rediscovery."
+          }
+        }
+      }
+    }
   }
 }

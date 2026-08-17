@@ -1,15 +1,15 @@
 ---
 name: run-day
 description: >-
-  Run a day of unattended work on the board: sequence the orchestrator's atoms cycle after cycle,
-  carry the one question a cycle cannot answer to the user, and report what happened. Triggers:
+  Run a day of unattended work on the board: sequence the orchestrator's atoms cycle after cycle
+  until the board or the usage window ends it, and report what happened. Triggers:
   "trabajá el día", "work the day", "arrancá el día", "seguí el board todo el día".
 ---
 
 # run-day — you are the day
 
-Six scripts do everything that must not be forgotten. **You do the sequencing and the asking**, and
-those are the only two things you do. Every script takes no arguments and prints a last line
+Five scripts do everything that must not be forgotten. **You sequence them and you do the telling**,
+and those are the only two things you do. Every script takes no arguments and prints a last line
 starting with `RESULT` — that line is what you act on; everything above it is for the person.
 
 ```powershell
@@ -22,7 +22,7 @@ $O = "$PWD\.claude\orchestrator"
 ```powershell
 & "$O\run-worker.ps1"      # preflight, /next-task, the handoff
 & "$O\run-audit.ps1"       # /audit-session, the verdict
-& "$O\close-cycle.ps1"     # merge, or put the card back, or hand you the questions
+& "$O\close-cycle.ps1"     # merge the PR, or leave it open and file the card
 ```
 
 Then start again at `run-worker.ps1`. Nothing paces this and nothing needs to: a cycle is two
@@ -36,7 +36,7 @@ What each `RESULT` means:
 | `outcome: no_tasks` | nothing grilled is left — `end-day.ps1`, then report |
 | `outcome: blocked` | `end-day.ps1`, then report; the reason is on the card already |
 | `action: merged` / `recovered` | say it in one line and start the next cycle |
-| `action: ask` | §2 — from `run-worker.ps1` or from `close-cycle.ps1` alike |
+| `action: parked` | a decision is owed on that card — §2 — and the next cycle starts |
 | `reason` with no `stop` | not an ending: it names what the run needs instead. Do that. |
 
 **Nothing else ends the day.** A `hold` costs one PR a rerun and the next cycle takes the next task;
@@ -50,48 +50,26 @@ depends on it — it is for a person who wants to look.
 `CLAUDE.md` leaves merging to the user, and **this is the one place that is departed from**. What
 replaces them is the audit, and it is a weaker guarantee: it reads the diff, the board and the ISA,
 and it waits for CI, but it is not a person. That is why the two verdicts that do not merge are
-written to be cheap — a `hold` costs one PR a rerun, a question costs one answer — while a bad
+written to be cheap — one costs a PR a rerun, the other costs it a wait on a grill — while a bad
 `pass` costs `main` plus everything built on it before anybody notices.
 
 Closing the cards is still theirs. `in review` is where a day's work piles up, and that is
 deliberate: the board is where you see what a day did.
 
-## 2 · The question is the only thing you can do that they cannot
+## 2 · Nothing here waits for you
 
-Two atoms can hand you one and they mean different things. `run-worker.ps1` asking means the worker
-met a fork before building — the cheap one, a short session lost. `close-cycle.ps1` asking means the
-audit found one in a PR that already exists, and that PR is neither merged nor put back until you
-come back with an answer.
+A cycle that meets a decision neither the worker nor the audit can make does not stop and does not
+ask. It writes the decision on the card, sends the card to `pending` tagged `regrill`, and the day
+takes the next task. `action: parked` in a `RESULT` is that, and the PR it names is open, green and
+waiting on a grill rather than on a merge.
 
-Either way the questions are already written down and the cycle has stopped.
+Say it in one line when it happens — the card, the PR, and what has to be settled — and go on.
 
-**One question per `AskUserQuestion` call, in the order given.** Each carries its own options and
-its own consequence, and batching them makes somebody weigh four things to answer the first. Take
-the text, the `why` and the options straight off the `RESULT` — add nothing, recommend nothing,
-invent no fifth option.
-
-Then write what they picked and run the atom that reads it:
-
-```json
-[ { "id": "q1", "label": "<the option, character for character>", "notes": "<what they typed>" } ]
-```
-
-```powershell
-& "$O\answer-cycle.ps1"    # reads .scratch/answers.json
-```
-
-Write that file with the `Write` tool at `.scratch/answers.json`. **The label is all you write** —
-never what it means. The effect is read back off the verdict's own option list, so a label spelled
-loosely is refused rather than guessed at. If the atom refuses the file, it says why; fix it and run
-it again.
-
-`answer-cycle.ps1` knows which of the two asked and does the right thing with it: the audit's answer
-merges the PR or sends the card back, and the worker's puts the card in the pool carrying what was
-decided, for a later cycle to build.
-
-**If nobody is there to ask** — you are running headless and `AskUserQuestion` has no one on the
-other end — do not guess and do not wait. Leave the cycle where it is and end the day: the question
-is on the stream, the card has not moved, and whoever comes back finds it.
+**This is the arrangement's soft spot, so watch it.** Every parked PR is finished work that is not
+in `main`, and the reason it is acceptable is that it should be rare: the grill exists to make it
+rare. A day that parks two, and then another day that parks two, is not a run of awkward cards —
+it means the grill is not catching what it should and the audit ought to go back to stopping the
+day. Say so plainly when you see it; do not let it become the normal shape of a day.
 
 ## 3 · What you say, and when
 
@@ -117,8 +95,8 @@ including the fix you just found. Write it on a card and let a later day take it
 ```
 
 Give them the short version off what it returns: how many cycles, what merged, what it cost, what
-stopped it, what came back unmerged, every decision they made. The card each PR came from is in
-`in review`; closing those is theirs, and so is merging anything left open.
+stopped it, what came back unmerged, and every card parked on a decision they now owe. The card
+each merged PR came from is in `in review`; closing those is theirs, and so is merging what is left.
 
 **Say once, when you launch, that you only report while this conversation is alive.** If it ends
 mid-day the atoms stop being called, the day stops where it stood, and the lock it holds keeps the
@@ -139,5 +117,5 @@ work between them. **The working directory is load-bearing** — a scheduled tas
 `C:\Windows\System32`, and from there this project does not exist: no `CLAUDE.md`, no skills, no
 settings.
 
-A day launched this way has nobody to ask, which is §2's last paragraph and the reason the grill
-exists. Everything else it can do alone.
+A day launched this way behaves exactly like one you watch: nothing in it waits for a person, so
+the only difference is who reads `report.md` afterwards.

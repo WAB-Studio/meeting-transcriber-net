@@ -51,16 +51,25 @@ The board's conventions — which list is which, what each state means — are i
 it is your task, not a new one: pick it back up. Starting another leaves the first abandoned in a
 state that already took it out of the pool.
 
-If there is none, walk the phase lists in order and take the first with an eligible task; inside
-it, by priority `urgente` → `alta` → `normal` → `baja`.
+If there is none, walk the phase lists in order and take the first candidate; inside a list, by
+priority `urgente` → `alta` → `normal` → `baja`.
 
 ```powershell
-python $S tasks --list "0 · Contratos y caracterización" --status Open --tag grilled
+python $S tasks --list "0 · Contratos y caracterización" --status Open
 ```
 
-**`--tag grilled` is not a filter you may drop.** A card without it still has product decisions
-inside it that are not yours, and you have nobody to put them to. It is ineligible however good it
-looks and however empty the pool is; an empty pool is `no_tasks`, which is a legitimate ending.
+**The first candidate in order is the task, and whether it is grilled does not change that.** The
+board is ordered because later work stands on earlier work, so skipping past an ungrilled card to a
+grilled one further down builds the second floor of a house whose first floor is still a decision.
+That is worse than losing the session.
+
+So: **a candidate without the `grilled` tag is `outcome: "needs_grill"`** — §2b, with an empty
+`decisions_owed[]` if you have not read far enough to name what is open, and with entries if you
+have. You do not take the next one instead.
+
+The one thing that is passed over is a card **nobody** could build — a real meeting, two sound
+cards, hardware. That is §2, it goes to `pending` declared in `skipped[]`, and the next candidate
+is fair game, because no grill would make it buildable either.
 
 The tag says a person decided; **what they decided is the `**Grilled.**` comment on the card**, and
 it is the first thing to read after the description. It carries the SHA of `main` it was decided
@@ -127,18 +136,22 @@ that you could not do it: whoever reads it tomorrow needs to know what to bring.
 move goes in the handoff** — the audit re-lists the board and compares, so an undeclared move
 surfaces anyway, as a finding against you.
 
-## 2b · Asking, and only before you build
+## 2b · A card that still holds a decision
 
-A grilled card has had its product decisions made. If you meet one it did not settle, **stop and
-ask — before you build anything.** `outcome: "ask"`, the fork as two to four options in
-`questions[]`, and nothing else in that session. The answer comes back on the card and a later
-cycle builds it, so what you spend is a short session instead of a whole diff written against a
-guess.
+A grilled card has had its product decisions made. If you meet one it did not settle, **stop before
+you build anything**: `outcome: "needs_grill"`, the fork in `decisions_owed[]`, and nothing else in
+that session.
+
+Nobody is interrupted. What you wrote goes on the card, the card is retagged `regrill` and sent to
+`pending`, and a grill settles it before any session touches it again. So `what` is the field that
+matters: it is read cold by whoever grills the card, and it is all they get from you. Name the
+decision the way somebody who has not read the code would name it, and add `why` and the options
+when you can see them.
 
 The bar is `CLAUDE.md`'s and it is narrow: **does the answer change what the person using this app
 experiences, or only how the code gets there?** If it does not show from outside, it is yours —
-decide it, say so in `decisions_deferred`, and carry on. A question you could settle by reading the
-repo is one you are charging a person for.
+decide it, say so in `decisions_deferred`, and carry on. A decision you could settle by reading the
+repo is a session you are spending for nothing.
 
 ## 3 · Working
 

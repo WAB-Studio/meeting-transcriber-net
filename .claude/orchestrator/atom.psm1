@@ -282,6 +282,105 @@ function Move-Card {
   return (Invoke-BestEffort $Day "moving card $TaskId to $To" { python $script:ClickUp move $TaskId --status $To })
 }
 
+# One call rather than two: the CLI takes both, so a card cannot end up having lost one tag and not
+# gained the other.
+function Set-CardTags {
+  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)][string]$TaskId,
+        [string]$Add, [string]$Remove)
+  if (-not (Test-Path $script:ClickUp)) { return $false }
+  $argv = @("tag", $TaskId)
+  if ($Remove) { $argv += @("--rm", $Remove) }
+  if ($Add)    { $argv += @("--add", $Add) }
+  return (Invoke-BestEffort $Day "retagging card $TaskId" { python $script:ClickUp @argv })
+}
+
+<#
+  A card that was grilled, went to a worker, and turned out to still hold a decision nobody had
+  made. Two things happen and both are mechanical, because both are what a session would skip.
+
+  **What the grill missed gets written on the card.** Without it the next grill sits down with the
+  same card and no idea which fork sank the last attempt, asks the same questions it asked before,
+  and misses the same one again. That comment is the only thing carrying the lesson from a failed
+  grill to the next one.
+
+  **`grilled` comes off and `regrill` goes on.** Off, because a card that stopped a worker
+  demonstrably was not grilled, and leaving it on would have the next worker take it and stop on it
+  again. On, because a grill needs to find these before it finds anything else: they are the cards
+  where somebody already paid a session to discover what is missing.
+
+  The comment goes first and the tags second. A card still tagged `grilled` with the comment on it
+  costs one wasted session; a card retagged with no comment costs the next grill its starting point,
+  which is the failure repeating.
+#>
+function Write-OwedDecisions {
+  param([Parameter(Mandatory)]$Lines, [Parameter(Mandatory)]$Owed)
+  foreach ($d in @($Owed)) {
+    $null = $Lines.Add("- **" + [string]$d.what + "**")
+    if ($d.why) { $null = $Lines.Add("  " + [string]$d.why) }
+    foreach ($o in @($d.options)) { $null = $Lines.Add("  - " + [string]$o) }
+  }
+}
+
+<#
+  A card that still holds a decision nobody here can make -- met by the worker before it built, or
+  by the audit in a diff already finished. Both land here, because the answer to both is the same
+  and it is not a question put to somebody at four in the afternoon: it is a card that goes back to
+  a grill, which is the one place product decisions are made.
+
+  Two things happen and both are mechanical, because both are what a session would skip.
+
+  **What has to be settled gets written on the card.** Without it the next grill sits down with the
+  same card and no idea which fork sank the last attempt, asks the questions it already asked, and
+  misses the same one again. That comment is the only thing carrying the lesson from a failed grill
+  to the next one.
+
+  **`grilled` comes off and `regrill` goes on.** Off, because a card that stopped a session
+  demonstrably was not grilled, and leaving it on would have the next worker take it and stop again.
+  On, because a grill has to find these before anything else: they are the cards where somebody
+  already paid a session to discover what is missing.
+
+  The comment goes first and the tags second. Still tagged with the comment on it costs one wasted
+  session; retagged with no comment costs the next grill its starting point, which is the failure
+  repeating.
+#>
+function Request-Grill {
+  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)][string]$TaskId, $Owed, $PrNumber)
+
+  $say = New-Object System.Collections.ArrayList
+  $null = $say.Add("**Needs grilling.** A session stopped on this card: it holds a decision that is not the session's to make.")
+  $null = $say.Add("")
+  if (@($Owed).Count -gt 0) {
+    $null = $say.Add("What has to be settled before anybody builds on it:")
+    $null = $say.Add("")
+    Write-OwedDecisions -Lines $say -Owed $Owed
+  } else {
+    $null = $say.Add("The card was never grilled, so everything in it is still open.")
+  }
+  if ($PrNumber) {
+    $null = $say.Add("")
+    $null = $say.Add("PR #$PrNumber is open and green and stays that way. Once this is settled the card goes back in the pool, and whoever takes it picks up that PR's branch rather than opening a second one.")
+  }
+  $null = $say.Add("")
+  $null = $say.Add("Retagged ``regrill``: nothing takes this card again until a grill settles the above and puts ``grilled`` back.")
+
+  Write-Elsewhere $Day -TaskId $TaskId -PrNumber $PrNumber -Body ($say -join "`n") -Name "needs-grill-$($Day.Cycle).md"
+  $retagged = Set-CardTags $Day -TaskId $TaskId -Remove "grilled" -Add "regrill"
+  $moved = Move-Card $Day -TaskId $TaskId -To "pending"
+
+  New-DayEvent -LogDir $Day.LogDir -Kind "decision_owed" -Data @{
+    cycle = $Day.Cycle; task_id = $TaskId; pr_number = $PrNumber
+    decisions = @($Owed); retagged = $retagged; moved = $moved
+  } | Out-Null
+
+  if (-not $retagged) {
+    Write-Day $Day "  card $TaskId still reads as grilled -- retag it by hand or the next worker stops on it again"
+  }
+  if (-not $moved) {
+    Write-Day $Day "  card $TaskId did NOT reach pending"
+  }
+  return $moved
+}
+
 <#
   The PR is integrated here rather than by whatever decided it should be: it cannot be forgotten,
   cannot happen twice, and lands on the stream. The next preflight fast-forwards local `main`, so
@@ -384,6 +483,6 @@ function Read-Contract {
 
 Export-ModuleMember -Function (@(
   "Get-Repo", "New-DayRun", "Open-Day", "Write-Day", "Write-Atom", "Write-AtomCrash", "Invoke-Session",
-  "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Move-Card",
+  "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Move-Card", "Set-CardTags", "Request-Grill",
   "Invoke-Merge", "Invoke-Recover", "Read-Contract"
 ) + @($script:Day.ExportedFunctions.Keys))

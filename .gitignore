@@ -487,6 +487,12 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
+# A local skill: it reads several days of orchestrator runs to answer a question about the
+# arrangement rather than about the code, and those runs are ignored too. It has to live under
+# .claude/skills/ because that is where skills are found, so ignoring it is the only way to keep it
+# out of the repo.
+/.claude/skills/parked-prs/
+
 # Unattended orchestrator runs: handoffs, verdicts and the day log. The lock is a live PID.
 .claude/orchestrator/log/
 .claude/orchestrator/day.lock

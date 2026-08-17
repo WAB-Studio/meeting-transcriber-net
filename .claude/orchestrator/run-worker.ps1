@@ -54,8 +54,8 @@ New-DayEvent -LogDir $day.LogDir -Kind "preflight_ok" | Out-Null
 # `in progress`, which is the abandonment the whole arrangement exists to prevent.
 if ($day.Cycle -gt 0) {
   $open = Read-Contract $day "handoff-$($day.Cycle).json"
-  if ($open -and @("pr_opened", "ask") -contains [string]$open.outcome -and
-      -not (Test-CycleEvent -LogDir $day.LogDir -Cycle $day.Cycle -Kinds @("merged","recovered","answered_before_building"))) {
+  if ($open -and [string]$open.outcome -eq "pr_opened" -and
+      -not (Test-CycleEvent -LogDir $day.LogDir -Cycle $day.Cycle -Kinds @("merged","recovered"))) {
     Write-Atom @{ ok = $false; reason = "cycle $($day.Cycle) is still open -- close it before opening another" }
     exit 1
   }
@@ -94,7 +94,7 @@ if ($unsound -ne "") { Write-Atom @{ ok = $false; stop = "the worker's session i
 # session also remember to write it was a second way to fail without being a second guarantee: a
 # worker once said the whole handoff, did not write it, and the day died with the PR open.
 $c = Get-ContractFromText ([string]$w.result)
-$bad = Test-DayContract -Contract $c -Required $HandoffKeys -Field "outcome" -Allowed @("pr_opened","ask","blocked","no_tasks")
+$bad = Test-DayContract -Contract $c -Required $HandoffKeys -Field "outcome" -Allowed @("pr_opened","needs_grill","blocked","no_tasks")
 if ($bad -ne "") {
   New-DayEvent -LogDir $day.LogDir -Kind "handoff_invalid" -Data @{ cycle = $cycle; reason = $bad } | Out-Null
   Write-Atom @{ ok = $false; stop = "invalid handoff: $bad" }
@@ -115,28 +115,32 @@ New-DayEvent -LogDir $day.LogDir -Kind "handoff" -Data @{
 Write-Day $day ("[$cycle] handoff: {0}  task={1}  pr=#{2}  deferred={3}  skipped={4}" -f `
                 $c.outcome, $c.task_id, $c.pr_number, @($c.decisions_deferred).Count, @($c.skipped).Count)
 
-# A fork the card did not settle, met before anything was built. It costs a short session instead
-# of a whole diff, which is the entire reason a worker is allowed to ask at all.
-if ([string]$c.outcome -eq "ask") {
-  $unreadable = Test-DayAsk @($c.questions)
-  if ($unreadable -ne "") {
-    New-DayEvent -LogDir $day.LogDir -Kind "handoff_invalid" -Data @{ cycle = $cycle; reason = "it asks, but $unreadable" } | Out-Null
-    Write-Atom @{ ok = $false; stop = "the worker asked for a decision but $unreadable" }
+# The card still holds a decision that is not the worker's, met before anything was built. The
+# worker does not put it to anybody: it says the card needs grilling, and grilling is where product
+# decisions are made. What it costs is a short session instead of a whole diff written to a guess.
+if ([string]$c.outcome -eq "needs_grill") {
+  if (-not [string]$c.task_id) {
+    New-DayEvent -LogDir $day.LogDir -Kind "handoff_invalid" -Data @{
+      cycle = $cycle; reason = "it says needs_grill and names no card"
+    } | Out-Null
+    Write-Atom @{ ok = $false; stop = "the worker says a card needs grilling and does not say which" }
     exit 1
   }
-  # Cleared as the question is published and never afterwards. The answers land at a fixed path, so
-  # one left behind by a cycle that died is a file the next question would read as its own -- and a
-  # label that happens to match would decide something nobody was asked.
-  Remove-Item (Join-Path $day.Repo ".scratch\answers.json") -Force -ErrorAction SilentlyContinue
-
-  foreach ($q in @($c.questions)) {
-    New-DayEvent -LogDir $day.LogDir -Kind "question_asked" -Data @{
-      cycle = $cycle; id = [string]$q.id; question = [string]$q.question; why = [string]$q.why
-      options = @($q.options); task_id = [string]$c.task_id
+  $unreadable = Test-DecisionsOwed @($c.decisions_owed)
+  if ($unreadable -ne "") {
+    New-DayEvent -LogDir $day.LogDir -Kind "handoff_invalid" -Data @{
+      cycle = $cycle; reason = "it says a decision is owed but $unreadable"
     } | Out-Null
-    Write-Day $day "  ? [$($q.id)] $([string]$q.question)"
+    Write-Atom @{ ok = $false; stop = "the worker says a decision is owed but $unreadable" }
+    exit 1
   }
-  Write-Atom @{ ok = $true; cycle = $cycle; action = "ask"; task_id = [string]$c.task_id; questions = @($c.questions) }
+  $moved = Request-Grill -Day $day -TaskId ([string]$c.task_id) -Owed @($c.decisions_owed)
+  foreach ($d in @($c.decisions_owed)) { Write-Day $day ("  ? " + [string]$d.what) }
+  Write-Day $day "[$cycle] card $($c.task_id) needs grilling before anything is built on it"
+  Write-Atom @{
+    ok = $true; cycle = $cycle; action = "parked"; task_id = [string]$c.task_id
+    decisions = @($c.decisions_owed); moved = $moved
+  }
   exit 0
 }
 

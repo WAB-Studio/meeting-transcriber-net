@@ -48,7 +48,7 @@ function New-QuietStatus {
     Denials = 0; DenialsByTool = @(); CycleCosts = @(); LastCycleCost = $null
     Killed = $false; Unreadable = ""; RateLimit = $null; Ended = $false; EndReason = ""
     IdleForMinutes = $null; Past = @(); Anomalies = @()
-    Waiting = $false; Questions = @(); Answered = @(); Recovered = @()
+    Owed = @(); Recovered = @()
   }
 }
 
@@ -698,119 +698,51 @@ Check "the stream does not start with a BOM" {
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-Write-Host ""
-Write-Host "  the day asks rather than ending"
 
 # One well-formed question, reused: two options, exactly one of which confirms.
-$QJson = @'
-[{ "id": "q1", "question": "Which way should a position be counted?", "why": "the other way takes the diff down",
-   "options": [{ "label": "Keep what was built", "effect": "confirm" },
-               { "label": "Open the device natively", "effect": "reject" }] }]
+$OwedJson = @'
+[{ "what": "Which way should a position be counted?", "why": "the other way takes the diff down",
+   "options": ["Keep what was built", "Open the device natively"] }]
 '@
-$Questions = @($QJson | ConvertFrom-Json)
-
-function New-Answers([string]$Body) { return @($Body | ConvertFrom-Json) }
-
-Check "answers hold when every question comes back naming an option that was offered" {
-  $a = New-Answers '[{"id":"q1","label":"Keep what was built","notes":"yes"}]'
-  $err = Test-DayAnswers -Answers $a -Questions $Questions
-  if ($err -ne "") { return "refused a good answer: $err" }
-  ""
-}
-
-# The hole three independent reviewers found on 2026-08-17. While an answer carried its own effect,
-# one mistyped field merged the diff the person had just turned down, and nothing could tell.
-Check "an answer cannot carry a meaning the option it names does not have" {
-  $a = New-Answers '[{"id":"q1","label":"Open the device natively","effect":"confirm"}]'
-  $err = Test-DayAnswers -Answers $a -Questions $Questions
-  if ($err -ne "") { return "refused a good answer: $err" }
-  $e = Get-AnswerEffect -Question $Questions[0] -Label "Open the device natively"
-  if ($e -ne "reject") { return "the effect came out '$e' -- a stray confirm in the answer was obeyed" }
-  ""
-}
-
-Check "an option that was never offered is refused" {
-  $a = New-Answers '[{"id":"q1","label":"Do something else"}]'
-  if ((Test-DayAnswers -Answers $a -Questions $Questions) -eq "") { return "took a label nobody offered" }
-  ""
-}
-
-# Answering the first question and stopping would otherwise merge on a decision nobody was asked.
-Check "a question left unanswered is refused rather than taken as agreement" {
-  $two = @($Questions[0], ('{"id":"q2","question":"And the scope?","options":[{"label":"Keep","effect":"confirm"},{"label":"Cut","effect":"reject"}]}' | ConvertFrom-Json))
-  $a = New-Answers '[{"id":"q1","label":"Keep what was built"}]'
-  $err = Test-DayAnswers -Answers $a -Questions $two
-  if ($err -eq "") { return "took a partial set" }
-  if ($err -notmatch "q2") { return "did not name the missing one: $err" }
-  ""
-}
-
-Check "an answer to a question nobody asked, or two answers to one, are refused" {
-  $a = New-Answers '[{"id":"q1","label":"Keep what was built"},{"id":"q9","label":"x"}]'
-  if ((Test-DayAnswers -Answers $a -Questions $Questions) -eq "") { return "took an answer to q9" }
-  $b = New-Answers '[{"id":"q1","label":"Keep what was built"},{"id":"q1","label":"Open the device natively"}]'
-  if ((Test-DayAnswers -Answers $b -Questions $Questions) -eq "") { return "took two answers to q1" }
-  ""
-}
-
-Check "an answer naming no option, and nothing at all, are refused" {
-  $a = New-Answers '[{"id":"q1","label":""}]'
-  if ((Test-DayAnswers -Answers $a -Questions $Questions) -eq "") { return "took an answer with no label" }
-  if ((Test-DayAnswers -Answers $null -Questions $Questions) -eq "") { return "took nothing as an answer" }
-  ""
-}
+$Owed = @($OwedJson | ConvertFrom-Json)
 
 Write-Host ""
-Write-Host "  a question the day cannot put to anybody is not waited on"
+Write-Host "  a decision nobody here can make"
 
-Check "a well-formed question passes and an empty set does not" {
-  if ((Test-DayQuestions $Questions) -ne "") { return "refused a good question" }
-  if ((Test-DayQuestions @()) -eq "") { return "took a verdict that asks nothing" }
+Check "a decision that names itself is readable, and an empty set is not" {
+  if ((Test-DecisionsOwed $Owed) -ne "") { return "refused a usable decision" }
+  if ((Test-DecisionsOwed @()) -eq "") { return "took a verdict that owes nothing" }
   ""
 }
 
-# Each of these used to reach the wait loop, where nobody could answer it and nothing timed out.
-Check "a question with no text, no id, one option or five is refused" {
+# Each of these reaches a card and is read cold by whoever grills it. One that does not say what it
+# is sends them back to the diff, which is the rediscovery this exists to prevent.
+Check "a decision with no `what`, or one lone option, is refused" {
   $cases = @(
-    '[{"id":"q1","question":"","options":[{"label":"a","effect":"confirm"},{"label":"b","effect":"reject"}]}]',
-    '[{"id":"","question":"why","options":[{"label":"a","effect":"confirm"},{"label":"b","effect":"reject"}]}]',
-    '[{"id":"q1","question":"why","options":[{"label":"a","effect":"confirm"}]}]',
-    '[{"id":"q1","question":"why","options":[{"label":"a","effect":"confirm"},{"label":"b","effect":"reject"},{"label":"c","effect":"reject"},{"label":"d","effect":"reject"},{"label":"e","effect":"reject"}]}]'
+    '[{"why":"w","options":["a","b"]}]',
+    '[{"what":"","options":["a","b"]}]',
+    '[{"what":"which way?","options":["only one"]}]',
+    '[{"what":"which way?","options":["a",""]}]'
   )
   foreach ($c in $cases) {
-    if ((Test-DayQuestions (@($c | ConvertFrom-Json))) -eq "") { return "took: $c" }
+    if ((Test-DecisionsOwed (@($c | ConvertFrom-Json))) -eq "") { return "took: $c" }
   }
   ""
 }
 
-Check "two questions sharing an id are refused" {
-  $q = @('[{"id":"q1","question":"a","options":[{"label":"x","effect":"confirm"},{"label":"y","effect":"reject"}]},
-          {"id":"q1","question":"b","options":[{"label":"x","effect":"confirm"},{"label":"y","effect":"reject"}]}]' | ConvertFrom-Json)
-  if ((Test-DayQuestions $q) -eq "") { return "took two questions called q1" }
-  ""
-}
-
-# None and two are both unanswerable: with none the PR can never merge whatever is picked, and with
-# two the script would have to weigh which agreement counted, which is a judgement it does not make.
-Check "a question with no confirming option, or two, is refused" {
-  $none = @('[{"id":"q1","question":"a","options":[{"label":"x","effect":"reject"},{"label":"y","effect":"reject"}]}]' | ConvertFrom-Json)
-  if ((Test-DayQuestions $none) -eq "") { return "took a question nothing could confirm" }
-  $two = @('[{"id":"q1","question":"a","options":[{"label":"x","effect":"confirm"},{"label":"y","effect":"confirm"}]}]' | ConvertFrom-Json)
-  if ((Test-DayQuestions $two) -eq "") { return "took a question with two confirms" }
-  ""
-}
-
-Check "an option effect outside the two the script acts on is refused" {
-  $q = @('[{"id":"q1","question":"a","options":[{"label":"x","effect":"confirm"},{"label":"y","effect":"maybe"}]}]' | ConvertFrom-Json)
-  if ((Test-DayQuestions $q) -eq "") { return "took effect 'maybe'" }
+# The audit knows more than the worker and says more, but neither is obliged past `what`.
+Check "a decision with nothing but what it is still passes" {
+  if ((Test-DecisionsOwed (@('[{"what":"which way should a position be counted?"}]' | ConvertFrom-Json))) -ne "") {
+    return "refused a worker that named the fork and no options"
+  }
   ""
 }
 
 Write-Host ""
-Write-Host "  what the executor does about a verdict"
+Write-Host "  what the day does about a verdict"
 
 Check "ask is a verdict the contract allows and something else still is not" {
-  $v = '{"verdict":"ask","questions":[]}' | ConvertFrom-Json
+  $v = '{"verdict":"ask","decisions_owed":[]}' | ConvertFrom-Json
   $err = Test-DayContract -Contract $v -Required @("verdict") -Field "verdict" -Allowed @("pass","pass_with_followup","ask","hold")
   if ($err -ne "") { return "refused ask: $err" }
   $bad = '{"verdict":"maybe"}' | ConvertFrom-Json
@@ -820,36 +752,47 @@ Check "ask is a verdict the contract allows and something else still is not" {
   ""
 }
 
-# The decisive routing, asked of the same function the loop asks. Nothing here may come out `merge`
-# unless the audit said the diff holds up and had nothing left to ask.
-Check "a green verdict merges and a hold puts it back, without ending anything" {
-  foreach ($name in @("pass", "pass_with_followup")) {
-    $v = "{`"verdict`":`"$name`",`"questions`":[]}" | ConvertFrom-Json
-    $a = Resolve-Verdict $v
-    if ($a.action -ne "merge") { return "$name came out '$($a.action)'" }
-  }
-  $h = '{"verdict":"hold","questions":[]}' | ConvertFrom-Json
-  if ((Resolve-Verdict $h).action -ne "recover") { return "hold did not recover" }
+# Nothing here waits for anybody, which is the whole change: an `ask` parks the card in `pending`
+# and the day takes the next task.
+Check "a green verdict merges, a hold puts it back, and an ask parks it" {
+  $pass = [pscustomobject]@{ verdict = "pass"; decisions_owed = @() }
+  if ((Resolve-Verdict $pass).action -ne "merge") { return "a pass did not merge" }
+
+  $hold = [pscustomobject]@{ verdict = "hold"; decisions_owed = @() }
+  $h = Resolve-Verdict $hold
+  if ($h.action -ne "recover") { return "a hold did not recover" }
+  if ($h.to -ne "") { return "a hold picked a destination instead of counting the card's strikes" }
+
+  $ask = [pscustomobject]@{ verdict = "ask"; decisions_owed = $Owed }
+  $a = Resolve-Verdict $ask
+  if ($a.action -ne "recover") { return "an ask did not put the card anywhere" }
+  if ($a.to -ne "pending") { return "an ask sent the card to '$($a.to)' rather than pending" }
   ""
 }
 
-Check "an ask with usable questions waits, and one without them recovers instead" {
-  $ok = [pscustomobject]@{ verdict = "ask"; questions = $Questions }
-  if ((Resolve-Verdict $ok).action -ne "ask") { return "a good ask did not ask" }
-  foreach ($bad in @('{"verdict":"ask","questions":[]}', '{"verdict":"ask","questions":[{"id":"q1"}]}')) {
-    $a = Resolve-Verdict ($bad | ConvertFrom-Json)
-    if ($a.action -ne "recover") { return "$bad came out '$($a.action)' rather than recovering" }
+# `Open` is where a worker looks, and the one thing that must not happen to this card is another
+# session building on the decision nobody has made.
+Check "an ask never sends the card back to the pool" {
+  foreach ($n in 1..3) {
+    $a = Resolve-Verdict ([pscustomobject]@{ verdict = "ask"; decisions_owed = $Owed })
+    if ($a.to -eq "Open") { return "an ask reached the pool" }
   }
   ""
 }
 
-# An audit that says `pass` and attaches a question has said two things. Merging on the field and
-# dropping the question would put a diff its own reader was still asking about into main.
+Check "an ask nobody could act on recovers instead of parking" {
+  foreach ($bad in @('{"verdict":"ask","decisions_owed":[]}', '{"verdict":"ask","decisions_owed":[{"why":"w"}]}')) {
+    $r = Resolve-Verdict ($bad | ConvertFrom-Json)
+    if ($r.action -ne "recover") { return "$bad did not recover" }
+    if ($r.to -eq "pending") { return "$bad parked a card carrying nothing anybody could read" }
+  }
+  ""
+}
+
 Check "a verdict that contradicts itself does not merge" {
-  $v = [pscustomobject]@{ verdict = "pass"; questions = $Questions }
-  $a = Resolve-Verdict $v
-  if ($a.action -eq "merge") { return "merged a pass that was still asking" }
-  if ($a.action -ne "recover") { return "came out '$($a.action)'" }
+  $v = [pscustomobject]@{ verdict = "pass"; decisions_owed = $Owed }
+  $r = Resolve-Verdict $v
+  if ($r.action -eq "merge") { return "a pass owing a decision merged" }
   ""
 }
 
@@ -873,100 +816,27 @@ Check "a recovery that never reached the board is not counted against the card" 
   ""
 }
 
-Check "a question asked leaves the day waiting and its answer clears it" {
+
+
+
+Check "what came back unmerged reaches the report" {
   $box = New-Sandbox
   try {
     New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
-    New-DayEvent -LogDir $box -Kind "question_asked" -Data @{
-      cycle = 1; id = "q1"; question = "Which way should a position be counted?"; why = "the other way takes the diff down"
-      options = @(@{ label = "Keep"; effect = "confirm" }); pr_number = 40; task_id = "T1"
-    } | Out-Null
-
-    $st = Get-DayStatus -LogDir $box
-    if (-not $st.Waiting) { return "did not read as waiting" }
-    if ($st.Questions.Count -ne 1) { return "held $($st.Questions.Count) questions" }
-
-    New-DayEvent -LogDir $box -Kind "answered" -Data @{
-      cycle = 1; id = "q1"; question = "Which way should a position be counted?"
-      label = "Keep"; effect = "confirm"; notes = ""
-    } | Out-Null
-
-    $st2 = Get-DayStatus -LogDir $box
-    if ($st2.Waiting) { return "still waiting after the answer" }
-    if ($st2.Answered.Count -ne 1) { return "kept $($st2.Answered.Count) answers" }
-    ""
-  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
-}
-
-# The whole point of the change. Waiting is loud and it is not a fault: halting on it would undo
-# the recovery it exists for, and a level nobody obeys is what made `stop` decoration before.
-Check "waiting is reported and does not stop the day" {
-  $st = New-QuietStatus
-  $st.Questions = @([pscustomobject]@{ id = "q1"; cycle = 2; question = "Cut the scope?" })
-  $st.Waiting = $true
-  $an = @(Get-DayAnomalies -Status $st)
-  if (-not @($an | Where-Object { $_.code -eq "waiting" }).Count) { return "waiting did not fire" }
-  if (Test-WouldHalt $st) { return "a question stopped the day" }
-  ""
-}
-
-# A question nobody came back to is the shape of a day left half way, and both facts are worth
-# having: the question is still open, and nothing is going to close it on its own.
-Check "a question nobody answered leaves the day both waiting and abandoned" {
-  $box = New-Sandbox
-  try {
-    $old = (Get-Date).ToUniversalTime().AddMinutes(-45).ToString("o")
-    Add-Utf8Line -Path (Get-EventsPath $box) -Text ('{"ts":"' + $old + '","kind":"day_started","repo":"x"}')
-    Add-Utf8Line -Path (Get-EventsPath $box) -Text ('{"ts":"' + $old + '","kind":"question_asked","cycle":1,"id":"q1","question":"Cut the scope?","why":"w","options":[]}')
-
-    $st = Get-DayStatus -LogDir $box
-    if (-not $st.Waiting) { return "the question stopped being open" }
-    if (-not @($st.Anomalies | Where-Object { $_.code -eq "abandoned" }).Count) { return "abandoned did not fire" }
-    ""
-  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
-}
-
-Check "what a person decided and what came back unmerged reach the report" {
-  $box = New-Sandbox
-  try {
-    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
-    New-DayEvent -LogDir $box -Kind "verdict" -Data @{ cycle = 1; verdict = "ask" } | Out-Null
-    New-DayEvent -LogDir $box -Kind "answered" -Data @{
-      cycle = 1; id = "q1"; question = "Which way should a position be counted?"
-      label = "Open the device natively"; effect = "reject"; notes = "the counter is not worth keeping"
-    } | Out-Null
+    New-DayEvent -LogDir $box -Kind "verdict" -Data @{ cycle = 1; verdict = "hold" } | Out-Null
     New-DayEvent -LogDir $box -Kind "recovered" -Data @{
-      cycle = 1; task_id = "86ak1byrr"; pr_number = 40; to = "Open"; reason = "you turned down the decision this PR rests on"
+      cycle = 1; task_id = "86ak1byrr"; pr_number = 40; to = "Open"
+      reason = "the audit held it"; moved = $true
     } | Out-Null
     New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "no_tasks" } | Out-Null
 
     $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
-    if ($md -notmatch "What you decided") { return "the report has no decisions section" }
-    if ($md -notmatch "Open the device natively") { return "the report does not say what was picked" }
-    if ($md -notmatch "the counter is not worth keeping") { return "the report drops what they typed" }
     if ($md -notmatch "Put back rather than merged") { return "the report has no recovery section" }
     if ($md -notmatch "86ak1byrr") { return "the report does not name the card that went back" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-# The executor releases the lock in `finally`, so a day that ended is not sitting on anything. Left
-# standing, this sent a supervisor off to write an answers file no process would ever read.
-Check "a day that ended is not still asking for an answer" {
-  $box = New-Sandbox
-  try {
-    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
-    New-DayEvent -LogDir $box -Kind "question_asked" -Data @{
-      cycle = 1; id = "q1"; question = "Cut the scope?"; why = "w"; options = @()
-    } | Out-Null
-    New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "the executor threw" } | Out-Null
-
-    $st = Get-DayStatus -LogDir $box
-    if ($st.Waiting) { return "an ended day still says it is waiting" }
-    if ($st.Questions.Count -ne 0) { return "it still holds $($st.Questions.Count) question(s)" }
-    ""
-  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
-}
 
 # The card is still in `in review`, where no worker looks for it. Reporting that as a recovery is
 # how the mechanism written to rescue the work would have quietly abandoned it.
@@ -985,44 +855,44 @@ Check "a recovery whose card never moved reads as needing a hand" {
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-Check "a day still waiting says so at the top of its own report" {
+
+Check "a decision owed reaches the report with the card and the PR" {
   $box = New-Sandbox
   try {
     New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
-    New-DayEvent -LogDir $box -Kind "question_asked" -Data @{
-      cycle = 1; id = "q1"; question = "Cut the scope?"; why = "w"; options = @(); task_id = "T1"
+    New-DayEvent -LogDir $box -Kind "verdict" -Data @{ cycle = 1; verdict = "ask" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{
+      cycle = 1; task_id = "T1"; pr_number = 40; moved = $true
+      decisions = @(@{ what = "Which way should a position be counted?"; why = "the other way takes the diff down" })
     } | Out-Null
+    New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "no_tasks" } | Out-Null
+
+    $st = Get-DayStatus -LogDir $box
+    if ($st.Owed.Count -ne 1) { return "the state holds $($st.Owed.Count) parked cards" }
 
     $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
-    if ($md -notmatch "Still waiting on you") { return "the report does not say it is waiting" }
-    if ($md -notmatch "Cut the scope") { return "the report does not carry the question" }
+    if ($md -notmatch "Parked on a decision") { return "the report does not name them" }
+    if ($md -notmatch "Which way should a position be counted") { return "the report lost the decision" }
+    if ($md -notmatch "#40") { return "the report lost the PR that is held up" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-Write-Host ""
-Write-Host "  a question with no PR behind it"
-
-# A worker asks before it has built anything, so its options say what to build and cannot carry an
-# effect. Holding them to the audit's shape would refuse every one of them.
-Check "a question with no effects is well formed, and the audit's shape still is not" {
-  $plain = @('[{"id":"q1","question":"Which one?","why":"w","options":[{"label":"a"},{"label":"b"}]}]' | ConvertFrom-Json)
-  if ((Test-DayAsk $plain) -ne "") { return "refused a question that asks before building" }
-  if ((Test-DayQuestions $plain) -eq "") { return "took a verdict question with nothing that confirms" }
-  ""
-}
-
-Check "the shape rules hold for a question with no effects too" {
-  $cases = @(
-    '[{"id":"q1","question":"","options":[{"label":"a"},{"label":"b"}]}]',
-    '[{"id":"","question":"why","options":[{"label":"a"},{"label":"b"}]}]',
-    '[{"id":"q1","question":"why","options":[{"label":"a"}]}]',
-    '[{"id":"q1","question":"why","options":[{"label":"a"},{"label":"a"}]}]'
-  )
-  foreach ($c in $cases) {
-    if ((Test-DayAsk (@($c | ConvertFrom-Json))) -eq "") { return "took: $c" }
-  }
-  ""
+# The one line in that section somebody has to act on: the day meant to park the card and could not,
+# so it is still in `in review` and the PR looks abandoned rather than owed.
+Check "a parked card that never moved reads as needing a hand" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{
+      cycle = 1; task_id = "T1"; pr_number = 40; moved = $false
+      decisions = @(@{ what = "Which way?" })
+    } | Out-Null
+    New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "no_tasks" } | Out-Null
+    $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
+    if ($md -notmatch "did not reach") { return "the report calls a failed park a park" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 Write-Host ""
@@ -1191,29 +1061,6 @@ Check "the lock is taken atomically, and released only by whoever holds it" {
   } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-# A day stopped to ask is not idle, however long it has been: nothing runs while it waits, so its
-# claim ages exactly like an abandoned one and the checkout would be taken out from under it.
-Check "a day waiting on a person keeps the lock however stale it looks" {
-  $orch = New-Sandbox
-  try {
-    $held = Join-Path $orch "log\2026-08-17_000000"
-    New-Item -ItemType Directory -Force $held | Out-Null
-    New-DayEvent -LogDir $held -Kind "day_started" -Data @{ repo = "x" } | Out-Null
-    New-DayEvent -LogDir $held -Kind "question_asked" -Data @{
-      cycle = 1; id = "q1"; question = "Cut the scope?"; why = "w"; options = @()
-    } | Out-Null
-    $stale = [pscustomobject]@{ run = "2026-08-17_000000"; dir = $held
-                                ts = (Get-Date).ToUniversalTime().AddMinutes(-400).ToString("o") }
-    [System.IO.File]::WriteAllText((Get-LockPath $orch), ($stale | ConvertTo-Json -Compress))
-
-    $mine = Join-Path $orch "log\2026-08-17_090000"
-    New-Item -ItemType Directory -Force $mine | Out-Null
-    $refused = Enter-DayLock -OrchestratorDir $orch -LogDir $mine
-    if ($refused -eq "") { return "the checkout was taken from a day still waiting for an answer" }
-    if ($refused -notmatch "waiting") { return "refused for the wrong reason: $refused" }
-    ""
-  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
-}
 
 # What sequences the atoms is a model, so an atom run twice is not a hypothetical. Closing a cycle
 # twice recorded two recoveries, and a card's destination is counted off those -- so the duplicate

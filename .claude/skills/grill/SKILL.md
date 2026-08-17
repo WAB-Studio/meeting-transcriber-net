@@ -40,19 +40,35 @@ $S = "$env:USERPROFILE\.claude\skills\clickup\clickup.py"
 python $S update <id> --desc @.scratch/desc.md
 ```
 
-## 3 · Reading before asking
+## 3 · Start with the ones that already cost a session
 
-A question you could have answered by reading is a question you are charging them for. The card and
-its comments, the code it is about, `arquitectura.md`, `ISA.md`.
+```powershell
+python $S tasks --space MeetingTranscriber --tag regrill
+```
+
+A card tagged `regrill` is one a session took and stopped on, and it carries a `**Needs grilling.**`
+comment naming exactly what it could not decide. **Read that comment before anything else on the
+card.** Somebody already paid a session to find out what was missing; asking around it and missing
+the same thing again is paying twice.
+
+Some of them have an open PR — finished, green, held out of `main` by that one decision. Those come
+first of all: settling one lands work that already exists.
+
+Then the rest, in board order.
 
 ```powershell
 python $S tasks --space MeetingTranscriber --status Open
 python $S task <id>
 ```
 
+## 4 · Reading before asking
+
+A question you could have answered by reading is a question you are charging them for. The card and
+its comments, the code it is about, `arquitectura.md`, `ISA.md`.
+
 Then one question at a time, with the options you actually see and what each costs.
 
-## 4 · What you leave on the card
+## 5 · What you leave on the card
 
 **The decisions, as a comment.** In a file, because prose with a semicolon in it does not survive a
 command line:
@@ -79,14 +95,23 @@ through the `isa` skill and never mark one `[x]` — you ran no probe. Commit `I
 **The tag, last.**
 
 ```powershell
-python $S tag <id> --add grilled
+python $S tag <id> --add grilled --rm regrill
 ```
 
-Comment first, tag second, always: the comment is what makes the tag mean anything, and a card
+Comment first, tags second, always: the comment is what makes the tag mean anything, and a card
 tagged without one says decisions were made that nobody can read. A card where the user did not
 settle every fork does not get tagged — half-grilled is worse than ungrilled.
 
-## 5 · How many
+`regrill` comes off in the same call. A card that keeps it goes on being pulled to the front of the
+next grill for a decision that has already been made.
+
+A card in `pending` also goes back to `Open`, or nothing will take it:
+
+```powershell
+python $S move <id> --status Open
+```
+
+## 6 · How many
 
 One card is roughly one working session, and some come back unfinished. **Eight or nine grilled
 cards is a full day; three is a morning.** Grill them in one sitting — the user already has the
