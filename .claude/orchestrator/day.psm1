@@ -1,7 +1,7 @@
 #requires -Version 5.1
 <#
   The engine behind the day: the event stream, the contracts sessions speak in, and the rules that
-  decide what is abnormal. `run-day.ps1` writes through it, `day-status.ps1` reads through it, and
+  decide what is abnormal. The atoms write through it, `day-status.ps1` reads through it, and
   `test-day.ps1` proves the parts that do not need a session to run.
 
   One source of truth per run: `events.jsonl`. Everything anybody decides anything on -- the
@@ -191,15 +191,12 @@ function Test-DayContract {
 }
 
 <#
-  What the audit has to hand over before the day will stop for it. Checked before a single question
+  What a session has to hand over before a cycle will stop for it. Checked before a single question
   is published, because the failure it prevents is the worst one this design has: a question with no
-  text or no options cannot be put to anybody, and the day would sit waiting for an answer to it
-  forever. A malformed ask is taken as a hold instead -- recovery, not a vigil.
-
-  Exactly one option confirms. Two would make "did they agree" a judgement, and the script does not
-  make judgements; none would make the PR unmergeable whatever was answered.
+  text or no options cannot be put to anybody, and the cycle would sit on an answer that can never
+  come. A malformed ask is taken as whatever the cycle does when nobody is asked.
 #>
-function Test-DayQuestions {
+function Test-DayAsk {
   param($Questions)
   $qs = @($Questions)
   if ($qs.Count -eq 0) { return "it asks nothing" }
@@ -218,15 +215,35 @@ function Test-DayQuestions {
     if ($opts.Count -lt 2 -or $opts.Count -gt 4) { return "question '$id' offers $($opts.Count) options, and it has to offer 2 to 4" }
 
     $labels = @{}
-    $confirms = 0
     foreach ($o in $opts) {
       if (-not $o) { return "question '$id' has an empty option" }
       $label = [string]$o.label
       if ([string]::IsNullOrWhiteSpace($label)) { return "an option of question '$id' has no label" }
       if ($labels.ContainsKey($label)) { return "question '$id' offers '$label' twice" }
       $labels[$label] = $true
+    }
+  }
+  return ""
+}
+
+<#
+  The audit's questions, which are the same shape plus one thing: there is a PR on the table, so
+  every option says what happens to it.
+
+  Exactly one option confirms. Two would make "did they agree" a judgement, and no script here makes
+  judgements; none would make the PR unmergeable whatever was answered.
+#>
+function Test-DayQuestions {
+  param($Questions)
+  $bad = Test-DayAsk $Questions
+  if ($bad -ne "") { return $bad }
+
+  foreach ($q in @($Questions)) {
+    $id = [string]$q.id
+    $confirms = 0
+    foreach ($o in @($q.options)) {
       if (@("confirm", "reject") -notcontains [string]$o.effect) {
-        return "option '$label' of question '$id' has effect '$($o.effect)', which is neither confirm nor reject"
+        return "option '$([string]$o.label)' of question '$id' has effect '$($o.effect)', which is neither confirm nor reject"
       }
       if ([string]$o.effect -eq "confirm") { $confirms++ }
     }
@@ -236,33 +253,28 @@ function Test-DayQuestions {
 }
 
 <#
-  The answers a person gave to what the day stopped to ask.
+  The answers a person gave to what the cycle stopped to ask.
 
-  **The file names the option and never the effect.** Three independent reviewers found the same
-  hole on 2026-08-17: while an answer carried its own `effect`, a supervisor that transcribed one
-  field wrong -- `{"label":"Open the device natively","effect":"confirm"}` for an option that
-  rejects -- merged the PR the user had just turned down, and nothing could tell. So the label is
-  matched against the options that were actually offered and the effect is read off the option.
-  There is one place a decision is written down, which is the verdict, and the answer only points
-  at it.
+  **An answer names the option and never the effect.** Three independent reviewers found the same
+  hole on 2026-08-17: while an answer carried its own `effect`, one field transcribed wrong --
+  `{"label":"Open the device natively","effect":"confirm"}` for an option that rejects -- merged the
+  PR the user had just turned down, and nothing could tell. So the label is matched against the
+  options that were actually offered and the effect is read off the option. There is one place a
+  decision is written down, which is the verdict, and the answer only points at it.
 
-  The rest is the same rule stated four ways: an answer nobody asked for, two answers to one
-  question, a question with no answer, or a file for another run or another cycle are all a
-  supervisor and an executor talking about different things, and none of them may pass for consent.
+  The rest is the same rule stated three ways: an answer nobody asked for, two answers to one
+  question, and a question with no answer are all two sides talking about different things, and
+  none of them may pass for consent.
 #>
 function Test-DayAnswers {
-  param($Answers, $Questions, [string]$Run, [int]$Cycle)
-  if ($null -eq $Answers) { return "the answers file holds no JSON that can be read" }
-
-  if ($Run -and [string]$Answers.run -ne $Run) { return "these answers are for run '$($Answers.run)', not '$Run'" }
-  if ($null -eq $Answers.cycle) { return "the answers name no cycle" }
-  if ([int]$Answers.cycle -ne $Cycle) { return "these answers are for cycle $($Answers.cycle), not $Cycle" }
+  param($Answers, $Questions)
+  if ($null -eq $Answers) { return "no answers that can be read" }
 
   $byId = @{}
   foreach ($q in @($Questions)) { $byId[[string]$q.id] = $q }
 
   $seen = @{}
-  foreach ($a in @($Answers.answers)) {
+  foreach ($a in @($Answers)) {
     if (-not $a) { return "one of the answers is empty" }
     $id = [string]$a.id
     if ([string]::IsNullOrWhiteSpace($id)) { return "an answer carries no id" }
@@ -501,14 +513,199 @@ function Get-SessionActivity {
 }
 
 # ---------------------------------------------------------------------------------------------
+# The journal
+# ---------------------------------------------------------------------------------------------
+
+<#
+  What a session knew and nobody else does: what it tried and threw away, where it got to, what it
+  was going to do next. The card keeps conclusions and the stream keeps transitions; neither keeps
+  work half done, which is what the next session repeats.
+
+  The lifecycle is mechanical and the content is not. These move the file; the session writes it.
+#>
+$script:JournalHeadings = @("Where I got to", "Tried and discarded", "What I would do next")
+
+function Get-JournalPath {
+  param([Parameter(Mandatory)][string]$Repo)
+  return (Join-Path $Repo ".scratch\current.md")
+}
+
+<#
+  Is there anything under the headings. Archiving a journal that says nothing files an empty file
+  and loses the only record there was, so this is what the gate asks.
+#>
+function Test-JournalBody {
+  param([Parameter(Mandatory)][string]$Path)
+  if (-not (Test-Path $Path)) { return "there is no journal at $Path" }
+  foreach ($line in (Read-OpenFileLines $Path)) {
+    $t = ([string]$line).Trim()
+    if ($t -eq "" -or $t.StartsWith("#")) { continue }
+    return ""
+  }
+  return "the journal has its headings and nothing under them"
+}
+
+function Get-JournalTask {
+  param([Parameter(Mandatory)][string]$Path)
+  if (-not (Test-Path $Path)) { return "" }
+  foreach ($line in (Read-OpenFileLines $Path)) {
+    if ([string]$line -match '^#\s+(\S+)') { return $Matches[1] }
+  }
+  return ""
+}
+
+<#
+  The shape is laid down before the session starts, so the session only ever adds prose under
+  headings that are already there. A shape a session has to reproduce from memory is one that comes
+  back wrong on the day nobody is watching.
+
+  Whatever was already there is put away first: a cycle that died between its session and its close
+  left a journal nothing has filed, and overwriting it would throw away exactly the case this
+  exists for.
+#>
+function Reset-Journal {
+  param([Parameter(Mandatory)][string]$Repo)
+  $p = Get-JournalPath $Repo
+  $parked = ""
+  if (Test-Path $p) { $parked = Complete-Journal -Repo $Repo }
+  New-Item -ItemType Directory -Force (Split-Path -Parent $p) | Out-Null
+  $lines = New-Object System.Collections.ArrayList
+  $null = $lines.Add("# ")
+  $null = $lines.Add("")
+  foreach ($h in $script:JournalHeadings) {
+    $null = $lines.Add("## $h")
+    $null = $lines.Add("")
+    $null = $lines.Add("")
+  }
+  [System.IO.File]::WriteAllText($p, ($lines -join "`n"), $script:Utf8NoBom)
+  return $parked
+}
+
+<#
+  Parking is what happens unless the work landed, which is what makes a crash come out right
+  without anything having been written for the crash: only a merge archives, and everything else --
+  a hold, a question that ended the cycle, a session that died -- falls through to parked.
+
+  An empty journal is not filed either way. There is nothing in it to find again, and a folder of
+  empty files is how a real one stops being noticed.
+#>
+function Complete-Journal {
+  param([Parameter(Mandatory)][string]$Repo, [switch]$Merged, [string]$TaskId)
+  $p = Get-JournalPath $Repo
+  if (-not (Test-Path $p)) { return "" }
+  if ((Test-JournalBody $p) -ne "") { Remove-Item $p -Force; return "" }
+
+  if (-not $TaskId) { $TaskId = Get-JournalTask $p }
+  if (-not $TaskId) { $TaskId = "unfiled" }
+
+  if ($Merged) {
+    $dir = Join-Path $Repo ".scratch\archive"
+    $name = "{0}-{1}.md" -f (Get-Date -Format "yyyy-MM-dd"), $TaskId
+  } else {
+    $dir = Join-Path $Repo ".scratch\parked"
+    $name = "$TaskId.md"
+  }
+  New-Item -ItemType Directory -Force $dir | Out-Null
+  $dest = Join-Path $dir $name
+  Move-Item -Path $p -Destination $dest -Force
+  return $dest
+}
+
+# ---------------------------------------------------------------------------------------------
+# One day at a time
+# ---------------------------------------------------------------------------------------------
+
+<#
+  Nothing holds the day open for its whole length any more: what runs is one atom at a time, and
+  between them there is no process to own a handle. So the lock is a claim with a timestamp on it,
+  refreshed by every atom, and a claim nobody has touched in longer than a session can legally take
+  is not a claim.
+
+  That is weaker than a handle the OS releases on death, and the weakness is bounded: a day killed
+  outright keeps the next one out for `LockStaleMinutes` and no longer.
+
+  It also carries the run, which is what lets every atom take no arguments. A command with a path
+  in it is a command something has to spell, and the layer that decides permissions splits on
+  characters that appear in paths -- so the one place the current run is written down is here, and
+  the atoms read it rather than being told.
+#>
+$script:LockStaleMinutes = 150     # the session clock is 90; this leaves room for one plus its close
+
+function Get-LockPath {
+  param([Parameter(Mandatory)][string]$OrchestratorDir)
+  return (Join-Path $OrchestratorDir "day.lock")
+}
+
+function Enter-DayLock {
+  param([Parameter(Mandatory)][string]$OrchestratorDir, [Parameter(Mandatory)][string]$LogDir)
+  $p = Get-LockPath $OrchestratorDir
+  $run = Split-Path -Leaf $LogDir
+  if (Test-Path $p) {
+    $held = $null
+    try { $held = (Get-Content $p -Raw -ErrorAction Stop) | ConvertFrom-Json } catch { $held = $null }
+    if ($held -and [string]$held.run -and [string]$held.run -ne $run) {
+      $age = ((Get-Date).ToUniversalTime() - ([datetime][string]$held.ts).ToUniversalTime()).TotalMinutes
+      if ($age -lt $script:LockStaleMinutes) {
+        return ("the day {0} holds the lock and touched it {1:N0} min ago" -f $held.run, $age)
+      }
+    }
+  }
+  Update-DayLock -OrchestratorDir $OrchestratorDir -LogDir $LogDir
+  return ""
+}
+
+function Update-DayLock {
+  param([Parameter(Mandatory)][string]$OrchestratorDir, [Parameter(Mandatory)][string]$LogDir)
+  $o = [pscustomobject][ordered]@{
+    run = (Split-Path -Leaf $LogDir); dir = $LogDir
+    ts  = (Get-Date).ToUniversalTime().ToString("o")
+  }
+  [System.IO.File]::WriteAllText((Get-LockPath $OrchestratorDir), ($o | ConvertTo-Json -Compress), $script:Utf8NoBom)
+}
+
+function Exit-DayLock {
+  param([Parameter(Mandatory)][string]$OrchestratorDir)
+  Remove-Item (Get-LockPath $OrchestratorDir) -Force -ErrorAction SilentlyContinue
+}
+
+<#
+  Which run the atoms are working on, off the lock and nothing else. An empty string means no day is
+  open, which every atom but `start-day` treats as its own refusal to act.
+#>
+function Get-CurrentRun {
+  param([Parameter(Mandatory)][string]$OrchestratorDir)
+  $p = Get-LockPath $OrchestratorDir
+  if (-not (Test-Path $p)) { return "" }
+  try { $held = (Get-Content $p -Raw -ErrorAction Stop) | ConvertFrom-Json } catch { return "" }
+  $dir = [string]$held.dir
+  if ($dir -and (Test-Path $dir)) { return $dir }
+  return ""
+}
+
+<#
+  Which cycle is in play, counted off the stream rather than passed in. A cycle opens when its
+  worker starts, so the number is the worker sessions already started -- and every atom after that
+  worker is working on the one it opened.
+#>
+function Get-CurrentCycle {
+  param([Parameter(Mandatory)][string]$LogDir)
+  $n = 0
+  foreach ($e in (Read-DayEvents $LogDir)) {
+    if ($e.kind -eq "session_started" -and [string]$e.role -eq "worker") { $n++ }
+  }
+  return $n
+}
+
+# ---------------------------------------------------------------------------------------------
 # The rules
 # ---------------------------------------------------------------------------------------------
 
 $script:DefaultRules = @{
-  SilenceMinutes = 15    # a session emitting nothing for this long is stuck, not thinking
-  DenialGrope    = 2      # two denied attempts at one tool is already groping for a way around
-  CostFactor     = 3.0   # a cycle spending three times the median is in a loop
-  CostSamples    = 3     # with fewer cycles there is no median worth having
+  SilenceMinutes   = 15    # a session emitting nothing for this long is stuck, not thinking
+  DenialGrope      = 2     # two denied attempts at one tool is already groping for a way around
+  CostFactor       = 3.0   # a cycle spending three times the median is in a loop
+  CostSamples      = 3     # with fewer cycles there is no median worth having
+  AbandonedMinutes = 30    # no session up and nothing on the stream: whoever was sequencing is gone
 }
 
 function Get-DayRules { return $script:DefaultRules.Clone() }
@@ -598,12 +795,14 @@ function Get-DayAnomalies {
     $null = $out.Add((New-Anomaly "stop" "stopped" ("the day ended on: {0}" -f $Status.EndReason)))
   }
 
-  # The one ending nothing else can report, because the process that would have reported it is the
-  # one that is gone: killed by hand, killed by the machine, or dead of an exception the executor
-  # could not write down.
-  if ($Status.ProcessGone) {
-    $null = $out.Add((New-Anomaly "stop" "vanished" (
-      "the day's process ({0}) is gone and it never wrote an ending" -f $Status.ExecutorPid)))
+  # The one ending nothing else can report, because whatever would have reported it is what is
+  # gone. Between cycles the next atom starts within seconds, so a run with no session up and
+  # nothing on its stream for half an hour is one nobody is sequencing any more -- and the lock it
+  # left behind keeps the next day out until it goes stale.
+  if (-not $Status.Ended -and -not $Status.Running -and
+      $null -ne $Status.IdleForMinutes -and $Status.IdleForMinutes -ge $Rules.AbandonedMinutes) {
+    $null = $out.Add((New-Anomaly "stop" "abandoned" (
+      "nothing has happened for {0:N0} min and no session is up: the day was left half way and never wrote an ending" -f $Status.IdleForMinutes)))
   }
 
   # Anomalies already written to the stream come back even when the state that produced them is
@@ -671,8 +870,7 @@ function Get-DayStatus {
     Started         = $null
     Ended           = $false
     EndReason       = ""
-    ExecutorPid     = $null
-    ProcessGone     = $false
+    IdleForMinutes  = $null
     Past            = @()
     Cycle           = 0
     Role            = ""
@@ -706,7 +904,7 @@ function Get-DayStatus {
 
   foreach ($e in $ev) {
     switch ($e.kind) {
-      "day_started" { $st.Started = $e.ts; $st.ExecutorPid = $e.pid }
+      "day_started" { $st.Started = $e.ts }
       "day_ended"   { $st.Ended = $true; $st.EndReason = [string]$e.reason }
       # An anomaly is written down when it fires, because most of them cannot be recomputed later:
       # a 20-minute silence disappears the moment the session ends, and a cycle that cost triple
@@ -812,18 +1010,14 @@ function Get-DayStatus {
 
   $st.DenialsByTool = Group-Denials $st.DenialDetail
 
-  # A session cannot be running if the process that launched it is gone. Without this, a day killed
-  # with Stop-Process -- which the skill tells people to use -- reads as "running" forever, and the
-  # silence rule slowly counts up over a session that ended hours ago.
-  if ($st.ExecutorPid -and -not $st.Ended) {
-    if (-not (Get-Process -Id ([int]$st.ExecutorPid) -ErrorAction SilentlyContinue)) {
-      $st.ProcessGone = $true
-      $st.Running = $false
-      # Nobody is on the other end of the question any more. Left standing it would send a
-      # supervisor off to collect an answer for a process that cannot receive it, and `vanished`
-      # -- which is the thing actually worth saying -- would read as the smaller of the two.
-      $st.Waiting = $false
-      $st.Questions = @()
+  # How long since anything happened at all. It is the only thing that can tell a day being
+  # sequenced from one that was left where it stood, now that no single process lives as long as
+  # the run: a session running is measured by its own stream's silence, and between cycles the next
+  # atom starts within seconds.
+  if ($ev.Count -gt 0 -and -not $st.Running) {
+    $last = $ev[$ev.Count - 1].ts
+    if ($last) {
+      $st.IdleForMinutes = [math]::Round(((Get-Date).ToUniversalTime() - ([datetime][string]$last).ToUniversalTime()).TotalMinutes, 1)
     }
   }
 
@@ -987,7 +1181,9 @@ function Write-DayReport {
 
 Export-ModuleMember -Function Add-Utf8Line, Get-EventsPath, Read-OpenFileLines, New-DayEvent, Read-DayEvents,
   Get-SessionResult, Get-ContractFromText, Test-DayContract, Test-JsonTrue, Get-SessionActivity,
-  Test-DayQuestions, Test-DayAnswers, Get-AnswerEffect, Resolve-Verdict, Get-CardDestination,
+  Test-DayAsk, Test-DayQuestions, Test-DayAnswers, Get-AnswerEffect, Resolve-Verdict, Get-CardDestination,
   New-Denial, Get-ResultDenials, Get-DenialKey, Group-Denials,
+  Get-JournalPath, Test-JournalBody, Get-JournalTask, Reset-Journal, Complete-Journal,
+  Get-LockPath, Enter-DayLock, Update-DayLock, Exit-DayLock, Get-CurrentRun, Get-CurrentCycle,
   Get-DayRules, Get-DayAnomalies, Get-HaltingAnomalies, Get-Median,
   Find-LatestRun, Get-DayStatus, Write-DayReport

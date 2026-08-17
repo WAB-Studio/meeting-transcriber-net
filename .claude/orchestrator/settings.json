@@ -14,7 +14,8 @@
     "claude-api": "off",
     "init": "off",
     "run": "off",
-    "supervise-day": "off"
+    "run-day": "off",
+    "grill": "off"
   },
   "permissions": {
     "allow": [

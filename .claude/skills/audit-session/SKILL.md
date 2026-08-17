@@ -157,6 +157,11 @@ is not one — settle it, record it in `reasons`, and let the day run. Most unde
 this: real findings, worth writing down, worth nobody's morning. `unreported_decisions` is where
 they belong. **If you cannot say in one sentence what goes wrong when nobody is asked, do not ask.**
 
+**And you may only ask about something the card did not already settle.** Every card carries a
+`**Grilled.**` comment where a person settled its product forks before any of this started; read it
+before you write a question. A decision that is in there and the diff went the other way is not a
+question at all — it is work contradicting its own spec, which is `hold`.
+
 The line against the other two is drawn on one question and it is not a matter of taste: **would a
 different answer change what the code should be?** If no, it is a finding — `pass` and an
 `unreported_decisions` entry. If yes and you can tell which answer is right by reading the repo, it

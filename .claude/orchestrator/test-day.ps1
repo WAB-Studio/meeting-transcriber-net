@@ -4,7 +4,8 @@
   the part that needs no `claude` running - pulling the contract out of what a session emitted,
   reading a result off a stream, and what each rule fires on.
 
-  What is not covered here is covered by running the day, and docs/orchestrator.md says so.
+  What it cannot cover is a real `claude -p`, a real merge and a real board. Those are exercised by
+  running a day and reading report.md afterwards.
 
     .\test-day.ps1        # exits 0 if everything passes, 1 if anything fails
 #>
@@ -46,7 +47,7 @@ function New-QuietStatus {
     Running = $false; QuietForMinutes = $null; Cycle = 1; Role = "worker"
     Denials = 0; DenialsByTool = @(); CycleCosts = @(); LastCycleCost = $null
     Killed = $false; Unreadable = ""; RateLimit = $null; Ended = $false; EndReason = ""
-    ProcessGone = $false; ExecutorPid = $null; Past = @(); Anomalies = @()
+    IdleForMinutes = $null; Past = @(); Anomalies = @()
     Waiting = $false; Questions = @(); Answered = @(); Recovered = @()
   }
 }
@@ -608,35 +609,50 @@ Check "a session that died still reports what it collected" {
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-Check "a run whose process is gone is not still running" {
+# Nothing lives as long as a run any more, so the only thing that can tell a day being worked from
+# one abandoned half way is how long ago anything happened at all.
+Check "a run left half way with nothing happening says so" {
   $box = New-Sandbox
   try {
-    # A PID that cannot exist: Windows PIDs are multiples of 4 and this is the reserved idle slot's
-    # neighbour, never assigned.
-    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x"; pid = 999999 } | Out-Null
-    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker"; stream = "worker-1.stream.jsonl" } | Out-Null
+    $old = (Get-Date).ToUniversalTime().AddMinutes(-45).ToString("o")
+    Add-Utf8Line -Path (Get-EventsPath $box) -Text ('{"ts":"' + $old + '","kind":"day_started","repo":"x"}')
+    Add-Utf8Line -Path (Get-EventsPath $box) -Text ('{"ts":"' + $old + '","kind":"session_ended","cycle":1,"role":"worker","cost":1.0}')
 
     $st = Get-DayStatus -LogDir $box
     if ($st.Running) { return "it still reads as running" }
-    if (-not $st.ProcessGone) { return "it did not notice the process is gone" }
-    $v = @($st.Anomalies | Where-Object { $_.code -eq "vanished" })
-    if (-not $v.Count) { return "no anomaly for a day that died without an ending" }
+    if ($null -eq $st.IdleForMinutes -or $st.IdleForMinutes -lt 40) { return "idle came out as $($st.IdleForMinutes)" }
+    $v = @($st.Anomalies | Where-Object { $_.code -eq "abandoned" })
+    if (-not $v.Count) { return "no anomaly for a day left without an ending" }
     if ($v[0].level -ne "stop") { return "came out as $($v[0].level)" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-Check "a live run with its process alive still reads as running" {
+Check "a run that just did something is not abandoned" {
   $box = New-Sandbox
   try {
-    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x"; pid = $PID } | Out-Null
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "session_ended" -Data @{ cycle = 1; role = "worker"; cost = 1.0 } | Out-Null
+    $st = Get-DayStatus -LogDir $box
+    if (@($st.Anomalies | Where-Object { $_.code -eq "abandoned" }).Count) { return "called a live day abandoned" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# A long session is not an idle day: the stream goes quiet for as long as the session runs, and what
+# is watching it there is the silence rule over the session's own file.
+Check "a session that has been running a while is not read as abandoned" {
+  $box = New-Sandbox
+  try {
+    $old = (Get-Date).ToUniversalTime().AddMinutes(-45).ToString("o")
     $s = Join-Path $box "worker-1.stream.jsonl"
     [System.IO.File]::WriteAllLines($s, @('{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"dotnet test"}}]}}'))
-    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker"; stream = "worker-1.stream.jsonl" } | Out-Null
+    Add-Utf8Line -Path (Get-EventsPath $box) -Text ('{"ts":"' + $old + '","kind":"day_started","repo":"x"}')
+    Add-Utf8Line -Path (Get-EventsPath $box) -Text ('{"ts":"' + $old + '","kind":"session_started","cycle":1,"role":"worker","stream":"worker-1.stream.jsonl"}')
 
     $st = Get-DayStatus -LogDir $box
-    if (-not $st.Running) { return "a live day reads as dead" }
-    if ($st.ProcessGone) { return "it thinks the process is gone" }
+    if (-not $st.Running) { return "a live session reads as dead" }
+    if (@($st.Anomalies | Where-Object { $_.code -eq "abandoned" }).Count) { return "a working session was called abandoned" }
     if ($st.LastTool -notmatch "dotnet test") { return "it cannot say what the session is doing: '$($st.LastTool)'" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
@@ -692,67 +708,55 @@ $QJson = @'
                { "label": "Open the device natively", "effect": "reject" }] }]
 '@
 $Questions = @($QJson | ConvertFrom-Json)
-$Run = "2026-08-16_212343"
 
-function New-Answers([string]$Body) { return ($Body | ConvertFrom-Json) }
+function New-Answers([string]$Body) { return @($Body | ConvertFrom-Json) }
 
 Check "answers hold when every question comes back naming an option that was offered" {
-  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Keep what was built`",`"notes`":`"yes`"}]}"
-  $err = Test-DayAnswers -Answers $a -Questions $Questions -Run $Run -Cycle 1
-  if ($err -ne "") { return "refused a good file: $err" }
+  $a = New-Answers '[{"id":"q1","label":"Keep what was built","notes":"yes"}]'
+  $err = Test-DayAnswers -Answers $a -Questions $Questions
+  if ($err -ne "") { return "refused a good answer: $err" }
   ""
 }
 
 # The hole three independent reviewers found on 2026-08-17. While an answer carried its own effect,
 # one mistyped field merged the diff the person had just turned down, and nothing could tell.
 Check "an answer cannot carry a meaning the option it names does not have" {
-  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Open the device natively`",`"effect`":`"confirm`"}]}"
-  $err = Test-DayAnswers -Answers $a -Questions $Questions -Run $Run -Cycle 1
-  if ($err -ne "") { return "refused a good file: $err" }
+  $a = New-Answers '[{"id":"q1","label":"Open the device natively","effect":"confirm"}]'
+  $err = Test-DayAnswers -Answers $a -Questions $Questions
+  if ($err -ne "") { return "refused a good answer: $err" }
   $e = Get-AnswerEffect -Question $Questions[0] -Label "Open the device natively"
-  if ($e -ne "reject") { return "the effect came out '$e' -- a stray confirm in the file was obeyed" }
+  if ($e -ne "reject") { return "the effect came out '$e' -- a stray confirm in the answer was obeyed" }
   ""
 }
 
 Check "an option that was never offered is refused" {
-  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Do something else`"}]}"
-  if ((Test-DayAnswers -Answers $a -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took a label nobody offered" }
+  $a = New-Answers '[{"id":"q1","label":"Do something else"}]'
+  if ((Test-DayAnswers -Answers $a -Questions $Questions) -eq "") { return "took a label nobody offered" }
   ""
 }
 
-# A supervisor that answered the first question and stopped would otherwise have the day merge on a
-# decision nobody was ever asked about.
+# Answering the first question and stopping would otherwise merge on a decision nobody was asked.
 Check "a question left unanswered is refused rather than taken as agreement" {
-  $two = @($Questions[0], (New-Answers '{"id":"q2","question":"And the scope?","options":[{"label":"Keep","effect":"confirm"},{"label":"Cut","effect":"reject"}]}'))
-  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Keep what was built`"}]}"
-  $err = Test-DayAnswers -Answers $a -Questions $two -Run $Run -Cycle 1
-  if ($err -eq "") { return "took a partial file" }
+  $two = @($Questions[0], ('{"id":"q2","question":"And the scope?","options":[{"label":"Keep","effect":"confirm"},{"label":"Cut","effect":"reject"}]}' | ConvertFrom-Json))
+  $a = New-Answers '[{"id":"q1","label":"Keep what was built"}]'
+  $err = Test-DayAnswers -Answers $a -Questions $two
+  if ($err -eq "") { return "took a partial set" }
   if ($err -notmatch "q2") { return "did not name the missing one: $err" }
   ""
 }
 
 Check "an answer to a question nobody asked, or two answers to one, are refused" {
-  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Keep what was built`"},{`"id`":`"q9`",`"label`":`"x`"}]}"
-  if ((Test-DayAnswers -Answers $a -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took an answer to q9" }
-  $b = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Keep what was built`"},{`"id`":`"q1`",`"label`":`"Open the device natively`"}]}"
-  if ((Test-DayAnswers -Answers $b -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took two answers to q1" }
+  $a = New-Answers '[{"id":"q1","label":"Keep what was built"},{"id":"q9","label":"x"}]'
+  if ((Test-DayAnswers -Answers $a -Questions $Questions) -eq "") { return "took an answer to q9" }
+  $b = New-Answers '[{"id":"q1","label":"Keep what was built"},{"id":"q1","label":"Open the device natively"}]'
+  if ((Test-DayAnswers -Answers $b -Questions $Questions) -eq "") { return "took two answers to q1" }
   ""
 }
 
-# Without this, an answers file left over from another cycle or another day is obeyed by whichever
-# cycle happens to ask a question with the same id.
-Check "answers for another run or another cycle are refused" {
-  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":2,`"answers`":[{`"id`":`"q1`",`"label`":`"Keep what was built`"}]}"
-  if ((Test-DayAnswers -Answers $a -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took cycle 2's answers for cycle 1" }
-  $b = New-Answers "{`"run`":`"other`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Keep what was built`"}]}"
-  if ((Test-DayAnswers -Answers $b -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took another run's answers" }
-  ""
-}
-
-Check "an answer naming no option, and a file that is no JSON, are refused" {
-  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"`"}]}"
-  if ((Test-DayAnswers -Answers $a -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took an answer with no label" }
-  if ((Test-DayAnswers -Answers $null -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took nothing as an answer" }
+Check "an answer naming no option, and nothing at all, are refused" {
+  $a = New-Answers '[{"id":"q1","label":""}]'
+  if ((Test-DayAnswers -Answers $a -Questions $Questions) -eq "") { return "took an answer with no label" }
+  if ((Test-DayAnswers -Answers $null -Questions $Questions) -eq "") { return "took nothing as an answer" }
   ""
 }
 
@@ -906,19 +910,18 @@ Check "waiting is reported and does not stop the day" {
   ""
 }
 
-Check "a question stops being asked when the process that asked it is gone" {
+# A question nobody came back to is the shape of a day left half way, and both facts are worth
+# having: the question is still open, and nothing is going to close it on its own.
+Check "a question nobody answered leaves the day both waiting and abandoned" {
   $box = New-Sandbox
   try {
-    # A PID that cannot be running: the executor's own, which this probe is not.
-    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x"; pid = 999999 } | Out-Null
-    New-DayEvent -LogDir $box -Kind "question_asked" -Data @{
-      cycle = 1; id = "q1"; question = "Cut the scope?"; why = "w"; options = @()
-    } | Out-Null
+    $old = (Get-Date).ToUniversalTime().AddMinutes(-45).ToString("o")
+    Add-Utf8Line -Path (Get-EventsPath $box) -Text ('{"ts":"' + $old + '","kind":"day_started","repo":"x"}')
+    Add-Utf8Line -Path (Get-EventsPath $box) -Text ('{"ts":"' + $old + '","kind":"question_asked","cycle":1,"id":"q1","question":"Cut the scope?","why":"w","options":[]}')
 
     $st = Get-DayStatus -LogDir $box
-    if (-not $st.ProcessGone) { return "did not notice the process was gone" }
-    if ($st.Waiting) { return "still asking for an answer nothing can receive" }
-    if (-not @($st.Anomalies | Where-Object { $_.code -eq "vanished" }).Count) { return "vanished did not fire" }
+    if (-not $st.Waiting) { return "the question stopped being open" }
+    if (-not @($st.Anomalies | Where-Object { $_.code -eq "abandoned" }).Count) { return "abandoned did not fire" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
@@ -995,6 +998,176 @@ Check "a day still waiting says so at the top of its own report" {
     if ($md -notmatch "Cut the scope") { return "the report does not carry the question" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Write-Host ""
+Write-Host "  a question with no PR behind it"
+
+# A worker asks before it has built anything, so its options say what to build and cannot carry an
+# effect. Holding them to the audit's shape would refuse every one of them.
+Check "a question with no effects is well formed, and the audit's shape still is not" {
+  $plain = @('[{"id":"q1","question":"Which one?","why":"w","options":[{"label":"a"},{"label":"b"}]}]' | ConvertFrom-Json)
+  if ((Test-DayAsk $plain) -ne "") { return "refused a question that asks before building" }
+  if ((Test-DayQuestions $plain) -eq "") { return "took a verdict question with nothing that confirms" }
+  ""
+}
+
+Check "the shape rules hold for a question with no effects too" {
+  $cases = @(
+    '[{"id":"q1","question":"","options":[{"label":"a"},{"label":"b"}]}]',
+    '[{"id":"","question":"why","options":[{"label":"a"},{"label":"b"}]}]',
+    '[{"id":"q1","question":"why","options":[{"label":"a"}]}]',
+    '[{"id":"q1","question":"why","options":[{"label":"a"},{"label":"a"}]}]'
+  )
+  foreach ($c in $cases) {
+    if ((Test-DayAsk (@($c | ConvertFrom-Json))) -eq "") { return "took: $c" }
+  }
+  ""
+}
+
+Write-Host ""
+Write-Host "  the journal"
+
+function New-Repo {
+  $p = New-Sandbox
+  New-Item -ItemType Directory -Force (Join-Path $p ".scratch") | Out-Null
+  return $p
+}
+
+Check "a fresh journal has its headings and counts as empty" {
+  $repo = New-Repo
+  try {
+    Reset-Journal -Repo $repo | Out-Null
+    $p = Get-JournalPath $repo
+    if (-not (Test-Path $p)) { return "nothing was laid down" }
+    if ((Get-Content $p -Raw) -notmatch "Tried and discarded") { return "the headings are not there" }
+    if ((Test-JournalBody $p) -eq "") { return "an empty journal passed as written" }
+    ""
+  } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "a journal with prose under a heading counts as written" {
+  $repo = New-Repo
+  try {
+    Reset-Journal -Repo $repo | Out-Null
+    $p = Get-JournalPath $repo
+    Add-Utf8Line -Path $p -Text "Tried the resampler first and it drifted."
+    if ((Test-JournalBody $p) -ne "") { return "prose under a heading did not count" }
+    ""
+  } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# Only a merge archives. Everything else -- a hold, a question, a session that died -- falls through
+# to parked, which is what makes a cycle that never closed come out right with nothing written for it.
+Check "a merge archives and anything else parks" {
+  $repo = New-Repo
+  try {
+    Reset-Journal -Repo $repo | Out-Null
+    Add-Utf8Line -Path (Get-JournalPath $repo) -Text "what I threw away"
+    $filed = Complete-Journal -Repo $repo -Merged -TaskId "T1"
+    if ($filed -notmatch "archive") { return "a merge did not archive: $filed" }
+    if (Test-Path (Get-JournalPath $repo)) { return "the journal was left where it was" }
+
+    Reset-Journal -Repo $repo | Out-Null
+    Add-Utf8Line -Path (Get-JournalPath $repo) -Text "how far I got"
+    $parked = Complete-Journal -Repo $repo -TaskId "T2"
+    if ($parked -notmatch "parked") { return "the default was not parked: $parked" }
+    if ($parked -notmatch "T2") { return "it was not filed under its card" }
+    ""
+  } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "the card a journal belongs to is read off it when nobody says" {
+  $repo = New-Repo
+  try {
+    Reset-Journal -Repo $repo | Out-Null
+    $p = Get-JournalPath $repo
+    [System.IO.File]::WriteAllText($p, "# 86ak1byrr - something`n`n## Where I got to`n`nhalf way`n")
+    if ((Get-JournalTask $p) -ne "86ak1byrr") { return "read '$(Get-JournalTask $p)'" }
+    if ((Complete-Journal -Repo $repo) -notmatch "86ak1byrr") { return "it was not filed under the card it names" }
+    ""
+  } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# A folder of empty files is how a real one stops being noticed.
+Check "an empty journal is not filed anywhere" {
+  $repo = New-Repo
+  try {
+    Reset-Journal -Repo $repo | Out-Null
+    if ((Complete-Journal -Repo $repo -TaskId "T3") -ne "") { return "an empty journal was filed" }
+    if (Test-Path (Join-Path $repo ".scratch\parked\T3.md")) { return "an empty file reached parked" }
+    ""
+  } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The case this exists for: a cycle that died between its session and its close left a journal
+# nothing filed, and the next worker's fresh one would have written straight over it.
+Check "laying down a fresh journal parks whatever a dead cycle left" {
+  $repo = New-Repo
+  try {
+    Reset-Journal -Repo $repo | Out-Null
+    [System.IO.File]::WriteAllText((Get-JournalPath $repo), "# T9 - x`n`n## Where I got to`n`nnearly there`n")
+    $parked = Reset-Journal -Repo $repo
+    if ($parked -notmatch "T9") { return "the old one was overwritten instead of parked" }
+    if ((Get-Content $parked -Raw) -notmatch "nearly there") { return "what it said was lost" }
+    if ((Test-JournalBody (Get-JournalPath $repo)) -eq "") { return "the new one is not empty" }
+    ""
+  } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Write-Host ""
+Write-Host "  one day at a time"
+
+Check "a day open elsewhere keeps a second one out, and its own atoms in" {
+  $orch = New-Sandbox
+  try {
+    $mine = Join-Path $orch "log\2026-08-17_090000"
+    New-Item -ItemType Directory -Force $mine | Out-Null
+    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $mine) -ne "") { return "could not take a free lock" }
+    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $mine) -ne "") { return "the day that holds it was locked out of itself" }
+
+    $other = Join-Path $orch "log\2026-08-17_120000"
+    New-Item -ItemType Directory -Force $other | Out-Null
+    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $other) -eq "") { return "a second day took a held lock" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# Nothing releases the lock when a day is killed outright, so a claim nobody has touched in longer
+# than a session can legally take has to stop being a claim on its own.
+Check "a lock nobody has touched for hours is not a lock" {
+  $orch = New-Sandbox
+  try {
+    $stale = [pscustomobject]@{ run = "2026-08-17_000000"; dir = "$orch\log\2026-08-17_000000"
+                                ts = (Get-Date).ToUniversalTime().AddMinutes(-400).ToString("o") }
+    [System.IO.File]::WriteAllText((Get-LockPath $orch), ($stale | ConvertTo-Json -Compress))
+    $mine = Join-Path $orch "log\2026-08-17_090000"
+    New-Item -ItemType Directory -Force $mine | Out-Null
+    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $mine) -ne "") { return "a stale claim kept the day out" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# What lets every atom take no arguments at all.
+Check "the run and the cycle are read off the lock and the stream" {
+  $orch = New-Sandbox
+  try {
+    $mine = Join-Path $orch "log\2026-08-17_090000"
+    New-Item -ItemType Directory -Force $mine | Out-Null
+    Enter-DayLock -OrchestratorDir $orch -LogDir $mine | Out-Null
+    if ((Get-CurrentRun -OrchestratorDir $orch) -ne $mine) { return "the open day could not be found" }
+
+    if ((Get-CurrentCycle -LogDir $mine) -ne 0) { return "a day with no session is not on cycle 0" }
+    New-DayEvent -LogDir $mine -Kind "session_started" -Data @{ cycle = 1; role = "worker" } | Out-Null
+    New-DayEvent -LogDir $mine -Kind "session_started" -Data @{ cycle = 1; role = "audit" } | Out-Null
+    if ((Get-CurrentCycle -LogDir $mine) -ne 1) { return "the audit opened a cycle of its own" }
+    New-DayEvent -LogDir $mine -Kind "session_started" -Data @{ cycle = 2; role = "worker" } | Out-Null
+    if ((Get-CurrentCycle -LogDir $mine) -ne 2) { return "the second worker did not open cycle 2" }
+
+    Exit-DayLock -OrchestratorDir $orch
+    if ((Get-CurrentRun -OrchestratorDir $orch) -ne "") { return "a released lock still names a day" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 Write-Host ""

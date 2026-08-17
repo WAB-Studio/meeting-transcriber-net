@@ -1,0 +1,360 @@
+#requires -Version 5.1
+<#
+  What every atom does the same way: find the day it belongs to, refresh the claim on it, launch a
+  session, and say one thing on the way out.
+
+  An atom takes no arguments. Which run and which cycle are read off the lock and the stream, so a
+  caller never spells a path -- the layer that decides permissions splits a command on characters
+  that live in paths, and a command with one in it is a command that gets refused on the day nobody
+  can be asked.
+
+  `day.psm1` is the stream and the rules and launches nothing. This is the launching.
+
+  ASCII only, and no accented text. Windows PowerShell reads a .ps1 without a BOM as ANSI, so a
+  dash or an accent in a comment is a parse error on the machine this actually runs on.
+#>
+
+<#
+  Imported here and re-exported below, so an atom imports this one file and has the whole vocabulary.
+  Importing both from the script does not work: `-Force` removes the module before reloading it, and
+  the nested reload pulls day.psm1 out from under whoever imported it first -- which came out as
+  `New-DayEvent is not recognized` from a script whose second line had just imported it.
+#>
+$script:Day = Import-Module (Join-Path $PSScriptRoot "day.psm1") -Force -DisableNameChecking -PassThru
+
+$script:SessionTimeout = [TimeSpan]::FromMinutes(90)
+
+# The board CLI. An atom talks to the board only to act on something already decided: recording a
+# decision a person made, and putting a card back. It judges nothing.
+$script:ClickUp = Join-Path $env:USERPROFILE ".claude\skills\clickup\clickup.py"
+
+function Get-Repo { return (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) }
+
+<#
+  A new day. The only atom that creates anything: the run's folder, the claim on it, and the first
+  line of its stream.
+#>
+function New-DayRun {
+  $orch = $PSScriptRoot
+  $dir = Join-Path $orch ("log\" + (Get-Date -Format "yyyy-MM-dd_HHmmss"))
+  New-Item -ItemType Directory -Force $dir | Out-Null
+
+  $taken = Enter-DayLock -OrchestratorDir $orch -LogDir $dir
+  if ($taken -ne "") { return [pscustomobject]@{ LogDir = $dir; Error = $taken } }
+
+  Set-Location (Get-Repo)
+  return [pscustomobject]@{ Repo = (Get-Repo); Orch = $orch; LogDir = $dir; Cycle = 0; Error = "" }
+}
+
+<#
+  The day already open, or nothing. Every atom but the first begins here, and one that finds no day
+  refuses rather than starting one: a run nobody opened is a run nothing is watching.
+#>
+function Open-Day {
+  $orch = $PSScriptRoot
+  $dir = Get-CurrentRun -OrchestratorDir $orch
+  if ($dir -eq "") { return [pscustomobject]@{ Error = "no day is open -- start-day.ps1 opens one" } }
+  Update-DayLock -OrchestratorDir $orch -LogDir $dir
+  Set-Location (Get-Repo)
+  return [pscustomobject]@{
+    Repo = (Get-Repo); Orch = $orch; LogDir = $dir
+    Cycle = (Get-CurrentCycle -LogDir $dir); Error = ""
+  }
+}
+
+function Write-Day {
+  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)][string]$Text)
+  $line = "{0}  {1}" -f (Get-Date -Format "HH:mm:ss"), $Text
+  Write-Host $line
+  Add-Utf8Line -Path (Join-Path $Day.LogDir "day.log") -Text $line
+}
+
+<#
+  The last line an atom prints, and the only one anything downstream acts on. Everything above it is
+  for a person scrolling; this is the sentence.
+#>
+function Write-Atom {
+  param([Parameter(Mandatory)][hashtable]$Result)
+  Write-Host ("RESULT " + ([pscustomobject]$Result | ConvertTo-Json -Depth 6 -Compress))
+}
+
+<#
+  A `claude -p` hanging on something external hangs the day, and --max-budget-usd bounds tokens,
+  not minutes. Launched with stdin at EOF and a clock over it.
+
+  Two Start-Process traps, both of which fail the FIRST real session and neither of which shows up
+  in a dry run. -RedirectStandardInput does not take "NUL" -- it resolves it as a relative path and
+  throws -- so stdin comes from a real empty file. And ExitCode stays $null unless .Handle is read
+  before waiting, which would make `-ne 0` true on every clean exit.
+
+  The output is stream-json: the file grows while the session runs, which is what makes the day
+  watchable at all. The result is the LAST line of that file and never the file.
+#>
+function Invoke-Session {
+  param(
+    [Parameter(Mandatory)]$Day,
+    [Parameter(Mandatory)][string]$Role,
+    [Parameter(Mandatory)][string]$Prompt,
+    [Parameter(Mandatory)][int]$Cycle
+  )
+
+  $stream = Join-Path $Day.LogDir "$Role-$Cycle.stream.jsonl"
+  $stdin = Join-Path $Day.LogDir "empty-stdin"
+  New-Item -ItemType File -Force $stdin | Out-Null
+
+  # -ArgumentList joins with a space and quotes nothing, so the prompt -- which holds one -- would
+  # arrive as several arguments and the session would read the rest as strays.
+  $quoted = $Prompt
+  if ($Prompt -match '\s') { $quoted = '"' + $Prompt + '"' }
+  $argv = @("-p", $quoted, "--output-format", "stream-json", "--verbose",
+            "--permission-mode", "acceptEdits",
+            "--settings", ('"' + (Join-Path $Day.Orch "settings.json") + '"'),
+            "--fallback-model", "sonnet")
+
+  New-DayEvent -LogDir $Day.LogDir -Kind "session_started" -Data @{
+    cycle = $Cycle; role = $Role; stream = (Split-Path -Leaf $stream); prompt = $Prompt
+  } | Out-Null
+
+  # A session that died is where what it collected matters most: 27 denials and then a timeout is a
+  # worse day than 27 denials and a clean exit, and reading them only off a healthy result would
+  # throw away exactly the ones worth having.
+  function Close-Dead([string]$Kind, [string]$Reason) {
+    $a = Get-SessionActivity $stream
+    New-DayEvent -LogDir $Day.LogDir -Kind $Kind -Data @{
+      cycle = $Cycle; role = $Role; reason = $Reason
+      denials = $a.Denials; denial_detail = @($a.DenialDetail); rate_limit = $a.RateLimit
+    } | Out-Null
+  }
+
+  $started = Get-Date
+  try {
+    $p = Start-Process -FilePath "claude" -ArgumentList $argv -NoNewWindow -PassThru `
+                       -RedirectStandardOutput $stream -RedirectStandardInput $stdin
+    $null = $p.Handle
+  } catch {
+    Write-Day $Day "  the session could not be launched: $($_.Exception.Message)"
+    Close-Dead "session_failed" "could not be launched: $($_.Exception.Message)"
+    return $null
+  }
+
+  if (-not $p.WaitForExit($script:SessionTimeout.TotalMilliseconds)) {
+    Write-Day $Day "  the session passed $($script:SessionTimeout.TotalMinutes) min -- killed"
+    try { $p.Kill() } catch { }
+    Close-Dead "session_killed" "passed $($script:SessionTimeout.TotalMinutes) min"
+    return $null
+  }
+  if ($p.ExitCode -ne 0) {
+    Write-Day $Day "  claude exited with code $($p.ExitCode)"
+    Close-Dead "session_failed" "exit $($p.ExitCode)"
+    return $null
+  }
+
+  $r = Get-SessionResult $stream
+  if ($null -eq $r) {
+    Close-Dead "session_failed" "the stream carries no result line"
+    return $null
+  }
+
+  $denials = @(Get-ResultDenials $r)
+  # The usage window is only ever announced mid-stream, so it is carried onto the event or it is
+  # lost the moment the session closes.
+  $live = Get-SessionActivity $stream
+  New-DayEvent -LogDir $Day.LogDir -Kind "session_ended" -Data @{
+    cycle = $Cycle; role = $Role; subtype = [string]$r.subtype; is_error = [bool]$r.is_error
+    turns = [int]$r.num_turns; cost = [double]$r.total_cost_usd
+    seconds = [int]((Get-Date) - $started).TotalSeconds
+    denials = $denials.Count; denial_detail = $denials; rate_limit = $live.RateLimit
+  } | Out-Null
+
+  # The loudest thing an atom prints, because it is what costs the most without being seen: a denial
+  # does not stop the session, it sends it to do the same job by a worse route.
+  if ($denials.Count -gt 0) {
+    Write-Day $Day "  !! $($denials.Count) permission(s) denied -- whatever it did instead, nobody asked for"
+    foreach ($g in (Group-Denials $denials)) {
+      Write-Day $Day ("     {0} x{1}: {2}" -f $g.tool, $g.count, ($g.commands | Select-Object -First 1))
+    }
+  }
+
+  return $r
+}
+
+<#
+  Whether the session was sound enough to be worth acting on, asked after it ends and before
+  anything irreversible. A worker that spent its turns groping around a denied permission never
+  reaches the audit, and never reaches `main`.
+
+  The reader says what is out of range and the atom acts on it: labelling a condition `stop` and
+  then carrying on would make the level decoration.
+#>
+function Test-Sound {
+  param([Parameter(Mandatory)]$Day)
+  $status = Get-DayStatus -LogDir $Day.LogDir
+  $halt = @(Get-HaltingAnomalies -Status $status)
+  foreach ($a in $halt) {
+    Write-Day $Day "  !! [$($a.code)] $($a.text)"
+    New-DayEvent -LogDir $Day.LogDir -Kind "anomaly" -Data @{ level = $a.level; code = $a.code; text = $a.text } | Out-Null
+  }
+  # The ones that do not halt still go on the stream: most cannot be recomputed once the state that
+  # produced them is gone, and the morning report promises every one that fired.
+  foreach ($a in @($status.Anomalies | Where-Object { $_.level -ne "stop" })) {
+    New-DayEvent -LogDir $Day.LogDir -Kind "anomaly" -Data @{ level = $a.level; code = $a.code; text = $a.text } | Out-Null
+    Write-Day $Day "  [$($a.code)] $($a.text)"
+  }
+  if ($halt.Count -eq 0) { return "" }
+  return (($halt | ForEach-Object { $_.text }) -join " / ")
+}
+
+<#
+  Recording what happened must not be able to end the day, and saying so was not enough to make it
+  true: `$ErrorActionPreference` is `Stop` in every atom, so a `gh` or a `python` missing from PATH
+  throws rather than returning an exit code, and the throw goes past every check to the crash
+  handler. So the call is wrapped, and both ways of failing land in the same place.
+
+  Returns whether it worked, because one caller -- the card move -- has to write down which.
+#>
+function Invoke-BestEffort {
+  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)][string]$What, [Parameter(Mandatory)][scriptblock]$Do)
+  $why = ""
+  try {
+    & $Do
+    if ($LASTEXITCODE -ne 0) { $why = "exit $LASTEXITCODE" }
+  } catch {
+    $why = $_.Exception.Message
+  }
+  if ($why -eq "") { return $true }
+  New-DayEvent -LogDir $Day.LogDir -Kind "record_failed" -Data @{ reason = "$What -- $why" } | Out-Null
+  Write-Day $Day "  $What did not go through: $why"
+  return $false
+}
+
+<#
+  Long prose never goes on a command line. The board CLI takes `--text @path` for exactly this: a
+  reason worth recording carries a semicolon sooner or later, and whatever parses the command splits
+  on it without caring that it sits inside quotes.
+
+  Failing to record is written down and does not stop the day. The stream already holds the fact, so
+  what is lost is the copy a person reads on the board.
+#>
+function Write-Elsewhere {
+  param([Parameter(Mandatory)]$Day, [string]$TaskId, $PrNumber,
+        [Parameter(Mandatory)][string]$Body, [Parameter(Mandatory)][string]$Name)
+
+  $f = Join-Path $Day.LogDir $Name
+  [System.IO.File]::WriteAllText($f, $Body, (New-Object System.Text.UTF8Encoding($false)))
+
+  if ($PrNumber) { $null = Invoke-BestEffort $Day "the comment on PR #$PrNumber" { gh pr comment $PrNumber --body-file $f } }
+  if (-not $TaskId) { return }
+  if (-not (Test-Path $script:ClickUp)) {
+    New-DayEvent -LogDir $Day.LogDir -Kind "record_failed" -Data @{ reason = "the board CLI is not at $($script:ClickUp)" } | Out-Null
+    Write-Day $Day "  the board CLI is not where it should be"
+    return
+  }
+  $null = Invoke-BestEffort $Day "the comment on card $TaskId" { python $script:ClickUp comment $TaskId --text "@$f" }
+}
+
+function Move-Card {
+  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)][string]$TaskId, [Parameter(Mandatory)][string]$To)
+  if (-not (Test-Path $script:ClickUp)) { return $false }
+  return (Invoke-BestEffort $Day "moving card $TaskId to $To" { python $script:ClickUp move $TaskId --status $To })
+}
+
+<#
+  The PR is integrated here rather than by whatever decided it should be: it cannot be forgotten,
+  cannot happen twice, and lands on the stream. The next preflight fast-forwards local `main`, so
+  the cycle after this one branches from a base already carrying this one.
+
+  Archiving the journal is part of the same act and not a step beside it. **Only a merge archives**
+  -- everything else falls through to parked -- which is what makes a cycle that died come out right
+  without anything having been written for the case.
+#>
+function Invoke-Merge {
+  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)]$Handoff)
+  Write-Day $Day "integrating PR #$($Handoff.pr_number)"
+  gh pr merge $Handoff.pr_number --merge --delete-branch
+  if ($LASTEXITCODE -ne 0) {
+    New-DayEvent -LogDir $Day.LogDir -Kind "merge_failed" -Data @{
+      pr_number = $Handoff.pr_number; reason = "gh exited with $LASTEXITCODE"
+    } | Out-Null
+    return "the merge failed ($LASTEXITCODE) -- the PR is left open"
+  }
+  New-DayEvent -LogDir $Day.LogDir -Kind "merged" -Data @{ pr_number = $Handoff.pr_number } | Out-Null
+  Write-Day $Day "PR #$($Handoff.pr_number) integrated"
+
+  # The journal is local and gitignored, so filing it is not keeping it. What the next person can
+  # still read is the card, which is remote and survives the clone.
+  $filed = Complete-Journal -Repo $Day.Repo -Merged -TaskId ([string]$Handoff.task_id)
+  if ($filed) {
+    New-DayEvent -LogDir $Day.LogDir -Kind "journal_filed" -Data @{ to = $filed } | Out-Null
+    $body = "**What the session tried, and what it threw away.**`n`n" + (Get-Content $filed -Raw)
+    Write-Elsewhere $Day -TaskId ([string]$Handoff.task_id) -Body $body -Name "journal-$($Day.Cycle).md"
+  }
+  return ""
+}
+
+<#
+  What used to end the day. A verdict saying this PR does not hold up is a fact about one PR and not
+  about the hours left: the PR stays open for a person to read, the card goes back to the pool
+  carrying the reason, and the next cycle takes the next task.
+
+  Twice is a different fact. A card that comes back a second time is one two sessions could not
+  land, and returning it to the pool again is how a day spends itself going in a circle -- so the
+  second time it goes to `pending`, which is where work waits on a person.
+#>
+function Invoke-Recover {
+  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)]$Handoff, [Parameter(Mandatory)][string]$Reason)
+
+  $task = [string]$Handoff.task_id
+  # Read off the stream and not out of anything still running: a day relaunched used to forget, and
+  # a card nothing could land went back in the pool once per restart forever.
+  $to = Get-CardDestination -Recovered (Get-DayStatus -LogDir $Day.LogDir).Recovered -TaskId $task
+
+  $say = New-Object System.Collections.ArrayList
+  $null = $say.Add("**Not merged.** $Reason")
+  $null = $say.Add("")
+  if ($Handoff.pr_number) {
+    $null = $say.Add("PR #$($Handoff.pr_number) is left open and this card goes back to ``$to``. Pick it up on that PR's own branch rather than opening a second one. The day did not stop over it.")
+  } else {
+    $null = $say.Add("This card goes back to ``$to``. The day did not stop over it.")
+  }
+  if ($to -eq "pending") {
+    $null = $say.Add("")
+    $null = $say.Add("Second time it has come back, so it waits on a person rather than going back in the pool.")
+  }
+
+  # The comment goes first and the move second, on purpose. The comment is what tells the next
+  # worker this card already has a PR; a card that reached the pool without it is one somebody
+  # starts over, and the day ends up with two PRs against one task.
+  Write-Elsewhere $Day -TaskId $task -PrNumber $Handoff.pr_number -Body ($say -join "`n") -Name "recovered-$($Day.Cycle).md"
+
+  $moved = $false
+  if ($task) { $moved = Move-Card $Day -TaskId $task -To $to }
+  else {
+    New-DayEvent -LogDir $Day.LogDir -Kind "record_failed" -Data @{ reason = "the handoff names no task, so nothing could be put back" } | Out-Null
+  }
+
+  # What was meant and what happened. Recording the intention as the outcome left a card in
+  # `in review`, where no worker looks for it, while the report called it recovered.
+  New-DayEvent -LogDir $Day.LogDir -Kind "recovered" -Data @{
+    cycle = $Day.Cycle; task_id = $task; pr_number = $Handoff.pr_number; to = $to; reason = $Reason; moved = $moved
+  } | Out-Null
+
+  $parked = Complete-Journal -Repo $Day.Repo -TaskId $task
+  if ($parked) { New-DayEvent -LogDir $Day.LogDir -Kind "journal_parked" -Data @{ to = $parked } | Out-Null }
+
+  if ($moved) { Write-Day $Day "not merged -- PR #$($Handoff.pr_number) left open, card $task -> $to" }
+  else        { Write-Day $Day "not merged -- PR #$($Handoff.pr_number) left open, and card $task did NOT reach $to" }
+  return $to
+}
+
+function Read-Contract {
+  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)][string]$Name)
+  $p = Join-Path $Day.LogDir $Name
+  if (-not (Test-Path $p)) { return $null }
+  try { return ((Get-Content $p -Raw) | ConvertFrom-Json) } catch { return $null }
+}
+
+Export-ModuleMember -Function (@(
+  "Get-Repo", "New-DayRun", "Open-Day", "Write-Day", "Write-Atom", "Invoke-Session",
+  "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Move-Card",
+  "Invoke-Merge", "Invoke-Recover", "Read-Contract"
+) + @($script:Day.ExportedFunctions.Keys))
