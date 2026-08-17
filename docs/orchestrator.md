@@ -97,6 +97,27 @@ project's `deny` (`deepgram.json`, `settings.json`, force-push) still rules. Tha
 `skillOverrides`, which hides from an unattended session every skill it has no business reaching
 for — a worker that cannot see `dataviz` has one less way to spend an hour sideways.
 
+### A pipe is denied whole, not in part
+
+The rule that decides most of these is not per tool, it is per *piece*: a command is decomposed and
+every subcommand has to be allowed, so `git diff | grep | head` dies over `grep` and reports as a
+denied `git`. On 2026-08-17 that alone was eleven of one cycle's fifteen denials —
+`dotnet build 2>&1 | Select-String`, `printenv | grep`, `tasklist | grep`, `Get-ChildItem |
+Where-Object` — and the day stopped itself on a worker whose actual work was sound. A twelfth was
+`echo "TMPDIR=$TMPDIR"`, refused for containing an expansion at all.
+
+So the allow list carries the *filters* — `grep`, `head`, `tail`, `Select-String`, `Where-Object`
+and the rest — and not just the programs whose output they read. They are all read-only, which is
+why the list can be broad without being a hole. What it cannot be is complete: a pipe through a
+filter nobody listed is denied like any other, so a session that has to grep something new still
+loses the cycle. The rule to write against it is to reach for a tool rather than a pipeline —
+`Grep` and `Read` are not decomposed and cannot be refused this way.
+
+Two more that look like missing rules and are not: anything under `.claude/**` is refused as a
+sensitive path however the allow list reads, which is why a session's scratch belongs outside the
+repo and not in the gitignored log directory; and a command whose first word is an assignment or a
+variable is refused for the expansion, not for the program.
+
 ## What stops the day
 
 The loop stops — it never retries — and both `day.log` and `report.md` name which:

@@ -23,7 +23,34 @@
       "PowerShell(codex exec:*)",
       "Bash(codex exec:*)",
       "Read(//c/Users/pc/.codex/**)",
-      "Read(//c/Users/pc/.claude/skills/**)"
+      "Read(//c/Users/pc/.claude/skills/**)",
+
+      "Bash(grep:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(cut:*)",
+      "Bash(tr:*)",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
+      "Bash(printenv:*)",
+      "Bash(tasklist:*)",
+      "Bash(cd:*)",
+      "Bash(mkdir:*)",
+      "Bash(timeout:*)",
+      "PowerShell(Select-String:*)",
+      "PowerShell(Select-Object:*)",
+      "PowerShell(Where-Object:*)",
+      "PowerShell(ForEach-Object:*)",
+      "PowerShell(Sort-Object:*)",
+      "PowerShell(Measure-Object:*)",
+      "PowerShell(Get-ChildItem:*)",
+      "PowerShell(Get-Content:*)",
+      "PowerShell(Get-Process:*)",
+      "PowerShell(Out-String:*)",
+      "PowerShell(New-Item:*)"
     ]
   }
 }
