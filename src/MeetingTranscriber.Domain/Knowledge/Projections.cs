@@ -16,13 +16,16 @@ namespace MeetingTranscriber.Domain.Knowledge;
 /// deletes these rows and mints new ids, so anything a person pinned to one would be pointing at a
 /// row that no longer exists. The position is the order of the items in the file, never the order
 /// rows happened to be written in — which is the whole of what makes projecting twice reproduce it.
+/// It counts within its own list: an extraction returns decisions, actions and open questions
+/// separately, so the first of each is at zero and what tells them apart is which list they are in.
 /// </para>
 /// <para>
-/// Carried as a contract rather than as three tables that happen to agree, because what enforces it
-/// is a uniqueness the writer never sees: two rows at one position would make somebody's note
-/// ambiguous rather than wrong, which is the harder kind of bug to see. Everything implementing this
-/// is held to that by the storage layer at once, so a row added later is anchored without anybody
-/// remembering to anchor it.
+/// Carried as a contract rather than as tables that happen to agree, because what enforces it is a
+/// uniqueness the writer never sees: two rows of one kind at one position would make somebody's
+/// note ambiguous rather than wrong, which is the harder kind of bug to see. Taking this on is what
+/// makes a row one of these, and the storage layer holds every one of them to the same rule — the
+/// mapping still has to ask for it, so what stops a row from being anchored halfway is a test that
+/// reads this list back off the model.
 /// </para>
 /// </remarks>
 public interface IExtractionPosition

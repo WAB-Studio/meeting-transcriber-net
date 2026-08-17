@@ -291,10 +291,10 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
         {
             progress.ToTable("action_item_progress", table =>
             {
+                Positioned(table);
                 table.HasCheckConstraint(
                     "ck_action_item_progress_state",
                     $"state IN ({WireNames<ActionItemState>.AsSqlList()})");
-                table.HasCheckConstraint("ck_action_item_progress_ordinal", "ordinal >= 0");
             });
 
             // The key is the extraction and the position in it, not an action's id: a rebuild
@@ -548,13 +548,18 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
     /// The uniqueness is the half worth centralising. Two rows sharing a position in one extraction
     /// would make what a person pinned there ambiguous rather than wrong, which is the harder kind
     /// of bug to see — and it is the writer, projecting an extraction, that has no way to notice.
-    /// <c>action_item_progress</c> goes without this: the pair is its primary key, which says the
-    /// same thing more strongly, and a unique index over a key would be the same promise twice.
+    /// It is a position within its own list, so the first decision and the first action of one
+    /// extraction are both at zero; what tells them apart is the table they are in.
     /// </remarks>
     private static void Positioned(TableBuilder table) =>
         table.HasCheckConstraint($"ck_{table.Name}_ordinal", "ordinal >= 0");
 
     /// <inheritdoc cref="Positioned(TableBuilder)"/>
+    /// <remarks>
+    /// <c>action_item_progress</c> takes the table half and not this one: the pair is its primary
+    /// key, which says the same thing more strongly, and a unique index over a key would be the
+    /// same promise twice.
+    /// </remarks>
     private static void Positioned<TRow>(EntityTypeBuilder<TRow> row)
         where TRow : class, IExtractionPosition
     {

@@ -73,9 +73,12 @@ the same extraction again puts each action back under the state it was left in.
 
 That is the rule for every projected row somebody can annotate, not only for actions, so a
 decision and an open question carry the position too — whether a decision still stands is a
-person's word and has the same problem to solve. The database refuses two rows at one position of
-one run: two would not be a visible error, they would be a note that reads against either of them,
-and the writer projecting the extraction is the one with no way to notice.
+person's word and has the same problem to solve. The database refuses two decisions, two actions or
+two open questions at one position of one run: two would not be a visible error, they would be a
+note that reads against either of them, and the writer projecting the extraction is the one with no
+way to notice. The position counts inside its own list — an extraction returns the three
+separately — so the first decision and the first action of one run are both at position zero, and
+what tells them apart is the table they landed in.
 
 A citation names its turn by the meeting and the turn's position in it, never by a turn's id — for
 the same reason, one step further in. The ids belong to the projection, so a rebuild deletes them

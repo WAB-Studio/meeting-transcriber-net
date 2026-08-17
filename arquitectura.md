@@ -244,8 +244,11 @@ le anota no está en esa fila: el estado y el responsable de una acción viven e
 `action_item_progress`, apuntados a la extracción y a la posición dentro de ella, y
 no al id, que la reproyección vuelve a generar. Esa es la regla de toda fila
 proyectada que alguien puede anotar —decisión, acción y pregunta abierta llevan la
-posición por eso— y la base rechaza dos filas en una misma posición: dos no serían
-un error visible, serían una nota que se lee contra cualquiera de las dos.
+posición por eso— y la base rechaza dos decisiones, dos acciones o dos preguntas en
+una misma posición de una misma corrida: dos no serían un error visible, serían una
+nota que se lee contra cualquiera de las dos. La posición cuenta dentro de su propia
+lista, así que la primera decisión y la primera acción de una extracción están las
+dos en la posición cero y lo que las distingue es de qué lista salieron.
 
 Un rerender nunca modifica `deepgram.json` ni una extracción anterior. Una nueva
 extracción crea una versión nueva y conserva la anterior.
