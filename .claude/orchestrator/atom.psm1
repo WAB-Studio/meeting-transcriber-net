@@ -24,9 +24,14 @@ $script:DayModule = Import-Module (Join-Path $PSScriptRoot "day.psm1") -Force -D
 
 $script:SessionTimeout = [TimeSpan]::FromMinutes(90)
 
-# The board CLI. An atom talks to the board only to act on something already decided: recording a
-# decision a person made, and putting a card back. It judges nothing.
+# The board CLI. An atom acts on the board only for something already decided -- recording a
+# decision a person made, putting a card back -- and asks it one thing: whether there is anything
+# for a session to do at all. Which card, and whether that card is ready, stays the worker's.
 $script:ClickUp = Join-Path $env:USERPROFILE ".claude\skills\clickup\clickup.py"
+
+# The space this repo's board lives in. `docs/layout.md` and arquitectura.md 13 say what the lists
+# are; the only thing needed here is which board to ask.
+$script:Space = "MeetingTranscriber"
 
 function Get-Repo { return (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) }
 
@@ -309,6 +314,89 @@ function Write-Elsewhere {
   return (Invoke-BestEffort $Day "the comment on card $TaskId" { python $script:ClickUp comment $TaskId --text "@$f" })
 }
 
+<#
+  What the board CLI printed, or `$null` if it did not get to print. Separate from Invoke-BestEffort
+  because that one is for recording, where losing the copy is survivable; this is for reading, where
+  a failure that comes back as an empty answer is a wrong answer acted on.
+
+  It is a variable so a probe can put its own board behind it. What decides whether a day starts is
+  worth testing, and the only alternative to a seam here is a test that spends real requests on a
+  real board to find out what happens when that board answers badly.
+#>
+$script:Board = {
+  param([string[]]$Argv)
+  try {
+    $out = & python $script:ClickUp $Argv
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return @($out | ForEach-Object { [string]$_ })
+  } catch { return $null }
+}
+
+<#
+  Is there anything a worker could do -- asked before a session is spent rather than after.
+
+  Two things make one: a card in `in progress` is a session that died and has to be picked back up,
+  and a card in `Open` carrying `grilled` is a card somebody has already decided. Nothing else is
+  eligible, so with neither there is no session worth paying for.
+
+  **This is an emptiness check and not the worker's picking rule**, which is board order, priority,
+  what an open PR is already building, and what no machine can do at all. The two are allowed to
+  disagree in one direction only: this says a session is worth starting and the worker then finds
+  its first card is ungrilled and parks it. That costs a session, and what bounds it is the park
+  ceiling, not this. Making it agree would mean writing board order twice, and the second copy
+  would be the one nothing tests.
+
+  The order of the questions is the cost. A day that has work answers on one or two listings, and
+  only a board that looks empty pays for the tree -- which is where the refresh is, because that
+  reading is the one an ending gets decided on. `tree` is cached, and validating a rename against a
+  cache built this morning is validating nothing.
+#>
+function Get-BoardPool {
+  param([Parameter(Mandatory)]$Day, [scriptblock]$Board)
+
+  $none = {
+    param([string]$Why)
+    [pscustomobject]@{ Stop = $Why; Idle = $false; Resume = 0; Grilled = 0 }
+  }
+
+  # Only asked of the real one. A probe brings its own board and there is no file behind it.
+  if (-not $Board) {
+    $Board = $script:Board
+    if (-not (Test-Path $script:ClickUp)) { return (& $none "the board CLI is not at $($script:ClickUp)") }
+  }
+
+  $resume  = Read-BoardCount (& $Board @("tasks", "--space", $script:Space, "--status", "in progress"))
+  $grilled = Read-BoardCount (& $Board @("tasks", "--space", $script:Space, "--status", "Open", "--tag", "grilled"))
+  if ($null -eq $resume -or $null -eq $grilled) {
+    return (& $none "the board CLI answered something this cannot read")
+  }
+
+  if ($resume -gt 0 -or $grilled -gt 0) {
+    New-DayEvent -LogDir $Day.LogDir -Kind "board_pool" -Data @{ resume = $resume; grilled = $grilled } | Out-Null
+    return [pscustomobject]@{ Stop = ""; Idle = $false; Resume = $resume; Grilled = $grilled }
+  }
+
+  # Nothing came back, which is also what a status that no longer exists comes back as: the CLI
+  # answers an unknown one with an empty list and exit 0. So an empty answer is not an ending until
+  # the names it was asked under are still the board's names.
+  $tree = & $Board @("tree", "--refresh")
+  if ($null -eq $tree) { return (& $none "the board could not be read at all") }
+
+  $statuses = @(Read-SpaceStatuses -Lines $tree -Space $script:Space)
+  if ($statuses.Count -eq 0) { return (& $none "the board has no space called $($script:Space)") }
+
+  # Case-sensitive on purpose: the query sent `Open` and the board answering to `open` would be a
+  # rename this is here to catch, not a spelling of the same thing.
+  foreach ($s in @("in progress", "Open")) {
+    if ($statuses -cnotcontains $s) {
+      return (& $none "the $($script:Space) board no longer has a '$s' status, so what is eligible cannot be asked")
+    }
+  }
+
+  New-DayEvent -LogDir $Day.LogDir -Kind "board_pool" -Data @{ resume = 0; grilled = 0 } | Out-Null
+  return [pscustomobject]@{ Stop = ""; Idle = $true; Resume = 0; Grilled = 0 }
+}
+
 function Move-Card {
   param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)][string]$TaskId, [Parameter(Mandatory)][string]$To)
   if (-not (Test-Path $script:ClickUp)) { return $false }
@@ -573,7 +661,7 @@ function Read-Contract {
 
 Export-ModuleMember -Function (@(
   "Get-Repo", "New-DayRun", "Open-Day", "Enter-AtomLease", "Write-Day", "Write-Atom", "Write-AtomCrash", "Invoke-Session",
-  "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Move-Card", "Set-CardTags",
+  "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Get-BoardPool", "Move-Card", "Set-CardTags",
   "New-CloseResult", "Request-Grill",
   "Invoke-Merge", "Invoke-Recover", "Read-Contract"
 ) + @($script:DayModule.ExportedFunctions.Keys))

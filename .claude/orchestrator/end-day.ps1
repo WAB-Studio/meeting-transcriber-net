@@ -37,6 +37,11 @@ $outcomes = @(Read-DayEvents $day.LogDir | Where-Object { $_.kind -eq "handoff" 
 if ($outcomes.Count -gt 0 -and [string]$outcomes[-1].outcome -eq "no_tasks") {
   $reason = "no_tasks -- nothing left on the board this could take"
 }
+# An ending an atom reached without a session: nothing eligible before one was spent, or the park
+# ceiling. It is written where the reason is worked out rather than only where it was decided,
+# because the report is built from the stream and a reason that never reached it read as by hand.
+$ended = @(Read-DayEvents $day.LogDir | Where-Object { $_.kind -eq "no_more_cycles" })
+if ($ended.Count -gt 0) { $reason = [string]$ended[-1].reason }
 if ($stopped.Count -gt 0) { $reason = "$($stopped[0].code): $($stopped[0].text)" }
 
 $parked = Complete-Journal -Repo $day.Repo
