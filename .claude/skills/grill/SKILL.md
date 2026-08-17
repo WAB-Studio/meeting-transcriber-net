@@ -46,13 +46,14 @@ python $S update <id> --desc @.scratch/desc.md
 python $S tasks --space MeetingTranscriber --tag regrill
 ```
 
-A card tagged `regrill` is one a session took and stopped on, and it carries a `**Needs grilling.**`
-comment naming exactly what it could not decide. **Read that comment before anything else on the
-card.** Somebody already paid a session to find out what was missing; asking around it and missing
-the same thing again is paying twice.
+A card tagged `regrill` is one a session took and stopped on, and its latest comment names exactly
+what it could not decide. **Read that comment before anything else on the card.** Somebody already
+paid a session to find out what was missing; asking around it and missing the same thing again is
+paying twice.
 
-Some of them have an open PR — finished, green, held out of `main` by that one decision. Those come
-first of all: settling one lands work that already exists.
+The comment opens `**Needs grilling.**` when nothing was built yet, and `**Not merged.**` when there
+is an open PR behind it — finished, green, held out of `main` by that one decision. **Those come
+first of all**: settling one lands work that already exists.
 
 Then the rest, in board order.
 

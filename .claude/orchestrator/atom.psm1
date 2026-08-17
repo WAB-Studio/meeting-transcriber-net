@@ -20,7 +20,7 @@
   the nested reload pulls day.psm1 out from under whoever imported it first -- which came out as
   `New-DayEvent is not recognized` from a script whose second line had just imported it.
 #>
-$script:Day = Import-Module (Join-Path $PSScriptRoot "day.psm1") -Force -DisableNameChecking -PassThru
+$script:DayModule = Import-Module (Join-Path $PSScriptRoot "day.psm1") -Force -DisableNameChecking -PassThru
 
 $script:SessionTimeout = [TimeSpan]::FromMinutes(90)
 
@@ -47,6 +47,29 @@ function New-DayRun {
 }
 
 <#
+  Only one atom of a run at a time, held for the atom's whole life by the OS rather than by a
+  timestamp. The day lock serialises one day against another; nothing serialised an atom against
+  another atom of the same day, and two workers that read the stream in the same second both saw
+  cycle N, both chose N + 1, and shared a checkout, a stream and a card from there.
+
+  A handle rather than a claim because here it can be: an atom is one process for its whole
+  duration, so the OS releases this however the process dies.
+#>
+$script:AtomHandle = $null
+
+function Enter-AtomLease {
+  param([Parameter(Mandatory)][string]$OrchestratorDir)
+  try {
+    $script:AtomHandle = [System.IO.File]::Open(
+      (Join-Path $OrchestratorDir "atom.lock"), [System.IO.FileMode]::OpenOrCreate,
+      [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    return ""
+  } catch {
+    return "another atom of this day is still running"
+  }
+}
+
+<#
   The day already open, or nothing. Every atom but the first begins here, and one that finds no day
   refuses rather than starting one: a run nobody opened is a run nothing is watching.
 #>
@@ -54,6 +77,8 @@ function Open-Day {
   $orch = $PSScriptRoot
   $dir = Get-CurrentRun -OrchestratorDir $orch
   if ($dir -eq "") { return [pscustomobject]@{ Error = "no day is open -- start-day.ps1 opens one" } }
+  $busy = Enter-AtomLease -OrchestratorDir $orch
+  if ($busy -ne "") { return [pscustomobject]@{ Error = $busy } }
   Update-DayLock -OrchestratorDir $orch -LogDir $dir
   Set-Location (Get-Repo)
   return [pscustomobject]@{
@@ -267,13 +292,15 @@ function Write-Elsewhere {
   [System.IO.File]::WriteAllText($f, $Body, (New-Object System.Text.UTF8Encoding($false)))
 
   if ($PrNumber) { $null = Invoke-BestEffort $Day "the comment on PR #$PrNumber" { gh pr comment $PrNumber --body-file $f } }
-  if (-not $TaskId) { return }
+  if (-not $TaskId) { return $true }
   if (-not (Test-Path $script:ClickUp)) {
     New-DayEvent -LogDir $Day.LogDir -Kind "record_failed" -Data @{ reason = "the board CLI is not at $($script:ClickUp)" } | Out-Null
     Write-Day $Day "  the board CLI is not where it should be"
-    return
+    return $false
   }
-  $null = Invoke-BestEffort $Day "the comment on card $TaskId" { python $script:ClickUp comment $TaskId --text "@$f" }
+  # Returned, not swallowed. Most callers are recording something the stream already holds and can
+  # afford to lose the copy; one of them is writing the only durable record there is.
+  return (Invoke-BestEffort $Day "the comment on card $TaskId" { python $script:ClickUp comment $TaskId --text "@$f" })
 }
 
 function Move-Card {
@@ -282,43 +309,26 @@ function Move-Card {
   return (Invoke-BestEffort $Day "moving card $TaskId to $To" { python $script:ClickUp move $TaskId --status $To })
 }
 
-# One call rather than two: the CLI takes both, so a card cannot end up having lost one tag and not
-# gained the other.
+<#
+  `regrill` goes on before `grilled` comes off, and the order is the whole point. The CLI sends one
+  request per tag, so a transition can half happen; of the two half states, "both tags" leaves the
+  card in the grill's queue where somebody will see it, and "neither tag" leaves it in nobody's.
+
+  Both are checked. A caller that moves a card on the strength of a transition that did not happen
+  is how a card reaches a status nothing looks at.
+#>
 function Set-CardTags {
   param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)][string]$TaskId,
         [string]$Add, [string]$Remove)
   if (-not (Test-Path $script:ClickUp)) { return $false }
-  $argv = @("tag", $TaskId)
-  if ($Remove) { $argv += @("--rm", $Remove) }
-  if ($Add)    { $argv += @("--add", $Add) }
-  return (Invoke-BestEffort $Day "retagging card $TaskId" { python $script:ClickUp @argv })
-}
-
-<#
-  A card that was grilled, went to a worker, and turned out to still hold a decision nobody had
-  made. Two things happen and both are mechanical, because both are what a session would skip.
-
-  **What the grill missed gets written on the card.** Without it the next grill sits down with the
-  same card and no idea which fork sank the last attempt, asks the same questions it asked before,
-  and misses the same one again. That comment is the only thing carrying the lesson from a failed
-  grill to the next one.
-
-  **`grilled` comes off and `regrill` goes on.** Off, because a card that stopped a worker
-  demonstrably was not grilled, and leaving it on would have the next worker take it and stop on it
-  again. On, because a grill needs to find these before it finds anything else: they are the cards
-  where somebody already paid a session to discover what is missing.
-
-  The comment goes first and the tags second. A card still tagged `grilled` with the comment on it
-  costs one wasted session; a card retagged with no comment costs the next grill its starting point,
-  which is the failure repeating.
-#>
-function Write-OwedDecisions {
-  param([Parameter(Mandatory)]$Lines, [Parameter(Mandatory)]$Owed)
-  foreach ($d in @($Owed)) {
-    $null = $Lines.Add("- **" + [string]$d.what + "**")
-    if ($d.why) { $null = $Lines.Add("  " + [string]$d.why) }
-    foreach ($o in @($d.options)) { $null = $Lines.Add("  - " + [string]$o) }
+  $ok = $true
+  if ($Add) {
+    $ok = Invoke-BestEffort $Day "tagging card $TaskId '$Add'" { python $script:ClickUp tag $TaskId --add $Add }
   }
+  if ($ok -and $Remove) {
+    $ok = Invoke-BestEffort $Day "taking '$Remove' off card $TaskId" { python $script:ClickUp tag $TaskId --rm $Remove }
+  }
+  return $ok
 }
 
 <#
@@ -327,32 +337,37 @@ function Write-OwedDecisions {
   and it is not a question put to somebody at four in the afternoon: it is a card that goes back to
   a grill, which is the one place product decisions are made.
 
-  Two things happen and both are mechanical, because both are what a session would skip.
+  **Three steps, in this order, and each one guards the next.** The comment is the only durable copy
+  of what has to be settled; the tags are what puts the card in the grill's queue and out of the
+  worker's; the move is what says it waits on a person. A move on top of a failed comment files a
+  card nobody can act on, and a move on top of a failed retag files one nobody will find -- so the
+  move only happens when both landed, and a caller that gets `$false` back is looking at a card that
+  is still where it was, which is recoverable, rather than one that is somewhere nothing looks.
 
-  **What has to be settled gets written on the card.** Without it the next grill sits down with the
-  same card and no idea which fork sank the last attempt, asks the questions it already asked, and
-  misses the same one again. That comment is the only thing carrying the lesson from a failed grill
-  to the next one.
-
-  **`grilled` comes off and `regrill` goes on.** Off, because a card that stopped a session
-  demonstrably was not grilled, and leaving it on would have the next worker take it and stop again.
-  On, because a grill has to find these before anything else: they are the cards where somebody
-  already paid a session to discover what is missing.
-
-  The comment goes first and the tags second. Still tagged with the comment on it costs one wasted
-  session; retagged with no comment costs the next grill its starting point, which is the failure
-  repeating.
+  Since the board became the transport for the decision itself rather than a copy of it, a board
+  that cannot be reached is not a lost line in a report. It is the work lost.
 #>
 function Request-Grill {
   param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)][string]$TaskId, $Owed, $PrNumber)
 
   $say = New-Object System.Collections.ArrayList
-  $null = $say.Add("**Needs grilling.** A session stopped on this card: it holds a decision that is not the session's to make.")
+  if ($PrNumber) {
+    # The marker the worker already knows. A card with an open PR is picked up on that PR's branch,
+    # and inventing a second marker for the same fact is how the day ends up with two PRs on one
+    # card: the protocol that resumes work is one protocol.
+    $null = $say.Add("**Not merged.** A decision on this card is not the session's to make, so it needs grilling before anything else happens to it.")
+  } else {
+    $null = $say.Add("**Needs grilling.** A session stopped on this card: it holds a decision that is not the session's to make.")
+  }
   $null = $say.Add("")
   if (@($Owed).Count -gt 0) {
     $null = $say.Add("What has to be settled before anybody builds on it:")
     $null = $say.Add("")
-    Write-OwedDecisions -Lines $say -Owed $Owed
+    foreach ($d in @($Owed)) {
+      $null = $say.Add("- **" + [string]$d.what + "**")
+      if ($d.why) { $null = $say.Add("  " + [string]$d.why) }
+      foreach ($o in @($d.options)) { $null = $say.Add("  - " + [string]$o) }
+    }
   } else {
     $null = $say.Add("The card was never grilled, so everything in it is still open.")
   }
@@ -363,115 +378,23 @@ function Request-Grill {
   $null = $say.Add("")
   $null = $say.Add("Retagged ``regrill``: nothing takes this card again until a grill settles the above and puts ``grilled`` back.")
 
-  Write-Elsewhere $Day -TaskId $TaskId -PrNumber $PrNumber -Body ($say -join "`n") -Name "needs-grill-$($Day.Cycle).md"
-  $retagged = Set-CardTags $Day -TaskId $TaskId -Remove "grilled" -Add "regrill"
-  $moved = Move-Card $Day -TaskId $TaskId -To "pending"
+  $said = Write-Elsewhere $Day -TaskId $TaskId -PrNumber $PrNumber -Body ($say -join "`n") -Name "needs-grill-$($Day.Cycle).md"
+  $retagged = $false
+  $moved = $false
+  if ($said) { $retagged = Set-CardTags $Day -TaskId $TaskId -Add "regrill" -Remove "grilled" }
+  if ($said -and $retagged) { $moved = Move-Card $Day -TaskId $TaskId -To "pending" }
 
   New-DayEvent -LogDir $Day.LogDir -Kind "decision_owed" -Data @{
     cycle = $Day.Cycle; task_id = $TaskId; pr_number = $PrNumber
-    decisions = @($Owed); retagged = $retagged; moved = $moved
+    decisions = @($Owed); said = $said; retagged = $retagged; moved = $moved
   } | Out-Null
 
-  if (-not $retagged) {
-    Write-Day $Day "  card $TaskId still reads as grilled -- retag it by hand or the next worker stops on it again"
-  }
-  if (-not $moved) {
-    Write-Day $Day "  card $TaskId did NOT reach pending"
-  }
-  return $moved
-}
-
-<#
-  The PR is integrated here rather than by whatever decided it should be: it cannot be forgotten,
-  cannot happen twice, and lands on the stream. The next preflight fast-forwards local `main`, so
-  the cycle after this one branches from a base already carrying this one.
-
-  Archiving the journal is part of the same act and not a step beside it. **Only a merge archives**
-  -- everything else falls through to parked -- which is what makes a cycle that died come out right
-  without anything having been written for the case.
-#>
-function Invoke-Merge {
-  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)]$Handoff)
-  Write-Day $Day "integrating PR #$($Handoff.pr_number)"
-
-  # --match-head-commit is what makes the audit's verdict a fact about what lands. Between the audit
-  # reading the head and this running, the branch can move -- and the gap is at its widest exactly
-  # when a question was put to somebody, which can take hours. Without it the merge takes whatever
-  # is at the tip now, which is code nobody read.
-  gh pr merge $Handoff.pr_number --merge --delete-branch --match-head-commit $Handoff.head_sha
-  if ($LASTEXITCODE -ne 0) {
-    New-DayEvent -LogDir $Day.LogDir -Kind "merge_failed" -Data @{
-      cycle = $Day.Cycle; pr_number = $Handoff.pr_number; reason = "gh exited with $LASTEXITCODE"
-    } | Out-Null
-    return "the merge failed ($LASTEXITCODE) -- the PR is left open, and the head may have moved since it was audited"
-  }
-  New-DayEvent -LogDir $Day.LogDir -Kind "merged" -Data @{ cycle = $Day.Cycle; pr_number = $Handoff.pr_number } | Out-Null
-  Write-Day $Day "PR #$($Handoff.pr_number) integrated"
-
-  # The journal is local and gitignored, so filing it is not keeping it. What the next person can
-  # still read is the card, which is remote and survives the clone.
-  $filed = Complete-Journal -Repo $Day.Repo -Merged -TaskId ([string]$Handoff.task_id)
-  if ($filed) {
-    New-DayEvent -LogDir $Day.LogDir -Kind "journal_filed" -Data @{ to = $filed } | Out-Null
-    $body = "**What the session tried, and what it threw away.**`n`n" + (Get-Content $filed -Raw)
-    Write-Elsewhere $Day -TaskId ([string]$Handoff.task_id) -Body $body -Name "journal-$($Day.Cycle).md"
-  }
-  return ""
-}
-
-<#
-  What used to end the day. A verdict saying this PR does not hold up is a fact about one PR and not
-  about the hours left: the PR stays open for a person to read, the card goes back to the pool
-  carrying the reason, and the next cycle takes the next task.
-
-  Twice is a different fact. A card that comes back a second time is one two sessions could not
-  land, and returning it to the pool again is how a day spends itself going in a circle -- so the
-  second time it goes to `pending`, which is where work waits on a person.
-#>
-function Invoke-Recover {
-  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)]$Handoff, [Parameter(Mandatory)][string]$Reason)
-
-  $task = [string]$Handoff.task_id
-  # Read off the stream and not out of anything still running: a day relaunched used to forget, and
-  # a card nothing could land went back in the pool once per restart forever.
-  $to = Get-CardDestination -Recovered (Get-DayStatus -LogDir $Day.LogDir).Recovered -TaskId $task
-
-  $say = New-Object System.Collections.ArrayList
-  $null = $say.Add("**Not merged.** $Reason")
-  $null = $say.Add("")
-  if ($Handoff.pr_number) {
-    $null = $say.Add("PR #$($Handoff.pr_number) is left open and this card goes back to ``$to``. Pick it up on that PR's own branch rather than opening a second one. The day did not stop over it.")
-  } else {
-    $null = $say.Add("This card goes back to ``$to``. The day did not stop over it.")
-  }
-  if ($to -eq "pending") {
-    $null = $say.Add("")
-    $null = $say.Add("Second time it has come back, so it waits on a person rather than going back in the pool.")
-  }
-
-  # The comment goes first and the move second, on purpose. The comment is what tells the next
-  # worker this card already has a PR; a card that reached the pool without it is one somebody
-  # starts over, and the day ends up with two PRs against one task.
-  Write-Elsewhere $Day -TaskId $task -PrNumber $Handoff.pr_number -Body ($say -join "`n") -Name "recovered-$($Day.Cycle).md"
-
-  $moved = $false
-  if ($task) { $moved = Move-Card $Day -TaskId $task -To $to }
-  else {
-    New-DayEvent -LogDir $Day.LogDir -Kind "record_failed" -Data @{ reason = "the handoff names no task, so nothing could be put back" } | Out-Null
-  }
-
-  # What was meant and what happened. Recording the intention as the outcome left a card in
-  # `in review`, where no worker looks for it, while the report called it recovered.
-  New-DayEvent -LogDir $Day.LogDir -Kind "recovered" -Data @{
-    cycle = $Day.Cycle; task_id = $task; pr_number = $Handoff.pr_number; to = $to; reason = $Reason; moved = $moved
-  } | Out-Null
-
-  $parked = Complete-Journal -Repo $Day.Repo -TaskId $task
-  if ($parked) { New-DayEvent -LogDir $Day.LogDir -Kind "journal_parked" -Data @{ to = $parked } | Out-Null }
-
-  if ($moved) { Write-Day $Day "not merged -- PR #$($Handoff.pr_number) left open, card $task -> $to" }
-  else        { Write-Day $Day "not merged -- PR #$($Handoff.pr_number) left open, and card $task did NOT reach $to" }
-  return $to
+  if ($said -and $retagged -and $moved) { return "" }
+  $lost = @()
+  if (-not $said)     { $lost += "the decision never reached the card" }
+  if (-not $retagged) { $lost += "the card still reads as grilled" }
+  if (-not $moved)    { $lost += "the card never reached pending" }
+  return ("the board could not be told what this card owes: " + ($lost -join ", "))
 }
 
 function Read-Contract {
@@ -482,7 +405,7 @@ function Read-Contract {
 }
 
 Export-ModuleMember -Function (@(
-  "Get-Repo", "New-DayRun", "Open-Day", "Write-Day", "Write-Atom", "Write-AtomCrash", "Invoke-Session",
+  "Get-Repo", "New-DayRun", "Open-Day", "Enter-AtomLease", "Write-Day", "Write-Atom", "Write-AtomCrash", "Invoke-Session",
   "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Move-Card", "Set-CardTags", "Request-Grill",
   "Invoke-Merge", "Invoke-Recover", "Read-Contract"
-) + @($script:Day.ExportedFunctions.Keys))
+) + @($script:DayModule.ExportedFunctions.Keys))

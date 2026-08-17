@@ -55,7 +55,7 @@ New-DayEvent -LogDir $day.LogDir -Kind "preflight_ok" | Out-Null
 if ($day.Cycle -gt 0) {
   $open = Read-Contract $day "handoff-$($day.Cycle).json"
   if ($open -and [string]$open.outcome -eq "pr_opened" -and
-      -not (Test-CycleEvent -LogDir $day.LogDir -Cycle $day.Cycle -Kinds @("merged","recovered"))) {
+      -not (Test-CycleEvent -LogDir $day.LogDir -Cycle $day.Cycle -Kinds @("merged","recovered","decision_owed"))) {
     Write-Atom @{ ok = $false; reason = "cycle $($day.Cycle) is still open -- close it before opening another" }
     exit 1
   }
@@ -126,20 +126,26 @@ if ([string]$c.outcome -eq "needs_grill") {
     Write-Atom @{ ok = $false; stop = "the worker says a card needs grilling and does not say which" }
     exit 1
   }
-  $unreadable = Test-DecisionsOwed @($c.decisions_owed)
-  if ($unreadable -ne "") {
-    New-DayEvent -LogDir $day.LogDir -Kind "handoff_invalid" -Data @{
-      cycle = $cycle; reason = "it says a decision is owed but $unreadable"
-    } | Out-Null
-    Write-Atom @{ ok = $false; stop = "the worker says a decision is owed but $unreadable" }
-    exit 1
+  # Validated only when it says something. A card with no tag at all has nothing to name yet -- that
+  # is the ordinary case, it is most of them, and demanding a decision the worker never got far
+  # enough to see would end the day on the first ungrilled card.
+  if (@($c.decisions_owed).Count -gt 0) {
+    $unreadable = Test-DecisionsOwed @($c.decisions_owed)
+    if ($unreadable -ne "") {
+      New-DayEvent -LogDir $day.LogDir -Kind "handoff_invalid" -Data @{
+        cycle = $cycle; reason = "it says a decision is owed but $unreadable"
+      } | Out-Null
+      Write-Atom @{ ok = $false; stop = "the worker says a decision is owed but $unreadable" }
+      exit 1
+    }
   }
-  $moved = Request-Grill -Day $day -TaskId ([string]$c.task_id) -Owed @($c.decisions_owed)
+  $lost = Request-Grill -Day $day -TaskId ([string]$c.task_id) -Owed @($c.decisions_owed)
+  if ($lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $lost }; exit 1 }
   foreach ($d in @($c.decisions_owed)) { Write-Day $day ("  ? " + [string]$d.what) }
   Write-Day $day "[$cycle] card $($c.task_id) needs grilling before anything is built on it"
   Write-Atom @{
     ok = $true; cycle = $cycle; action = "parked"; task_id = [string]$c.task_id
-    decisions = @($c.decisions_owed); moved = $moved
+    decisions = @($c.decisions_owed)
   }
   exit 0
 }

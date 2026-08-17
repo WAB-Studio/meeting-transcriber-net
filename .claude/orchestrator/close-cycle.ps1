@@ -29,7 +29,7 @@ if ($null -eq $h) { Write-Atom @{ ok = $false; reason = "cycle $cycle has no han
 
 # Closing twice was not harmless: it recorded a second recovery, and because a card's destination is
 # counted off those, the duplicate sent it to `pending` as though two sessions had failed to land it.
-if (Test-CycleEvent -LogDir $day.LogDir -Cycle $cycle -Kinds @("merged","recovered")) {
+if (Test-CycleEvent -LogDir $day.LogDir -Cycle $cycle -Kinds @("merged","recovered","decision_owed")) {
   Write-Atom @{ ok = $true; cycle = $cycle; action = "already closed" }
   exit 0
 }
@@ -42,20 +42,21 @@ if ($null -eq $v) {
 }
 
 # One function decides, here and in the probe, so the two cannot drift. It also refuses to merge a
-# verdict that contradicts itself -- a `pass` carrying questions has said two things.
+# verdict that contradicts itself -- a `pass` that owes a decision has said two things.
 $act = Resolve-Verdict $v
 
 # A decision the audit will not make does not stop the day and does not wait for anybody. It goes on
 # the card, in writing, and the card goes to `pending` where no worker touches it until a grill has
 # settled it. The PR stays open and green; nothing merges it on a guess.
 if ($act.to -eq "pending") {
-  $moved = Request-Grill -Day $day -TaskId ([string]$h.task_id) -Owed @($v.decisions_owed) -PrNumber $h.pr_number
+  $lost = Request-Grill -Day $day -TaskId ([string]$h.task_id) -Owed @($v.decisions_owed) -PrNumber $h.pr_number
+  if ($lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $lost }; exit 1 }
   $parked = Complete-Journal -Repo $day.Repo -TaskId ([string]$h.task_id)
   if ($parked) { New-DayEvent -LogDir $day.LogDir -Kind "journal_parked" -Data @{ to = $parked } | Out-Null }
   Write-Day $day "[$cycle] PR #$($h.pr_number) left open -- card $($h.task_id) owes a decision and goes to pending"
   Write-Atom @{
     ok = $true; cycle = $cycle; action = "parked"; task_id = [string]$h.task_id
-    pr_number = $h.pr_number; decisions = @($v.decisions_owed); moved = $moved
+    pr_number = $h.pr_number; decisions = @($v.decisions_owed)
   }
   exit 0
 }

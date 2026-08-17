@@ -197,10 +197,8 @@ It is the only field deciding what happens to the PR. No second field repeats it
 run the command, but nothing stands between your verdict and the branch everything else is built
 on. There is no second reader after you, and the next session starts from what you let through.
 
-That is the whole reason to be slow here, and it is why the three that do not merge are cheap.
-`hold` costs one PR a rerun; `ask` costs it a wait on a grill. Letting a bad diff into `main`
-costs the day plus everything built on top of it before anybody notices. **When you are unsure
-whether it holds up, hold. When it holds up and you are unsure it was yours to decide, ask.**
+**When you are unsure whether it holds up, hold. When it holds up and you are unsure it was yours
+to decide, ask.**
 
 The card stays in `in review` on a verdict that merges — closing it is still the user's. On `hold`
 and on `ask` the orchestrator moves it, and you do not.

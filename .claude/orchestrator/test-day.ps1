@@ -13,7 +13,9 @@
 param()
 
 $ErrorActionPreference = "Stop"
-Import-Module (Join-Path $PSScriptRoot "day.psm1") -Force
+# atom.psm1, which re-exports day.psm1 whole: importing both leaves the second `-Force` pulling the
+# first out from under this script, and the lease this probes belongs to the atom side.
+Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking
 
 $script:Failed = 0
 $script:Ran = 0
@@ -796,6 +798,14 @@ Check "a verdict that contradicts itself does not merge" {
   ""
 }
 
+# @($null).Count is 1 in PowerShell, so a verdict that simply left the field out read as owing
+# exactly one decision, and a clean pass never merged.
+Check "a verdict with no decisions_owed field at all still merges" {
+  $v = '{"verdict":"pass"}' | ConvertFrom-Json
+  if ((Resolve-Verdict $v).action -ne "merge") { return "an absent field counted as a decision owed" }
+  ""
+}
+
 Write-Host ""
 Write-Host "  where a card goes when its PR is not merged"
 
@@ -884,13 +894,16 @@ Check "a parked card that never moved reads as needing a hand" {
   $box = New-Sandbox
   try {
     New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    # The comment landed and the retag did not, which is the state that hides best: the card looks
+    # handled and no worker or grill will ever find it.
     New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{
-      cycle = 1; task_id = "T1"; pr_number = 40; moved = $false
+      cycle = 1; task_id = "T1"; pr_number = 40; said = $true; retagged = $false; moved = $false
       decisions = @(@{ what = "Which way?" })
     } | Out-Null
     New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "no_tasks" } | Out-Null
     $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
-    if ($md -notmatch "did not reach") { return "the report calls a failed park a park" }
+    if ($md -notmatch "was not parked") { return "the report calls a failed park a park" }
+    if ($md -notmatch "still reads as grilled") { return "the report does not say which step failed" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
@@ -1005,6 +1018,40 @@ Check "a day open elsewhere keeps a second one out, and its own atoms in" {
 
 # Nothing releases the lock when a day is killed outright, so a claim nobody has touched in longer
 # than a session can legally take has to stop being a claim on its own.
+# Two contenders that both saw the same stale claim both overwrote it and both reported success.
+# Taking one over goes through the same atomic create as a free lock now, so exactly one wins.
+Check "only one day can take over a stale lock" {
+  $orch = New-Sandbox
+  try {
+    $dead = Join-Path $orch "log\2026-08-17_000000"
+    $stale = [pscustomobject]@{ run = "2026-08-17_000000"; dir = $dead
+                                ts = (Get-Date).ToUniversalTime().AddMinutes(-400).ToString("o") }
+    [System.IO.File]::WriteAllText((Get-LockPath $orch), ($stale | ConvertTo-Json -Compress))
+
+    $a = Join-Path $orch "log\2026-08-17_090000"
+    $b = Join-Path $orch "log\2026-08-17_090001"
+    New-Item -ItemType Directory -Force $a | Out-Null
+    New-Item -ItemType Directory -Force $b | Out-Null
+
+    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $a) -ne "") { return "the first contender could not take a stale lock" }
+    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $b) -eq "") { return "both contenders took the same stale lock" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# A contender reading while somebody else writes sees an unreadable file, and reading that as an
+# empty lock is the same collision arriving by another route.
+Check "a lock that cannot be read is not treated as free" {
+  $orch = New-Sandbox
+  try {
+    [System.IO.File]::WriteAllText((Get-LockPath $orch), "{ this is not json")
+    $mine = Join-Path $orch "log\2026-08-17_090000"
+    New-Item -ItemType Directory -Force $mine | Out-Null
+    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $mine) -eq "") { return "an unreadable lock read as free" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 Check "a lock nobody has touched for hours is not a lock" {
   $orch = New-Sandbox
   try {
@@ -1019,6 +1066,21 @@ Check "a lock nobody has touched for hours is not a lock" {
 }
 
 # What lets every atom take no arguments at all.
+# The day lock serialises one day against another. Nothing serialised an atom against another atom
+# of the same day, and two workers reading the stream in the same second both saw cycle N, both
+# chose N + 1, and shared a checkout, a stream and a card from there. A handle rather than a claim,
+# because an atom is one process for its whole life and the OS releases it however that ends.
+Check "only one atom of a day runs at a time" {
+  $orch = New-Sandbox
+  try {
+    if ((Enter-AtomLease -OrchestratorDir $orch) -ne "") { return "a free lease could not be taken" }
+    $probe = "try { [System.IO.File]::Open('" + (Join-Path $orch "atom.lock") + "', 'OpenOrCreate', 'Write', 'None').Dispose(); 'free' } catch { 'busy' }"
+    $second = & powershell.exe -NoProfile -Command $probe
+    if ($second -ne "busy") { return "a second atom took the lease while the first held it" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 Check "the run and the cycle are read off the lock and the stream" {
   $orch = New-Sandbox
   try {
@@ -1065,6 +1127,21 @@ Check "the lock is taken atomically, and released only by whoever holds it" {
 # What sequences the atoms is a model, so an atom run twice is not a hypothetical. Closing a cycle
 # twice recorded two recoveries, and a card's destination is counted off those -- so the duplicate
 # sent it to `pending` as though two sessions had failed to land it.
+# A cycle parked on a decision is finished with, the same as one merged or one put back. Leaving it
+# out of the terminal set made the next worker refuse forever with "cycle N is still open" -- the
+# no-waiting arrangement failing on its own central case.
+Check "a cycle parked on a decision counts as closed" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{ cycle = 1; task_id = "T1"; moved = $true } | Out-Null
+    $terminal = @("merged", "recovered", "decision_owed")
+    if (-not (Test-CycleEvent -LogDir $box -Cycle 1 -Kinds $terminal)) { return "a parked cycle still reads as open" }
+    if (Test-CycleEvent -LogDir $box -Cycle 2 -Kinds $terminal) { return "it closed the wrong cycle" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 Check "a cycle already acted on is recognised rather than acted on again" {
   $box = New-Sandbox
   try {

@@ -16,7 +16,7 @@ $script:Day = $null
 trap { Write-AtomCrash -Message $_.Exception.Message -Day $script:Day; exit 1 }
 
 $VerdictKeys = @("verdict","reasons","unreported_decisions","isc_unproved",
-                 "followups_created","actions_taken","audited_head_sha")
+                 "followups_created","actions_taken","audited_head_sha","decisions_owed")
 
 $day = Open-Day
 $script:Day = $day
@@ -81,7 +81,7 @@ New-DayEvent -LogDir $day.LogDir -Kind "verdict" -Data @{
   undeclared = @($c.unreported_decisions).Count
   isc_unproved = @($c.isc_unproved).Count
   followups = @($c.followups_created).Count
-  questions = @($c.questions).Count
+  owed = @($c.decisions_owed).Count
   reasons = @($c.reasons)
   actions_taken = @($c.actions_taken); followups_created = @($c.followups_created)
   undeclared_detail = @($c.unreported_decisions); isc_unproved_detail = @($c.isc_unproved)

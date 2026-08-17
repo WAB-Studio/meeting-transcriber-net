@@ -120,7 +120,7 @@
     },
     "blocked_reason": {
       "type": "string",
-      "description": "Empty string unless outcome is blocked."
+      "description": "Empty string unless the outcome needs a reason. On `blocked`, why it is stuck. On `no_tasks`, empty when the board really had nothing, and naming the open PRs when every remaining candidate was skipped for building on one -- an empty board and a blocked board are different facts and the morning report has to say which."
     },
     "decisions_owed": {
       "type": "array",

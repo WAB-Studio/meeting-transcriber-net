@@ -235,7 +235,9 @@ function Test-DecisionsOwed {
 function Resolve-Verdict {
   param($Verdict)
   $name = [string]$Verdict.verdict
-  $owed = @($Verdict.decisions_owed)
+  # Filtered, not just wrapped: @($null).Count is 1, so a `pass` that simply omitted the field
+  # read as owing one decision and never merged.
+  $owed = @(@($Verdict.decisions_owed) | Where-Object { $null -ne $_ })
 
   if ($name -eq "ask") {
     $bad = Test-DecisionsOwed $owed
@@ -586,24 +588,46 @@ function Enter-DayLock {
   $p = Get-LockPath $OrchestratorDir
   $run = Split-Path -Leaf $LogDir
 
-  try {
-    $fs = [System.IO.File]::Open($p, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write,
-                                 [System.IO.FileShare]::None)
-    $fs.Dispose()
-  } catch {
-    $held = $null
-    try { $held = (Get-Content $p -Raw -ErrorAction Stop) | ConvertFrom-Json } catch { $held = $null }
-    if ($held -and [string]$held.run -and [string]$held.run -ne $run) {
-      $age = ((Get-Date).ToUniversalTime() - ([datetime][string]$held.ts).ToUniversalTime()).TotalMinutes
-      if ($age -lt $script:LockStaleMinutes) {
-        return ("the day {0} holds the lock and touched it {1:N0} min ago" -f $held.run, $age)
-      }
-    }
+  if (Test-NewLock -Path $p) {
+    Update-DayLock -OrchestratorDir $OrchestratorDir -LogDir $LogDir
+    return ""
   }
+
+  $held = $null
+  try { $held = (Get-Content $p -Raw -ErrorAction Stop) | ConvertFrom-Json } catch { $held = $null }
+
+  # Unreadable is not permission. A contender reading during somebody else's write sees exactly
+  # this, and treating it as a free lock is how two days end up sharing a checkout.
+  if ($null -eq $held -or -not [string]$held.run) { return "the lock could not be read, so it is not free" }
+  if ([string]$held.run -eq $run) {
+    Update-DayLock -OrchestratorDir $OrchestratorDir -LogDir $LogDir
+    return ""
+  }
+
+  $age = ((Get-Date).ToUniversalTime() - ([datetime][string]$held.ts).ToUniversalTime()).TotalMinutes
+  if ($age -lt $script:LockStaleMinutes) {
+    return ("the day {0} holds the lock and touched it {1:N0} min ago" -f $held.run, $age)
+  }
+
+  # Taking over goes through the same atomic create as a free lock, so two contenders that both see
+  # the same stale claim cannot both win: overwriting it outright let them.
+  Remove-Item $p -Force -ErrorAction SilentlyContinue
+  if (-not (Test-NewLock -Path $p)) { return "another day took the stale lock first" }
   Update-DayLock -OrchestratorDir $OrchestratorDir -LogDir $LogDir
   return ""
 }
 
+# Exclusive creation, which is the only part of taking a lock that has to be indivisible: two
+# `start-day` in the same second both saw no lock and both proceeded.
+function Test-NewLock {
+  param([Parameter(Mandatory)][string]$Path)
+  try {
+    $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::CreateNew,
+                                 [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+    $fs.Dispose()
+    return $true
+  } catch { return $false }
+}
 
 function Update-DayLock {
   param([Parameter(Mandatory)][string]$OrchestratorDir, [Parameter(Mandatory)][string]$LogDir)
@@ -920,7 +944,7 @@ function Get-DayStatus {
       "decision_owed" {
         $st.Owed += [pscustomobject]@{
           cycle = [int]$e.cycle; task = [string]$e.task_id; pr = $e.pr_number
-          decisions = @($e.decisions); moved = [bool]$e.moved
+          decisions = @($e.decisions); said = [bool]$e.said; retagged = [bool]$e.retagged; moved = [bool]$e.moved
         }
       }
       "recovered" {
@@ -1051,8 +1075,14 @@ function Write-DayReport {
       foreach ($d in @($o.decisions)) {
         $null = $L.Add(("- {0} {1} - {2}" -f $o.task, $pr, [string]$d.what))
       }
-      if (-not $o.moved) {
-        $null = $L.Add(("  **{0} did not reach ``pending``** and the board still says otherwise." -f $o.task))
+      # The one line in this section somebody has to act on. Each of these steps guards the next, so
+      # naming which one stopped says exactly what state the card is in and what has to be redone.
+      if (-not ($o.said -and $o.retagged -and $o.moved)) {
+        $missed = @()
+        if (-not $o.said)     { $missed += "the decision never reached the card" }
+        if (-not $o.retagged) { $missed += "it still reads as grilled" }
+        if (-not $o.moved)    { $missed += "it never reached ``pending``" }
+        $null = $L.Add(("  **{0} was not parked**: {1}." -f $o.task, ($missed -join ", ")))
       }
     }
     $null = $L.Add("")
@@ -1145,7 +1175,7 @@ Export-ModuleMember -Function Add-Utf8Line, Get-EventsPath, Read-OpenFileLines, 
   Test-DecisionsOwed, Resolve-Verdict, Get-CardDestination,
   New-Denial, Get-ResultDenials, Get-DenialKey, Group-Denials,
   Get-JournalPath, Test-JournalBody, Get-JournalTask, Reset-Journal, Complete-Journal,
-  Get-LockPath, Enter-DayLock, Update-DayLock, Exit-DayLock,
+  Get-LockPath, Test-NewLock, Enter-DayLock, Update-DayLock, Exit-DayLock,
   Get-CurrentRun, Get-CurrentCycle, Test-CycleEvent,
   Get-DayRules, Get-DayAnomalies, Get-HaltingAnomalies, Get-Median,
   Find-LatestRun, Get-DayStatus, Write-DayReport

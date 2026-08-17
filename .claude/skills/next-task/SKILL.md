@@ -85,15 +85,26 @@ Two things that are never confused with each other:
   when there is work.
 
 **Look at the open PRs too** (`gh pr list`). Every session branches from the same `main`, so you
-cannot see what the previous one did. If your candidate builds on work sitting in an unmerged PR,
-skip it as ineligible and say so: that one waits on a merge, not on a person.
+cannot see what the previous one did. If your candidate **actually builds on** work sitting in an
+unmerged PR, skip it and say so in `skipped[]`: that one waits on a merge, not on a person.
+
+That is the one rule that outranks board order, and it is narrow on purpose. It is about a real
+dependency you can point at in the code, not about position — "it comes after it on the board" is
+not one. Judge each candidate against every open PR, including the ones parked on a decision, which
+accumulate.
+
+**If every remaining candidate was skipped for that reason, the board is not empty — it is blocked.**
+Say `outcome: "no_tasks"` and put the reason in `blocked_reason`, naming the PRs everything is
+waiting behind. A day that reports an empty board when the work is sitting behind a decision you
+owe tells you the wrong thing in the morning.
 
 ### A card that came back
 
 **A card in `Open` carrying a `**Not merged.**` comment is work in progress, not a fresh task**, and
 the comment names the PR that is still open. The audit read that PR and did not let it through, or
-the user turned down the decision it rested on; either way the comment says which, and it is the
-first thing to read. That card is the strongest candidate there is — ahead of anything in the pool,
+it held a decision that had to be grilled first; either way the comment says which, and it is the
+first thing to read. When it was the second, the grill's answer is on the card too, under
+`**Grilled.**`, and it is what the branch has to be brought in line with. That card is the strongest candidate there is — ahead of anything in the pool,
 and second only to `in progress` — because leaving it produces a second PR against the same task.
 
 Check the PR is still open before believing the comment: a card worked months ago and reopened now
