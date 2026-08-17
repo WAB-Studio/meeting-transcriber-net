@@ -19,6 +19,19 @@ out is a card somebody can finish without asking anybody, marked `grilled`.
 If it does not show from outside, it is not theirs — say what you would do and move on. Three ways
 to count a frame position, record or struct, where a boundary sits: those go to whoever builds it.
 
+**Two tells, both mechanical, and a question failing either is already decided.** Choose, write it
+down, ask nothing.
+
+- **It cannot be written without naming something only the code has** — a type, a method, a field,
+  an object being disposed. *Where does releasing a device get bounded: the audio client, the
+  endpoint, the silent playback?* names three things nobody recording a meeting will ever see.
+  Rewrite it as what somebody sees and one of two things happens: it becomes a real question —
+  *what does the person who pressed record see when a device never answers?* — or it evaporates,
+  and that is the answer.
+- **Its two branches look the same from outside.** A fork is two outcomes somebody could tell
+  apart. *Stopping gives up after five seconds* against *stopping waits forever* is a fork; *where
+  the deadline is enforced* is the same product either way.
+
 What is theirs:
 
 - A behaviour somebody would notice — a device disappearing mid-recording, a meeting nobody named,
@@ -89,9 +102,16 @@ Claims: ISC-N, ISC-M.
 
 What was decided, never how you got there.
 
-**The claims.** A decision saying what has to be true for somebody using the app is an ISC. Open it
-through the `isa` skill and never mark one `[x]` — you ran no probe. Commit `ISA.md` straight to
-`main`, and take `git rev-parse main` after that commit for the `sha` above.
+**The claims.** A decision saying what has to be true for somebody using the app belongs in the
+ISA — which is almost never a new number. **Settling N forks does not open N claims.** Most of what
+a grill decides is a claim that already exists saying it loosely, and the move is to sharpen that
+one in place and keep its ID; a fresh ID is what is left when no claim in the file encapsulates the
+statement. A sitting that hands the `isa` skill one new claim per fork is not covering the board,
+it is inflating the count — and the count is what the whole articulation is scored on.
+
+Open them through the `isa` skill, which owns that check, and never mark one `[x]` — you ran no
+probe. Commit `ISA.md` straight to `main`, and take `git rev-parse main` after that commit for the
+`sha` above.
 
 **The tag, last.**
 
