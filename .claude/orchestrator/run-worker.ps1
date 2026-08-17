@@ -55,7 +55,7 @@ New-DayEvent -LogDir $day.LogDir -Kind "preflight_ok" | Out-Null
 if ($day.Cycle -gt 0) {
   $open = Read-Contract $day "handoff-$($day.Cycle).json"
   if ($open -and [string]$open.outcome -eq "pr_opened" -and
-      -not (Test-CycleEvent -LogDir $day.LogDir -Cycle $day.Cycle -Kinds @("merged","recovered","decision_owed"))) {
+      -not (Test-CycleClosed -LogDir $day.LogDir -Cycle $day.Cycle)) {
     Write-Atom @{ ok = $false; reason = "cycle $($day.Cycle) is still open -- close it before opening another" }
     exit 1
   }
@@ -162,8 +162,8 @@ if ([string]$c.outcome -eq "needs_grill") {
       exit 1
     }
   }
-  $lost = Request-Grill -Day $day -TaskId ([string]$c.task_id) -Owed @($c.decisions_owed)
-  if ($lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $lost }; exit 1 }
+  $park = Request-Grill -Day $day -TaskId ([string]$c.task_id) -Owed @($c.decisions_owed)
+  if ($park.Lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $park.Lost }; exit 1 }
   foreach ($d in @($c.decisions_owed)) { Write-Day $day ("  ? " + [string]$d.what) }
   Write-Day $day "[$cycle] card $($c.task_id) needs grilling before anything is built on it"
 

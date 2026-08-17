@@ -1135,9 +1135,8 @@ Check "a cycle parked on a decision counts as closed" {
   try {
     New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
     New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{ cycle = 1; task_id = "T1"; moved = $true } | Out-Null
-    $terminal = @("merged", "recovered", "decision_owed")
-    if (-not (Test-CycleEvent -LogDir $box -Cycle 1 -Kinds $terminal)) { return "a parked cycle still reads as open" }
-    if (Test-CycleEvent -LogDir $box -Cycle 2 -Kinds $terminal) { return "it closed the wrong cycle" }
+    if (-not (Test-CycleClosed -LogDir $box -Cycle 1)) { return "a parked cycle still reads as open" }
+    if (Test-CycleClosed -LogDir $box -Cycle 2) { return "it closed the wrong cycle" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
@@ -1146,10 +1145,34 @@ Check "a cycle already acted on is recognised rather than acted on again" {
   $box = New-Sandbox
   try {
     New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
-    if (Test-CycleEvent -LogDir $box -Cycle 1 -Kinds @("merged","recovered")) { return "an untouched cycle read as closed" }
+    if (Test-CycleClosed -LogDir $box -Cycle 1) { return "an untouched cycle read as closed" }
     New-DayEvent -LogDir $box -Kind "recovered" -Data @{ cycle = 1; task_id = "T1"; to = "Open"; moved = $true } | Out-Null
-    if (-not (Test-CycleEvent -LogDir $box -Cycle 1 -Kinds @("merged","recovered"))) { return "a closed cycle read as open" }
-    if (Test-CycleEvent -LogDir $box -Cycle 2 -Kinds @("merged","recovered")) { return "cycle 2 was closed by cycle 1's event" }
+    if (-not (Test-CycleClosed -LogDir $box -Cycle 1)) { return "a closed cycle read as open" }
+    if (Test-CycleClosed -LogDir $box -Cycle 2) { return "cycle 2 was closed by cycle 1's event" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# Running the atom again is the only repair a half-landed close has. A guard that read the event
+# rather than what the event says happened answered `already closed` over a card still sitting in
+# `in review`, and the cycle was finished with while the board had never been told.
+Check "a close that never reached the board leaves the cycle open" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "recovered" -Data @{ cycle = 1; task_id = "T1"; to = "Open"; said = $true; moved = $false } | Out-Null
+    if (Test-CycleClosed -LogDir $box -Cycle 1) { return "a card that never moved closed its cycle" }
+
+    New-DayEvent -LogDir $box -Kind "decision_owed" -Data @{ cycle = 2; task_id = "T2"; said = $true; retagged = $true; moved = $false } | Out-Null
+    if (Test-CycleClosed -LogDir $box -Cycle 2) { return "a park that never reached pending closed its cycle" }
+
+    # The retry lands, and now it is closed.
+    New-DayEvent -LogDir $box -Kind "recovered" -Data @{ cycle = 1; task_id = "T1"; to = "Open"; said = $true; moved = $true } | Out-Null
+    if (-not (Test-CycleClosed -LogDir $box -Cycle 1)) { return "the repair did not close it" }
+
+    # A merge has no board write between deciding it and it being true.
+    New-DayEvent -LogDir $box -Kind "merged" -Data @{ cycle = 3; pr_number = 7 } | Out-Null
+    if (-not (Test-CycleClosed -LogDir $box -Cycle 3)) { return "a merge did not close its cycle" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
@@ -1406,6 +1429,96 @@ Check "a renamed status stops the day rather than emptying it" {
     if ($lower.Idle) { return "a status renamed only in its case read as an empty board" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Write-Host ""
+Write-Host "  what a recorded step says it did"
+
+# Everything that guards a card on the board reads this one boolean, and it could not be false: what
+# a command prints on stdout is part of what a PowerShell function returns, so a board CLI that
+# printed why it failed came back as @("error ...", $false) -- two elements, and therefore true.
+Check "a step that printed and failed still comes back false" {
+  $box = New-Sandbox
+  try {
+    $day = [pscustomobject]@{ LogDir = $box; Repo = $box }
+    $ok = Invoke-BestEffort $day "a step that works" { cmd /c "echo done" }
+    if ($ok -isnot [bool]) { return "a step that worked returned $($ok.GetType().Name), not a boolean" }
+    if (-not $ok) { return "a step that worked came back false" }
+
+    $bad = Invoke-BestEffort $day "a step that fails loudly" { cmd /c "echo something broke & exit 3" }
+    if ($bad -isnot [bool]) { return "a failed step returned $($bad.GetType().Name), not a boolean" }
+    if ($bad) { return "a step that failed came back true" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# One shape for the three ways a cycle closes. Two of them used to answer with a bare string, and
+# the comparison that goes with it -- `-ne ""` -- calls anything else a failure.
+Check "a close says whether it landed in one shape" {
+  $r = New-CloseResult
+  if ($r.Lost -ne "") { return "an untroubled close came back with something lost" }
+  if ($r.To -ne "")   { return "it invented a destination" }
+  $l = New-CloseResult -To "pending" -Lost "the board said no"
+  if ($l.Lost -ne "the board said no" -or $l.To -ne "pending") { return "it did not carry what it was given" }
+  ""
+}
+
+Write-Host ""
+Write-Host "  the atoms call things that exist"
+
+<#
+  The one check here that reads the code rather than running it, because running it is exactly what
+  does not happen: PowerShell resolves a command when the line executes, so a function deleted out
+  from under its callers is not a load error, not a parse error, and not visible to any probe that
+  does not reach that branch. `Invoke-Merge` and `Invoke-Recover` were deleted with their three
+  callers left standing and their names left in the export list; every check stayed green, and what
+  it cost was the merge and both recoveries -- two of the three ways a cycle can end.
+
+  Names are taken off the syntax tree rather than a regular expression: a call is a CommandAst and
+  nothing else is, so a name inside a string or a comment cannot count as one. Only Verb-Noun names
+  are judged, which is what leaves `git`, `gh`, `python` and `dotnet` out of it.
+#>
+Check "no atom calls a function that does not exist" {
+  # Resolved the way the atom will resolve it at run time, not against every name in the folder: an
+  # atom sees its own functions, whatever `atom.psm1` exports, and the shell's cmdlets. A helper
+  # that lives in a file nobody imports is not in scope, and pooling the whole directory would call
+  # that a definition and pass over the same hole this exists to find.
+  $mod = Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking -PassThru
+  $exported = @{}
+  foreach ($k in $mod.ExportedFunctions.Keys) { $exported[$k] = $true }
+
+  $bad = @()
+  foreach ($f in (Get-ChildItem $PSScriptRoot -File | Where-Object { $_.Extension -in @(".ps1", ".psm1") })) {
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors)
+    if ($errors -and $errors.Count -gt 0) { return "$($f.Name) does not parse: $($errors[0].Message)" }
+
+    $local = @{}
+    foreach ($d in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
+      $local[$d.Name] = $true
+    }
+    # The modules are each other's scope: day.psm1 is imported whole by atom.psm1, and a name
+    # exported from there is what an atom gets. For the two modules the pair is the scope.
+    if ($f.Extension -eq ".psm1") {
+      $peer = Join-Path $PSScriptRoot $(if ($f.Name -eq "atom.psm1") { "day.psm1" } else { "atom.psm1" })
+      $peerAst = [System.Management.Automation.Language.Parser]::ParseFile($peer, [ref]$null, [ref]$null)
+      foreach ($d in $peerAst.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true)) {
+        $local[$d.Name] = $true
+      }
+    }
+
+    foreach ($c in $ast.FindAll({ $args[0] -is [System.Management.Automation.Language.CommandAst] }, $true)) {
+      $name = $c.GetCommandName()
+      if (-not $name -or $name -notmatch '^[A-Za-z]+-[A-Za-z]+$') { continue }   # leaves git, gh, python out
+      if ($local.ContainsKey($name) -or $exported.ContainsKey($name)) { continue }
+      # Cmdlets and aliases only. A function some module on this machine happens to export would
+      # make the check pass here and fail on a runner that does not have it.
+      if (Get-Command $name -CommandType Cmdlet, Alias -ErrorAction SilentlyContinue) { continue }
+      $bad += "$($f.Name) calls $name"
+    }
+  }
+  if ($bad.Count -gt 0) { return ($bad | Sort-Object -Unique) -join "; " }
+  ""
 }
 
 Write-Host ""
