@@ -12,16 +12,30 @@ $ErrorActionPreference = "Stop"
 $env:PYTHONIOENCODING  = "utf-8"
 Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking
 
+$script:Day = $null
+trap { Write-AtomCrash -Message $_.Exception.Message -Day $script:Day; exit 1 }
+
 $VerdictKeys = @("verdict","reasons","unreported_decisions","isc_unproved",
                  "followups_created","actions_taken","audited_head_sha")
 
 $day = Open-Day
+$script:Day = $day
 if ($day.Error -ne "") { Write-Host $day.Error; Write-Atom @{ ok = $false; reason = $day.Error }; exit 1 }
 
 $cycle = $day.Cycle
 $h = Read-Contract $day "handoff-$cycle.json"
 if ($null -eq $h) {
   Write-Atom @{ ok = $false; reason = "cycle $cycle has no handoff to audit" }
+  exit 1
+}
+if ([string]$h.outcome -ne "pr_opened") {
+  Write-Atom @{ ok = $false; reason = "cycle $cycle ended as '$($h.outcome)', so there is no PR to audit" }
+  exit 1
+}
+# A second audit of the same cycle is a second paid session over a diff already judged, and its
+# verdict would overwrite the one the cycle is about to be closed on.
+if (Test-CycleEvent -LogDir $day.LogDir -Cycle $cycle -Kinds @("verdict")) {
+  Write-Atom @{ ok = $false; reason = "cycle $cycle already has a verdict -- close it rather than auditing it again" }
   exit 1
 }
 
@@ -51,7 +65,8 @@ if ($bad -ne "") {
 
 # The audit reads the PR, and the worker delivered a commit. If somebody pushed between the two,
 # the verdict is about different code than was handed over.
-if ([string]$c.audited_head_sha -ne [string]$h.head_sha) {
+if ([string]::IsNullOrWhiteSpace([string]$c.audited_head_sha) -or
+    [string]$c.audited_head_sha -ne [string]$h.head_sha) {
   New-DayEvent -LogDir $day.LogDir -Kind "verdict_invalid" -Data @{
     cycle = $cycle; reason = "audited $($c.audited_head_sha), the worker delivered $($h.head_sha)"
   } | Out-Null

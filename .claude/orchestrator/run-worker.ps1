@@ -12,10 +12,14 @@ $ErrorActionPreference = "Stop"
 $env:PYTHONIOENCODING  = "utf-8"
 Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking
 
+$script:Day = $null
+trap { Write-AtomCrash -Message $_.Exception.Message -Day $script:Day; exit 1 }
+
 $HandoffKeys = @("outcome","task_id","pr_number","isc_closed","probes",
                  "decisions_deferred","left_out","skipped","blocked_reason","head_sha")
 
 $day = Open-Day
+$script:Day = $day
 if ($day.Error -ne "") { Write-Host $day.Error; Write-Atom @{ ok = $false; reason = $day.Error }; exit 1 }
 
 # Every command is judged by its own exit code. $ErrorActionPreference does not turn a native exe
@@ -43,6 +47,19 @@ if ($blocked -ne "") {
   exit 1
 }
 New-DayEvent -LogDir $day.LogDir -Kind "preflight_ok" | Out-Null
+
+# A cycle that was never closed is not replaced by opening another one. What sequences these is a
+# model, so calling this again after an audit or a close was skipped is not a hypothetical -- and
+# the second worker would take a new card while the first one's PR sat open with its card in
+# `in progress`, which is the abandonment the whole arrangement exists to prevent.
+if ($day.Cycle -gt 0) {
+  $open = Read-Contract $day "handoff-$($day.Cycle).json"
+  if ($open -and @("pr_opened", "ask") -contains [string]$open.outcome -and
+      -not (Test-CycleEvent -LogDir $day.LogDir -Cycle $day.Cycle -Kinds @("merged","recovered","answered_before_building"))) {
+    Write-Atom @{ ok = $false; reason = "cycle $($day.Cycle) is still open -- close it before opening another" }
+    exit 1
+  }
+}
 
 $cycle = $day.Cycle + 1
 $day.Cycle = $cycle
@@ -107,6 +124,11 @@ if ([string]$c.outcome -eq "ask") {
     Write-Atom @{ ok = $false; stop = "the worker asked for a decision but $unreadable" }
     exit 1
   }
+  # Cleared as the question is published and never afterwards. The answers land at a fixed path, so
+  # one left behind by a cycle that died is a file the next question would read as its own -- and a
+  # label that happens to match would decide something nobody was asked.
+  Remove-Item (Join-Path $day.Repo ".scratch\answers.json") -Force -ErrorAction SilentlyContinue
+
   foreach ($q in @($c.questions)) {
     New-DayEvent -LogDir $day.LogDir -Kind "question_asked" -Data @{
       cycle = $cycle; id = [string]$q.id; question = [string]$q.question; why = [string]$q.why
@@ -119,15 +141,32 @@ if ([string]$c.outcome -eq "ask") {
 }
 
 # A session that built something and wrote down nothing about what it tried leaves the next one to
-# repeat every dead end it already walked. It costs the PR nothing and it costs this cycle its
-# close, which is the only place refusing changes anything: the audit has not run yet.
+# repeat every dead end it already walked. It is written down and it does not stop the cycle: a PR
+# whose work is done and whose CI is green is not made worse by a missing diary, and refusing to
+# audit it would throw away the verifiable thing over the unverifiable one.
 if ([string]$c.outcome -eq "pr_opened") {
   $thin = Test-JournalBody (Get-JournalPath $day.Repo)
   if ($thin -ne "") {
-    New-DayEvent -LogDir $day.LogDir -Kind "journal_empty" -Data @{ cycle = $cycle; reason = $thin } | Out-Null
-    Write-Day $day "[$cycle] the journal is empty -- this cycle does not go to audit"
-    Write-Atom @{ ok = $false; cycle = $cycle; hold = "the session left no journal, so what it tried and discarded is lost" }
-    exit 0
+    New-DayEvent -LogDir $day.LogDir -Kind "anomaly" -Data @{
+      level = "warn"; code = "journal"
+      text = "cycle $cycle opened a PR and left no journal, so what it tried and discarded is lost"
+    } | Out-Null
+    Write-Day $day "[$cycle] the journal is empty -- what this session discarded is lost"
+  }
+}
+
+# A PR that names no commit cannot be audited against what was delivered, and an empty SHA on both
+# sides passes an equality check while proving nothing.
+if ([string]$c.outcome -eq "pr_opened") {
+  $missing = @()
+  if ([string]::IsNullOrWhiteSpace([string]$c.head_sha)) { $missing += "head_sha" }
+  if (-not $c.pr_number -or [int]$c.pr_number -le 0) { $missing += "pr_number" }
+  if ($missing.Count -gt 0) {
+    New-DayEvent -LogDir $day.LogDir -Kind "handoff_invalid" -Data @{
+      cycle = $cycle; reason = "it says pr_opened with no " + ($missing -join " and no ")
+    } | Out-Null
+    Write-Atom @{ ok = $false; stop = "the handoff says pr_opened with no " + ($missing -join " and no ") }
+    exit 1
   }
 }
 

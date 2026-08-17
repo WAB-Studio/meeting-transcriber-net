@@ -79,6 +79,26 @@ function Write-Atom {
 }
 
 <#
+  An atom that throws still says so. `$ErrorActionPreference` is `Stop` in all of them, so a `git`
+  or a `gh` missing from PATH raises rather than returning an exit code, and the raise went past
+  every check and out of the script -- leaving whoever is sequencing with no RESULT at all and no
+  way to tell a crash from a hang.
+
+  Called from a `trap`, which is the only construct that catches a terminating error raised anywhere
+  in a script body without wrapping the whole thing in one indent.
+#>
+function Write-AtomCrash {
+  param([Parameter(Mandatory)][string]$Message, $Day)
+  if ($Day -and $Day.LogDir) {
+    try {
+      New-DayEvent -LogDir $Day.LogDir -Kind "atom_failed" -Data @{ reason = $Message } | Out-Null
+    } catch { }
+  }
+  Write-Host "the atom threw: $Message"
+  Write-Atom @{ ok = $false; stop = "an atom threw: $Message" }
+}
+
+<#
   A `claude -p` hanging on something external hangs the day, and --max-budget-usd bounds tokens,
   not minutes. Launched with stdin at EOF and a clock over it.
 
@@ -111,8 +131,12 @@ function Invoke-Session {
             "--settings", ('"' + (Join-Path $Day.Orch "settings.json") + '"'),
             "--fallback-model", "sonnet")
 
+  # The atom's own PID goes on the event. Without it a session reads as running for as long as the
+  # stream says it started and nothing says it stopped -- so an atom killed mid-session left the day
+  # looking alive forever, which is the one state `abandoned` exists to catch and the one it could
+  # not see.
   New-DayEvent -LogDir $Day.LogDir -Kind "session_started" -Data @{
-    cycle = $Cycle; role = $Role; stream = (Split-Path -Leaf $stream); prompt = $Prompt
+    cycle = $Cycle; role = $Role; stream = (Split-Path -Leaf $stream); prompt = $Prompt; pid = $PID
   } | Out-Null
 
   # A session that died is where what it collected matters most: 27 denials and then a timeout is a
@@ -270,14 +294,19 @@ function Move-Card {
 function Invoke-Merge {
   param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)]$Handoff)
   Write-Day $Day "integrating PR #$($Handoff.pr_number)"
-  gh pr merge $Handoff.pr_number --merge --delete-branch
+
+  # --match-head-commit is what makes the audit's verdict a fact about what lands. Between the audit
+  # reading the head and this running, the branch can move -- and the gap is at its widest exactly
+  # when a question was put to somebody, which can take hours. Without it the merge takes whatever
+  # is at the tip now, which is code nobody read.
+  gh pr merge $Handoff.pr_number --merge --delete-branch --match-head-commit $Handoff.head_sha
   if ($LASTEXITCODE -ne 0) {
     New-DayEvent -LogDir $Day.LogDir -Kind "merge_failed" -Data @{
-      pr_number = $Handoff.pr_number; reason = "gh exited with $LASTEXITCODE"
+      cycle = $Day.Cycle; pr_number = $Handoff.pr_number; reason = "gh exited with $LASTEXITCODE"
     } | Out-Null
-    return "the merge failed ($LASTEXITCODE) -- the PR is left open"
+    return "the merge failed ($LASTEXITCODE) -- the PR is left open, and the head may have moved since it was audited"
   }
-  New-DayEvent -LogDir $Day.LogDir -Kind "merged" -Data @{ pr_number = $Handoff.pr_number } | Out-Null
+  New-DayEvent -LogDir $Day.LogDir -Kind "merged" -Data @{ cycle = $Day.Cycle; pr_number = $Handoff.pr_number } | Out-Null
   Write-Day $Day "PR #$($Handoff.pr_number) integrated"
 
   # The journal is local and gitignored, so filing it is not keeping it. What the next person can
@@ -354,7 +383,7 @@ function Read-Contract {
 }
 
 Export-ModuleMember -Function (@(
-  "Get-Repo", "New-DayRun", "Open-Day", "Write-Day", "Write-Atom", "Invoke-Session",
+  "Get-Repo", "New-DayRun", "Open-Day", "Write-Day", "Write-Atom", "Write-AtomCrash", "Invoke-Session",
   "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Move-Card",
   "Invoke-Merge", "Invoke-Recover", "Read-Contract"
 ) + @($script:Day.ExportedFunctions.Keys))

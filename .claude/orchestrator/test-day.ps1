@@ -1170,6 +1170,119 @@ Check "the run and the cycle are read off the lock and the stream" {
   } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
+Check "the lock is taken atomically, and released only by whoever holds it" {
+  $orch = New-Sandbox
+  try {
+    $a = Join-Path $orch "log\2026-08-17_090000"
+    $b = Join-Path $orch "log\2026-08-17_090001"
+    New-Item -ItemType Directory -Force $a | Out-Null
+    New-Item -ItemType Directory -Force $b | Out-Null
+    Enter-DayLock -OrchestratorDir $orch -LogDir $a | Out-Null
+
+    # B never took it, so B may not drop it. Unconditional release let a day that had just lost a
+    # race take the lock away from the one that legitimately held it.
+    Exit-DayLock -OrchestratorDir $orch -LogDir $b
+    if (-not (Test-Path (Get-LockPath $orch))) { return "a stranger released the lock" }
+    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $b) -eq "") { return "and then took it" }
+
+    Exit-DayLock -OrchestratorDir $orch -LogDir $a
+    if (Test-Path (Get-LockPath $orch)) { return "the holder could not release it" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# A day stopped to ask is not idle, however long it has been: nothing runs while it waits, so its
+# claim ages exactly like an abandoned one and the checkout would be taken out from under it.
+Check "a day waiting on a person keeps the lock however stale it looks" {
+  $orch = New-Sandbox
+  try {
+    $held = Join-Path $orch "log\2026-08-17_000000"
+    New-Item -ItemType Directory -Force $held | Out-Null
+    New-DayEvent -LogDir $held -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $held -Kind "question_asked" -Data @{
+      cycle = 1; id = "q1"; question = "Cut the scope?"; why = "w"; options = @()
+    } | Out-Null
+    $stale = [pscustomobject]@{ run = "2026-08-17_000000"; dir = $held
+                                ts = (Get-Date).ToUniversalTime().AddMinutes(-400).ToString("o") }
+    [System.IO.File]::WriteAllText((Get-LockPath $orch), ($stale | ConvertTo-Json -Compress))
+
+    $mine = Join-Path $orch "log\2026-08-17_090000"
+    New-Item -ItemType Directory -Force $mine | Out-Null
+    $refused = Enter-DayLock -OrchestratorDir $orch -LogDir $mine
+    if ($refused -eq "") { return "the checkout was taken from a day still waiting for an answer" }
+    if ($refused -notmatch "waiting") { return "refused for the wrong reason: $refused" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# What sequences the atoms is a model, so an atom run twice is not a hypothetical. Closing a cycle
+# twice recorded two recoveries, and a card's destination is counted off those -- so the duplicate
+# sent it to `pending` as though two sessions had failed to land it.
+Check "a cycle already acted on is recognised rather than acted on again" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    if (Test-CycleEvent -LogDir $box -Cycle 1 -Kinds @("merged","recovered")) { return "an untouched cycle read as closed" }
+    New-DayEvent -LogDir $box -Kind "recovered" -Data @{ cycle = 1; task_id = "T1"; to = "Open"; moved = $true } | Out-Null
+    if (-not (Test-CycleEvent -LogDir $box -Cycle 1 -Kinds @("merged","recovered"))) { return "a closed cycle read as open" }
+    if (Test-CycleEvent -LogDir $box -Cycle 2 -Kinds @("merged","recovered")) { return "cycle 2 was closed by cycle 1's event" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# An atom killed mid-session left the stream saying a session started and nothing saying it stopped,
+# so the day read as working for as long as anybody looked -- and `abandoned`, which only fires when
+# nothing is running, never got its turn.
+Check "a session whose atom is gone is not running, and the day reads as abandoned" {
+  $box = New-Sandbox
+  try {
+    $old = (Get-Date).ToUniversalTime().AddMinutes(-45).ToString("o")
+    $s = Join-Path $box "worker-1.stream.jsonl"
+    [System.IO.File]::WriteAllLines($s, @('{"type":"assistant","message":{"content":[]}}'))
+    Add-Utf8Line -Path (Get-EventsPath $box) -Text ('{"ts":"' + $old + '","kind":"day_started","repo":"x"}')
+    # A PID that cannot be running: Windows never assigns this one.
+    Add-Utf8Line -Path (Get-EventsPath $box) -Text ('{"ts":"' + $old + '","kind":"session_started","cycle":1,"role":"worker","stream":"worker-1.stream.jsonl","pid":999999}')
+
+    $st = Get-DayStatus -LogDir $box
+    if ($st.Running) { return "a session whose atom is gone still reads as running" }
+    if (-not @($st.Anomalies | Where-Object { $_.code -eq "abandoned" }).Count) { return "abandoned did not fire" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "a live atom's session still reads as running" {
+  $box = New-Sandbox
+  try {
+    $s = Join-Path $box "worker-1.stream.jsonl"
+    [System.IO.File]::WriteAllLines($s, @('{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"dotnet test"}}]}}'))
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker"; stream = "worker-1.stream.jsonl"; pid = $PID } | Out-Null
+    $st = Get-DayStatus -LogDir $box
+    if (-not $st.Running) { return "a live session reads as dead" }
+    if ($st.LastTool -notmatch "dotnet test") { return "it cannot say what the session is doing" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# A card can come back more than once, and each attempt knows something the last did not.
+Check "parking a card twice keeps both attempts" {
+  $repo = New-Repo
+  try {
+    Reset-Journal -Repo $repo | Out-Null
+    [System.IO.File]::WriteAllText((Get-JournalPath $repo), "# T7 - x`n`n## Where I got to`n`nfirst attempt`n")
+    Complete-Journal -Repo $repo | Out-Null
+
+    Reset-Journal -Repo $repo | Out-Null
+    [System.IO.File]::WriteAllText((Get-JournalPath $repo), "# T7 - x`n`n## Where I got to`n`nsecond attempt`n")
+    $parked = Complete-Journal -Repo $repo
+
+    $body = Get-Content $parked -Raw
+    if ($body -notmatch "first attempt") { return "the earlier attempt was overwritten" }
+    if ($body -notmatch "second attempt") { return "the later attempt was not kept" }
+    ""
+  } finally { Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 Write-Host ""
 if ($script:Failed -eq 0) {
   Write-Host ("  $($script:Ran) checks, all green") -ForegroundColor Green

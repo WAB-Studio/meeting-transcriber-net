@@ -607,6 +607,19 @@ function Complete-Journal {
   }
   New-Item -ItemType Directory -Force $dir | Out-Null
   $dest = Join-Path $dir $name
+
+  # A card can come back more than once, and each attempt knows something the last did not. Moving
+  # over the previous one threw away exactly the history this exists to keep -- and relying on the
+  # session to have copied the old file forward puts the guarantee back in the hands that drop it.
+  if ((Test-Path $dest) -and -not $Merged) {
+    $before = Get-Content $dest -Raw
+    $now = Get-Content $p -Raw
+    $joined = $before.TrimEnd() + "`n`n---`n`n" + $now.TrimEnd() + "`n"
+    [System.IO.File]::WriteAllText($dest, $joined, $script:Utf8NoBom)
+    Remove-Item $p -Force
+    return $dest
+  }
+
   Move-Item -Path $p -Destination $dest -Force
   return $dest
 }
@@ -636,11 +649,24 @@ function Get-LockPath {
   return (Join-Path $OrchestratorDir "day.lock")
 }
 
+<#
+  Taking it is one atomic create and never a check followed by a write. Two `start-day` in the same
+  second -- the scheduled one and yours -- both saw no lock and both proceeded, and from there two
+  orchestrators shared a checkout, a card and a set of files while each believed it owned them.
+
+  Taking over a stale claim is the one path that reads before it writes, and that is sound because
+  stale means nothing has touched it for two and a half hours.
+#>
 function Enter-DayLock {
   param([Parameter(Mandatory)][string]$OrchestratorDir, [Parameter(Mandatory)][string]$LogDir)
   $p = Get-LockPath $OrchestratorDir
   $run = Split-Path -Leaf $LogDir
-  if (Test-Path $p) {
+
+  try {
+    $fs = [System.IO.File]::Open($p, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write,
+                                 [System.IO.FileShare]::None)
+    $fs.Dispose()
+  } catch {
     $held = $null
     try { $held = (Get-Content $p -Raw -ErrorAction Stop) | ConvertFrom-Json } catch { $held = $null }
     if ($held -and [string]$held.run -and [string]$held.run -ne $run) {
@@ -648,10 +674,23 @@ function Enter-DayLock {
       if ($age -lt $script:LockStaleMinutes) {
         return ("the day {0} holds the lock and touched it {1:N0} min ago" -f $held.run, $age)
       }
+      # A day stopped to ask is not idle, however long it has been: nothing runs while it waits, so
+      # its claim ages exactly like an abandoned one. Taking the checkout out from under it would
+      # have the answer, when it comes, close a cycle of somebody else's run.
+      if ((Test-StillAsking -LogDir ([string]$held.dir))) {
+        return ("the day {0} has been waiting {1:N0} min for an answer and still holds the lock" -f $held.run, $age)
+      }
     }
   }
   Update-DayLock -OrchestratorDir $OrchestratorDir -LogDir $LogDir
   return ""
+}
+
+function Test-StillAsking {
+  param([string]$LogDir)
+  if (-not $LogDir -or -not (Test-Path $LogDir)) { return $false }
+  try { $st = Get-DayStatus -LogDir $LogDir } catch { return $false }
+  return [bool]$st.Waiting
 }
 
 function Update-DayLock {
@@ -663,9 +702,20 @@ function Update-DayLock {
   [System.IO.File]::WriteAllText((Get-LockPath $OrchestratorDir), ($o | ConvertTo-Json -Compress), $script:Utf8NoBom)
 }
 
+<#
+  Released by its owner and by nobody else. An unconditional delete let a day that had already lost
+  a stale claim take the lock away from the run that legitimately took it over.
+#>
 function Exit-DayLock {
-  param([Parameter(Mandatory)][string]$OrchestratorDir)
-  Remove-Item (Get-LockPath $OrchestratorDir) -Force -ErrorAction SilentlyContinue
+  param([Parameter(Mandatory)][string]$OrchestratorDir, [string]$LogDir)
+  $p = Get-LockPath $OrchestratorDir
+  if (-not (Test-Path $p)) { return }
+  if ($LogDir) {
+    $held = $null
+    try { $held = (Get-Content $p -Raw -ErrorAction Stop) | ConvertFrom-Json } catch { $held = $null }
+    if ($held -and [string]$held.run -and [string]$held.run -ne (Split-Path -Leaf $LogDir)) { return }
+  }
+  Remove-Item $p -Force -ErrorAction SilentlyContinue
 }
 
 <#
@@ -680,6 +730,25 @@ function Get-CurrentRun {
   $dir = [string]$held.dir
   if ($dir -and (Test-Path $dir)) { return $dir }
   return ""
+}
+
+<#
+  Whether something has already happened to a cycle. What sequences the atoms is a model, so an atom
+  run twice is not a hypothetical -- and the second run was not harmless: closing a cycle twice
+  recorded two recoveries, and because a card's destination is counted off those, the duplicate sent
+  it to `pending` as though two sessions had failed to land it.
+
+  So every atom that changes something asks this first, and a cycle already past that point is left
+  alone rather than done again.
+#>
+function Test-CycleEvent {
+  param([Parameter(Mandatory)][string]$LogDir, [Parameter(Mandatory)][int]$Cycle,
+        [Parameter(Mandatory)][string[]]$Kinds)
+  foreach ($e in (Read-DayEvents $LogDir)) {
+    if ($Kinds -notcontains [string]$e.kind) { continue }
+    if ($null -ne $e.cycle -and [int]$e.cycle -eq $Cycle) { return $true }
+  }
+  return $false
 }
 
 <#
@@ -900,6 +969,7 @@ function Get-DayStatus {
 
   $cycles = @{}
   $openStream = $null
+  $openPid = $null
   $pending = [ordered]@{}
 
   foreach ($e in $ev) {
@@ -917,10 +987,12 @@ function Get-DayStatus {
         $st.Running = $true
         $st.RunningSince = $e.ts
         $openStream = [string]$e.stream
+        $openPid = $e.pid
       }
       "session_ended" {
         $st.Running = $false
         $openStream = $null
+        $openPid = $null
         if ($null -ne $e.cost) { $st.Cost += [double]$e.cost }
         $c = [int]$e.cycle
         if (-not $cycles.ContainsKey($c)) { $cycles[$c] = [ordered]@{ cycle = $c; cost = 0.0 } }
@@ -962,6 +1034,16 @@ function Get-DayStatus {
           to = [string]$e.to; reason = [string]$e.reason; moved = [bool]$e.moved
         }
       }
+    }
+  }
+
+  # A session cannot be running if the atom that launched it is gone. Without this the stream says
+  # it started, nothing says it stopped, and the day reads as working for as long as anybody looks --
+  # while `abandoned`, which only fires when nothing is running, never gets its turn.
+  if ($st.Running -and $openPid) {
+    if (-not (Get-Process -Id ([int]$openPid) -ErrorAction SilentlyContinue)) {
+      $st.Running = $false
+      $openStream = $null
     }
   }
 
@@ -1184,6 +1266,7 @@ Export-ModuleMember -Function Add-Utf8Line, Get-EventsPath, Read-OpenFileLines, 
   Test-DayAsk, Test-DayQuestions, Test-DayAnswers, Get-AnswerEffect, Resolve-Verdict, Get-CardDestination,
   New-Denial, Get-ResultDenials, Get-DenialKey, Group-Denials,
   Get-JournalPath, Test-JournalBody, Get-JournalTask, Reset-Journal, Complete-Journal,
-  Get-LockPath, Enter-DayLock, Update-DayLock, Exit-DayLock, Get-CurrentRun, Get-CurrentCycle,
+  Get-LockPath, Enter-DayLock, Update-DayLock, Exit-DayLock, Test-StillAsking,
+  Get-CurrentRun, Get-CurrentCycle, Test-CycleEvent,
   Get-DayRules, Get-DayAnomalies, Get-HaltingAnomalies, Get-Median,
   Find-LatestRun, Get-DayStatus, Write-DayReport

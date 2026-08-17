@@ -16,12 +16,23 @@ $ErrorActionPreference = "Stop"
 $env:PYTHONIOENCODING  = "utf-8"
 Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking
 
+$script:Day = $null
+trap { Write-AtomCrash -Message $_.Exception.Message -Day $script:Day; exit 1 }
+
 $day = Open-Day
+$script:Day = $day
 if ($day.Error -ne "") { Write-Host $day.Error; Write-Atom @{ ok = $false; reason = $day.Error }; exit 1 }
 
 $cycle = $day.Cycle
 $h = Read-Contract $day "handoff-$cycle.json"
 if ($null -eq $h) { Write-Atom @{ ok = $false; reason = "cycle $cycle has no handoff" }; exit 1 }
+
+# Closing twice was not harmless: it recorded a second recovery, and because a card's destination is
+# counted off those, the duplicate sent it to `pending` as though two sessions had failed to land it.
+if (Test-CycleEvent -LogDir $day.LogDir -Cycle $cycle -Kinds @("merged","recovered","answered_before_building")) {
+  Write-Atom @{ ok = $true; cycle = $cycle; action = "already closed" }
+  exit 0
+}
 
 $v = Read-Contract $day "verdict-$cycle.json"
 if ($null -eq $v) {
@@ -35,6 +46,11 @@ if ($null -eq $v) {
 $act = Resolve-Verdict $v
 
 if ($act.action -eq "ask") {
+  # Cleared as the question is published and never afterwards. The answers land at a fixed path, so
+  # one left behind by a cycle that died is a file the next question would read as its own -- and a
+  # label that happens to match would merge a PR on a decision nobody was asked about.
+  Remove-Item (Join-Path $day.Repo ".scratch\answers.json") -Force -ErrorAction SilentlyContinue
+
   # Written down before anybody is asked, because the report promises every question the day put and
   # the answer arrives in a separate run of a separate atom.
   foreach ($q in @($v.questions)) {

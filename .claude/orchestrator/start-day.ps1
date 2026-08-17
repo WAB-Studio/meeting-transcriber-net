@@ -12,7 +12,11 @@ $ErrorActionPreference = "Stop"
 $env:PYTHONIOENCODING  = "utf-8"   # without this the board CLI dies printing accents
 Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking
 
+$script:Day = $null
+trap { Write-AtomCrash -Message $_.Exception.Message -Day $script:Day; exit 1 }
+
 $day = New-DayRun
+$script:Day = $day
 if ($day.Error -ne "") {
   Write-Host $day.Error
   Write-Atom @{ ok = $false; reason = $day.Error }
@@ -28,7 +32,7 @@ if ($LASTEXITCODE -ne 0) {
   foreach ($l in @($out | Where-Object { $_ -match 'FAIL' })) { Write-Host "    $l" }
   New-DayEvent -LogDir $day.LogDir -Kind "engine_failed" -Data @{ reason = "the engine's own probe is red" } | Out-Null
   New-DayEvent -LogDir $day.LogDir -Kind "day_ended" -Data @{ reason = "engine: the probe is red" } | Out-Null
-  Exit-DayLock -OrchestratorDir $day.Orch
+  Exit-DayLock -OrchestratorDir $day.Orch -LogDir $day.LogDir
   Write-Atom @{ ok = $false; reason = "the engine's own probe is red" }
   exit 1
 }

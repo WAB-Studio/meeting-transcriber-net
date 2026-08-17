@@ -33,11 +33,11 @@ What each `RESULT` means:
 | Field | What you do |
 | --- | --- |
 | `stop` | the day is unsound — `end-day.ps1`, then report |
-| `hold` | this cycle does not go on — `close-cycle.ps1`, then the next cycle |
 | `outcome: no_tasks` | nothing grilled is left — `end-day.ps1`, then report |
 | `outcome: blocked` | `end-day.ps1`, then report; the reason is on the card already |
 | `action: merged` / `recovered` | say it in one line and start the next cycle |
 | `action: ask` | §2 — from `run-worker.ps1` or from `close-cycle.ps1` alike |
+| `reason` with no `stop` | not an ending: it names what the run needs instead. Do that. |
 
 **Nothing else ends the day.** A `hold` costs one PR a rerun and the next cycle takes the next task;
 a verdict is a fact about one PR and never about the hours left.

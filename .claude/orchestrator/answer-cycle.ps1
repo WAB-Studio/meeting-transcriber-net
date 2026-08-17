@@ -19,12 +19,21 @@ $ErrorActionPreference = "Stop"
 $env:PYTHONIOENCODING  = "utf-8"
 Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking
 
+$script:Day = $null
+trap { Write-AtomCrash -Message $_.Exception.Message -Day $script:Day; exit 1 }
+
 $day = Open-Day
+$script:Day = $day
 if ($day.Error -ne "") { Write-Host $day.Error; Write-Atom @{ ok = $false; reason = $day.Error }; exit 1 }
 
 $cycle = $day.Cycle
 $h = Read-Contract $day "handoff-$cycle.json"
 if ($null -eq $h) { Write-Atom @{ ok = $false; reason = "cycle $cycle has nothing to answer" }; exit 1 }
+
+if (Test-CycleEvent -LogDir $day.LogDir -Cycle $cycle -Kinds @("merged","recovered","answered_before_building")) {
+  Write-Atom @{ ok = $true; cycle = $cycle; action = "already closed" }
+  exit 0
+}
 
 # Two sessions can ask, and which one did is legible from what is on disk: a verdict means the audit
 # asked about a PR that exists, and no verdict means the worker asked before building one. The
