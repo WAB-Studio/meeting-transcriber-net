@@ -191,6 +191,155 @@ function Test-DayContract {
 }
 
 <#
+  What the audit has to hand over before the day will stop for it. Checked before a single question
+  is published, because the failure it prevents is the worst one this design has: a question with no
+  text or no options cannot be put to anybody, and the day would sit waiting for an answer to it
+  forever. A malformed ask is taken as a hold instead -- recovery, not a vigil.
+
+  Exactly one option confirms. Two would make "did they agree" a judgement, and the script does not
+  make judgements; none would make the PR unmergeable whatever was answered.
+#>
+function Test-DayQuestions {
+  param($Questions)
+  $qs = @($Questions)
+  if ($qs.Count -eq 0) { return "it asks nothing" }
+
+  $ids = @{}
+  foreach ($q in $qs) {
+    if (-not $q) { return "one of the questions is empty" }
+    $id = [string]$q.id
+    if ([string]::IsNullOrWhiteSpace($id)) { return "a question carries no id" }
+    if ($ids.ContainsKey($id)) { return "two questions share the id '$id'" }
+    $ids[$id] = $true
+
+    if ([string]::IsNullOrWhiteSpace([string]$q.question)) { return "question '$id' has no text" }
+
+    $opts = @($q.options)
+    if ($opts.Count -lt 2 -or $opts.Count -gt 4) { return "question '$id' offers $($opts.Count) options, and it has to offer 2 to 4" }
+
+    $labels = @{}
+    $confirms = 0
+    foreach ($o in $opts) {
+      if (-not $o) { return "question '$id' has an empty option" }
+      $label = [string]$o.label
+      if ([string]::IsNullOrWhiteSpace($label)) { return "an option of question '$id' has no label" }
+      if ($labels.ContainsKey($label)) { return "question '$id' offers '$label' twice" }
+      $labels[$label] = $true
+      if (@("confirm", "reject") -notcontains [string]$o.effect) {
+        return "option '$label' of question '$id' has effect '$($o.effect)', which is neither confirm nor reject"
+      }
+      if ([string]$o.effect -eq "confirm") { $confirms++ }
+    }
+    if ($confirms -ne 1) { return "question '$id' has $confirms options that confirm, and it has to have exactly one" }
+  }
+  return ""
+}
+
+<#
+  The answers a person gave to what the day stopped to ask.
+
+  **The file names the option and never the effect.** Three independent reviewers found the same
+  hole on 2026-08-17: while an answer carried its own `effect`, a supervisor that transcribed one
+  field wrong -- `{"label":"Open the device natively","effect":"confirm"}` for an option that
+  rejects -- merged the PR the user had just turned down, and nothing could tell. So the label is
+  matched against the options that were actually offered and the effect is read off the option.
+  There is one place a decision is written down, which is the verdict, and the answer only points
+  at it.
+
+  The rest is the same rule stated four ways: an answer nobody asked for, two answers to one
+  question, a question with no answer, or a file for another run or another cycle are all a
+  supervisor and an executor talking about different things, and none of them may pass for consent.
+#>
+function Test-DayAnswers {
+  param($Answers, $Questions, [string]$Run, [int]$Cycle)
+  if ($null -eq $Answers) { return "the answers file holds no JSON that can be read" }
+
+  if ($Run -and [string]$Answers.run -ne $Run) { return "these answers are for run '$($Answers.run)', not '$Run'" }
+  if ($null -eq $Answers.cycle) { return "the answers name no cycle" }
+  if ([int]$Answers.cycle -ne $Cycle) { return "these answers are for cycle $($Answers.cycle), not $Cycle" }
+
+  $byId = @{}
+  foreach ($q in @($Questions)) { $byId[[string]$q.id] = $q }
+
+  $seen = @{}
+  foreach ($a in @($Answers.answers)) {
+    if (-not $a) { return "one of the answers is empty" }
+    $id = [string]$a.id
+    if ([string]::IsNullOrWhiteSpace($id)) { return "an answer carries no id" }
+    if (-not $byId.ContainsKey($id)) { return "'$id' was answered and never asked" }
+    if ($seen.ContainsKey($id)) { return "'$id' was answered twice" }
+    $seen[$id] = $true
+
+    $label = [string]$a.label
+    if ([string]::IsNullOrWhiteSpace($label)) { return "the answer to '$id' names no option" }
+    $picked = @(@($byId[$id].options) | Where-Object { [string]$_.label -eq $label })
+    if ($picked.Count -ne 1) { return "'$label' is not one of the options offered for '$id'" }
+  }
+
+  $missing = @(@($Questions) | ForEach-Object { [string]$_.id } | Where-Object { -not $seen.ContainsKey($_) })
+  if ($missing.Count -gt 0) { return "unanswered: " + ($missing -join ", ") }
+  return ""
+}
+
+<#
+  What the effect of an answered question actually was, read off the option that was offered rather
+  than off anything the answer carried. Only ever called on answers `Test-DayAnswers` passed, so a
+  label that matches nothing cannot reach here -- and if one ever did, `reject` is the reading that
+  does not merge.
+#>
+function Get-AnswerEffect {
+  param($Question, [string]$Label)
+  foreach ($o in @($Question.options)) {
+    if ([string]$o.label -eq $Label) { return [string]$o.effect }
+  }
+  return "reject"
+}
+
+<#
+  What the executor does about a verdict, as a function so the probe asks exactly what the loop
+  asks. Three answers and no fourth: merge it, ask about it, or put it back.
+
+  A verdict that contradicts itself does not merge. An audit that says `pass` and attaches questions
+  has said two things, and the one that costs nothing to obey is the cautious one -- merging a diff
+  whose author was still asking about it is the failure the whole arrangement exists to prevent.
+#>
+function Resolve-Verdict {
+  param($Verdict)
+  $name = [string]$Verdict.verdict
+  $qs = @($Verdict.questions)
+
+  if ($name -eq "ask") {
+    $bad = Test-DayQuestions $qs
+    if ($bad -ne "") { return [pscustomobject]@{ action = "recover"; reason = "the audit asked for a decision but $bad" } }
+    return [pscustomobject]@{ action = "ask"; reason = "" }
+  }
+
+  if ($name -eq "hold") { return [pscustomobject]@{ action = "recover"; reason = "the audit held it" } }
+
+  if ($qs.Count -gt 0) {
+    return [pscustomobject]@{ action = "recover"; reason = "the verdict is '$name' and it attaches $($qs.Count) question(s), which are two different answers" }
+  }
+  return [pscustomobject]@{ action = "merge"; reason = "" }
+}
+
+<#
+  Where a card goes when its PR is not merged, decided from the recoveries already on the stream
+  rather than from anything the running process remembers. A day that was killed and relaunched used
+  to forget, so a card nothing could land went back in the pool once per restart forever.
+
+  Only a recovery that actually moved the card counts. One that could not reach the board left the
+  card where it was, and charging somebody a strike for it would send the next one to `pending` over
+  a failure of the board CLI rather than of the work.
+#>
+function Get-CardDestination {
+  param($Recovered, [string]$TaskId)
+  if ([string]::IsNullOrWhiteSpace($TaskId)) { return "Open" }
+  $before = @(@($Recovered) | Where-Object { $_ -and [string]$_.task -eq $TaskId -and $_.moved })
+  if ($before.Count -ge 1) { return "pending" }
+  return "Open"
+}
+
+<#
   A denial is counted per tool and per what it tried, never as a number: the number says something
   happened, the list says which permission rule is missing. It is the difference between "there
   were 27" and "the board CLI was denied all session".
@@ -419,6 +568,15 @@ function Get-DayAnomalies {
     $null = $out.Add((New-Anomaly "stop" "killed" "a session passed the executor's clock and was killed"))
   }
 
+  # Not a fault, and deliberately not `stop`: the day is doing exactly what it was asked to do, and
+  # halting it here would undo the recovery this exists for. It is still the loudest thing a
+  # supervisor can see, because it is the one state that ends only when a person acts -- there is no
+  # timeout behind it, so a question nobody carries is a day that waits until it is killed.
+  foreach ($q in @($Status.Questions)) {
+    $null = $out.Add((New-Anomaly "warn" "waiting" (
+      "cycle {0} is waiting on you before it can go on -- {1}" -f $q.cycle, $q.question)))
+  }
+
   # A status that could not read the live stream knows nothing about that session -- not its
   # silence, not its denials -- and every one of those fields reads zero. Saying so is the whole
   # rule: it does not stop the day, because a torn read is not the reader's error and one hiccup is
@@ -535,11 +693,16 @@ function Get-DayStatus {
     CycleCosts      = @()
     Cycles          = @()
     Merged          = @()
+    Waiting         = $false
+    Questions       = @()
+    Answered        = @()
+    Recovered       = @()
     Anomalies       = @()
   }
 
   $cycles = @{}
   $openStream = $null
+  $pending = [ordered]@{}
 
   foreach ($e in $ev) {
     switch ($e.kind) {
@@ -580,8 +743,37 @@ function Get-DayStatus {
         $cycles[$c].verdict = [string]$e.verdict
       }
       "merged" { $st.Merged += $e.pr_number }
+      # The day stopping to ask is a state, not an event that scrolls past: what a reader needs is
+      # which questions are still open right now, so they are held until their answer arrives.
+      "question_asked" {
+        $pending[[string]$e.id] = [pscustomobject]@{
+          id = [string]$e.id; cycle = [int]$e.cycle; question = [string]$e.question
+          why = [string]$e.why; options = @($e.options); pr = $e.pr_number; task = [string]$e.task_id
+        }
+      }
+      "answered" {
+        $pending.Remove([string]$e.id)
+        $st.Answered += [pscustomobject]@{
+          id = [string]$e.id; cycle = [int]$e.cycle; question = [string]$e.question
+          label = [string]$e.label; effect = [string]$e.effect; notes = [string]$e.notes
+        }
+      }
+      "recovered" {
+        $st.Recovered += [pscustomobject]@{
+          cycle = [int]$e.cycle; task = [string]$e.task_id; pr = $e.pr_number
+          to = [string]$e.to; reason = [string]$e.reason; moved = [bool]$e.moved
+        }
+      }
     }
   }
+
+  $st.Questions = @($pending.Keys | ForEach-Object { $pending[$_] })
+  # A day that has ended is not waiting for anything, whatever the last question on the stream says.
+  # The executor releases the lock in `finally`, so an exception thrown between asking and answering
+  # leaves both marks -- and reporting that somebody still owes an answer to a process that no
+  # longer exists sends them off to write a file nothing will ever read.
+  if ($st.Ended) { $st.Questions = @() }
+  $st.Waiting = $st.Questions.Count -gt 0
 
   # What only shows by looking at the live session's own file. A read that fails says so: the status
   # this produces is the only thing watching a session that is spending money, so "I could not look"
@@ -627,6 +819,11 @@ function Get-DayStatus {
     if (-not (Get-Process -Id ([int]$st.ExecutorPid) -ErrorAction SilentlyContinue)) {
       $st.ProcessGone = $true
       $st.Running = $false
+      # Nobody is on the other end of the question any more. Left standing it would send a
+      # supervisor off to collect an answer for a process that cannot receive it, and `vanished`
+      # -- which is the thing actually worth saying -- would read as the smaller of the two.
+      $st.Waiting = $false
+      $st.Questions = @()
     }
   }
 
@@ -676,6 +873,52 @@ function Write-DayReport {
 
   if ($st.Merged.Count -gt 0) {
     $null = $L.Add("Merged into main: " + (($st.Merged | ForEach-Object { "#$_" }) -join ", "))
+    $null = $L.Add("")
+  }
+
+  # First, because it is the only section describing something still happening. A day that asked
+  # and was never answered is sitting there right now holding the lock, and a reader who scrolls
+  # past that has been told the wrong thing about their own machine.
+  if ($st.Waiting) {
+    $null = $L.Add("## Still waiting on you")
+    $null = $L.Add("")
+    $null = $L.Add("The day stopped to ask and there is no timeout behind it: it goes on when these are answered, and not before.")
+    $null = $L.Add("")
+    foreach ($q in $st.Questions) {
+      $null = $L.Add(("- **cycle {0}** ({1}) - {2}" -f $q.cycle, $q.task, $q.question))
+    }
+    $null = $L.Add("")
+  }
+
+  # The durable record of what a person decided mid-day. The card and the PR carry it too, but this
+  # is the only place all of a day's decisions are in one list, in the order they were put.
+  if ($st.Answered.Count -gt 0) {
+    $null = $L.Add("## What you decided")
+    $null = $L.Add("")
+    foreach ($a in $st.Answered) {
+      $line = "- **{0}** - {1} -> **{2}**" -f $a.effect, $a.question, $a.label
+      if ($a.notes) { $line += " (" + $a.notes + ")" }
+      $null = $L.Add($line)
+    }
+    $null = $L.Add("")
+  }
+
+  if ($st.Recovered.Count -gt 0) {
+    $null = $L.Add("## Put back rather than merged")
+    $null = $L.Add("")
+    $null = $L.Add("The PR is open and the card moved. The day did not stop over any of these.")
+    $null = $L.Add("")
+    foreach ($r in $st.Recovered) {
+      $pr = "-"; if ($r.pr) { $pr = "#" + $r.pr }
+      if ($r.moved) {
+        $null = $L.Add(("- {0} {1} -> ``{2}`` - {3}" -f $r.task, $pr, $r.to, $r.reason))
+      } else {
+        # The one line in this section somebody has to act on: the day meant to put the card back
+        # and could not, so it is still in `in review` and no worker will pick it up.
+        $null = $L.Add(("- **{0} {1} did not move** - it should be ``{2}`` and the board still says otherwise. {3}" -f `
+          $r.task, $pr, $r.to, $r.reason))
+      }
+    }
     $null = $L.Add("")
   }
 
@@ -744,6 +987,7 @@ function Write-DayReport {
 
 Export-ModuleMember -Function Add-Utf8Line, Get-EventsPath, Read-OpenFileLines, New-DayEvent, Read-DayEvents,
   Get-SessionResult, Get-ContractFromText, Test-DayContract, Test-JsonTrue, Get-SessionActivity,
+  Test-DayQuestions, Test-DayAnswers, Get-AnswerEffect, Resolve-Verdict, Get-CardDestination,
   New-Denial, Get-ResultDenials, Get-DenialKey, Group-Denials,
   Get-DayRules, Get-DayAnomalies, Get-HaltingAnomalies, Get-Median,
   Find-LatestRun, Get-DayStatus, Write-DayReport

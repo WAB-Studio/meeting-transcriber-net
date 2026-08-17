@@ -26,6 +26,16 @@ tool did not exist. The orchestrator already exported `PYTHONIOENCODING`, so the
 set. If a call is refused anyway, that is a missing rule in `.claude/orchestrator/settings.json`:
 **say so in `left_out` and stop trying to spell your way around it.**
 
+**Long prose goes in a file, never on the command line.** `--text` and `--desc` take `@path`. The
+same splitting refuses a comment whose text contains a semicolon, which any real explanation
+eventually does. Write it to `.scratch/` — the only place you may write outside the source tree,
+gitignored at the root, and the reason `/tmp` and the session scratchpad are both refused is that
+they are outside the working directory.
+
+```powershell
+python $S comment <id> --text @.scratch/note.md
+```
+
 ## 0 · Before touching anything
 
 Clean tree, standing on a current `main`. If it is not, fix nothing: `outcome: "blocked"`, write
@@ -58,6 +68,34 @@ Two things that are never confused with each other:
 **Look at the open PRs too** (`gh pr list`). Every session branches from the same `main`, so you
 cannot see what the previous one did. If your candidate builds on work sitting in an unmerged PR,
 skip it as ineligible and say so: that one waits on a merge, not on a person.
+
+### A card that came back
+
+**A card in `Open` carrying a `**Not merged.**` comment is work in progress, not a fresh task**, and
+the comment names the PR that is still open. The audit read that PR and did not let it through, or
+the user turned down the decision it rested on; either way the comment says which, and it is the
+first thing to read. That card is the strongest candidate there is — ahead of anything in the pool,
+and second only to `in progress` — because leaving it produces a second PR against the same task.
+
+Check the PR is still open before believing the comment: a card worked months ago and reopened now
+carries the same words about a PR long since closed. `gh pr view <n> --json state` settles it, and a
+closed one means the comment is history and the card is an ordinary candidate.
+
+Pick it up on its own branch rather than a new one, and push to the PR that exists:
+
+```powershell
+git fetch origin
+git checkout <branch-from-the-PR>
+```
+
+Then hand off **that** PR number and the new tip. What you are fixing is named in the comment: a
+`hold` names a defect and expects the same approach to land properly, while a rejected `ask` names a
+decision that was wrong, and the answer beside it may take the diff down to the studs. Read which
+before you assume you are patching. If the answer means the branch is worth nothing, say so in
+`decisions_deferred`, close the PR and start it properly — that is a judgement, and it is yours.
+
+The exception is a card in `pending`: it came back twice, it waits on a person now, and it is not
+eligible however good it looks.
 
 ## 2 · What cannot be done alone
 

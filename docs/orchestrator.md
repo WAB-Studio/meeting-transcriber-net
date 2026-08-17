@@ -29,6 +29,7 @@ Everything else in that folder is derived from it or feeds it:
 | `events.jsonl` | every transition the executor made, append-only |
 | `worker-N.stream.jsonl`, `audit-N.stream.jsonl` | what each session emitted, **as it emitted it** |
 | `handoff-N.json`, `verdict-N.json` | the contracts, written by the script from what the session said |
+| `answers-N.json` | what a person answered, written by the supervisor and waited on by the executor |
 | `day.log` | a running commentary for a person scrolling — not authoritative |
 | `report.md` | written at close, computed from the stream |
 
@@ -50,12 +51,12 @@ the day would stop on every successful cycle.
 
 | Piece | What it decides |
 | --- | --- |
-| `run-day.ps1` | Nothing about the code. When to launch, when to stop, when to merge. |
+| `run-day.ps1` | Nothing about the code. When to launch, when to stop, when to merge, when to wait. |
 | `day.psm1` | Nothing at all. The stream, the contracts, and where the thresholds sit. |
 | `day-status.ps1` | Nothing. Reads the stream and says which thresholds are crossed. |
 | skill `next-task` | Which task, how to do it, what cannot be done alone. |
-| skill `audit-session` | Whether what was left holds up, reading the diff rather than the account. |
-| skill `supervise-day` | What is worth interrupting a person over. The only piece with judgement. |
+| skill `audit-session` | Whether what was left holds up, and what is not its decision to make. |
+| skill `supervise-day` | What is worth interrupting a person over, and putting the day's questions to them. |
 
 The split is the same everywhere here: **the deterministic part is a script and the judgement is a
 session.** Picking the moment, adding up dollars and comparing a number to a threshold have no
@@ -155,9 +156,98 @@ and whether one of them passes *vacuously* is settled by reading its assertion i
 than by timing it anywhere. A claim needing a probe CI does not run is not a reason to build
 locally: it is a missing probe, it holds the PR, and it becomes a card.
 
+## A verdict never ends the day
+
+`hold` used to. One PR the audit would not let through cost every remaining cycle, and most of what
+it cost them for was a decision somebody could have settled in a sentence — on 2026-08-17 the day
+ended after one cycle over which of three ways to count a frame position the card had meant.
+
+So the verdict says what happens to the PR and nothing else, and there are four:
+
+| Verdict | The PR | The card | The day |
+| --- | --- | --- | --- |
+| `pass`, `pass_with_followup` | merged | stays in `in review` | next cycle |
+| `ask` + `confirm` | merged | stays in `in review` | next cycle |
+| `ask` + any `reject` | left open | back to `Open`, answer on it | next cycle |
+| `hold` | left open | back to `Open`, reasons on it | next cycle |
+
+A card sent back a second time goes to `pending` instead of `Open`. Recovery that puts the same card
+in the pool over and over is how a day spends itself going in a circle, and the second failure is
+genuinely a different fact from the first: two sessions could not land it. **That count is read off
+the `recovered` events, not out of the running process** — a day killed and relaunched used to
+forget, so a card nothing could land went back in the pool once per restart forever — and only a
+recovery that actually reached the board counts, since charging a strike for a board CLI that was
+down would sideline the work over a failure of the tool.
+
+Which is why `recovered` carries both `to` and `moved`: what was meant and what happened. A move
+that failed leaves the card in `in review`, where no worker looks for it, and recording the
+intention as the outcome would have had `report.md` call that a recovery while the work sat
+abandoned. The report says **did not move** and names the card instead.
+
+The half that closes the loop is in `next-task`: **a card in `Open` carrying a `Not merged.` comment
+is work in progress**, its PR is still open and named in that comment, and it gets picked up on that
+branch rather than a new one. Without that rule a returned card is skipped as building on an
+unmerged PR and the day drifts to `no_tasks` with the work abandoned. The comment is written before
+the card moves, in that order, so a card can never reach the pool without the note saying it already
+has a PR.
+
+## Asking, and waiting with no clock on it
+
+`ask` is for the decision that is not the worker's or the audit's to make — the fork the task itself
+said a person picks, scope the user has to agree to cut, a product question in implementation
+clothes. The audit writes the questions into its verdict, each with two to four options, and each
+option carries `confirm` (what the PR already did) or `reject`.
+
+The executor checks that shape **before** it publishes anything, because the failure it prevents is
+the worst one here: a question with no text or one option cannot be put to anybody, and the day
+would wait on it forever. A malformed `ask` is taken as a `hold` — recovery, not a vigil. So is a
+verdict that says `pass` and attaches questions, which has given two answers to one thing; the
+reading that costs nothing is the one that does not put an unanswered diff into `main`.
+
+Then it writes one `question_asked` per question and waits for `answers-N.json` beside the stream.
+**There is no timeout.** A decision that belongs to a person is not improved by being guessed at
+after ten minutes, and the alternative — picking one and reporting it afterwards — is what
+`CLAUDE.md` calls deciding without asking.
+
+What carries a question to a person is `supervise-day`, the only piece here with a person on the
+other end. It reads the question off the stream, puts it to them **one at a time**, and writes the
+answers back:
+
+```json
+{ "run": "2026-08-16_212343", "cycle": 1,
+  "answers": [ { "id": "q1", "label": "<the option, exactly>", "notes": "<what they typed>" } ] }
+```
+
+**The answer names an option and never what the option means.** The effect is read back off the
+question in the verdict, so the one place a decision is written down is the place the audit wrote
+it. While an answer carried its own `confirm`/`reject`, one mistyped field merged the diff the user
+had just turned down and nothing could tell — three reviewers found that hole independently on
+2026-08-17. `run` and `cycle` are the correlation token: a file left over from another cycle is
+refused rather than obeyed by whichever cycle next asks a `q1`.
+
+A file that does not hold is reported once — not once per poll — and left where it is, so rewriting
+it is what changes anything; deleting it raced the writer. Every answer `confirm` merges; a single
+`reject` does not. Either way the executor posts what they said to the PR and to the card, because
+the run's log is gitignored and per run: the board is where a decision made on a Tuesday is still
+readable on Friday.
+
+Nothing in that posting can end the day. `$ErrorActionPreference` is `Stop` at the top of the
+executor, so a `gh` or a `python` missing from PATH throws rather than returning an exit code, and
+the throw used to go straight past every check to the crash handler — a confirmed decision ending
+the day with the PR unmerged, through the one path written to be harmless. Every external call the
+recovery makes goes through one wrapper that catches both ways of failing.
+
+The cost is real. While a day waits it holds `day.lock`, so the scheduled launch is refused, and if
+no supervisor is alive nobody is asked at all — the run sits until somebody reads `day-status.ps1`
+or kills it. `day-status.ps1` puts `waiting on you` where the state goes and `report.md` opens with
+it, so the state is loud everywhere it can be; what it cannot be is self-clearing, and the skill
+says so out loud when it launches.
+
 ## What stops the day
 
-The loop stops — it never retries — and both `day.log` and `report.md` name which:
+The loop stops — it never retries — and both `day.log` and `report.md` name which. Every one of
+these is the day being unsound rather than a judgement about a PR, which is the whole line between
+this list and the table above:
 
 - **Preflight**: dirty tree, off `main`, `main` diverged, or a `git` that did not run. Each command
   is judged by its own exit code: a tool that fails cannot pass for a healthy state.
@@ -168,7 +258,7 @@ The loop stops — it never retries — and both `day.log` and `report.md` name 
   `verdict` outside the contract. Neither is read with good will.
 - **`head_sha` different from `audited_head_sha`**: the audit read a different commit than was
   delivered.
-- **`verdict: hold`**, or `blocked` / `no_tasks` from the worker.
+- **`blocked` or `no_tasks` from the worker.** No verdict is on this list any more.
 - **A session that is not sound**: a program refused twice, a closed usage window, a session the
   clock killed. Checked after each session, before the audit and before the merge.
 - **The executor throwing.** It writes `day_crashed`, an ending and a report before it goes, so a
@@ -199,9 +289,11 @@ and a run you start by hand would share a checkout, a card and a set of files.
 
 ## The PR is integrated on a green verdict
 
-`pass` and `pass_with_followup` merge the PR; `hold` leaves it open and stops the day. The
-**script** runs the merge, not the audit — the verdict decides and the script acts, the same split
-as everywhere else here. It cannot be forgotten, cannot happen twice, and shows up in `day.log`.
+The **script** runs the merge, not the audit — the verdict decides and the script acts, the same
+split as everywhere else here. It cannot be forgotten, cannot happen twice, and shows up in
+`day.log`. The same split is why the script also posts the answers, moves a returned card and files
+the `recovered` event: none of those weighs anything, and every one of them can be forgotten by
+something that has to remember.
 
 That is what makes a chain of sessions work at all. The next preflight fast-forwards local `main`,
 so cycle N+1 branches from a base already carrying cycle N. Without it every session would branch
@@ -211,8 +303,15 @@ see. A merge that fails — a conflict, a branch protection — stops the day wi
 **This is the one place the unattended mode departs from a hand-run session**, where `CLAUDE.md`
 leaves merging to the user. What replaces the user here is the audit, and it is a weaker
 guarantee: it reads the diff, the board and the ISA, and it waits for CI, but it is not a person.
-The lever that tunes this is the audit's own bar — a `hold` costs the rest of the day, and a bad
-`pass` costs `main` plus whatever gets built on it, so the skill is written to hold when unsure.
+The lever that tunes this is the audit's own bar, and both directions are now cheap: `hold` costs
+one PR a rerun rather than the rest of the day, and `ask` costs one person one question. A bad
+`pass` still costs `main` plus whatever gets built on it, so the skill is written to hold when it is
+unsure the work holds up, and to ask when it holds up and the decision was not the worker's to make.
+
+The bar on asking is written the other way round on purpose: **a question the day can go on being
+right without is not asked.** Recovering from a hold made questions cheap enough to overuse, and a
+supervisor relaying four of them an hour is a day with a person in the loop, which is the thing this
+was built not to need.
 
 Closing the card is still the user's. `in review` is where they pile up, and that is deliberate:
 the board is where you see what a day did.
@@ -230,9 +329,14 @@ What each board state means is in `arquitectura.md` §13, because it governs han
 ## What is proved, and what is only exercised
 
 `test-day.ps1` runs in CI and spends no session: it covers pulling a contract out of what a
-session emitted, reading a result off a stream, and what each threshold fires on. What it cannot
-cover is a real `claude -p`, a real merge and a real board, and those are exercised by running the
-day and reading `report.md` afterwards.
+session emitted, reading a result off a stream, what each threshold fires on, and the whole answer
+contract — that a partial set of answers is refused rather than taken as agreement, that `waiting`
+is reported and does not stop the day, that a question stops being asked once the process that
+asked it is gone, and that decisions and recoveries reach `report.md`.
+
+What it cannot cover is a real `claude -p`, a real merge, a real board, and the executor's wait loop
+itself — the polling, the `gh pr comment --body-file`, the card move. Those are exercised by running
+the day and reading `report.md` afterwards, the same as the merge always has been.
 
 **None of this is in `ISA.md`, on purpose.** That file is the product's claims surface — what has
 to be true for somebody recording a meeting — and this is the workshop, not the product. The four

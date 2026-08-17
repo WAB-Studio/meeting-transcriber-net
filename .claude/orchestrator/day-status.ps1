@@ -53,6 +53,11 @@ Write-Host ""
 
 if ($st.Ended) {
   Line "state" ("ended - " + $st.EndReason)
+} elseif ($st.Waiting) {
+  # Ahead of Running on purpose. Between the question and the answer no session is up, so without
+  # this the day reads as "between cycles" -- idle -- while it is in the one state that ends only
+  # when a person acts.
+  Line "state" ("waiting on you - {0} question(s), no timeout behind them" -f $st.Questions.Count)
 } elseif ($st.Running) {
   $q = "just launched"
   if ($null -ne $st.QuietForMinutes) { $q = "{0:N1} min since it emitted anything" -f $st.QuietForMinutes }
@@ -74,6 +79,15 @@ if ($st.Cycles.Count -gt 0) {
     $outcome = ""; if ($c.outcome) { $outcome = $c.outcome }
     $verdict = ""; if ($c.verdict) { $verdict = $c.verdict }
     Write-Host ("  cycle {0}  {1,-6} {2,-12} {3,-20} {4,6:N2} USD" -f $c.cycle, $pr, $outcome, $verdict, $c.cost)
+  }
+}
+
+if ($st.Waiting) {
+  Write-Host ""
+  Write-Host "  WAITING ON YOU" -ForegroundColor Cyan
+  foreach ($q in $st.Questions) {
+    Write-Host ("   [{0}] cycle {1}  {2}" -f $q.id, $q.cycle, $q.question) -ForegroundColor Cyan
+    foreach ($o in @($q.options)) { Write-Host ("     {0}  ({1})" -f $o.label, $o.effect) -ForegroundColor DarkCyan }
   }
 }
 

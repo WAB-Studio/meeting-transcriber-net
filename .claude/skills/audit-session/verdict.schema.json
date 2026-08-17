@@ -8,13 +8,54 @@
     "unreported_decisions",
     "isc_unproved",
     "followups_created",
-    "actions_taken"
+    "actions_taken",
+    "questions"
   ],
   "properties": {
     "verdict": {
       "type": "string",
-      "enum": ["pass", "pass_with_followup", "hold"],
-      "description": "The only thing deciding whether the day goes on. hold stops it. No second field says the same: two fields for one decision can contradict each other, and the orchestrator would obey the wrong one."
+      "enum": ["pass", "pass_with_followup", "ask", "hold"],
+      "description": "What happens to this PR, and nothing else: none of the four ends the day. pass and pass_with_followup merge it. ask puts a decision to the user and merges or puts the card back on their answer. hold leaves the PR open and returns the card to the pool with the reasons on it. No second field says the same: two fields for one decision can contradict each other, and the orchestrator would obey the wrong one."
+    },
+    "questions": {
+      "type": "array",
+      "description": "Only for `ask`, and empty for every other verdict - attaching one to a pass neither merges nor asks, it sends the PR back, because a verdict and a question are two answers to one thing. Each stops the day until a person answers it, so the bar is that the day cannot go on being right without them, not that an answer would be interesting. The executor checks this shape before it waits: an `ask` that fails it is taken as a hold rather than waiting on a question nobody could read.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "question", "why", "options"],
+        "properties": {
+          "id": { "type": "string", "description": "Short and unique within the verdict, e.g. q1." },
+          "question": {
+            "type": "string",
+            "description": "One sentence, answerable by somebody who has not read the diff. It names the decision, never the code."
+          },
+          "why": {
+            "type": "string",
+            "description": "What is different depending on the answer, in one sentence. This is what the user reads to decide, so it carries the consequence rather than the background."
+          },
+          "options": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 4,
+            "description": "The answers on offer, with distinct labels. Exactly one carries effect confirm - what the PR already did - and the rest reject it, because the script acts on the effect and cannot weigh two confirms. The person answering names a label and nothing else; the effect is read back off the option here, so this array is the only place the meaning of an answer is written down.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["label", "effect"],
+              "properties": {
+                "label": { "type": "string", "description": "What the user sees. A few words, no code." },
+                "detail": { "type": "string", "description": "One line on what picking this means." },
+                "effect": {
+                  "type": "string",
+                  "enum": ["confirm", "reject"],
+                  "description": "confirm merges the PR. reject leaves it open and sends the card back to the pool carrying the answer. Any single reject across all questions is enough not to merge."
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "audited_head_sha": {
       "type": "string",

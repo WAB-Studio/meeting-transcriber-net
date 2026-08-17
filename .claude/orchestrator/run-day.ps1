@@ -30,6 +30,12 @@ $Lock   = Join-Path $Orch "day.lock"
 
 $CooldownSeconds = 600
 $SessionTimeout  = [TimeSpan]::FromMinutes(90)
+$AnswerPoll      = 10          # how often the wait looks for the answers file. There is no deadline.
+
+# The board CLI. The executor talks to the board in exactly two places, and both are the script
+# acting on a verdict rather than judging anything: recording a decision a person made, and putting
+# a card back after a hold.
+$ClickUp = Join-Path $env:USERPROFILE ".claude\skills\clickup\clickup.py"
 
 New-Item -ItemType Directory -Force $LogDir | Out-Null
 Import-Module (Join-Path $Orch "day.psm1") -Force
@@ -269,8 +275,226 @@ function Save-Anomalies {
   }
 }
 
+<#
+  Recording what happened must not be able to end the day, and saying so was not enough to make it
+  true: `$ErrorActionPreference = "Stop"` is set at the top of this file, so a `gh` or a `python`
+  missing from PATH throws rather than returning an exit code, and the throw goes straight past
+  every check below to the crash handler. A confirmed decision would have ended the day with the PR
+  unmerged -- the exact ending this whole change removed, coming back through the one path written
+  to be harmless. So the call is wrapped, and both ways of failing land in the same place.
+
+  Returns whether it worked, because one caller -- the card move -- has to write down which.
+#>
+function Invoke-BestEffort {
+  param([Parameter(Mandatory)][int]$Cycle, [Parameter(Mandatory)][string]$What, [Parameter(Mandatory)][scriptblock]$Do)
+  $why = ""
+  try {
+    & $Do
+    if ($LASTEXITCODE -ne 0) { $why = "exit $LASTEXITCODE" }
+  } catch {
+    $why = $_.Exception.Message
+  }
+  if ($why -eq "") { return $true }
+  New-DayEvent -LogDir $LogDir -Kind "record_failed" -Data @{ cycle = $Cycle; reason = "$What -- $why" } | Out-Null
+  Write-Day "  $What did not go through: $why"
+  return $false
+}
+
+<#
+  Long prose never goes on a command line. The board CLI takes `--text @path` for exactly this: a
+  reason worth recording carries a semicolon sooner or later, and whatever parses the command
+  splits on it without caring that it sits inside quotes.
+
+  Failing to record is written down and does not stop the day. The stream already holds the fact --
+  it is the source of truth and `report.md` comes off it - so what is lost is the copy a person
+  reads on the board, which is worth a line in the report and not the rest of the day.
+#>
+function Write-Elsewhere {
+  param([string]$TaskId, $PrNumber, [Parameter(Mandatory)][string]$Body, [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][int]$Cycle)
+
+  $f = Join-Path $LogDir $Name
+  [System.IO.File]::WriteAllText($f, $Body, (New-Object System.Text.UTF8Encoding($false)))
+
+  if ($PrNumber) { $null = Invoke-BestEffort -Cycle $Cycle -What "the comment on PR #$PrNumber" -Do { gh pr comment $PrNumber --body-file $f } }
+
+  if ($TaskId) {
+    if (-not (Test-Path $ClickUp)) {
+      New-DayEvent -LogDir $LogDir -Kind "record_failed" -Data @{
+        cycle = $Cycle; reason = "the board CLI is not at $ClickUp"
+      } | Out-Null
+      Write-Day "  the board CLI is not where it should be: $ClickUp"
+      return
+    }
+    $null = Invoke-BestEffort -Cycle $Cycle -What "the comment on card $TaskId" -Do { python $ClickUp comment $TaskId --text "@$f" }
+  }
+}
+
+<#
+  What used to end the day. A verdict saying this PR does not hold up is a fact about one PR and
+  not about the hours left in the day: the PR stays open for a person to read, the card goes back
+  to the pool carrying what the audit found, and the next cycle takes the next task.
+
+  Twice is a different fact. A card that comes back a second time is one two sessions could not
+  land, and returning it to the pool again is how a day spends itself going in a circle -- so the
+  second time it goes to `pending`, which is where work waits on a person.
+#>
+function Resume-Card {
+  param([Parameter(Mandatory)][int]$Cycle, [Parameter(Mandatory)]$Handoff, [Parameter(Mandatory)][string]$Reason)
+
+  $task = [string]$Handoff.task_id
+  # Read off the stream and not out of this process: a day killed and relaunched used to forget,
+  # and a card nothing could land went back in the pool once per restart forever.
+  $to = Get-CardDestination -Recovered (Get-DayStatus -LogDir $LogDir).Recovered -TaskId $task
+
+  $say = New-Object System.Collections.ArrayList
+  $null = $say.Add("**Not merged.** $Reason")
+  $null = $say.Add("")
+  if ($Handoff.pr_number) {
+    $null = $say.Add("PR #$($Handoff.pr_number) is left open and this card goes back to ``$to``. Pick it up on that PR's own branch rather than opening a second one. The day did not stop over it.")
+  } else {
+    $null = $say.Add("This card goes back to ``$to``. The day did not stop over it.")
+  }
+  if ($to -eq "pending") {
+    $null = $say.Add("")
+    $null = $say.Add("Second time it has come back, so it waits on a person rather than going back in the pool.")
+  }
+  $body = $say -join "`n"
+
+  # The comment goes first and the move second, in that order on purpose. The comment is what tells
+  # the next worker this card already has a PR; a card that reached `Open` without it is one
+  # somebody starts over, and the day ends up with two PRs against one task.
+  Write-Elsewhere -TaskId $task -PrNumber $Handoff.pr_number -Body $body -Name "recovered-$Cycle.md" -Cycle $Cycle
+
+  $moved = $false
+  if ($task -and (Test-Path $ClickUp)) {
+    $moved = Invoke-BestEffort -Cycle $Cycle -What "moving card $task to $to" -Do { python $ClickUp move $task --status $to }
+  } elseif (-not $task) {
+    New-DayEvent -LogDir $LogDir -Kind "record_failed" -Data @{
+      cycle = $Cycle; reason = "the handoff names no task, so nothing could be put back"
+    } | Out-Null
+    Write-Day "  the handoff names no card, so none was put back"
+  }
+
+  # `moved` is what happened and `to` is what was meant. Recording the intention as the outcome left
+  # the card in `in review` where no worker looks for it while the report said it had been recovered
+  # -- the work silently abandoned by the mechanism written to rescue it.
+  New-DayEvent -LogDir $LogDir -Kind "recovered" -Data @{
+    cycle = $Cycle; task_id = $task; pr_number = $Handoff.pr_number; to = $to; reason = $Reason; moved = $moved
+  } | Out-Null
+
+  if ($moved) {
+    Write-Day "[$Cycle] not merged -- PR #$($Handoff.pr_number) left open, card $task -> $to"
+  } else {
+    Write-Day "[$Cycle] not merged -- PR #$($Handoff.pr_number) left open, and card $task did NOT reach $to"
+  }
+}
+
+<#
+  The day stops here and waits for a person, with no clock on it. That is the whole point: a
+  decision belonging to the user is not improved by being guessed at after ten minutes, and what
+  this replaced -- ending the day on `hold` -- threw away every remaining cycle over one question.
+
+  The executor has nobody to talk to, so it does not try. It puts each question on the stream and
+  waits for a file. What carries them to a person is the `supervise-day` skill, which is reading
+  that stream, asks each on its own and writes the answers back.
+
+  The cost is real and is not hidden: while this waits, the run holds `day.lock`, so the scheduled
+  launch is refused for as long as it sits there. A question nobody carries is a day that waits
+  until somebody kills it.
+#>
+function Invoke-Questions {
+  param([Parameter(Mandatory)][int]$Cycle, [Parameter(Mandatory)]$Verdict, [Parameter(Mandatory)]$Handoff)
+
+  $qs = @($Verdict.questions)
+  $run = Split-Path -Leaf $LogDir
+  $file = Join-Path $LogDir "answers-$Cycle.json"
+
+  # Cleared before a single question is published, never after. The other order left a window where
+  # a supervisor quick enough to answer between the two lines had its file deleted underneath it,
+  # and then both sides waited on each other for good.
+  Remove-Item $file -Force -ErrorAction SilentlyContinue
+
+  $byId = @{}
+  foreach ($q in $qs) {
+    $id = [string]$q.id
+    $byId[$id] = $q
+    New-DayEvent -LogDir $LogDir -Kind "question_asked" -Data @{
+      cycle = $Cycle; run = $run; id = $id; question = [string]$q.question; why = [string]$q.why
+      options = @($q.options); pr_number = $Handoff.pr_number; task_id = [string]$Handoff.task_id
+      answers_file = $file
+    } | Out-Null
+    Write-Day "  ? [$id] $([string]$q.question)"
+  }
+  Write-Day "[$Cycle] waiting on $($qs.Count) answer(s) -- there is no timeout"
+
+  $parsed = $null
+  $saidAbout = ""      # the last content complained about, so one bad file is reported once
+  while ($true) {
+    Start-Sleep -Seconds $AnswerPoll
+    if (-not (Test-Path $file)) { continue }
+
+    $raw = ""
+    try { $raw = Get-Content $file -Raw -ErrorAction Stop } catch { continue }
+    if ([string]::IsNullOrWhiteSpace($raw)) { continue }
+    try { $parsed = $raw | ConvertFrom-Json } catch { $parsed = $null }
+
+    $err = ""
+    if ($null -eq $parsed) {
+      $err = "it is not JSON that can be read -- write it to a temp name and rename it over this one"
+    } else {
+      $err = Test-DayAnswers -Answers $parsed -Questions $qs -Run $run -Cycle $Cycle
+    }
+    if ($err -eq "") { break }
+
+    # Reported once per distinct file and never deleted. Deleting raced the writer, and reporting
+    # every pass wrote the same complaint 360 times an hour into the one stream everything else is
+    # computed from. The file stays put, so rewriting it -- which is what the reader is told to do
+    # -- is what changes anything.
+    $parsed = $null
+    if ($raw -ne $saidAbout) {
+      $saidAbout = $raw
+      New-DayEvent -LogDir $LogDir -Kind "answers_invalid" -Data @{ cycle = $Cycle; reason = $err } | Out-Null
+      Write-Day "  the answers do not hold, write them again: $err"
+    }
+  }
+
+  $effect = "confirm"
+  $lines = New-Object System.Collections.ArrayList
+  foreach ($a in @($parsed.answers)) {
+    $id = [string]$a.id
+    $q = $byId[$id]
+    $label = [string]$a.label
+    # Read off the option that was offered, never off the answer. An answer that carried its own
+    # effect let one mistyped field merge the very thing the person had turned down.
+    $picked = Get-AnswerEffect -Question $q -Label $label
+    if ($picked -eq "reject") { $effect = "reject" }
+
+    New-DayEvent -LogDir $LogDir -Kind "answered" -Data @{
+      cycle = $Cycle; id = $id; question = [string]$q.question; label = $label
+      effect = $picked; notes = [string]$a.notes
+    } | Out-Null
+    Write-Day "  = [$id] $label  ($picked)"
+
+    $line = "- **$([string]$q.question)** -> **$label** (``$picked``)"
+    if ($a.notes) { $line += "`n  " + [string]$a.notes }
+    $null = $lines.Add($line)
+  }
+
+  # Written where a person reads it, because the run's log is gitignored and per run: without this
+  # the only durable trace of a decision made today would be the merge it caused.
+  $body = @("**Answered by the user while the day ran.**", "", ($lines -join "`n")) -join "`n"
+  Write-Elsewhere -TaskId ([string]$Handoff.task_id) -PrNumber $Handoff.pr_number `
+                  -Body $body -Name "answers-$Cycle.md" -Cycle $Cycle
+
+  return $effect
+}
+
 $HandoffKeys = @("outcome","task_id","pr_number","isc_closed","probes",
                  "decisions_deferred","left_out","skipped","blocked_reason","head_sha")
+# `questions` is in the schema and required of the audit, and deliberately not required here: an
+# empty array and a missing field mean the same thing to the code below, so demanding it would let
+# one absent bracket stop a day whose work was sound -- the failure this whole change is against.
 $VerdictKeys = @("verdict","reasons","unreported_decisions","isc_unproved",
                  "followups_created","actions_taken","audited_head_sha")
 
@@ -295,10 +519,11 @@ $stop = Enter-Lock
 if ($stop -ne "") { Write-Host $stop; exit 1 }
 
 try {
-  # No session count and no dollar ceiling: the day runs until the work, the usage window or the
-  # audit ends it. Those are real limits; a number picked in advance is a guess about them.
+  # No session count and no dollar ceiling: the day runs until the work or the usage window ends
+  # it. Those are real limits; a number picked in advance is a guess about them. The audit used to
+  # be on that list and is not any more -- what it judges is one PR, not the hours left.
   New-DayEvent -LogDir $LogDir -Kind "day_started" -Data @{ repo = $Repo; dry_run = [bool]$DryRun; pid = $PID } | Out-Null
-  Write-Day "=== day starts: runs until the board, the window or a verdict stops it ==="
+  Write-Day "=== day starts: runs until the board or the window ends it ==="
   $i = 0
 
   $broken = Test-Engine
@@ -396,7 +621,7 @@ try {
     Save-Anomalies -Status $status
 
     $r = Read-SessionContract -Result $a -Path $verdictFile -Required $VerdictKeys `
-                              -Field "verdict" -Allowed @("pass","pass_with_followup","hold")
+                              -Field "verdict" -Allowed @("pass","pass_with_followup","ask","hold")
     if ($r.error) {
       New-DayEvent -LogDir $LogDir -Kind "verdict_invalid" -Data @{ cycle = $i; reason = $r.error } | Out-Null
       Stop-Day "invalid verdict: $($r.error)"
@@ -417,6 +642,7 @@ try {
       undeclared = @($v.unreported_decisions).Count
       isc_unproved = @($v.isc_unproved).Count
       followups = @($v.followups_created).Count
+      questions = @($v.questions).Count
       reasons = @($v.reasons)
       actions_taken = @($v.actions_taken); followups_created = @($v.followups_created)
       undeclared_detail = @($v.unreported_decisions); isc_unproved_detail = @($v.isc_unproved)
@@ -429,24 +655,46 @@ try {
     foreach ($x in $v.unreported_decisions) { Write-Day "        undeclared: $($x.what)  [$($x.found_in)]" }
     foreach ($x in $v.actions_taken)        { Write-Day "        done: $x" }
 
-    # One thing decides whether the day goes on, and it is the verdict.
-    if ($v.verdict -eq "hold") { Stop-Day "the audit halts the day"; break }
-
-    # The verdict decides, the script acts. Integrating here rather than inside the audit keeps it
-    # mechanical -- it cannot be forgotten, cannot happen twice, and lands in the day log -- and it
-    # is what lets the next session see this one: the preflight below fast-forwards local main, so
-    # cycle N+1 branches from a base that already carries cycle N.
-    Write-Day "[$i] integrating PR #$($h.pr_number)"
-    gh pr merge $h.pr_number --merge --delete-branch
-    if ($LASTEXITCODE -ne 0) {
-      New-DayEvent -LogDir $LogDir -Kind "merge_failed" -Data @{
-        cycle = $i; pr_number = $h.pr_number; reason = "gh exited with $LASTEXITCODE"
-      } | Out-Null
-      Stop-Day "the merge failed ($LASTEXITCODE) -- the PR is left open"
-      break
+    # The verdict decides and the script acts -- but no verdict ends the day any more. `ask` puts
+    # the decision to a person and goes on with their answer; `hold` leaves the PR open, puts the
+    # card back and goes on with the next task. What ends a day is unsoundness, never a judgement
+    # about one PR: `hold` used to cost every remaining cycle, and most of what it cost them for
+    # was one decision somebody could have settled in a sentence.
+    # One function decides, here and in the probe, so the two cannot drift. It also refuses to merge
+    # a verdict that contradicts itself -- a `pass` carrying questions has said two things, and the
+    # reading that costs nothing is the one that does not put an unanswered diff into main.
+    $act = Resolve-Verdict $v
+    $merge = $true
+    if ($act.action -eq "ask") {
+      if ((Invoke-Questions -Cycle $i -Verdict $v -Handoff $h) -eq "reject") {
+        $merge = $false
+        Resume-Card -Cycle $i -Handoff $h -Reason "you turned down the decision this PR rests on"
+      }
+    } elseif ($act.action -eq "recover") {
+      $merge = $false
+      $why = $act.reason
+      if ($v.verdict -eq "hold") { $why += " -- " + ((@($v.reasons) | Select-Object -First 2) -join " ") }
+      Write-Day "[$i] not merging: $why"
+      Resume-Card -Cycle $i -Handoff $h -Reason $why
     }
-    New-DayEvent -LogDir $LogDir -Kind "merged" -Data @{ cycle = $i; pr_number = $h.pr_number } | Out-Null
-    Write-Day "[$i] PR #$($h.pr_number) integrated"
+
+    # Integrating here rather than inside the audit keeps it mechanical -- it cannot be forgotten,
+    # cannot happen twice, and lands in the day log -- and it is what lets the next session see
+    # this one: the preflight above fast-forwards local main, so cycle N+1 branches from a base
+    # that already carries cycle N.
+    if ($merge) {
+      Write-Day "[$i] integrating PR #$($h.pr_number)"
+      gh pr merge $h.pr_number --merge --delete-branch
+      if ($LASTEXITCODE -ne 0) {
+        New-DayEvent -LogDir $LogDir -Kind "merge_failed" -Data @{
+          cycle = $i; pr_number = $h.pr_number; reason = "gh exited with $LASTEXITCODE"
+        } | Out-Null
+        Stop-Day "the merge failed ($LASTEXITCODE) -- the PR is left open"
+        break
+      }
+      New-DayEvent -LogDir $LogDir -Kind "merged" -Data @{ cycle = $i; pr_number = $h.pr_number } | Out-Null
+      Write-Day "[$i] PR #$($h.pr_number) integrated"
+    }
 
     New-DayEvent -LogDir $LogDir -Kind "cooldown" -Data @{ cycle = $i; minutes = $CooldownSeconds / 60 } | Out-Null
     Write-Day "[$i] cooling $($CooldownSeconds / 60) min"

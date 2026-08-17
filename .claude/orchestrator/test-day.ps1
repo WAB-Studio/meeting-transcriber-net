@@ -47,6 +47,7 @@ function New-QuietStatus {
     Denials = 0; DenialsByTool = @(); CycleCosts = @(); LastCycleCost = $null
     Killed = $false; Unreadable = ""; RateLimit = $null; Ended = $false; EndReason = ""
     ProcessGone = $false; ExecutorPid = $null; Past = @(); Anomalies = @()
+    Waiting = $false; Questions = @(); Answered = @(); Recovered = @()
   }
 }
 
@@ -677,6 +678,321 @@ Check "the stream does not start with a BOM" {
     $bytes = [System.IO.File]::ReadAllBytes((Get-EventsPath $box))
     if ($bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { return "starts with a BOM" }
     if ([char]$bytes[0] -ne '{') { return "starts with '$([char]$bytes[0])'" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Write-Host ""
+Write-Host "  the day asks rather than ending"
+
+# One well-formed question, reused: two options, exactly one of which confirms.
+$QJson = @'
+[{ "id": "q1", "question": "Which way should a position be counted?", "why": "the other way takes the diff down",
+   "options": [{ "label": "Keep what was built", "effect": "confirm" },
+               { "label": "Open the device natively", "effect": "reject" }] }]
+'@
+$Questions = @($QJson | ConvertFrom-Json)
+$Run = "2026-08-16_212343"
+
+function New-Answers([string]$Body) { return ($Body | ConvertFrom-Json) }
+
+Check "answers hold when every question comes back naming an option that was offered" {
+  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Keep what was built`",`"notes`":`"yes`"}]}"
+  $err = Test-DayAnswers -Answers $a -Questions $Questions -Run $Run -Cycle 1
+  if ($err -ne "") { return "refused a good file: $err" }
+  ""
+}
+
+# The hole three independent reviewers found on 2026-08-17. While an answer carried its own effect,
+# one mistyped field merged the diff the person had just turned down, and nothing could tell.
+Check "an answer cannot carry a meaning the option it names does not have" {
+  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Open the device natively`",`"effect`":`"confirm`"}]}"
+  $err = Test-DayAnswers -Answers $a -Questions $Questions -Run $Run -Cycle 1
+  if ($err -ne "") { return "refused a good file: $err" }
+  $e = Get-AnswerEffect -Question $Questions[0] -Label "Open the device natively"
+  if ($e -ne "reject") { return "the effect came out '$e' -- a stray confirm in the file was obeyed" }
+  ""
+}
+
+Check "an option that was never offered is refused" {
+  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Do something else`"}]}"
+  if ((Test-DayAnswers -Answers $a -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took a label nobody offered" }
+  ""
+}
+
+# A supervisor that answered the first question and stopped would otherwise have the day merge on a
+# decision nobody was ever asked about.
+Check "a question left unanswered is refused rather than taken as agreement" {
+  $two = @($Questions[0], (New-Answers '{"id":"q2","question":"And the scope?","options":[{"label":"Keep","effect":"confirm"},{"label":"Cut","effect":"reject"}]}'))
+  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Keep what was built`"}]}"
+  $err = Test-DayAnswers -Answers $a -Questions $two -Run $Run -Cycle 1
+  if ($err -eq "") { return "took a partial file" }
+  if ($err -notmatch "q2") { return "did not name the missing one: $err" }
+  ""
+}
+
+Check "an answer to a question nobody asked, or two answers to one, are refused" {
+  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Keep what was built`"},{`"id`":`"q9`",`"label`":`"x`"}]}"
+  if ((Test-DayAnswers -Answers $a -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took an answer to q9" }
+  $b = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Keep what was built`"},{`"id`":`"q1`",`"label`":`"Open the device natively`"}]}"
+  if ((Test-DayAnswers -Answers $b -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took two answers to q1" }
+  ""
+}
+
+# Without this, an answers file left over from another cycle or another day is obeyed by whichever
+# cycle happens to ask a question with the same id.
+Check "answers for another run or another cycle are refused" {
+  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":2,`"answers`":[{`"id`":`"q1`",`"label`":`"Keep what was built`"}]}"
+  if ((Test-DayAnswers -Answers $a -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took cycle 2's answers for cycle 1" }
+  $b = New-Answers "{`"run`":`"other`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"Keep what was built`"}]}"
+  if ((Test-DayAnswers -Answers $b -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took another run's answers" }
+  ""
+}
+
+Check "an answer naming no option, and a file that is no JSON, are refused" {
+  $a = New-Answers "{`"run`":`"$Run`",`"cycle`":1,`"answers`":[{`"id`":`"q1`",`"label`":`"`"}]}"
+  if ((Test-DayAnswers -Answers $a -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took an answer with no label" }
+  if ((Test-DayAnswers -Answers $null -Questions $Questions -Run $Run -Cycle 1) -eq "") { return "took nothing as an answer" }
+  ""
+}
+
+Write-Host ""
+Write-Host "  a question the day cannot put to anybody is not waited on"
+
+Check "a well-formed question passes and an empty set does not" {
+  if ((Test-DayQuestions $Questions) -ne "") { return "refused a good question" }
+  if ((Test-DayQuestions @()) -eq "") { return "took a verdict that asks nothing" }
+  ""
+}
+
+# Each of these used to reach the wait loop, where nobody could answer it and nothing timed out.
+Check "a question with no text, no id, one option or five is refused" {
+  $cases = @(
+    '[{"id":"q1","question":"","options":[{"label":"a","effect":"confirm"},{"label":"b","effect":"reject"}]}]',
+    '[{"id":"","question":"why","options":[{"label":"a","effect":"confirm"},{"label":"b","effect":"reject"}]}]',
+    '[{"id":"q1","question":"why","options":[{"label":"a","effect":"confirm"}]}]',
+    '[{"id":"q1","question":"why","options":[{"label":"a","effect":"confirm"},{"label":"b","effect":"reject"},{"label":"c","effect":"reject"},{"label":"d","effect":"reject"},{"label":"e","effect":"reject"}]}]'
+  )
+  foreach ($c in $cases) {
+    if ((Test-DayQuestions (@($c | ConvertFrom-Json))) -eq "") { return "took: $c" }
+  }
+  ""
+}
+
+Check "two questions sharing an id are refused" {
+  $q = @('[{"id":"q1","question":"a","options":[{"label":"x","effect":"confirm"},{"label":"y","effect":"reject"}]},
+          {"id":"q1","question":"b","options":[{"label":"x","effect":"confirm"},{"label":"y","effect":"reject"}]}]' | ConvertFrom-Json)
+  if ((Test-DayQuestions $q) -eq "") { return "took two questions called q1" }
+  ""
+}
+
+# None and two are both unanswerable: with none the PR can never merge whatever is picked, and with
+# two the script would have to weigh which agreement counted, which is a judgement it does not make.
+Check "a question with no confirming option, or two, is refused" {
+  $none = @('[{"id":"q1","question":"a","options":[{"label":"x","effect":"reject"},{"label":"y","effect":"reject"}]}]' | ConvertFrom-Json)
+  if ((Test-DayQuestions $none) -eq "") { return "took a question nothing could confirm" }
+  $two = @('[{"id":"q1","question":"a","options":[{"label":"x","effect":"confirm"},{"label":"y","effect":"confirm"}]}]' | ConvertFrom-Json)
+  if ((Test-DayQuestions $two) -eq "") { return "took a question with two confirms" }
+  ""
+}
+
+Check "an option effect outside the two the script acts on is refused" {
+  $q = @('[{"id":"q1","question":"a","options":[{"label":"x","effect":"confirm"},{"label":"y","effect":"maybe"}]}]' | ConvertFrom-Json)
+  if ((Test-DayQuestions $q) -eq "") { return "took effect 'maybe'" }
+  ""
+}
+
+Write-Host ""
+Write-Host "  what the executor does about a verdict"
+
+Check "ask is a verdict the contract allows and something else still is not" {
+  $v = '{"verdict":"ask","questions":[]}' | ConvertFrom-Json
+  $err = Test-DayContract -Contract $v -Required @("verdict") -Field "verdict" -Allowed @("pass","pass_with_followup","ask","hold")
+  if ($err -ne "") { return "refused ask: $err" }
+  $bad = '{"verdict":"maybe"}' | ConvertFrom-Json
+  if ((Test-DayContract -Contract $bad -Required @("verdict") -Field "verdict" -Allowed @("pass","pass_with_followup","ask","hold")) -eq "") {
+    return "took a verdict outside the contract"
+  }
+  ""
+}
+
+# The decisive routing, asked of the same function the loop asks. Nothing here may come out `merge`
+# unless the audit said the diff holds up and had nothing left to ask.
+Check "a green verdict merges and a hold puts it back, without ending anything" {
+  foreach ($name in @("pass", "pass_with_followup")) {
+    $v = "{`"verdict`":`"$name`",`"questions`":[]}" | ConvertFrom-Json
+    $a = Resolve-Verdict $v
+    if ($a.action -ne "merge") { return "$name came out '$($a.action)'" }
+  }
+  $h = '{"verdict":"hold","questions":[]}' | ConvertFrom-Json
+  if ((Resolve-Verdict $h).action -ne "recover") { return "hold did not recover" }
+  ""
+}
+
+Check "an ask with usable questions waits, and one without them recovers instead" {
+  $ok = [pscustomobject]@{ verdict = "ask"; questions = $Questions }
+  if ((Resolve-Verdict $ok).action -ne "ask") { return "a good ask did not ask" }
+  foreach ($bad in @('{"verdict":"ask","questions":[]}', '{"verdict":"ask","questions":[{"id":"q1"}]}')) {
+    $a = Resolve-Verdict ($bad | ConvertFrom-Json)
+    if ($a.action -ne "recover") { return "$bad came out '$($a.action)' rather than recovering" }
+  }
+  ""
+}
+
+# An audit that says `pass` and attaches a question has said two things. Merging on the field and
+# dropping the question would put a diff its own reader was still asking about into main.
+Check "a verdict that contradicts itself does not merge" {
+  $v = [pscustomobject]@{ verdict = "pass"; questions = $Questions }
+  $a = Resolve-Verdict $v
+  if ($a.action -eq "merge") { return "merged a pass that was still asking" }
+  if ($a.action -ne "recover") { return "came out '$($a.action)'" }
+  ""
+}
+
+Write-Host ""
+Write-Host "  where a card goes when its PR is not merged"
+
+Check "the first time back is the pool and the second is a person" {
+  $none = @()
+  if ((Get-CardDestination -Recovered $none -TaskId "T1") -ne "Open") { return "the first went to pending" }
+  $once = @([pscustomobject]@{ task = "T1"; moved = $true })
+  if ((Get-CardDestination -Recovered $once -TaskId "T1") -ne "pending") { return "the second went back to the pool" }
+  if ((Get-CardDestination -Recovered $once -TaskId "T2") -ne "Open") { return "another card was charged T1's strike" }
+  ""
+}
+
+# A board CLI that could not be reached left the card where it was. Counting that as a strike would
+# send the next attempt to `pending` over a failure of the tool rather than of the work.
+Check "a recovery that never reached the board is not counted against the card" {
+  $failed = @([pscustomobject]@{ task = "T1"; moved = $false })
+  if ((Get-CardDestination -Recovered $failed -TaskId "T1") -ne "Open") { return "a failed move counted as a strike" }
+  ""
+}
+
+Check "a question asked leaves the day waiting and its answer clears it" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "question_asked" -Data @{
+      cycle = 1; id = "q1"; question = "Which way should a position be counted?"; why = "the other way takes the diff down"
+      options = @(@{ label = "Keep"; effect = "confirm" }); pr_number = 40; task_id = "T1"
+    } | Out-Null
+
+    $st = Get-DayStatus -LogDir $box
+    if (-not $st.Waiting) { return "did not read as waiting" }
+    if ($st.Questions.Count -ne 1) { return "held $($st.Questions.Count) questions" }
+
+    New-DayEvent -LogDir $box -Kind "answered" -Data @{
+      cycle = 1; id = "q1"; question = "Which way should a position be counted?"
+      label = "Keep"; effect = "confirm"; notes = ""
+    } | Out-Null
+
+    $st2 = Get-DayStatus -LogDir $box
+    if ($st2.Waiting) { return "still waiting after the answer" }
+    if ($st2.Answered.Count -ne 1) { return "kept $($st2.Answered.Count) answers" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The whole point of the change. Waiting is loud and it is not a fault: halting on it would undo
+# the recovery it exists for, and a level nobody obeys is what made `stop` decoration before.
+Check "waiting is reported and does not stop the day" {
+  $st = New-QuietStatus
+  $st.Questions = @([pscustomobject]@{ id = "q1"; cycle = 2; question = "Cut the scope?" })
+  $st.Waiting = $true
+  $an = @(Get-DayAnomalies -Status $st)
+  if (-not @($an | Where-Object { $_.code -eq "waiting" }).Count) { return "waiting did not fire" }
+  if (Test-WouldHalt $st) { return "a question stopped the day" }
+  ""
+}
+
+Check "a question stops being asked when the process that asked it is gone" {
+  $box = New-Sandbox
+  try {
+    # A PID that cannot be running: the executor's own, which this probe is not.
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x"; pid = 999999 } | Out-Null
+    New-DayEvent -LogDir $box -Kind "question_asked" -Data @{
+      cycle = 1; id = "q1"; question = "Cut the scope?"; why = "w"; options = @()
+    } | Out-Null
+
+    $st = Get-DayStatus -LogDir $box
+    if (-not $st.ProcessGone) { return "did not notice the process was gone" }
+    if ($st.Waiting) { return "still asking for an answer nothing can receive" }
+    if (-not @($st.Anomalies | Where-Object { $_.code -eq "vanished" }).Count) { return "vanished did not fire" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "what a person decided and what came back unmerged reach the report" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "verdict" -Data @{ cycle = 1; verdict = "ask" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "answered" -Data @{
+      cycle = 1; id = "q1"; question = "Which way should a position be counted?"
+      label = "Open the device natively"; effect = "reject"; notes = "the counter is not worth keeping"
+    } | Out-Null
+    New-DayEvent -LogDir $box -Kind "recovered" -Data @{
+      cycle = 1; task_id = "86ak1byrr"; pr_number = 40; to = "Open"; reason = "you turned down the decision this PR rests on"
+    } | Out-Null
+    New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "no_tasks" } | Out-Null
+
+    $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
+    if ($md -notmatch "What you decided") { return "the report has no decisions section" }
+    if ($md -notmatch "Open the device natively") { return "the report does not say what was picked" }
+    if ($md -notmatch "the counter is not worth keeping") { return "the report drops what they typed" }
+    if ($md -notmatch "Put back rather than merged") { return "the report has no recovery section" }
+    if ($md -notmatch "86ak1byrr") { return "the report does not name the card that went back" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The executor releases the lock in `finally`, so a day that ended is not sitting on anything. Left
+# standing, this sent a supervisor off to write an answers file no process would ever read.
+Check "a day that ended is not still asking for an answer" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "question_asked" -Data @{
+      cycle = 1; id = "q1"; question = "Cut the scope?"; why = "w"; options = @()
+    } | Out-Null
+    New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "the executor threw" } | Out-Null
+
+    $st = Get-DayStatus -LogDir $box
+    if ($st.Waiting) { return "an ended day still says it is waiting" }
+    if ($st.Questions.Count -ne 0) { return "it still holds $($st.Questions.Count) question(s)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The card is still in `in review`, where no worker looks for it. Reporting that as a recovery is
+# how the mechanism written to rescue the work would have quietly abandoned it.
+Check "a recovery whose card never moved reads as needing a hand" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "recovered" -Data @{
+      cycle = 1; task_id = "T1"; pr_number = 40; to = "Open"; reason = "the audit held it"; moved = $false
+    } | Out-Null
+    New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "no_tasks" } | Out-Null
+
+    $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
+    if ($md -notmatch "did not move") { return "the report calls a failed move a recovery" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "a day still waiting says so at the top of its own report" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "question_asked" -Data @{
+      cycle = 1; id = "q1"; question = "Cut the scope?"; why = "w"; options = @(); task_id = "T1"
+    } | Out-Null
+
+    $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
+    if ($md -notmatch "Still waiting on you") { return "the report does not say it is waiting" }
+    if ($md -notmatch "Cut the scope") { return "the report does not carry the question" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
