@@ -189,6 +189,40 @@ public sealed class MeetingAudioTests : IDisposable
         folder.EnumerateFiles("*.partial").ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// ISC-132, through the whole path a person's recording takes rather than through the timeline
+    /// alone: blocks written the way a capture writes them, read back the way a recovery reads them,
+    /// and out the other side as the meeting's own file. The microphone is the webcam this was found
+    /// on — opened at 48 kHz, handing over 480 frames a packet and counting by 160 — and what it
+    /// used to produce here was a refusal and no file at all.
+    /// </summary>
+    [Fact]
+    public void A_microphone_that_numbers_its_frames_at_its_own_rate_becomes_the_meetings_file()
+    {
+        Write(
+            folder,
+            AudioChannel.Loopback,
+            StereoFloat,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 4, Fabricated.Bursts(1)));
+        Write(
+            folder,
+            AudioChannel.Microphone,
+            StereoFloat,
+            Fabricated.Packets(
+                AudioChannel.Microphone, StereoFloat, 48_000, 0, 4, Fabricated.Bursts(1), countsAtRate: 16_000));
+
+        var recording = MeetingAudio.Materialise(folder);
+
+        recording.File.Name.ShouldBe("audio.wav");
+        recording.Length.Milliseconds.ShouldBeInRange(3_900, 4_100);
+        recording.Timeline.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeTrue();
+        recording.Timeline.On(AudioChannel.Loopback).CounterGivenUp.ShouldBeFalse();
+
+        // The microphone is on channel 1 and is really on it: a file made of silence would satisfy
+        // every line above and none of this one.
+        Peak(Read(recording.File), CapturedAudio.IndexOf(AudioChannel.Microphone)).ShouldBeGreaterThan(0.5f);
+    }
+
     [Fact]
     public void Two_spools_that_never_delivered_a_block_are_not_a_recording()
     {

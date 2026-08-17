@@ -9,10 +9,16 @@ namespace MeetingTranscriber.Audio;
 /// </summary>
 /// <remarks>
 /// <para>
-/// It counts frames the device reported and never bytes that arrived, which is the whole reason it
-/// exists. The two agree exactly until something is lost, and a stretch nobody was handed shows up
-/// here as a jump in the positions and in a byte count as nothing at all — so a recording measured
-/// by its bytes comes back shorter than the meeting with nothing saying so.
+/// It counts positions and never bytes that arrived, which is the whole reason it exists. The two
+/// agree exactly until something is lost, and a stretch nobody was handed shows up here as a jump
+/// in the positions and in a byte count as nothing at all — so a recording measured by its bytes
+/// comes back shorter than the meeting with nothing saying so.
+/// </para>
+/// <para>
+/// Which positions is <see cref="SourcePositions"/>' to say and not this type's, and asking it is
+/// what keeps these numbers and the rebuilt recording's the same. A device numbering its frames in
+/// its own rate would otherwise be reported here as losing most of a meeting the file it becomes
+/// loses nothing of, and this is the number a person is shown the moment a capture stops.
 /// </para>
 /// <para>
 /// Packets arrive on the capture thread and the numbers are read on whichever thread is reporting
@@ -74,7 +80,11 @@ public sealed class PacketTally
         }
     }
 
-    /// <summary>How much of that stretch the device counted and never handed over.</summary>
+    /// <summary>
+    /// How much of that stretch was counted and never handed over. The device's own count while its
+    /// counter can be laid out, and the clock beside its packets once that counter has been given
+    /// up on — the same two answers, from the same place, as the recording this rebuilds into.
+    /// </summary>
     public Duration Lost
     {
         get

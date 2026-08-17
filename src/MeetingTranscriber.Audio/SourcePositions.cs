@@ -27,18 +27,30 @@ namespace MeetingTranscriber.Audio;
 /// that was already in force, and a stretch the device really dropped still opens the gap it was.
 /// </para>
 /// <para>
-/// The cost is named rather than hidden: a source placed this way measures its own rate as exactly
-/// the rate it was opened at, so the drift correction has nothing to steer by and the check that
-/// stops a device whose two counters disagree can never fire on it. That is why the recording says
-/// which of its sources this happened to. The check still holds for every source whose counter was
-/// usable, which is the case it was written against — a crystal running at its own speed reports
-/// its frames in the client's unit and disagrees with its clock, and nothing here touches it.
+/// The cost is named rather than hidden, and it is larger than it first looks. A source placed this
+/// way is measured against the very clock its positions were computed from, so it reports its own
+/// rate as exactly the rate it was opened at whatever it really ran at: the drift correction has
+/// nothing to steer by, and the check that stops a device whose two counters disagree cannot fire
+/// on it. For a source whose device numbers nothing that is right rather than a hole — the audio
+/// engine mixes at one rate and there is no crystal to disagree with. Here there is one. A device
+/// that both counts in its own unit and runs at a rate other than its label would be recorded at
+/// its label, and what says so is the stretch that comes back as missing, because the frames handed
+/// over and the clock are then the two numbers that disagree. Measuring such a device needs the
+/// rate its counter counts in, which nothing on this side of WASAPI reports, and it is a board task
+/// rather than a guess made here.
+/// </para>
+/// <para>
+/// The check still holds in full for every source whose counter was usable, which is the case it
+/// was written against: a crystal running at its own speed reports its frames in the client's unit
+/// and disagrees with its clock, never advancing by less than it handed over, so nothing here is
+/// ever reached for it.
 /// </para>
 /// </remarks>
 internal sealed class SourcePositions
 {
     private readonly int sampleRate;
     private FramePositions? placed;
+    private long origin;
     private long next;
     private bool started;
 
@@ -66,23 +78,32 @@ internal sealed class SourcePositions
     {
         ArgumentNullException.ThrowIfNull(packet);
 
-        // Seeded with the first packet's own number so that both answers are the same number on the
-        // same recording, and kept in step on every packet whether or not it is the one being read:
-        // the changeover happens on the packet that reveals the mismatch, and there has to already
-        // be a position to carry on from by then.
-        placed ??= new FramePositions(sampleRate, from: packet.DevicePosition);
-        var elsewhere = placed.For(packet.CapturedAt, packet.TimingIsSound, frames);
+        // Kept in step on every packet whether or not it is the one being read: the changeover
+        // happens on the packet that reveals the mismatch, and there has to already be a position
+        // to carry on from by then. It counts from zero, as a source whose device numbers nothing
+        // does, and the frame this source's first packet claimed is added back on — so what is
+        // placed here and what the device reported before it are numbers on the same recording.
+        placed ??= new FramePositions(sampleRate);
+        var elsewhere = origin + placed.For(packet.CapturedAt, packet.TimingIsSound, frames);
 
         if (!started)
         {
             started = true;
+            origin = packet.DevicePosition;
             next = packet.DevicePosition + frames;
             return packet.DevicePosition;
         }
 
         CounterGivenUp |= packet.DevicePosition < next;
 
-        var where = CounterGivenUp ? elsewhere : packet.DevicePosition;
+        // Never behind where the last packet ended. The two answers are measured from different
+        // things — one from the device's counter, the other from the clock — so at the changeover
+        // they can disagree by whatever the source has drifted and by whatever it lost: a stretch
+        // the device dropped puts its counter ahead of both the frames handed over and the clock,
+        // and the clock's answer then lands short of a position already used. Sending a source
+        // backwards is the one thing giving the counter up exists to avoid, so the changeover
+        // costs the difference as a shorter first packet rather than as an overlap.
+        var where = CounterGivenUp ? Math.Max(elsewhere, next) : packet.DevicePosition;
         next = where + frames;
 
         return where;

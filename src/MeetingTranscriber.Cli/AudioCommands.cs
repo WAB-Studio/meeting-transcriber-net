@@ -278,8 +278,11 @@ public static class AudioCommands
                     CultureInfo.InvariantCulture,
                     $"loudest {recording.Loudest(source.Channel)}, "
                     + $"{source.Missing.Milliseconds} ms missing, {source.Waited.Milliseconds} ms waited, "
-                    + $"{source.MeasuredRate:0} Hz "
-                    + $"{(source.CounterGivenUp ? "assumed, counter given up on" : "measured")}"));
+                    // Never called measured. It is the device's label until the recording is long
+                    // enough to say otherwise, and for a source whose counter was given up on it
+                    // stays the label however long the meeting was.
+                    + $"{source.MeasuredRate:0} Hz"
+                    + $"{(source.CounterGivenUp ? ", counter given up on" : string.Empty)}"));
         }
     }
 
@@ -363,10 +366,12 @@ public static class AudioCommands
         : string.Empty;
 
     /// <summary>
-    /// What the device said about its own packets, which is the measurement the two files are not.
-    /// The two numbers that matter are how much of the meeting it counted and never handed over,
-    /// and how far apart it read one packet from the next: instants stamped where the application
-    /// collected them would read as a burst of no time at all and then the whole of one poll.
+    /// What the source's packets said about themselves, which is the measurement the two files are
+    /// not. The two numbers that matter are how much of the meeting was counted and never handed
+    /// over, and how far apart the device read one packet from the next: instants stamped where the
+    /// application collected them would read as a burst of no time at all and then the whole of one
+    /// poll. The first of the two is the device's own count only while its counter can be laid out;
+    /// past that it is the clock, which is what the rebuilt recording uses too.
     /// </summary>
     private static string Clocking(PacketTally packets) => string.Create(
         CultureInfo.InvariantCulture,

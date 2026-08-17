@@ -32,9 +32,20 @@ namespace MeetingTranscriber.Audio;
 /// a device that changes format mid recording is a new stretch of the recording rather than an odd
 /// packet, and nothing yet asks the timeline for that.
 /// </para>
+/// <para>
+/// Nor is the unit of <see cref="DevicePosition"/>, and that one is not a decision but something
+/// nothing here can know. A shared-mode client is handed the format it asked for, converted; the
+/// counter is not converted with it, and a device that runs at another rate goes on counting in its
+/// own frames. So the number is the device's own and says where the block goes only once something
+/// has decided it can be laid out at all — which is <see cref="SourcePositions"/>, and it is the
+/// only thing that may read this as a position on the recording.
+/// </para>
 /// </remarks>
 /// <param name="Channel">Which of the two sources this came from.</param>
-/// <param name="DevicePosition">Frames the device had produced before this block's first frame.</param>
+/// <param name="DevicePosition">
+/// Frames the device had produced before this block's first frame, counted in whatever the device
+/// counts in, which is not always the frames of <paramref name="Samples"/>.
+/// </param>
 /// <param name="CapturedAt">When the device read that position, on the shared monotonic clock.</param>
 /// <param name="Samples">The block's bytes, in the source's own format.</param>
 /// <param name="TimingIsSound">

@@ -235,6 +235,39 @@ public class SharedTimelineTests
     }
 
     /// <summary>
+    /// ISC-132. A source that lost a stretch before it went back on its counter. The stretch the
+    /// device dropped puts its counter ahead of the frames it handed over, and running fast puts it
+    /// ahead of the clock as well — so the position the clock would put the changeover at is behind
+    /// where the last packet already ended. The recording carries on from where it actually got to,
+    /// because sending a source backwards at the changeover is the one thing the counter was given
+    /// up to avoid.
+    /// </summary>
+    [Fact]
+    public void A_source_that_lost_a_stretch_before_giving_its_counter_up_still_records_the_meeting()
+    {
+        var collected = new Collected();
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, collected);
+
+        var microphone = Fabricated
+            .Packets(
+                AudioChannel.Microphone, MonoFloat, realRate: 48_096, 0, 6, Fabricated.Quiet,
+                delivers: Dropping(1, 2))
+            .ToList();
+
+        microphone[^1] = microphone[^1] with { DevicePosition = microphone[^2].DevicePosition };
+
+        Feed(
+            timeline,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 6, Fabricated.Quiet),
+            microphone);
+
+        var summary = timeline.Close();
+
+        summary.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeTrue();
+        summary.Length.Milliseconds.ShouldBeInRange(5_900, 6_100);
+    }
+
+    /// <summary>
     /// ISC-133. Giving a counter up switches this source's drift correction off, and the rate that
     /// comes back is then the label rather than anything measured. Reporting that number with
     /// nothing beside it would read as a device measured at exactly its nominal rate, which is the
