@@ -23,7 +23,7 @@
     "reasons": {
       "type": "array",
       "items": { "type": "string" },
-      "description": "Why this verdict and not another. One reason per entry. What the task asked for and the diff does not carry goes here."
+      "description": "Why this verdict and not another. One reason per entry, one sentence each, naming its evidence — the PR comment renders these as one line apiece. What the task asked for and the diff does not carry goes here."
     },
     "unreported_decisions": {
       "type": "array",

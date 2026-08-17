@@ -141,8 +141,34 @@ plus everything built on top of it before anybody notices. **When you are unsure
 
 The card stays in `in review` either way — closing it is still the user's.
 
-On all three verdicts, comment on the PR with what you reviewed and found; on `hold`, comment on
-the card as well, which is what gets read in the morning.
+On all three verdicts, comment on the PR; on `hold`, the same body on the card as well, which is
+what gets read in the morning. The comment exists because the verdict does not survive:
+`verdict-N.json` is gitignored and per-run, and the script merges a green verdict into `main` with
+nobody in the loop, so this is the only durable line on the commit saying who read it.
+
+That makes it a **rendering of the verdict and nothing else**: written after the JSON, from the
+JSON, carrying no fact the JSON does not. One line per entry, each section dropped when its array
+is empty, and `actions_taken` never appears — that is `report.md`'s job.
+
+```markdown
+**pass_with_followup** — `2b652a0`, CI build green in 6m19s (797 passed, 0 skipped).
+
+- <one line per `reasons` entry>
+
+**Undeclared decisions**
+- <`what`, one line> — `<found_in>`
+
+**Unproved claims**
+- ISC-N — <why it could not be corroborated>
+
+**Followups**
+- <task_id> <name>
+
+Merged by the orchestrator on this verdict. The card stays in `in review`.
+```
+
+No headings of your own, no narrative of how you got there, no table of commands you ran. A reason
+that does not fit on one line is two reasons, or it is padding.
 
 For each followup, a card in the same list as the originating task. **Check first whether one
 with that name already exists** — you may be running after an audit that died just after creating
