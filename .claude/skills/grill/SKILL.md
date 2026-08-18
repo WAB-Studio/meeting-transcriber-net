@@ -83,25 +83,40 @@ its comments, the code it is about, `arquitectura.md`, `ISA.md`.
 
 Then one question at a time, with the options you actually see and what each costs.
 
-## 5 · What you leave on the card
+## 5 · What you leave
 
-**The decisions, as a comment.** In a file, because prose with a semicolon in it does not survive a
-command line:
+**Question, answer. Never why.** The alternative that lost, the reasoning that settled it, the case
+that made it obvious: nobody acts on any of those. A decision is followed, not understood. One line
+each, and no more words than were said.
+
+> - What pausing does to the meeting → keeps the clock. The paused stretch is in the audio as the
+>   silence it was.
+
+Two places, and the decision exists once in each.
+
+**The card, as its one grill comment — edited, never added to.** A second grill comment is the same
+decision twice, and whoever reads it has to work out which one is current.
 
 ```powershell
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text @.scratch/grill-<id>.md
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text @.scratch/c.md
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --edit <comment-id> --text @.scratch/c.md
 ```
 
 ```markdown
-**Grilled.** `<sha>` — `main` as it stood when these were decided.
+**Grilled.**
 
-- **<the fork, one sentence>** → <what was decided>
-  <the why, when the why is what settles a case nobody listed>
+- <the question> → <the answer>
 
 Claims: ISC-N, ISC-M.
 ```
 
-What was decided, never how you got there.
+The payload file goes when the call is done: `.scratch/CLAUDE.md` says what may live there.
+
+**`.scratch/grill.md`, under the card's board list.** Same lines, plus the card's id, name and the
+date. A card is found by its list and named by its id, because names get rewritten and ids do not.
+
+**The description only when what was decided changed what the card asks for.** Then it is rewritten
+and never appended to, and it carries the instruction rather than the record of the decision.
 
 **The claims.** A decision saying what has to be true for somebody using the app belongs in the
 ISA — which is almost never a new number. **Settling N forks does not open N claims.** Most of what
@@ -111,8 +126,8 @@ statement. A sitting that hands the `isa` skill one new claim per fork is not co
 it is inflating the count — and the count is what the whole articulation is scored on.
 
 Open them through the `isa` skill, which owns that check, and never mark one `[x]` — you ran no
-probe. Commit `ISA.md` straight to `main`, and take `git rev-parse main` after that commit for the
-`sha` above.
+probe. Commit `ISA.md` straight to `main`. The orchestrator's own cards get none: a claim is about
+the product, a recording or the corpus.
 
 **The tag, last.**
 
@@ -132,6 +147,7 @@ A card in `pending` also goes back to `Open`, or nothing will take it:
 ```powershell
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" move <id> --status Open
 ```
+
 
 ## 6 · How many
 
