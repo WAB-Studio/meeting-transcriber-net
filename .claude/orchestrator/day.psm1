@@ -167,6 +167,76 @@ function Get-ContractFromText {
 }
 
 <#
+  Whether the session said a field at all, which is not the same question as whether its value is
+  empty. `pr_number: null` is an answer; no `pr_number` is silence.
+#>
+function Test-ContractSaid {
+  param($Contract, [string]$Name)
+  if ($null -eq $Contract -or -not $Contract.PSObject -or -not $Contract.PSObject.Properties) { return $false }
+  return (@($Contract.PSObject.Properties.Name) -contains $Name)
+}
+
+<#
+  A name the schema spells differently, and a list nothing went into, are settled here before
+  anything judges the contract. On 2026-08-17 a worker ran for 56 minutes, pushed to its PR and got
+  CI green, and the day ended on its handoff calling the claims it closed `claims_closed` and
+  leaving out `skipped`, which a cycle that skipped nothing had no reason to write.
+
+  An alias is a name a session really used, never one that might sound right: the table is a record
+  of what happened, and a synonym nothing ever emitted is an invention that would let a real
+  mistake through. A field defaults only where its empty value and its absence say the same thing
+  to every later reader -- which is why the lists of what was deferred, left out or skipped default
+  and `isc_closed` and `probes` do not. Those two are what the audit corroborates, and an audit
+  that reads no claims because none were written would find nothing wrong and merge.
+#>
+function Repair-Contract {
+  param($Contract, [hashtable]$Aliases = @{}, [string[]]$EmptyList = @(), [string[]]$EmptyText = @())
+  if ($null -eq $Contract) { return $null }
+
+  foreach ($from in @($Aliases.Keys)) {
+    $to = [string]$Aliases[$from]
+    if ((Test-ContractSaid $Contract $from) -and -not (Test-ContractSaid $Contract $to)) {
+      $Contract | Add-Member -NotePropertyName $to -NotePropertyValue $Contract.$from -Force
+    }
+  }
+  foreach ($k in $EmptyList) {
+    if (-not (Test-ContractSaid $Contract $k)) { $Contract | Add-Member -NotePropertyName $k -NotePropertyValue @() -Force }
+  }
+  foreach ($k in $EmptyText) {
+    if (-not (Test-ContractSaid $Contract $k)) { $Contract | Add-Member -NotePropertyName $k -NotePropertyValue "" -Force }
+  }
+  return $Contract
+}
+
+<#
+  What a session emitted is written down before anything judges it. The session is gone and was
+  paid for, and until 2026-08-17 every way of refusing it threw it away with it: that day's run
+  folder ended with no handoff in it at all, so nothing could audit 56 minutes of work already
+  done, then or later. The only other copy is the session stream, which is a transcript nobody
+  reads.
+
+  Called the moment a session returns and not inside any rejection branch. Ordering is the whole of
+  it: a save that hangs off one judgement is lost to the next one somebody adds -- the first draft
+  of this saved on an unreadable contract, and left the audit's own commit check, the error flag
+  and the soundness check still able to end a day holding the only copy of what was said.
+
+  The raw text and not the parsed object, because the emission that cannot be parsed at all is
+  exactly the one worth keeping. Nothing here overwrites: an atom whose contract was refused can be
+  run again, and the second session's words are not a reason to lose the first's.
+#>
+function Save-EmittedContract {
+  param([Parameter(Mandatory)][string]$Path, [string]$Text)
+  $dir  = Split-Path -Parent $Path
+  $stem = [System.IO.Path]::GetFileNameWithoutExtension($Path)
+  $ext  = [System.IO.Path]::GetExtension($Path)
+  $try  = $Path
+  $n    = 1
+  while (Test-Path $try) { $n++; $try = Join-Path $dir ("{0}-{1}{2}" -f $stem, $n, $ext) }
+  [System.IO.File]::WriteAllText($try, [string]$Text, $script:Utf8NoBom)
+  return $try
+}
+
+<#
   Presence is not enough: in PowerShell the string "false" is truthy, so a verdict that said "hold"
   alongside a lying continue flag would have carried the day on. What the script obeys is validated
   by value.
@@ -190,9 +260,7 @@ function Test-DayContract {
   # a card with an open PR picked up as fresh work opens a second PR against it. So the question
   # asked here is whether the session said anything at all, which is what `PSObject.Properties`
   # answers and what `$null -eq` cannot.
-  $names = @()
-  if ($Contract.PSObject -and $Contract.PSObject.Properties) { $names = @($Contract.PSObject.Properties.Name) }
-  foreach ($k in $Present) { if ($names -notcontains $k) { $missing += $k } }
+  foreach ($k in $Present) { if (-not (Test-ContractSaid $Contract $k)) { $missing += $k } }
 
   if ($missing.Count -gt 0) { return "missing fields: " + (@($missing | Sort-Object -Unique) -join ", ") }
 
@@ -1308,7 +1376,8 @@ function Write-DayReport {
 }
 
 Export-ModuleMember -Function Add-Utf8Line, Get-EventsPath, Read-OpenFileLines, New-DayEvent, Read-DayEvents,
-  Get-SessionResult, Get-ContractFromText, Test-DayContract, Test-JsonTrue, Get-SessionActivity,
+  Get-SessionResult, Get-ContractFromText, Test-ContractSaid, Repair-Contract, Save-EmittedContract,
+  Test-DayContract, Test-JsonTrue, Get-SessionActivity,
   Test-DecisionsOwed, Resolve-Verdict, Get-CardDestination,
   New-Denial, Get-ResultDenials, Get-DenialKey, Group-Denials,
   Get-JournalPath, Test-JournalBody, Get-JournalTask, Reset-Journal, Complete-Journal,

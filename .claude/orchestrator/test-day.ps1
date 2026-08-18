@@ -155,6 +155,120 @@ Check "a hold cannot pass for a pass" {
 }
 
 Write-Host ""
+Write-Host "  a session that did the work does not lose the day on how it spelled it"
+
+$HandoffAliases   = @{ claims_closed = "isc_closed" }
+$HandoffEmptyList = @("decisions_deferred","left_out","skipped")
+$HandoffEmptyText = @("blocked_reason")
+
+function Repair-Handoff($Text) {
+  return Repair-Contract (Get-ContractFromText $Text) `
+                         -Aliases $HandoffAliases -EmptyList $HandoffEmptyList -EmptyText $HandoffEmptyText
+}
+
+Check "the name the schema does not use is taken as the one it does" {
+  $t = $HandoffJson.Replace('"isc_closed"', '"claims_closed"')
+  $c = Repair-Handoff $t
+  $e = Test-DayContract -Contract $c -Required $HandoffKeys -Field "outcome" -Allowed @("pr_opened")
+  if ($e -ne "") { return $e }
+  if (@($c.isc_closed)[0] -ne "ISC-127") { return "the claims came out $($c.isc_closed)" }
+  ""
+}
+
+Check "a name the session really said does not overwrite the one the schema wants" {
+  $t = $HandoffJson.Replace('"isc_closed": ["ISC-127"]', '"isc_closed": ["ISC-127"], "claims_closed": ["ISC-999"]')
+  $c = Repair-Handoff $t
+  if (@($c.isc_closed)[0] -ne "ISC-127") { return "the alias won: $($c.isc_closed)" }
+  ""
+}
+
+Check "the lists a cycle had no reason to write default to empty" {
+  $t = '{"outcome":"pr_opened","task_id":"x","pr_number":4,"isc_closed":["ISC-1"],' +
+       '"probes":[],"head_sha":"abc"}'
+  $c = Repair-Handoff $t
+  $e = Test-DayContract -Contract $c -Required $HandoffKeys -Present @("pr_number") `
+                        -Field "outcome" -Allowed @("pr_opened")
+  if ($e -ne "") { return $e }
+  if (@($c.skipped).Count -ne 0) { return "skipped came out $($c.skipped)" }
+  if ($null -eq $c.skipped) { return "skipped came out null rather than an empty list" }
+  if ($c.blocked_reason -ne "") { return "blocked_reason came out '$($c.blocked_reason)'" }
+  ""
+}
+
+Check "an empty list survives being written back out as a list" {
+  $c = Repair-Handoff '{"outcome":"pr_opened","task_id":"x","pr_number":4,"isc_closed":["ISC-1"],"probes":[],"head_sha":"abc"}'
+  $json = $c | ConvertTo-Json -Depth 12
+  if (($json | ConvertFrom-Json).PSObject.Properties.Name -notcontains "skipped") { return "skipped did not survive the round trip" }
+  if ($json -notmatch '"skipped"\s*:\s*\[') { return "skipped was not written as a list: $json" }
+  ""
+}
+
+Check "what the audit corroborates is not defaulted away" {
+  $t = '{"outcome":"pr_opened","task_id":"x","pr_number":4,"head_sha":"abc"}'
+  $c = Repair-Handoff $t
+  $e = Test-DayContract -Contract $c -Required $HandoffKeys -Field "outcome" -Allowed @("pr_opened")
+  if ($e -notmatch "isc_closed") { return "a handoff naming no claims was accepted: $e" }
+  if ($e -notmatch "probes") { return "a handoff naming no probes was accepted: $e" }
+  ""
+}
+
+Check "a contract that cannot be read at all is still refused" {
+  $c = Repair-Handoff "I could not do anything and I wrote no JSON."
+  if ($null -ne $c) { return "it invented one" }
+  $e = Test-DayContract -Contract $c -Required $HandoffKeys -Field "outcome" -Allowed @("pr_opened")
+  if ($e -eq "") { return "it was accepted" }
+  ""
+}
+
+Check "what a session emitted is kept beside the contract it was meant to be" {
+  $box = New-Sandbox
+  try {
+    $words = "Here is what I did. And then no JSON at all."
+    $kept = Save-EmittedContract -Path (Join-Path $box "handoff-1.emitted.txt") -Text $words
+    if (-not (Test-Path $kept)) { return "nothing was written" }
+    if ([System.IO.File]::ReadAllText($kept) -ne $words) { return "what came back is not what the session said" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "a second session does not write over what the first one said" {
+  $box = New-Sandbox
+  try {
+    $p = Join-Path $box "handoff-1.emitted.txt"
+    $one = Save-EmittedContract -Path $p -Text "the first session"
+    $two = Save-EmittedContract -Path $p -Text "the second session"
+    if ($one -eq $two) { return "both went to the same file" }
+    if ([System.IO.File]::ReadAllText($one) -ne "the first session") { return "the first was overwritten" }
+    if ([System.IO.File]::ReadAllText($two) -ne "the second session") { return "the second did not land" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The bug this whole section exists for was an ordering one, and it came back once inside the fix:
+# the first draft saved the emission in the branch that refused the contract, which left the audit's
+# commit check, the error flag and the soundness check each able to end a day holding the only copy.
+# Reading the source is crude and it is what catches a judgement somebody adds above the save.
+Check "no atom judges a session before writing down what it said" {
+  $bad = @()
+  foreach ($atom in @("run-picker.ps1","run-worker.ps1","run-audit.ps1")) {
+    $lines = [System.IO.File]::ReadAllLines((Join-Path $PSScriptRoot $atom))
+    $ran = -1; $saved = -1; $judged = -1
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+      if ($ran -lt 0 -and $lines[$i] -match 'Invoke-Session') { $ran = $i; continue }
+      if ($ran -lt 0) { continue }
+      if ($saved -lt 0 -and $lines[$i] -match 'Save-EmittedContract') { $saved = $i }
+      # The one exit allowed above the save is the session that returned nothing to save.
+      if ($judged -lt 0 -and $lines[$i] -match 'Write-Atom' -and $lines[$i] -notmatch 'left no result') { $judged = $i }
+    }
+    if ($ran -lt 0) { $bad += "$atom never runs a session" }
+    elseif ($saved -lt 0) { $bad += "$atom never writes down what its session said" }
+    elseif ($judged -ge 0 -and $judged -lt $saved) { $bad += "$atom judges at line $($judged + 1) before saving at line $($saved + 1)" }
+  }
+  if ($bad.Count -gt 0) { return ($bad -join "; ") }
+  ""
+}
+
+Write-Host ""
 Write-Host "  the pick: which card, said once and by one thing"
 
 $PickKeys    = @("outcome","task_id","why","skipped","blocked_reason")
