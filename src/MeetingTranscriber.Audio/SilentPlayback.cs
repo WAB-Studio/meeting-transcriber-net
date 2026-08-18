@@ -30,6 +30,7 @@ internal sealed class SilentPlayback : IDisposable
 {
     private readonly MMDevice endpoint;
     private readonly WasapiOut output;
+    private DeviceRelease? release;
 
     private SilentPlayback(MMDevice endpoint, WasapiOut output)
     {
@@ -56,15 +57,41 @@ internal sealed class SilentPlayback : IDisposable
         }
         catch
         {
-            output?.Dispose();
-            endpoint.Dispose();
+            // Bounded like the release below it, and for the same reason: this runs while opening
+            // the endpoint is already failing, and a driver wedged in either of these two would
+            // hang a recording that has not started yet.
+            DeviceRelease.LetGoOf("loopback silence", () =>
+            {
+                output?.Dispose();
+                endpoint.Dispose();
+            });
+
             throw;
         }
     }
 
+    /// <summary>
+    /// Stops the silence and lets the endpoint go, and comes back whether or not the device
+    /// answered.
+    /// </summary>
+    /// <remarks>
+    /// Bounded for the same reason a captured device's release is, and it is the last of the three
+    /// waits on the way out of a recording. This is a second handle on the endpoint channel 0 is
+    /// recording, played into by a device thread of NAudio's own, so it is the same driver and the
+    /// same way of not coming back — and it is reached after both sources have been let go of,
+    /// which is where a meeting that is already on disk would be held up by a device nobody is
+    /// listening to any more.
+    /// </remarks>
     public void Dispose()
     {
-        output.Dispose();
-        endpoint.Dispose();
+        // Built once and waited on again, so a second call costs nothing and a release that came
+        // back after its deadline still frees what it was holding.
+        release ??= DeviceRelease.Of("loopback silence release", () =>
+        {
+            output.Dispose();
+            endpoint.Dispose();
+        });
+
+        release.Dispose();
     }
 }

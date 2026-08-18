@@ -114,7 +114,7 @@ public sealed class CaptureSource : IDisposable
             // number that means something — every block already written went to the operating
             // system as it was written, so what it names is a recording that is really there and
             // really readable, and not a file somebody has to be told to go looking for.
-            throw new AudioCaptureException(
+            throw new AudioDeviceWedgedException(
                 $"The {Channel} stream on '{Listening.Name}' did not stop within "
                 + $"{CaptureLoop.StopsWithin.TotalSeconds:0} seconds. Its {Bytes} bytes of audio "
                 + $"are in '{File.Name}' and stay there, and nothing it is still using is taken "
@@ -227,23 +227,34 @@ public sealed class CaptureSource : IDisposable
         SpoolWriter? spool = null;
         var claimed = false;
 
+        // The stream first and then the file, which is the same order and the same rule as Dispose:
+        // the stream is what decides whether anything else here may be touched at all. A device
+        // that would not start leaves a thread inside it, and being given up on is a deadline and
+        // not a promise — one that answers a moment late runs the rest of its body, draining into
+        // the spool through the callback it was handed. So a spool closed and a file erased here
+        // would be closed and erased under a live writer, and the one attempt that failed would
+        // take the next one down with it. What is kept instead is a handle and a file this process
+        // really is still writing to, which is why the next recording into that folder is refused.
         void LetGo()
         {
             try
             {
-                spool?.Dispose();
+                stream?.Dispose();
             }
             finally
             {
-                try
+                if (stream is not { Abandoned: true })
                 {
-                    stream?.Dispose();
-                }
-                finally
-                {
-                    if (claimed)
+                    try
                     {
-                        BlockSpool.Erase(file);
+                        spool?.Dispose();
+                    }
+                    finally
+                    {
+                        if (claimed)
+                        {
+                            BlockSpool.Erase(file);
+                        }
                     }
                 }
             }
@@ -271,6 +282,18 @@ public sealed class CaptureSource : IDisposable
             LetGo();
             throw new AudioCaptureException(
                 $"Windows would not record '{listening.Name}': {refused.Message}", refused);
+        }
+        catch (AudioDeviceWedgedException wedged)
+        {
+            // Said again here because this is the only level that knows what a person called the
+            // thing that did not answer: the stream knows a channel, and a channel is not what
+            // somebody chose in a list. What letting go does and does not close on this path is
+            // LetGo's own rule, and a stream given up on keeps every one of them.
+            LetGo();
+            throw new AudioDeviceWedgedException(
+                $"'{listening.Name}' did not start the {channel} recording and did not refuse it "
+                + $"either, so nothing was recorded. {wedged.Message}",
+                wedged);
         }
         catch
         {
