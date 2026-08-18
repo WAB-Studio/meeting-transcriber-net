@@ -64,18 +64,41 @@ public sealed class DeviceRelease : IDisposable
     }
 
     /// <summary>
-    /// Lets go and waits the deadline for it, for a holder that will not ask twice — an attempt at
-    /// opening a device that failed part-way and is about to throw, which is the one place these
-    /// handles are let go of by something that will never be handed back.
+    /// Lets go of one handle, where a handle that refuses to close is not this line's business.
     /// </summary>
     /// <remarks>
-    /// Whether it answered is not returned, because there is nothing the caller could do with it
-    /// that differs: it is already throwing about why the device would not open, and a device that
-    /// then would not be let go of is held until the application restarts either way.
+    /// <para>
+    /// For the two places that let go of several handles in a row and owe every one of them the
+    /// attempt: the body of a release, and an attempt at opening a device that failed part-way and
+    /// is about to throw. Both used to spell that out as a <c>finally</c> per handle, which is one
+    /// place each to write the third one differently — and a release that threw on its first handle
+    /// and so never reached its second is what that cost, permanently, since nothing tries again.
+    /// A call that cannot throw needs no <c>finally</c> at all: the next line simply runs.
+    /// </para>
+    /// <para>
+    /// Bounded by whoever is running it rather than here. This is called on a thread that can
+    /// already be given up on — a <see cref="DeviceRelease"/> body, or the ask inside
+    /// <see cref="DeviceOpen"/> — so a driver that wedges on being let go of is a thread that does
+    /// not come back, and that is the deadline it is already inside. A second one here would be a
+    /// second deadline over one device.
+    /// </para>
+    /// <para>
+    /// Swallowing where the opening failed is not only about the process surviving: what a person
+    /// acts on is why the device would not open, and that answer is already on its way up the
+    /// stack. A handle refusing to close would replace it with a sentence about cleanup.
+    /// </para>
     /// </remarks>
-    public static void LetGoOf(string name, Action release)
+    /// <param name="handle">What to let go of, or nothing, which is letting go of nothing.</param>
+    public static void LetGoOf(IDisposable? handle)
     {
-        using var releasing = Of(name, release);
+        try
+        {
+            handle?.Dispose();
+        }
+        catch
+        {
+            // Swallowed on purpose: see the summary.
+        }
     }
 
     /// <summary>

@@ -43,37 +43,34 @@ internal sealed class SilentPlayback : IDisposable
     {
         ArgumentNullException.ThrowIfNull(device);
 
-        // Its own handle on the endpoint. NAudio hangs one audio client off an MMDevice and hands
-        // the same one out again, so sharing the capture's device here would have the two of them
-        // initialising a single client for opposite directions.
-        var endpoint = AudioDevices.Open(device);
-        WasapiOut? output = null;
-        try
+        // Behind one deadline, like the two ways a capture opens and like the release below: all of
+        // it is synchronous COM into the same driver, and a wedge in any of it is an application
+        // that freezes at the moment somebody pressed record rather than one that will not close.
+        return DeviceOpen.Answering("loopback silence", () =>
         {
-            output = new WasapiOut(endpoint, AudioClientShareMode.Shared, useEventSync: false, latency: 100);
-            output.Init(new SilenceProvider(endpoint.AudioClient.MixFormat));
-            output.Play();
-            return new SilentPlayback(endpoint, output);
-        }
-        catch
-        {
-            // Bounded like the release below it, and for the same reason: this runs while opening
-            // the endpoint is already failing, and a driver wedged in either of these two would
-            // hang a recording that has not started yet.
-            DeviceRelease.LetGoOf("loopback silence", () =>
+            // Its own handle on the endpoint. NAudio hangs one audio client off an MMDevice and
+            // hands the same one out again, so sharing the capture's device here would have the two
+            // of them initialising a single client for opposite directions.
+            var endpoint = AudioDevices.Open(device);
+            WasapiOut? output = null;
+            try
             {
-                try
-                {
-                    output?.Dispose();
-                }
-                finally
-                {
-                    endpoint.Dispose();
-                }
-            });
+                output = new WasapiOut(endpoint, AudioClientShareMode.Shared, useEventSync: false, latency: 100);
+                output.Init(new SilenceProvider(endpoint.AudioClient.MixFormat));
+                output.Play();
+                return new SilentPlayback(endpoint, output);
+            }
+            catch
+            {
+                // The playback first and the endpoint under it, in the order Dispose uses: the two
+                // are separate handles, so one that refuses to close still leaves the other let go
+                // of, and one that wedges never reaches the line below it.
+                DeviceRelease.LetGoOf(output);
+                DeviceRelease.LetGoOf(endpoint);
 
-            throw;
-        }
+                throw;
+            }
+        });
     }
 
     /// <summary>
@@ -94,18 +91,12 @@ internal sealed class SilentPlayback : IDisposable
         // back after its deadline still frees what it was holding.
         release ??= DeviceRelease.Of("loopback silence release", () =>
         {
-            // A finally, so a playback that refuses to close still leaves its endpoint let go of:
-            // the two are separate handles and only one of them is what refused. A playback that
-            // wedges instead never reaches it, which is the same rule read the other way — nothing
-            // a live thread is inside is anybody's to close.
-            try
-            {
-                output.Dispose();
-            }
-            finally
-            {
-                endpoint.Dispose();
-            }
+            // A playback that refuses to close still leaves its endpoint let go of: the two are
+            // separate handles and only one of them is what refused. A playback that wedges instead
+            // never reaches the line below, which is the same rule read the other way — nothing a
+            // live thread is inside is anybody's to close.
+            DeviceRelease.LetGoOf(output);
+            DeviceRelease.LetGoOf(endpoint);
         });
 
         release.Dispose();

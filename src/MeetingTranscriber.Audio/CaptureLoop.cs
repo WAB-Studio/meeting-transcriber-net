@@ -33,11 +33,12 @@ namespace MeetingTranscriber.Audio;
 /// under a live thread.
 /// </para>
 /// <para>
-/// Two of the three moments a device can refuse to answer are here, because both are this thread:
+/// Two of the four moments a device can refuse to answer are here, because both are this thread:
 /// it will not start, so the loop never says it is <see cref="Underway"/> and <see cref="Draining"/>
 /// gives up on it; and it will not stop, so <see cref="Dispose"/> comes back with the loop still in
-/// there. The third is letting go of the handles afterwards, which is not a loop and is
-/// <see cref="DeviceRelease"/> — it shares this deadline and nothing else.
+/// there. The other two are not loops and are types of their own, sharing this deadline and nothing
+/// else: getting hold of the device in the first place is <see cref="DeviceOpen"/>, and letting go
+/// of the handles afterwards is <see cref="DeviceRelease"/>.
 /// </para>
 /// </remarks>
 public sealed class CaptureLoop : IDisposable
@@ -48,9 +49,10 @@ public sealed class CaptureLoop : IDisposable
     /// recording, so what "did not answer" means is the same sentence everywhere.
     /// </summary>
     /// <remarks>
-    /// Per device and not per recording, and that is worth saying out loud: a session stopping two
-    /// sources and the silence it played waits this three times at worst, once for whichever of
-    /// draining or releasing each of them wedged on. Nobody waits it twice for one device.
+    /// Per device and not per recording, and that is worth saying out loud: a session opens three
+    /// devices and lets three go, and waits this at worst once for each — once for whichever of
+    /// opening, starting, draining or releasing that device wedged on, since a device only ever
+    /// wedges once and everything after that moment is skipped rather than waited for.
     /// </remarks>
     public static readonly TimeSpan StopsWithin = TimeSpan.FromSeconds(5);
 
@@ -67,6 +69,14 @@ public sealed class CaptureLoop : IDisposable
     private volatile bool running = true;
     private volatile bool underway;
 
+    /// <summary>
+    /// Backing <see cref="Abandoned"/>, and volatile because of who reads it: whoever gave up on
+    /// this loop writes it, and the loop's own body is one of the things that reads it — after
+    /// having answered late, which is the one moment those two threads never synchronise on
+    /// anything else.
+    /// </summary>
+    private volatile bool abandoned;
+
     private CaptureLoop(string name, Action<CaptureLoop> body) =>
         thread = new Thread(() => body(this)) { IsBackground = true, Name = name };
 
@@ -81,7 +91,11 @@ public sealed class CaptureLoop : IDisposable
     /// <see cref="StopsWithin"/> — so its thread is still running and still using everything it
     /// holds.
     /// </summary>
-    public bool Abandoned { get; private set; }
+    public bool Abandoned
+    {
+        get => abandoned;
+        private set => abandoned = value;
+    }
 
     /// <summary>
     /// Starts <paramref name="drain"/> on a thread of its own and comes back once that loop says

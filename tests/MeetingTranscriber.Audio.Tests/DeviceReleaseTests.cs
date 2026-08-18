@@ -14,12 +14,6 @@ public class DeviceReleaseTests
     private static readonly TimeSpan Promptly = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// How far under the deadline a wait may measure and still be that deadline; see the same
-    /// constant in <see cref="CaptureLoopTests"/> for what disagrees with what.
-    /// </summary>
-    private static readonly TimeSpan Slack = TimeSpan.FromMilliseconds(50);
-
-    /// <summary>
     /// ISC-136. The release never comes back, which is a driver that drained fine and then wedged
     /// on being let go of — the failure one line below the one ISC-128 bounded. Waiting for it ends
     /// at the deadline and says it was given up on, so a recording already on disk is not held by a
@@ -48,7 +42,7 @@ public class DeviceReleaseTests
         {
             var waited = Time(release.Dispose);
 
-            waited.ShouldBeGreaterThanOrEqualTo(CaptureLoop.StopsWithin - Slack);
+            waited.ShouldBeGreaterThanOrEqualTo(CaptureLoop.StopsWithin);
 
             // Generous on purpose: what is being told apart is a deadline from no deadline at all,
             // so a loaded agent taking half as long again is not what this should go red over.
@@ -132,46 +126,6 @@ public class DeviceReleaseTests
         // held and the next holder is free to carry on.
         release.Abandoned.ShouldBeFalse();
         reached.ShouldBeTrue();
-    }
-
-    /// <summary>
-    /// The one-shot form, used where an attempt at opening a device failed part-way and is about to
-    /// throw: it lets go and comes back, rather than handing back something nobody would be there
-    /// to wait on.
-    /// </summary>
-    [Fact]
-    public void Letting_go_of_what_an_attempt_that_failed_was_holding_waits_for_it()
-    {
-        var released = false;
-
-        Time(() => DeviceRelease.LetGoOf("failed attempt", () => released = true))
-            .ShouldBeLessThan(Promptly);
-
-        released.ShouldBeTrue();
-    }
-
-    /// <summary>
-    /// And the same form over a handle that will not answer comes back at the deadline rather than
-    /// never — which is the case that matters, since the caller is already throwing about why the
-    /// device would not open and would otherwise never get to say it.
-    /// </summary>
-    [Fact]
-    public void Letting_go_of_a_failed_attempt_that_never_answers_still_comes_back()
-    {
-        using var stuck = new ManualResetEventSlim(initialState: false);
-
-        try
-        {
-            var waited = Time(() =>
-                DeviceRelease.LetGoOf("failed attempt that wedges", () => stuck.Wait(Timeout.Infinite)));
-
-            waited.ShouldBeGreaterThanOrEqualTo(CaptureLoop.StopsWithin - Slack);
-            waited.ShouldBeLessThan(CaptureLoop.StopsWithin * 2);
-        }
-        finally
-        {
-            stuck.Set();
-        }
     }
 
     private static TimeSpan Time(Action step)

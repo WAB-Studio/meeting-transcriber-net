@@ -31,4 +31,15 @@ public sealed class AudioDeviceWedgedException : AudioCaptureException
         : base(message, innerException)
     {
     }
+
+    /// <summary>
+    /// What a device that never answered is said to be, in one sentence and in one place. Both
+    /// moments on the way into a recording reach it — the device would not be opened, and the
+    /// device would not be started — and they say the same thing because from out here they are
+    /// the same thing: no answer arrived, and what was asked stays held.
+    /// </summary>
+    /// <param name="device">What did not answer, said the way a person would hear it.</param>
+    public static AudioDeviceWedgedException NoAnswerFrom(string device) =>
+        new($"The {device} did not answer within {CaptureLoop.StopsWithin.TotalSeconds:0} seconds, "
+            + "and it did not refuse either. It stays held until this application is restarted.");
 }

@@ -15,14 +15,19 @@ public class CaptureLoopTests
     private static readonly TimeSpan Promptly = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// How far under the deadline a wait may measure and still be that deadline. `Thread.Join`
-    /// counts its timeout on one clock and `Stopwatch` counts the same stretch on another, and they
-    /// disagree by a fraction of a millisecond — a wait of 4.9993669 s was what caught it. That
+    /// How far under the deadline a wait on the gate may measure and still be that deadline.
+    /// `Monitor.Wait` counts its timeout on the operating system's tick and `Stopwatch` counts the
+    /// same stretch on the performance counter, and a wait can come back a fraction of a
+    /// millisecond short of its timeout on the second one — 4.9993669 s was what caught it. That
     /// difference is not what any of these tests is about, and a bound with no room in it is the
     /// whole distance between a suite that is green and one that goes red every so often for
-    /// nothing. What is being told apart is a deadline from no deadline, and a twentieth of a
-    /// second does not blur that.
+    /// nothing.
     /// </summary>
+    /// <remarks>
+    /// Only the gate. Waiting on the thread itself is `Thread.Join`, which has never measured short
+    /// here, and the tests that time one assert the deadline with nothing subtracted — a probe that
+    /// gave itself room it did not need would be a weaker probe for no reason.
+    /// </remarks>
     private static readonly TimeSpan Slack = TimeSpan.FromMilliseconds(50);
 
     /// <summary>
@@ -96,7 +101,7 @@ public class CaptureLoopTests
         {
             var waited = Time(loop.Dispose);
 
-            waited.ShouldBeGreaterThanOrEqualTo(CaptureLoop.StopsWithin - Slack);
+            waited.ShouldBeGreaterThanOrEqualTo(CaptureLoop.StopsWithin);
 
             // Generous on purpose, and it still fails the wait this replaced: what is being told
             // apart is a deadline from no deadline at all, so a loaded agent that takes half as
