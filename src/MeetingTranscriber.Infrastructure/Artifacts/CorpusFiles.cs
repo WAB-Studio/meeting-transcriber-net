@@ -44,6 +44,22 @@ public static class CorpusFiles
     public static string SpoolPathFor(Guid meetingId, string name) =>
         $"{Spool}/{meetingId}/{Named(name)}";
 
+    /// <summary>
+    /// The folder this meeting's recording is written into while it is being recorded.
+    /// </summary>
+    /// <remarks>
+    /// A folder rather than a file, because what goes in it is decided by the audio engine — one
+    /// spool per channel and the card beside them, none of whose names this project knows. It is
+    /// here anyway for the same reason every other path is: the reconciler scans <c>spool/</c> and
+    /// a recording written a step to the side of where it scans is audio nothing will look for.
+    /// </remarks>
+    public static DirectoryInfo SpoolFolderFor(DirectoryInfo root, Guid meetingId)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+
+        return new DirectoryInfo(Path.Combine(root.FullName, Spool, meetingId.ToString()));
+    }
+
     /// <summary>Where the stored path points on this machine.</summary>
     public static FileInfo Locate(DirectoryInfo root, string relativePath)
     {

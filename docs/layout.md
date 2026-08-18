@@ -11,14 +11,15 @@ src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
 src/MeetingTranscriber.Presentation/      what the application says, and what language it says it in
 src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
+src/MeetingTranscriber.Recording/         a meeting recorded into a corpus: where the audio engine and the corpus meet
 tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
 tools/MeetingTranscriber.CorpusImport/    reads a Python corpus in, then gets deleted
 tests/MeetingTranscriber.Testing/         what a test opens: corpus, SQL, fixture inventory
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```
 
-Domain, Audio, Infrastructure, Processing, Presentation and CorpusImport each have their tests
-under `tests/<project>.Tests/`. What `Audio.Tests` can hold is bounded by there being no device on a
+Domain, Audio, Infrastructure, Processing, Presentation, Recording and CorpusImport each have their
+tests under `tests/<project>.Tests/`. What `Audio.Tests` can hold is bounded by there being no device on a
 build agent: the rules — which endpoint a typed name means, what a block of bytes is worth on a
 meter — are tested there, and that two streams really open at once is a probe somebody runs with
 `capture`, recorded in the ISA like a paid one. What touches a file in there is the spool and the
@@ -49,6 +50,18 @@ can be exercised without automating a window — `tests/MeetingTranscriber.Cli.T
 and it is the half of the alias that exists: nothing packages it yet, so an installed build has no
 `meeting-transcriber` on the PATH until ISC-113 is closed.
 
+`MeetingTranscriber.Recording` is the only project that references both `Audio` and
+`Infrastructure`, and that is the whole of what it is for. Neither of those two may reference the
+other: an edge from `Infrastructure` to `Audio` would put WASAPI behind rendering a transcript and
+force `Processing` onto a Windows target framework, and an edge the other way would stop the audio
+engine being provable on a machine with no corpus. So the composition sits above both. What is in
+it is the corpus side of recording — the meeting row and its folder before the first sample, the
+run written from the card the recording wrote about itself, and what stopping makes of the spools
+— all of which runs with no device, plus one thin type that opens the devices in that order and is
+deliberately too small to hold a rule. `MeetingTranscriber.App` was not an option for any of it:
+touching a type from that assembly fires the Windows App SDK module initializer and throws outside
+a packaged host, so anything living there would have no probe a build agent could run.
+
 `Processing` references `Infrastructure`, and only that way round: rendering reads the paid
 response out of the corpus and puts the derivatives back, so it sits above storage. The opposite
 edge would make SQLite depend on how a Deepgram response is parsed.
@@ -74,7 +87,8 @@ layer, so its gate does not belong under any one of them.
 know the Python system existed, so deleting the importer is deleting two folders rather than
 untangling the application — its README says what that deletion is.
 
-The eight-project split in `arquitectura.md` §3 is the destination, not the scaffolding: a
-project appears when there is code to put in it. Dependencies point inwards, and
+The project split in `arquitectura.md` §3 is the destination, not the scaffolding: a project
+appears when there is code to put in it, and one the destination never named appears when the code
+turns out to have nowhere it can go — which is what `Recording` is. Dependencies point inwards, and
 `MeetingTranscriber.Domain` stays free of Windows and WinUI references, with tests asserting
 exactly that.

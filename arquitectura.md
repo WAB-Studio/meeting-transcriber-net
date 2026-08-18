@@ -158,6 +158,7 @@ MeetingTranscriber.sln
     MeetingTranscriber.Infrastructure/  SQLite, filesystem y credenciales
     MeetingTranscriber.Presentation/    lo que la aplicación dice y en qué idioma lo dice
     MeetingTranscriber.Processing/      Deepgram, transcript y summaries
+    MeetingTranscriber.Recording/       grabar una reunión dentro del corpus
     MeetingTranscriber.Mcp/             servidor MCP local por stdio
     MeetingTranscriber.Cli/             diagnóstico, reparación y automatización
   tests/
@@ -168,6 +169,7 @@ MeetingTranscriber.sln
     MeetingTranscriber.Processing.Tests/
     MeetingTranscriber.Presentation.Tests/
     MeetingTranscriber.App.Tests/
+    MeetingTranscriber.Recording.Tests/
 ```
 
 Las dependencias apuntan hacia el dominio. WinUI, SQLite, WASAPI, Deepgram y Claude

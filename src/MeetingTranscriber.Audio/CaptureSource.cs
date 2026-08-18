@@ -21,6 +21,14 @@ public sealed class CaptureSource : IDisposable
     private readonly SourceMeter meter = new();
     private readonly PacketTally tally;
     private readonly ManualResetEventSlim ended = new(initialState: false);
+
+    /// <summary>
+    /// The recording's pause, shared with the other source rather than owned here. Both callbacks
+    /// read the one flag, so pausing is a single write and cannot leave one channel recording the
+    /// room while the other records silence — see <see cref="RecordingPause"/>.
+    /// </summary>
+    private readonly RecordingPause pause;
+
     private Exception? failure;
     private bool running;
 
@@ -37,7 +45,8 @@ public sealed class CaptureSource : IDisposable
         StreamFormat format,
         FileInfo file,
         WasapiStream stream,
-        SpoolWriter spool)
+        SpoolWriter spool,
+        RecordingPause pause)
     {
         Channel = channel;
         Listening = listening;
@@ -45,6 +54,7 @@ public sealed class CaptureSource : IDisposable
         File = file;
         this.stream = stream;
         this.spool = spool;
+        this.pause = pause;
         tally = new PacketTally(format);
     }
 
@@ -238,7 +248,8 @@ public sealed class CaptureSource : IDisposable
     /// left behind — and a device that never answered at all comes back as a throw too, at the
     /// deadline, leaving behind only what a thread still inside that device is using.
     /// </summary>
-    internal static CaptureSource Open(AudioChannel channel, CaptureTarget listening, FileInfo file)
+    internal static CaptureSource Open(
+        AudioChannel channel, CaptureTarget listening, FileInfo file, RecordingPause pause)
     {
         ArgumentNullException.ThrowIfNull(listening);
         ArgumentNullException.ThrowIfNull(file);
@@ -286,7 +297,7 @@ public sealed class CaptureSource : IDisposable
             spool = SpoolWriter.Create(file, channel, format);
             claimed = true;
 
-            source = new CaptureSource(channel, listening, format, file, stream, spool);
+            source = new CaptureSource(channel, listening, format, file, stream, spool, pause);
             source.Start();
             return source;
         }
@@ -336,9 +347,16 @@ public sealed class CaptureSource : IDisposable
             return;
         }
 
-        tally.Add(packet);
-        meter.Add(Levels.Peak(packet.Samples.Span, Format));
-        spool.Write(packet);
+        // The pause decides what this block is worth to the recording, and it is asked once. There
+        // is no branch here on purpose: the whole decision is one object, so a build that broke
+        // pausing would have to delete this line rather than get a condition subtly wrong.
+        var heard = pause.Reaching(packet);
+
+        // The tally is fed the same block the spool is, silence and all, because what it counts is
+        // where the recording got to and not what was in it. A pause is part of the meeting.
+        tally.Add(heard);
+        meter.Add(Levels.Peak(heard.Samples.Span, Format));
+        spool.Write(heard);
     }
 
     private void Ended(Exception? stopped)

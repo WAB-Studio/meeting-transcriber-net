@@ -18,6 +18,9 @@
          anywhere there is no window. -->
     <Project Path="src/MeetingTranscriber.Presentation/MeetingTranscriber.Presentation.csproj" />
     <Project Path="src/MeetingTranscriber.Processing/MeetingTranscriber.Processing.csproj" />
+    <!-- The only project that sees both the audio engine and the corpus, which is the whole
+         reason it exists: recording a meeting is where those two halves meet. -->
+    <Project Path="src/MeetingTranscriber.Recording/MeetingTranscriber.Recording.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <!-- Holds no test: the corpus on disk, the SQL helpers and the fixture inventory the suites
@@ -32,6 +35,7 @@
     <Project Path="tests/MeetingTranscriber.Infrastructure.Tests/MeetingTranscriber.Infrastructure.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Presentation.Tests/MeetingTranscriber.Presentation.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Processing.Tests/MeetingTranscriber.Processing.Tests.csproj" />
+    <Project Path="tests/MeetingTranscriber.Recording.Tests/MeetingTranscriber.Recording.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.CorpusImport.Tests/MeetingTranscriber.CorpusImport.Tests.csproj" />
     <!-- Reads ISA.md, references no src project: the claims surface is a repo document, not a
          layer, so its gate does not belong under any one of them. -->
