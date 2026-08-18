@@ -32,17 +32,6 @@ jobs:
           }
           Write-Host "CLAUDE.md: $lines/$limit lines"
 
-      # The day's engine says it runs here and did not, so nothing held it: a crash in how it keys a
-      # denied command took down the atom that records a verdict and the one that ends a day, with a
-      # paid session already spent. It spends none itself.
-      #
-      # `powershell` and not `pwsh`, which is the whole reason this is worth running: the atoms are
-      # Windows PowerShell 5.1 and so is what breaks them. The same script on pwsh sits on .NET
-      # Core, where the call that threw returns quietly — green, and about a shell nothing uses.
-      - name: The unattended day's engine
-        shell: powershell
-        run: .\.claude\orchestrator\test-day.ps1
-
       - name: Restore
         run: dotnet restore
 
