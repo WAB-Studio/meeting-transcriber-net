@@ -14,16 +14,19 @@ run folder and no event stream. There used to be all four; §1 is the rule that 
 
 Four agents do the thinking, and you do everything between them:
 
-| Stage | `subagent_type` | What it returns |
-| --- | --- | --- |
-| pick | `picker` | one card id, or a reason there isn't one |
-| work | `worker` | a handoff: what was built, the PR, what it left out |
-| audit | `auditor` | a verdict: `pass`, `pass_with_followup`, `ask` or `hold` |
-| recover | `recoverer` | a briefing on what a previous session already did |
+| Stage | `subagent_type` | Give it | It returns |
+| --- | --- | --- | --- |
+| pick | `picker` | nothing | one card id, or a reason there isn't one |
+| work | `worker` | card id, PR number, any briefing | a record: what was built, the PR, what it left out |
+| audit | `auditor` | PR number and that record | a verdict: `pass`, `pass_with_followup`, `ask` or `hold` |
+| recover | `recoverer` | card id, PR number | a briefing on what was already done |
 
 Spawn each with the Agent tool, one at a time, and wait for it. **An agent's final message is its
-answer** — you read it directly, and nothing writes it to disk on the way. Their instructions are
-their own; pass them the inputs below and nothing else.
+answer** — you read it directly, and nothing writes it to disk on the way.
+
+**None of them knows the others exist.** Each is written for its own inputs and its own answer, so
+you pass what the table says and nothing more: never who produced it, never what happens to it next,
+never where the day stands.
 
 ## 1 · The state is not yours to keep
 
@@ -47,10 +50,9 @@ the card in progress or the PR open, and §3 gets its context back.
    - It also returns `skipped[]` and `finished[]`. **You do the board moves it declared** —
      `skipped` to `pending` with its reason, `finished` to `in review` — because a subagent that
      moves a card and then dies has taken it out of the pool with nothing saying why.
-2. **Work.** Spawn `worker` with the card id, and the PR number if the pick found one. If somebody
-   already worked that card — it was `in progress`, or its PR is open — spawn `recoverer` first and
-   pass the worker what it returns. §3.
-3. **Audit.** The handoff says `pr_opened` → spawn `auditor` with the PR number and the handoff. Any
+2. **Work.** Spawn `worker` with the card id, and the PR number if the pick found one. If the card
+   was `in progress` or its PR is open, spawn `recoverer` first and pass the worker its briefing. §3.
+3. **Audit.** The record says `pr_opened` → spawn `auditor` with the PR number and that record. Any
    other outcome closed the card itself and there is nothing to audit.
 4. **Act on the verdict.** This part is yours and there is no subagent for it:
    - `pass` or `pass_with_followup` → merge the PR. `gh pr merge <n> --merge --delete-branch`. The
