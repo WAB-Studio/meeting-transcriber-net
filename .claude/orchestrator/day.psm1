@@ -322,22 +322,32 @@ function Resolve-Verdict {
   if ($name -eq "ask") {
     $bad = Test-DecisionsOwed $owed
     if ($bad -ne "") {
-      return [pscustomobject]@{ action = "recover"; to = ""; reason = "the audit says a decision is owed but $bad" }
+      return [pscustomobject]@{ action = "recover"; to = ""; tags = @(); reason = "the audit says a decision is owed but $bad" }
     }
     # Always `pending`, never the pool: the pool is where a worker looks, and the one thing that must
     # not happen to this card is another session building on the decision nobody has made yet.
-    return [pscustomobject]@{ action = "recover"; to = "pending"; reason = "a decision on this card is not the audit's to make" }
+    return [pscustomobject]@{ action = "recover"; to = "pending"; tags = @(); reason = "a decision on this card is not the audit's to make" }
   }
 
-  if ($name -eq "hold") { return [pscustomobject]@{ action = "recover"; to = ""; reason = "the audit held it" } }
+  if ($name -eq "hold") {
+    # Where a held card goes is the audit's to say, because it is the only thing that read the PR.
+    # A hold because the diff is wrong puts the card back in the pool for the next session; a hold
+    # because the card itself was never settled puts it back with `regrill`, so a grill reaches it
+    # before another session builds on the same unanswered question. Deriving that from the word
+    # `hold` alone was the orchestrator deciding something it cannot see.
+    $to = ""
+    if ($Verdict.card -and [string]$Verdict.card.to) { $to = [string]$Verdict.card.to }
+    $tags = @(@($Verdict.card.tags) | Where-Object { $_ })
+    return [pscustomobject]@{ action = "recover"; to = $to; tags = $tags; reason = "the audit held it" }
+  }
 
   if ($owed.Count -gt 0) {
     return [pscustomobject]@{
-      action = "recover"; to = ""
+      action = "recover"; to = ""; tags = @()
       reason = "the verdict is '$name' and it owes $($owed.Count) decision(s), which are two different answers"
     }
   }
-  return [pscustomobject]@{ action = "merge"; to = ""; reason = "" }
+  return [pscustomobject]@{ action = "merge"; to = ""; tags = @(); reason = "" }
 }
 
 <#
@@ -772,9 +782,14 @@ function Test-CycleEvent {
   return $false
 }
 
-# The three ways a cycle is finished with, in one place because two atoms ask and a fourth way added
+# The four ways a cycle is finished with, in one place because two atoms ask and a fifth way added
 # to one of them would otherwise be missing from the other.
-$script:CycleClosers = @("merged", "recovered", "decision_owed")
+$script:CycleClosers = @("merged", "recovered", "decision_owed", "settled")
+
+# The closers that write nothing to the board, so there is no half-landed state for `Test-CycleClosed`
+# to guard against. A merge has no board write between deciding it and it being true; a settled cycle
+# had its board write done by the worker, before this side ever saw the handoff.
+$script:CloserNeedsNoMove = @("merged", "settled")
 
 <#
   Whether this cycle is finished with -- asked before closing one and before opening the next.
@@ -795,7 +810,7 @@ function Test-CycleClosed {
   foreach ($e in (Read-DayEvents $LogDir)) {
     if ($script:CycleClosers -notcontains [string]$e.kind) { continue }
     if ($null -eq $e.cycle -or [int]$e.cycle -ne $Cycle) { continue }
-    if ([string]$e.kind -ne "merged" -and -not $e.moved) { continue }
+    if ($script:CloserNeedsNoMove -notcontains [string]$e.kind -and -not $e.moved) { continue }
     return $true
   }
   return $false
@@ -1087,6 +1102,7 @@ function Get-DayStatus {
     Merged          = @()
     Owed            = @()
     Recovered       = @()
+    Settled         = @()
     Anomalies       = @()
   }
 
@@ -1143,6 +1159,15 @@ function Get-DayStatus {
         $cycles[$c].verdict = [string]$e.verdict
       }
       "merged" { $st.Merged += $e.pr_number }
+      # A cycle that produced no PR: the worker met a card there was nothing to build on and put it
+      # where it belongs itself. Counted so the report can tell it apart from a cycle that built
+      # something -- a run of these is sessions being spent to discover there was no work.
+      "settled" {
+        $st.Settled += [pscustomobject]@{
+          cycle = [int]$e.cycle; task = [string]$e.task_id
+          outcome = [string]$e.outcome; reason = [string]$e.reason
+        }
+      }
       # A PR left open and green because a decision on its card is nobody's here to make. It is the
       # one outcome worth counting across days: a run of them says the arrangement is wrong, not the
       # card.
@@ -1289,6 +1314,21 @@ function Write-DayReport {
         if (-not $o.moved)    { $missed += "it never reached ``pending``" }
         $null = $L.Add(("  **{0} was not parked**: {1}." -f $o.task, ($missed -join ", ")))
       }
+    }
+    $null = $L.Add("")
+  }
+
+  # Separate from the recoveries below because it is a different bill. A recovery is work that was
+  # done and not let through; this is a session spent finding out there was nothing to do. One is
+  # the arrangement working, a run of them is the picker handing out cards that were already
+  # finished, and the two cost the same and must not read the same in the morning.
+  if ($st.Settled.Count -gt 0) {
+    $null = $L.Add("## Cycles that built nothing")
+    $null = $L.Add("")
+    foreach ($x in $st.Settled) {
+      $why = [string]$x.reason
+      if (-not $why) { $why = "no reason was recorded" }
+      $null = $L.Add(("- {0} - ``{1}`` - {2}" -f $x.task, $x.outcome, $why))
     }
     $null = $L.Add("")
   }

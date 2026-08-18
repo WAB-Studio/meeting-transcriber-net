@@ -67,12 +67,41 @@ after the description. It carries the SHA of `main` it was decided against: if t
 under one of those decisions since, that decision is an open fork again, not a settled one — say so
 in `decisions_deferred` and use your judgement, which is what `CLAUDE.md` asks for anyway.
 
-Two things are yours to refuse with, and both are about the work rather than the choice:
+Three things are yours to refuse with, and all three are about the work rather than the choice:
 
+- **The work is already in `main`** → `outcome: "already_done"`, §1b. Check this before anything else:
+  it is the cheapest answer there is and the only one that costs a whole session when it is missed.
 - **The card holds a decision the grill did not settle** → `outcome: "needs_grill"`, §2b.
 - **You cannot start at all** — the tree is dirty, the branch you were given is gone, the card
   describes something no session can finish without hardware nobody plugged in → `outcome:
   "blocked"` with `blocked_reason`, and leave the comment on the card yourself.
+
+### 1b · The card that was already finished
+
+A card reaches you finished when the session before yours landed the work and died before the
+bookkeeping: the PR merged, and nothing moved the card off `in progress`. **You are not the first
+session to be handed this card, and building anything is the wrong answer.** The board says the work
+is owed; `main` says it is done, and `main` is the one that cannot be wrong.
+
+Ask it in one step, before reading the card for what to build:
+
+```powershell
+gh pr list --search "<task_id>" --state merged --json number,mergedAt,headRefName
+git merge-base --is-ancestor <head_sha of that PR> origin/main   # exit 0 means it landed
+```
+
+What proves it is the commit, not the PR's state: a PR can be closed without merging, and a merged
+PR can have been reverted since. **The claim is that the work is in `main` now**, so say which
+commit, and re-run the four commands over `main` if the card names ISCs — an ISC marked `[x]` by a
+branch that never landed is a claim closed on nothing.
+
+Then: `outcome: "already_done"`, `pr_number` naming the PR that landed it, `blocked_reason` empty.
+**Move the card to `in review` yourself and leave the comment saying what you checked** — the same
+as §blocked, and for the same reason: what you found is read on the board tomorrow, not in a
+transcript. Do not close the card; closing is the user's.
+
+The day does not stop over one of these. It is one card that turned out to cost nothing, and the
+next cycle takes the next one.
 
 ### When a PR number comes with it
 

@@ -45,11 +45,36 @@ What each `RESULT` means:
 | `outcome: no_tasks` | nothing eligible is left — `end-day.ps1`, then report |
 | `outcome: blocked` | `end-day.ps1`, then report; `blocked_reason` says what has to happen |
 | `outcome: picked` | say the card and the `why` in one line, then `run-worker.ps1` |
-| `action: merged` / `recovered` | say it in one line and start the next cycle |
+| `outcome: already_done` | the card was finished before the cycle began — say it and go on to `run-audit.ps1`, which will send you to `close-cycle.ps1`. **Not an ending.** |
+| `action: merged` / `recovered` / `settled` | say it in one line and start the next cycle |
 | `action: parked` | a decision is owed on that card — §2 — and the next cycle starts |
 | `reason` with no `stop` | not an ending: it names what the run needs instead. Do that. |
 
 **Nothing else ends the day.** A `hold` costs one PR a rerun and the next cycle takes the next task.
+
+`outcome: blocked` is the one to read carefully, because two different things wear it. **A worker
+blocked on the card in front of it** — it needs hardware nobody plugged in, the branch it was given
+is gone — ends the day only in the sense the table says: run `end-day.ps1`. **A day blocked by the
+board or the park ceiling** is the same. What is *not* `blocked` is a card that turned out to cost
+nothing: that is `already_done`, and a day that ends on one has thrown away every hour after it over
+a card that was never work.
+
+## 1b · The steps you may skip, and the only ones
+
+An atom refusing is not always an ending, and three of them say so in `reason` rather than in `stop`.
+**These are the whole list. A step skipped for any other reason is the sequencer improvising**, which
+is what `atom.psm1` says the atoms exist to stop — and it ends with a PR abandoned and its card left
+in `in progress`, which is exactly the wreck this day is built to prevent.
+
+| The atom says | Skip to | Why it is safe |
+| --- | --- | --- |
+| `run-audit.ps1`: *"cycle N ended as 'X', so there is no PR to audit"* | `close-cycle.ps1` | There is no diff. Auditing nothing cannot reach a verdict, and the cycle still has to be closed. |
+| `close-cycle.ps1`: `action: already closed` | the next cycle | The close landed the first time; running it again would comment twice on one card. |
+| `run-picker.ps1`: `outcome: no_tasks` before any session ran | `end-day.ps1` | The board was read without spending anything, and it said there is nothing. |
+
+**Everything else is run in order**, including the atoms that look pointless. `close-cycle.ps1` after
+a cycle that built nothing is not a formality: it is what records the cycle as finished, and without
+it `Test-CycleStillOpen` refuses the next pick.
 
 **`run-picker.ps1` is what says which card, and no other atom answers that.** It asks the board
 before it spends anything, so `no_tasks` and `blocked` can come back in seconds with no session run.

@@ -140,6 +140,20 @@ The PR is left open, the card goes back to the pool carrying your reasons, and t
 the next task. A card you send back twice in a day lands in `pending` instead, so write `reasons`
 for somebody who has to fix it: what is wrong, where, and what would settle it.
 
+**Where it goes back to is yours to say, in `card`.** The default — leave the field out — puts it in
+the pool for the next session, which is right when the diff is wrong and the card is fine. It is the
+wrong answer when what the diff got wrong was never settled on the card: the next session then reads
+the same unanswered question and builds the same thing again, and your hold bought nothing.
+
+```json
+"card": { "to": "Open", "tags": ["regrill"] }
+```
+
+That says the hold is about the card and not about the diff, and a grill reaches it before any
+session does. Send it to `"pending"` when it should not be picked up at all until a person has
+looked. **The ceiling still wins**: a card already returned once today goes to `pending` whatever
+you name here, because two sessions that could not land it is not a third session's problem.
+
 **`ask`** — the diff holds up and one decision in it is not yours or the worker's to make. This is
 the verdict for the fork the task itself said a person picks, for scope the user has to agree to
 cut, for a product question wearing implementation clothes.
@@ -196,7 +210,10 @@ on. There is no second reader after you, and the next session starts from what y
 to decide, ask.**
 
 The card stays in `in review` on a verdict that merges — closing it is still the user's. On `hold`
-and on `ask` the orchestrator moves it, and you do not.
+and on `ask` the orchestrator moves it, and you do not — but on `hold` it moves it **where `card`
+says**, so the destination is a reading of the PR rather than a default. The split is deliberate: a
+session that moves a card and then dies has taken it off the board with nothing anywhere saying why,
+so the decision is yours and the act is the orchestrator's, after your verdict is on disk.
 
 On all four verdicts, comment on the PR; on anything but `pass`, the same body on the card as well,
 which is what gets read in the morning. The comment exists because the verdict does not survive:

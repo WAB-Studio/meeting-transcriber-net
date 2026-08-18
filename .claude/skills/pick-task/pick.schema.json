@@ -7,12 +7,17 @@
     "pr_number",
     "why",
     "skipped",
+    "finished",
     "blocked_reason"
   ],
   "properties": {
     "outcome": {
       "type": "string",
-      "enum": ["picked", "blocked", "no_tasks"],
+      "enum": [
+        "picked",
+        "blocked",
+        "no_tasks"
+      ],
       "description": "picked: task_id is the card the worker takes. blocked: nothing may be taken until a person acts, and blocked_reason says what. no_tasks: the board has nothing eligible left."
     },
     "task_id": {
@@ -20,7 +25,10 @@
       "description": "The card the worker is to take. Empty on anything but `picked`."
     },
     "pr_number": {
-      "type": ["integer", "null"],
+      "type": [
+        "integer",
+        "null"
+      ],
       "description": "Set only when the pick already has an open PR to continue -- a card that came back. The worker checks out that PR's branch instead of cutting a new one."
     },
     "why": {
@@ -33,10 +41,39 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["task_id", "why"],
+        "required": [
+          "task_id",
+          "why"
+        ],
         "properties": {
-          "task_id": { "type": "string" },
-          "why": { "type": "string", "description": "What is missing, in terms of what a person has to bring." }
+          "task_id": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string",
+            "description": "What is missing, in terms of what a person has to bring."
+          }
+        }
+      }
+    },
+    "finished": {
+      "type": "array",
+      "description": "Cards found in `in progress` whose work is already in `main` -- the session that built them landed the PR and died before moving the card. The orchestrator moves these to `in review`. Not cards you merely believe are done: each one names the commit that proves it.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "task_id",
+          "why"
+        ],
+        "properties": {
+          "task_id": {
+            "type": "string"
+          },
+          "why": {
+            "type": "string",
+            "description": "Which PR merged and which commit in `main` carries it, so whoever reads the card can check rather than take it on trust."
+          }
         }
       }
     },

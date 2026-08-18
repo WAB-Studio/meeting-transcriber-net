@@ -36,6 +36,29 @@ if (Test-CycleClosed -LogDir $day.LogDir -Cycle $cycle) {
   exit 0
 }
 
+# A cycle that produced no PR is finished with already, and nothing here may touch its card.
+# `already_done` is a card whose work was in `main` before the session started, `needs_grill` is one
+# parked on a decision, `blocked` is one nothing could get past -- and in all three the worker put
+# the card where it belongs and wrote the reason on it, with the card in front of it. What is below
+# was written for a PR that did not hold up: it puts a card back in the pool so a later session can
+# pick the work up again. Run over one of these it moves a card whose placement was already decided,
+# and the card comes round to be discovered finished a second time, at the price of another session.
+# There is no diff to keep out of `main`, so there is nothing for the cheap reading to protect.
+if ([string]$h.outcome -ne "pr_opened") {
+  New-DayEvent -LogDir $day.LogDir -Kind "settled" -Data @{
+    cycle = $cycle; task_id = [string]$h.task_id; outcome = [string]$h.outcome
+    reason = [string]$h.blocked_reason
+  } | Out-Null
+  $parked = Complete-Journal -Repo $day.Repo -TaskId ([string]$h.task_id)
+  if ($parked) { New-DayEvent -LogDir $day.LogDir -Kind "journal_parked" -Data @{ to = $parked } | Out-Null }
+  Write-Day $day "[$cycle] $([string]$h.outcome) -- no PR, and card $($h.task_id) is where the worker left it"
+  Write-Atom @{
+    ok = $true; cycle = $cycle; action = "settled"; outcome = [string]$h.outcome
+    task_id = [string]$h.task_id
+  }
+  exit 0
+}
+
 $v = Read-Contract $day "verdict-$cycle.json"
 if ($null -eq $v) {
   $rec = Invoke-Recover -Day $day -Handoff $h -Reason "no verdict was reached for this cycle"
@@ -81,7 +104,7 @@ if ($act.to -eq "pending") {
 if ($act.action -eq "recover") {
   $why = $act.reason
   if ([string]$v.verdict -eq "hold") { $why += " -- " + ((@($v.reasons) | Select-Object -First 2) -join " ") }
-  $rec = Invoke-Recover -Day $day -Handoff $h -Reason $why
+  $rec = Invoke-Recover -Day $day -Handoff $h -Reason $why -To ([string]$act.to) -Tags @($act.tags)
   if ($rec.Lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $rec.Lost }; exit 1 }
   Write-Atom @{ ok = $true; cycle = $cycle; action = "recovered"; to = $rec.To }
   exit 0

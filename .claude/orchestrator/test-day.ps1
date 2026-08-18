@@ -1089,6 +1089,143 @@ Check "the first time back is the pool and the second is a person" {
 
 # A board CLI that could not be reached left the card where it was. Counting that as a strike would
 # send the next attempt to `pending` over a failure of the tool rather than of the work.
+<#
+  A worker killed after its checkout leaves the repo standing on the feature branch. Refusing that
+  stopped every atom for the rest of the day -- nothing in the arrangement put the repo back, so one
+  killed session cost a whole day. These two say the repair happens and that it stops where it would
+  destroy something.
+
+  A real repo, because what is being probed is what `git` does, and a fake one proves nothing about
+  a switch. There is no remote, so the fetch below the switch fails and `Test-Preflight` returns
+  saying so -- which is not what is asked here. What is asked is where HEAD ended up.
+#>
+function New-GitSandbox {
+  $p = Join-Path ([System.IO.Path]::GetTempPath()) ("day-git-" + [guid]::NewGuid().ToString("n").Substring(0, 8))
+  $null = New-Item -ItemType Directory -Path $p -Force
+  git -C $p init -b main --quiet
+  git -C $p config user.email "probe@example.com"
+  git -C $p config user.name  "probe"
+  Set-Content -Path (Join-Path $p "a.txt") -Value "one" -Encoding utf8
+  git -C $p add -A
+  git -C $p commit -m "one" --quiet
+  return $p
+}
+
+Check "a checkout left on a branch is put back rather than refused" {
+  $repo = New-GitSandbox
+  $box  = New-Sandbox
+  try {
+    git -C $repo switch -c fix/left-standing --quiet
+    $day = [pscustomobject]@{ Repo = $repo; LogDir = $box }
+    $null = Test-Preflight -Day $day
+
+    $head = (git -C $repo rev-parse --abbrev-ref HEAD).Trim()
+    if ($head -ne "main") { return "it was left on '$head' instead of being put back on main" }
+
+    $gone = (git -C $repo rev-parse --verify --quiet fix/left-standing)
+    if (-not $gone) { return "the branch was destroyed by the repair" }
+
+    $ev = @(Read-DayEvents $box | Where-Object { $_.kind -eq "checkout_repaired" })
+    if ($ev.Count -ne 1) { return "the repair left nothing on the stream to see it by" }
+    ""
+  } finally {
+    Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item $box  -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+# The one case the repair may not touch: switching away from uncommitted changes is how work nobody
+# wrote down is lost, and no atom gets to do that to somebody.
+Check "a dirty tree is still refused, and nothing is switched under it" {
+  $repo = New-GitSandbox
+  $box  = New-Sandbox
+  try {
+    git -C $repo switch -c fix/dirty --quiet
+    Set-Content -Path (Join-Path $repo "a.txt") -Value "changed" -Encoding utf8
+    $day = [pscustomobject]@{ Repo = $repo; LogDir = $box }
+    $said = Test-Preflight -Day $day
+
+    if ($said -notmatch "dirty") { return "a dirty tree came back as '$said'" }
+    $head = (git -C $repo rev-parse --abbrev-ref HEAD).Trim()
+    if ($head -ne "fix/dirty") { return "it switched away from uncommitted changes" }
+    ""
+  } finally {
+    Remove-Item $repo -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item $box  -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+# The destination is the audit's because it is the only thing that read the PR. A hold over a diff
+# that got a question wrong the card never settled sends it back with `regrill`, and without this it
+# went back to the pool for the next session to build the same wrong thing again.
+Check "a hold goes where the audit said, with what the audit put on it" {
+  $v = [pscustomobject]@{
+    verdict = "hold"; decisions_owed = @()
+    card = [pscustomobject]@{ to = "Open"; tags = @("regrill") }
+  }
+  $r = Resolve-Verdict $v
+  if ($r.action -ne "recover") { return "a hold naming a destination stopped recovering" }
+  if ($r.to -ne "Open")        { return "it went to '$($r.to)' and not where the audit said" }
+  if (@($r.tags) -notcontains "regrill") { return "the tag the audit asked for did not survive" }
+  ""
+}
+
+# Silence still means the day counts strikes, which is what keeps a card off the merry-go-round when
+# no audit has an opinion about where it belongs.
+Check "a hold that names nothing still lets the day count the strikes" {
+  $r = Resolve-Verdict ([pscustomobject]@{ verdict = "hold"; decisions_owed = @() })
+  if ($r.to -ne "") { return "a hold with no card field invented '$($r.to)'" }
+  if (@($r.tags).Count -ne 0) { return "it invented tags nobody asked for" }
+  ""
+}
+
+# A cycle whose worker built nothing had its card placed by that worker, with the card in front of
+# it. Nothing on this side moves it, so there is no board write to half-land and no `moved` to wait
+# for -- and a closer that waited for one left the cycle open forever, which stops the next pick.
+Check "a cycle that built nothing is closed without anything moving a card" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "settled" -Data @{
+      cycle = 1; task_id = "T1"; outcome = "already_done"; reason = "PR #48 merged before the session started"
+    } | Out-Null
+    if (-not (Test-CycleClosed -LogDir $box -Cycle 1)) { return "a settled cycle did not read as closed" }
+    if (Test-CycleClosed -LogDir $box -Cycle 2)        { return "it closed a cycle it never touched" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The other closers still have to have reached the board, and a fourth closer added carelessly is
+# exactly how that guard gets dropped.
+Check "a recovery still has to have landed to close its cycle" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "recovered" -Data @{ cycle = 1; task_id = "T1"; to = "Open"; moved = $false } | Out-Null
+    if (Test-CycleClosed -LogDir $box -Cycle 1) { return "a recovery that never moved the card closed the cycle" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# A session spent to find out there was no work costs what a session costs. It is a different bill
+# from a PR that was not let through, and reading the same in the morning is how a picker handing
+# out finished cards goes unnoticed.
+Check "a cycle that built nothing is named in the report" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "handoff" -Data @{ cycle = 1; outcome = "already_done"; task_id = "86ak1ejve" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "settled" -Data @{
+      cycle = 1; task_id = "86ak1ejve"; outcome = "already_done"; reason = "PR #48 was already in main"
+    } | Out-Null
+    New-DayEvent -LogDir $box -Kind "day_ended" -Data @{ reason = "no_tasks" } | Out-Null
+
+    $md = [System.IO.File]::ReadAllText((Write-DayReport -LogDir $box))
+    if ($md -notmatch "Cycles that built nothing") { return "the report never mentions the cycle" }
+    if ($md -notmatch "86ak1ejve")                 { return "it does not name the card" }
+    if ($md -notmatch "PR #48 was already in main"){ return "it does not say why nothing was built" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 Check "a recovery that never reached the board is not counted against the card" {
   $failed = @([pscustomobject]@{ task = "T1"; moved = $false })
   if ((Get-CardDestination -Recovered $failed -TaskId "T1") -ne "Open") { return "a failed move counted as a strike" }
