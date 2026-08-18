@@ -54,6 +54,15 @@ function New-QuietStatus {
   }
 }
 
+# A pick on disk the way the picker leaves one: the contract, not the event, because the contract is
+# what a continued run reads.
+function Save-Pick {
+  param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][int]$Cycle,
+        [Parameter(Mandatory)][string]$Outcome, [string]$Task = "")
+  $o = [pscustomobject][ordered]@{ outcome = $Outcome; task_id = $Task; why = "a probe put this here" }
+  [System.IO.File]::WriteAllText((Join-Path $Dir "pick-$Cycle.json"), ($o | ConvertTo-Json -Compress))
+}
+
 # What the executor actually does with a status, asked of the same function the executor asks, so
 # the two cannot drift. The question here is always "would this have stopped the day", never "is
 # the label right" -- a label the loop ignores is what the review caught the first time round.
@@ -1747,6 +1756,92 @@ Check "the resume point is the next pick once a cycle is closed" {
     if ($r.Next -ne "run-picker.ps1") { return "it named $($r.Next)" }
     ""
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The gap between a pick and its worker is the narrowest in a cycle and the one a terminal gets
+# killed in. What is on disk is a card already chosen and already paid for.
+Check "the resume point is the worker when a pick is on disk and no worker has run" {
+  $box = New-Sandbox
+  try {
+    Save-Pick -Dir $box -Cycle 1 -Outcome "picked" -Task "86ak22prm"
+    $r = Get-ResumePoint -LogDir $box
+    if ($r.Next -ne "run-worker.ps1") { return "it named $($r.Next)" }
+    if ($r.Cycle -ne 1) { return "it named cycle $($r.Cycle)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "the resume point is the worker for the pick made after a closed cycle" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "settled" -Data @{ cycle = 1; task_id = "T1"; outcome = "blocked" } | Out-Null
+    Save-Pick -Dir $box -Cycle 2 -Outcome "picked" -Task "T2"
+    $r = Get-ResumePoint -LogDir $box
+    if ($r.Next -ne "run-worker.ps1") { return "it named $($r.Next)" }
+    if ($r.Cycle -ne 2) { return "it named cycle $($r.Cycle)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# A pick that names no card is an ending, not work waiting: the picker prints its own back and
+# nothing is launched over it.
+Check "a pick that ended the day does not resume into a worker" {
+  $box = New-Sandbox
+  try {
+    Save-Pick -Dir $box -Cycle 1 -Outcome "no_tasks" -Task ""
+    $r = Get-ResumePoint -LogDir $box
+    if ($r.Next -ne "run-picker.ps1") { return "it named $($r.Next)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The two stops this whole change exists to survive, arriving the way they actually arrive: written
+# to the stream when they fire, and read back by the day continued past them.
+Check "a stop already on the stream does not end the day it is continued into" {
+  foreach ($code in @("killed", "window")) {
+    $st = New-QuietStatus
+    $st.Past = @([pscustomobject]@{ level = "stop"; code = $code; text = "$code happened once"; spent = $true })
+    $st.Anomalies = Get-DayAnomalies -Status $st
+    if (-not @($st.Anomalies | Where-Object { $_.code -eq $code }).Count) {
+      return "$code fell out of the report"
+    }
+    if (Test-WouldHalt $st) { return "a spent $code stopped the day again" }
+  }
+  ""
+}
+
+# The counter-case, and why the distinction is on the anomaly rather than a list of codes in the
+# reader: a worker that came back holding another card is not a moment that passed.
+Check "a stop that is not spent still ends the day it is read in" {
+  $st = New-QuietStatus
+  $st.Past = @([pscustomobject]@{ level = "stop"; code = "pick_ignored"
+                                  text = "cycle 1 was picked A and the worker came back holding B" })
+  $st.Anomalies = Get-DayAnomalies -Status $st
+  if (-not (Test-WouldHalt $st)) { return "the worker working an unchosen card did not stop the day" }
+  ""
+}
+
+# Every atom rewrites this one, so a kill inside the write is the ordinary case rather than the
+# exotic one -- and since the staleness clock went, a torn lock is a run nobody can resume.
+Check "a lock refreshed while it is held stays readable and leaves nothing behind" {
+  $orch = New-Sandbox
+  try {
+    $a = Join-Path $orch "log\2026-08-17_090000"
+    New-Item -ItemType Directory -Force $a | Out-Null
+    Enter-DayLock -OrchestratorDir $orch -LogDir $a | Out-Null
+    Update-DayLock -OrchestratorDir $orch -LogDir $a
+    Update-DayLock -OrchestratorDir $orch -LogDir $a
+    $held = Read-DayLock -OrchestratorDir $orch
+    if ($held.State -ne "held") { return "the refreshed lock reads as $($held.State)" }
+    if ($held.Run -ne "2026-08-17_090000") { return "it names $($held.Run)" }
+    # Matched on the name and not with `-Filter`, which is the Win32 pattern engine: `day.lock.*`
+    # matches `day.lock` there, so the lock itself counted as its own leftover.
+    $left = @(Get-ChildItem $orch -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name.StartsWith("day.lock.") })
+    if ($left.Count -ne 0) { return "left behind: $(($left | ForEach-Object { $_.Name }) -join ', ')" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
 Check "the lock is taken atomically, and released only by whoever holds it" {

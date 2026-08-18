@@ -56,6 +56,34 @@ New-DayEvent -LogDir $day.LogDir -Kind "preflight_ok" | Out-Null
 $still = Test-CycleStillOpen -Day $day
 if ($still -ne "") { Write-Atom @{ ok = $false; reason = $still }; exit 1 }
 
+# The cycle this pick belongs to. `Get-CurrentCycle` counts worker sessions, so this is the same
+# number `run-worker.ps1` will compute when it comes to consume the pick: the picker's own session
+# does not advance it, which is what lets the pick be looked at, and the worker be launched, as two
+# separate acts on the same cycle.
+$cycle = $day.Cycle + 1
+$day.Cycle = $cycle
+
+$pickfile = Join-Path $day.LogDir "pick-$cycle.json"
+
+# A pick already made is returned, not made again. What sequences these is a model, so this atom
+# running twice before its worker is not a hypothetical -- and recomputing was not harmless: it
+# spends a second session, and the board it reads has moved, so the answer it prints can differ from
+# the one already announced. The card somebody was told about would then not be the card worked.
+#
+# Above the board and not below it. A day continued between its pick and its worker comes back
+# through here, and asking the board first meant a board that had gone quiet -- every card moved on,
+# or a `gh` that would not answer -- ended the day on `no_tasks` while the card it had already
+# chosen sat on disk, paid for.
+$done = Read-Contract $day "pick-$cycle.json"
+if ($done -and [string]$done.outcome) {
+  Write-Day $day ("[$cycle] pick already made: {0} {1} -- {2}" -f $done.outcome, $done.task_id, $done.why)
+  Write-Atom @{
+    ok = $true; cycle = $cycle; outcome = [string]$done.outcome; task_id = [string]$done.task_id
+    pr_number = $done.pr_number; why = [string]$done.why; blocked_reason = [string]$done.blocked_reason
+  }
+  exit 0
+}
+
 # Nothing eligible on the board is an ending, and it is one that costs a request rather than a
 # session. It is asked here, before the picker runs, precisely so an empty board never pays for a
 # model to look at it.
@@ -74,29 +102,6 @@ if ($pool.Idle) {
   New-DayEvent -LogDir $day.LogDir -Kind "no_more_cycles" -Data @{ reason = $why } | Out-Null
   Write-Day $day "nothing in progress and nothing grilled -- no session to spend"
   Write-Atom @{ ok = $true; outcome = "no_tasks"; reason = $why }
-  exit 0
-}
-
-# The cycle this pick belongs to. `Get-CurrentCycle` counts worker sessions, so this is the same
-# number `run-worker.ps1` will compute when it comes to consume the pick: the picker's own session
-# does not advance it, which is what lets the pick be looked at, and the worker be launched, as two
-# separate acts on the same cycle.
-$cycle = $day.Cycle + 1
-$day.Cycle = $cycle
-
-$pickfile = Join-Path $day.LogDir "pick-$cycle.json"
-
-# A pick already made is returned, not made again. What sequences these is a model, so this atom
-# running twice before its worker is not a hypothetical -- and recomputing was not harmless: it
-# spends a second session, and the board it reads has moved, so the answer it prints can differ from
-# the one already announced. The card somebody was told about would then not be the card worked.
-$done = Read-Contract $day "pick-$cycle.json"
-if ($done -and [string]$done.outcome) {
-  Write-Day $day ("[$cycle] pick already made: {0} {1} -- {2}" -f $done.outcome, $done.task_id, $done.why)
-  Write-Atom @{
-    ok = $true; cycle = $cycle; outcome = [string]$done.outcome; task_id = [string]$done.task_id
-    pr_number = $done.pr_number; why = [string]$done.why; blocked_reason = [string]$done.blocked_reason
-  }
   exit 0
 }
 

@@ -259,8 +259,10 @@ function Invoke-Session {
     # Written down where it fires, like every other anomaly, and not left to be recomputed off the
     # stream later: a run continued past this one gets its next session finished, and what the day
     # is standing on after that is no longer a kill. The report still promises this one.
+    # The report still promises this one, which is the whole of what `spent` buys: kept, read, and
+    # never stopped on twice.
     New-DayEvent -LogDir $Day.LogDir -Kind "anomaly" -Data @{
-      level = "stop"; code = "killed"
+      level = "stop"; code = "killed"; spent = $true
       text = "the $Role session of cycle $Cycle passed the executor's clock and was killed"
     } | Out-Null
     return $null
@@ -312,14 +314,19 @@ function Test-Sound {
   param([Parameter(Mandatory)]$Day)
   $status = Get-DayStatus -LogDir $Day.LogDir
   $halt = @(Get-HaltingAnomalies -Status $status)
+  # Spent on the way to the stream, all of them: what is written here was derived from the state as
+  # it stood a moment ago, and the reader above is what says whether it is still true. A day
+  # continued past a stop keeps it in its report and is not stopped by it a second time.
   foreach ($a in $halt) {
     Write-Day $Day "  !! [$($a.code)] $($a.text)"
-    New-DayEvent -LogDir $Day.LogDir -Kind "anomaly" -Data @{ level = $a.level; code = $a.code; text = $a.text } | Out-Null
+    New-DayEvent -LogDir $Day.LogDir -Kind "anomaly" `
+                 -Data @{ level = $a.level; code = $a.code; text = $a.text; spent = $true } | Out-Null
   }
   # The ones that do not halt still go on the stream: most cannot be recomputed once the state that
   # produced them is gone, and the morning report promises every one that fired.
   foreach ($a in @($status.Anomalies | Where-Object { $_.level -ne "stop" })) {
-    New-DayEvent -LogDir $Day.LogDir -Kind "anomaly" -Data @{ level = $a.level; code = $a.code; text = $a.text } | Out-Null
+    New-DayEvent -LogDir $Day.LogDir -Kind "anomaly" `
+                 -Data @{ level = $a.level; code = $a.code; text = $a.text; spent = $true } | Out-Null
     Write-Day $Day "  [$($a.code)] $($a.text)"
   }
   if ($halt.Count -eq 0) { return "" }
