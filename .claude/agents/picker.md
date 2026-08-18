@@ -25,6 +25,10 @@ python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>
 Every query carries `--space MeetingTranscriber`. A refused call goes in `blocked_reason` and you
 stop.
 
+**The commands in this file are all you have.** Do not open the CLI's source. If you need one that is
+not here, say so in `blocked_reason` and stop — do not infer it from an error and do not try flags to
+see which lands.
+
 ## Step 1 — Take the first of these that answers
 
 1. **A card in `in progress`.** Run the check in Step 2 first. If it passes, `outcome: "picked"`.

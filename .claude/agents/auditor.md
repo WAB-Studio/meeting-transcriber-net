@@ -30,6 +30,10 @@ python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --space Meetin
 
 `PYTHONIOENCODING` is `utf-8`. Write only under `.scratch/`, and pass prose as `@.scratch/verdict.md`.
 
+**The commands in this file are all you have.** Do not open the CLI's source. If you need one that is
+not here, say so in `reasons` and stop — do not infer it from an error and do not try flags to see
+which lands.
+
 `headRefOid` is your `audited_head_sha`. Take it from the PR, never from the record.
 
 Read `ISA.md` **at the PR's tip**, not from disk.

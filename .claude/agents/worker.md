@@ -32,6 +32,10 @@ python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text 
 Prose longer than one line goes in a file under `.scratch/` and is passed as `@path`. A refused call
 goes in `left_out` and you stop trying to spell around it.
 
+**The commands in this file are all you have.** Do not open the CLI's source. If you need one that is
+not here, say so in `left_out` and stop — do not infer it from an error and do not try flags to see
+which lands.
+
 ## Step 0 — Before anything
 
 Clean tree, standing on a current `main`. If it is not → `outcome: "blocked"`, return the record,

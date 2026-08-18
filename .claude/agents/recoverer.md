@@ -42,6 +42,9 @@ gh pr checks <n>
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>
 ```
 
+**The commands in this file are all you have.** Do not open the CLI's source. If you need one that is
+not here, say so in the briefing and go on with what you could read.
+
 Take the description, the `**Grilled.**` comment with the decisions already settled, and every
 comment a previous cycle left — including any saying why it was parked.
 
