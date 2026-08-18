@@ -16,17 +16,28 @@ starting with `RESULT` — that line is what you act on; everything above it is 
 the two disagree, run what is written here, do what `reason` says, and put it in the report.
 
 ```powershell
-$O = "$PWD\.claude\orchestrator"
-& "$O\start-day.ps1"
+$O = "$PWD\.claude\orchestrator"; & "$O\start-day.ps1"
 ```
+
+**That line is the whole calling convention, and every atom below repeats it in full.** Two halves,
+and getting either wrong costs a call that looks like the atom refusing:
+
+- **Through the PowerShell tool, never `powershell` from a shell.** Invoked that way the machine this
+  runs on refuses the script for its execution policy and prints a `PSSecurityException` — before the
+  atom has run, so nothing of the day happened and nothing says so. It reads exactly like a script
+  that is broken.
+- **`$O` is defined again in every call.** Shell state does not survive between tool calls, so an
+  atom run off an `$O` set in an earlier one resolves to `\run-picker.ps1` at the drive root and comes
+  back saying the file is not there. The path is absolute because `$PWD` is; a relative one answers to
+  whatever directory the call happened to start in.
 
 ## 1 · The loop
 
 ```powershell
-& "$O\run-picker.ps1"      # background — preflight, the board, /pick-task: which card
-& "$O\run-worker.ps1"      # background — /next-task on that card, the handoff
-& "$O\run-audit.ps1"       # background — /audit-session, the verdict
-& "$O\close-cycle.ps1"     # merge the PR, or leave it open and file the card
+$O = "$PWD\.claude\orchestrator"; & "$O\run-picker.ps1"    # background — preflight, the board, /pick-task: which card
+$O = "$PWD\.claude\orchestrator"; & "$O\run-worker.ps1"    # background — /next-task on that card, the handoff
+$O = "$PWD\.claude\orchestrator"; & "$O\run-audit.ps1"     # background — /audit-session, the verdict
+$O = "$PWD\.claude\orchestrator"; & "$O\close-cycle.ps1"   # merge the PR, or leave it open and file the card
 ```
 
 Then start again at `run-picker.ps1`. Nothing paces this and nothing needs to.
@@ -117,7 +128,7 @@ including the fix you just found. Write it on a card and let a later day take it
 ## 5 · When it ends
 
 ```powershell
-& "$O\end-day.ps1"         # the ending, report.md, and the lock released
+$O = "$PWD\.claude\orchestrator"; & "$O\end-day.ps1"    # the ending, report.md, and the lock released
 ```
 
 Give them the short version off what it returns: how many cycles, what merged, what it cost, what
