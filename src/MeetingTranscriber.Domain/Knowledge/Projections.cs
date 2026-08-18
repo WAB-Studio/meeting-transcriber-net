@@ -1,4 +1,4 @@
-using MeetingTranscriber.Domain.Audio;
+﻿using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 
@@ -75,10 +75,18 @@ public class Utterance
 /// real turn, so there is no state in which the corpus holds a claim with nothing behind it.
 /// </summary>
 /// <remarks>
+/// <para>
 /// A citation names the meeting and the position of the turn inside it, never a turn's id: the
 /// ids belong to the projection, and a rebuild deletes them and mints new ones. The pair is what
 /// the projection reproduces from <c>deepgram.json</c>, so it is what an extraction writes down
 /// and what survives the rebuild that reinserts the claim.
+/// </para>
+/// <para>
+/// A deterministic id derived from that same pair would have survived a rebuild too, and would
+/// have left the schema alone. It was refused because it promises what it does not mean: it says
+/// "the turn's identity" where the pair says "meeting and position", and it makes every extraction
+/// already stored depend on a derivation function that breaks all of them silently if it changes.
+/// </para>
 /// </remarks>
 public class Citation
 {
