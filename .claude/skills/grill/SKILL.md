@@ -67,7 +67,9 @@ The comment opens `**Needs grilling.**` when nothing was built yet, and `**Not m
 is an open PR behind it — finished, green, held out of `main` by that one decision. **Those come
 first of all**: settling one lands work that already exists.
 
-Then the rest, in board order.
+Then the rest, in the order the picker drains the pool — phase 0, then `3 · Grabador WinUI`,
+then the board's own numbering. That order is `pick-task`'s and is written there, not here;
+grilling in any other one fills the far end of a pool the day never reaches.
 
 ```powershell
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --space MeetingTranscriber --status Open
