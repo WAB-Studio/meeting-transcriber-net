@@ -24,6 +24,13 @@ public sealed class CaptureSource : IDisposable
     private Exception? failure;
     private bool running;
 
+    /// <summary>
+    /// Whether this source never became part of a recording, so its file is nobody's. Written on
+    /// the thread that gave up on it and read on the draining thread, which may be inside the
+    /// device when that happens — volatile because those two never meet again if it is.
+    /// </summary>
+    private volatile bool discarded;
+
     private CaptureSource(
         AudioChannel channel,
         CaptureTarget listening,
@@ -114,7 +121,7 @@ public sealed class CaptureSource : IDisposable
             // number that means something — every block already written went to the operating
             // system as it was written, so what it names is a recording that is really there and
             // really readable, and not a file somebody has to be told to go looking for.
-            throw new AudioCaptureException(
+            throw new AudioDeviceWedgedException(
                 $"The {Channel} stream on '{Listening.Name}' did not stop within "
                 + $"{CaptureLoop.StopsWithin.TotalSeconds:0} seconds. Its {Bytes} bytes of audio "
                 + $"are in '{File.Name}' and stay there, and nothing it is still using is taken "
@@ -183,15 +190,27 @@ public sealed class CaptureSource : IDisposable
     /// to hear is why that happened, not that a handle would not close on the way out.
     /// </para>
     /// <para>
-    /// A source whose stream was given up on keeps its file, because the handle is open and a live
-    /// thread is writing through it. So the next attempt at that folder is refused by the blocks
-    /// still standing in it — which is the truth: this process really is still recording into that
-    /// file, and a folder it cleared would be one two threads then wrote to.
+    /// A source whose stream was given up on keeps both its handle and its file while that stream
+    /// is still in the device, because a live thread is writing through them — a folder cleared
+    /// here would be one two threads then wrote to. What it does not do is keep them for the life
+    /// of the process: being given up on is a deadline and not a promise, so the draining thread
+    /// carries on when the device finally answers, and taking the file is the last thing it does.
+    /// A device that never answers at all keeps its file, and the recording that never started is
+    /// then one more thing waiting to be decided about after a restart.
     /// </para>
     /// </remarks>
     internal void Discard()
     {
+        // Said before anything is let go of, so that a device answering in the middle of this still
+        // finds it said: after here the draining thread may be the only one that ever reads it.
+        discarded = true;
         LetGo();
+
+        if (stream.Abandoned)
+        {
+            return;
+        }
+
         BlockSpool.Erase(File);
     }
 
@@ -216,7 +235,8 @@ public sealed class CaptureSource : IDisposable
     /// <summary>
     /// Opens <paramref name="listening"/> onto <paramref name="channel"/> and starts recording it.
     /// Anything the machine refuses comes back as a throw, with nothing left open and no file
-    /// left behind.
+    /// left behind — and a device that never answered at all comes back as a throw too, at the
+    /// deadline, leaving behind only what a thread still inside that device is using.
     /// </summary>
     internal static CaptureSource Open(AudioChannel channel, CaptureTarget listening, FileInfo file)
     {
@@ -225,27 +245,31 @@ public sealed class CaptureSource : IDisposable
 
         WasapiStream? stream = null;
         SpoolWriter? spool = null;
+        CaptureSource? source = null;
         var claimed = false;
 
+        // Once there is a source, letting go is its own decision and not a second copy of it here:
+        // it is the thing that knows whether a thread is still inside its stream, and a rule
+        // written twice is one chance to write the second one differently.
+        //
+        // Before there is one, nothing that failed can be inside anything: a stream is handed back
+        // only once its device answered, and the spool cannot be reached at all until Start wires
+        // the callback that writes to it. So the stream first and then the file, in the order
+        // Dispose uses, and every one of them whatever the one before it did.
         void LetGo()
         {
-            try
+            if (source is not null)
             {
-                spool?.Dispose();
+                source.Discard();
+                return;
             }
-            finally
+
+            DeviceRelease.LetGoOf(stream);
+            DeviceRelease.LetGoOf(spool);
+
+            if (claimed)
             {
-                try
-                {
-                    stream?.Dispose();
-                }
-                finally
-                {
-                    if (claimed)
-                    {
-                        BlockSpool.Erase(file);
-                    }
-                }
+                BlockSpool.Erase(file);
             }
         }
 
@@ -262,7 +286,7 @@ public sealed class CaptureSource : IDisposable
             spool = SpoolWriter.Create(file, channel, format);
             claimed = true;
 
-            var source = new CaptureSource(channel, listening, format, file, stream, spool);
+            source = new CaptureSource(channel, listening, format, file, stream, spool);
             source.Start();
             return source;
         }
@@ -271,6 +295,18 @@ public sealed class CaptureSource : IDisposable
             LetGo();
             throw new AudioCaptureException(
                 $"Windows would not record '{listening.Name}': {refused.Message}", refused);
+        }
+        catch (AudioDeviceWedgedException wedged)
+        {
+            // Said again here because this is the only level that knows what a person called the
+            // thing that did not answer: the stream knows a channel, and a channel is not what
+            // somebody chose in a list. What letting go does and does not close on this path is
+            // LetGo's own rule, and a stream given up on keeps every one of them.
+            LetGo();
+            throw new AudioDeviceWedgedException(
+                $"'{listening.Name}' did not start the {channel} recording and did not refuse it "
+                + $"either, so nothing was recorded. {wedged.Message}",
+                wedged);
         }
         catch
         {
@@ -309,5 +345,22 @@ public sealed class CaptureSource : IDisposable
     {
         failure = stopped;
         ended.Set();
+
+        // Only a source given up on and thrown away reaches the rest, and it reaches it once: a
+        // stream that came back is one Discard and Dispose already had their turn at, on the thread
+        // that asked. This is the other case — a device that was given up on and then answered — and
+        // out here that thread is the only one that ever may close these, which is also what makes
+        // the file removable at all, since Windows will not delete one a handle is still open on.
+        if (!discarded || !stream.Abandoned)
+        {
+            return;
+        }
+
+        // Nothing here may throw. There is no boundary above this: it runs in the loop's own
+        // finally, after the recording it belonged to has already failed, so an exception would end
+        // the process over a folder nobody wanted. Letting go answers rather than throws, and so
+        // does erasing.
+        DeviceRelease.LetGoOf(spool);
+        BlockSpool.Erase(File);
     }
 }

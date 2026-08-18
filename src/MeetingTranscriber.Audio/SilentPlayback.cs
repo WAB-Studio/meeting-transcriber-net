@@ -30,6 +30,7 @@ internal sealed class SilentPlayback : IDisposable
 {
     private readonly MMDevice endpoint;
     private readonly WasapiOut output;
+    private DeviceRelease? release;
 
     private SilentPlayback(MMDevice endpoint, WasapiOut output)
     {
@@ -42,29 +43,73 @@ internal sealed class SilentPlayback : IDisposable
     {
         ArgumentNullException.ThrowIfNull(device);
 
-        // Its own handle on the endpoint. NAudio hangs one audio client off an MMDevice and hands
-        // the same one out again, so sharing the capture's device here would have the two of them
-        // initialising a single client for opposite directions.
-        var endpoint = AudioDevices.Open(device);
-        WasapiOut? output = null;
-        try
+        // Behind one deadline, like the two ways a capture opens and like the release below: all of
+        // it is synchronous COM into the same driver, and a wedge in any of it is an application
+        // that freezes at the moment somebody pressed record rather than one that will not close.
+        return DeviceOpen.Answering("loopback silence", () =>
         {
-            output = new WasapiOut(endpoint, AudioClientShareMode.Shared, useEventSync: false, latency: 100);
-            output.Init(new SilenceProvider(endpoint.AudioClient.MixFormat));
-            output.Play();
-            return new SilentPlayback(endpoint, output);
-        }
-        catch
-        {
-            output?.Dispose();
-            endpoint.Dispose();
-            throw;
-        }
+            // Its own handle on the endpoint, so that letting this go and letting the capture go
+            // are two decisions rather than one: the capture opens the same device for the opposite
+            // direction and disposes it on its own schedule, and one MMDevice between them would be
+            // a handle closed under whichever of the two was still using it.
+            var endpoint = AudioDevices.Open(device);
+            WasapiOut? output = null;
+            try
+            {
+                // Asked for, read once and let go of. Every ask activates a client of its own —
+                // NAudio holds no reference to it and an MMDevice disposed later takes none of them
+                // with it — so one read this way and left behind is a handle on the machine's
+                // playback that nothing frees until the process ends.
+                WaveFormat mixing;
+                using (var mixer = endpoint.AudioClient)
+                {
+                    mixing = mixer.MixFormat;
+                }
+
+                output = new WasapiOut(endpoint, AudioClientShareMode.Shared, useEventSync: false, latency: 100);
+                output.Init(new SilenceProvider(mixing));
+                output.Play();
+                return new SilentPlayback(endpoint, output);
+            }
+            catch
+            {
+                // The playback first and the endpoint under it, in the order Dispose uses: the two
+                // are separate handles, so one that refuses to close still leaves the other let go
+                // of, and one that wedges never reaches the line below it.
+                DeviceRelease.LetGoOf(output);
+                DeviceRelease.LetGoOf(endpoint);
+
+                throw;
+            }
+        });
     }
 
+    /// <summary>
+    /// Stops the silence and lets the endpoint go, and comes back whether or not the device
+    /// answered.
+    /// </summary>
+    /// <remarks>
+    /// Bounded for the same reason a captured device's release is, and it is the last of the three
+    /// waits on the way out of a recording. This is a second handle on the endpoint channel 0 is
+    /// recording, played into by a device thread of NAudio's own, so it is the same driver and the
+    /// same way of not coming back — and it is reached after both sources have been let go of,
+    /// which is where a meeting that is already on disk would be held up by a device nobody is
+    /// listening to any more.
+    /// </remarks>
     public void Dispose()
     {
-        output.Dispose();
-        endpoint.Dispose();
+        // Built once and waited on again, so a second call costs nothing and a release that came
+        // back after its deadline still frees what it was holding.
+        release ??= DeviceRelease.Of("loopback silence release", () =>
+        {
+            // A playback that refuses to close still leaves its endpoint let go of: the two are
+            // separate handles and only one of them is what refused. A playback that wedges instead
+            // never reaches the line below, which is the same rule read the other way — nothing a
+            // live thread is inside is anybody's to close.
+            DeviceRelease.LetGoOf(output);
+            DeviceRelease.LetGoOf(endpoint);
+        });
+
+        release.Dispose();
     }
 }

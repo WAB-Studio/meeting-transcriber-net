@@ -36,9 +36,6 @@ internal static class ProcessLoopback
     /// </remarks>
     private const int FirstBuildWithIt = 20348;
 
-    /// <summary>How long Windows is given to hand the client over before the attempt is a refusal.</summary>
-    private static readonly TimeSpan ActivatesWithin = TimeSpan.FromSeconds(5);
-
     /// <summary>The device path that means "not a device: the process in the parameters".</summary>
     private const string VirtualDevice = "VAD\\Process_Loopback";
 
@@ -133,14 +130,19 @@ internal static class ProcessLoopback
             Marshal.ThrowExceptionForHR(
                 ActivateAudioInterfaceAsync(VirtualDevice, in wantedInterface, variant, handler, out var attempt));
 
-            if (!handler.Answered(ActivatesWithin))
+            if (!handler.Answered(CaptureLoop.StopsWithin))
             {
                 // Left undisposed on purpose, and it is the one place here that leaks. The callback
                 // may still be coming, and setting an event somebody has already disposed would
                 // take the process down from a COM thread this code does not own.
-                throw new AudioCaptureException(
-                    $"Windows did not answer about the audio of {process} within "
-                    + $"{ActivatesWithin.TotalSeconds:0} seconds.");
+                //
+                // A wedge and not a refusal, which is the whole of what this type says about it: an
+                // answer that never came is what the session reads before deciding whether to fall
+                // back to the whole machine's audio, and reported as a refusal this would open a
+                // second device while the callback for the first is still outstanding. The deadline
+                // is the one every wait on a device shares, so this and the ask around it are the
+                // same number rather than two that could disagree.
+                throw AudioDeviceWedgedException.NoAnswerFrom($"audio of {process}");
             }
 
             handler.Dispose();

@@ -110,7 +110,14 @@ public sealed class CaptureSession : IDisposable
                 {
                     opened.Add(Open(channel, target));
                 }
-                catch (AudioCaptureException cannot) when (target is CaptureTarget.Program)
+                // A program that cannot be followed, and not a device that never answered. The
+                // exclusion is spelled out here rather than left to the shape of the type, because
+                // this is the decision that reads the difference: falling back would open the
+                // endpoint while the wedged device is still held by a thread nothing can stop, and
+                // it would do it on no answer at all. So a recording that could not be started does
+                // not start, which is what a person pressing record is told.
+                catch (AudioCaptureException cannot)
+                    when (target is CaptureTarget.Program && cannot is not AudioDeviceWedgedException)
                 {
                     fellBack = cannot.Message;
                     opened.Add(Open(channel, new CaptureTarget.Endpoint(playback)));

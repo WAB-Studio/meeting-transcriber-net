@@ -53,12 +53,19 @@ internal sealed class WasapiStream : IDisposable
     private readonly byte[] block;
     private readonly int bytesPerFrame;
     private readonly int pollMs;
-    private readonly ManualResetEventSlim started = new(initialState: false);
     private Action<CapturePacket>? captured;
     private Action<Exception?>? finished;
-    private Exception? refused;
+
+    /// <summary>
+    /// Why the device would not start, written on the loop thread and read on the caller's. Volatile
+    /// because those two only meet through the gate when the loop reached it in time: at the deadline
+    /// itself the caller stops waiting without ever synchronising with the loop, and an answer that
+    /// arrived a moment too late is still an answer rather than a wedge.
+    /// </summary>
+    private volatile Exception? refused;
+
     private CaptureLoop? loop;
-    private bool freed;
+    private DeviceRelease? release;
 
     private WasapiStream(
         AudioChannel channel,
@@ -111,22 +118,43 @@ internal sealed class WasapiStream : IDisposable
             _ => throw new AudioContractException($"There is no way to capture '{channel}'."),
         };
 
-        // Opened here and let go here if anything after it refuses. Windows hands the endpoint and
-        // its client over before it will say whether it can record in this format or at all —
-        // another application holding the device in exclusive mode is the ordinary way to hear no —
-        // and a capture somebody retries after closing that application would otherwise leave one
-        // behind every time it failed.
-        var endpoint = AudioDevices.Open(device);
-        try
+        // Every line of it behind one deadline, because every line of it is a synchronous call into
+        // the same driver: opening the endpoint, asking it for its client, reading what the machine
+        // mixes at, and telling the client what to record. One ask rather than four, so a device
+        // that wedges anywhere along the way is given up on once — and so the letting go that a
+        // failure part-way needs happens on the one thread that is holding anything.
+        return DeviceOpen.Answering($"{channel} device", () =>
         {
-            var client = endpoint.AudioClient;
-            return Ready(channel, client, client.MixFormat, direction, endpoint, numbersFrames: true);
-        }
-        catch
-        {
-            endpoint.Dispose();
-            throw;
-        }
+            // Opened here and let go here if anything after it refuses. Windows hands the endpoint
+            // and its client over before it will say whether it can record in this format or at all
+            // — another application holding the device in exclusive mode is the ordinary way to
+            // hear no — and a capture somebody retries after closing that application would
+            // otherwise leave one behind every time it failed.
+            var endpoint = AudioDevices.Open(device);
+            AudioClient? client = null;
+            WaveFormat mixing;
+
+            try
+            {
+                client = endpoint.AudioClient;
+                mixing = client.MixFormat;
+            }
+            catch
+            {
+                // The client as well as the endpoint, and it is not covered by the endpoint: asking
+                // for one activates a COM object NAudio keeps no reference to, so an MMDevice let go
+                // of takes nothing with it. A machine that will not say what it is mixing at is the
+                // ordinary way to reach this, and one client per attempt is what missing it costs.
+                DeviceRelease.LetGoOf(client);
+                DeviceRelease.LetGoOf(endpoint);
+                throw;
+            }
+
+            // Handed over rather than wrapped in a catch of its own, and that is the whole reason
+            // these two lines are not one: from here the client is what a wedge would be inside and
+            // the endpoint is underneath it, so both are let go of together and in that order.
+            return Ready(channel, client!, mixing, direction, endpoint, numbersFrames: true);
+        });
     }
 
     /// <summary>
@@ -139,11 +167,6 @@ internal sealed class WasapiStream : IDisposable
     {
         ArgumentNullException.ThrowIfNull(process);
 
-        // Asked for before anything is activated, and that order is the point: it is the one step
-        // here that can fail without a client to let go of, and a client obtained first would be
-        // left open by a machine that had just lost its playback endpoint.
-        var format = AudioDevices.EngineFormat();
-
         // Set even though the format asked for is the one the engine mixes at, so that a machine
         // mixing at something this cannot ask for gets a conversion instead of a refusal.
         const AudioClientStreamFlags converting =
@@ -151,22 +174,39 @@ internal sealed class WasapiStream : IDisposable
             | AudioClientStreamFlags.AutoConvertPcm
             | AudioClientStreamFlags.SrcDefaultQuality;
 
-        // It numbers nothing: every packet comes back at frame zero, measured on this machine over
-        // ten seconds of a program playing a tone. See FramePositions for what stands in.
-        return Ready(
-            AudioChannel.Loopback,
-            ProcessLoopback.For(process),
-            format,
-            converting,
-            endpoint: null,
-            numbersFrames: false);
+        // Behind the deadline for the reason the endpoint way in is, and it is not a lesser case
+        // because there is no device named: asking what the engine mixes at opens the playback
+        // endpoint and asks its client, which is the same driver and the same way of not answering.
+        return DeviceOpen.Answering($"{AudioChannel.Loopback} program", () =>
+        {
+            // Asked for before anything is activated, and that order is the point: it is the one
+            // step here that can fail without a client to let go of, and a client obtained first
+            // would be left open by a machine that had just lost its playback endpoint.
+            var format = AudioDevices.EngineFormat();
+
+            // It numbers nothing: every packet comes back at frame zero, measured on this machine
+            // over ten seconds of a program playing a tone. See FramePositions for what stands in.
+            return Ready(
+                AudioChannel.Loopback,
+                ProcessLoopback.For(process),
+                format,
+                converting,
+                endpoint: null,
+                numbersFrames: false);
+        });
     }
 
     /// <summary>
-    /// Initialises a client somebody else obtained and wraps it, letting the client go if Windows
-    /// refuses the format or the mode. Where the client came from is the only thing the two ways in
-    /// disagree about; from here on there is one stream.
+    /// Initialises a client somebody else obtained and wraps it, letting that client go — and the
+    /// endpoint under it, where there is one — if Windows refuses the format or the mode. Where the
+    /// client came from is the only thing the two ways in disagree about; from here on there is one
+    /// stream, and one thread that lets its handles go.
     /// </summary>
+    /// <remarks>
+    /// Runs inside the ask both ways in are made through, so the thread it lets go on is the thread
+    /// that obtained everything — which is what makes the release below correct rather than
+    /// hopeful, and what puts it under the one deadline this device gets.
+    /// </remarks>
     private static WasapiStream Ready(
         AudioChannel channel,
         AudioClient client,
@@ -189,7 +229,17 @@ internal sealed class WasapiStream : IDisposable
         }
         catch
         {
-            client.Dispose();
+            // Initialising is where a device most often says no, and a driver that says no and then
+            // will not be let go of is the same wedge as any other — which is why the deadline this
+            // runs inside covers the letting go and not only the asking.
+            //
+            // In the order Dispose uses and for its reason: the client is what a wedge would be
+            // inside and the endpoint is underneath it. A client that refuses to close has answered,
+            // so its endpoint is still let go of after it; a client that wedges never reaches the
+            // line below, which is the same rule read the other way.
+            DeviceRelease.LetGoOf(client);
+            DeviceRelease.LetGoOf(endpoint);
+
             throw;
         }
     }
@@ -200,10 +250,18 @@ internal sealed class WasapiStream : IDisposable
     /// one writes what it needs before returning.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Comes back once the device is running, and throws here if it would not start. The loop is on
     /// its own thread and a refusal reached over there would leave this returning a stream that is
     /// already over: a session opens both of its sources or neither, and it cannot hold to that if
     /// the second source is handed back before the first one has said whether it started.
+    /// </para>
+    /// <para>
+    /// A device that neither starts nor refuses is the third way out, and it is the loop's own
+    /// deadline that bounds it: starting the device happens on that thread, so a driver that never
+    /// returns from it is a loop that never gets underway, which is the one thing
+    /// <see cref="CaptureLoop"/> already decides what to do about.
+    /// </para>
     /// </remarks>
     /// <param name="onPacket">Takes each block the device hands over.</param>
     /// <param name="onEnd">Takes the reason the stream ended, or null if it was asked to.</param>
@@ -216,18 +274,36 @@ internal sealed class WasapiStream : IDisposable
         finished = onEnd;
 
         loop = CaptureLoop.Draining($"{channel} capture", Run);
-        started.Wait();
 
+        // The answer first, whichever side of the deadline it landed on. A device that refused has
+        // answered and its loop is already returning, so reading the refusal before the deadline is
+        // what keeps a machine that said no from being reported as one that said nothing — and a
+        // process loopback that said no falls back to the endpoint, where a wedged one must not.
         if (refused is not null)
         {
-            // The loop returned before it set this, so there is nothing left to wait for and the
-            // stream never became one anybody was handed.
+            // Waited for rather than assumed. The body sets that and returns, so the thread is over
+            // or a step from it, and only a loop that really came back may have its client let go
+            // of afterwards.
             loop.Dispose();
-            loop = null;
+
+            if (!loop.Abandoned)
+            {
+                loop = null;
+            }
 
             // Thrown as it was caught, so what Windows said about this device is still a
             // COMException by the time the caller turns it into a sentence about that device.
             ExceptionDispatchInfo.Capture(refused).Throw();
+        }
+
+        if (loop.Abandoned)
+        {
+            // Kept rather than let go of, and that is the whole of what can be done here: the loop
+            // is inside the call that starts the device, so the client it is starting and the
+            // endpoint under that client are what a live thread is holding. Nothing is released and
+            // the loop is not dropped, so whoever disposes this reads that it was given up on and
+            // leaves it alone too.
+            throw AudioDeviceWedgedException.NoAnswerFrom($"{channel} device");
         }
     }
 
@@ -255,11 +331,21 @@ internal sealed class WasapiStream : IDisposable
     /// nothing is still handing blocks to whoever subscribed, so a file can be closed under it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A loop that did not come back keeps every one of these. The client is what it is blocked
-    /// inside, the endpoint is underneath that client, and the gate is what it would touch on its
-    /// way out if it ever took one — so releasing a COM object here would not be tidying up after a
-    /// dead thread, it would be pulling the floor out from under a live one. What that costs is one
-    /// device held until the process ends, and the recording is on disk either way.
+    /// inside and the endpoint is underneath that client — so releasing a COM object here would not
+    /// be tidying up after a dead thread, it would be pulling the floor out from under a live one.
+    /// What that costs is one device held until the process ends, and the recording is on disk
+    /// either way.
+    /// </para>
+    /// <para>
+    /// Letting go is itself bounded, because a driver that came back from draining can still wedge
+    /// on being released: the two calls below are synchronous COM into that same driver, and an
+    /// application that will not close after a meeting is the same failure one line further down.
+    /// So they run somewhere they can be given up on, and being given up on there means what it
+    /// always means — the handles stay held, and the device is this application's until it is
+    /// restarted.
+    /// </para>
     /// </remarks>
     public void Dispose()
     {
@@ -269,15 +355,23 @@ internal sealed class WasapiStream : IDisposable
         // given up on — and so that a loop which came back late is noticed and its handles freed
         // by whoever calls next, instead of being held to the end of the process over a deadline
         // that was missed by a moment.
-        if (Abandoned || freed)
+        if (Abandoned)
         {
             return;
         }
 
-        freed = true;
-        client.Dispose();
-        endpoint?.Dispose();
-        started.Dispose();
+        // Built once and waited on again, which is what makes a second call cost nothing and a
+        // release that came back late still count. A release wedged in there deliberately does not
+        // make this stream Abandoned: that word is read by whoever else holds something the
+        // draining loop was writing through, and this thread is inside nothing but the two handles
+        // on these lines, which are this type's own and nobody else's to close.
+        release ??= DeviceRelease.Of($"{channel} release", () =>
+        {
+            DeviceRelease.LetGoOf(client);
+            DeviceRelease.LetGoOf(endpoint);
+        });
+
+        release.Dispose();
     }
 
     private void Run(CaptureLoop loop)
@@ -291,13 +385,25 @@ internal sealed class WasapiStream : IDisposable
         catch (Exception no)
         {
             // Nothing started, so nothing has ended: this goes back to Start, which is still
-            // waiting for it, and not to whoever was going to be told the stream was over.
+            // waiting for it, and not to whoever was going to be told the stream was over. Said to
+            // be underway on the way out of a refusal as much as on the way into a device that
+            // started — a refusal is an answer, and there is nothing left here to wait for.
             refused = no;
-            started.Set();
+            loop.Underway();
+
+            // Unless nobody is waiting any more. A device that refuses after it has been given up
+            // on has no caller left to throw at, and this thread coming back is the only news
+            // anybody gets — so the callback is told, because whoever gave up is holding something
+            // it kept open for exactly as long as this thread might still have written to it.
+            if (loop.Abandoned)
+            {
+                finished?.Invoke(no);
+            }
+
             return;
         }
 
-        started.Set();
+        loop.Underway();
 
         Exception? failure = null;
         try

@@ -3,14 +3,32 @@ using System.Diagnostics;
 namespace MeetingTranscriber.Audio.Tests;
 
 /// <summary>
-/// The thread that drains a source, driven by loop bodies doing what no device on a build agent
-/// can be asked to do: refuse to come back. That refusal is the whole subject — a device that
-/// stops when it is told is the case every other test in this suite already records.
+/// The thread that works a source — draining it, or letting go of it — driven by bodies doing what
+/// no device on a build agent can be asked to do: refuse to answer. That refusal is the whole
+/// subject, at each of the three moments it can happen — the device will not start, will not stop,
+/// or will not be let go of. A device that answers is the case every other test in this suite
+/// already records.
 /// </summary>
 public class CaptureLoopTests
 {
     /// <summary>How long a loop that does end is given before the test itself is the failure.</summary>
     private static readonly TimeSpan Promptly = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// How far under the deadline a wait on the gate may measure and still be that deadline.
+    /// `Monitor.Wait` counts its timeout on the operating system's tick and `Stopwatch` counts the
+    /// same stretch on the performance counter, and a wait can come back a fraction of a
+    /// millisecond short of its timeout on the second one — 4.9993669 s was what caught it. That
+    /// difference is not what any of these tests is about, and a bound with no room in it is the
+    /// whole distance between a suite that is green and one that goes red every so often for
+    /// nothing.
+    /// </summary>
+    /// <remarks>
+    /// Only the gate. Waiting on the thread itself is `Thread.Join`, which has never measured short
+    /// here, and the tests that time one assert the deadline with nothing subtracted — a probe that
+    /// gave itself room it did not need would be a weaker probe for no reason.
+    /// </remarks>
+    private static readonly TimeSpan Slack = TimeSpan.FromMilliseconds(50);
 
     /// <summary>
     /// The ordinary way out, and the baseline the rest of this class is measured against: a body
@@ -22,6 +40,8 @@ public class CaptureLoopTests
         using var draining = new ManualResetEventSlim(initialState: false);
         var loop = CaptureLoop.Draining("stops when asked", running =>
         {
+            running.Underway();
+
             while (running.Running)
             {
                 draining.Set();
@@ -65,8 +85,12 @@ public class CaptureLoopTests
         using var stuck = new ManualResetEventSlim(initialState: false);
         var cameBack = false;
 
-        var loop = CaptureLoop.Draining("will not come back", _ =>
+        var loop = CaptureLoop.Draining("will not come back", running =>
         {
+            // Underway first, so what this measures is still the deadline on the way out. A device
+            // that wedges without ever having started is the other failure and the test below it.
+            running.Underway();
+
             // Uncancellable on purpose: this is standing in for a thread inside a driver, and one
             // that could be asked to come back would be standing in for nothing.
             stuck.Wait(Timeout.Infinite);
@@ -97,6 +121,123 @@ public class CaptureLoopTests
         finally
         {
             stuck.Set();
+        }
+    }
+
+    /// <summary>
+    /// ISC-137. The body never says it is underway, which is what a driver wedged inside the call
+    /// that starts a device looks like from out here — the thread that starts it is the thread that
+    /// would then drain it. Starting comes back anyway, at the deadline, and says it was given up
+    /// on rather than handing back a stream whose device may or may not be running.
+    /// </summary>
+    /// <remarks>
+    /// The other half of the claim is that nothing is released over it, and it is held by the loop
+    /// being abandoned rather than by a second assertion: abandoned is the one word every holder
+    /// reads before letting go of anything, and the test below it holds that a second wait over the
+    /// same thread costs nothing.
+    /// </remarks>
+    [Fact]
+    public void A_loop_that_never_gets_underway_is_given_up_on_rather_than_waited_on()
+    {
+        using var stuck = new ManualResetEventSlim(initialState: false);
+        var underway = false;
+
+        try
+        {
+            var clock = Stopwatch.StartNew();
+            var loop = CaptureLoop.Draining("will not start", running =>
+            {
+                // Wedged before saying anything, and never asked to come back — a driver inside
+                // the call that starts a device is not something that reads a flag.
+                stuck.Wait(Timeout.Infinite);
+                running.Underway();
+                underway = true;
+            });
+            var waited = clock.Elapsed;
+
+            waited.ShouldBeGreaterThanOrEqualTo(CaptureLoop.StopsWithin - Slack);
+
+            // Generous for the same reason the wait on the way out is: what is being told apart is
+            // a deadline from no deadline at all.
+            waited.ShouldBeLessThan(CaptureLoop.StopsWithin * 2);
+            loop.Abandoned.ShouldBeTrue();
+
+            // Still in there, so nothing it holds became free because starting gave up on it. And
+            // whoever lets go of it next does not spend the deadline over again.
+            underway.ShouldBeFalse();
+            Time(loop.Dispose).ShouldBeLessThan(Promptly);
+            loop.Abandoned.ShouldBeTrue();
+        }
+        finally
+        {
+            stuck.Set();
+        }
+    }
+
+    /// <summary>
+    /// The baseline for the gate above: a body that says it is underway is waited for and no
+    /// longer, so what the deadline tells apart is a device that started from one that never did —
+    /// and not every recording from a fast one.
+    /// </summary>
+    [Fact]
+    public void A_loop_that_says_it_is_underway_is_waited_for_and_no_longer()
+    {
+        var loop = CaptureLoop.Draining("starts", running =>
+        {
+            running.Underway();
+
+            while (running.Running)
+            {
+                Thread.Sleep(1);
+            }
+        });
+
+        try
+        {
+            loop.Abandoned.ShouldBeFalse();
+        }
+        finally
+        {
+            loop.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// A loop given up on and then answering carries on into the rest of its body, which is the
+    /// half of the word that decides what every holder may close: abandoned says a thread is still
+    /// in there, never that it has stopped being able to reach what it holds. A cleanup that read
+    /// it the other way closed a spool under this thread and deleted its file.
+    /// </summary>
+    [Fact]
+    public void A_loop_given_up_on_still_runs_its_body_when_the_device_answers_late()
+    {
+        using var late = new ManualResetEventSlim(initialState: false);
+        using var drained = new ManualResetEventSlim(initialState: false);
+
+        var loop = CaptureLoop.Draining("starts late", running =>
+        {
+            late.Wait(Timeout.Infinite);
+            running.Underway();
+
+            // What the real body does next, and the whole point: it drains through the callback it
+            // was handed, whatever anybody decided about it while it was not answering.
+            drained.Set();
+        });
+
+        try
+        {
+            loop.Abandoned.ShouldBeTrue();
+
+            late.Set();
+
+            drained.Wait(Promptly, TestContext.Current.CancellationToken).ShouldBeTrue(
+                "a device that answers after the deadline runs the rest of its loop, so nothing it "
+                + "touches was ever anybody else's to close");
+        }
+        finally
+        {
+            late.Set();
+            loop.Dispose();
         }
     }
 
