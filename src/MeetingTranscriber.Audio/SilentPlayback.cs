@@ -48,15 +48,26 @@ internal sealed class SilentPlayback : IDisposable
         // that freezes at the moment somebody pressed record rather than one that will not close.
         return DeviceOpen.Answering("loopback silence", () =>
         {
-            // Its own handle on the endpoint. NAudio hangs one audio client off an MMDevice and
-            // hands the same one out again, so sharing the capture's device here would have the two
-            // of them initialising a single client for opposite directions.
+            // Its own handle on the endpoint, so that letting this go and letting the capture go
+            // are two decisions rather than one: the capture opens the same device for the opposite
+            // direction and disposes it on its own schedule, and one MMDevice between them would be
+            // a handle closed under whichever of the two was still using it.
             var endpoint = AudioDevices.Open(device);
             WasapiOut? output = null;
             try
             {
+                // Asked for, read once and let go of. Every ask activates a client of its own —
+                // NAudio holds no reference to it and an MMDevice disposed later takes none of them
+                // with it — so one read this way and left behind is a handle on the machine's
+                // playback that nothing frees until the process ends.
+                WaveFormat mixing;
+                using (var mixer = endpoint.AudioClient)
+                {
+                    mixing = mixer.MixFormat;
+                }
+
                 output = new WasapiOut(endpoint, AudioClientShareMode.Shared, useEventSync: false, latency: 100);
-                output.Init(new SilenceProvider(endpoint.AudioClient.MixFormat));
+                output.Init(new SilenceProvider(mixing));
                 output.Play();
                 return new SilentPlayback(endpoint, output);
             }

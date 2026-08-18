@@ -131,7 +131,7 @@ internal sealed class WasapiStream : IDisposable
             // hear no — and a capture somebody retries after closing that application would
             // otherwise leave one behind every time it failed.
             var endpoint = AudioDevices.Open(device);
-            AudioClient client;
+            AudioClient? client = null;
             WaveFormat mixing;
 
             try
@@ -141,6 +141,11 @@ internal sealed class WasapiStream : IDisposable
             }
             catch
             {
+                // The client as well as the endpoint, and it is not covered by the endpoint: asking
+                // for one activates a COM object NAudio keeps no reference to, so an MMDevice let go
+                // of takes nothing with it. A machine that will not say what it is mixing at is the
+                // ordinary way to reach this, and one client per attempt is what missing it costs.
+                DeviceRelease.LetGoOf(client);
                 DeviceRelease.LetGoOf(endpoint);
                 throw;
             }
@@ -148,7 +153,7 @@ internal sealed class WasapiStream : IDisposable
             // Handed over rather than wrapped in a catch of its own, and that is the whole reason
             // these two lines are not one: from here the client is what a wedge would be inside and
             // the endpoint is underneath it, so both are let go of together and in that order.
-            return Ready(channel, client, mixing, direction, endpoint, numbersFrames: true);
+            return Ready(channel, client!, mixing, direction, endpoint, numbersFrames: true);
         });
     }
 
@@ -385,6 +390,16 @@ internal sealed class WasapiStream : IDisposable
             // started — a refusal is an answer, and there is nothing left here to wait for.
             refused = no;
             loop.Underway();
+
+            // Unless nobody is waiting any more. A device that refuses after it has been given up
+            // on has no caller left to throw at, and this thread coming back is the only news
+            // anybody gets — so the callback is told, because whoever gave up is holding something
+            // it kept open for exactly as long as this thread might still have written to it.
+            if (loop.Abandoned)
+            {
+                finished?.Invoke(no);
+            }
+
             return;
         }
 
