@@ -104,6 +104,9 @@ Write-Day $day "[$cycle] picker: /pick-task"
 $k = Invoke-Session -Day $day -Role "picker" -Prompt "/pick-task $pickfile" -Cycle $cycle
 if ($null -eq $k) { Write-Atom @{ ok = $false; stop = "the picker left no result" }; exit 1 }
 
+# Before every judgement below it, for the reason `Save-EmittedContract` gives.
+$said = Save-EmittedContract -Path (Join-Path $day.LogDir "pick-$cycle.emitted.txt") -Text ([string]$k.result)
+
 $status = Get-DayStatus -LogDir $day.LogDir
 Write-Day $day ("[$cycle] picker done: {0}  turns={1}  usd={2:N2}  running={3:N2}" -f `
                 $k.subtype, $k.num_turns, $k.total_cost_usd, $status.Cost)
@@ -115,7 +118,8 @@ if ($k.is_error) { Write-Atom @{ ok = $false; stop = "the picker ended in error"
 $unsound = Test-Sound -Day $day
 if ($unsound -ne "") { Write-Atom @{ ok = $false; stop = "the picker's session is not sound: $unsound" }; exit 1 }
 
-$c = Get-ContractFromText ([string]$k.result)
+$c = Repair-Contract (Get-ContractFromText ([string]$k.result)) `
+                     -EmptyList @("skipped") -EmptyText @("blocked_reason")
 $bad = Test-DayContract -Contract $c -Required $PickKeys -Present $PickPresent `
                         -Field "outcome" -Allowed @("picked","blocked","no_tasks")
 # A pick naming no card is the one failure that reads as success everywhere downstream: the worker
@@ -128,8 +132,8 @@ if ($bad -eq "" -and [string]$c.outcome -eq "blocked" -and -not [string]$c.block
   $bad = "it says blocked and does not say what by"
 }
 if ($bad -ne "") {
-  New-DayEvent -LogDir $day.LogDir -Kind "pick_invalid" -Data @{ cycle = $cycle; reason = $bad } | Out-Null
-  Write-Atom @{ ok = $false; stop = "invalid pick: $bad" }
+  New-DayEvent -LogDir $day.LogDir -Kind "pick_invalid" -Data @{ cycle = $cycle; reason = $bad; said = $said } | Out-Null
+  Write-Atom @{ ok = $false; stop = "invalid pick: $bad -- what the session emitted is in $(Split-Path -Leaf $said)" }
   exit 1
 }
 

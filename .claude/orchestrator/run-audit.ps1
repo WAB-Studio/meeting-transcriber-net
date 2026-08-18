@@ -18,6 +18,14 @@ trap { Write-AtomCrash -Message $_.Exception.Message -Day $script:Day; exit 1 }
 $VerdictKeys = @("verdict","reasons","unreported_decisions","isc_unproved",
                  "followups_created","actions_taken","audited_head_sha","decisions_owed")
 
+# What the audit did, where a list nobody wrote and a list nothing went into say the same thing.
+#
+# `isc_unproved` and `unreported_decisions` are deliberately not here, and it is the same line the
+# worker's `isc_closed` and `probes` sit on: they are the findings a merge hangs off, so an audit
+# that never says whether a claim was corroborated must not have "none were unproved" written in
+# for it. A `pass` merges into `main` with nobody in the loop, and silence is not a finding.
+$VerdictEmptyList = @("reasons","followups_created","actions_taken","decisions_owed")
+
 $day = Open-Day
 $script:Day = $day
 if ($day.Error -ne "") { Write-Host $day.Error; Write-Atom @{ ok = $false; reason = $day.Error }; exit 1 }
@@ -47,6 +55,10 @@ $a = Invoke-Session -Day $day -Role "audit" -Cycle $cycle `
                     -Prompt "/audit-session $(Join-Path $day.LogDir "handoff-$cycle.json") $verdictFile"
 if ($null -eq $a) { Write-Atom @{ ok = $false; stop = "the audit left no result" }; exit 1 }
 
+# Before every judgement below, the commit check included: an audit that read the PR after somebody
+# pushed to it is refused, and its ten minutes of reading are still worth keeping.
+$said = Save-EmittedContract -Path (Join-Path $day.LogDir "verdict-$cycle.emitted.txt") -Text ([string]$a.result)
+
 $status = Get-DayStatus -LogDir $day.LogDir
 Write-Day $day ("[$cycle] audit done: usd={0:N2}  running={1:N2}" -f $a.total_cost_usd, $status.Cost)
 if ($a.is_error) { Write-Atom @{ ok = $false; stop = "the audit ended in error" }; exit 1 }
@@ -54,12 +66,12 @@ if ($a.is_error) { Write-Atom @{ ok = $false; stop = "the audit ended in error" 
 $unsound = Test-Sound -Day $day
 if ($unsound -ne "") { Write-Atom @{ ok = $false; stop = "the audit's session is not sound: $unsound" }; exit 1 }
 
-$c = Get-ContractFromText ([string]$a.result)
+$c = Repair-Contract (Get-ContractFromText ([string]$a.result)) -EmptyList $VerdictEmptyList
 $bad = Test-DayContract -Contract $c -Required $VerdictKeys -Field "verdict" `
                         -Allowed @("pass","pass_with_followup","ask","hold")
 if ($bad -ne "") {
-  New-DayEvent -LogDir $day.LogDir -Kind "verdict_invalid" -Data @{ cycle = $cycle; reason = $bad } | Out-Null
-  Write-Atom @{ ok = $false; stop = "invalid verdict: $bad" }
+  New-DayEvent -LogDir $day.LogDir -Kind "verdict_invalid" -Data @{ cycle = $cycle; reason = $bad; said = $said } | Out-Null
+  Write-Atom @{ ok = $false; stop = "invalid verdict: $bad -- what the session emitted is in $(Split-Path -Leaf $said)" }
   exit 1
 }
 

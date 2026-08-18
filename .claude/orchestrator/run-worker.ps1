@@ -22,6 +22,12 @@ trap { Write-AtomCrash -Message $_.Exception.Message -Day $script:Day; exit 1 }
 $HandoffKeys = @("outcome","task_id","isc_closed","probes",
                  "decisions_deferred","left_out","skipped","blocked_reason","head_sha")
 
+# Names a session really used for these, and the lists a cycle that did none of it has no reason
+# to write. `Repair-Contract` says why the line is drawn where it is.
+$HandoffAliases   = @{ claims_closed = "isc_closed" }
+$HandoffEmptyList = @("decisions_deferred","left_out","skipped")
+$HandoffEmptyText = @("blocked_reason")
+
 # Said, but allowed to be null: a `blocked` handoff has no PR to name and says so by writing null,
 # and refusing that would stop the day over a field it was right to leave empty. The outcome that
 # must carry a number, `pr_opened`, is checked for one by value further down.
@@ -76,6 +82,11 @@ Write-Day $day "[$cycle] worker: /next-task on $($pick.task_id)"
 $w = Invoke-Session -Day $day -Role "worker" -Prompt "/next-task $handoff $pickfile" -Cycle $cycle
 if ($null -eq $w) { Write-Atom @{ ok = $false; stop = "the worker left no result" }; exit 1 }
 
+# Before the error flag, before soundness and before the contract is read: everything below this
+# line is a judgement, and a judgement that runs first is a judgement that can end the day holding
+# the only copy of what a paid session said.
+$said = Save-EmittedContract -Path (Join-Path $day.LogDir "handoff-$cycle.emitted.txt") -Text ([string]$w.result)
+
 $status = Get-DayStatus -LogDir $day.LogDir
 Write-Day $day ("[$cycle] worker done: {0}  turns={1}  usd={2:N2}  running={3:N2}" -f `
                 $w.subtype, $w.num_turns, $w.total_cost_usd, $status.Cost)
@@ -95,12 +106,13 @@ if ($unsound -ne "") { Write-Atom @{ ok = $false; stop = "the worker's session i
 # failed to read its pick, or fell back on looking at the board itself, returned it with an empty
 # card id -- which named no card, so it slipped past the mismatch check below, and the day moved on
 # leaving the picked card untouched.
-$c = Get-ContractFromText ([string]$w.result)
+$c = Repair-Contract (Get-ContractFromText ([string]$w.result)) `
+                     -Aliases $HandoffAliases -EmptyList $HandoffEmptyList -EmptyText $HandoffEmptyText
 $bad = Test-DayContract -Contract $c -Required $HandoffKeys -Present $HandoffPresent `
                         -Field "outcome" -Allowed @("pr_opened","needs_grill","blocked")
 if ($bad -ne "") {
-  New-DayEvent -LogDir $day.LogDir -Kind "handoff_invalid" -Data @{ cycle = $cycle; reason = $bad } | Out-Null
-  Write-Atom @{ ok = $false; stop = "invalid handoff: $bad" }
+  New-DayEvent -LogDir $day.LogDir -Kind "handoff_invalid" -Data @{ cycle = $cycle; reason = $bad; said = $said } | Out-Null
+  Write-Atom @{ ok = $false; stop = "invalid handoff: $bad -- what the session emitted is in $(Split-Path -Leaf $said)" }
   exit 1
 }
 [System.IO.File]::WriteAllText($handoff, ($c | ConvertTo-Json -Depth 12), (New-Object System.Text.UTF8Encoding($false)))
