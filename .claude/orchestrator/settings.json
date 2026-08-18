@@ -18,6 +18,51 @@
     "grill": "off"
   },
   "permissions": {
+    "defaultMode": "bypassPermissions",
+
+    "deny": [
+      "Read(//wsl.localhost/**)",
+      "Read(//wsl$/**)",
+      "Read(**/*.wav)",
+      "Read(**/*.m4a)",
+      "Read(**/*.mp3)",
+      "Edit(**/deepgram.json)",
+
+      "Read(//c/Users/pc/.ssh/**)",
+      "Read(//c/Users/pc/.config/**)",
+      "Read(//c/Users/pc/.claude/.credentials.json)",
+      "Read(//c/Users/pc/.aws/**)",
+
+      "Edit(//c/Users/pc/.claude/**)",
+      "Edit(.claude/settings.json)",
+      "Edit(.claude/skills/**)",
+      "Edit(.claude/orchestrator/settings.json)",
+      "Edit(.claude/orchestrator/*.ps1)",
+      "Edit(.claude/orchestrator/*.psm1)",
+
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(nc:*)",
+      "PowerShell(Invoke-WebRequest:*)",
+      "PowerShell(Invoke-RestMethod:*)",
+
+      "Bash(git push --force:*)",
+      "PowerShell(git push --force:*)",
+      "Bash(git remote:*)",
+      "PowerShell(git remote:*)",
+      "Bash(git push --delete:*)",
+      "PowerShell(git push --delete:*)",
+
+      "Bash(gh auth:*)",
+      "PowerShell(gh auth:*)",
+      "Bash(gh secret:*)",
+      "PowerShell(gh secret:*)",
+      "Bash(gh repo delete:*)",
+      "PowerShell(gh repo delete:*)",
+      "Bash(gh pr merge:*)",
+      "PowerShell(gh pr merge:*)"
+    ],
+
     "allow": [
       "PowerShell(python:*)",
       "Bash(python:*)",

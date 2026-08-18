@@ -1,7 +1,7 @@
 ---
 phase: climbing
-progress: 97/146
-updated: 2026-08-17
+progress: 97/155
+updated: 2026-08-18
 ---
 
 # ISA — meeting-transcriber-net
@@ -162,10 +162,17 @@ native app with no Python, no WSL and no FFmpeg anywhere behind it.
 Board: 3 · Grabador WinUI
 - [ ] ISC-79: Opening the application after it was killed mid-recording ends in a meeting somebody can play.
 - [ ] ISC-80: A source that is hearing nothing is shown as silent while the meeting is still running.
-- [ ] ISC-81: Record, pause and stop produce one continuous timeline.
-- [ ] ISC-82: The queue shows each job's state and what it is waiting for.
-- [ ] ISC-83: A mono or stereo file from disk becomes a meeting.
+- [ ] ISC-81: A recording that was paused is one meeting as long as the clock says, carrying the paused stretch as the silence it was.
+- [ ] ISC-82: A meeting says what stage it is at and what the application would do to it next.
+- [ ] ISC-83: An audio file from disk becomes a meeting, whatever its channel count.
 - [ ] ISC-141: A recording whose device changed says so while the meeting is still running, naming what it moved to.
+- [ ] ISC-147: A meeting whose next stage was declined can be offered that stage again later.
+- [ ] ISC-148: What a meeting is waiting for survives the application closing and opening again.
+- [ ] ISC-149: Anti: a recording waiting to be decided about never keeps a new meeting from being recorded.
+- [ ] ISC-150: Somebody listening to the meeting through speakers is told, while it is still running, that the microphone is picking the other side up twice.
+- [ ] ISC-151: Anti: audio this application did not record is never taken as two channels of one meeting.
+- [ ] ISC-152: Every text a person reads in the application is there in both Spanish and English.
+- [ ] ISC-153: The application opens in the language Windows is set to, unless somebody chose another.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly
@@ -176,6 +183,8 @@ Board: 4 · Deepgram BYOK
 - [ ] ISC-86: Transcribing again is a new version beside what was paid for, never a replacement.
 - [ ] ISC-87: A job whose outcome is uncertain — a charge that may already have happened — stops on a person.
 - [ ] ISC-88: What the provider returns has the shape the fixtures describe.
+- [ ] ISC-154: Silence nobody spoke into is left out of what is sent to the provider, so it is not paid for.
+- [ ] ISC-155: Anti: a turn lands where it was said in the meeting, however much of the meeting was left out of what was sent.
 
 ### F6 · Summaries
 Why: a meeting becomes a summary whose every claim resolves to something said, using the user's
@@ -252,6 +261,13 @@ Board: 7 · Distribución y backup
   node's whole history stops answering the question. Until then ISC-144 and ISC-145 are what a
   person reads and judges from, and ISC-104 is the only one of ISC-101 and ISC-104 to ISC-108
   that holds without any of them — which is also the shape that can hide nothing.
+
+- **What the screen does with a measurement of the system's echo.** ISC-150 is the warning
+  that costs nothing to be sure of — the playback endpoint saying it is speakers rather than a
+  headset. Measuring how much of channel 0 comes back in on channel 1 is engine work with a
+  card of its own, and what a screen should do with that number is not decided: a second level
+  beside the meters, a threshold that warns once, or nothing until somebody asks. Nobody has
+  seen the number, so the shape of the answer would be invented rather than chosen.
 
 ## Learning
 

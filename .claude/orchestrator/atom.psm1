@@ -157,7 +157,7 @@ function Invoke-Session {
   $quoted = $Prompt
   if ($Prompt -match '\s') { $quoted = '"' + $Prompt + '"' }
   $argv = @("-p", $quoted, "--output-format", "stream-json", "--verbose",
-            "--permission-mode", "acceptEdits",
+            "--permission-mode", "bypassPermissions",
             "--settings", ('"' + (Join-Path $Day.Orch "settings.json") + '"'),
             "--fallback-model", "sonnet")
 

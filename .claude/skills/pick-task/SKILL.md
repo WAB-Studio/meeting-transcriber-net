@@ -41,8 +41,19 @@ Take the first of these that answers:
    audit held it or a grill answered it. Emit the card **and** `pr_number`, so the worker pushes to
    the branch that exists rather than opening a second PR against one task. Check the PR is still
    open before believing an old comment.
-3. **The first grilled card in board order.** Walk the phase lists in order; inside a list,
-   `urgente` → `alta` → `normal` → `baja`.
+3. **The first grilled card in pick order.** Inside a list, `urgente` → `alta` → `normal` →
+   `baja`.
+
+**Pick order is not the board's own numbering**, and this is the only place it is written:
+
+1. `0 · Contratos y caracterización` — the day loop itself. A card here is the machinery every
+   other card is worked by, so a session spent below it is a session that may not happen.
+2. `3 · Grabador WinUI` — the recorder screen. Everything under it is engine nobody has seen run;
+   the product is not real to anybody until there is a window that records a meeting.
+3. Everything else as the board lists it: 1, 2, 4, 5, 6, 7.
+
+The two in front are ahead **because of what they are, not because of what is in them today**: an
+empty phase 0 is walked past in one listing, and the order does not change when it empties.
 
 **Walk the lists with `--status Open` and no tag filter.** Every `Open` card in the list comes back
 and you sort them yourself, because the ungrilled ones are half of what you are here to look at:
@@ -52,6 +63,7 @@ of it invisible, and §2 — the one judgement this session exists to make — w
 ```powershell
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --space MeetingTranscriber --status "in progress"
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --list "0 · Contratos y caracterización" --status Open
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --list "3 · Grabador WinUI" --status Open
 ```
 
 `tasks` does not print tags, so a card whose tags decide something gets read: `task <id>` says
@@ -132,7 +144,7 @@ orchestrator reads it off what you emitted and writes the file itself. The shape
   "outcome": "picked",
   "task_id": "86ak1ejve",
   "pr_number": null,
-  "why": "first grilled card in board order; phase 0's only Open card is ungrilled and nothing in phase 2 builds on it",
+  "why": "first grilled card in pick order; phase 0 is empty and the WinUI card ahead of this one is ungrilled, and nothing here builds on it",
   "skipped": [],
   "blocked_reason": ""
 }
