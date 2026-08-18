@@ -1179,6 +1179,53 @@ Check "a hold that names nothing still lets the day count the strikes" {
   ""
 }
 
+# The schema saying `Open` or `pending` is documentation. This is the boundary a model's JSON crosses
+# on its way to a board move, and a status nothing recognises takes the card out of both the pool a
+# worker reads and the queue a grill reads.
+Check "a destination nothing recognises is not carried to the board" {
+  foreach ($bad in @("in review", "closed", "Done", " Open")) {
+    $r = Resolve-Verdict ([pscustomobject]@{
+      verdict = "hold"; decisions_owed = @()
+      card = [pscustomobject]@{ to = $bad; tags = @() }
+    })
+    if ($r.to -ne "") { return "'$bad' came through as a destination" }
+  }
+  ""
+}
+
+# `Request-Grill` is the protocol for a decision nobody here may make, and it is reached by the
+# verdict being `ask` rather than by the destination happening to be `pending`. A hold routed there
+# was given a comment about a decision it never owed and lost the tags it did ask for.
+Check "a hold that names pending is still a hold" {
+  $r = Resolve-Verdict ([pscustomobject]@{
+    verdict = "hold"; decisions_owed = @()
+    card = [pscustomobject]@{ to = "pending"; tags = @("regrill") }
+  })
+  if ($r.action -ne "recover") { return "it stopped being a recovery" }
+  if ($r.to -ne "pending")     { return "the destination the audit named did not survive" }
+  if (@($r.tags) -notcontains "regrill") { return "the tags were dropped on the way" }
+  ""
+}
+
+# A cycle that built nothing still has a card somewhere and a journal to park. Asking only about the
+# PR let the sequencer walk past the close, which is the ordering these scripts exist to hold.
+Check "a cycle that opened no PR still has to be closed before the next one" {
+  $box = New-Sandbox
+  try {
+    $day = [pscustomobject]@{ LogDir = $box; Cycle = 1; Repo = "x" }
+    foreach ($outcome in @("pr_opened", "already_done", "blocked", "needs_grill")) {
+      [System.IO.File]::WriteAllText((Join-Path $box "handoff-1.json"),
+        (@{ outcome = $outcome; task_id = "T1" } | ConvertTo-Json))
+      $said = Test-CycleStillOpen -Day $day
+      if ($said -eq "") { return "a cycle that ended '$outcome' let the next one open" }
+    }
+
+    New-DayEvent -LogDir $box -Kind "settled" -Data @{ cycle = 1; task_id = "T1"; outcome = "blocked" } | Out-Null
+    if ((Test-CycleStillOpen -Day $day) -ne "") { return "a cycle that was closed still reads as open" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 # A cycle whose worker built nothing had its card placed by that worker, with the card in front of
 # it. Nothing on this side moves it, so there is no board write to half-land and no `moved` to wait
 # for -- and a closer that waited for one left the cycle open forever, which stops the next pick.

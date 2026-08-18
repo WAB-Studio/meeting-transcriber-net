@@ -86,14 +86,22 @@ is owed; `main` says it is done, and `main` is the one that cannot be wrong.
 Ask it in one step, before reading the card for what to build:
 
 ```powershell
-gh pr list --search "<task_id>" --state merged --json number,mergedAt,headRefName
-git merge-base --is-ancestor <head_sha of that PR> origin/main   # exit 0 means it landed
+gh pr list --search "<task_id>" --state merged --json number,mergedAt,mergeCommit
+git merge-base --is-ancestor <mergeCommit> origin/main   # exit 0 means it reached main's history
 ```
 
-What proves it is the commit, not the PR's state: a PR can be closed without merging, and a merged
-PR can have been reverted since. **The claim is that the work is in `main` now**, so say which
-commit, and re-run the four commands over `main` if the card names ISCs — an ISC marked `[x]` by a
-branch that never landed is a claim closed on nothing.
+**Those two answer a narrower question than the one you are asking**, and the gap is the whole point
+of this section. They say a commit reached `main`; they cannot say the work is still there, because
+a revert leaves the reverted commit an ancestor of `main` exactly as before. Nothing in git's history
+answers "is this behaviour present" — only the behaviour does.
+
+So the proof is the card's own **Done when**, read against `main` as it stands: run what it names,
+and run the four commands if the card names ISCs. An ISC marked `[x]` by work that landed and was
+taken back out again is a claim closed on nothing. Say in the handoff which commit carried it **and**
+what you ran to see it still holds.
+
+If the behaviour is not there, this is not `already_done` however cleanly the PR merged. It is
+ordinary work on a card whose history happens to include a merge, and you build it.
 
 Then: `outcome: "already_done"`, `pr_number` naming the PR that landed it, `blocked_reason` empty.
 **Move the card to `in review` yourself and leave the comment saying what you checked** — the same

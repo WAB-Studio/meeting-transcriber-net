@@ -56,12 +56,19 @@ and died before anything moved the card. The board says the work is owed and `ma
 would otherwise be spent proving it:
 
 ```powershell
-gh pr list --search "<task_id>" --state merged --json number,mergedAt,headRefName
+gh pr list --search "<task_id>" --state merged --json number,mergedAt,mergeCommit
 ```
 
 - **Nothing merged** → the premise holds, rule 1 applies, pick it.
-- **Something merged for that card** → it is finished. Put it in `finished[]` with the PR number and
-  the commit that carries it, **do not pick it**, and go on down the order to the next candidate.
+- **Something merged for that card** → put it in `finished[]` with the PR number and the merge
+  commit, **do not pick it**, and go on down the order to the next candidate.
+
+**This is a screen and not a proof, and it is allowed to be.** A merged PR could have been reverted
+since, and no query here would see it — a reverted commit is still an ancestor of `main`. What makes
+that safe is where the card goes: `in review` is a person's queue, so a card filed wrongly is read by
+somebody rather than lost, and the cost of the screen being wrong is one card looked at. The cost of
+not screening is a whole session. Say the merge commit in `why` so whoever reads it can check in one
+command.
 
 `finished[]` is not `skipped[]`. Skipped is work nobody on this side could build, and it goes to
 `pending` where a person is owed something. Finished is work already in `main`, and it goes to

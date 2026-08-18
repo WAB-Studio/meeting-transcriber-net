@@ -490,7 +490,10 @@ function Test-CycleStillOpen {
   param([Parameter(Mandatory)]$Day)
   if ($Day.Cycle -le 0) { return "" }
   $open = Read-Contract $Day "handoff-$($Day.Cycle).json"
-  if ($open -and [string]$open.outcome -eq "pr_opened" -and
+  # Any handoff at all, not only one that opened a PR. A cycle that built nothing still has a card
+  # somewhere and a journal to park, and asking about the PR let the sequencer walk past its close --
+  # which is the ordering the scripts hold precisely because a model is what calls them in order.
+  if ($open -and [string]$open.outcome -and
       -not (Test-CycleClosed -LogDir $Day.LogDir -Cycle $Day.Cycle)) {
     return "cycle $($Day.Cycle) is still open -- close it before opening another"
   }
@@ -548,6 +551,23 @@ function Skip-Card {
   and what the comment has to say, because a card nobody could build and a card already built are
   read by whoever finds them for opposite reasons.
 #>
+<#
+  The cards the board currently calls `in progress`, or `$null` if it could not be asked. One query,
+  and the only thing anything here does with it is ask whether a card is among them.
+
+  It exists because a worker's board write is an instruction to a model and not a result in its
+  handoff: a session can emit a perfectly valid `already_done` having never moved the card, or having
+  had the move fail under it, and nothing downstream could tell. Reading the board back is the
+  cheapest thing that can.
+#>
+function Get-CardsInProgress {
+  param([Parameter(Mandatory)]$Day, [scriptblock]$Board)
+  if (-not $Board) { $Board = $script:Board }
+  $lines = & $Board @("tasks", "--space", $script:Space, "--status", "in progress")
+  if ($null -eq $lines) { return $null }
+  return @($lines)
+}
+
 function Complete-Card {
   param([Parameter(Mandatory)]$Day, $Finished)
   $lost = @()
@@ -819,9 +839,18 @@ function Invoke-Recover {
   # After the move, so a card that never moved is not left carrying a tag saying it did. Tagging is
   # not what makes the close land -- the comment and the move are -- so a tag that failed is an
   # anomaly on the stream and not a lost cycle.
+  # `regrill` and `grilled` are one switch and not two tags. A card that kept both went back to the
+  # pool reading as ready for a worker -- `Get-BoardPool` and the pick both take `Open` and
+  # `grilled` -- so the tag meant to hold it for a grill held nothing, and the next session took the
+  # same unsettled card. `Request-Grill` has always swapped them; asking for `regrill` here means
+  # the same swap or it means nothing.
   if ($moved -and $Tags.Count -gt 0) {
     $tagged = $true
-    foreach ($t in $Tags) { if (-not (Set-CardTags $Day -TaskId $task -Add $t)) { $tagged = $false } }
+    foreach ($t in $Tags) {
+      $drop = $null
+      if ($t -eq "regrill") { $drop = "grilled" }
+      if (-not (Set-CardTags $Day -TaskId $task -Add $t -Remove $drop)) { $tagged = $false }
+    }
   }
 
   # What was meant and what happened. Recording the intention as the outcome left a card in
@@ -855,7 +884,7 @@ function Read-Contract {
 Export-ModuleMember -Function (@(
   "Get-Repo", "New-DayRun", "Open-Day", "Enter-AtomLease", "Write-Day", "Write-Atom", "Write-AtomCrash", "Invoke-Session",
   "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Get-BoardPool", "Move-Card", "Set-CardTags",
-  "Test-Preflight", "Test-CycleStillOpen", "Skip-Card", "Complete-Card",
+  "Test-Preflight", "Test-CycleStillOpen", "Skip-Card", "Complete-Card", "Get-CardsInProgress",
   "New-CloseResult", "Request-Grill",
   "Invoke-Merge", "Invoke-Recover", "Read-Contract"
 ) + @($script:DayModule.ExportedFunctions.Keys))

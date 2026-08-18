@@ -312,6 +312,11 @@ function Test-DecisionsOwed {
   it will not make has said two things, and the reading that costs nothing is the one that does not
   put an unread diff into `main`.
 #>
+# Where a held card may be sent. Not every status the board has: these two are the pool a worker
+# reads and the queue that waits on a person, and a card belongs in one of them or the day has lost
+# track of it.
+$script:HoldDestinations = @("Open", "pending")
+
 function Resolve-Verdict {
   param($Verdict)
   $name = [string]$Verdict.verdict
@@ -335,8 +340,13 @@ function Resolve-Verdict {
     # because the card itself was never settled puts it back with `regrill`, so a grill reaches it
     # before another session builds on the same unanswered question. Deriving that from the word
     # `hold` alone was the orchestrator deciding something it cannot see.
+    # Checked here and not taken on trust. The schema saying `Open` or `pending` is documentation;
+    # this is the boundary, and what comes through it is a model's JSON on its way to a board move.
+    # A destination nothing recognises -- a hallucinated status, a typo -- would take the card out of
+    # both the pool a worker reads and the queue a grill reads, which is worse than any default.
     $to = ""
-    if ($Verdict.card -and [string]$Verdict.card.to) { $to = [string]$Verdict.card.to }
+    $said = [string]$Verdict.card.to
+    if ($said -and $script:HoldDestinations -contains $said) { $to = $said }
     $tags = @(@($Verdict.card.tags) | Where-Object { $_ })
     return [pscustomobject]@{ action = "recover"; to = $to; tags = $tags; reason = "the audit held it" }
   }
