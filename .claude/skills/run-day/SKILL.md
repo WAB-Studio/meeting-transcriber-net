@@ -42,6 +42,13 @@ $O = "$PWD\.claude\orchestrator"; & "$O\close-cycle.ps1"   # merge the PR, or le
 
 Then start again at `run-picker.ps1`. Nothing paces this and nothing needs to.
 
+**`start-day.ps1` does not always hand you `run-picker.ps1` next.** A day stopped mid-cycle -- the
+usage window, a conversation that ended, an atom that refused -- is continued rather than replaced,
+and `start-day.ps1`'s `RESULT` carries `action` (`started` or `continued`) and `next`, the atom the
+run is waiting on. Begin the loop there instead of at the top: a continued run whose worker already
+has a PR open resumes at `run-audit.ps1`, not at a fresh pick that would open a second one. Say
+which it did -- a fresh day or a continued one, and from where -- before running anything else.
+
 **The three that run an agent go in the background: `run-picker.ps1`, `run-worker.ps1` and
 `run-audit.ps1`.** A session outlasts the ten minutes a foreground call gets, and dies there with
 the money already spent. You are told when it exits — do not poll it, and do not start the next
