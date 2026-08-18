@@ -2,7 +2,7 @@
 name: pick-task
 description: >-
   Decide which board card the next unattended working session takes, and return only that. This is
-  the picker session of the orchestrator: it reads the board and the open PRs, applies the order,
+  the picker subagent of the orchestrator: it reads the board and the open PRs, applies the order,
   and emits one card id — or says the day cannot go past what is standing in front of the pool.
   Triggers: "pick the next task", "qué tarea sigue", "which card is next".
 ---
@@ -23,8 +23,8 @@ python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --space Meetin
 ```
 
 **Every call starts with the word `python` and carries the path whole.** A refused call is a missing
-rule in `.claude/orchestrator/settings.json`: say so in `blocked_reason` and stop, rather than
-spelling your way around it.
+rule in `.claude/settings.json`: say so in `blocked_reason` and stop, rather than spelling your way
+around it.
 
 **Every query carries `--space MeetingTranscriber`.** The workspace holds other people's projects,
 and the filters that do not name a space — `--mine` above all — answer across all of them. An
@@ -166,9 +166,9 @@ blocked: `outcome: "blocked"` naming the PRs everything is waiting behind.
 
 ## 5 · What you emit
 
-**Your last message is the pick, and nothing else.** One JSON object, no prose around it; the
-orchestrator reads it off what you emitted and writes the file itself. The shape is in
-`pick.schema.json`, next to this file.
+**Your last message is the pick, and nothing else.** One JSON object, no prose around it: it is
+what the orchestrator receives when you return, and nothing writes it to disk on the way. The shape
+is in `pick.schema.json`, next to this file.
 
 ```json
 {
@@ -182,9 +182,9 @@ orchestrator reads it off what you emitted and writes the file itself. The shape
 }
 ```
 
-`why` is one sentence and it is not decoration: it goes on the day's stream, so an ordering rule
-that is picking the wrong thing shows up in the morning report instead of inside a transcript
-nobody opens. Say what you took **and what you passed to get to it**.
+`why` is one sentence and it is not decoration: the orchestrator says it out loud before it spawns
+the worker, so an ordering rule that is picking the wrong thing is read by somebody the moment it
+fires. Say what you took **and what you passed to get to it**.
 
 `pr_number` is said either way — the number, or `null`. Leaving the field out reads as a picker that
 found an open PR and did not mention it, and it is refused, because that card gets picked up as
@@ -193,4 +193,4 @@ fresh work and a second PR opened against it.
 **This session writes nothing to the board.** Not the card you picked — the worker moves that to
 `in progress` when it starts — and not the ones you skipped, and not the ones you found finished.
 A pick nothing consumes leaves the board exactly as it found it. Where those cards go is decided
-here, in the contract, and the orchestrator does the moving once your answer is on disk.
+here, in the contract, and the orchestrator does the moving once you have returned it.

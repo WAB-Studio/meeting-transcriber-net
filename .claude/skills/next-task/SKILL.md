@@ -30,8 +30,9 @@ python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>
 ```
 
 **`python` is the first word of the command and the path goes whole**, and `PYTHONIOENCODING` is
-already exported. A refused call is a missing rule in `.claude/orchestrator/settings.json`: **say so
-in `left_out` and stop trying to spell your way around it.**
+set to `utf-8` — the board prints accents and arrows, and the default Windows codepage cannot encode
+them. A refused call is a missing rule in `.claude/settings.json`: **say so in `left_out` and stop
+trying to spell your way around it.**
 
 **Long prose goes in a file, never on the command line.** `--text` and `--desc` take `@path`.
 Write it to `.scratch/` — the only place you may write outside the source tree,
@@ -215,10 +216,10 @@ Return to `main` with a clean tree, and take the branch tip — `git rev-parse <
 
 ## 5 · The handoff
 
-**Your last message is the handoff, and nothing else.** One JSON object, no prose around it; the
-orchestrator reads it off what you emitted and writes the file itself. You do not write that file
-— a session that said the whole handoff and forgot to write it once killed a day with the work
-done and the PR open, so the step that could be forgotten was removed rather than repeated.
+**Your last message is the handoff, and nothing else.** One JSON object, no prose around it: it is
+what the orchestrator receives when you return. Nothing writes it to disk, and there is no file for
+you to forget — a session that said the whole handoff and forgot to write it once killed a day with
+the work done and the PR open.
 
 The shape is in `handoff.schema.json`, next to this file. Four fields are the whole point:
 
@@ -234,7 +235,7 @@ The shape is in `handoff.schema.json`, next to this file. Four fields are the wh
   `passed: false` saying it did not run and why.** Substituting something weaker and not saying so
   is the one failure this whole arrangement exists to catch; the audit holds the PR over it.
 - **`head_sha`** — the exact commit you delivered. The audit returns the one it read and the
-  orchestrator stops if they disagree.
+  orchestrator stops the cycle if they disagree.
 
 An honest handoff saying `blocked` is worth more than a tidy one saying `pr_opened` over
 half-finished work. The second gets caught and stops the whole day.

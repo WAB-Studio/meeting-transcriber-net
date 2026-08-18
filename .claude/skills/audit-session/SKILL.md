@@ -16,14 +16,14 @@ in complete honesty. You exist for the second case, so one rule orders everythin
 The handoff says where to look, not what you will find. It only reaches you when there was a PR:
 a blocked worker, or one with no tasks, comments its own card and the day ends without you.
 
-The orchestrator passes the handoff path and the verdict path as arguments.
+The orchestrator hands you the handoff and the PR number when it spawns you.
 
 ```powershell
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>
 ```
 
-**`python` is the first word of the command and the path goes whole.** `PYTHONIOENCODING` is already
-exported by the orchestrator.
+**`python` is the first word of the command and the path goes whole.** `PYTHONIOENCODING` is set to
+`utf-8`: the board prints accents and arrows the default Windows codepage cannot encode.
 
 **Long prose goes in a file, never on the command line.** `--text` and `--desc` take `@path`.
 
@@ -39,8 +39,7 @@ worktree, and do not build or test locally.** What you produce goes to GitHub an
 comment on the PR, the same body on the card when it is not a `pass`, and any card you open.
 
 **Where you may write is `.scratch/`, and nowhere else.** Outside the repo is refused for being
-outside the working directory, and everything under `.claude/` is refused as a sensitive path — the
-orchestrator's own log directory included, so do not try to leave anything beside the stream. The
+outside the working directory, and everything under `.claude/` is refused as a sensitive path. The
 scratch is inside the tree because that is the only writable ground and gitignored at the root so
 nothing you leave there reaches a diff or dirties the tree the next preflight reads. Write the
 verdict body there and pass it as `@.scratch/verdict.md`.
@@ -63,7 +62,7 @@ python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --space Meetin
 ```
 
 `headRefOid` is your `audited_head_sha`, and it comes from the PR — never copy it from the
-handoff. If it disagrees with the `head_sha` the worker delivered, the orchestrator stops the day
+handoff. If it disagrees with the `head_sha` the worker delivered, the orchestrator stops the cycle
 on its own: somebody pushed on top and your verdict would be about different code.
 
 **Read the ISA at the PR's tip, not from disk.** The worker went back to `main`, so the local
@@ -213,7 +212,7 @@ The card stays in `in review` on a verdict that merges — closing it is still t
 and on `ask` the orchestrator moves it, and you do not — but on `hold` it moves it **where `card`
 says**, so the destination is a reading of the PR rather than a default. The split is deliberate: a
 session that moves a card and then dies has taken it off the board with nothing anywhere saying why,
-so the decision is yours and the act is the orchestrator's, after your verdict is on disk.
+so the decision is yours and the act is the orchestrator's, after you have returned your verdict.
 
 On all four verdicts, comment on the PR; on anything but `pass`, the same body on the card as well,
 which is what gets read in the morning. The comment exists because the verdict does not survive:
@@ -266,7 +265,8 @@ belongs to the user is written as the question to put to them, not as an impleme
 
 ## 6 · The output
 
-**Your last message is the verdict, and nothing else** — one JSON object, no prose around it. The
-orchestrator reads it off what you emitted and writes the file itself; you do not write it. The
-shape is in `verdict.schema.json`. `actions_taken` lists what you actually did, with IDs — with
-`report.md` it is what the user reads in the morning to learn what happened while they were away.
+**Your last message is the verdict, and nothing else** — one JSON object, no prose around it. It is
+what the orchestrator receives when you return, and nothing writes it to disk on the way. The shape
+is in `verdict.schema.json`. `actions_taken` lists what you actually did, with IDs: it is what the
+orchestrator repeats to the user when the cycle closes, and the whole of what they learn about this
+cycle if they were away for it.
