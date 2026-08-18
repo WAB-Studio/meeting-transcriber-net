@@ -660,24 +660,42 @@ function Complete-Journal {
 # ---------------------------------------------------------------------------------------------
 
 <#
-  Nothing holds the day open for its whole length any more: what runs is one atom at a time, and
-  between them there is no process to own a handle. So the lock is a claim with a timestamp on it,
-  refreshed by every atom, and a claim nobody has touched in longer than a session can legally take
-  is not a claim.
+  Nothing holds the day open for its whole length: what runs is one atom at a time, and between
+  them there is no process to own a handle. So the lock is a claim in a file, taken by the atom
+  that opens the day and refreshed by every atom after it.
 
-  That is weaker than a handle the OS releases on death, and the weakness is bounded: a day killed
-  outright keeps the next one out for `LockStaleMinutes` and no longer.
+  It carries the run, which is what lets every atom take no arguments. A command with a path in it
+  is a command something has to spell, and the layer that decides permissions splits on characters
+  that appear in paths -- so the one place the current run is written down is here, and the atoms
+  read it rather than being told.
 
-  It also carries the run, which is what lets every atom take no arguments. A command with a path
-  in it is a command something has to spell, and the layer that decides permissions splits on
-  characters that appear in paths -- so the one place the current run is written down is here, and
-  the atoms read it rather than being told.
+  **Nothing times it out.** A claim used to go stale after two and a half hours: before that a
+  killed day kept the next one out, and after it the next one took the claim and opened a run of
+  its own. Both halves are wrong now that a stopped run is continued -- the first locks the second
+  terminal out of the very run it is there to pick up, and the second throws that run's cycles and
+  spend away. So the lock says which run is in hand and nothing else. Whether that run is over is
+  its own stream's answer, `day_ended`, and never a clock's.
 #>
-$script:LockStaleMinutes = 150     # the session clock is 90; this leaves room for one plus its close
-
 function Get-LockPath {
   param([Parameter(Mandatory)][string]$OrchestratorDir)
   return (Join-Path $OrchestratorDir "day.lock")
+}
+
+<#
+  What the lock says, in the three answers a caller has to tell apart. Rounding "could not be read"
+  down to "free" is how two days end up sharing a checkout: a contender reading during somebody
+  else's write sees exactly that, and unreadable is not permission.
+#>
+function Read-DayLock {
+  param([Parameter(Mandatory)][string]$OrchestratorDir)
+  $p = Get-LockPath $OrchestratorDir
+  if (-not (Test-Path $p)) { return [pscustomobject]@{ State = "free"; Run = ""; Dir = "" } }
+  $held = $null
+  try { $held = (Get-Content $p -Raw -ErrorAction Stop) | ConvertFrom-Json } catch { $held = $null }
+  if ($null -eq $held -or -not [string]$held.run) {
+    return [pscustomobject]@{ State = "unreadable"; Run = ""; Dir = "" }
+  }
+  return [pscustomobject]@{ State = "held"; Run = [string]$held.run; Dir = [string]$held.dir }
 }
 
 <#
@@ -685,39 +703,25 @@ function Get-LockPath {
   second -- the scheduled one and yours -- both saw no lock and both proceeded, and from there two
   orchestrators shared a checkout, a card and a set of files while each believed it owned them.
 
-  Taking over a stale claim is the one path that reads before it writes, and that is sound because
-  stale means nothing has touched it for two and a half hours.
+  It is only ever asked for a run the caller is about to work on. `New-DayRun` decides between
+  continuing what is unfinished and opening something new before it reaches here, and a claim left
+  behind by a run that wrote its ending is released there. So nothing is left that could override
+  somebody else's claim: it is theirs, and the answer is no.
 #>
 function Enter-DayLock {
   param([Parameter(Mandatory)][string]$OrchestratorDir, [Parameter(Mandatory)][string]$LogDir)
-  $p = Get-LockPath $OrchestratorDir
   $run = Split-Path -Leaf $LogDir
 
-  if (Test-NewLock -Path $p) {
+  if (Test-NewLock -Path (Get-LockPath $OrchestratorDir)) {
     Update-DayLock -OrchestratorDir $OrchestratorDir -LogDir $LogDir
     return ""
   }
 
-  $held = $null
-  try { $held = (Get-Content $p -Raw -ErrorAction Stop) | ConvertFrom-Json } catch { $held = $null }
+  $held = Read-DayLock -OrchestratorDir $OrchestratorDir
+  if ($held.State -eq "unreadable") { return "the lock could not be read, so it is not free" }
+  if ($held.State -eq "free")       { return "the lock was released while it was being taken" }
+  if ($held.Run -ne $run)           { return "the day $($held.Run) holds the lock" }
 
-  # Unreadable is not permission. A contender reading during somebody else's write sees exactly
-  # this, and treating it as a free lock is how two days end up sharing a checkout.
-  if ($null -eq $held -or -not [string]$held.run) { return "the lock could not be read, so it is not free" }
-  if ([string]$held.run -eq $run) {
-    Update-DayLock -OrchestratorDir $OrchestratorDir -LogDir $LogDir
-    return ""
-  }
-
-  $age = ((Get-Date).ToUniversalTime() - ([datetime][string]$held.ts).ToUniversalTime()).TotalMinutes
-  if ($age -lt $script:LockStaleMinutes) {
-    return ("the day {0} holds the lock and touched it {1:N0} min ago" -f $held.run, $age)
-  }
-
-  # Taking over goes through the same atomic create as a free lock, so two contenders that both see
-  # the same stale claim cannot both win: overwriting it outright let them.
-  Remove-Item $p -Force -ErrorAction SilentlyContinue
-  if (-not (Test-NewLock -Path $p)) { return "another day took the stale lock first" }
   Update-DayLock -OrchestratorDir $OrchestratorDir -LogDir $LogDir
   return ""
 }
@@ -734,13 +738,46 @@ function Test-NewLock {
   } catch { return $false }
 }
 
+<#
+  Written beside the lock and moved onto it, never written through it. Every atom refreshes this,
+  so the truncate-then-write it used to be had a window on every single one of them where the file
+  on disk was empty or half a claim -- and a kill inside that window is not exotic, it is the
+  ordinary way a day stops here.
+
+  What that cost changed when a stopped run began to be continued. `Read-DayLock` calls a torn file
+  `unreadable`, `Resolve-DayRun` refuses on it, and the staleness clock that used to free it after
+  two and a half hours is gone on purpose. So a kill mid-write left the run unresumable for good:
+  the one outcome this whole change exists to remove, arrived at through the lock rather than
+  through the run.
+
+  The replace is one operation to every other reader, so there is no moment at which the lock is
+  half a claim. `File.Replace` needs the destination to exist -- the first write after
+  `Test-NewLock` finds an empty file, which counts -- and a move covers the case where it does not.
+  It also needs somewhere to put what it replaced: this runtime refuses the null the newer one
+  takes, so the old claim is moved aside and dropped, and a crash between the two leaves a file
+  nothing reads rather than a lock nobody can.
+#>
 function Update-DayLock {
   param([Parameter(Mandatory)][string]$OrchestratorDir, [Parameter(Mandatory)][string]$LogDir)
   $o = [pscustomobject][ordered]@{
     run = (Split-Path -Leaf $LogDir); dir = $LogDir
     ts  = (Get-Date).ToUniversalTime().ToString("o")
   }
-  [System.IO.File]::WriteAllText((Get-LockPath $OrchestratorDir), ($o | ConvertTo-Json -Compress), $script:Utf8NoBom)
+  # Absolute, because `File.Replace` refuses a relative one and every probe hands this a sandbox
+  # path built from where it happened to be standing.
+  $path = [System.IO.Path]::GetFullPath((Get-LockPath $OrchestratorDir))
+  $tmp = "$path.$PID.tmp"
+  $old = "$path.$PID.old"
+  [System.IO.File]::WriteAllText($tmp, ($o | ConvertTo-Json -Compress), $script:Utf8NoBom)
+  try {
+    if (Test-Path $path) { [System.IO.File]::Replace($tmp, $path, $old) }
+    else { [System.IO.File]::Move($tmp, $path) }
+  } catch {
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    throw
+  } finally {
+    Remove-Item $old -Force -ErrorAction SilentlyContinue
+  }
 }
 
 <#
@@ -765,11 +802,9 @@ function Exit-DayLock {
 #>
 function Get-CurrentRun {
   param([Parameter(Mandatory)][string]$OrchestratorDir)
-  $p = Get-LockPath $OrchestratorDir
-  if (-not (Test-Path $p)) { return "" }
-  try { $held = (Get-Content $p -Raw -ErrorAction Stop) | ConvertFrom-Json } catch { return "" }
-  $dir = [string]$held.dir
-  if ($dir -and (Test-Path $dir)) { return $dir }
+  $held = Read-DayLock -OrchestratorDir $OrchestratorDir
+  if ($held.State -ne "held") { return "" }
+  if ($held.Dir -and (Test-Path $held.Dir)) { return $held.Dir }
   return ""
 }
 
@@ -838,6 +873,126 @@ function Get-CurrentCycle {
     if ($e.kind -eq "session_started" -and [string]$e.role -eq "worker") { $n++ }
   }
   return $n
+}
+
+<#
+  Continue or open, decided and nothing done about it. Three answers, and only the lock and the
+  stream of the run it names are read to reach them:
+
+  - `continue` -- the lock names a run that never wrote its ending. It is picked up in place, with
+    its cycles, its spend and its events carrying on.
+  - `open` -- nothing is unfinished. `Release` is the claim of a run that did write its ending and
+    whose unlock `end-day.ps1` did not get to; a dead run's bookkeeping does not hold a live day out.
+  - `refuse` -- the lock is there and cannot be read, which is not permission. A contender reading
+    during somebody else's write sees exactly that.
+
+  Split from the atom that acts on it because this is the decision the whole thing turns on, and the
+  atom around it cannot be probed: it claims the real checkout and the real lease.
+#>
+function Resolve-DayRun {
+  param([Parameter(Mandatory)][string]$OrchestratorDir)
+  $held = Read-DayLock -OrchestratorDir $OrchestratorDir
+  if ($held.State -eq "unreadable") {
+    return [pscustomobject]@{
+      Action = "refuse"; Continue = ""; Release = ""
+      Error = "the lock could not be read, so it is not free"
+    }
+  }
+  if ($held.State -eq "held" -and $held.Dir -and (Test-Path $held.Dir)) {
+    if (-not (Test-DayEnded -LogDir $held.Dir)) {
+      return [pscustomobject]@{ Action = "continue"; Continue = $held.Dir; Release = ""; Error = "" }
+    }
+    return [pscustomobject]@{ Action = "open"; Continue = ""; Release = $held.Dir; Error = "" }
+  }
+  return [pscustomobject]@{ Action = "open"; Continue = ""; Release = ""; Error = "" }
+}
+
+<#
+  Whether a run wrote its ending, which is the only thing that says a run is over. Not the lock,
+  not how long ago anything touched it, not whether a process is still alive: a day is finished
+  when `end-day.ps1` said so on its own stream, and unfinished every other way it can stop.
+#>
+function Test-DayEnded {
+  param([Parameter(Mandatory)][string]$LogDir)
+  foreach ($e in (Read-DayEvents $LogDir)) { if ([string]$e.kind -eq "day_ended") { return $true } }
+  return $false
+}
+
+<#
+  Which atom the run in hand is waiting on, worked out from what is on disk rather than from what
+  somebody remembers running. A day picked up in another terminal has no memory of where it stopped,
+  and the loop's own entry point is not the answer: `run-picker.ps1` over a cycle that already has
+  its handoff refuses with "still open", which is true and says nothing about whether what is
+  missing is the audit or the close. A sequencer left to work that out is a sequencer improvising.
+
+  The order inside a cycle is pick, work, audit, close, and each of them leaves something behind. So
+  the answer is the first one that left nothing, and none of the atoms before it runs again -- which
+  is what keeps a continued day from paying a second time for a session it already has. The pick is
+  one of the four: a cycle that has one and no worker is waiting on the worker, not on a second look
+  at the board.
+
+  A worker that started and emitted nothing is the close, and never the worker again. There is no
+  handoff to reconstruct without a script asserting probes that never ran, and its card is sitting
+  in `in progress`, which is what the picker's first rule already means: a session that died
+  halfway. So the cycle is finished with and the card is taken up by the next pick, through the one
+  rule that exists for it, rather than by a second session launched over a charge that may already
+  have happened.
+#>
+function Get-ResumePoint {
+  param([Parameter(Mandatory)][string]$LogDir)
+  $cycle = Get-CurrentCycle -LogDir $LogDir
+
+  # The pick is a step like the other three and leaves something behind like the other three, and
+  # reading past it was this function contradicting its own rule. A run stopped between the pick and
+  # its worker -- the narrowest gap in a cycle and the one a person kills a terminal in -- has a
+  # card already chosen and paid for, sitting in `pick-N.json`.
+  #
+  # Sending it back to `run-picker.ps1` was nearly harmless, because the picker returns a pick it
+  # already made rather than making it again. Nearly: it asks the board first, and a board that is
+  # unreadable or that has gone quiet since ends the day there -- on `no_tasks`, over a card that
+  # was chosen, announced and never worked.
+  if ($cycle -le 0 -or (Test-CycleClosed -LogDir $LogDir -Cycle $cycle)) {
+    $next = $cycle + 1
+    $pp = Join-Path $LogDir "pick-$next.json"
+    if (Test-Path $pp) {
+      $pk = $null
+      try { $pk = (Get-Content $pp -Raw) | ConvertFrom-Json } catch { $pk = $null }
+      # Only a pick that names a card is work waiting. `no_tasks` and `blocked` are endings, and the
+      # picker prints its own back without spending anything.
+      if ($pk -and [string]$pk.outcome -eq "picked" -and [string]$pk.task_id) {
+        return [pscustomobject]@{
+          Next = "run-worker.ps1"; Cycle = $next
+          Reason = "cycle $next is picked -- $([string]$pk.task_id) -- and its worker never started"
+        }
+      }
+    }
+  }
+
+  if ($cycle -le 0) { return [pscustomobject]@{ Next = "run-picker.ps1"; Cycle = 0; Reason = "no worker has run yet" } }
+
+  $h = $null
+  $hp = Join-Path $LogDir "handoff-$cycle.json"
+  if (Test-Path $hp) { try { $h = (Get-Content $hp -Raw) | ConvertFrom-Json } catch { $h = $null } }
+
+  if (Test-CycleClosed -LogDir $LogDir -Cycle $cycle) {
+    return [pscustomobject]@{ Next = "run-picker.ps1"; Cycle = $cycle; Reason = "cycle $cycle is closed" }
+  }
+  if ($null -eq $h -or -not [string]$h.outcome) {
+    return [pscustomobject]@{
+      Next = "close-cycle.ps1"; Cycle = $cycle
+      Reason = "cycle $cycle's worker left no handoff"
+    }
+  }
+  if ([string]$h.outcome -ne "pr_opened") {
+    return [pscustomobject]@{
+      Next = "close-cycle.ps1"; Cycle = $cycle
+      Reason = "cycle $cycle ended as '$([string]$h.outcome)', so there is no PR to audit"
+    }
+  }
+  if (Test-CycleEvent -LogDir $LogDir -Cycle $cycle -Kinds @("verdict")) {
+    return [pscustomobject]@{ Next = "close-cycle.ps1"; Cycle = $cycle; Reason = "cycle $cycle already has a verdict" }
+  }
+  return [pscustomobject]@{ Next = "run-audit.ps1"; Cycle = $cycle; Reason = "cycle $cycle has a PR and no verdict" }
 }
 
 # ---------------------------------------------------------------------------------------------
@@ -934,9 +1089,22 @@ function Test-ParkCeiling {
           "is behind the board, and another cycle would only send back a third")
 }
 
+<#
+  `Spent` is whether the condition is over: the anomaly happened, the report keeps it, and the day
+  is not stopped by it again. Every anomaly derived here is spent the moment it is written down,
+  because deriving it is what says whether it is true *now* -- a window that has since reopened and
+  a kill a later session got past both stop firing on their own. The ones that are not spent are
+  written straight to the stream by an atom, and say something about the run that stays true:
+  `pick_ignored` is a worker that came back holding another card, and no later session makes that
+  untrue.
+
+  The distinction lives on the anomaly rather than in the reader because there is one reader per
+  question -- the report asks for all of them, `Get-HaltingAnomalies` asks for the ones that stop
+  the day -- and a list of codes in the second reader would be the first place to go stale.
+#>
 function New-Anomaly {
-  param([string]$Level, [string]$Code, [string]$Text)
-  return [pscustomobject]@{ level = $Level; code = $Code; text = $Text }
+  param([string]$Level, [string]$Code, [string]$Text, [bool]$Spent = $false)
+  return [pscustomobject]@{ level = $Level; code = $Code; text = $Text; spent = $Spent }
 }
 
 <#
@@ -999,12 +1167,21 @@ function Get-DayAnomalies {
       "the live session's stream could not be read, so nothing below it was measured -- no silence, no denials, no tool calls: {0}" -f $Status.Unreadable)))
   }
 
+  # A window that has since reopened is not a window that is closed. The event stays on the stream
+  # because the report promises it, and reading it as current for as long as the run lives is what a
+  # day stopped by the window meets the moment it is continued: the one stop this was built to
+  # survive would have ended it again on its first check, hours after the limit had lifted.
   if ($Status.RateLimit -and $Status.RateLimit.status -and $Status.RateLimit.status -ne "allowed") {
     $reset = ""
+    $lifted = $false
     if ($Status.RateLimit.resetsAt) {
-      $reset = " (back at " + ([DateTimeOffset]::FromUnixTimeSeconds([int64]$Status.RateLimit.resetsAt)).LocalDateTime.ToString("HH:mm") + ")"
+      $at = [DateTimeOffset]::FromUnixTimeSeconds([int64]$Status.RateLimit.resetsAt)
+      $reset = " (back at " + $at.LocalDateTime.ToString("HH:mm") + ")"
+      $lifted = $at -le [DateTimeOffset]::UtcNow
     }
-    $null = $out.Add((New-Anomaly "stop" "window" ("the usage window says '{0}'{1}" -f $Status.RateLimit.status, $reset)))
+    if (-not $lifted) {
+      $null = $out.Add((New-Anomaly "stop" "window" ("the usage window says '{0}'{1}" -f $Status.RateLimit.status, $reset)))
+    }
   }
 
   # Matched on how the reason starts, not on the bare word. `end-day.ps1` writes the ending as
@@ -1026,11 +1203,18 @@ function Get-DayAnomalies {
 
   # Anomalies already written to the stream come back even when the state that produced them is
   # gone. Deduplicated on their text, so a rule that fires twice over the same condition reads once.
+  #
+  # They come back carrying whether they are spent, and a `stop` that is spent is history rather
+  # than a reason to stop: every rule above recomputes from what is true now, so one that is still
+  # true has already fired above and one that is not must not come back through here. Replaying
+  # them at full weight was what made the two anomalies this file exists to survive -- a killed
+  # session and a closed window -- end every day continued past them, hours after the condition
+  # they name had gone.
   $seen = @{}
   foreach ($a in $out) { $seen[[string]$a.text] = $true }
   foreach ($p in @($Status.Past)) {
     if ($p -and -not $seen.ContainsKey([string]$p.text)) {
-      $null = $out.Add((New-Anomaly $p.level $p.code $p.text))
+      $null = $out.Add((New-Anomaly $p.level $p.code $p.text ([bool]$p.spent)))
       $seen[[string]$p.text] = $true
     }
   }
@@ -1042,11 +1226,12 @@ function Get-DayAnomalies {
   Which anomalies end the day, as one function so the executor and the probe cannot drift apart. A
   level of `stop` means stop: labelling a condition and then merging anyway would make the level
   decoration, which is what it was before this existed. `stopped` is excluded because it is the
-  day's own ending being reported back, not a reason to end it again.
+  day's own ending being reported back, not a reason to end it again, and a spent one because the
+  condition it names is over -- `New-Anomaly` says which are which and why.
 #>
 function Get-HaltingAnomalies {
   param([Parameter(Mandatory)]$Status)
-  return @($Status.Anomalies | Where-Object { $_.level -eq "stop" -and $_.code -ne "stopped" })
+  return @($Status.Anomalies | Where-Object { $_.level -eq "stop" -and $_.code -ne "stopped" -and -not $_.spent })
 }
 
 function Get-Median {
@@ -1128,7 +1313,8 @@ function Get-DayStatus {
       # a 20-minute silence disappears the moment the session ends, and a cycle that cost triple
       # the median stops looking like one as soon as another cycle moves the median. The morning
       # report promises every anomaly that fired, so every anomaly that fired is on the stream.
-      "anomaly"     { $st.Past += [pscustomobject]@{ level = [string]$e.level; code = [string]$e.code; text = [string]$e.text } }
+      "anomaly"     { $st.Past += [pscustomobject]@{ level = [string]$e.level; code = [string]$e.code
+                                                     text = [string]$e.text; spent = [bool]$e.spent } }
       "session_started" {
         $st.Cycle = [int]$e.cycle
         $st.Role = [string]$e.role
@@ -1139,6 +1325,7 @@ function Get-DayStatus {
       }
       "session_ended" {
         $st.Running = $false
+        $st.Killed = $false
         $openStream = $null
         $openPid = $null
         if ($null -ne $e.cost) { $st.Cost += [double]$e.cost }
@@ -1146,6 +1333,9 @@ function Get-DayStatus {
         if (-not $cycles.ContainsKey($c)) { $cycles[$c] = [ordered]@{ cycle = $c; cost = 0.0 } }
         $cycles[$c].cost += [double]$e.cost
       }
+      # Cleared by a session that ran afterwards and finished. A kill is what stops the run it
+      # happens in, and it is written down where it fires; left standing it also stopped every run
+      # continued past it, which is a day ended over something already got past.
       "session_killed" { $st.Killed = $true; $st.Running = $false; $openStream = $null }
       "session_failed" { $st.Running = $false; $openStream = $null }
       # Seeded here as well as from the handoff, so a cycle that ended at the pick -- no card taken,
@@ -1431,8 +1621,9 @@ Export-ModuleMember -Function Add-Utf8Line, Get-EventsPath, Read-OpenFileLines, 
   Test-DecisionsOwed, Resolve-Verdict, Get-CardDestination,
   New-Denial, Get-ResultDenials, Get-DenialKey, Group-Denials,
   Get-JournalPath, Test-JournalBody, Get-JournalTask, Reset-Journal, Complete-Journal,
-  Get-LockPath, Test-NewLock, Enter-DayLock, Update-DayLock, Exit-DayLock,
-  Get-CurrentRun, Get-CurrentCycle, Test-CycleEvent, Test-CycleClosed,
+  Get-LockPath, Read-DayLock, Test-NewLock, Enter-DayLock, Update-DayLock, Exit-DayLock,
+  Get-CurrentRun, Get-CurrentCycle, Test-DayEnded, Resolve-DayRun, Get-ResumePoint,
+  Test-CycleEvent, Test-CycleClosed,
   Read-BoardCount, Read-SpaceStatuses,
   Get-DayRules, Get-DayAnomalies, Get-HaltingAnomalies, Get-Median, Test-ParkCeiling,
   Find-LatestRun, Get-DayStatus, Write-DayReport

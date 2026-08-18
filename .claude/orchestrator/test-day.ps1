@@ -54,6 +54,15 @@ function New-QuietStatus {
   }
 }
 
+# A pick on disk the way the picker leaves one: the contract, not the event, because the contract is
+# what a continued run reads.
+function Save-Pick {
+  param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][int]$Cycle,
+        [Parameter(Mandatory)][string]$Outcome, [string]$Task = "")
+  $o = [pscustomobject][ordered]@{ outcome = $Outcome; task_id = $Task; why = "a probe put this here" }
+  [System.IO.File]::WriteAllText((Join-Path $Dir "pick-$Cycle.json"), ($o | ConvertTo-Json -Compress))
+}
+
 # What the executor actually does with a status, asked of the same function the executor asks, so
 # the two cannot drift. The question here is always "would this have stopped the day", never "is
 # the label right" -- a label the loop ignores is what the review caught the first time round.
@@ -684,10 +693,20 @@ Check "a single denial is loud but does not stop the day" {
   ""
 }
 
+# `resetsAt` relative to now and never a fixed epoch. The first version of this pinned one, the day
+# it names went past, and the probe for a closed window was asserting an open one.
+function New-Window {
+  param([Parameter(Mandatory)][string]$Status, [Parameter(Mandatory)][int]$InMinutes)
+  return [pscustomobject]@{
+    status = $Status
+    resetsAt = [DateTimeOffset]::UtcNow.AddMinutes($InMinutes).ToUnixTimeSeconds()
+  }
+}
+
 Check "a closed window stops the day, and so does a killed session" {
   foreach ($case in @("window", "killed")) {
     $st = New-QuietStatus
-    if ($case -eq "window") { $st.RateLimit = [pscustomobject]@{ status = "rejected"; resetsAt = 1786926600 } }
+    if ($case -eq "window") { $st.RateLimit = New-Window -Status "rejected" -InMinutes 30 }
     else { $st.Killed = $true }
     $st.Anomalies = Get-DayAnomalies -Status $st
     if (-not (Test-WouldHalt $st)) { return "$case did not stop the day" }
@@ -740,7 +759,7 @@ Check "without enough samples cost does not fire" {
 
 Check "a closed usage window stops the day" {
   $st = New-QuietStatus
-  $st.RateLimit = [pscustomobject]@{ status = "rejected"; resetsAt = 1786926600 }
+  $st.RateLimit = New-Window -Status "rejected" -InMinutes 30
   $a = Get-DayAnomalies -Status $st
   $v = @($a | Where-Object { $_.code -eq "window" })
   if (-not $v.Count) { return "did not fire" }
@@ -748,9 +767,20 @@ Check "a closed usage window stops the day" {
   ""
 }
 
+# The stop this whole change exists to survive. A run stopped by the window carries that event for
+# as long as it lives, so a run continued after the limit lifted read its own history as the present
+# and ended again on the first thing that looked.
+Check "a window that has since reopened does not stop the day it is continued into" {
+  $st = New-QuietStatus
+  $st.RateLimit = New-Window -Status "rejected" -InMinutes -30
+  $a = Get-DayAnomalies -Status $st
+  if (@($a | Where-Object { $_.code -eq "window" }).Count) { return "a limit that has lifted still stopped the day" }
+  ""
+}
+
 Check "an open window fires nothing" {
   $st = New-QuietStatus
-  $st.RateLimit = [pscustomobject]@{ status = "allowed"; resetsAt = 1786926600 }
+  $st.RateLimit = New-Window -Status "allowed" -InMinutes 30
   $a = Get-DayAnomalies -Status $st
   if ($a.Count -ne 0) { return "fired $(($a | ForEach-Object { $_.code }) -join ',')" }
   ""
@@ -1226,6 +1256,19 @@ Check "a cycle that opened no PR still has to be closed before the next one" {
   } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
+# A worker killed before it emitted anything leaves no handoff at all. Asking for one first, the way
+# this used to, read a cycle nothing had closed as one nothing had opened -- and a run continued past
+# that kill would have let the next pick take a fresh card while this one's PR, if there was one,
+# sat unaudited with its card in progress.
+Check "a cycle whose worker left no handoff at all is still open" {
+  $box = New-Sandbox
+  try {
+    $day = [pscustomobject]@{ LogDir = $box; Cycle = 1; Repo = "x" }
+    if ((Test-CycleStillOpen -Day $day) -eq "") { return "a cycle with no handoff read as closed" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 # A cycle whose worker built nothing had its card placed by that worker, with the card in front of
 # it. Nothing on this side moves it, so there is no board write to half-land and no `moved` to wait
 # for -- and a closer that waited for one left the cycle open forever, which stops the next pick.
@@ -1477,17 +1520,23 @@ Check "only one day can take over a stale lock" {
   $orch = New-Sandbox
   try {
     $dead = Join-Path $orch "log\2026-08-17_000000"
-    $stale = [pscustomobject]@{ run = "2026-08-17_000000"; dir = $dead
-                                ts = (Get-Date).ToUniversalTime().AddMinutes(-400).ToString("o") }
-    [System.IO.File]::WriteAllText((Get-LockPath $orch), ($stale | ConvertTo-Json -Compress))
+    New-Item -ItemType Directory -Force $dead | Out-Null
+    New-DayEvent -LogDir $dead -Kind "day_ended" -Data @{ reason = "no_tasks -- nothing left" } | Out-Null
+    $spent = [pscustomobject]@{ run = "2026-08-17_000000"; dir = $dead
+                                ts = (Get-Date).ToUniversalTime().ToString("o") }
+    [System.IO.File]::WriteAllText((Get-LockPath $orch), ($spent | ConvertTo-Json -Compress))
 
     $a = Join-Path $orch "log\2026-08-17_090000"
     $b = Join-Path $orch "log\2026-08-17_090001"
     New-Item -ItemType Directory -Force $a | Out-Null
     New-Item -ItemType Directory -Force $b | Out-Null
 
-    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $a) -ne "") { return "the first contender could not take a stale lock" }
-    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $b) -eq "") { return "both contenders took the same stale lock" }
+    $call = Resolve-DayRun -OrchestratorDir $orch
+    if ($call.Action -ne "open") { return "a run that wrote its ending was continued" }
+    Exit-DayLock -OrchestratorDir $orch -LogDir $call.Release
+
+    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $a) -ne "") { return "the first contender could not take the released lock" }
+    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $b) -eq "") { return "both contenders took the same lock" }
     ""
   } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
 }
@@ -1505,15 +1554,78 @@ Check "a lock that cannot be read is not treated as free" {
   } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
-Check "a lock nobody has touched for hours is not a lock" {
+# The whole of what a stopped day gets. A run left unfinished is picked up in place -- however long
+# ago it stopped, and from whatever terminal asks -- because a folder opened beside it means the next
+# cycle re-picks and re-runs work already paid for. Two runs went that way in one night.
+Check "a run that never wrote its ending is continued, however long ago it stopped" {
   $orch = New-Sandbox
   try {
-    $stale = [pscustomobject]@{ run = "2026-08-17_000000"; dir = "$orch\log\2026-08-17_000000"
-                                ts = (Get-Date).ToUniversalTime().AddMinutes(-400).ToString("o") }
-    [System.IO.File]::WriteAllText((Get-LockPath $orch), ($stale | ConvertTo-Json -Compress))
-    $mine = Join-Path $orch "log\2026-08-17_090000"
-    New-Item -ItemType Directory -Force $mine | Out-Null
-    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $mine) -ne "") { return "a stale claim kept the day out" }
+    $dead = Join-Path $orch "log\2026-08-17_000000"
+    New-Item -ItemType Directory -Force $dead | Out-Null
+    New-DayEvent -LogDir $dead -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    $old = [pscustomobject]@{ run = "2026-08-17_000000"; dir = $dead
+                              ts = (Get-Date).ToUniversalTime().AddMinutes(-400).ToString("o") }
+    [System.IO.File]::WriteAllText((Get-LockPath $orch), ($old | ConvertTo-Json -Compress))
+
+    $call = Resolve-DayRun -OrchestratorDir $orch
+    if ($call.Action -ne "continue") { return "it wanted to $($call.Action) instead of continuing" }
+    if ($call.Continue -ne $dead) { return "it continued $($call.Continue)" }
+
+    # And the run it continues is one it may claim, which is the half a timeout used to decide.
+    if ((Enter-DayLock -OrchestratorDir $orch -LogDir $dead) -ne "") { return "its own run's claim kept it out" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "a run that wrote its ending is not continued, and its claim does not outlive it" {
+  $orch = New-Sandbox
+  try {
+    $done = Join-Path $orch "log\2026-08-17_000000"
+    New-Item -ItemType Directory -Force $done | Out-Null
+    New-DayEvent -LogDir $done -Kind "day_started" -Data @{ repo = "x" } | Out-Null
+    New-DayEvent -LogDir $done -Kind "day_ended" -Data @{ reason = "ended by hand" } | Out-Null
+    $spent = [pscustomobject]@{ run = "2026-08-17_000000"; dir = $done
+                                ts = (Get-Date).ToUniversalTime().ToString("o") }
+    [System.IO.File]::WriteAllText((Get-LockPath $orch), ($spent | ConvertTo-Json -Compress))
+
+    $call = Resolve-DayRun -OrchestratorDir $orch
+    if ($call.Action -ne "open") { return "a finished run was continued" }
+    if ($call.Release -ne $done) { return "the finished run's claim was left where it was" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "an unreadable lock is refused rather than continued or opened over" {
+  $orch = New-Sandbox
+  try {
+    [System.IO.File]::WriteAllText((Get-LockPath $orch), "{ this is not json")
+    $call = Resolve-DayRun -OrchestratorDir $orch
+    if ($call.Action -ne "refuse") { return "it wanted to $($call.Action)" }
+    if (-not $call.Error) { return "it refused and did not say why" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "no lock at all opens a run rather than continuing nothing" {
+  $orch = New-Sandbox
+  try {
+    $call = Resolve-DayRun -OrchestratorDir $orch
+    if ($call.Action -ne "open") { return "it wanted to $($call.Action)" }
+    if ($call.Release -ne "") { return "it had something to release with no lock there" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# A lock naming a run whose folder is gone cannot be continued and cannot be asked whether it ended.
+# It is over as far as anything here can tell.
+Check "a lock naming a run whose folder is gone opens a new one" {
+  $orch = New-Sandbox
+  try {
+    $ghost = [pscustomobject]@{ run = "2026-08-17_000000"; dir = (Join-Path $orch "log\2026-08-17_000000")
+                                ts = (Get-Date).ToUniversalTime().ToString("o") }
+    [System.IO.File]::WriteAllText((Get-LockPath $orch), ($ghost | ConvertTo-Json -Compress))
+    $call = Resolve-DayRun -OrchestratorDir $orch
+    if ($call.Action -ne "open") { return "it wanted to $($call.Action)" }
     ""
   } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
 }
@@ -1551,6 +1663,183 @@ Check "the run and the cycle are read off the lock and the stream" {
 
     Exit-DayLock -OrchestratorDir $orch
     if ((Get-CurrentRun -OrchestratorDir $orch) -ne "") { return "a released lock still names a day" }
+    ""
+  } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# A session re-run on a cycle a kill already opened must not overwrite that kill's transcript --
+# once, it was the only record of a finished session's work.
+Check "a free stream path never collides with one already on disk" {
+  $box = New-Sandbox
+  try {
+    $first = Get-FreeStreamPath -LogDir $box -Role "worker" -Cycle 1
+    if ($first -notmatch 'worker-1\.stream\.jsonl$') { return "the first take was named $first" }
+    [System.IO.File]::WriteAllText($first, "")
+
+    $second = Get-FreeStreamPath -LogDir $box -Role "worker" -Cycle 1
+    if ($second -eq $first) { return "a second call over the same cycle reused the first stream" }
+    [System.IO.File]::WriteAllText($second, "")
+
+    $third = Get-FreeStreamPath -LogDir $box -Role "worker" -Cycle 1
+    if ($third -eq $first -or $third -eq $second) { return "a third call collided with an earlier one" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# Which atom a continued run is waiting on, worked out from what is on disk. This is what lets a
+# picked-up run land on the first atom with nothing done yet, rather than repeating whatever the
+# loop happened to call last.
+Check "the resume point is the pick when nothing has run" {
+  $box = New-Sandbox
+  try {
+    $r = Get-ResumePoint -LogDir $box
+    if ($r.Next -ne "run-picker.ps1") { return "it named $($r.Next)" }
+    if ($r.Cycle -ne 0) { return "it named cycle $($r.Cycle)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "the resume point is the close when the worker left no handoff" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker" } | Out-Null
+    $r = Get-ResumePoint -LogDir $box
+    if ($r.Next -ne "close-cycle.ps1") { return "it named $($r.Next)" }
+    if ($r.Cycle -ne 1) { return "it named cycle $($r.Cycle)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "the resume point is the close when the cycle built no PR" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker" } | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $box "handoff-1.json"),
+      (@{ outcome = "already_done"; task_id = "T1" } | ConvertTo-Json))
+    $r = Get-ResumePoint -LogDir $box
+    if ($r.Next -ne "close-cycle.ps1") { return "it named $($r.Next)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "the resume point is the audit when a PR is open and nothing has judged it" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker" } | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $box "handoff-1.json"),
+      (@{ outcome = "pr_opened"; task_id = "T1"; pr_number = 9; head_sha = "abc" } | ConvertTo-Json))
+    $r = Get-ResumePoint -LogDir $box
+    if ($r.Next -ne "run-audit.ps1") { return "it named $($r.Next)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "the resume point is the close once a verdict landed" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker" } | Out-Null
+    [System.IO.File]::WriteAllText((Join-Path $box "handoff-1.json"),
+      (@{ outcome = "pr_opened"; task_id = "T1"; pr_number = 9; head_sha = "abc" } | ConvertTo-Json))
+    New-DayEvent -LogDir $box -Kind "verdict" -Data @{ cycle = 1; verdict = "pass" } | Out-Null
+    $r = Get-ResumePoint -LogDir $box
+    if ($r.Next -ne "close-cycle.ps1") { return "it named $($r.Next)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "the resume point is the next pick once a cycle is closed" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "settled" -Data @{ cycle = 1; task_id = "T1"; outcome = "blocked" } | Out-Null
+    $r = Get-ResumePoint -LogDir $box
+    if ($r.Next -ne "run-picker.ps1") { return "it named $($r.Next)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The gap between a pick and its worker is the narrowest in a cycle and the one a terminal gets
+# killed in. What is on disk is a card already chosen and already paid for.
+Check "the resume point is the worker when a pick is on disk and no worker has run" {
+  $box = New-Sandbox
+  try {
+    Save-Pick -Dir $box -Cycle 1 -Outcome "picked" -Task "86ak22prm"
+    $r = Get-ResumePoint -LogDir $box
+    if ($r.Next -ne "run-worker.ps1") { return "it named $($r.Next)" }
+    if ($r.Cycle -ne 1) { return "it named cycle $($r.Cycle)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+Check "the resume point is the worker for the pick made after a closed cycle" {
+  $box = New-Sandbox
+  try {
+    New-DayEvent -LogDir $box -Kind "session_started" -Data @{ cycle = 1; role = "worker" } | Out-Null
+    New-DayEvent -LogDir $box -Kind "settled" -Data @{ cycle = 1; task_id = "T1"; outcome = "blocked" } | Out-Null
+    Save-Pick -Dir $box -Cycle 2 -Outcome "picked" -Task "T2"
+    $r = Get-ResumePoint -LogDir $box
+    if ($r.Next -ne "run-worker.ps1") { return "it named $($r.Next)" }
+    if ($r.Cycle -ne 2) { return "it named cycle $($r.Cycle)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# A pick that names no card is an ending, not work waiting: the picker prints its own back and
+# nothing is launched over it.
+Check "a pick that ended the day does not resume into a worker" {
+  $box = New-Sandbox
+  try {
+    Save-Pick -Dir $box -Cycle 1 -Outcome "no_tasks" -Task ""
+    $r = Get-ResumePoint -LogDir $box
+    if ($r.Next -ne "run-picker.ps1") { return "it named $($r.Next)" }
+    ""
+  } finally { Remove-Item $box -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
+# The two stops this whole change exists to survive, arriving the way they actually arrive: written
+# to the stream when they fire, and read back by the day continued past them.
+Check "a stop already on the stream does not end the day it is continued into" {
+  foreach ($code in @("killed", "window")) {
+    $st = New-QuietStatus
+    $st.Past = @([pscustomobject]@{ level = "stop"; code = $code; text = "$code happened once"; spent = $true })
+    $st.Anomalies = Get-DayAnomalies -Status $st
+    if (-not @($st.Anomalies | Where-Object { $_.code -eq $code }).Count) {
+      return "$code fell out of the report"
+    }
+    if (Test-WouldHalt $st) { return "a spent $code stopped the day again" }
+  }
+  ""
+}
+
+# The counter-case, and why the distinction is on the anomaly rather than a list of codes in the
+# reader: a worker that came back holding another card is not a moment that passed.
+Check "a stop that is not spent still ends the day it is read in" {
+  $st = New-QuietStatus
+  $st.Past = @([pscustomobject]@{ level = "stop"; code = "pick_ignored"
+                                  text = "cycle 1 was picked A and the worker came back holding B" })
+  $st.Anomalies = Get-DayAnomalies -Status $st
+  if (-not (Test-WouldHalt $st)) { return "the worker working an unchosen card did not stop the day" }
+  ""
+}
+
+# Every atom rewrites this one, so a kill inside the write is the ordinary case rather than the
+# exotic one -- and since the staleness clock went, a torn lock is a run nobody can resume.
+Check "a lock refreshed while it is held stays readable and leaves nothing behind" {
+  $orch = New-Sandbox
+  try {
+    $a = Join-Path $orch "log\2026-08-17_090000"
+    New-Item -ItemType Directory -Force $a | Out-Null
+    Enter-DayLock -OrchestratorDir $orch -LogDir $a | Out-Null
+    Update-DayLock -OrchestratorDir $orch -LogDir $a
+    Update-DayLock -OrchestratorDir $orch -LogDir $a
+    $held = Read-DayLock -OrchestratorDir $orch
+    if ($held.State -ne "held") { return "the refreshed lock reads as $($held.State)" }
+    if ($held.Run -ne "2026-08-17_090000") { return "it names $($held.Run)" }
+    # Matched on the name and not with `-Filter`, which is the Win32 pattern engine: `day.lock.*`
+    # matches `day.lock` there, so the lock itself counted as its own leftover.
+    $left = @(Get-ChildItem $orch -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name.StartsWith("day.lock.") })
+    if ($left.Count -ne 0) { return "left behind: $(($left | ForEach-Object { $_.Name }) -join ', ')" }
     ""
   } finally { Remove-Item $orch -Recurse -Force -ErrorAction SilentlyContinue }
 }

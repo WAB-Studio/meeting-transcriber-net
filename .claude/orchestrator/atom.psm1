@@ -36,11 +36,50 @@ $script:Space = "MeetingTranscriber"
 function Get-Repo { return (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) }
 
 <#
-  A new day. The only atom that creates anything: the run's folder, the claim on it, and the first
-  line of its stream.
+  The day to work on: the one that was left unfinished, or a new one when nothing was.
+
+  **A run is continued and never replaced.** Every stop -- the usage window, a conversation that
+  ended, an atom that refused -- leaves a folder holding a pick, its streams and whatever else got
+  that far, and opening another beside it re-picks and re-runs work already paid for. Two runs were
+  opened and thrown away in one night that way. So what is unfinished is picked up in place, with
+  its cycles, its spend and its events carrying on, and the atoms after this cannot tell.
+
+  Which run that is comes off the lock, because the lock is where the current run is written down
+  and that is what lets every atom take no arguments. Whether it is unfinished comes off its own
+  stream. Neither question has a clock in it, so a day killed at nine is continued at nine or at
+  four, from the terminal that started it or from another one.
+
+  Starting fresh over an unfinished run is `end-day.ps1` first: the atom that already means that.
+
+  The lease is taken before any of it, because from here on this is an atom of whatever run it
+  finds. Continuing one means writing to that run's stream, and one atom of a day at a time is the
+  whole of what keeps two terminals from driving it at once.
 #>
 function New-DayRun {
   $orch = $PSScriptRoot
+
+  $busy = Enter-AtomLease -OrchestratorDir $orch
+  if ($busy -ne "") { return [pscustomobject]@{ Error = $busy } }
+
+  $call = Resolve-DayRun -OrchestratorDir $orch
+  if ($call.Action -eq "refuse") { return [pscustomobject]@{ Error = $call.Error } }
+
+  if ($call.Action -eq "continue") {
+    Update-DayLock -OrchestratorDir $orch -LogDir $call.Continue
+    Set-Location (Get-Repo)
+    return [pscustomobject]@{
+      Repo = (Get-Repo); Orch = $orch; LogDir = $call.Continue
+      Cycle = (Get-CurrentCycle -LogDir $call.Continue); Continued = $true; Error = ""
+    }
+  }
+
+  # A run that wrote its ending has no claim left. The lock outliving it is bookkeeping `end-day`
+  # did not get to, and holding the next day out over it would be a dead run keeping a live one
+  # from starting.
+  if ($call.Release) { Exit-DayLock -OrchestratorDir $orch -LogDir $call.Release }
+
+  # The folder is created only once this is going to open a run. Creating it first left an empty one
+  # behind every time the lock refused, which is what the log directory was filling up with.
   $dir = Join-Path $orch ("log\" + (Get-Date -Format "yyyy-MM-dd_HHmmss"))
   New-Item -ItemType Directory -Force $dir | Out-Null
 
@@ -48,7 +87,9 @@ function New-DayRun {
   if ($taken -ne "") { return [pscustomobject]@{ LogDir = $dir; Error = $taken } }
 
   Set-Location (Get-Repo)
-  return [pscustomobject]@{ Repo = (Get-Repo); Orch = $orch; LogDir = $dir; Cycle = 0; Error = "" }
+  return [pscustomobject]@{
+    Repo = (Get-Repo); Orch = $orch; LogDir = $dir; Cycle = 0; Continued = $false; Error = ""
+  }
 }
 
 <#
@@ -140,6 +181,22 @@ function Write-AtomCrash {
   The output is stream-json: the file grows while the session runs, which is what makes the day
   watchable at all. The result is the LAST line of that file and never the file.
 #>
+<#
+  A stream path nothing has written to yet, so a session re-run on a cycle a kill already opened
+  never overwrites the transcript that kill left. Pulled out of `Invoke-Session` for the one part of
+  it a probe can ask without launching a real session.
+#>
+function Get-FreeStreamPath {
+  param([Parameter(Mandatory)][string]$LogDir, [Parameter(Mandatory)][string]$Role, [Parameter(Mandatory)][int]$Cycle)
+  $path = Join-Path $LogDir "$Role-$Cycle.stream.jsonl"
+  $take = 1
+  while (Test-Path $path) {
+    $take++
+    $path = Join-Path $LogDir "$Role-$Cycle.stream.$take.jsonl"
+  }
+  return $path
+}
+
 function Invoke-Session {
   param(
     [Parameter(Mandatory)]$Day,
@@ -148,7 +205,11 @@ function Invoke-Session {
     [Parameter(Mandatory)][int]$Cycle
   )
 
-  $stream = Join-Path $Day.LogDir "$Role-$Cycle.stream.jsonl"
+  # Never over a stream that is already there. An atom killed mid-session is re-run on the same
+  # cycle -- that is ordinary now that a stopped run is continued rather than replaced -- and the
+  # killed session's transcript is the only record of what it did. One of those was once the only
+  # copy of a finished session's work in existence.
+  $stream = Get-FreeStreamPath -LogDir $Day.LogDir -Role $Role -Cycle $Cycle
   $stdin = Join-Path $Day.LogDir "empty-stdin"
   New-Item -ItemType File -Force $stdin | Out-Null
 
@@ -195,6 +256,15 @@ function Invoke-Session {
     Write-Day $Day "  the session passed $($script:SessionTimeout.TotalMinutes) min -- killed"
     try { $p.Kill() } catch { }
     Close-Dead "session_killed" "passed $($script:SessionTimeout.TotalMinutes) min"
+    # Written down where it fires, like every other anomaly, and not left to be recomputed off the
+    # stream later: a run continued past this one gets its next session finished, and what the day
+    # is standing on after that is no longer a kill. The report still promises this one.
+    # The report still promises this one, which is the whole of what `spent` buys: kept, read, and
+    # never stopped on twice.
+    New-DayEvent -LogDir $Day.LogDir -Kind "anomaly" -Data @{
+      level = "stop"; code = "killed"; spent = $true
+      text = "the $Role session of cycle $Cycle passed the executor's clock and was killed"
+    } | Out-Null
     return $null
   }
   if ($p.ExitCode -ne 0) {
@@ -244,14 +314,19 @@ function Test-Sound {
   param([Parameter(Mandatory)]$Day)
   $status = Get-DayStatus -LogDir $Day.LogDir
   $halt = @(Get-HaltingAnomalies -Status $status)
+  # Spent on the way to the stream, all of them: what is written here was derived from the state as
+  # it stood a moment ago, and the reader above is what says whether it is still true. A day
+  # continued past a stop keeps it in its report and is not stopped by it a second time.
   foreach ($a in $halt) {
     Write-Day $Day "  !! [$($a.code)] $($a.text)"
-    New-DayEvent -LogDir $Day.LogDir -Kind "anomaly" -Data @{ level = $a.level; code = $a.code; text = $a.text } | Out-Null
+    New-DayEvent -LogDir $Day.LogDir -Kind "anomaly" `
+                 -Data @{ level = $a.level; code = $a.code; text = $a.text; spent = $true } | Out-Null
   }
   # The ones that do not halt still go on the stream: most cannot be recomputed once the state that
   # produced them is gone, and the morning report promises every one that fired.
   foreach ($a in @($status.Anomalies | Where-Object { $_.level -ne "stop" })) {
-    New-DayEvent -LogDir $Day.LogDir -Kind "anomaly" -Data @{ level = $a.level; code = $a.code; text = $a.text } | Out-Null
+    New-DayEvent -LogDir $Day.LogDir -Kind "anomaly" `
+                 -Data @{ level = $a.level; code = $a.code; text = $a.text; spent = $true } | Out-Null
     Write-Day $Day "  [$($a.code)] $($a.text)"
   }
   if ($halt.Count -eq 0) { return "" }
@@ -485,19 +560,18 @@ function Test-Preflight {
   model, so calling an atom again after an audit or a close was skipped is not a hypothetical -- and
   the next cycle would take a new card while the last one's PR sat open with its card in
   `in progress`, which is the abandonment the whole arrangement exists to prevent.
+
+  Open is the whole of what it says: a cycle exists once a worker has started, and it is finished
+  with only once something recorded it closed. Asking for a handoff first meant a worker that died
+  before emitting one left a cycle nothing objected to reopening -- and a run continued after that
+  kill, which is now the ordinary answer to it, would have walked straight past the card that
+  session left behind.
 #>
 function Test-CycleStillOpen {
   param([Parameter(Mandatory)]$Day)
   if ($Day.Cycle -le 0) { return "" }
-  $open = Read-Contract $Day "handoff-$($Day.Cycle).json"
-  # Any handoff at all, not only one that opened a PR. A cycle that built nothing still has a card
-  # somewhere and a journal to park, and asking about the PR let the sequencer walk past its close --
-  # which is the ordering the scripts hold precisely because a model is what calls them in order.
-  if ($open -and [string]$open.outcome -and
-      -not (Test-CycleClosed -LogDir $Day.LogDir -Cycle $Day.Cycle)) {
-    return "cycle $($Day.Cycle) is still open -- close it before opening another"
-  }
-  return ""
+  if (Test-CycleClosed -LogDir $Day.LogDir -Cycle $Day.Cycle) { return "" }
+  return "cycle $($Day.Cycle) is still open -- close it before opening another"
 }
 
 <#
@@ -882,7 +956,8 @@ function Read-Contract {
 }
 
 Export-ModuleMember -Function (@(
-  "Get-Repo", "New-DayRun", "Open-Day", "Enter-AtomLease", "Write-Day", "Write-Atom", "Write-AtomCrash", "Invoke-Session",
+  "Get-Repo", "New-DayRun", "Open-Day", "Enter-AtomLease", "Write-Day", "Write-Atom", "Write-AtomCrash",
+  "Get-FreeStreamPath", "Invoke-Session",
   "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Get-BoardPool", "Move-Card", "Set-CardTags",
   "Test-Preflight", "Test-CycleStillOpen", "Skip-Card", "Complete-Card", "Get-CardsInProgress",
   "New-CloseResult", "Request-Grill",

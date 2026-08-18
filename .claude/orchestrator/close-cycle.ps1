@@ -24,8 +24,6 @@ $script:Day = $day
 if ($day.Error -ne "") { Write-Host $day.Error; Write-Atom @{ ok = $false; reason = $day.Error }; exit 1 }
 
 $cycle = $day.Cycle
-$h = Read-Contract $day "handoff-$cycle.json"
-if ($null -eq $h) { Write-Atom @{ ok = $false; reason = "cycle $cycle has no handoff" }; exit 1 }
 
 # Closing twice was not harmless: it recorded a second recovery, and because a card's destination is
 # counted off those, the duplicate sent it to `pending` as though two sessions had failed to land it.
@@ -33,6 +31,35 @@ if ($null -eq $h) { Write-Atom @{ ok = $false; reason = "cycle $cycle has no han
 # for, and `Test-CycleClosed` is what tells the two apart.
 if (Test-CycleClosed -LogDir $day.LogDir -Cycle $cycle) {
   Write-Atom @{ ok = $true; cycle = $cycle; action = "already closed" }
+  exit 0
+}
+
+$h = Read-Contract $day "handoff-$cycle.json"
+
+# A worker that started and emitted nothing -- killed on the executor's clock, or stopped with the
+# terminal it was running in. There is no handoff and none may be written: a script filling one in
+# would be asserting probes that never ran, and what that session did before it died is on the board
+# and on GitHub rather than on disk.
+#
+# So the cycle is finished with and its card is left exactly where the worker put it. `in progress`
+# is the picker's first rule and means precisely this -- a session that died halfway -- so the card
+# is taken up by the next pick, which reads the board and finds the PR if there is one. Moving it
+# anywhere else would take it out of the one queue already looking for it.
+if ($null -eq $h) {
+  $pick = Read-Contract $day "pick-$cycle.json"
+  $task = [string]$pick.task_id
+  New-DayEvent -LogDir $day.LogDir -Kind "anomaly" -Data @{
+    level = "warn"; code = "worker_lost"
+    text = "cycle $cycle's worker emitted nothing, so card $task is left in progress for the next pick"
+  } | Out-Null
+  New-DayEvent -LogDir $day.LogDir -Kind "settled" -Data @{
+    cycle = $cycle; task_id = $task; outcome = "abandoned"
+    reason = "the worker emitted nothing, and the card stays in progress where the next pick finds it"
+  } | Out-Null
+  $parked = Complete-Journal -Repo $day.Repo -TaskId $task
+  if ($parked) { New-DayEvent -LogDir $day.LogDir -Kind "journal_parked" -Data @{ to = $parked } | Out-Null }
+  Write-Day $day "[$cycle] the worker emitted nothing -- card $task stays in progress for the next pick"
+  Write-Atom @{ ok = $true; cycle = $cycle; action = "settled"; outcome = "abandoned"; task_id = $task }
   exit 0
 }
 
