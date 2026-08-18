@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Plain net10.0 and no reference to anything: what the application says and what language
+         it says it in owes nothing to WinUI. That is also what makes it provable — the Windows
+         App SDK compiles a module initializer into MeetingTranscriber.App that bootstraps the
+         runtime the moment a type from it is touched, so a test host that loaded these from
+         there would throw before reading a word. -->
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+</Project>

@@ -9,6 +9,7 @@ src/MeetingTranscriber.Audio/             WASAPI: the devices and streams, the s
 src/MeetingTranscriber.Cli/               diagnosis, import, rebuild, recovery and capture from a prompt
 src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
+src/MeetingTranscriber.Presentation/      what the application says, and what language it says it in
 src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
 tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
 tools/MeetingTranscriber.CorpusImport/    reads a Python corpus in, then gets deleted
@@ -16,8 +17,8 @@ tests/MeetingTranscriber.Testing/         what a test opens: corpus, SQL, fixtur
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```
 
-Domain, Audio, Infrastructure, Processing and CorpusImport each have their tests under
-`tests/<project>.Tests/`. What `Audio.Tests` can hold is bounded by there being no device on a
+Domain, Audio, Infrastructure, Processing, Presentation and CorpusImport each have their tests
+under `tests/<project>.Tests/`. What `Audio.Tests` can hold is bounded by there being no device on a
 build agent: the rules — which endpoint a typed name means, what a block of bytes is worth on a
 meter — are tested there, and that two streams really open at once is a probe somebody runs with
 `capture`, recorded in the ISA like a paid one. What touches a file in there is the spool and the
@@ -52,6 +53,19 @@ and it is the half of the alias that exists: nothing packages it yet, so an inst
 response out of the corpus and puts the derivatives back, so it sits above storage. The opposite
 edge would make SQLite depend on how a Deepgram response is parsed.
 
+`MeetingTranscriber.Presentation` holds every word a person reads and nothing else — the
+catalogue, the rule that picks a language, and the choice on disk. It references nothing and
+targets plain `net10.0`, which is what lets a test read it. That is not tidiness: the Windows
+App SDK compiles a module initializer into every assembly that references it, and touching any
+type from `MeetingTranscriber.App` fires it and throws outside a packaged host. Anything about
+the UI that has to be provable lives here rather than beside a window.
+
+`tests/MeetingTranscriber.App.Tests/` follows from that: it references no project either, and
+reads the app's `.xaml` and `.xaml.cs` as source to hold every screen to naming an entry in the
+catalogue instead of carrying words of its own. Running a WinUI tree would need a UI thread and
+a packaged host, neither of which a build agent has — so the check that needed one is the check
+that would never run.
+
 `tests/MeetingTranscriber.Isa.Tests/` is the exception to that pattern and references no `src/`
 project: it reads `ISA.md` at the repo root. The claims surface is a repo document rather than a
 layer, so its gate does not belong under any one of them.
@@ -60,7 +74,7 @@ layer, so its gate does not belong under any one of them.
 know the Python system existed, so deleting the importer is deleting two folders rather than
 untangling the application — its README says what that deletion is.
 
-The seven-project split in `arquitectura.md` §3 is the destination, not the scaffolding: a
+The eight-project split in `arquitectura.md` §3 is the destination, not the scaffolding: a
 project appears when there is code to put in it. Dependencies point inwards, and
 `MeetingTranscriber.Domain` stays free of Windows and WinUI references, with tests asserting
 exactly that.
