@@ -6,6 +6,7 @@ using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Deepgram;
 using MeetingTranscriber.Processing.Intake;
 using MeetingTranscriber.Processing.Rendering;
+using MeetingTranscriber.Recording;
 
 using Microsoft.Data.Sqlite;
 
@@ -104,6 +105,12 @@ public static class Cli
             "record what the machine plays, or one program, and what the microphone hears at once",
             AudioCommands.Capture),
         new(
+            "record",
+            $"record {Corpus.Option} <directory> --language <tag> --seconds <n>"
+            + " [--microphone <name-or-id>] [--process <name-or-pid>] [--pause-at <n> --resume-at <n>]",
+            "record a meeting into the corpus, pausing if asked, and stop — which starts nothing",
+            RecordingCommands.Record),
+        new(
             "recordings",
             "recordings --spool <directory>",
             "which recordings nobody got to stop are waiting, and what each one is",
@@ -177,7 +184,8 @@ public static class Cli
     /// <summary>
     /// The failures that are answers rather than defects: a corpus that is not there or not sound,
     /// a response that cannot be read, a meeting that cannot be rendered, a query the index
-    /// refuses, a machine with no microphone to give, a disk that will not give the file up.
+    /// refuses, a machine with no microphone to give, a disk that will not give the file up, a
+    /// recording that names a meeting this corpus does not have.
     /// Anything else is a bug and comes out as one.
     /// </summary>
     private static bool IsRefusal(Exception exception) => exception
@@ -191,6 +199,7 @@ public static class Cli
         or AudioContractException
         or ArtifactWriteException
         or ArtifactRestoreException
+        or RecordingException
         or SqliteException
         or IOException
         or UnauthorizedAccessException;

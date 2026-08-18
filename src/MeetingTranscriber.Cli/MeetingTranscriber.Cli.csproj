@@ -22,6 +22,7 @@
     <ProjectReference Include="..\MeetingTranscriber.Domain\MeetingTranscriber.Domain.csproj" />
     <ProjectReference Include="..\MeetingTranscriber.Infrastructure\MeetingTranscriber.Infrastructure.csproj" />
     <ProjectReference Include="..\MeetingTranscriber.Processing\MeetingTranscriber.Processing.csproj" />
+    <ProjectReference Include="..\MeetingTranscriber.Recording\MeetingTranscriber.Recording.csproj" />
   </ItemGroup>
 
 </Project>

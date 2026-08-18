@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Windows because the audio engine is: this project composes WASAPI capture with the
+         corpus, so it inherits the floor the engine declares rather than choosing one. -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <RootNamespace>MeetingTranscriber.Recording</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The only project that references both, and the reason it exists. Neither of these may
+         reference the other: SQLite would drag WASAPI into rendering a transcript, and the audio
+         engine would stop being provable without a corpus. -->
+    <ProjectReference Include="..\MeetingTranscriber.Audio\MeetingTranscriber.Audio.csproj" />
+    <ProjectReference Include="..\MeetingTranscriber.Domain\MeetingTranscriber.Domain.csproj" />
+    <ProjectReference Include="..\MeetingTranscriber.Infrastructure\MeetingTranscriber.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

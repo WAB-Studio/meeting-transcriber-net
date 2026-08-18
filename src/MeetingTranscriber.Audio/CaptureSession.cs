@@ -27,11 +27,14 @@ public sealed class CaptureSession : IDisposable
 {
     private readonly CaptureSource[] sources;
     private readonly SilentPlayback? silence;
+    private readonly RecordingPause pause;
 
-    private CaptureSession(CaptureSource[] sources, SilentPlayback? silence, SpoolCard card)
+    private CaptureSession(
+        CaptureSource[] sources, SilentPlayback? silence, SpoolCard card, RecordingPause pause)
     {
         this.sources = sources;
         this.silence = silence;
+        this.pause = pause;
         Card = card;
     }
 
@@ -89,6 +92,10 @@ public sealed class CaptureSession : IDisposable
         var opened = new List<CaptureSource>();
         string? fellBack = null;
 
+        // One for the recording, handed to both sources: pausing has to be a single write, or one
+        // channel records the room for as long as it takes to set the second flag.
+        var pause = new RecordingPause();
+
         CaptureSource Open(AudioChannel channel, CaptureTarget target)
         {
             // Only ever for the whole machine's loopback, and before it opens, so the endpoint is
@@ -99,7 +106,7 @@ public sealed class CaptureSession : IDisposable
                 silence ??= SilentPlayback.On(playback);
             }
 
-            return CaptureSource.Open(channel, target, BlockSpool.FileFor(folder, channel));
+            return CaptureSource.Open(channel, target, BlockSpool.FileFor(folder, channel), pause);
         }
 
         try
@@ -172,8 +179,30 @@ public sealed class CaptureSession : IDisposable
             throw;
         }
 
-        return new CaptureSession([.. opened], silence, card);
+        return new CaptureSession([.. opened], silence, card, pause);
     }
+
+    /// <summary>
+    /// Whether the meeting is paused, so both sources are spooling silence rather than what their
+    /// devices are hearing.
+    /// </summary>
+    public bool IsPaused => pause.IsPaused;
+
+    /// <summary>
+    /// Pauses the meeting: neither device stops, and neither one's audio reaches the recording
+    /// until <see cref="Resume"/>. Saying it twice is saying it once.
+    /// </summary>
+    /// <remarks>
+    /// Both sources or neither, the way everything else here is — and here that is a property of
+    /// there being one pause rather than of this method visiting two. One channel paused and the
+    /// other still recording would be a stretch of the meeting with one side of the conversation
+    /// on it, and unlike a source that failed to open, nothing downstream could tell that from a
+    /// room where only one person was talking.
+    /// </remarks>
+    public void Pause() => pause.Pause();
+
+    /// <summary>Lets both devices reach the recording again.</summary>
+    public void Resume() => pause.Resume();
 
     /// <summary>The source feeding <paramref name="channel"/>.</summary>
     public CaptureSource On(AudioChannel channel) =>
