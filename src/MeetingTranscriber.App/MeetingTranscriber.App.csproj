@@ -32,6 +32,11 @@
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
 
+  <!-- What the screens say, and what language they say it in. -->
+  <ItemGroup>
+    <ProjectReference Include="..\MeetingTranscriber.Presentation\MeetingTranscriber.Presentation.csproj" />
+  </ItemGroup>
+
   <!--
     Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
     Tools extension to be activated for this project even if the Windows App SDK Nuget

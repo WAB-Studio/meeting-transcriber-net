@@ -13,16 +13,24 @@
     <Project Path="src/MeetingTranscriber.Audio/MeetingTranscriber.Audio.csproj" />
     <Project Path="src/MeetingTranscriber.Domain/MeetingTranscriber.Domain.csproj" />
     <Project Path="src/MeetingTranscriber.Infrastructure/MeetingTranscriber.Infrastructure.csproj" />
+    <!-- What the application says and what language it says it in. Outside the app because the
+         Windows App SDK's module initializer makes anything living beside a window unloadable
+         anywhere there is no window. -->
+    <Project Path="src/MeetingTranscriber.Presentation/MeetingTranscriber.Presentation.csproj" />
     <Project Path="src/MeetingTranscriber.Processing/MeetingTranscriber.Processing.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <!-- Holds no test: the corpus on disk, the SQL helpers and the fixture inventory the suites
          share, so a third project that needs one references it rather than copying it. -->
     <Project Path="tests/MeetingTranscriber.Testing/MeetingTranscriber.Testing.csproj" />
+    <!-- Reads the screens as source. It references no src project and cannot: loading the app's
+         assembly outside a packaged host throws before the first assertion. -->
+    <Project Path="tests/MeetingTranscriber.App.Tests/MeetingTranscriber.App.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Audio.Tests/MeetingTranscriber.Audio.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Cli.Tests/MeetingTranscriber.Cli.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Domain.Tests/MeetingTranscriber.Domain.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Infrastructure.Tests/MeetingTranscriber.Infrastructure.Tests.csproj" />
+    <Project Path="tests/MeetingTranscriber.Presentation.Tests/MeetingTranscriber.Presentation.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Processing.Tests/MeetingTranscriber.Processing.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.CorpusImport.Tests/MeetingTranscriber.CorpusImport.Tests.csproj" />
     <!-- Reads ISA.md, references no src project: the claims surface is a repo document, not a

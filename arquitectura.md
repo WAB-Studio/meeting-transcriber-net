@@ -156,6 +156,7 @@ MeetingTranscriber.sln
     MeetingTranscriber.Domain/          entidades, estados y reglas puras
     MeetingTranscriber.Audio/           WASAPI, timeline, spool y niveles
     MeetingTranscriber.Infrastructure/  SQLite, filesystem y credenciales
+    MeetingTranscriber.Presentation/    lo que la aplicación dice y en qué idioma lo dice
     MeetingTranscriber.Processing/      Deepgram, transcript y summaries
     MeetingTranscriber.Mcp/             servidor MCP local por stdio
     MeetingTranscriber.Cli/             diagnóstico, reparación y automatización
@@ -165,6 +166,7 @@ MeetingTranscriber.sln
     MeetingTranscriber.Audio.Tests/
     MeetingTranscriber.Infrastructure.Tests/
     MeetingTranscriber.Processing.Tests/
+    MeetingTranscriber.Presentation.Tests/
     MeetingTranscriber.App.Tests/
 ```
 
@@ -176,6 +178,16 @@ ni red.
 Infrastructure y no más allá — las pruebas del dominio lo referencian, y un camino
 desde ahí hasta Processing dejaría probar una regla del dominio contra la salida del
 parser en vez de contra una respuesta.
+
+Todo texto que una persona lee vive en `MeetingTranscriber.Presentation` y en ningún otro
+lugar. El catálogo lleva las dos versiones de cada texto en la misma línea, así que un texto
+que exista sólo en un idioma no es algo que se pueda escribir; una pantalla nombra una entrada
+y nunca carga las palabras. Está afuera de `App` por una razón dura, no por gusto: el Windows
+App SDK compila un inicializador de módulo dentro de todo ensamblado que lo referencie, y ese
+inicializador levanta el runtime apenas se toca un tipo del ensamblado — de modo que un
+catálogo que viviera ahí no se podría leer desde ninguna prueba. Por eso también
+`MeetingTranscriber.App.Tests` no referencia a `App`: lo que puede exigirle es su código
+fuente, y lo que le exige es que ninguna pantalla lleve palabras propias.
 
 La CLI comparte los mismos servicios de aplicación que WinUI. No implementa un
 segundo pipeline. Sirve para diagnóstico, importación, rebuild y recuperación,
