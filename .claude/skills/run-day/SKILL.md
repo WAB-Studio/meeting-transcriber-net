@@ -12,16 +12,18 @@ description: >-
 reads what it returns, and does the acting itself. There is no engine under this file, no lock, no
 run folder and no event stream. There used to be all four; §1 is the rule that replaced them.
 
-Three subagents do the thinking, in this order, and you do everything between them:
+Four agents do the thinking, and you do everything between them:
 
-| Stage | Skill | What it returns |
+| Stage | `subagent_type` | What it returns |
 | --- | --- | --- |
-| pick | `pick-task` | one card id, or a reason there isn't one |
-| work | `next-task` | a handoff: what was built, the PR, what it left out |
-| audit | `audit-session` | a verdict: `pass`, `hold` or `ask` |
+| pick | `picker` | one card id, or a reason there isn't one |
+| work | `worker` | a handoff: what was built, the PR, what it left out |
+| audit | `auditor` | a verdict: `pass`, `pass_with_followup`, `ask` or `hold` |
+| recover | `recoverer` | a briefing on what a previous session already did |
 
-Spawn each with the Agent tool, one at a time, and wait for it. **A subagent's final message is its
-answer** — you read it directly, and nothing writes it to disk on the way.
+Spawn each with the Agent tool, one at a time, and wait for it. **An agent's final message is its
+answer** — you read it directly, and nothing writes it to disk on the way. Their instructions are
+their own; pass them the inputs below and nothing else.
 
 ## 1 · The state is not yours to keep
 
@@ -39,21 +41,20 @@ the card in progress or the PR open, and §3 gets its context back.
 
 ## 2 · The cycle
 
-1. **Pick.** Spawn `pick-task`. It reads the board and the open PRs and returns one card, or
-   `no_tasks`, or `blocked`.
+1. **Pick.** Spawn `picker` with no input. It returns one card, or `no_tasks`, or `blocked`.
    - `no_tasks` or `blocked` → the day ends. Say why.
    - A card → say the card and the `why` in one line, before you spawn anything else.
    - It also returns `skipped[]` and `finished[]`. **You do the board moves it declared** —
      `skipped` to `pending` with its reason, `finished` to `in review` — because a subagent that
      moves a card and then dies has taken it out of the pool with nothing saying why.
-2. **Work.** Spawn `next-task` with the card id, and the PR number if the pick found one. If the
-   card is one somebody already worked — it was `in progress`, or its PR is open — spawn
-   `recover-context` first and hand the worker what it returns. §3.
-3. **Audit.** The handoff says `pr_opened` → spawn `audit-session` with the PR number. Any other
-   outcome closed the card itself and there is nothing to audit.
+2. **Work.** Spawn `worker` with the card id, and the PR number if the pick found one. If somebody
+   already worked that card — it was `in progress`, or its PR is open — spawn `recoverer` first and
+   pass the worker what it returns. §3.
+3. **Audit.** The handoff says `pr_opened` → spawn `auditor` with the PR number and the handoff. Any
+   other outcome closed the card itself and there is nothing to audit.
 4. **Act on the verdict.** This part is yours and there is no subagent for it:
-   - `pass` → merge the PR. `gh pr merge <n> --merge --delete-branch`. The card stays in
-     `in review`; closing it is the user's.
+   - `pass` or `pass_with_followup` → merge the PR. `gh pr merge <n> --merge --delete-branch`. The
+     card stays in `in review`; closing it is the user's.
    - `hold` → the PR stays open, the card goes where the verdict says with the verdict's own body
      as a comment.
    - `ask` → a decision nobody here may make. Write it on the card, swap `grilled` for `regrill`,
@@ -67,9 +68,8 @@ A subagent can end holding nothing useful: it returns prose instead of its contr
 it answers about the wrong card. **That is not the day ending.** It costs one stage, and the fix is
 to give the next attempt the context the last one had.
 
-Spawn `recover-context` with the card id. It reads the branch, its commits and their diff, the PR
-and its comments, and the card and its comments, and comes back with a briefing. Hand that to a
-fresh subagent of the stage that failed, and go on.
+Spawn `recoverer` with the card id. Pass its briefing to a fresh agent of the stage that failed, and
+go on.
 
 **Twice on the same stage in one cycle and you stop trying.** Leave the card in `in progress`, say
 so, and take the next card: a stage that fails twice with context in hand is not failing over
@@ -95,7 +95,7 @@ and when the day ends. Somebody who asked to be left alone for the day does not 
 
 - **A pick** — the card, its name, the `why`. It goes out *before* you spawn the worker.
 - **A cycle closing** — the card, the PR, the verdict, what happened to it.
-- **A permission denied to a subagent** — quote it exactly, naming the tool and what it tried.
+- **A permission denied to an agent** — quote it exactly, naming the tool and what it tried.
   Never round it down to "there were some permission warnings".
 
 **Say once, when you start, that you only report while this conversation is alive.** If it ends

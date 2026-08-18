@@ -68,7 +68,7 @@ is an open PR behind it — finished, green, held out of `main` by that one deci
 first of all**: settling one lands work that already exists.
 
 Then the rest, in the order the picker drains the pool — phase 0, then `3 · Grabador WinUI`,
-then the board's own numbering. That order is `pick-task`'s and is written there, not here;
+then the board's own numbering. That order is the `picker` agent's and is written there, not here;
 grilling in any other one fills the far end of a pool the day never reaches.
 
 ```powershell
