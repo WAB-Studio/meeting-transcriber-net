@@ -67,12 +67,49 @@ after the description. It carries the SHA of `main` it was decided against: if t
 under one of those decisions since, that decision is an open fork again, not a settled one — say so
 in `decisions_deferred` and use your judgement, which is what `CLAUDE.md` asks for anyway.
 
-Two things are yours to refuse with, and both are about the work rather than the choice:
+Three things are yours to refuse with, and all three are about the work rather than the choice:
 
+- **The work is already in `main`** → `outcome: "already_done"`, §1b. Check this before anything else:
+  it is the cheapest answer there is and the only one that costs a whole session when it is missed.
 - **The card holds a decision the grill did not settle** → `outcome: "needs_grill"`, §2b.
 - **You cannot start at all** — the tree is dirty, the branch you were given is gone, the card
   describes something no session can finish without hardware nobody plugged in → `outcome:
   "blocked"` with `blocked_reason`, and leave the comment on the card yourself.
+
+### 1b · The card that was already finished
+
+A card reaches you finished when the session before yours landed the work and died before the
+bookkeeping: the PR merged, and nothing moved the card off `in progress`. **You are not the first
+session to be handed this card, and building anything is the wrong answer.** The board says the work
+is owed; `main` says it is done, and `main` is the one that cannot be wrong.
+
+Ask it in one step, before reading the card for what to build:
+
+```powershell
+gh pr list --search "<task_id>" --state merged --json number,mergedAt,mergeCommit
+git merge-base --is-ancestor <mergeCommit> origin/main   # exit 0 means it reached main's history
+```
+
+**Those two answer a narrower question than the one you are asking**, and the gap is the whole point
+of this section. They say a commit reached `main`; they cannot say the work is still there, because
+a revert leaves the reverted commit an ancestor of `main` exactly as before. Nothing in git's history
+answers "is this behaviour present" — only the behaviour does.
+
+So the proof is the card's own **Done when**, read against `main` as it stands: run what it names,
+and run the four commands if the card names ISCs. An ISC marked `[x]` by work that landed and was
+taken back out again is a claim closed on nothing. Say in the handoff which commit carried it **and**
+what you ran to see it still holds.
+
+If the behaviour is not there, this is not `already_done` however cleanly the PR merged. It is
+ordinary work on a card whose history happens to include a merge, and you build it.
+
+Then: `outcome: "already_done"`, `pr_number` naming the PR that landed it, `blocked_reason` empty.
+**Move the card to `in review` yourself and leave the comment saying what you checked** — the same
+as §blocked, and for the same reason: what you found is read on the board tomorrow, not in a
+transcript. Do not close the card; closing is the user's.
+
+The day does not stop over one of these. It is one card that turned out to cost nothing, and the
+next cycle takes the next one.
 
 ### When a PR number comes with it
 

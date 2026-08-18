@@ -109,7 +109,7 @@ if ($unsound -ne "") { Write-Atom @{ ok = $false; stop = "the worker's session i
 $c = Repair-Contract (Get-ContractFromText ([string]$w.result)) `
                      -Aliases $HandoffAliases -EmptyList $HandoffEmptyList -EmptyText $HandoffEmptyText
 $bad = Test-DayContract -Contract $c -Required $HandoffKeys -Present $HandoffPresent `
-                        -Field "outcome" -Allowed @("pr_opened","needs_grill","blocked")
+                        -Field "outcome" -Allowed @("pr_opened","already_done","needs_grill","blocked")
 if ($bad -ne "") {
   New-DayEvent -LogDir $day.LogDir -Kind "handoff_invalid" -Data @{ cycle = $cycle; reason = $bad; said = $said } | Out-Null
   Write-Atom @{ ok = $false; stop = "invalid handoff: $bad -- what the session emitted is in $(Split-Path -Leaf $said)" }

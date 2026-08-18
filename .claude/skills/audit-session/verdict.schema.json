@@ -119,6 +119,28 @@
           }
         }
       }
+    },
+    "card": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Where this card goes when the PR is not merged, and what it carries. Only read on `hold` -- `pass` merges and `ask` always goes to `pending`. Omit it to let the day decide, which sends the card back to the pool the first time and to `pending` the second. The orchestrator does the moving; naming it here is what makes the destination a reading of the PR rather than a default.",
+      "properties": {
+        "to": {
+          "type": "string",
+          "enum": [
+            "Open",
+            "pending"
+          ],
+          "description": "`Open` puts it back in the pool for the next session. `pending` waits on a person. A card already returned once goes to `pending` whatever this says: two sessions that could not land it is a person's problem, not another session's."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Tags to add on the way. `regrill` is the one that matters: it says the hold is not about this diff but about a question the card never settled, so a grill has to reach it before another session builds the same thing again."
+        }
+      }
     }
   }
 }

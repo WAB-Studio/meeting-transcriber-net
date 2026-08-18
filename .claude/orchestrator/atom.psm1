@@ -446,6 +446,14 @@ function Get-BoardPool {
   building -- and here rather than in either of them so the two cannot come to mean different things
   by the same word.
 
+  **Standing on a branch is repaired, not refused.** A worker killed after its checkout leaves the
+  repo on the feature branch, and refusing that stopped every atom after it for the rest of the day:
+  nothing in the arrangement ever put the repo back, so a single killed session cost a whole day and
+  the lock outlived it. With a clean tree the return is `git switch main` and it loses nothing -- the
+  branch and its commits stay exactly where they are, and a branch worth continuing is found by its
+  PR, not by what happens to be checked out. What is still refused is the case where the repair
+  would destroy something: a dirty tree, whose changes no atom may throw away.
+
   Every command is judged by its own exit code. $ErrorActionPreference does not turn a native exe
   failure into an exception, so a `git` that never ran would read as a clean tree -- the observing
   tool failing, dressed up as a healthy state.
@@ -457,7 +465,14 @@ function Test-Preflight {
   if ($dirty)              { return "the tree was left dirty" }
   $branch = git -C $Day.Repo rev-parse --abbrev-ref HEAD
   if ($LASTEXITCODE -ne 0) { return "git rev-parse failed ($LASTEXITCODE)" }
-  if ($branch -ne "main")  { return "left standing on $branch" }
+  if ($branch -ne "main") {
+    git -C $Day.Repo switch main --quiet
+    if ($LASTEXITCODE -ne 0) { return "left standing on $branch and could not switch back to main" }
+    # On the stream, because a repair nobody can see is indistinguishable from a day that never
+    # needed one -- and a run of these is the signal that sessions are dying mid-checkout.
+    New-DayEvent -LogDir $Day.LogDir -Kind "checkout_repaired" -Data @{ from = $branch } | Out-Null
+    Write-Day $Day "preflight: was left on $branch, switched back to main"
+  }
   git -C $Day.Repo fetch origin main --quiet
   if ($LASTEXITCODE -ne 0) { return "git fetch failed -- main never checked against origin" }
   git -C $Day.Repo merge --ff-only origin/main --quiet
@@ -475,7 +490,10 @@ function Test-CycleStillOpen {
   param([Parameter(Mandatory)]$Day)
   if ($Day.Cycle -le 0) { return "" }
   $open = Read-Contract $Day "handoff-$($Day.Cycle).json"
-  if ($open -and [string]$open.outcome -eq "pr_opened" -and
+  # Any handoff at all, not only one that opened a PR. A cycle that built nothing still has a card
+  # somewhere and a journal to park, and asking about the PR let the sequencer walk past its close --
+  # which is the ordering the scripts hold precisely because a model is what calls them in order.
+  if ($open -and [string]$open.outcome -and
       -not (Test-CycleClosed -LogDir $Day.LogDir -Cycle $Day.Cycle)) {
     return "cycle $($Day.Cycle) is still open -- close it before opening another"
   }
@@ -515,6 +533,61 @@ function Skip-Card {
     } else {
       $lost += $id
       Write-Day $Day ("  !! " + $id + " could not be put in pending, so it is still in the pool")
+    }
+  }
+  return @($lost)
+}
+
+<#
+  A card the picker found sitting in `in progress` whose work is already in `main`. Rule 1 of the pick
+  reads `in progress` as a session that died halfway, and that premise is checkable: a PR that merged
+  says the session did not die halfway at all -- it finished, and only the bookkeeping died with it.
+
+  It goes to `in review`, where finished work waits on a person to close it, and not to `pending`,
+  which is where work waits on a person to decide something. Nothing here is owed a decision.
+
+  Same split as `Skip-Card` and for the same reason: the session that met it declares it, and the
+  move happens here, after the contract is on the stream. What is different is only the destination
+  and what the comment has to say, because a card nobody could build and a card already built are
+  read by whoever finds them for opposite reasons.
+#>
+<#
+  The cards the board currently calls `in progress`, or `$null` if it could not be asked. One query,
+  and the only thing anything here does with it is ask whether a card is among them.
+
+  It exists because a worker's board write is an instruction to a model and not a result in its
+  handoff: a session can emit a perfectly valid `already_done` having never moved the card, or having
+  had the move fail under it, and nothing downstream could tell. Reading the board back is the
+  cheapest thing that can.
+#>
+function Get-CardsInProgress {
+  param([Parameter(Mandatory)]$Day, [scriptblock]$Board)
+  if (-not $Board) { $Board = $script:Board }
+  $lines = & $Board @("tasks", "--space", $script:Space, "--status", "in progress")
+  if ($null -eq $lines) { return $null }
+  return @($lines)
+}
+
+function Complete-Card {
+  param([Parameter(Mandatory)]$Day, $Finished)
+  $lost = @()
+  foreach ($f in @($Finished)) {
+    $id = [string]$f.task_id
+    if (-not $id) { continue }
+    $body = "**Already done.** " + [string]$f.why + "`n`nMoved to ``in review``: the work is in " +
+            "``main`` and only this card was left behind, so no session is spent rediscovering it. " +
+            "Closing it is yours."
+    $said = Write-Elsewhere $Day -TaskId $id -Body $body -Name "finished-$($Day.Cycle)-$id.md"
+    $moved = $false
+    if ($said) { $moved = Move-Card $Day -TaskId $id -To "in review" }
+    New-DayEvent -LogDir $Day.LogDir -Kind "finished" -Data @{
+      cycle = $Day.Cycle; task_id = $id; why = [string]$f.why; said = $said; moved = $moved
+    } | Out-Null
+    if ($said -and $moved) {
+      Write-Day $Day ("  already done " + $id + ": " + [string]$f.why)
+    } else {
+      $lost += $id
+      Write-Day $Day ("  !! " + $id + " is finished and could not be moved out of in progress, so the next pick meets it again")
     }
   }
   return @($lost)
@@ -722,12 +795,21 @@ function Invoke-Merge {
   a record that does not exist.
 #>
 function Invoke-Recover {
-  param([Parameter(Mandatory)]$Day, [Parameter(Mandatory)]$Handoff, [Parameter(Mandatory)][string]$Reason)
+  param(
+    [Parameter(Mandatory)]$Day, [Parameter(Mandatory)]$Handoff, [Parameter(Mandatory)][string]$Reason,
+    [string]$To = "", [string[]]$Tags = @()
+  )
 
   $task = [string]$Handoff.task_id
   # Read off the stream and not out of anything still running: a day relaunched used to forget, and
   # a card nothing could land went back in the pool once per restart forever.
   $to = Get-CardDestination -Recovered (Get-DayStatus -LogDir $Day.LogDir).Recovered -TaskId $task
+
+  # The audit may name where the card goes, because it is the only thing that read the PR -- but not
+  # past the second return. A card two sessions could not land waits on a person however good the
+  # reason for sending it round again, and that ceiling is the only thing standing between a day and
+  # spending itself on one card.
+  if ($To -and $to -ne "pending") { $to = $To }
 
   if (-not $task) {
     New-DayEvent -LogDir $Day.LogDir -Kind "recovered" -Data @{
@@ -752,13 +834,30 @@ function Invoke-Recover {
 
   $said  = Write-Elsewhere $Day -TaskId $task -PrNumber $Handoff.pr_number -Body ($say -join "`n") -Name "recovered-$($Day.Cycle).md"
   $moved = $false
+  $tagged = $false
   if ($said) { $moved = Move-Card $Day -TaskId $task -To $to }
+  # After the move, so a card that never moved is not left carrying a tag saying it did. Tagging is
+  # not what makes the close land -- the comment and the move are -- so a tag that failed is an
+  # anomaly on the stream and not a lost cycle.
+  # `regrill` and `grilled` are one switch and not two tags. A card that kept both went back to the
+  # pool reading as ready for a worker -- `Get-BoardPool` and the pick both take `Open` and
+  # `grilled` -- so the tag meant to hold it for a grill held nothing, and the next session took the
+  # same unsettled card. `Request-Grill` has always swapped them; asking for `regrill` here means
+  # the same swap or it means nothing.
+  if ($moved -and $Tags.Count -gt 0) {
+    $tagged = $true
+    foreach ($t in $Tags) {
+      $drop = $null
+      if ($t -eq "regrill") { $drop = "grilled" }
+      if (-not (Set-CardTags $Day -TaskId $task -Add $t -Remove $drop)) { $tagged = $false }
+    }
+  }
 
   # What was meant and what happened. Recording the intention as the outcome left a card in
   # `in review`, where no worker looks for it, while the report called it recovered.
   New-DayEvent -LogDir $Day.LogDir -Kind "recovered" -Data @{
     cycle = $Day.Cycle; task_id = $task; pr_number = $Handoff.pr_number; to = $to
-    reason = $Reason; said = $said; moved = $moved
+    reason = $Reason; said = $said; moved = $moved; tags = @($Tags); tagged = $tagged
   } | Out-Null
 
   $parked = Complete-Journal -Repo $Day.Repo -TaskId $task
@@ -785,7 +884,7 @@ function Read-Contract {
 Export-ModuleMember -Function (@(
   "Get-Repo", "New-DayRun", "Open-Day", "Enter-AtomLease", "Write-Day", "Write-Atom", "Write-AtomCrash", "Invoke-Session",
   "Test-Sound", "Invoke-BestEffort", "Write-Elsewhere", "Get-BoardPool", "Move-Card", "Set-CardTags",
-  "Test-Preflight", "Test-CycleStillOpen", "Skip-Card",
+  "Test-Preflight", "Test-CycleStillOpen", "Skip-Card", "Complete-Card", "Get-CardsInProgress",
   "New-CloseResult", "Request-Grill",
   "Invoke-Merge", "Invoke-Recover", "Read-Contract"
 ) + @($script:DayModule.ExportedFunctions.Keys))

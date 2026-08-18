@@ -36,6 +36,61 @@ if (Test-CycleClosed -LogDir $day.LogDir -Cycle $cycle) {
   exit 0
 }
 
+# A cycle that produced no PR is finished with already, and nothing here may touch its card.
+# `already_done` is a card whose work was in `main` before the session started, `needs_grill` is one
+# parked on a decision, `blocked` is one nothing could get past -- and in all three the worker put
+# the card where it belongs and wrote the reason on it, with the card in front of it. What is below
+# was written for a PR that did not hold up: it puts a card back in the pool so a later session can
+# pick the work up again. Run over one of these it moves a card whose placement was already decided,
+# and the card comes round to be discovered finished a second time, at the price of another session.
+# There is no diff to keep out of `main`, so there is nothing for the cheap reading to protect.
+if ([string]$h.outcome -ne "pr_opened") {
+  $task = [string]$h.task_id
+
+  # `already_done` is the one of the three whose card must have moved: its own skill says the card
+  # goes to `in review`, and a card left in `in progress` is picked again tomorrow by the rule this
+  # whole change exists to correct. That move is an instruction to a model, so it is read back here
+  # rather than believed -- and where it did not land, it happens now, through the same function the
+  # picker files its own discoveries with. A board that cannot be asked leaves an anomaly and does
+  # not deadlock the day: an unclosed cycle stops every later pick, which is a worse answer than a
+  # card that may need a hand.
+  if ([string]$h.outcome -eq "already_done" -and $task) {
+    $inProgress = Get-CardsInProgress -Day $day
+    if ($null -eq $inProgress) {
+      New-DayEvent -LogDir $day.LogDir -Kind "anomaly" -Data @{
+        level = "warn"; code = "settle_unverified"
+        text = "cycle $cycle closed on already_done without the board saying where $task ended up"
+      } | Out-Null
+      Write-Day $day "[$cycle] !! the board could not say whether $task left in progress"
+    } elseif (($inProgress -join "`n") -match [regex]::Escape($task)) {
+      Write-Day $day "[$cycle] $task is still in progress -- the worker's move did not land, doing it here"
+      $unfiled = @(Complete-Card -Day $day -Finished @([pscustomobject]@{
+        task_id = $task
+        why = "The session that met it reported the work already in ``main``. " + [string]$h.blocked_reason
+      }))
+      if ($unfiled.Count -gt 0) {
+        New-DayEvent -LogDir $day.LogDir -Kind "anomaly" -Data @{
+          level = "warn"; code = "finish_failed"
+          text = "cycle $cycle could not move $task to in review, so the next pick meets it again"
+        } | Out-Null
+      }
+    }
+  }
+
+  New-DayEvent -LogDir $day.LogDir -Kind "settled" -Data @{
+    cycle = $cycle; task_id = $task; outcome = [string]$h.outcome
+    reason = [string]$h.blocked_reason
+  } | Out-Null
+  $parked = Complete-Journal -Repo $day.Repo -TaskId ([string]$h.task_id)
+  if ($parked) { New-DayEvent -LogDir $day.LogDir -Kind "journal_parked" -Data @{ to = $parked } | Out-Null }
+  Write-Day $day "[$cycle] $([string]$h.outcome) -- no PR, and card $($h.task_id) is where the worker left it"
+  Write-Atom @{
+    ok = $true; cycle = $cycle; action = "settled"; outcome = [string]$h.outcome
+    task_id = [string]$h.task_id
+  }
+  exit 0
+}
+
 $v = Read-Contract $day "verdict-$cycle.json"
 if ($null -eq $v) {
   $rec = Invoke-Recover -Day $day -Handoff $h -Reason "no verdict was reached for this cycle"
@@ -51,7 +106,12 @@ $act = Resolve-Verdict $v
 # A decision the audit will not make does not stop the day and does not wait for anybody. It goes on
 # the card, in writing, and the card goes to `pending` where no worker touches it until a grill has
 # settled it. The PR stays open and green; nothing merges it on a guess.
-if ($act.to -eq "pending") {
+# On the verdict and not on the destination alone. `Request-Grill` is the protocol for a decision
+# nobody here may make: it writes the decisions on the card, swaps `grilled` for `regrill` and parks
+# it. A `hold` that names `pending` is not that -- it is the audit saying this diff is wrong and
+# should not be picked up again today -- and routing it here silently gave it a comment about a
+# decision it never owed, dropped the tags it did ask for, and recorded it as parked.
+if ($act.to -eq "pending" -and [string]$v.verdict -eq "ask") {
   $park = Request-Grill -Day $day -TaskId ([string]$h.task_id) -Owed @($v.decisions_owed) -PrNumber $h.pr_number
   if ($park.Lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $park.Lost }; exit 1 }
   $parked = Complete-Journal -Repo $day.Repo -TaskId ([string]$h.task_id)
@@ -81,7 +141,7 @@ if ($act.to -eq "pending") {
 if ($act.action -eq "recover") {
   $why = $act.reason
   if ([string]$v.verdict -eq "hold") { $why += " -- " + ((@($v.reasons) | Select-Object -First 2) -join " ") }
-  $rec = Invoke-Recover -Day $day -Handoff $h -Reason $why
+  $rec = Invoke-Recover -Day $day -Handoff $h -Reason $why -To ([string]$act.to) -Tags @($act.tags)
   if ($rec.Lost -ne "") { Write-Atom @{ ok = $false; cycle = $cycle; stop = $rec.Lost }; exit 1 }
   Write-Atom @{ ok = $true; cycle = $cycle; action = "recovered"; to = $rec.To }
   exit 0

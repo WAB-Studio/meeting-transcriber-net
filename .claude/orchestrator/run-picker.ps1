@@ -31,7 +31,7 @@ Import-Module (Join-Path $PSScriptRoot "atom.psm1") -Force -DisableNameChecking
 $script:Day = $null
 trap { Write-AtomCrash -Message $_.Exception.Message -Day $script:Day; exit 1 }
 
-$PickKeys = @("outcome","task_id","why","skipped","blocked_reason")
+$PickKeys = @("outcome","task_id","why","skipped","finished","blocked_reason")
 
 # Said, but allowed to be null. `pr_number: null` is "this card has no PR in flight" and is the
 # ordinary answer; a picker that omitted the field entirely is one that may have found an open PR
@@ -119,7 +119,7 @@ $unsound = Test-Sound -Day $day
 if ($unsound -ne "") { Write-Atom @{ ok = $false; stop = "the picker's session is not sound: $unsound" }; exit 1 }
 
 $c = Repair-Contract (Get-ContractFromText ([string]$k.result)) `
-                     -EmptyList @("skipped") -EmptyText @("blocked_reason")
+                     -EmptyList @("skipped","finished") -EmptyText @("blocked_reason")
 $bad = Test-DayContract -Contract $c -Required $PickKeys -Present $PickPresent `
                         -Field "outcome" -Allowed @("picked","blocked","no_tasks")
 # A pick naming no card is the one failure that reads as success everywhere downstream: the worker
@@ -142,7 +142,7 @@ if ($bad -ne "") {
 New-DayEvent -LogDir $day.LogDir -Kind "pick" -Data @{
   cycle = $cycle; outcome = [string]$c.outcome; task_id = [string]$c.task_id
   pr_number = $c.pr_number; why = [string]$c.why
-  skipped = @($c.skipped); blocked_reason = [string]$c.blocked_reason
+  skipped = @($c.skipped); finished = @($c.finished); blocked_reason = [string]$c.blocked_reason
 } | Out-Null
 
 # The line that says whether the ordering rule is picking the right thing, and the only place it
@@ -157,6 +157,17 @@ if ($stranded.Count -gt 0) {
   New-DayEvent -LogDir $day.LogDir -Kind "anomaly" -Data @{
     level = "warn"; code = "skip_failed"
     text = "cycle $cycle could not put " + ($stranded -join ", ") + " in pending, so the next pick meets them again"
+  } | Out-Null
+}
+
+# A card found finished is filed the same way and for the same reason, and it is the one that pays
+# for itself: left in `in progress` it is picked again by rule 1 tomorrow, and the session that meets
+# it spends itself proving what this query already knew.
+$unfiled = @(Complete-Card -Day $day -Finished @($c.finished))
+if ($unfiled.Count -gt 0) {
+  New-DayEvent -LogDir $day.LogDir -Kind "anomaly" -Data @{
+    level = "warn"; code = "finish_failed"
+    text = "cycle $cycle could not move " + ($unfiled -join ", ") + " to in review, so rule 1 hands them out again"
   } | Out-Null
 }
 
@@ -185,4 +196,5 @@ if ([string]$c.outcome -eq "blocked") {
 Write-Atom @{
   ok = $true; cycle = $cycle; outcome = "picked"; task_id = [string]$c.task_id
   pr_number = $c.pr_number; why = [string]$c.why; skipped = @($c.skipped)
+  finished = @($c.finished)
 }

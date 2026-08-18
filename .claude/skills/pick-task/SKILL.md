@@ -34,8 +34,10 @@ and the filters that do not name a space — `--mine` above all — answer acros
 
 Take the first of these that answers:
 
-1. **A card in `in progress`.** It belongs to a session that died halfway; it is not a new task and
-   it is not up for reconsideration. `outcome: "picked"`.
+1. **A card in `in progress` whose work has not landed.** It belongs to a session that died halfway;
+   it is not a new task and it is not up for reconsideration. `outcome: "picked"`. **Check the
+   premise before you act on it** — §1b — because a session that died *after* pushing leaves a card
+   that looks identical and has nothing left to build.
 2. **A card whose PR is still open.** `gh pr list --state open` is how you find these — its branches
    and bodies name their cards, and the card carries a `**Not merged.**` comment saying whether the
    audit held it or a grill answered it. Emit the card **and** `pr_number`, so the worker pushes to
@@ -43,6 +45,35 @@ Take the first of these that answers:
    open before believing an old comment.
 3. **The first grilled card in pick order.** Inside a list, `urgente` → `alta` → `normal` →
    `baja`.
+
+### 1b · The card in `in progress` that is already finished
+
+Rule 1 reads `in progress` as a session that died halfway. That is a premise, not a fact, and it is
+wrong in the one case that costs the most: a session that pushed, opened its PR and had it merged,
+and died before anything moved the card. The board says the work is owed and `main` says it is done.
+
+**One query answers it, and it is cheaper than every alternative** — the whole worker session that
+would otherwise be spent proving it:
+
+```powershell
+gh pr list --search "<task_id>" --state merged --json number,mergedAt,mergeCommit
+```
+
+- **Nothing merged** → the premise holds, rule 1 applies, pick it.
+- **Something merged for that card** → put it in `finished[]` with the PR number and the merge
+  commit, **do not pick it**, and go on down the order to the next candidate.
+
+**This is a screen and not a proof, and it is allowed to be.** A merged PR could have been reverted
+since, and no query here would see it — a reverted commit is still an ancestor of `main`. What makes
+that safe is where the card goes: `in review` is a person's queue, so a card filed wrongly is read by
+somebody rather than lost, and the cost of the screen being wrong is one card looked at. The cost of
+not screening is a whole session. Say the merge commit in `why` so whoever reads it can check in one
+command.
+
+`finished[]` is not `skipped[]`. Skipped is work nobody on this side could build, and it goes to
+`pending` where a person is owed something. Finished is work already in `main`, and it goes to
+`in review` where a person only has to close a card. Putting one in the other's list sends the card
+to a queue nobody reads it in.
 
 **Pick order is not the board's own numbering**, and this is the only place it is written:
 
@@ -146,6 +177,7 @@ orchestrator reads it off what you emitted and writes the file itself. The shape
   "pr_number": null,
   "why": "first grilled card in pick order; phase 0 is empty and the WinUI card ahead of this one is ungrilled, and nothing here builds on it",
   "skipped": [],
+  "finished": [],
   "blocked_reason": ""
 }
 ```
@@ -159,5 +191,6 @@ found an open PR and did not mention it, and it is refused, because that card ge
 fresh work and a second PR opened against it.
 
 **This session writes nothing to the board.** Not the card you picked — the worker moves that to
-`in progress` when it starts — and not the ones you skipped. A pick nothing consumes leaves the
-board exactly as it found it.
+`in progress` when it starts — and not the ones you skipped, and not the ones you found finished.
+A pick nothing consumes leaves the board exactly as it found it. Where those cards go is decided
+here, in the contract, and the orchestrator does the moving once your answer is on disk.
