@@ -86,11 +86,23 @@ Then one question at a time, with the options you actually see and what each cos
 ## 5 · What you leave
 
 **Question, answer. Never why.** The alternative that lost, the reasoning that settled it, the case
-that made it obvious: nobody acts on any of those. A decision is followed, not understood. One line
-each, and no more words than were said.
+that made it obvious: nobody acts on any of those. A decision is followed, not understood.
 
-> - What pausing does to the meeting → keeps the clock. The paused stretch is in the audio as the
->   silence it was.
+**And every line stands on its own.** Short is not the same as elliptical. What you write is read a
+month later, in a file of two hundred of these, by somebody who does not have the card open — so the
+question names what is being asked about and the answer is a sentence rather than a word. Cutting
+the subject out is not brevity, it is a line that has to be researched before it can be obeyed.
+
+Written short and unreadable:
+
+> - What stop starts → nothing.
+
+Written short and readable:
+
+> - What pressing stop starts → nothing. The meeting is recorded and sits there; transcribing it is
+>   a separate press from the meeting itself.
+
+One line longer, and the only one of the two somebody can act on without going to find the card.
 
 Two places, and the decision exists once in each.
 
