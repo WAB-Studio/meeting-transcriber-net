@@ -26,6 +26,8 @@ gh pr diff <n>
 git show <headRefOid>:ISA.md
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --space MeetingTranscriber
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text @.scratch/verdict.md
+gh pr comment <n> --body-file .scratch/verdict.md
 ```
 
 `PYTHONIOENCODING` is `utf-8`. Write only under `.scratch/`, and pass prose as `@.scratch/verdict.md`.
