@@ -62,8 +62,14 @@ internal sealed class SilentPlayback : IDisposable
             // hang a recording that has not started yet.
             DeviceRelease.LetGoOf("loopback silence", () =>
             {
-                output?.Dispose();
-                endpoint.Dispose();
+                try
+                {
+                    output?.Dispose();
+                }
+                finally
+                {
+                    endpoint.Dispose();
+                }
             });
 
             throw;
@@ -88,8 +94,18 @@ internal sealed class SilentPlayback : IDisposable
         // back after its deadline still frees what it was holding.
         release ??= DeviceRelease.Of("loopback silence release", () =>
         {
-            output.Dispose();
-            endpoint.Dispose();
+            // A finally, so a playback that refuses to close still leaves its endpoint let go of:
+            // the two are separate handles and only one of them is what refused. A playback that
+            // wedges instead never reaches it, which is the same rule read the other way — nothing
+            // a live thread is inside is anybody's to close.
+            try
+            {
+                output.Dispose();
+            }
+            finally
+            {
+                endpoint.Dispose();
+            }
         });
 
         release.Dispose();

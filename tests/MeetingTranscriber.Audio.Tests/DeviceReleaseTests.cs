@@ -98,14 +98,17 @@ public class DeviceReleaseTests
     /// nothing catching would end, taking the other source's release with it.
     /// </summary>
     /// <remarks>
-    /// Three are caught and they are the three a source has always swallowed on the way out, so
-    /// what moved is where they arrive and not which of them are answers. Anything else is a defect
-    /// rather than a device, and this deliberately does not cover it.
+    /// The first three are the ones a source has always swallowed on the way out, so what moved is
+    /// where they arrive and not which of them are answers. The fourth is any other, and it is here
+    /// because this thread has no boundary above it: a defect in cleanup ending the process would
+    /// take the other source's release and the session's own way of finishing with it, after a
+    /// meeting that is already on disk.
     /// </remarks>
     [Theory]
     [InlineData("io")]
     [InlineData("denied")]
     [InlineData("com")]
+    [InlineData("nothing anybody expected")]
     public void A_handle_that_refuses_to_close_does_not_take_the_process_with_it(string refusal)
     {
         var reached = false;
@@ -118,7 +121,8 @@ public class DeviceReleaseTests
             {
                 "io" => new IOException("the disk would not let go"),
                 "denied" => new UnauthorizedAccessException("not yours to close"),
-                _ => new COMException("the device would not let go"),
+                "com" => new COMException("the device would not let go"),
+                _ => new InvalidOperationException("a defect in this code, and still not the end"),
             };
         });
 

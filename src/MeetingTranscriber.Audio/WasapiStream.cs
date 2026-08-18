@@ -124,10 +124,13 @@ internal sealed class WasapiStream : IDisposable
         // and a capture somebody retries after closing that application would otherwise leave one
         // behind every time it failed.
         var endpoint = AudioDevices.Open(device);
+        AudioClient client;
+        WaveFormat mixing;
+
         try
         {
-            var client = endpoint.AudioClient;
-            return Ready(channel, client, client.MixFormat, direction, endpoint, numbersFrames: true);
+            client = endpoint.AudioClient;
+            mixing = client.MixFormat;
         }
         catch
         {
@@ -137,6 +140,14 @@ internal sealed class WasapiStream : IDisposable
             DeviceRelease.LetGoOf($"{channel} endpoint", endpoint.Dispose);
             throw;
         }
+
+        // Handed over rather than wrapped in a catch of its own, and that is the whole reason these
+        // two lines are not one: from here the client is what a wedge would be inside and the
+        // endpoint is underneath it, so both are let go of by one thread and that thread is Ready's.
+        // Caught here as well, the endpoint would be released by this thread while the release
+        // Ready gave up on is still inside the client that came off it — a COM object freed under a
+        // live thread, which is the one thing every deadline in this file exists to prevent.
+        return Ready(channel, client, mixing, direction, endpoint, numbersFrames: true);
     }
 
     /// <summary>
@@ -173,9 +184,10 @@ internal sealed class WasapiStream : IDisposable
     }
 
     /// <summary>
-    /// Initialises a client somebody else obtained and wraps it, letting the client go if Windows
-    /// refuses the format or the mode. Where the client came from is the only thing the two ways in
-    /// disagree about; from here on there is one stream.
+    /// Initialises a client somebody else obtained and wraps it, letting that client go — and the
+    /// endpoint under it, where there is one — if Windows refuses the format or the mode. Where the
+    /// client came from is the only thing the two ways in disagree about; from here on there is one
+    /// stream, and one thread that lets its handles go.
     /// </summary>
     private static WasapiStream Ready(
         AudioChannel channel,
@@ -202,7 +214,24 @@ internal sealed class WasapiStream : IDisposable
             // Initialising is where a device most often says no, and a driver that says no and then
             // will not be let go of is the same wedge as any other — so this waits the deadline for
             // it and comes back to throw about what it refused.
-            DeviceRelease.LetGoOf($"{channel} client", client.Dispose);
+            //
+            // Both handles on the one thread, in the order Dispose uses and for its reason: a
+            // client given up on is a client a thread is still inside, and the endpoint under it is
+            // then nobody's to close — which is what not reaching the finally leaves. A client that
+            // refuses to close has answered, so that same finally is what keeps its endpoint from
+            // being held to the end of the process over it.
+            DeviceRelease.LetGoOf($"{channel} device", () =>
+            {
+                try
+                {
+                    client.Dispose();
+                }
+                finally
+                {
+                    endpoint?.Dispose();
+                }
+            });
+
             throw;
         }
     }
@@ -333,8 +362,14 @@ internal sealed class WasapiStream : IDisposable
         // on these lines, which are this type's own and nobody else's to close.
         release ??= DeviceRelease.Of($"{channel} release", () =>
         {
-            client.Dispose();
-            endpoint?.Dispose();
+            try
+            {
+                client.Dispose();
+            }
+            finally
+            {
+                endpoint?.Dispose();
+            }
         });
 
         release.Dispose();

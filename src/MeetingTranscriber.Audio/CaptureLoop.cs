@@ -65,7 +65,7 @@ public sealed class CaptureLoop : IDisposable
 
     private readonly Thread thread;
     private volatile bool running = true;
-    private bool underway;
+    private volatile bool underway;
 
     private CaptureLoop(string name, Action<CaptureLoop> body) =>
         thread = new Thread(() => body(this)) { IsBackground = true, Name = name };
@@ -133,9 +133,15 @@ public sealed class CaptureLoop : IDisposable
     /// </summary>
     public void Underway()
     {
+        // Said before the gate is taken and not under it, which is what makes the deadline mean the
+        // device rather than the lock. The one thread waiting reads this at its deadline while
+        // holding the gate, so a body that announced a moment before that and is still queueing for
+        // the lock would otherwise read as one that never announced at all — a device that did
+        // start, given up on for having said so a moment too early to be heard.
+        underway = true;
+
         lock (gate)
         {
-            underway = true;
             Monitor.PulseAll(gate);
         }
     }
@@ -165,7 +171,9 @@ public sealed class CaptureLoop : IDisposable
     /// One wait and no loop around it. What is being waited for only ever goes from unsaid to
     /// said, there is exactly one thread waiting on it, and the pulse happens under the same lock
     /// — so a wake with nothing said is the deadline having passed, which is the answer this
-    /// wants rather than a case to wait through again.
+    /// wants rather than a case to wait through again. Read once more after the wait for the same
+    /// reason it is written before the gate: what decides is what the body said, not whether it had
+    /// reached the lock by the time this stopped waiting.
     /// </remarks>
     private void WaitToGetUnderway()
     {

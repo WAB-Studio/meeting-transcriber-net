@@ -96,11 +96,22 @@ public sealed class DeviceRelease : IDisposable
     /// Lets go, and keeps a handle that refuses to close from becoming the end of the process.
     /// </summary>
     /// <remarks>
-    /// The three caught are the ones a source has always swallowed on the way out, and this is
-    /// where they now arrive instead: what a recording has to say about how it ended is said by the
-    /// source finishing, not by a handle that would not close after it. Anything else is a defect
-    /// rather than a device, and it takes the process the way any unhandled exception on a thread
-    /// does — which is <see cref="CaptureLoop"/>'s stance too, and the only part of it this shares.
+    /// <para>
+    /// What a source has always swallowed on the way out is an <see cref="IOException"/>, an
+    /// <see cref="UnauthorizedAccessException"/> or a <see cref="COMException"/>, and this is where
+    /// those now arrive instead: what a recording has to say about how it ended is said by the
+    /// source finishing, not by a handle that would not close after it.
+    /// </para>
+    /// <para>
+    /// Everything else is caught here too, and that is not the same judgement as
+    /// <see cref="CaptureLoop"/>'s. A loop is what a recording is being written by, so an exception
+    /// nobody thought about ending the process is better than that loop deciding the meeting goes
+    /// on without the audio. A release runs after the meeting is already on disk, and this thread
+    /// has no boundary above it: ending the process here would take the other source's release, the
+    /// session's own way of finishing, and whatever a person was about to be told with it — over a
+    /// handle whose only remaining job was to close. Which is also what these calls used to do,
+    /// before they moved off the caller's thread and out from under the catch that was there.
+    /// </para>
     /// </remarks>
     private static void Run(Action release)
     {
@@ -108,8 +119,7 @@ public sealed class DeviceRelease : IDisposable
         {
             release();
         }
-        catch (Exception refused)
-            when (refused is IOException or UnauthorizedAccessException or COMException)
+        catch
         {
         }
     }
