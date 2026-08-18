@@ -339,7 +339,12 @@ function Get-DenialKey {
       # A segment that only sets the ground -- `cd somewhere` -- is not the command; its argument
       # is not either, so the whole segment is abandoned rather than its first word.
       if ($skip -contains $t.ToLower()) { break }
-      $leaf = [System.IO.Path]::GetFileName(($t -replace '\\', '/'))
+      # Split, and not GetFileName: what arrives here is somebody's shell line rather than a path,
+      # and .NET Framework's GetFileName throws on the quotes, pipes and angle brackets one is full
+      # of. That reaches further than the key it computes -- this runs from the atom that closes a
+      # cycle and from the one that ends the day, so one denied `(Get-Date).ToString("o")` left an
+      # audit paid for and its verdict on the PR, with nothing able to record it or end the day.
+      $leaf = @(($t -replace '\\', '/') -split '/')[-1]
       if ([string]::IsNullOrWhiteSpace($leaf)) { $leaf = $t }
       return "$Tool $leaf"
     }

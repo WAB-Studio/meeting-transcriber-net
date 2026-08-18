@@ -477,6 +477,25 @@ Check "the ones on the result come off it counted and grouped" {
   ""
 }
 
+# A denied command is a shell line and holds whatever somebody typed. Keying it went through a path
+# API that refuses quotes, pipes and angle brackets, so the one below took down every atom that
+# reads a day afterwards -- the audit of 2026-08-17 was paid for, posted its verdict to the PR, and
+# then could neither be recorded nor followed by an end to the day.
+Check "a denied command that is not a path is still keyed" {
+  $r = '{"permission_denials":[
+    {"tool_name":"PowerShell","tool_input":{"command":"(Get-Date).ToUniversalTime().ToString(\"o\")"}},
+    {"tool_name":"Bash","tool_input":{"command":"gh pr diff 48 | head -120"}},
+    {"tool_name":"Bash","tool_input":{"command":"until [ \"$(gh run view 1 --json status)\" = x ]; do sleep 20; done"}}]}' | ConvertFrom-Json
+  $d = Get-ResultDenials $r
+  if ($d.Count -ne 3) { return "counted $($d.Count)" }
+  $g = Group-Denials $d
+  if ($g.Count -ne 3) { return "grouped into $($g.Count): $(($g | ForEach-Object { $_.tool }) -join ' / ')" }
+  if (-not @($g | Where-Object { $_.tool -eq "Bash gh" }).Count) {
+    return "the piped one keyed as $(($g | ForEach-Object { $_.tool }) -join ' / ')"
+  }
+  ""
+}
+
 Check "two attempts at one tool stop the day, one only warns" {
   $one = New-QuietStatus
   $one.Denials = 1
