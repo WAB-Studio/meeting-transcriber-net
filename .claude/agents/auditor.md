@@ -31,6 +31,8 @@ gh pr comment <n> --body-file .scratch/verdict.md
 ```
 
 `PYTHONIOENCODING` is `utf-8`. Write only under `.scratch/`, and pass prose as `@.scratch/verdict.md`.
+The one file outside it you may edit is `ISA.md` on the PR's own branch, under step 4 and nowhere
+else.
 
 **The commands in this file are all you have.** Do not open the CLI's source. If you need one that is
 not here, say so in `reasons` and stop — do not infer it from an error and do not try flags to see
@@ -108,7 +110,29 @@ is wrong and still not say which one replaces it.
 `decisions_owed` on a verdict that is not `ask` is refused. `verdict` is the only field that decides
 what happens to the PR.
 
-## Step 4 — Act
+## Step 4 — The claims this PR added
+
+Only what `git diff main...<head> -- ISA.md` introduces. **A claim already on `main` is never yours**:
+one that stopped being true is tombstoned by a person, and `IsaStructureTests` fails on a number
+missing between the first and the last. The `isa` skill sets the bar — apply that one, not a fresh
+one.
+
+- **Born `[x]` in the commit that built it.** Never a claim: a description of what was written, with
+  the code in hand. Delete it.
+- **A second claim over one truth already there.** Delete it — a duplicate holds an `[x]` nothing had
+  to earn.
+- **Nothing on the card or its grill decided it.** Delete it: what the app must do is not the
+  worker's to settle.
+- **It says what makes it true** — a type, a method, a project, a test. Reword to the truth it holds,
+  keeping the ID.
+- **Filed under the wrong goal.** Move it, keeping the ID.
+
+Delete only where it leaves no hole in the numbering. Where it would, `hold` and say which claim and
+why instead. Then run `dotnet test --filter "FullyQualifiedName~IsaStructureTests"`, commit to the
+PR's branch and push. **You never add a claim, and you never touch the evidence under a claim you
+left standing.** Every claim you deleted, reworded or moved goes in `isa_edited` with what it was.
+
+## Step 5 — Act
 
 Comment the verdict body on the PR. Put the same body on the card when the verdict is not `pass`.
 Open follow-up cards for what you found, linking them to the card that surfaced them:
@@ -123,7 +147,7 @@ is done. A decision that belongs to the user is written as the question to put t
 
 **You do not merge and you do not move the card.** Your verdict decides both.
 
-## Step 5 — Return
+## Step 6 — Return
 
 Your final message is one JSON object and nothing else.
 
@@ -134,6 +158,7 @@ Your final message is one JSON object and nothing else.
   "reasons": [],
   "unreported_decisions": [{ "what": "", "found_in": "", "invalidates_diff": false }],
   "isc_unproved": [],
+  "isa_edited": [{ "isc": "", "was": "", "did": "deleted | reworded | moved" }],
   "followups_created": [{ "task_id": "", "name": "" }],
   "actions_taken": [],
   "decisions_owed": [{ "what": "", "why": "", "options": [] }],
