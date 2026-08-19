@@ -15,22 +15,6 @@ public class CaptureLoopTests
     private static readonly TimeSpan Promptly = TimeSpan.FromSeconds(1);
 
     /// <summary>
-    /// How far under the deadline a wait on the gate may measure and still be that deadline.
-    /// `Monitor.Wait` counts its timeout on the operating system's tick and `Stopwatch` counts the
-    /// same stretch on the performance counter, and a wait can come back a fraction of a
-    /// millisecond short of its timeout on the second one — 4.9993669 s was what caught it. That
-    /// difference is not what any of these tests is about, and a bound with no room in it is the
-    /// whole distance between a suite that is green and one that goes red every so often for
-    /// nothing.
-    /// </summary>
-    /// <remarks>
-    /// Only the gate. Waiting on the thread itself is `Thread.Join`, which has never measured short
-    /// here, and the tests that time one assert the deadline with nothing subtracted — a probe that
-    /// gave itself room it did not need would be a weaker probe for no reason.
-    /// </remarks>
-    private static readonly TimeSpan Slack = TimeSpan.FromMilliseconds(50);
-
-    /// <summary>
     /// The ordinary way out, and the baseline the rest of this class is measured against: a body
     /// that reads what it was asked and returns, waited for and not given up on.
     /// </summary>
@@ -101,12 +85,8 @@ public class CaptureLoopTests
         {
             var waited = Time(loop.Dispose);
 
-            waited.ShouldBeGreaterThanOrEqualTo(CaptureLoop.StopsWithin);
-
-            // Generous on purpose, and it still fails the wait this replaced: what is being told
-            // apart is a deadline from no deadline at all, so a loaded agent that takes half as
-            // long again is not the thing this should go red over.
-            waited.ShouldBeLessThan(CaptureLoop.StopsWithin * 2);
+            // It still fails the unbounded wait this replaced, which never came back at all.
+            waited.ShouldHaveWaitedTheDeadline();
             loop.Abandoned.ShouldBeTrue();
 
             // Still in there. Nothing it touches has become free to close because waiting gave up.
@@ -155,11 +135,7 @@ public class CaptureLoopTests
             });
             var waited = clock.Elapsed;
 
-            waited.ShouldBeGreaterThanOrEqualTo(CaptureLoop.StopsWithin - Slack);
-
-            // Generous for the same reason the wait on the way out is: what is being told apart is
-            // a deadline from no deadline at all.
-            waited.ShouldBeLessThan(CaptureLoop.StopsWithin * 2);
+            waited.ShouldHaveWaitedTheDeadline();
             loop.Abandoned.ShouldBeTrue();
 
             // Still in there, so nothing it holds became free because starting gave up on it. And
