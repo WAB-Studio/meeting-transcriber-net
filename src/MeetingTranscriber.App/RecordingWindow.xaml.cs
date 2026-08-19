@@ -1,6 +1,7 @@
 using System.Globalization;
 
 using MeetingTranscriber.Audio;
+using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
@@ -77,9 +78,9 @@ public sealed partial class RecordingWindow : Window
     private readonly List<TextLine> _report = [];
 
     /// <summary>
-    /// What asks the recording whether the program it is following has gone silent. Once a second,
-    /// which is what the metering loop at a prompt does, and it shows the offer and nothing else:
-    /// the levels are their own card.
+    /// What asks the recording what it is hearing. Once a second, which is what the metering loop
+    /// at a prompt does: it reads the meters, and it asks whether the program channel 0 is
+    /// following has gone silent for long enough to be the wrong one.
     /// </summary>
     private readonly DispatcherTimer _watch = new() { Interval = TimeSpan.FromSeconds(1) };
 
@@ -113,6 +114,19 @@ public sealed partial class RecordingWindow : Window
 
     private bool _offered;
     private bool _taken;
+
+    /// <summary>
+    /// What each channel read the last time the devices were asked, which is once a second while a
+    /// meeting runs. Kept rather than asked for again on every redraw: asking empties the meters,
+    /// so a redraw that asked would show a channel somebody is talking into as hearing nothing.
+    /// </summary>
+    private IReadOnlyList<ChannelReading> _channels = [];
+
+    /// <summary>
+    /// The endpoint the machine is playing through, as of the last second. Kept only so that a
+    /// moment when the machine will not answer leaves the line where it was rather than flickering.
+    /// </summary>
+    private AudioDevice? _playback;
 
     private RecorderChoices _chosen = RecorderChoices.Nothing;
 
@@ -232,7 +246,139 @@ public sealed partial class RecordingWindow : Window
         SpokenPicker.IsEnabled = choosing;
         RefreshProgramsButton.IsEnabled = choosing;
 
+        ShowTheMeters(screen.State);
         Announce(screen.State);
+    }
+
+    /// <summary>
+    /// Asks the devices what they are hearing and what the machine is playing through, which is
+    /// the once-a-second half of the meters and the only thing that may do it.
+    /// </summary>
+    /// <remarks>
+    /// Reading a level empties it — that is what makes a meter the stretch since somebody last
+    /// looked — so this is called from the tick and from the moment a meeting starts, and never
+    /// from a redraw. A press that read the meters again would find the stretch since a moment
+    /// ago, which is nothing, and print the muted-channel answer over a channel somebody is
+    /// talking into.
+    /// </remarks>
+    private void ReadTheDevices()
+    {
+        if (_recording is not { } recording)
+        {
+            return;
+        }
+
+        _channels = ChannelReading.ReadFrom(recording);
+        _playback = PlayingThrough();
+    }
+
+    /// <summary>
+    /// The endpoint the machine is playing through now, or what it last said when it will not
+    /// answer.
+    /// </summary>
+    /// <remarks>
+    /// Asked again every second rather than kept from when the devices opened, because it is the
+    /// answer that changes under a running meeting: Windows moves what it plays through the moment
+    /// somebody plugs a headset in, and a warning settled at the start would tell that person the
+    /// room could hear them for the rest of the hour.
+    /// <para>
+    /// A refusal answers with what it last said, and writes nothing. This runs once a second, so a
+    /// machine whose audio stack is momentarily busy would otherwise put the same sentence in the
+    /// report sixty times a minute — and the thing being reported is a line beside a meter.
+    /// </para>
+    /// </remarks>
+    private AudioDevice? PlayingThrough()
+    {
+        try
+        {
+            return AudioDevices.Playback();
+        }
+        catch (AudioCaptureException)
+        {
+            return _playback;
+        }
+    }
+
+    /// <summary>
+    /// Sets the meters from what was last read: what each channel is capturing, how loud it has
+    /// been, whether its device is gone, and whether the room is hearing the other side twice.
+    /// </summary>
+    /// <remarks>
+    /// Nothing here decides any of it, and nothing here asks a device anything. What says whether
+    /// there is a meeting to meter at all is <see cref="RecordingMeters"/>, in a project a build
+    /// agent can run; this is the setting of controls from that one answer, the same split as
+    /// <see cref="Refresh"/> and for the same reason.
+    /// </remarks>
+    private void ShowTheMeters(RecorderState state)
+    {
+        var meters = RecordingMeters.Of(state, _playback, _channels);
+
+        Meters.Visibility = meters.Showing ? Visibility.Visible : Visibility.Collapsed;
+        HeardTwice.Visibility = meters.TheOthersAreHeardTwice ? Visibility.Visible : Visibility.Collapsed;
+
+        Show(
+            meters.On(AudioChannel.Loopback),
+            OthersCapturing,
+            OthersMeter,
+            OthersLevel,
+            OthersStopped,
+            OthersStoppedDetail);
+
+        Show(
+            meters.On(AudioChannel.Microphone),
+            MineCapturing,
+            MineMeter,
+            MineLevel,
+            MineStopped,
+            MineStoppedDetail);
+    }
+
+    /// <summary>One channel's row, set from what that channel reads as.</summary>
+    /// <remarks>
+    /// Taking the controls rather than being written twice, because the two rows differ in exactly
+    /// one thing — which sentence they say when the device is gone — and that difference is in the
+    /// XAML where the sentence is bound. Everything else about them is one rule, and a second copy
+    /// of it is a second chance to set the wrong one.
+    /// </remarks>
+    private void Show(
+        ChannelReading? reading,
+        TextBlock capturing,
+        ProgressBar meter,
+        TextBlock level,
+        TextBlock stopped,
+        TextBlock said)
+    {
+        // Cleared and not left standing. The row belongs to a meeting that is over, and the panel
+        // around it is hidden — but the next meeting's first frame is drawn from these controls,
+        // and the last one's microphone is not something to show for a second under a new one.
+        if (reading is null)
+        {
+            capturing.Text = string.Empty;
+            meter.Value = 0;
+            level.Text = string.Empty;
+            stopped.Visibility = Visibility.Collapsed;
+            said.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        capturing.Text = reading.Capturing;
+        meter.Value = reading.Meter;
+
+        // A level is a measurement and reads the same in every language, so the reading hands one
+        // back as data. Having measured nothing is a sentence and the reading hands back none, so
+        // the word for it comes from the catalogue — which is also what this screen exists to show:
+        // an empty bar and a bar nothing has drawn yet look the same.
+        level.Text = reading.Loudness ?? In(UiTexts.NothingIsArriving);
+
+        stopped.Visibility = reading.Stopped ? Visibility.Visible : Visibility.Collapsed;
+
+        // Its own words, and only when there are any: a stream that ended without saying anything
+        // is a device that was unplugged, and an empty line under the sentence saying so reads as
+        // a reason that failed to load.
+        said.Text = reading.Said ?? string.Empty;
+        said.Visibility = reading.Stopped && reading.Said is not null
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     /// <summary>What the screen says about itself, which is one line and always the same one.</summary>
@@ -503,6 +649,11 @@ public sealed partial class RecordingWindow : Window
         _report.Clear();
         _offered = false;
         _taken = false;
+
+        // The last meeting's, and this one has not read anything yet. Left standing, they would be
+        // the previous meeting's devices and levels under the new one for as long as the first tick
+        // takes to arrive.
+        _channels = [];
         _step = RecorderStep.Starting;
         Refresh();
 
@@ -545,6 +696,10 @@ public sealed partial class RecordingWindow : Window
             _context = started.Context;
             _recording = started.Recording;
             _watch.Start();
+
+            // Once here, so the meters and the line about the room are up with the meeting rather
+            // than a second into it. Everything after this is the tick's.
+            ReadTheDevices();
         }
         catch (Exception refused) when (Reportable(refused))
         {
@@ -727,30 +882,48 @@ public sealed partial class RecordingWindow : Window
         }
         finally
         {
-            Refresh();
+            // Guarded the way the other two handlers guard theirs. This one writes every control on
+            // the screen, the meters included, and the window it is writing to can have been closed
+            // while three devices were being dealt with.
+            if (!_closed)
+            {
+                Refresh();
+            }
         }
     }
 
     /// <summary>
-    /// Asks the recording whether the program it is following has brought back nothing at all.
+    /// The second. It reads what each channel is hearing onto the screen, and asks the recording
+    /// whether the program channel 0 is following has brought back nothing at all.
     /// </summary>
     /// <remarks>
-    /// Never while the meeting is paused. A paused recording hears nothing from anything, so the
-    /// rule the offer rests on would be true of a program that is playing perfectly well — and an
-    /// offer, once made, stays made.
+    /// The offer is never asked for while the meeting is paused. A paused recording hears nothing
+    /// from anything, so the rule it rests on would be true of a program that is playing perfectly
+    /// well — and an offer, once made, stays made. The meters are read either way: what a paused
+    /// meeting is recording is silence, and showing that is how somebody sees the pause took.
     /// </remarks>
     private void OnWatch(object? sender, object e)
     {
-        if (_recording is not { } recording || _offered || _step != RecorderStep.Nothing || recording.IsPaused)
+        if (_recording is not { } recording || _step != RecorderStep.Nothing)
         {
             return;
         }
 
-        if (recording.HeardNothingFromTheProgram())
+        ReadTheDevices();
+
+        // The whole screen only when the offer has just appeared, and the meters otherwise. What
+        // the rest of it says does not change with a second passing — the buttons, the pickers and
+        // the status line all answer to a press — so redrawing them once a second would be a
+        // second's worth of work to say what it already said, and it would take a selection out of
+        // the report every time it ran.
+        if (!_offered && !recording.IsPaused && recording.HeardNothingFromTheProgram())
         {
             _offered = true;
             Refresh();
+            return;
         }
+
+        ShowTheMeters(Screen().State);
     }
 
     /// <summary>

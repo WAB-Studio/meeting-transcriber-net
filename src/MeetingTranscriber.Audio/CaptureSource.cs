@@ -58,7 +58,16 @@ public sealed class CaptureSource : IDisposable
     /// </summary>
     private long openedAt;
 
-    private Exception? failure;
+    /// <summary>
+    /// What the stream ended with, or nothing when it ended without one. Written on the draining
+    /// thread and read on whichever thread is showing a meter, which is why it is volatile: a
+    /// screen asking why a device stopped is asking from outside every lock this file has.
+    /// </summary>
+    private volatile Exception? failure;
+
+    /// <summary>Backs <see cref="Listening"/>, which says there why it is not an auto-property.</summary>
+    private CaptureTarget listening;
+
     private bool running;
 
     /// <summary>
@@ -78,7 +87,7 @@ public sealed class CaptureSource : IDisposable
         RecordingPause pause)
     {
         Channel = channel;
-        Listening = listening;
+        this.listening = listening;
         Format = format;
         File = file;
         this.stream = stream;
@@ -95,7 +104,17 @@ public sealed class CaptureSource : IDisposable
     /// now, which is what it opened with unless somebody moved it — the card beside the blocks is
     /// where what it opened with is kept.
     /// </summary>
-    public CaptureTarget Listening { get; private set; }
+    /// <remarks>
+    /// Read and written the way <see cref="stream"/> is, and for the same reason: this is the one
+    /// thing about a source that changes while it is recording, and a screen showing what each
+    /// channel is capturing reads it from a thread that has nothing to do with the one that moved
+    /// it.
+    /// </remarks>
+    public CaptureTarget Listening
+    {
+        get => Volatile.Read(ref listening);
+        private set => Volatile.Write(ref listening, value);
+    }
 
     /// <summary>The format that device handed over.</summary>
     public StreamFormat Format { get; }
@@ -132,6 +151,18 @@ public sealed class CaptureSource : IDisposable
     /// <see cref="Stop"/> is what says why.
     /// </summary>
     public bool HasEnded => ended.IsSet;
+
+    /// <summary>
+    /// What the stream said on its way out, or nothing — either because it is still recording or
+    /// because it ended without saying anything.
+    /// </summary>
+    /// <remarks>
+    /// The same reason <see cref="Finish"/> puts in the sentence it throws, readable while the
+    /// meeting is still running. That is the whole of why it exists: a device somebody unplugged
+    /// half way through is a channel of the recording gone, and waiting until stop to say so is
+    /// waiting until the meeting is over to say the meeting was half recorded.
+    /// </remarks>
+    public Exception? Ending => HasEnded ? failure : null;
 
     /// <summary>The loudest block since this was last asked, which is what a meter shows.</summary>
     public LevelReading Level() => meter.Read();

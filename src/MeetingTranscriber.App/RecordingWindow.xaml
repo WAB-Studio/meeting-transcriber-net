@@ -27,6 +27,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -111,14 +112,102 @@
             </StackPanel>
         </StackPanel>
 
-        <ScrollViewer Grid.Row="4">
+        <!-- What is arriving, while it is arriving. There is no meeting to meter until one is
+             being recorded, so none of this is on screen before that and none of it is left
+             standing after — a meter showing its last reading is a screen saying a recording is
+             still going. Which is not decided here: RecordingMeters answers it, in a project a
+             build agent can run, and this reads the answer onto controls.
+
+             Two channels and not a list, because two is the contract: channel 0 is the loopback
+             and channel 1 is the microphone, and a recording that disagreed with that would be
+             refused long before it reached a screen. -->
+        <StackPanel x:Name="Meters" Grid.Row="4" Spacing="12" Visibility="Collapsed">
+            <StackPanel Spacing="2">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{x:Bind In(loc:UiTexts.Channel0TheOthers)}" />
+                    <!-- The device or the program, in whatever its maker called it: data, and so
+                         the same in every language. -->
+                    <TextBlock x:Name="OthersCapturing" TextTrimming="CharacterEllipsis" Opacity="0.7" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ProgressBar
+                        x:Name="OthersMeter"
+                        Width="260"
+                        VerticalAlignment="Center"
+                        Maximum="1"
+                        AutomationProperties.Name="{x:Bind In(loc:UiTexts.Channel0TheOthers)}" />
+                    <TextBlock x:Name="OthersLevel" MinWidth="72" Opacity="0.7" />
+                </StackPanel>
+                <!-- A live region, because a device dying is an event and not something to
+                     find by looking. Somebody reading this screen through a narrator is told the
+                     moment the line appears, rather than the next time they walk the window. -->
+                <TextBlock
+                    x:Name="OthersStopped"
+                    Text="{x:Bind In(loc:UiTexts.TheOthersChannelStoppedOnItsOwn)}"
+                    AutomationProperties.LiveSetting="Assertive"
+                    TextWrapping="Wrap"
+                    MaxWidth="640"
+                    Visibility="Collapsed" />
+                <!-- What the driver said, when it said anything. Its own words. -->
+                <TextBlock
+                    x:Name="OthersStoppedDetail"
+                    TextWrapping="Wrap"
+                    MaxWidth="640"
+                    Opacity="0.7"
+                    Visibility="Collapsed" />
+            </StackPanel>
+
+            <StackPanel Spacing="2">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="{x:Bind In(loc:UiTexts.Channel1Me)}" />
+                    <TextBlock x:Name="MineCapturing" TextTrimming="CharacterEllipsis" Opacity="0.7" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ProgressBar
+                        x:Name="MineMeter"
+                        Width="260"
+                        VerticalAlignment="Center"
+                        Maximum="1"
+                        AutomationProperties.Name="{x:Bind In(loc:UiTexts.Channel1Me)}" />
+                    <TextBlock x:Name="MineLevel" MinWidth="72" Opacity="0.7" />
+                </StackPanel>
+                <!-- A live region, because a device dying is an event and not something to
+                     find by looking. Somebody reading this screen through a narrator is told the
+                     moment the line appears, rather than the next time they walk the window. -->
+                <TextBlock
+                    x:Name="MineStopped"
+                    Text="{x:Bind In(loc:UiTexts.TheMicrophoneChannelStoppedOnItsOwn)}"
+                    AutomationProperties.LiveSetting="Assertive"
+                    TextWrapping="Wrap"
+                    MaxWidth="640"
+                    Visibility="Collapsed" />
+                <TextBlock
+                    x:Name="MineStoppedDetail"
+                    TextWrapping="Wrap"
+                    MaxWidth="640"
+                    Opacity="0.7"
+                    Visibility="Collapsed" />
+            </StackPanel>
+
+            <!-- Beside the meters and not in the report: it is true of the whole meeting rather
+                 than of a moment in it, and a line that scrolled away would be read once. -->
+            <TextBlock
+                x:Name="HeardTwice"
+                Text="{x:Bind In(loc:UiTexts.TheOthersAreHeardTwice)}"
+                AutomationProperties.LiveSetting="Polite"
+                TextWrapping="Wrap"
+                MaxWidth="640"
+                Visibility="Collapsed" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="5">
             <TextBlock
                 x:Name="OutputText"
                 IsTextSelectionEnabled="True"
                 TextWrapping="Wrap" />
         </ScrollViewer>
 
-        <StackPanel Grid.Row="5" Orientation="Horizontal" Spacing="8">
+        <StackPanel Grid.Row="6" Orientation="Horizontal" Spacing="8">
             <TextBlock
                 x:Name="StatusText"
                 VerticalAlignment="Center"
