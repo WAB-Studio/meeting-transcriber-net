@@ -79,6 +79,46 @@ public class EndpointKindTests
         device.PlaysIntoTheRoom.ShouldBeFalse();
     }
 
+    /// <summary>
+    /// The kind is part of the value. This record is what the machine answered about an endpoint,
+    /// the same way <see cref="AudioDevice.IsDefault"/> is, and two answers that disagree are two
+    /// answers — so a device nobody asked is not equal to the same endpoint enumerated.
+    /// </summary>
+    /// <remarks>
+    /// Written down because it is the surprising half and the code has no other way to say it: the
+    /// alternative was an <c>Equals</c> by hand leaving one field out, which the next field added
+    /// would have to remember. What it costs is that value equality is not identity here, and what
+    /// makes that safe is that nothing asking "the same device" uses it —
+    /// <see cref="AudioDevices.Choose"/> and the window's picker both go by
+    /// <see cref="AudioDevice.Id"/>.
+    /// </remarks>
+    [Fact]
+    public void A_device_nobody_asked_about_is_a_different_answer_from_the_same_endpoint_enumerated()
+    {
+        var unasked = new AudioDevice("{an-endpoint}", "An endpoint", IsDefault: true);
+
+        (unasked with { Kind = EndpointKind.Speakers }).ShouldNotBe(unasked);
+    }
+
+    /// <summary>
+    /// And the half that makes the one above safe: what names an endpoint is its id, so a device
+    /// carrying an answer nobody gave is still found among the ones that were enumerated.
+    /// </summary>
+    /// <remarks>
+    /// Over <see cref="AudioDevices.Choose"/> rather than over an id comparison written here,
+    /// because what has to be true is that the application's own way of finding a device does not
+    /// go through equality. The day somebody writes <c>Contains</c> or <c>IndexOf</c> instead, this
+    /// is what says the microphone somebody chose can no longer be found.
+    /// </remarks>
+    [Fact]
+    public void An_endpoint_is_found_by_its_id_whatever_it_was_asked_about()
+    {
+        var unasked = new AudioDevice("{an-endpoint}", "An endpoint", IsDefault: true);
+        var enumerated = unasked with { Kind = EndpointKind.Speakers };
+
+        AudioDevices.Choose([enumerated], unasked.Id).ShouldBe(enumerated);
+    }
+
     private static AudioDevice Playing(EndpointKind kind) =>
         new("{an-endpoint}", "An endpoint", IsDefault: true) { Kind = kind };
 }

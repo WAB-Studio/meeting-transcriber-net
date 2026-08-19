@@ -138,22 +138,16 @@
                         AutomationProperties.Name="{x:Bind In(loc:UiTexts.Channel0TheOthers)}" />
                     <TextBlock x:Name="OthersLevel" MinWidth="72" Opacity="0.7" />
                 </StackPanel>
-                <!-- A live region, because a device dying is an event and not something to
-                     find by looking. Somebody reading this screen through a narrator is told the
-                     moment the line appears, rather than the next time they walk the window. -->
+                <!-- A live region, because a device dying is an event and not something to find by
+                     looking — and its words are deliberately not here. A line bound in the XAML is
+                     set once while this panel is collapsed and never changes again, which is a
+                     live region that announces nothing: RecordingWindow.Tell is what says these
+                     and why, and LiveRegionTests fails if one is bound here or never told. -->
                 <TextBlock
                     x:Name="OthersStopped"
-                    Text="{x:Bind In(loc:UiTexts.TheOthersChannelStoppedOnItsOwn)}"
                     AutomationProperties.LiveSetting="Assertive"
                     TextWrapping="Wrap"
                     MaxWidth="640"
-                    Visibility="Collapsed" />
-                <!-- What the driver said, when it said anything. Its own words. -->
-                <TextBlock
-                    x:Name="OthersStoppedDetail"
-                    TextWrapping="Wrap"
-                    MaxWidth="640"
-                    Opacity="0.7"
                     Visibility="Collapsed" />
             </StackPanel>
 
@@ -171,21 +165,12 @@
                         AutomationProperties.Name="{x:Bind In(loc:UiTexts.Channel1Me)}" />
                     <TextBlock x:Name="MineLevel" MinWidth="72" Opacity="0.7" />
                 </StackPanel>
-                <!-- A live region, because a device dying is an event and not something to
-                     find by looking. Somebody reading this screen through a narrator is told the
-                     moment the line appears, rather than the next time they walk the window. -->
+                <!-- Told, not bound, for the reason channel 0's line says. -->
                 <TextBlock
                     x:Name="MineStopped"
-                    Text="{x:Bind In(loc:UiTexts.TheMicrophoneChannelStoppedOnItsOwn)}"
                     AutomationProperties.LiveSetting="Assertive"
                     TextWrapping="Wrap"
                     MaxWidth="640"
-                    Visibility="Collapsed" />
-                <TextBlock
-                    x:Name="MineStoppedDetail"
-                    TextWrapping="Wrap"
-                    MaxWidth="640"
-                    Opacity="0.7"
                     Visibility="Collapsed" />
             </StackPanel>
 
@@ -193,7 +178,6 @@
                  than of a moment in it, and a line that scrolled away would be read once. -->
             <TextBlock
                 x:Name="HeardTwice"
-                Text="{x:Bind In(loc:UiTexts.TheOthersAreHeardTwice)}"
                 AutomationProperties.LiveSetting="Polite"
                 TextWrapping="Wrap"
                 MaxWidth="640"

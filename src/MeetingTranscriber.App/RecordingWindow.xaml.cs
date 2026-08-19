@@ -10,6 +10,7 @@ using MeetingTranscriber.Recording;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 
 // WinUI has a Duration of its own — an animation's, in ticks — and this file is the one place in
@@ -313,40 +314,35 @@ public sealed partial class RecordingWindow : Window
     {
         var meters = RecordingMeters.Of(state, _playback, _channels);
 
+        // The panel before the lines inside it, because nothing inside a Collapsed element is in
+        // the automation tree — the rest of that chain, and why each step of it matters, is Tell's.
         Meters.Visibility = meters.Showing ? Visibility.Visible : Visibility.Collapsed;
-        HeardTwice.Visibility = meters.TheOthersAreHeardTwice ? Visibility.Visible : Visibility.Collapsed;
 
-        Show(
-            meters.On(AudioChannel.Loopback),
-            OthersCapturing,
-            OthersMeter,
-            OthersLevel,
-            OthersStopped,
-            OthersStoppedDetail);
+        var others = meters.On(AudioChannel.Loopback);
+        var mine = meters.On(AudioChannel.Microphone);
 
-        Show(
-            meters.On(AudioChannel.Microphone),
-            MineCapturing,
-            MineMeter,
-            MineLevel,
-            MineStopped,
-            MineStoppedDetail);
+        Show(others, OthersCapturing, OthersMeter, OthersLevel);
+        Show(mine, MineCapturing, MineMeter, MineLevel);
+
+        // Each of the three named where its words are, rather than reached through the row above.
+        // A live region that nothing hands a sentence to renders blank and announces nothing, which
+        // is the same failure as one bound in the XAML wearing different clothes — so the rule is
+        // that every one of them appears in a call to Tell, and LiveRegionTests holds the screen to
+        // it by name. Passing the control down through Show hid these two from that check, which is
+        // how the check found them.
+        Tell(HeardTwice, meters.TheOthersAreHeardTwice, UiTexts.TheOthersAreHeardTwice);
+        Tell(OthersStopped, others?.Stopped ?? false, UiTexts.TheOthersChannelStoppedOnItsOwn);
+        Tell(MineStopped, mine?.Stopped ?? false, UiTexts.TheMicrophoneChannelStoppedOnItsOwn);
     }
 
-    /// <summary>One channel's row, set from what that channel reads as.</summary>
+    /// <summary>What one channel's meter reads as: what it is capturing, and how loud.</summary>
     /// <remarks>
-    /// Taking the controls rather than being written twice, because the two rows differ in exactly
-    /// one thing — which sentence they say when the device is gone — and that difference is in the
-    /// XAML where the sentence is bound. Everything else about them is one rule, and a second copy
-    /// of it is a second chance to set the wrong one.
+    /// Taking the controls rather than being written twice, because the two rows are now one rule
+    /// with nothing to tell them apart, and a second copy of it is a second chance to set the wrong
+    /// one. What the two rows really do differ in — which sentence they say when the device is
+    /// gone — is said where the line is, in <see cref="ShowTheMeters"/>.
     /// </remarks>
-    private void Show(
-        ChannelReading? reading,
-        TextBlock capturing,
-        ProgressBar meter,
-        TextBlock level,
-        TextBlock stopped,
-        TextBlock said)
+    private void Show(ChannelReading? reading, TextBlock capturing, ProgressBar meter, TextBlock level)
     {
         // Cleared and not left standing. The row belongs to a meeting that is over, and the panel
         // around it is hidden — but the next meeting's first frame is drawn from these controls,
@@ -356,8 +352,6 @@ public sealed partial class RecordingWindow : Window
             capturing.Text = string.Empty;
             meter.Value = 0;
             level.Text = string.Empty;
-            stopped.Visibility = Visibility.Collapsed;
-            said.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -369,16 +363,61 @@ public sealed partial class RecordingWindow : Window
         // the word for it comes from the catalogue — which is also what this screen exists to show:
         // an empty bar and a bar nothing has drawn yet look the same.
         level.Text = reading.Loudness ?? In(UiTexts.NothingIsArriving);
+    }
 
-        stopped.Visibility = reading.Stopped ? Visibility.Visible : Visibility.Collapsed;
+    /// <summary>
+    /// Shows or hides one of the lines somebody reading this screen through a narrator has to be
+    /// told about the moment it appears, and says what it says while showing it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every line of this is one step of a chain, and the chain breaking anywhere is a fault
+    /// nobody sighted can see. A <c>Collapsed</c> element is not in the automation tree, and
+    /// visibility only reaches that tree when layout runs — so the line is shown, then laid out,
+    /// and only then given its words. A live region is announced on its text changing and not on
+    /// its visibility, which is why the words are set here instead of bound in the XAML at all.
+    /// And the event is raised rather than left to the framework, because "a text change raises
+    /// <c>LiveRegionChanged</c>" is a belief about WinUI that nothing here can run, while raising
+    /// it is something this code does. <c>FromElement</c> answers with nothing when no peer has
+    /// been made, which is exactly when nobody is listening.
+    /// </para>
+    /// <para>
+    /// Nothing happens at all when the line already says this. Asked here rather than left to the
+    /// property system, because this runs once a second for as long as a dead microphone stays
+    /// dead: a narrator re-reading the whole fault every second is a screen somebody switches off,
+    /// and it would depend on WinUI short-circuiting an equal assignment — another belief nothing
+    /// here can run. A language switch really is a change and is announced, which is right.
+    /// </para>
+    /// <para>
+    /// What no probe here reaches is a narrator reading it out, which needs a packaged host and
+    /// Narrator: it is run by hand and written down. What is held is the shape — every live region
+    /// on this screen gets its words from a call to this, and <c>LiveRegionTests</c> goes red if
+    /// one binds them in the XAML or is never told anything at all.
+    /// </para>
+    /// </remarks>
+    private void Tell(TextBlock line, bool showing, UiText says)
+    {
+        var words = showing ? In(says) : string.Empty;
 
-        // Its own words, and only when there are any: a stream that ended without saying anything
-        // is a device that was unplugged, and an empty line under the sentence saying so reads as
-        // a reason that failed to load.
-        said.Text = reading.Said ?? string.Empty;
-        said.Visibility = reading.Stopped && reading.Said is not null
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        if (line.Text == words)
+        {
+            return;
+        }
+
+        if (!showing)
+        {
+            line.Text = words;
+            line.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        line.Visibility = Visibility.Visible;
+        line.UpdateLayout();
+        line.Text = words;
+
+        FrameworkElementAutomationPeer
+            .FromElement(line)?
+            .RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
     /// <summary>What the screen says about itself, which is one line and always the same one.</summary>
@@ -974,9 +1013,19 @@ public sealed partial class RecordingWindow : Window
     }
 
     /// <summary>
-    /// A line that is data and not a sentence — a path, a device, what a driver said — and so has
-    /// no language.
+    /// A line that is not a sentence this application chose: a path, a device's own name, or what
+    /// the machine said when something failed.
     /// </summary>
+    /// <remarks>
+    /// The first two really are data and read the same in every language. The third is not, and
+    /// saying so is the point of this comment: a message off an exception is a
+    /// <c>COMException</c>'s English, or the filesystem's, or SQLite's, and it is printed here
+    /// anyway because it is the evidence — somebody quotes it, or searches for it, and a
+    /// translation of it would match nothing. So it goes in the report, under a sentence from the
+    /// catalogue that already said what happened, and never on a line of its own where it would
+    /// read as the application talking. Beside a meter, while a meeting is still running, it is
+    /// refused outright: <c>ChannelReading.Stopped</c> says why.
+    /// </remarks>
     private void Dump(string line)
     {
         _report.Add(TextLine.Data(line));

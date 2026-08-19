@@ -140,34 +140,13 @@ public class RecordingMetersTests
     /// meeting they still have.
     /// </summary>
     [Fact]
-    public void A_channel_whose_device_stopped_on_its_own_says_so_and_says_what_it_said()
+    public void A_channel_whose_device_stopped_on_its_own_says_so_and_the_other_one_does_not()
     {
         var meters = Metered(
-            RecorderState.Recording,
-            Speakers,
-            others: Speech,
-            mine: Nothing,
-            mineStopped: "The microphone was removed.");
+            RecorderState.Recording, Speakers, others: Speech, mine: Nothing, mineStopped: true);
 
         meters.On(AudioChannel.Loopback).ShouldNotBeNull().Stopped.ShouldBeFalse();
-
-        var mine = meters.On(AudioChannel.Microphone).ShouldNotBeNull();
-        mine.Stopped.ShouldBeTrue();
-        mine.Said.ShouldBe("The microphone was removed.");
-    }
-
-    /// <summary>
-    /// A device that ended without saying anything still says it ended. Windows is under no
-    /// obligation to explain an endpoint that went away, and a screen that showed the fault only
-    /// when there was a sentence to print would say nothing at all about the unplugged one.
-    /// </summary>
-    [Fact]
-    public void A_device_that_ended_without_saying_anything_still_says_it_ended()
-    {
-        var reading = Reading(AudioChannel.Microphone, Nothing, stopped: true, said: null);
-
-        reading.Stopped.ShouldBeTrue();
-        reading.Said.ShouldBeNull();
+        meters.On(AudioChannel.Microphone).ShouldNotBeNull().Stopped.ShouldBeTrue();
     }
 
     /// <summary>
@@ -205,6 +184,37 @@ public class RecordingMetersTests
             .ShouldNotContain("silent", Case.Insensitive);
     }
 
+    /// <summary>
+    /// The same rule over the whole reading rather than over the one property, because it was the
+    /// property nobody was watching that broke it: a reading once carried what the stream threw on
+    /// its way out, which reads as a driver's own words and is really a <c>COMException</c>, or the
+    /// audio engine's own sentence, or the filesystem's — framework English printed beside a meter
+    /// on a screen ISC-152 holds to being in both languages.
+    /// </summary>
+    /// <remarks>
+    /// Read off the type rather than listed, so a string added later is held to the same answer
+    /// instead of arriving behind a check that only knew the two there were. The two allowed are
+    /// both data: the name a device's maker gave it, and a number. Exceptions are named separately
+    /// because that is the shape the failure really had — the words arrived as
+    /// <c>Ending?.Message</c>, so a check that only swept <c>string</c> would wave through the
+    /// exception itself and be flattened one layer up.
+    /// </remarks>
+    [Fact]
+    public void A_reading_says_nothing_in_words_of_its_own()
+    {
+        var properties = typeof(ChannelReading).GetProperties();
+
+        properties
+            .Where(property => property.PropertyType == typeof(string))
+            .Select(property => property.Name)
+            .ShouldBe([nameof(ChannelReading.Capturing), nameof(ChannelReading.Loudness)], ignoreOrder: true);
+
+        properties
+            .Where(property => typeof(Exception).IsAssignableFrom(property.PropertyType))
+            .Select(property => property.Name)
+            .ShouldBeEmpty();
+    }
+
     private static RecorderState[] States() => Enum.GetValues<RecorderState>();
 
     private static RecordingMeters Metered(
@@ -212,23 +222,22 @@ public class RecordingMetersTests
         AudioDevice playback,
         LevelReading others,
         LevelReading mine,
-        string? mineStopped = null) =>
+        bool mineStopped = false) =>
         RecordingMeters.Of(
             state,
             playback,
             [
                 Reading(AudioChannel.Loopback, others),
-                Reading(AudioChannel.Microphone, mine, mineStopped is not null, mineStopped),
+                Reading(AudioChannel.Microphone, mine, mineStopped),
             ]);
 
     private static ChannelReading Reading(
-        AudioChannel channel, LevelReading level, bool stopped = false, string? said = null) =>
+        AudioChannel channel, LevelReading level, bool stopped = false) =>
         new()
         {
             Channel = channel,
             Capturing = channel == AudioChannel.Loopback ? "Desk speakers" : "A microphone",
             Level = level,
             Stopped = stopped,
-            Said = said,
         };
 }

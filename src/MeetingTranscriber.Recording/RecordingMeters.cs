@@ -40,13 +40,16 @@ public sealed record ChannelReading
     /// a device that stopped by itself rather than one somebody stopped — a source asked to stop is
     /// over too, and what keeps the two apart is that nothing meters a meeting being stopped.
     /// </summary>
+    /// <remarks>
+    /// That it stopped, and nothing about why. What the stream threw on its way out is whatever
+    /// came out of the drain loop — a <see cref="System.Runtime.InteropServices.COMException"/>,
+    /// the audio engine's own sentence, the filesystem's — and never a driver quoted, so carrying
+    /// it on a reading would put framework English on a screen ISC-152 holds to being in both
+    /// languages. It is in the sentence <see cref="CaptureSource.Finish"/> throws, which is what
+    /// somebody diagnosing a meeting reads; a reading is what somebody recording one reads, and
+    /// the words for that are the catalogue's.
+    /// </remarks>
     public required bool Stopped { get; init; }
-
-    /// <summary>
-    /// What the device said on its way out, when it said anything. A driver's own words, so it is
-    /// data and has no language.
-    /// </summary>
-    public string? Said { get; init; }
 
     /// <summary>Whether nothing at all arrived on this channel in the stretch just read.</summary>
     public bool IsSilent => Level.IsSilent;
@@ -103,7 +106,6 @@ public sealed record ChannelReading
                     Capturing = source.Listening.Name,
                     Level = source.Level(),
                     Stopped = source.HasEnded,
-                    Said = source.Ending?.Message,
                 }),
         ];
     }

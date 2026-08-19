@@ -152,17 +152,12 @@ public sealed class CaptureSource : IDisposable
     /// </summary>
     public bool HasEnded => ended.IsSet;
 
-    /// <summary>
-    /// What the stream said on its way out, or nothing — either because it is still recording or
-    /// because it ended without saying anything.
-    /// </summary>
-    /// <remarks>
-    /// The same reason <see cref="Finish"/> puts in the sentence it throws, readable while the
-    /// meeting is still running. That is the whole of why it exists: a device somebody unplugged
-    /// half way through is a channel of the recording gone, and waiting until stop to say so is
-    /// waiting until the meeting is over to say the meeting was half recorded.
-    /// </remarks>
-    public Exception? Ending => HasEnded ? failure : null;
+    // What the stream threw on its way out is deliberately not offered here. It was, once, so that
+    // a screen could print it while the meeting ran — and what a person got was a COMException, or
+    // this file's own sentence, or the filesystem's, all of it framework English on a screen every
+    // word of which is owed in two languages. A channel that died is said in words the catalogue
+    // owns; the machine's own text is put in the sentence Finish throws, where it is read by
+    // whoever is diagnosing a meeting rather than by whoever is recording one.
 
     /// <summary>The loudest block since this was last asked, which is what a meter shows.</summary>
     public LevelReading Level() => meter.Read();

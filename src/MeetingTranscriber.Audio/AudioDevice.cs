@@ -12,10 +12,21 @@ namespace MeetingTranscriber.Audio;
 public sealed record AudioDevice(string Id, string Name, bool IsDefault)
 {
     /// <summary>
-    /// What the endpoint says it is. Not a positional value, because it is the machine's answer
-    /// about a device and not part of what names one: a device built to be recorded from — in a
-    /// test, or from a name somebody typed — is the same device whether or not anything asked.
+    /// What the endpoint says it is, or <see cref="EndpointKind.Unsaid"/> when nothing asked it.
     /// </summary>
+    /// <remarks>
+    /// Part of the value like every other field here, the same way <see cref="IsDefault"/> is:
+    /// this record is what the machine answered about an endpoint, and two answers that disagree
+    /// are two answers. What names the endpoint is <see cref="Id"/>, and anything asking whether
+    /// two of these are the same device asks that — which is what the window's picker does. The
+    /// alternative would be an <c>Equals</c> written by hand to leave one field out, and the next
+    /// field added would have to remember it.
+    /// <para>
+    /// Not positional, because no caller outside enumeration can answer it: the form factor is
+    /// read off an open endpoint, so everywhere else is a device nothing asked, which is what the
+    /// default says rather than something each call site has to spell.
+    /// </para>
+    /// </remarks>
     public EndpointKind Kind { get; init; } = EndpointKind.Unsaid;
 
     /// <summary>
