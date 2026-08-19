@@ -139,7 +139,8 @@ Follow-ups: <ids>, or none.
 Per-assembly counts, what you read, how you confirmed it: all of it stays out. That is the record
 you return, and this is the sentence somebody opens the PR a month later to find.
 
-Open follow-up cards for what you found, linking them to the card that surfaced them:
+Open follow-up cards only for what needs a person, a device, or work outside this PR, linking them
+to the card that surfaced them. Everything else is returned as a finding and filed nowhere.
 
 ```powershell
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" create --list "<list>" --name "BUG - ..." --desc @.scratch/followup.md
