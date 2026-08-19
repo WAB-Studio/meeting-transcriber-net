@@ -111,6 +111,12 @@ public static class Cli
             "record a meeting into the corpus, pausing if asked, and stop — which starts nothing",
             RecordingCommands.Record),
         new(
+            "recovery",
+            $"recovery {Corpus.Option} <directory>"
+            + " [--meeting <id> (--keep | --export <directory> | --discard)]",
+            "what a start after a crash finds waiting, and which of the three happens to one of them",
+            RecordingCommands.Recovery),
+        new(
             "recordings",
             "recordings --spool <directory>",
             "which recordings nobody got to stop are waiting, and what each one is",
@@ -118,7 +124,7 @@ public static class Cli
         new(
             "recover",
             "recover --in <directory> (--keep | --export <directory> | --discard)",
-            "make the recording it becomes and keep it, take each source out, or throw it away",
+            "the same for one folder and no corpus: the recording beside the blocks, never a meeting",
             AudioCommands.Recover),
         new(
             "search",

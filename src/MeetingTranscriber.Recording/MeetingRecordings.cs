@@ -200,18 +200,20 @@ public static class MeetingRecordings
         }
 
         var made = MeetingAudio.Materialise(spool);
+        var path = CorpusFiles.PathFor(meeting.Id, MeetingAudio.FileName);
 
-        var audio = DurableArtifact.Write(
-            corpus,
-            meeting.Id,
-            ArtifactKind.Audio,
-            CorpusFiles.PathFor(meeting.Id, MeetingAudio.FileName),
-            now,
-            into =>
-            {
-                using var recording = made.File.OpenRead();
-                recording.CopyTo(into);
-            });
+        var audio = Filed(corpus, meeting.Id, path, made)
+            ?? DurableArtifact.Write(
+                corpus,
+                meeting.Id,
+                ArtifactKind.Audio,
+                path,
+                now,
+                into =>
+                {
+                    using var recording = made.File.OpenRead();
+                    recording.CopyTo(into);
+                });
 
         meeting.Duration = made.Length;
         meeting.UpdatedAt = now;
@@ -258,7 +260,51 @@ public static class MeetingRecordings
     /// afterwards can detect. The meeting still finishes — its audio and its length are read from
     /// the blocks, which never needed the card.
     /// </remarks>
-    private static CaptureRun? Ran(CorpusDbContext corpus, Guid meetingId, SpoolCard? card)
+    /// <summary>
+    /// This meeting's audio, when the corpus already holds exactly the bytes this finish just
+    /// made — and nothing otherwise.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What this is for is a finish that was cut off between its two commits. The audio row lands
+    /// first and the meeting's length second, so a machine that dies in between leaves a meeting
+    /// with its audio filed and no length — and finishing it again is the only thing that puts
+    /// that right. An <see cref="ArtifactKind.Audio"/> is never rewritten, so without this the
+    /// second attempt would be refused by the one rule that exists to stop a paid or unrepeatable
+    /// file being destroyed.
+    /// </para>
+    /// <para>
+    /// Only when the bytes are the same, and the hash is what says so. The recording is read out of
+    /// the blocks by the same code every time, so the same spools give the same file; bytes that
+    /// differ mean the folder is not the recording the corpus filed, and that is refused rather
+    /// than reconciled — one of the two is a meeting nothing else would ever notice was wrong.
+    /// </para>
+    /// </remarks>
+    private static Artifact? Filed(CorpusDbContext corpus, Guid meetingId, string path, Materialised made)
+    {
+        var filed = corpus.Artifacts.FirstOrDefault(
+            row => row.MeetingId == meetingId
+                && row.Kind == ArtifactKind.Audio
+                && row.RelativePath == path);
+
+        if (filed is null)
+        {
+            return null;
+        }
+
+        var hash = CorpusFiles.Sha256Of(made.File);
+        if (!string.Equals(filed.Sha256, hash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RecordingException(
+                $"Meeting {meetingId} already has its audio filed, and the recording in "
+                + $"'{made.File.Directory?.FullName}' does not hash to it. One of the two is not "
+                + "this meeting, and a recording is never written over another one.");
+        }
+
+        return filed;
+    }
+
+    internal static CaptureRun? Ran(CorpusDbContext corpus, Guid meetingId, SpoolCard? card)
     {
         if (card is not null)
         {
