@@ -128,24 +128,23 @@ Return to `main` with a clean tree. Take the branch tip with `git rev-parse <bra
 
 Your final message is one JSON object and nothing else. No prose around it.
 
-```json
+```text
 {
-  "outcome": "pr_opened",
-  "task_id": "86ak1ejve",
-  "pr_number": 52,
-  "head_sha": "9a8007b66ca6a8933ee0c3c112e9490f365d2a59",
-  "isc_closed": ["ISC-140"],
-  "probes": [{ "command": "dotnet test --no-build", "passed": true }],
-  "decisions_deferred": [{ "what": "", "chose": "", "blocks_the_pr": false }],
-  "left_out": [],
-  "skipped": [{ "task_id": "", "needs": "" }],
-  "blocked_reason": "",
-  "decisions_owed": [{ "what": "", "why": "", "options": [] }]
+  "outcome":            "pr_opened" | "already_done" | "needs_grill" | "blocked",
+  "task_id":            string,
+  "pr_number":          number | null,   // never absent
+  "head_sha":           string,          // "" when no PR was opened
+  "isc_closed":         string[],        // "ISC-N"
+  "probes":             [{ "command": string, "passed": boolean }],
+  "decisions_deferred": [{ "what": string, "chose": string, "blocks_the_pr": boolean }],
+  "left_out":           string[],
+  "skipped":            [{ "task_id": string, "needs": string }],
+  "blocked_reason":     string,          // "" unless blocked
+  "decisions_owed":     [{ "what": string, "why": string, "options": string[] }]
 }
 ```
 
-`outcome` is `pr_opened`, `already_done`, `needs_grill` or `blocked`. Every field but
-`decisions_owed` is required.
+Every field but `decisions_owed` is required.
 
 - **`decisions_deferred`** — every fork you resolved without anybody confirming it, and every one you
   left open. `[]` asserts there were none, and it is checked against the diff. If you wrote "left

@@ -155,23 +155,22 @@ is done. A decision that belongs to the user is written as the question to put t
 
 Your final message is one JSON object and nothing else.
 
-```json
+```text
 {
-  "verdict": "pass",
-  "audited_head_sha": "9a8007b66ca6a8933ee0c3c112e9490f365d2a59",
-  "reasons": [],
-  "unreported_decisions": [{ "what": "", "found_in": "", "invalidates_diff": false }],
-  "isc_unproved": [],
-  "isa_edited": [{ "isc": "", "was": "", "did": "deleted | reworded | moved" }],
-  "followups_created": [{ "task_id": "", "name": "" }],
-  "actions_taken": [],
-  "decisions_owed": [{ "what": "", "why": "", "options": [] }],
-  "card": { "to": "Open", "tags": [] }
+  "verdict":              "pass" | "pass_with_followup" | "ask" | "hold",
+  "audited_head_sha":     string,     // the PR's headRefOid, never the record's
+  "reasons":              string[],
+  "unreported_decisions": [{ "what": string, "found_in": string, "invalidates_diff": boolean }],
+  "isc_unproved":         string[],   // "ISC-N — what CI does not corroborate"
+  "isa_edited":           [{ "isc": string, "was": string, "did": "deleted" | "reworded" | "moved" }],
+  "followups_created":    [{ "task_id": string, "name": string }],
+  "actions_taken":        string[],   // what you did, with ids
+  "decisions_owed":       [{ "what": string, "why": string, "options": string[] }],
+  "card":                 { "to": string, "tags": string[] }   // omit to put it back in the pool
 }
 ```
 
-Every field but `card` is required. `verdict` is `pass`, `pass_with_followup`, `ask` or `hold`.
-`actions_taken` lists what you actually did, with ids.
+Every field but `card` is required.
 
 If `audited_head_sha` disagrees with the head SHA in the record you were given, say so in `reasons`
 and return `hold`: the code you read is not the code that was submitted.

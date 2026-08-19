@@ -96,24 +96,22 @@ for it, that no document lists it. Those say how it got here. You are deciding w
 
 Your final message is one JSON object and nothing else. No prose around it.
 
-```json
+```text
 {
-  "outcome": "surveyed",
-  "list": "",
-  "cards_read": [""],
-  "decisions": [
-    { "what": "", "breaks_without_it": "", "owner": "", "owner_reason": "", "shape": "" }
-  ],
-  "ratify": [
-    { "structure": "", "found_in": "", "verdict": "ratify", "why": "", "doc_change": "" }
-  ],
-  "flat": [{ "what": "", "why_no_structure": "" }],
-  "blocked_reason": ""
+  "outcome":        "surveyed" | "blocked",
+  "list":           string,
+  "cards_read":     string[],     // card ids
+  "decisions":      [{ "what": string, "breaks_without_it": string,
+                       "owner": string,          // a card id, "new_card" or "none"
+                       "owner_reason": string, "shape": string }],
+  "ratify":         [{ "structure": string, "found_in": string,
+                       "verdict": "ratify" | "reject", "why": string, "doc_change": string }],
+  "flat":           [{ "what": string, "why_no_structure": string }],
+  "blocked_reason": string        // "" unless blocked
 }
 ```
 
-Every field is required. `outcome` is `surveyed` or `blocked`. `owner` is a card id, `new_card` or
-`none`. `verdict` is `ratify` or `reject`.
+Every field is required.
 
 `decisions`, `ratify` and `flat` may each be empty. An empty `decisions` is a real answer: a list can
 hold no structural decision at all.

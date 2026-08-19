@@ -88,20 +88,19 @@ other.
 
 Your final message is one JSON object and nothing else. No prose around it.
 
-```json
+```text
 {
-  "outcome": "picked",
-  "task_id": "86ak1ejve",
-  "pr_number": null,
-  "why": "first grilled card in pick order; phase 0 is empty and the WinUI card ahead of it is ungrilled and nothing here builds on it",
-  "skipped": [{ "task_id": "", "why": "" }],
-  "finished": [{ "task_id": "", "why": "" }],
-  "blocked_reason": ""
+  "outcome":        "picked" | "blocked" | "no_tasks",
+  "task_id":        string,     // "" unless picked
+  "pr_number":      number | null,   // never absent
+  "why":            string,
+  "skipped":        [{ "task_id": string, "why": string }],
+  "finished":       [{ "task_id": string, "why": string }],
+  "blocked_reason": string      // "" unless blocked
 }
 ```
 
-Every field is required. `outcome` is `picked`, `blocked` or `no_tasks`. `pr_number` is a number or
-`null` — never absent. `why` is one sentence saying what you took **and what you passed to get to
+Every field is required. `why` is one sentence saying what you took **and what you passed to get to
 it**.
 
 You write nothing to the board. Not the card you picked, not the ones you skipped, not the ones you
