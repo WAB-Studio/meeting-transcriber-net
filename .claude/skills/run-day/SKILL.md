@@ -118,6 +118,8 @@ and when the day ends. Somebody who asked to be left alone for the day does not 
 mid-day the day stops where it stood. What survives is on the board and on GitHub, which is the
 whole point, and the next day picks it up from there.
 
+Every comment you leave on a card opens with `[Day]`.
+
 ## 7 · Do not touch the repo yourself
 
 The worker owns the checkout. You do not edit files, do not commit and do not switch branches

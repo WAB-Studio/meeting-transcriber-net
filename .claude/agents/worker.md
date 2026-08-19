@@ -127,6 +127,18 @@ python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" move <id> --status "
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text @.scratch/done.md
 ```
 
+Every comment you leave on a card opens with `[Worker]`:
+
+```markdown
+[Worker] **In review.** PR #<n>, head `<sha>`.
+```
+
+Write the decisions and the domain: what a meeting, a recording or the corpus does now that it did
+not, what was decided and what it settles, what the card did not get and which card carries it.
+
+Write the code in the PR body and the commit message: what you tried, why one shape beat another,
+what a review found.
+
 Return to `main` with a clean tree. Take the branch tip with `git rev-parse <branch>`.
 
 ## Step 6 — Return the record

@@ -123,8 +123,7 @@ Delete only where no number goes missing; where one would, `hold` and name the c
 
 ## Step 5 — Act
 
-Comment the verdict on the PR, and the same body on the card unless it passed. **Under fifteen
-lines, in this shape:**
+Comment the verdict on the PR. **Under fifteen lines, in this shape:**
 
 ```markdown
 **<verdict>** — `<head sha>`, CI <run id> green.
@@ -138,6 +137,19 @@ Follow-ups: <ids>, or none.
 
 Per-assembly counts, what you read, how you confirmed it: all of it stays out. That is the record
 you return, and this is the sentence somebody opens the PR a month later to find.
+
+Unless it passed, the card gets its own comment, never the PR's body:
+
+```markdown
+[Auditor] **<verdict>** — PR #<n>, `<head sha>`.
+<What has to change and what it costs the product, or what the card now stands on.
+ `ask` only: the question, and what turns on each answer.>
+Follow-ups: <ids>, or none.
+```
+
+Write the decisions and the domain: a decision taken without being declared, a promise the diff
+makes that the card did not, a claim closed on the wrong thing. Leave the run, the counts and the
+tests you read on the PR.
 
 Open follow-up cards only for what needs a person, a device, or work outside this PR, linking them
 to the card that surfaced them. Everything else is returned as a finding and filed nowhere.
