@@ -27,7 +27,12 @@ by id only.
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" move <id> --status "in progress"
 python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text @.scratch/note.md
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" create --list "<list>" --name "BUG - ..." --desc @.scratch/found.md
+python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" link <new-id> --needs <origin-id>
 ```
+
+`create` is for the one thing CLAUDE.md says becomes a card: a fix too big to land inline. Anything
+smaller goes in the record and nowhere else.
 
 Prose longer than one line goes in a file under `.scratch/` and is passed as `@path`. A refused call
 goes in `left_out` and you stop trying to spell around it.
