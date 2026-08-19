@@ -90,7 +90,21 @@ PR, what has to be settled — and go on.
 **The second card parked in one day ends it**, naming both. A day that ends on that ceiling twice
 means the grill is not catching what it should. Say so plainly.
 
-## 5 · What you say, and when
+## 5 · A decision the user hands you
+
+They settle things outside a grill — over a verdict, in passing, to get a cycle moving. Those
+answers reach a card without the grill's own check on them ever running, so it runs here, on the
+same two triggers: WinUI or Windows App SDK refuses it, or the app would behave unlike every other
+Windows app in a way they would not have meant. `.claude/skills/winui/` is what says so.
+
+Say it before you write it on the card and before you act on it, naming the platform behaviour or
+the convention and what breaks. Taste fires nothing. Then take whatever they answer second —
+including the same answer, whose named cost goes on the card beside it, or the next session raises
+the objection again and they pay for it twice.
+
+What you may not do is write down an answer you had reason to question, and keep the reason.
+
+## 6 · What you say, and when
 
 **Silence is the default.** You speak when a card is picked, when a cycle closes, when a rule fires,
 and when the day ends. Somebody who asked to be left alone for the day does not want a heartbeat.
@@ -104,7 +118,7 @@ and when the day ends. Somebody who asked to be left alone for the day does not 
 mid-day the day stops where it stood. What survives is on the board and on GitHub, which is the
 whole point, and the next day picks it up from there.
 
-## 6 · Do not touch the repo yourself
+## 7 · Do not touch the repo yourself
 
 The worker owns the checkout. You do not edit files, do not commit and do not switch branches
 between cycles — a dirty tree stops the next worker in its preflight, including over a fix you

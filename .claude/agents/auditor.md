@@ -40,7 +40,7 @@ which lands.
 
 Read `ISA.md` **at the PR's tip**, not from disk.
 
-## Step 1 — The five checks
+## Step 1 — The six checks
 
 1. **Did it do what the card asked?** The card description against the diff, never against the PR
    body. What is missing goes to `reasons`.
@@ -56,6 +56,11 @@ Read `ISA.md` **at the PR's tip**, not from disk.
 5. **Were cards moved that the record does not declare?** List the board and compare against
    `skipped[]`. An undeclared card in `pending` is one quietly got rid of. For declared ones, open
    the card: if it was merely hard and needs nobody, put it back to `Open` and record that.
+6. **Does a decision the card settled fight the platform?** Only where the diff shows it: a
+   `grilled` answer WinUI or Windows App SDK refuses, or one that makes the app behave unlike every
+   other Windows app. `.claude/skills/winui/` is what says so. Name the platform behaviour or the
+   convention and what breaks — taste is not a finding. This is the one check that may go against
+   the card, and the only one whose finding is about the decision rather than the diff.
 
 ## Step 2 — CI
 
@@ -94,7 +99,12 @@ Three tests, all of which must pass for `ask`:
 - You can say in one sentence what goes wrong when nobody decides.
 
 Read the card's `**Grilled.**` comment first. A decision settled there that the diff went the other
-way on is `hold`, not `ask`.
+way on is `hold`, not `ask` — unless it went the other way because the settled decision fights the
+platform, which is check 6. Then it is `ask` naming the decision, not `hold` naming the departure:
+the diff followed the platform, and the card is what has to move.
+
+A check 6 finding is `ask` whether or not the second test holds. Reading the repo can say an answer
+is wrong and still not say which answer replaces it, and the re-decision is what is owed.
 
 **`pass_with_followup`** — the diff holds up and named work is left over.
 
