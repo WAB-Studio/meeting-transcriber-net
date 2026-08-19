@@ -92,17 +92,13 @@ means the grill is not catching what it should. Say so plainly.
 
 ## 5 · A decision the user hands you
 
-They settle things outside a grill — over a verdict, in passing, to get a cycle moving. Those
-answers reach a card without the grill's own check on them ever running, so it runs here, on the
-same two triggers: WinUI or Windows App SDK refuses it, or the app would behave unlike every other
-Windows app in a way they would not have meant. `.claude/skills/winui/` is what says so.
+Decisions arrive outside a grill — over a verdict, in passing, to get a cycle moving — and the
+grill's check on them does not arrive with them. It runs here: an answer the framework or the
+platform will not take gets said before you write it on a card and before you act on it, naming
+what refuses it. Taste fires nothing.
 
-Say it before you write it on the card and before you act on it, naming the platform behaviour or
-the convention and what breaks. Taste fires nothing. Then take whatever they answer second —
-including the same answer, whose named cost goes on the card beside it, or the next session raises
-the objection again and they pay for it twice.
-
-What you may not do is write down an answer you had reason to question, and keep the reason.
+Then take whatever they answer second. What you may not do is write down an answer you had reason
+to question and keep the reason.
 
 ## 6 · What you say, and when
 

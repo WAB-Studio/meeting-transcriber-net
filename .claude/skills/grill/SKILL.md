@@ -83,27 +83,14 @@ its comments, the code it is about, `arquitectura.md`, `ISA.md`.
 
 Then one question at a time, with the options you actually see and what each costs.
 
-## 5 · An answer that fights the platform
+## 5 · An answer that will not build
 
-They decide what the app does. They do not decide what WinUI, Windows App SDK or Windows itself
-will do, and an answer can be right about the product and impossible in the frame it has to be
-built in. Say so before you write it down, in the same message as the answer you are questioning:
-once it is on the card it is `grilled`, and `grilled` reads as settled to everything downstream.
+They decide what the app does, not what the framework and the platform will do. An answer can be
+right about the product and impossible as given. Say so in the same message as the answer, naming
+what refuses it — once it is on the card it reads as settled to everybody downstream.
 
-Two things fire this and nothing else.
-
-- **The platform refuses it, or works against it.** Not awkward — does not work, or works only by
-  going around it. `.claude/skills/winui/` is what says so, and a recollection is not.
-- **The app would behave unlike every other Windows app**, in a way the person who asked would not
-  have meant. Where files land, what closing a window does, a setting that does not outlive a
-  restart.
-
-**Taste fires nothing.** Name the platform behaviour or the convention, and what breaks without it.
-"It feels wrong" spends their session and settles nothing.
-
-Then they answer again, and that answer is the one that goes on the card — including when it is the
-one they already gave. A cost named and taken is part of what gets followed, so it goes in the
-answer's own line: without it the next session raises the same objection and they pay for it twice.
+Taste fires nothing. Then they answer again, and a cost they took anyway goes in that answer's own
+line, or the next session raises the same objection.
 
 ## 6 · What you leave
 
