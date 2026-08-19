@@ -259,6 +259,18 @@ public sealed partial class RecordingWindow : Window
     /// Where the meetings go, said before the first one rather than found out afterwards — and
     /// when there is nowhere, which folder and what was wrong with it.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The corpus refused for a reason this screen has no words for.
+    /// </exception>
+    /// <remarks>
+    /// The last arm stops rather than substituting, which is <see cref="RecorderStates.Reaches"/>
+    /// on a state it does not have and is the same rule for the same reason: a refusal added to
+    /// <see cref="CorpusRefusal"/> and not given a text here would otherwise be shown to somebody
+    /// as one of the others, sending them to check a folder that is fine or a setting they never
+    /// wrote. A screen that says the wrong reason confidently is worse than one that stops, and
+    /// this is a table falling behind its enum — a fault of the code, which nothing a person does
+    /// can reach. <c>CorpusTextTests</c> is what catches it before it can be thrown.
+    /// </remarks>
     private void SayWhereTheCorpusIs()
     {
         var text = _corpus.Refusal switch
@@ -268,7 +280,8 @@ public sealed partial class RecordingWindow : Window
             CorpusRefusal.FolderDoesNotAnswer => UiTexts.TheCorpusFolderDidNotAnswer,
             CorpusRefusal.NoCorpusInTheFolder => UiTexts.ThereIsNoCorpusInThatFolder,
             CorpusRefusal.GoesWhenThePackageDoes => UiTexts.TheCorpusFolderGoesWhenThePackageDoes,
-            _ => UiTexts.TheCorpusFolderDidNotAnswer,
+            _ => throw new InvalidOperationException(
+                $"This screen has no text for corpus refusal '{_corpus.Refusal}'."),
         };
 
         CorpusText.Text = _corpus.Refusal is null && !_corpus.HoldsACorpus
