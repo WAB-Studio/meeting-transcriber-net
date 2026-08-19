@@ -37,6 +37,13 @@
     <ProjectReference Include="..\MeetingTranscriber.Presentation\MeetingTranscriber.Presentation.csproj" />
   </ItemGroup>
 
+  <!-- Grabar una reunión: la composición del motor de audio con el corpus. Trae Audio,
+       Infrastructure y Domain con ella, y es la única arista que esta app necesita — todo lo que
+       una pantalla decide vive de ese lado, donde un agente de build puede correrlo. -->
+  <ItemGroup>
+    <ProjectReference Include="..\MeetingTranscriber.Recording\MeetingTranscriber.Recording.csproj" />
+  </ItemGroup>
+
   <!--
     Defining the "Msix" ProjectCapability here allows the Single-project MSIX Packaging
     Tools extension to be activated for this project even if the Windows App SDK Nuget
