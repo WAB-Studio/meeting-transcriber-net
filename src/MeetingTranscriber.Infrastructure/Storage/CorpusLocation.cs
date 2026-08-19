@@ -1,4 +1,4 @@
-namespace MeetingTranscriber.Infrastructure.Storage;
+﻿namespace MeetingTranscriber.Infrastructure.Storage;
 
 /// <summary>What stopped the application opening a corpus where it went looking for one.</summary>
 public enum CorpusRefusal
@@ -36,11 +36,21 @@ public enum CorpusRefusal
     NoCorpusInTheFolder = 3,
 
     /// <summary>
-    /// It is inside the package's own data folder, which uninstalling deletes. Everything the
-    /// corpus holds that was paid for would go with it, so it is refused however it was arrived
-    /// at — including by a folder that only leads there through a link.
+    /// It goes when the package does. Either it is inside the package's own data folder, which
+    /// uninstalling deletes outright, or it is elsewhere under the user's <c>AppData</c>, out of
+    /// which a packaged build's writes are redirected into that same folder. Everything the corpus
+    /// holds that was paid for would go with it, so it is refused however it was arrived at —
+    /// including by a folder that only leads there through a link.
     /// </summary>
-    InsideThePackageContainer = 4,
+    /// <remarks>
+    /// The redirected half is the one nothing else catches. A packaged full-trust desktop
+    /// application has AppData write virtualization on by default: the path comes back from
+    /// Windows spelled exactly as it was asked for, and the bytes land under
+    /// <c>%LOCALAPPDATA%\Packages\&lt;family&gt;\LocalCache</c>. So a folder under AppData cannot
+    /// be told from a safe one by opening it and looking, which is why this is a rule about where a
+    /// folder is rather than something noticed after writing to one.
+    /// </remarks>
+    GoesWhenThePackageDoes = 4,
 }
 
 /// <summary>
@@ -112,11 +122,11 @@ public sealed record CorpusFolder
 public sealed class CorpusLocation
 {
     /// <summary>
-    /// The folder this application keeps its own data in, under the user's local application
-    /// data. It is both where the corpus goes when nobody has said otherwise and where the file
-    /// saying otherwise is kept — the second of which is why the file stays behind when the
-    /// corpus moves, since a pointer that travelled with what it points at would point at
-    /// nothing.
+    /// The folder this application keeps its own data in, directly under the user's profile. It is
+    /// both where the corpus goes when nobody has said otherwise and where the file saying
+    /// otherwise is kept. Until somebody moves the corpus those are one folder; afterwards this one
+    /// stays where it is holding the pointer, since a pointer that travelled with what it points at
+    /// would point at nothing.
     /// </summary>
     public const string ApplicationFolderName = "MeetingTranscriber";
 
@@ -150,18 +160,27 @@ public sealed class CorpusLocation
     /// Where this user's corpus is.
     /// </summary>
     /// <remarks>
-    /// <see cref="Environment.SpecialFolder.LocalApplicationData"/> and never
-    /// <c>ApplicationData.Current.LocalFolder</c>. The second is the package's own folder —
+    /// <para>
+    /// <see cref="Environment.SpecialFolder.UserProfile"/>, and neither way into application data.
+    /// <c>ApplicationData.Current.LocalFolder</c> is the package's own folder —
     /// <c>%LOCALAPPDATA%\Packages\&lt;family&gt;\LocalCache</c> — which uninstalling the
-    /// application deletes, and inside it would be the provider responses somebody already paid
-    /// for and cannot ask for again. The two read alike in a debugger, so what keeps them apart is
-    /// not this comment: it is that no folder any answer here names is allowed to be inside the
-    /// container, and that nothing in <c>src/</c> mentions the other one at all.
+    /// application deletes. <c>%LOCALAPPDATA%</c> itself reads back as an ordinary path and is not
+    /// one: a packaged build's writes under it are redirected into that same package folder, so it
+    /// is the same uninstall taking the same bytes, arrived at with nothing looking wrong. Either
+    /// way what goes are the provider responses somebody already paid for and cannot ask for again.
+    /// </para>
+    /// <para>
+    /// The profile is not redirected, and it is not the person's own filing the way
+    /// <c>Documents</c> is — which is theirs to order and usually synced to OneDrive besides. So
+    /// the corpus sits directly under the profile, on the permissions the profile already carries.
+    /// What keeps it there is not this comment: it is that no folder any answer here names is
+    /// allowed to be under AppData at all, and that nothing in <c>src/</c> mentions the other API.
+    /// </para>
     /// </remarks>
     public static CorpusLocation OfThisUser()
     {
         var applicationFolder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ApplicationFolderName);
 
         return new CorpusLocation(
@@ -170,56 +189,67 @@ public sealed class CorpusLocation
     }
 
     /// <summary>
-    /// The folder every MSIX package's own data lives under, for this user. Anything at or under
-    /// it goes when a package does.
+    /// The folder this user's application data lives under, which a packaged build's writes are
+    /// redirected out of. Nothing the corpus is made of may be at or under it.
     /// </summary>
     /// <remarks>
-    /// Anchored on the profile rather than on the local application data folder, which is the
-    /// point rather than a detail. A packaged process may be handed a local application data
-    /// folder that is already inside the container; anchoring on it would then compare the
-    /// container against itself and find nothing wrong with anywhere. The profile is not
-    /// redirected, so the anchor holds whichever folder the process was handed — and a corpus in a
-    /// folder that merely happens to be spelled <c>AppData\Local\Packages</c> on some other disk
-    /// is somebody's own folder and is left alone.
+    /// Anchored on the profile rather than on what
+    /// <see cref="Environment.GetFolderPath(Environment.SpecialFolder)"/> answers for either
+    /// application data folder, which is the point rather than a detail. A packaged process may be
+    /// handed a local application data folder that is already inside the container; anchoring on it
+    /// would then compare the container against itself and find nothing wrong with anywhere. The
+    /// profile is not redirected, so the anchor holds whichever folder the process was handed — and
+    /// a corpus in a folder that merely happens to be spelled <c>AppData</c> on some other disk is
+    /// somebody's own folder and is left alone.
     /// </remarks>
-    public static string PackageContainerOfThisUser() => Path.Combine(
+    public static string ApplicationDataOfThisUser() => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        "AppData", "Local", "Packages");
+        "AppData");
 
     /// <summary>
-    /// Whether this path is inside a package's own data folder, and so would be deleted with the
-    /// package.
+    /// The folder every MSIX package's own data lives under, for this user. Inside
+    /// <see cref="ApplicationDataOfThisUser"/>, and the sharpest case of it: an uninstall deletes
+    /// what is under here outright, rather than first redirecting writes into it.
     /// </summary>
-    public static bool InsideThePackageContainer(string path) =>
-        InsideThePackageContainer(path, PackageContainerOfThisUser());
+    public static string PackageContainerOfThisUser() =>
+        Path.Combine(ApplicationDataOfThisUser(), "Local", "Packages");
 
     /// <summary>
-    /// The same question against a named container folder, which is how it is tested: the answer
-    /// has to be about a real profile, and a build agent's profile is not the one a test can
+    /// Whether a corpus in this folder would go when the package does — for being in the package's
+    /// own data folder, or anywhere else under the application data a packaged build's writes are
+    /// redirected out of.
+    /// </summary>
+    public static bool GoesWhenThePackageDoes(string path) =>
+        GoesWhenThePackageDoes(path, ApplicationDataOfThisUser());
+
+    /// <summary>
+    /// The same question against a named application data folder, which is how it is tested: the
+    /// answer has to be about a real profile, and a build agent's profile is not the one a test can
     /// write literal paths for.
     /// </summary>
     /// <remarks>
     /// Where the path is written and where it leads are two questions, and only the second is the
-    /// one that matters — a folder on another disk that is a link into the container is deleted
-    /// with the package exactly like a folder spelled that way. So every step from the path up to
-    /// its root is asked whether it is a link, and where a link goes is asked the first question
-    /// again. One hop, not a chain: a link into a link into the container is not a thing anybody
-    /// has, and following forever is how a loop of links becomes a start-up that never finishes.
+    /// one that matters — a folder on another disk that is a link into that tree goes with the
+    /// package exactly like a folder spelled that way. So every step from the path up to its root
+    /// is asked whether it is a link, and where a link goes is asked the first question again. One
+    /// hop, not a chain: a link into a link into application data is not a thing anybody has, and
+    /// following forever is how a loop of links becomes a start-up that never finishes.
     /// </remarks>
-    public static bool InsideThePackageContainer(string path, string container)
+    public static bool GoesWhenThePackageDoes(string path, string applicationData)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        ArgumentException.ThrowIfNullOrWhiteSpace(container);
+        ArgumentException.ThrowIfNullOrWhiteSpace(applicationData);
 
         var full = Path.GetFullPath(path);
-        if (IsAtOrUnder(full, container))
+        if (IsAtOrUnder(full, applicationData))
         {
             return true;
         }
 
         for (var step = new DirectoryInfo(full); step is not null; step = step.Parent)
         {
-            if (LinkTargetOf(step) is { } target && IsAtOrUnder(Path.GetFullPath(target), container))
+            if (LinkTargetOf(step) is { } target
+                && IsAtOrUnder(Path.GetFullPath(target), applicationData))
             {
                 return true;
             }
@@ -243,9 +273,9 @@ public sealed class CorpusLocation
     {
         ArgumentNullException.ThrowIfNull(folder);
 
-        if (InsideThePackageContainer(folder.FullName))
+        if (GoesWhenThePackageDoes(folder.FullName))
         {
-            return CorpusFolder.Refused(CorpusRefusal.InsideThePackageContainer, folder.FullName);
+            return CorpusFolder.Refused(CorpusRefusal.GoesWhenThePackageDoes, folder.FullName);
         }
 
         try
@@ -320,7 +350,7 @@ public sealed class CorpusLocation
     {
         try
         {
-            // Not the final target: a link into the container is read from the link itself, and
+            // Not the final target: a link into that tree is read from the link itself, and
             // asking for the end of the chain would need every step of it to be there — which a
             // link into a folder an uninstall already deleted is exactly not.
             return folder.ResolveLinkTarget(returnFinalTarget: false)?.FullName;
@@ -390,9 +420,9 @@ public sealed class CorpusLocation
     /// </summary>
     private CorpusFolder WhereTheFirstCorpusGoes()
     {
-        if (InsideThePackageContainer(Fallback.FullName))
+        if (GoesWhenThePackageDoes(Fallback.FullName))
         {
-            return CorpusFolder.Refused(CorpusRefusal.InsideThePackageContainer, Fallback.FullName);
+            return CorpusFolder.Refused(CorpusRefusal.GoesWhenThePackageDoes, Fallback.FullName);
         }
 
         try

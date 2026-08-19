@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 using MeetingTranscriber.Domain.Artifacts;
@@ -27,10 +27,10 @@ public class CorpusLocationTests
         UtcTimestamp.From(new DateTimeOffset(2026, 8, 18, 10, 0, 0, TimeSpan.Zero));
 
     [Fact]
-    public void With_nobody_having_chosen_the_corpus_is_under_the_users_own_application_data()
+    public void With_nobody_having_chosen_the_corpus_is_directly_under_the_users_profile()
     {
         var expected = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             CorpusLocation.ApplicationFolderName);
 
         var location = CorpusLocation.OfThisUser();
@@ -41,43 +41,105 @@ public class CorpusLocationTests
 
     /// <summary>
     /// The load-bearing one, and the reason it is an assertion rather than a comment: the folder
-    /// this application would put a corpus in has to be one that outlives the package, and the two
-    /// candidates read alike everywhere except here.
+    /// this application would put a corpus in has to be one that outlives the package, and every
+    /// candidate reads alike everywhere except here.
+    /// </summary>
+    /// <remarks>
+    /// Held against the folders Windows itself names rather than against the rule alone, so it
+    /// still catches an application data folder that has been redirected somewhere the rule's own
+    /// anchor would not reach. Both halves are asserted of each: that a corpus there would be
+    /// refused, and that neither the corpus nor the file saying where it is is under it.
+    /// </remarks>
+    [Fact]
+    public void No_folder_the_application_would_write_a_corpus_in_is_under_app_data()
+    {
+        var location = CorpusLocation.OfThisUser();
+
+        foreach (var doomed in new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            CorpusLocation.ApplicationDataOfThisUser(),
+            CorpusLocation.PackageContainerOfThisUser(),
+        })
+        {
+            CorpusLocation.GoesWhenThePackageDoes(doomed)
+                .ShouldBeTrue($"A corpus in '{doomed}' goes when the package does.");
+            Under(location.Fallback.FullName, doomed)
+                .ShouldBeFalse($"The corpus would be under '{doomed}'.");
+            Under(location.Setting.FullName, doomed)
+                .ShouldBeFalse($"The file saying where the corpus is would be under '{doomed}'.");
+        }
+
+        CorpusLocation.GoesWhenThePackageDoes(location.Fallback.FullName).ShouldBeFalse();
+        CorpusLocation.GoesWhenThePackageDoes(location.Setting.Directory!.FullName).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The folder this branch itself fell back to until the packaging question was answered, which
+    /// makes this the test that would have caught it. Nothing is created: the folder is refused
+    /// before anything is asked of the disk, so a first corpus is never put there.
     /// </summary>
     [Fact]
-    public void The_folder_the_application_falls_back_to_is_not_inside_the_package_container()
+    public void A_first_corpus_is_never_put_under_app_data()
     {
-        CorpusLocation.InsideThePackageContainer(CorpusLocation.OfThisUser().Fallback.FullName)
-            .ShouldBeFalse();
+        using var elsewhere = new TemporaryFolder();
+        var virtualized = new DirectoryInfo(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            CorpusLocation.ApplicationFolderName));
+
+        var resolved = new CorpusLocation(
+            new FileInfo(Path.Combine(elsewhere.Folder.FullName, CorpusLocation.SettingName)),
+            virtualized).Resolve();
+
+        resolved.Refusal.ShouldBe(CorpusRefusal.GoesWhenThePackageDoes);
+        resolved.Path.ShouldBe(virtualized.FullName);
+        resolved.Folder.ShouldBeNull();
     }
 
     /// <summary>
     /// Built under this machine's own profile rather than written out literally, because that is
-    /// what the check is anchored on — a literal <c>C:\Users\someone\...</c> is nobody's container
-    /// on the machine the test runs on, and asserting about it would prove nothing.
+    /// what the check is anchored on — a literal <c>C:\Users\someone\...</c> is nobody's
+    /// application data on the machine the test runs on, and asserting about it would prove
+    /// nothing.
     /// </summary>
+    /// <remarks>
+    /// Two ways to the same loss, which is why one rule covers both. What is under the container
+    /// an uninstall deletes outright. What is elsewhere under application data a packaged build
+    /// never writes to at all: the writes are redirected into that same container, under a path
+    /// that reads back exactly as it was asked for. The temp folder is in the list because it is
+    /// <c>%LOCALAPPDATA%\Temp</c>, which is where a test would most easily put a corpus by
+    /// accident.
+    /// </remarks>
     [Fact]
-    public void A_folder_inside_the_package_container_goes_when_the_package_does()
+    public void A_folder_under_the_users_application_data_goes_when_the_package_does()
     {
+        var applicationData = CorpusLocation.ApplicationDataOfThisUser();
         var container = CorpusLocation.PackageContainerOfThisUser();
 
-        foreach (var inside in new[]
+        foreach (var doomed in new[]
         {
             container,
             Path.Combine(container, "Publisher.App_1abc", "LocalState"),
             Path.Combine(container, "Publisher.App_1abc", "LocalCache", "Local", "MeetingTranscriber"),
             Path.Combine(container.ToUpperInvariant(), "PUBLISHER.APP_1ABC", "LOCALCACHE"),
+            applicationData,
+            Path.Combine(applicationData, "Local", CorpusLocation.ApplicationFolderName),
+            Path.Combine(applicationData, "Roaming", CorpusLocation.ApplicationFolderName),
+            Path.Combine(applicationData, "LocalLow", CorpusLocation.ApplicationFolderName),
+            Path.Combine(applicationData, "Local", "Temp", "corpus"),
         })
         {
-            CorpusLocation.InsideThePackageContainer(inside)
-                .ShouldBeTrue($"'{inside}' is inside '{container}'.");
+            CorpusLocation.GoesWhenThePackageDoes(doomed)
+                .ShouldBeTrue($"'{doomed}' is under '{applicationData}'.");
         }
     }
 
     /// <summary>
-    /// The other side of it, and the decoys are the point. A folder is the package's for being
-    /// under this user's container, not for being spelled like one: somebody whose corpus sits on
-    /// another disk in a folder that happens to be spelled that way keeps it.
+    /// The other side of it, and the decoys are the point. A folder goes with the package for being
+    /// under this user's own application data, not for being spelled like it: somebody whose corpus
+    /// sits on another disk in a folder that happens to be spelled that way keeps it. The first is
+    /// where the application actually puts one.
     /// </summary>
     [Fact]
     public void A_folder_outside_it_survives_the_package()
@@ -86,15 +148,16 @@ public class CorpusLocationTests
 
         foreach (var outside in new[]
         {
-            Path.Combine(profile, "AppData", "Local", CorpusLocation.ApplicationFolderName),
-            Path.Combine(profile, "AppData", "Roaming", "Packages", "MeetingTranscriber"),
+            Path.Combine(profile, CorpusLocation.ApplicationFolderName),
+            Path.Combine(profile, "Documents", "Meetings"),
             Path.Combine(profile, "Packages", "MeetingTranscriber"),
             @"D:\archives\AppData\Local\Packages\Meetings",
+            @"D:\archives\AppData\Roaming\Meetings",
             @"D:\Corpus",
         })
         {
-            CorpusLocation.InsideThePackageContainer(outside)
-                .ShouldBeFalse($"'{outside}' is nobody's package folder.");
+            CorpusLocation.GoesWhenThePackageDoes(outside)
+                .ShouldBeFalse($"'{outside}' is somebody's own folder.");
         }
     }
 
@@ -119,23 +182,23 @@ public class CorpusLocationTests
         // folder — and a link into a folder that is not there is exactly what an uninstall leaves.
         Junction(link, inside);
 
-        CorpusLocation.InsideThePackageContainer(link).ShouldBeTrue();
-        Naming(elsewhere, link).Resolve().Refusal.ShouldBe(CorpusRefusal.InsideThePackageContainer);
+        CorpusLocation.GoesWhenThePackageDoes(link).ShouldBeTrue();
+        Naming(elsewhere, link).Resolve().Refusal.ShouldBe(CorpusRefusal.GoesWhenThePackageDoes);
     }
 
     [Fact]
     public void The_corpus_opens_where_the_setting_says()
     {
-        using var corpus = new TemporaryCorpus();
-        Migrated(corpus);
+        using var moved = new TemporaryFolder();
+        var corpus = Corpus(moved);
         using var elsewhere = new TemporaryFolder();
         var location = At(elsewhere);
 
-        location.Choose(corpus.Root);
+        location.Choose(corpus);
 
         var resolved = location.Resolve();
         resolved.Refusal.ShouldBeNull();
-        resolved.Folder!.FullName.ShouldBe(corpus.Root.FullName);
+        resolved.Folder!.FullName.ShouldBe(corpus.FullName);
     }
 
     /// <summary>
@@ -145,13 +208,13 @@ public class CorpusLocationTests
     [Fact]
     public void The_same_folder_opens_again_the_next_time_the_application_starts()
     {
-        using var corpus = new TemporaryCorpus();
-        Migrated(corpus);
+        using var moved = new TemporaryFolder();
+        var corpus = Corpus(moved);
         using var elsewhere = new TemporaryFolder();
 
-        At(elsewhere).Choose(corpus.Root);
+        At(elsewhere).Choose(corpus);
 
-        At(elsewhere).Resolve().Folder!.FullName.ShouldBe(corpus.Root.FullName);
+        At(elsewhere).Resolve().Folder!.FullName.ShouldBe(corpus.FullName);
     }
 
     [Fact]
@@ -217,46 +280,48 @@ public class CorpusLocationTests
     }
 
     /// <summary>
-    /// The container is refused before anything else is asked, so a corpus that is really there
-    /// and really opens is still refused for being somewhere an uninstall would take it.
+    /// Where a folder is is asked before anything else, so a corpus that is really there and really
+    /// opens is still refused for being somewhere an uninstall would take it.
     /// </summary>
+    /// <remarks>
+    /// A real folder under this user's real <c>%LOCALAPPDATA%</c>, named for this test and removed
+    /// again at the end. Nowhere else can carry it: the rule is about that tree in particular, and
+    /// a fabricated one on another disk is a folder no uninstall would ever touch. It stands beside
+    /// the package container rather than inside it — a fabricated package family in a folder
+    /// Windows owns is litter a failed cleanup leaves somewhere nobody would look, and the
+    /// redirected half of the rule is the half worth probing against a corpus that is really there.
+    /// </remarks>
     [Fact]
-    public void A_corpus_inside_the_package_container_is_refused_though_it_is_there_and_whole()
+    public void A_corpus_under_the_users_application_data_is_refused_though_it_is_there_and_whole()
     {
         using var elsewhere = new TemporaryFolder();
-
-        // A real folder under this user's real package container, under a family name no package
-        // has, removed again at the end. Nowhere else can carry this test: the invariant is about
-        // that folder in particular, and a fabricated one somewhere else is a folder an uninstall
-        // would never touch.
-        var family = new DirectoryInfo(Path.Combine(
-            CorpusLocation.PackageContainerOfThisUser(),
-            $"MeetingTranscriber.Fabricated_{Guid.NewGuid():n}"));
-        var inside = new DirectoryInfo(Path.Combine(family.FullName, "LocalCache", "corpus"));
-        inside.Create();
+        var doomed = new DirectoryInfo(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            $"{CorpusLocation.ApplicationFolderName}.Fabricated_{Guid.NewGuid():n}"));
+        doomed.Create();
 
         try
         {
             // Migrating is what puts a corpus in the folder, which is what makes the refusal below
             // about where it is rather than about there being nothing there.
-            using (CorpusDatabase.OpenMigrated(inside))
+            using (CorpusDatabase.OpenMigrated(doomed))
             {
             }
 
-            CorpusDatabase.HoldsACorpus(inside).ShouldBeTrue();
+            CorpusDatabase.HoldsACorpus(doomed).ShouldBeTrue();
 
-            var resolved = Naming(elsewhere, inside.FullName).Resolve();
+            var resolved = Naming(elsewhere, doomed.FullName).Resolve();
 
-            resolved.Refusal.ShouldBe(CorpusRefusal.InsideThePackageContainer);
-            resolved.Path.ShouldBe(inside.FullName);
+            resolved.Refusal.ShouldBe(CorpusRefusal.GoesWhenThePackageDoes);
+            resolved.Path.ShouldBe(doomed.FullName);
             resolved.Folder.ShouldBeNull();
         }
         finally
         {
-            CorpusDatabase.ClearPoolsFor(inside);
+            CorpusDatabase.ClearPoolsFor(doomed);
             try
             {
-                family.Delete(recursive: true);
+                doomed.Delete(recursive: true);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
@@ -356,12 +421,12 @@ public class CorpusLocationTests
     [Fact]
     public void A_corpus_the_setting_names_says_it_is_already_there()
     {
-        using var corpus = new TemporaryCorpus();
-        Migrated(corpus);
+        using var moved = new TemporaryFolder();
+        var corpus = Corpus(moved);
         using var elsewhere = new TemporaryFolder();
         var location = At(elsewhere);
 
-        location.Choose(corpus.Root);
+        location.Choose(corpus);
 
         location.Resolve().HoldsACorpus.ShouldBeTrue();
     }
@@ -373,14 +438,14 @@ public class CorpusLocationTests
     [Fact]
     public void Recording_where_the_corpus_is_leaves_no_half_written_pointer()
     {
-        using var corpus = new TemporaryCorpus();
-        Migrated(corpus);
+        using var moved = new TemporaryFolder();
+        var corpus = Corpus(moved);
         using var elsewhere = new TemporaryFolder();
         var location = At(elsewhere);
 
-        location.Choose(corpus.Root);
+        location.Choose(corpus);
 
-        File.ReadAllText(location.Setting.FullName).ShouldBe(corpus.Root.FullName);
+        File.ReadAllText(location.Setting.FullName).ShouldBe(corpus.FullName);
         location.Setting.Directory!.EnumerateFiles()
             .Select(file => file.Name)
             .ShouldBe([CorpusLocation.SettingName]);
@@ -480,7 +545,7 @@ public class CorpusLocationTests
             + @"%LOCALAPPDATA%\Packages\<family>\LocalCache — the folder uninstalling the package "
             + $"deletes. A corpus folder comes from {nameof(CorpusLocation)}, which asks "
             + $"{nameof(Environment)}.{nameof(Environment.GetFolderPath)} and refuses anything "
-            + "inside the container.");
+            + "under this user's application data.");
     }
 
     /// <summary>
@@ -538,9 +603,28 @@ public class CorpusLocationTests
         return location;
     }
 
-    private static void Migrated(TemporaryCorpus corpus)
+    /// <summary>
+    /// A corpus in a folder of this test's own. Not <c>TemporaryCorpus</c>, which makes one under
+    /// <c>Path.GetTempPath()</c> — <c>%LOCALAPPDATA%\Temp</c> on Windows, inside the one tree this
+    /// rule refuses — so a corpus there would prove the refusal and never the thing being asserted.
+    /// </summary>
+    private static DirectoryInfo Corpus(TemporaryFolder folder)
     {
-        using var context = corpus.OpenMigrated();
+        using (CorpusDatabase.OpenMigrated(folder.Folder))
+        {
+        }
+
+        return folder.Folder;
+    }
+
+    /// <summary>Whether this path is that folder or inside it, asked of paths and not of disks.</summary>
+    private static bool Under(string path, string root)
+    {
+        var relative = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
+
+        return !Path.IsPathRooted(relative)
+            && relative != ".."
+            && !relative.StartsWith($"..{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
     }
 
     private static string Written(
@@ -574,8 +658,18 @@ public class CorpusLocationTests
     {
         public TemporaryFolder()
         {
+            // Not Path.GetTempPath(), which on Windows is %LOCALAPPDATA%\Temp — inside the one
+            // tree this whole class is about a corpus never being in. Every test below would prove
+            // the refusal and nothing else. What is left that is short, writable and outside it is
+            // the folder the test binary runs from, which is build output and goes with it.
             Folder = new DirectoryInfo(Path.Combine(
-                Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
+                AppContext.BaseDirectory, "corpus-location", Guid.NewGuid().ToString("n")[..8]));
+
+            CorpusLocation.GoesWhenThePackageDoes(Folder.FullName).ShouldBeFalse(
+                $"'{Folder.FullName}' is where these tests put a corpus, and a corpus there is "
+                + "refused for being under this user's application data. Whatever is being asserted "
+                + "below, that is what would be proved instead.");
+
             Folder.Create();
         }
 
@@ -583,6 +677,10 @@ public class CorpusLocationTests
 
         public void Dispose()
         {
+            // Without this a pooled connection still holds a corpus made in here and the delete
+            // fails. Only this folder's, for the reason TemporaryCorpus gives.
+            CorpusDatabase.ClearPoolsFor(Folder);
+
             try
             {
                 Directory.Delete(Folder.FullName, recursive: true);
