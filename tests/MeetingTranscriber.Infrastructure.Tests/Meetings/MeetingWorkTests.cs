@@ -110,6 +110,37 @@ public class MeetingWorkTests
     }
 
     [Fact]
+    public void A_meeting_on_its_way_out_is_listed_for_a_charge_its_own_stage_says_nothing_about()
+    {
+        // The composition the list performs, which neither half proves alone: the database
+        // narrows on a job row and the rule decides on the answer. A capture a restart stopped is
+        // not the transcription this meeting's stage would offer, so either side tidied to read
+        // only the stage's own kind drops it — and it is a meeting on its way out, so nothing
+        // else will ever mention it again.
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+
+        var interrupted = ProcessingJob.Queue(
+            Guid.NewGuid(), meeting, JobKind.Capture, $"{meeting}/capture-1", Recorded);
+        interrupted.Start(Recorded);
+        interrupted.RecoverAfterRestart().ShouldBeTrue();
+        Add(context, interrupted);
+
+        var row = context.Meetings.Single(stored => stored.Id == meeting);
+        row.LifecycleState = LifecycleState.Deleting;
+        row.DeletedAt = Recorded;
+        context.SaveChanges();
+
+        var listed = new MeetingWork(context, Clock).Listed();
+
+        listed.Count.ShouldBe(1);
+        listed[0].Meeting.Id.ShouldBe(meeting);
+        listed[0].Owed.WaitsOnSomebody.ShouldBeTrue();
+        listed[0].Owed.MayBeTaken.ShouldBeFalse();
+    }
+
+    [Fact]
     public void Taking_a_stage_queues_its_work_and_starts_nothing()
     {
         using var corpus = new TemporaryCorpus();

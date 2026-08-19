@@ -57,21 +57,24 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// thing that hid the charge.
     /// </para>
     /// <para>
-    /// Both halves of that are asked of the database, because a row this list will not show is a
-    /// row it should not read, nor read a meeting's files and jobs to find out. What makes a
-    /// meeting wait on somebody is a job row, which SQL can ask about, and the asking is
-    /// <see cref="OwedWork.StopsOnAPerson"/> — the same expression <see cref="OwedWork.Of"/> puts
-    /// to the rows it was handed.
+    /// Which of the two a meeting is, is decided once and on the answer rather than on the rows
+    /// underneath it: it is listed when it is active, or when what is owed on it waits on
+    /// somebody. The database is asked a question of its own first — the rows
+    /// <see cref="OwedWork.StopsOnAPerson"/> matches, which is the expression
+    /// <see cref="OwedWork.Of"/> puts to the rows it is handed — but only to narrow what is read,
+    /// because a row this list will not show is a row it should not read, nor read a meeting's
+    /// files and jobs to find out.
     /// </para>
     /// <para>
-    /// Sharing that expression is not what keeps the query and the rule in step, and it is worth
-    /// being exact about which is which: the query asks whether a row exists, and the rule above
-    /// is about a standing. What holds them together is that
-    /// <see cref="OwedWork.Of"/> puts the expression last, over whatever the stage came out at, so
-    /// a meeting the query dragged in comes back <see cref="StageStanding.StoppedOnAPerson"/> and
-    /// one it left out never does. `MeetingStageTests` pins that equivalence over every state a
-    /// job can be in, and it is what this query is standing on: without it a meeting on its way
-    /// out could be fetched here and come back with a press on it.
+    /// Narrowing rather than deciding is the whole of why that is safe. A query and a rule that
+    /// each decide membership have to agree, and they would be agreeing about different things —
+    /// one asks whether a row exists, the other is a conclusion drawn from every row and file a
+    /// meeting has. Here the query owes one thing instead: not to miss a meeting the rule would
+    /// keep. Fetching one the rule then drops costs a row and reaches nobody, and no press can
+    /// ride in on it, because what the screen gets is what the rule said. The one obligation
+    /// left holds because a standing of <see cref="StageStanding.StoppedOnAPerson"/> is that
+    /// expression matching one of the meeting's rows and nothing else — `MeetingStageTests` pins
+    /// that over every state a job can be in and over a kind the stage does not offer.
     /// </para>
     /// <para>
     /// One thing whoever builds deletion inherits: `processing_jobs.meeting_id` cascades, so
@@ -86,14 +89,14 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// </remarks>
     public IReadOnlyList<MeetingAndWork> Listed()
     {
-        var stopped = context.ProcessingJobs
+        var mightBeStopped = context.ProcessingJobs
             .Where(OwedWork.StopsOnAPerson)
             .Select(job => job.MeetingId);
 
         var meetings = context.Meetings
             .AsNoTracking()
             .Where(meeting => meeting.LifecycleState == LifecycleState.Active
-                || stopped.Contains(meeting.Id))
+                || mightBeStopped.Contains(meeting.Id))
             .OrderByDescending(meeting => meeting.StartedAt)
             .ToList();
 
@@ -105,6 +108,8 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
             .Select(meeting => new MeetingAndWork(
                 meeting,
                 OwedWork.Of(meeting.Id, files[meeting.Id], jobs[meeting.Id])))
+            .Where(listed => listed.Meeting.LifecycleState is LifecycleState.Active
+                || listed.Owed.WaitsOnSomebody)
             .ToList();
     }
 

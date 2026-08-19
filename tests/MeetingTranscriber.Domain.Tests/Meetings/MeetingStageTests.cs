@@ -285,25 +285,30 @@ public class MeetingStageTests
     [Fact]
     public void Waiting_on_somebody_is_exactly_the_job_row_a_query_can_look_for()
     {
-        // `MeetingWork.Listed` narrows in the database with `StopsOnAPerson` and then trusts what
-        // comes back: a meeting on its way out is kept only because the row it matched makes it
-        // StoppedOnAPerson, the one standing that offers neither answer. Sharing the expression
-        // does not buy that — the query asks whether a row exists and the list's rule is about a
-        // standing — so the equivalence between the two is what this holds, both ways round.
+        // `MeetingWork.Listed` narrows in the database with `StopsOnAPerson` and decides on the
+        // answer, so the narrowing owes exactly one thing: never to miss a meeting the rule would
+        // keep. That is this. Missing one costs the only screen that says *which* meeting carries
+        // a charge nobody has settled — `status` counts them and never names them.
         //
-        // Left of true: a meeting the query dragged in comes back with a press on it, on a
-        // meeting somebody asked to get rid of. Left of false: a meeting stopped on a person that
-        // the query never fetched, so the only screen that says which meeting carries an
-        // unsettled charge does not say it.
+        // Both axes the two sides could drift on, because they drift differently. State is the
+        // one they share an expression over; scope is which of a meeting's rows are looked at,
+        // and there they share nothing — a stop rule tidied to read only the stage's own kind
+        // would still pass every single-kind case.
         var looksFor = OwedWork.StopsOnAPerson.Compile();
 
         foreach (var state in Enum.GetValues<JobState>())
         {
-            var job = In(state);
+            // Transcribe is what a recorded meeting is offered. A capture is a job of the same
+            // meeting that its stage has nothing to say about, and it is the real case: a
+            // recording a restart stopped sits under a meeting whose stage offers nothing.
+            foreach (var kind in new[] { JobKind.Transcribe, JobKind.Capture })
+            {
+                var job = In(kind, state);
 
-            OwedWork.Of(TheMeeting, [ArtifactKind.Audio], [job])
-                .WaitsOnSomebody
-                .ShouldBe(looksFor(job), $"a job in {state}");
+                OwedWork.Of(TheMeeting, [ArtifactKind.Audio], [job])
+                    .WaitsOnSomebody
+                    .ShouldBe(looksFor(job), $"a {kind} job in {state}");
+            }
         }
     }
 
@@ -337,13 +342,14 @@ public class MeetingStageTests
         ProcessingJob.Queue(Guid.NewGuid(), TheMeeting, kind, $"{TheMeeting}/{Guid.NewGuid()}", Noon);
 
     /// <summary>
-    /// One transcription job in the state asked for, taken there through the moves that reach it.
-    /// A state this cannot produce throws rather than being skipped, so a state added to the enum
-    /// arrives here as a failure instead of as a case nothing covered.
+    /// One job of this kind sitting in the state asked for, by one of the routes that reach it —
+    /// one route per state, not every route, so a test turning on how a job got there wants more
+    /// than this. A state it cannot produce throws rather than being skipped, so a state added to
+    /// the enum arrives here as a failure instead of as a case nothing covered.
     /// </summary>
-    private static ProcessingJob In(JobState state)
+    private static ProcessingJob In(JobKind kind, JobState state)
     {
-        var job = Job(JobKind.Transcribe);
+        var job = Job(kind);
 
         switch (state)
         {

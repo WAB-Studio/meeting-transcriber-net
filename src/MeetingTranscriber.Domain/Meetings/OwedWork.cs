@@ -46,23 +46,22 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
     /// <summary>
     /// The one job row that stops a meeting on a person, said once as an expression because the
     /// same question gets asked in two places that cannot share a call: <see cref="Of"/> asks it
-    /// of rows already in hand, and a query wanting to know which meetings wait on somebody asks
-    /// it of the table without loading any of them. One rule, so a screen and the query feeding
-    /// it can never disagree about which meetings are stopped.
+    /// of rows already in hand, and a reader wanting to narrow to the meetings that might be
+    /// stopped asks it of the table without loading any of them.
     /// </summary>
-    public static Expression<Func<ProcessingJob, bool>> StopsOnAPerson { get; } =
-        job => job.State == JobState.AwaitingUser;
+    public static Expression<Func<ProcessingJob, bool>> StopsOnAPerson { get; } = Rule();
 
     /// <summary>The same rule put to a row already in hand, compiled once.</summary>
-    private static readonly Predicate<ProcessingJob> Stopped;
+    private static readonly Func<ProcessingJob, bool> Stopped = Rule().Compile();
 
-    // Assigned here rather than beside its own declaration, because the two members would
-    // otherwise be ordered against each other: static field initialisers run in the order they
-    // are written, so a compiled copy sitting above the expression it compiles reads null and the
-    // type throws the first time anybody touches it. A static constructor body runs after every
-    // field initialiser whatever order those are written in, which makes reordering the members
-    // of this type harmless rather than something a comment has to warn the next reader off.
-    static OwedWork() => Stopped = StopsOnAPerson.Compile().Invoke;
+    /// <summary>
+    /// The rule itself, built by a call rather than by one of the two above reading the other.
+    /// A static field initialiser that reads another one is ordered against it, which this type
+    /// had: the compiled copy came out null the moment somebody moved it up the file. A method
+    /// has no such order, so neither member here depends on where it is written.
+    /// </summary>
+    private static Expression<Func<ProcessingJob, bool>> Rule() =>
+        job => job.State == JobState.AwaitingUser;
 
     /// <summary>
     /// True when this meeting is stopped on a person. The state with money or data riding on it,
@@ -109,28 +108,18 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
             artifacts,
             mine.Where(job => job.State is JobState.Succeeded).Select(job => job.Kind));
 
-        var standing = stage.Offers() is { } next
-            ? MeetingStages.StandingOf(mine.Where(job => job.Kind == next).Select(job => job.State))
-            : StageStanding.NothingToDo;
-
-        // Asked of the whole meeting and of every kind of job on it, not only of the stage it is
-        // at. A charge that may already have happened is the meeting's problem wherever in the
-        // meeting it happened: a transcription left unsettled by a restart whose response then
+        // A precedence, loudest first, the way `MeetingStages.StandingOf` reads its own. The stop
+        // is asked of the whole meeting and of every kind of job on it, not only of the stage it
+        // is at: a charge that may already have happened is the meeting's problem wherever in the
+        // meeting it happened, so a transcription left unsettled by a restart whose response then
         // turned up, or a capture the restart stopped, would otherwise be invisible on the only
         // screen that shows one at all — and one of them would have an accent button beside it
         // offering to spend again.
-        //
-        // Applied last, over whatever the stage came out at, rather than tested ahead of it. That
-        // ordering is what a caller narrowing a query with StopsOnAPerson relies on: it selects
-        // meetings by the row and then trusts every one of them to come back
-        // StoppedOnAPerson, which sharing the expression does not buy — the query asks about a
-        // row, the standing is a conclusion, and only this keeps the two the same question. Put
-        // first, the next condition written above it would quietly break that; put last, there is
-        // no above. `MeetingStageTests` pins the equivalence in both directions.
-        if (Array.Exists(mine, Stopped))
-        {
-            standing = StageStanding.StoppedOnAPerson;
-        }
+        var standing = mine.Any(Stopped)
+            ? StageStanding.StoppedOnAPerson
+            : stage.Offers() is { } next
+                ? MeetingStages.StandingOf(mine.Where(job => job.Kind == next).Select(job => job.State))
+                : StageStanding.NothingToDo;
 
         return new OwedWork(meetingId, stage, standing);
     }
