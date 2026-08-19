@@ -42,11 +42,7 @@ public class DeviceReleaseTests
         {
             var waited = Time(release.Dispose);
 
-            waited.ShouldBeGreaterThanOrEqualTo(CaptureLoop.StopsWithin);
-
-            // Generous on purpose: what is being told apart is a deadline from no deadline at all,
-            // so a loaded agent taking half as long again is not what this should go red over.
-            waited.ShouldBeLessThan(CaptureLoop.StopsWithin * 2);
+            waited.ShouldHaveWaitedTheDeadline();
             release.Abandoned.ShouldBeTrue();
 
             // Still inside the handles, so nothing about them became anybody's to close.
