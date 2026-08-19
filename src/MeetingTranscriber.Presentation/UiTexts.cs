@@ -155,6 +155,99 @@ public static class UiTexts
         "Elegir otra carpeta todavía no se hace desde esta pantalla.",
         "Choosing another folder is not done from this screen yet.");
 
+    // ── What the application owes each meeting ────────────────────────────────────────────────
+
+    public static UiText Meetings { get; } = new("Reuniones", "Meetings");
+
+    public static UiText OneCardPerMeeting { get; } = new(
+        "Una ficha por reunión: la etapa en la que está y lo que falta hacerle.",
+        "One card per meeting: the stage it is at and what is left to do to it.");
+
+    public static UiText NoMeetingsHereYet { get; } = new(
+        "Todavía no hay ninguna reunión en este corpus.",
+        "There is no meeting in this corpus yet.");
+
+    public static UiText SomeAreWaitingToBeTold { get; } = new(
+        "{0} esperan una respuesta.",
+        "{0} are waiting to be told.");
+
+    public static UiText AMeetingWithoutATitle { get; } =
+        new("Reunión sin título", "Untitled meeting");
+
+    public static UiText ReadTheMeetingsAgain { get; } = new("Actualizar", "Refresh");
+
+    // The rendered files are the one thing that happens with nobody pressing anything, so the
+    // screen says why rather than leaving their absence looking like a button somebody lost.
+    public static UiText TheRenderedFilesAreNeverAskedAbout { get; } = new(
+        "Los archivos del transcript se hacen solos: no cuestan nada y se pueden volver a "
+        + "producir, así que nunca se preguntan.",
+        "The transcript's files are made without asking: they cost nothing and can be produced "
+        + "again, so they are never something you are asked about.");
+
+    // What a meeting has got to.
+
+    public static UiText NoAudioYet { get; } = new(
+        "Todavía no hay audio: se está grabando, o la grabación no llegó a terminar.",
+        "No audio yet: it is being recorded, or its recording never finished.");
+
+    public static UiText Recorded { get; } = new("Grabada.", "Recorded.");
+
+    public static UiText Transcribed { get; } = new("Transcrita.", "Transcribed.");
+
+    public static UiText Summarised { get; } = new(
+        "Resumida. La aplicación no le debe nada más.",
+        "Summarised. The application owes it nothing more.");
+
+    // What is happening about the part it has not got to.
+
+    public static UiText WaitingToBeTold { get; } =
+        new("Esperando una respuesta.", "Waiting to be told.");
+
+    public static UiText AlreadyInTheQueue { get; } = new(
+        "Ya está en cola. Todavía no corrió nada, así que ignorarla la saca.",
+        "Already queued. Nothing has run yet, so ignoring it takes it back out.");
+
+    public static UiText StoppedWaitingForAPerson { get; } = new(
+        "Detenida esperando a una persona: puede haber un cobro que ya ocurrió, así que no se "
+        + "reintenta sola.",
+        "Stopped waiting for a person: there may be a charge that already happened, so nothing "
+        + "retries it on its own.");
+
+    public static UiText IgnoredForNow { get; } = new(
+        "Ignorada por ahora. Se puede pedir cuando quieras.",
+        "Ignored for now. It can be asked for whenever you like.");
+
+    // The two answers, and what comes back of them.
+
+    public static UiText Transcribe { get; } = new("Transcribir", "Transcribe");
+
+    public static UiText Summarise { get; } = new("Resumir", "Summarise");
+
+    public static UiText Ignore { get; } = new("Ignorar", "Ignore");
+
+    public static UiText ItIsInTheQueueNow { get; } =
+        new("Listo: quedó en cola.", "Done: it is in the queue.");
+
+    public static UiText ItIsIgnoredForNow { get; } =
+        new("Listo: ignorada por ahora.", "Done: ignored for now.");
+
+    public static UiText ThatDidNotGoThrough { get; } =
+        new("No se pudo: {0}", "That did not go through: {0}");
+
+    // Not a failure. It is what the re-read before every write is for: the screen was drawn
+    // before somebody answered the same question somewhere else, and the answer on disk won.
+    public static UiText ThatIsNoLongerHowItWas { get; } = new(
+        "Eso ya no está como estaba. La lista se volvió a leer.",
+        "That is no longer as it was. The list has been read again.");
+
+    // The corpus is not reachable, so an empty list would be a lie. Which refusal it was is the
+    // recording screen's to say, and it has the whole table for it.
+    public static UiText TheCorpusCouldNotBeOpened { get; } = new(
+        "No se pudo abrir el corpus, así que esta lista no dice nada. La pantalla de grabación "
+        + "dice por qué: {0}",
+        "The corpus could not be opened, so this list says nothing. The recording screen says "
+        + "why: {0}");
+
     // ── The packaging checks scaffold ──────────────────────────────────────────────────────────
 
     public static UiText PackagingChecks { get; } =
