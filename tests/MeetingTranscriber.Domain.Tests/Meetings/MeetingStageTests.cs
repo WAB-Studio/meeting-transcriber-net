@@ -283,6 +283,31 @@ public class MeetingStageTests
     }
 
     [Fact]
+    public void Waiting_on_somebody_is_exactly_the_job_row_a_query_can_look_for()
+    {
+        // `MeetingWork.Listed` narrows in the database with `StopsOnAPerson` and then trusts what
+        // comes back: a meeting on its way out is kept only because the row it matched makes it
+        // StoppedOnAPerson, the one standing that offers neither answer. Sharing the expression
+        // does not buy that — the query asks whether a row exists and the list's rule is about a
+        // standing — so the equivalence between the two is what this holds, both ways round.
+        //
+        // Left of true: a meeting the query dragged in comes back with a press on it, on a
+        // meeting somebody asked to get rid of. Left of false: a meeting stopped on a person that
+        // the query never fetched, so the only screen that says which meeting carries an
+        // unsettled charge does not say it.
+        var looksFor = OwedWork.StopsOnAPerson.Compile();
+
+        foreach (var state in Enum.GetValues<JobState>())
+        {
+            var job = In(state);
+
+            OwedWork.Of(TheMeeting, [ArtifactKind.Audio], [job])
+                .WaitsOnSomebody
+                .ShouldBe(looksFor(job), $"a job in {state}");
+        }
+    }
+
+    [Fact]
     public void A_job_of_another_stage_says_nothing_about_this_one()
     {
         // A meeting waiting to be transcribed with a cancelled summary against it is offered its
@@ -310,4 +335,48 @@ public class MeetingStageTests
 
     private static ProcessingJob Job(JobKind kind) =>
         ProcessingJob.Queue(Guid.NewGuid(), TheMeeting, kind, $"{TheMeeting}/{Guid.NewGuid()}", Noon);
+
+    /// <summary>
+    /// One transcription job in the state asked for, taken there through the moves that reach it.
+    /// A state this cannot produce throws rather than being skipped, so a state added to the enum
+    /// arrives here as a failure instead of as a case nothing covered.
+    /// </summary>
+    private static ProcessingJob In(JobState state)
+    {
+        var job = Job(JobKind.Transcribe);
+
+        switch (state)
+        {
+            case JobState.Pending:
+                break;
+            case JobState.Cancelled:
+                job.Cancel(Noon);
+                break;
+            case JobState.Running:
+                job.Start(Noon);
+                break;
+            case JobState.AwaitingUser:
+                job.Start(Noon);
+                job.AwaitUser("a restart found it running");
+                break;
+            case JobState.Succeeded:
+                job.Start(Noon);
+                job.Succeed(Noon);
+                break;
+            case JobState.FailedRetryable:
+                job.Start(Noon);
+                job.FailRetryable("the provider was busy", Noon);
+                break;
+            case JobState.FailedPermanent:
+                job.Start(Noon);
+                job.FailPermanently("the audio is not something the provider accepts", Noon);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(
+                    nameof(state), state, "No way to put a job in this state.");
+        }
+
+        job.State.ShouldBe(state);
+        return job;
+    }
 }

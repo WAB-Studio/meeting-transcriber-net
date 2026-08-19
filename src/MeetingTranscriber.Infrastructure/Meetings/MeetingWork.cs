@@ -61,8 +61,17 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// row it should not read, nor read a meeting's files and jobs to find out. What makes a
     /// meeting wait on somebody is a job row, which SQL can ask about, and the asking is
     /// <see cref="OwedWork.StopsOnAPerson"/> — the same expression <see cref="OwedWork.Of"/> puts
-    /// to the rows it was handed, so the query cannot come to want one set of meetings while the
-    /// rule wants another.
+    /// to the rows it was handed.
+    /// </para>
+    /// <para>
+    /// Sharing that expression is not what keeps the query and the rule in step, and it is worth
+    /// being exact about which is which: the query asks whether a row exists, and the rule above
+    /// is about a standing. What holds them together is that
+    /// <see cref="OwedWork.Of"/> puts the expression last, over whatever the stage came out at, so
+    /// a meeting the query dragged in comes back <see cref="StageStanding.StoppedOnAPerson"/> and
+    /// one it left out never does. `MeetingStageTests` pins that equivalence over every state a
+    /// job can be in, and it is what this query is standing on: without it a meeting on its way
+    /// out could be fetched here and come back with a press on it.
     /// </para>
     /// <para>
     /// One thing whoever builds deletion inherits: `processing_jobs.meeting_id` cascades, so
