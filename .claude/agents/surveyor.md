@@ -96,24 +96,28 @@ for it, that no document lists it. Those say how it got here. You are deciding w
 
 Your final message is one JSON object and nothing else. No prose around it.
 
-```json
+```text
 {
-  "outcome": "surveyed",
-  "list": "",
-  "cards_read": [""],
-  "decisions": [
-    { "what": "", "breaks_without_it": "", "owner": "", "owner_reason": "", "shape": "" }
-  ],
-  "ratify": [
-    { "structure": "", "found_in": "", "verdict": "ratify", "why": "", "doc_change": "" }
-  ],
-  "flat": [{ "what": "", "why_no_structure": "" }],
-  "blocked_reason": ""
+  "outcome":        "surveyed" | "blocked",
+  "list":           the list you surveyed,
+  "cards_read":     [ every card id you opened ],
+  "decisions":      [{ "what":              the structural decision none of the cards owns,
+                       "breaks_without_it": what goes wrong for somebody using the app,
+                       "owner":             a card id, "new_card" or "none",
+                       "owner_reason":      why that card owns it and not another,
+                       "shape":             what it would be, in one or two sentences }],
+  "ratify":         [{ "structure":  what is already in the tree that no document names,
+                       "found_in":   where it lives,
+                       "verdict":    "ratify" | "reject",
+                       "why":        what that verdict rests on,
+                       "doc_change": the line a document gains or loses }],
+  "flat":           [{ "what":             what looked structural and is not,
+                       "why_no_structure": what makes it ordinary work }],
+  "blocked_reason": what stopped you, empty unless blocked
 }
 ```
 
-Every field is required. `outcome` is `surveyed` or `blocked`. `owner` is a card id, `new_card` or
-`none`. `verdict` is `ratify` or `reject`.
+Every field is required.
 
 `decisions`, `ratify` and `flat` may each be empty. An empty `decisions` is a real answer: a list can
 hold no structural decision at all.

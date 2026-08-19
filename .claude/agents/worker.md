@@ -128,24 +128,28 @@ Return to `main` with a clean tree. Take the branch tip with `git rev-parse <bra
 
 Your final message is one JSON object and nothing else. No prose around it.
 
-```json
+```text
 {
-  "outcome": "pr_opened",
-  "task_id": "86ak1ejve",
-  "pr_number": 52,
-  "head_sha": "9a8007b66ca6a8933ee0c3c112e9490f365d2a59",
-  "isc_closed": ["ISC-140"],
-  "probes": [{ "command": "dotnet test --no-build", "passed": true }],
-  "decisions_deferred": [{ "what": "", "chose": "", "blocks_the_pr": false }],
-  "left_out": [],
-  "skipped": [{ "task_id": "", "needs": "" }],
-  "blocked_reason": "",
-  "decisions_owed": [{ "what": "", "why": "", "options": [] }]
+  "outcome":            "pr_opened" | "already_done" | "needs_grill" | "blocked",
+  "task_id":            the card you were given,
+  "pr_number":          the PR you opened or continued, or null — never absent,
+  "head_sha":           the exact commit you delivered, empty when you opened no PR,
+  "isc_closed":         [ the ISC ids this PR closes ],
+  "probes":             [{ "command": what you ran, verbatim, "passed": true | false }],
+  "decisions_deferred": [{ "what":          the fork you met,
+                           "chose":         what you settled on, and why it was yours to settle,
+                           "blocks_the_pr": true | false }],
+  "left_out":           [ what the card asked for and you did not deliver ],
+  "skipped":            [{ "task_id": a card you touched but did not work,
+                           "needs":   what it is waiting on }],
+  "blocked_reason":     what is missing, said as what somebody has to bring,
+  "decisions_owed":     [{ "what":    the fork as somebody who has not read the code would name it,
+                           "why":     what changes with the answer,
+                           "options": [ an answer, and what taking it costs ] }]
 }
 ```
 
-`outcome` is `pr_opened`, `already_done`, `needs_grill` or `blocked`. Every field but
-`decisions_owed` is required.
+Every field but `decisions_owed` is required.
 
 - **`decisions_deferred`** — every fork you resolved without anybody confirming it, and every one you
   left open. `[]` asserts there were none, and it is checked against the diff. If you wrote "left

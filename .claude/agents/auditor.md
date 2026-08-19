@@ -123,7 +123,22 @@ Delete only where no number goes missing; where one would, `hold` and name the c
 
 ## Step 5 — Act
 
-Comment the verdict body on the PR. Put the same body on the card when the verdict is not `pass`.
+Comment the verdict on the PR, and the same body on the card unless it passed. **Under fifteen
+lines, in this shape:**
+
+```markdown
+**<verdict>** — `<head sha>`, CI <run id> green.
+
+<What is wrong, or what is owed. One sentence each, three at the most.>
+
+<`ask` only: the question, then a line per option.>
+
+Follow-ups: <ids>, or none.
+```
+
+Per-assembly counts, what you read, how you confirmed it: all of it stays out. That is the record
+you return, and this is the sentence somebody opens the PR a month later to find.
+
 Open follow-up cards for what you found, linking them to the card that surfaced them:
 
 ```powershell
@@ -140,23 +155,28 @@ is done. A decision that belongs to the user is written as the question to put t
 
 Your final message is one JSON object and nothing else.
 
-```json
+```text
 {
-  "verdict": "pass",
-  "audited_head_sha": "9a8007b66ca6a8933ee0c3c112e9490f365d2a59",
-  "reasons": [],
-  "unreported_decisions": [{ "what": "", "found_in": "", "invalidates_diff": false }],
-  "isc_unproved": [],
-  "isa_edited": [{ "isc": "", "was": "", "did": "deleted | reworded | moved" }],
-  "followups_created": [{ "task_id": "", "name": "" }],
-  "actions_taken": [],
-  "decisions_owed": [{ "what": "", "why": "", "options": [] }],
-  "card": { "to": "Open", "tags": [] }
+  "verdict":              "pass" | "pass_with_followup" | "ask" | "hold",
+  "audited_head_sha":     the PR's headRefOid, never the one the record gave you,
+  "reasons":              [ what the verdict stands on: the CI run, the card against the diff, the board ],
+  "unreported_decisions": [{ "what":             a decision the record does not declare,
+                             "found_in":         the file and the symbol it is in,
+                             "invalidates_diff": true | false }],
+  "isc_unproved":         [ an ISC id, and what about it CI does not corroborate ],
+  "isa_edited":           [{ "isc": the id,
+                             "was": the claim as you found it,
+                             "did": "deleted" | "reworded" | "moved" }],
+  "followups_created":    [{ "task_id": the card you opened, "name": its title }],
+  "actions_taken":        [ what you actually did, naming ids and run numbers ],
+  "decisions_owed":       [{ "what":    the question as somebody who has not read the diff would ask it,
+                             "why":     what changes with the answer,
+                             "options": [ an answer, and what taking it costs ] }],
+  "card":                 { "to": the status to move it to, "tags": [ the tags it ends with ] }
 }
 ```
 
-Every field but `card` is required. `verdict` is `pass`, `pass_with_followup`, `ask` or `hold`.
-`actions_taken` lists what you actually did, with ids.
+Every field but `card` is required.
 
 If `audited_head_sha` disagrees with the head SHA in the record you were given, say so in `reasons`
 and return `hold`: the code you read is not the code that was submitted.
