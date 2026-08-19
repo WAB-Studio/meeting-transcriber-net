@@ -103,6 +103,191 @@ public static class RecordingCommands
     }
 
     /// <summary>
+    /// What a start after a crash finds waiting in the corpus, and — when somebody names one and
+    /// says which of the three — what happens to it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the start the application performs, with no window over it: the same list and the
+    /// same three choices, so what a person can do by hand and what a screen will do are one path.
+    /// Named after the corpus rather than after a folder, which is what makes recovering here mean
+    /// the meeting rather than a file beside the blocks.
+    /// </para>
+    /// <para>
+    /// With no <c>--meeting</c> it lists and does nothing, which is what a start is: the listing
+    /// never blocks anything and never removes anything, and <c>record</c> works with every one of
+    /// these still sitting there undecided.
+    /// </para>
+    /// </remarks>
+    public static int Recovery(Arguments arguments, TextWriter output)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        ArgumentNullException.ThrowIfNull(output);
+
+        var corpus = Corpus.At(arguments);
+        var named = arguments.Optional("--meeting");
+        var keep = arguments.Flag("--keep");
+        var into = arguments.Optional("--export");
+        var discard = arguments.Flag("--discard");
+        arguments.EnsureNothingLeftOver();
+
+        var chosen = new[] { keep, into is not null, discard }.Count(picked => picked);
+        if (named is null)
+        {
+            if (chosen > 0)
+            {
+                throw new UsageException(
+                    "--meeting <id> says which recording is being decided about. Without it this "
+                    + "lists what is waiting and does nothing to any of it.");
+            }
+
+            using var listing = corpus.Read();
+            return List(WaitingRecordings.In(listing), output);
+        }
+
+        if (chosen != 1)
+        {
+            throw new UsageException(
+                "One of --keep, --export <directory> or --discard is needed, and only one. What "
+                + "happens to a recording is a decision, so this command does not have a default.");
+        }
+
+        if (!Guid.TryParse(named, out var meetingId))
+        {
+            throw new UsageException($"'{named}' is not a meeting id.");
+        }
+
+        using var context = corpus.Write();
+        var recording = WaitingRecordings.In(context).FirstOrDefault(waiting => waiting.MeetingId == meetingId)
+            ?? throw new CommandException(
+                $"No recording of meeting {meetingId} is waiting to be decided about in "
+                + $"'{corpus.Root.FullName}'. Run this without --meeting to see what is.");
+
+        Report.Line(output, "folder", recording.Folder.FullName);
+
+        if (discard)
+        {
+            recording.Spooled.Discard();
+            Report.Line(output, "thrown away", recording.Folder.FullName);
+            return Cli.Ok;
+        }
+
+        if (into is not null)
+        {
+            foreach (var exported in recording.Spooled.Export(new DirectoryInfo(into)))
+            {
+                Report.Line(output, $"{Name(exported.Channel)} taken out", exported.Wav.FullName);
+            }
+
+            return Cli.Ok;
+        }
+
+        var recovered = WaitingRecordings.Recover(context, recording, Clock.Now());
+
+        Report.Line(output, "meeting", recovered.MeetingId.ToString());
+        Report.Line(output, "length", Report.Offset(recovered.Length));
+        Report.Line(output, "audio", recovered.Audio.RelativePath);
+        Report.Line(output, "sha256", recovered.Audio.Sha256);
+        Report.Line(
+            output,
+            "size",
+            string.Create(CultureInfo.InvariantCulture, $"{recovered.Audio.ByteSize / 1024d / 1024d:0.0} MB"));
+
+        return Cli.Ok;
+    }
+
+    /// <summary>
+    /// What is waiting, one recording at a time: which meeting it is, how long it is, what
+    /// survived in each of its sources, and which of the three choices is open to it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The blocks are read through, once per recording, which is what the length and what survived
+    /// are read off. That is a pass over every byte and it is the right cost here: somebody typed
+    /// this and is waiting for the answer, and the answer is what they decide on — a recording
+    /// whose microphone caught nothing is one to be told about before it is kept, not after.
+    /// </para>
+    /// <para>
+    /// A recording still being written is the one exception, because its files cannot be read
+    /// while a capture holds them. It says so instead, which is the honest answer about a meeting
+    /// that is still happening.
+    /// </para>
+    /// </remarks>
+    private static int List(IReadOnlyList<WaitingRecording> waiting, TextWriter output)
+    {
+        if (waiting.Count == 0)
+        {
+            Report.Line(output, "waiting", "none");
+            return Cli.Ok;
+        }
+
+        foreach (var recording in waiting)
+        {
+            Report.Line(
+                output,
+                "meeting",
+                recording.MeetingId?.ToString() ?? $"unnamed, in '{recording.Folder.Name}'");
+            Report.Line(
+                output,
+                "started",
+                recording.Meeting?.StartedAt.ToStorage()
+                    ?? recording.Spooled.Card?.StartedAt.ToStorage()
+                    ?? "unknown");
+
+            if (recording.Running)
+            {
+                Report.Line(output, "length", "still being recorded, so its blocks cannot be read yet");
+            }
+            else
+            {
+                var survived = recording.Read();
+                Report.Line(output, "length", Report.Offset(survived.Length));
+
+                foreach (var source in survived.Sources)
+                {
+                    Report.Line(output, $"{Name(source.Channel)} survived", Says(source));
+                }
+            }
+
+            Report.Line(output, "choices", Choices(recording));
+        }
+
+        return Cli.Ok;
+    }
+
+    /// <summary>What one source turned out to be worth, on the line a person reads it off.</summary>
+    private static string Says(SurvivingSource survivor) => string.Create(
+        CultureInfo.InvariantCulture,
+        $"{survivor.Blocks} blocks, {Report.Offset(survivor.Covers)}, {survivor.Lost.Milliseconds} ms lost{CutOff(survivor.Discarded)}");
+
+    /// <summary>What the last write cost, said only when it cost something.</summary>
+    private static string CutOff(long discarded) => discarded > 0
+        ? string.Create(CultureInfo.InvariantCulture, $", {discarded} bytes cut off the end")
+        : string.Empty;
+
+    /// <summary>
+    /// Which of the three this recording is open to, and where a folder this command cannot
+    /// address is decided about instead.
+    /// </summary>
+    /// <remarks>
+    /// A recording is named here by its meeting, so a folder nothing says the meeting of is one
+    /// this command cannot be pointed at. Saying so beside it is the difference between an
+    /// instruction and a listing that offers two choices and then refuses both.
+    /// </remarks>
+    private static string Choices(WaitingRecording recording)
+    {
+        if (recording.Unrecoverable is not { } why)
+        {
+            return "keep, export or discard";
+        }
+
+        return recording.MeetingId is null
+            ? $"'recover --in {recording.Folder.FullName}' — this command names a recording by its "
+                + $"meeting, and {why}"
+            : $"export or discard — it cannot become a meeting: {why}";
+    }
+
+    /// <summary>
     /// Runs the meeting, showing what each source is hearing, and presses pause and resume at the
     /// seconds they were asked for.
     /// </summary>

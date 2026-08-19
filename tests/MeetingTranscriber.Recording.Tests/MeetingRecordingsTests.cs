@@ -22,9 +22,6 @@ namespace MeetingTranscriber.Recording.Tests;
 /// </remarks>
 public sealed class MeetingRecordingsTests : IDisposable
 {
-    private static readonly StreamFormat StereoFloat = new(48_000, 2, 32, SampleEncoding.IeeeFloat);
-    private static readonly StreamFormat CheapMicrophone = new(44_100, 1, 16, SampleEncoding.Pcm);
-
     private readonly TemporaryCorpus corpus = new();
     private readonly UtcTimestamp now = UtcTimestamp.Parse("2026-08-18T09:30:00.000Z");
 
@@ -138,11 +135,11 @@ public sealed class MeetingRecordingsTests : IDisposable
     {
         using var context = corpus.OpenMigrated();
         var prepared = MeetingRecordings.Open(context, "es", now);
-        Spools(prepared.Spool, seconds: 3);
+        Fabricated.Spools(prepared.Spool, seconds: 3);
 
         // The card beside the blocks and the row describing the run, the way a capture leaves them
         // - so what closes the run off is the run the recording named and not the only one there.
-        var card = CardFor(prepared.MeetingId);
+        var card = Fabricated.CardFor(prepared.MeetingId, now);
         SpoolManifest.Write(prepared.Spool, card);
         var run = MeetingRecordings.Began(context, card);
 
@@ -177,7 +174,7 @@ public sealed class MeetingRecordingsTests : IDisposable
     {
         using var context = corpus.OpenMigrated();
         var prepared = MeetingRecordings.Open(context, "es", now);
-        Spools(prepared.Spool, seconds: 2);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
 
         var finished = MeetingRecordings.Finish(context, prepared.MeetingId, now);
 
@@ -199,7 +196,7 @@ public sealed class MeetingRecordingsTests : IDisposable
         {
             var prepared = MeetingRecordings.Open(context, "es", now);
             recorded = prepared.MeetingId;
-            Spools(prepared.Spool, seconds: 2);
+            Fabricated.Spools(prepared.Spool, seconds: 2);
             MeetingRecordings.Finish(context, prepared.MeetingId, now);
         }
 
@@ -241,8 +238,8 @@ public sealed class MeetingRecordingsTests : IDisposable
         var yours = MeetingRecordings.Open(context, "es", now);
 
         // Somebody else's recording, blocks and card, sitting where mine would be.
-        Spools(mine.Spool, seconds: 2);
-        SpoolManifest.Write(mine.Spool, CardFor(yours.MeetingId));
+        Fabricated.Spools(mine.Spool, seconds: 2);
+        SpoolManifest.Write(mine.Spool, Fabricated.CardFor(yours.MeetingId, now));
 
         var refused = Should.Throw<RecordingException>(
             () => MeetingRecordings.Finish(context, mine.MeetingId, now));
@@ -254,36 +251,6 @@ public sealed class MeetingRecordingsTests : IDisposable
     }
 
     public void Dispose() => corpus.Dispose();
-
-    /// <summary>What an ordinary recording of this meeting wrote about itself when it opened.</summary>
-    private SpoolCard CardFor(Guid meetingId) => new(
-        meetingId,
-        Guid.NewGuid(),
-        now,
-        CapturedAudio.Profile,
-        [
-            new SpooledSource(AudioChannel.Loopback, "Speakers", "{0.0.0.00000000}.{loopback}"),
-            new SpooledSource(AudioChannel.Microphone, "Headset", "{0.0.1.00000000}.{mic}"),
-        ],
-        FellBack: null);
-
-    /// <summary>Both spools of a meeting, written the way a capture writes them.</summary>
-    private static void Spools(DirectoryInfo into, double seconds)
-    {
-        into.Create();
-        Write(into, AudioChannel.Loopback, StereoFloat, 48_000, seconds);
-        Write(into, AudioChannel.Microphone, CheapMicrophone, 44_100, seconds);
-    }
-
-    private static void Write(
-        DirectoryInfo into, AudioChannel channel, StreamFormat format, double rate, double seconds)
-    {
-        using var writer = SpoolWriter.Create(BlockSpool.FileFor(into, channel), channel, format);
-        foreach (var packet in Fabricated.Packets(channel, format, rate, 0, seconds))
-        {
-            writer.Write(packet);
-        }
-    }
 
     /// <summary>Takes the database away, leaving everything the corpus wrote to disk.</summary>
     private void CorpusDatabaseGone()

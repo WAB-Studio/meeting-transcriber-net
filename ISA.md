@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 102/157
+progress: 103/157
 updated: 2026-08-18
 ---
 
@@ -168,7 +168,7 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-141: A recording whose device changed says so while the meeting is still running, naming what it moved to.
 - [ ] ISC-147: A meeting whose next stage was declined can be offered that stage again later.
 - [ ] ISC-148: What a meeting is waiting for survives the application closing and opening again.
-- [ ] ISC-149: Anti: a recording waiting to be decided about never keeps a new meeting from being recorded.
+- [x] ISC-149: Anti: a recording waiting to be decided about never keeps a new meeting from being recorded.
 - [ ] ISC-150: Somebody listening to the meeting through speakers is told, while it is still running, that the microphone is picking the other side up twice.
 - [ ] ISC-151: Anti: audio this application did not record is never taken as two channels of one meeting.
 - [x] ISC-152: Every text a person reads in the application is there in both Spanish and English.
@@ -523,3 +523,4 @@ Board: 7 · Distribución y backup
 - ISC-81 — `PausedRecordingTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-18: a meeting paused for 35 seconds — longer than the half minute after which the timeline gives up on a source — comes back 45 seconds long with the paused stretch silent and the room loud either side, and a marker two seconds after the pause lands where it was said. The spools are written through the same `RecordingPause` a capture shares between its two sources, pressed and released by device position, so what is probed is the production object rather than a stand-in; the fabricated devices stay loud through the pause, so silence in the file is the pause and not a quiet room. Replacing the substitution with dropped packets fails the probe outright, the timeline refusing the first block after the pause. What no probe here covers is the capture callback itself, which needs a device.
 - ISC-156 — `MeetingRecordingsTests.A_meeting_and_its_folder_exist_before_any_of_it_is_captured` and `.A_meeting_is_identified_without_a_title_or_anything_a_provider_says` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-08-18: the row is read back through a second connection and the spool folder is there and holds no file, so what arrives next arrives somewhere already belonging to a meeting, and the id survives having no title and no provider. `.The_meeting_is_recognisable_with_the_database_deleted` then deletes the database and reads the meeting back off its card. What is argued rather than probed is that the corpus really precedes the devices in one press: that ordering is one call before another inside `MeetingRecording.Start`, and opening a device is what a build agent cannot do — the hand probe is `record`. The spool's own card is written once both devices are open and not before, which is ISC-121's doing and is why this claim names the row and the folder and not the card.
 - ISC-157 — `MeetingRecordingsTests.Stopping_a_recording_queues_no_work_on_the_meeting` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-08-18: after a recording is stopped and its audio written, `processing_jobs` is empty read back through a second connection, and the one place that decides answered nothing.
+- ISC-149 — `WaitingRecordingsTests.A_recording_waiting_to_be_decided_about_never_keeps_a_new_meeting_from_being_recorded` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-08-18: with two recordings nobody stopped sitting undecided in the corpus, a whole meeting is recorded and finished over the top of them, and both are still there afterwards — every file hashed before and after and compared, so a build that cleared the way by tidying them up fails rather than passing the first half. Both halves are the claim: nothing refuses to record while something waits, and nothing recording touches what waits. What no probe here covers is a screen adding a gate of its own, because there is no recovery screen yet; the claim is the constraint on the one that comes.
