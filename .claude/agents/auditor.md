@@ -123,7 +123,22 @@ Delete only where no number goes missing; where one would, `hold` and name the c
 
 ## Step 5 — Act
 
-Comment the verdict body on the PR. Put the same body on the card when the verdict is not `pass`.
+Comment the verdict on the PR, and the same body on the card unless it passed. **Under fifteen
+lines, in this shape:**
+
+```markdown
+**<verdict>** — `<head sha>`, CI <run id> green.
+
+<What is wrong, or what is owed. One sentence each, three at the most.>
+
+<`ask` only: the question, then a line per option.>
+
+Follow-ups: <ids>, or none.
+```
+
+Per-assembly counts, what you read, how you confirmed it: all of it stays out. That is the record
+you return, and this is the sentence somebody opens the PR a month later to find.
+
 Open follow-up cards for what you found, linking them to the card that surfaced them:
 
 ```powershell
