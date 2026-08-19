@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 105/157
+progress: 105/159
 updated: 2026-08-18
 ---
 
@@ -128,7 +128,9 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-70: A recording says how much of each source never arrived, rather than coming back shorter with nothing saying so.
 - [x] ISC-71: A recording is as long as the last audio of either source, so one that stopped early does not cut the end off the meeting.
 - [x] ISC-72: Anti: how late a source's audio is handed over cannot change the recording, up to the half minute after which that source is given up.
-- [x] ISC-73: Anti: a stretch of a meeting nobody played into is recorded as the silence it was, and not as whatever the device's buffer last held.
+- [ ] ISC-73: Anti: a stretch of a meeting nobody played into is recorded as the silence it was.
+- [x] ISC-73.1: Anti: what a silent stretch holds is silence, and not whatever the device's buffer last held.
+- [ ] ISC-73.2: Anti: a silent stretch is there rather than missing, however another application is using the speakers the meeting is coming out of.
 - [x] ISC-74: Anti: the recorded file never carries the microphone on channel 0.
 - [x] ISC-75: A recording cut off mid-block comes back to its last whole block.
 - [x] ISC-76: Finishing the same recording twice produces the same file.
@@ -492,7 +494,7 @@ Board: 7 · Distribución y backup
 - ISC-70 — `PacketTallyTests.The_same_bytes_are_a_hole_or_a_shorter_source_depending_on_the_positions` green 2026-08-14: ninety packets either way, one covering a second of meeting with a tenth of it lost and the other nine tenths of a second with nothing lost. `capture` prints the number on its own line per source, and both runs printed 0 ms
 - ISC-71 — `SharedTimelineTests.A_source_that_stopped_early_does_not_cut_the_meeting_short` green 2026-08-14: a microphone that stops at 15 s of a 20 s recording leaves the recording 20 s long with 5 s reported missing, rather than ending where it stopped
 - ISC-72 — `SharedTimelineTests.Handing_a_source_over_in_clumps_seconds_late_records_the_same_meeting` green 2026-08-14: the same minute delivered smoothly and in five second clumps is the same recording sample for sample, with the two deliveries first shown to differ — runs of one source of under 5 packets against over 100. `.Handing_a_source_over_later_than_the_timeline_waits_gives_that_source_up` holds the far side of the bound, where the same packets in 35 second clumps are refused
-- ISC-73 — the 14 s run 2026-08-14 played a 440 Hz tone from second 2 to second 12 into the endpoint channel 0 was recording. Its WAV peaks at 0.167 over 5–6 s and is exactly zero over 0–1 s and from 12.5 s to the end, with 1352 packets arriving throughout and nothing lost, so the stretches nothing played into are the silence they were rather than the tone still standing in the device's buffer
+- ISC-73.1 — the 14 s run 2026-08-14 played a 440 Hz tone from second 2 to second 12 into the endpoint channel 0 was recording. Its WAV peaks at 0.167 over 5–6 s and is exactly zero over 0–1 s and from 12.5 s to the end, with 1352 packets arriving throughout and nothing lost, so the stretches nothing played into are the silence they were rather than the tone still standing in the device's buffer
 - ISC-74 — `MeetingAudioTests.The_recording_never_carries_the_microphone_on_channel_0` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-16, both ways round: with only the loopback loud the recording read back off disk peaks above half scale at position 0 of every frame and exactly zero at position 1, and with only the microphone loud it is the other way — so a build that swapped the contract and the recording together still fails one of the two. The 8 s `capture` run on this machine 2026-08-16 recorded −18.5 dBFS on channel 0 with its microphone silent, which is the source that was playing landing on channel 0 on real devices
 - ISC-75 — `BlockSpoolTests` (`tests/MeetingTranscriber.Audio.Tests`) and `RecoveryCommandTests` (`tests/MeetingTranscriber.Cli.Tests`) green 2026-08-15, over a file cut inside a block, one cut before its samples, a tail of zeroes and a block changed after it was written — each costing that block and none of the ones before it. `.A_block_the_disk_did_not_keep_is_dropped_and_the_ones_before_it_are_not` red against a reader that skipped the checksum. Four `capture` runs on this machine 2026-08-15 killed at 4, 7, 8 and 11 s of 60 came back through what is now `recover --keep` whole, nothing discarded on any of the eight sources — 341, 636, 793 and 996 blocks on channel 0, about 90 a second either way — so a block reaching the disk in one write is what a killed process leaves. 1500 bytes then taken off one of those files' tails cost the 2376 byte block they were inside and left the 792 before it
 - ISC-76 — `MeetingAudioTests.Finishing_the_same_recording_twice_produces_the_same_file` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-16: the same two spools finished twice are the same bytes, the same length and the same levels. On this machine 2026-08-16 an 8 s capture's `audio.wav` and the one produced from those same blocks afterwards by what is now `recover --keep` both hashed to `03aaad46b9e9d5e96cb4c25ff52eea4f07047a31bfa6c1a7dc29184896267a6b`, 130563 frames either way
