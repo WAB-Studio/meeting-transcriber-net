@@ -39,6 +39,35 @@ public static class CorpusDatabase
     }
 
     /// <summary>
+    /// Whether this folder holds a corpus, which is the question anything pointed at a folder asks
+    /// before opening one.
+    /// </summary>
+    /// <remarks>
+    /// A <c>corpus.db</c> of zero bytes is not a corpus and is not nothing: it is what a create
+    /// that was cut off leaves, SQLite refuses to put it into WAL, and every write against it —
+    /// the migration that would have made it a corpus included — comes back as a read-only
+    /// database. So the size is part of the answer rather than a second check somebody has to
+    /// remember. The command line asks the same three-state question one step further out, because
+    /// it tells the two ways of having no corpus apart in what it says about them.
+    /// </remarks>
+    public static bool HoldsACorpus(DirectoryInfo root)
+    {
+        var database = new FileInfo(PathIn(root));
+
+        // Length is read behind Exists, and the file can go between the two — a disk unplugged
+        // mid-question. That is not a corpus either, and it is the caller's business how loudly to
+        // say so, so it comes back as the same no rather than as an exception out of a predicate.
+        try
+        {
+            return database.Exists && database.Length > 0;
+        }
+        catch (Exception gone) when (gone is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// How this corpus is named to SQLite, in each of the two ways it can be opened. Both, because
     /// a connection pool is keyed by the exact string that opened it, so read-only is a second pool
     /// holding the same file — and a corpus reached both ways is holding it twice.

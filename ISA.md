@@ -1,7 +1,7 @@
----
+﻿---
 phase: climbing
-progress: 105/159
-updated: 2026-08-18
+progress: 110/165
+updated: 2026-08-19
 ---
 
 # ISA — meeting-transcriber-net
@@ -234,10 +234,16 @@ Why: the application installs, upgrades and comes back from a lost disk, because
 holds artifacts that cannot be obtained again.
 Board: 7 · Distribución y backup
 - [ ] ISC-110: Anti: the corpus never lives in the MSIX package data folder.
+- [x] ISC-110.1: Anti: no folder the application would open a corpus in is one the package takes with it when it is uninstalled — neither the one it falls back to nor one a person named.
+- [ ] ISC-110.2: A corpus an installed build wrote is still there, whole, after the package is uninstalled.
 - [ ] ISC-111: A snapshot restores to an alternate directory and comes back sound.
 - [ ] ISC-112: An upgrade over an installed build leaves the corpus intact.
 - [ ] ISC-113: The CLI and the MCP server are reachable by app execution alias.
 - [ ] ISC-114: The corpus location is configurable and validated at startup.
+- [x] ISC-114.1: With nobody having chosen where the corpus goes, the corpus is in a folder of the user's own profile.
+- [x] ISC-114.2: The corpus opens wherever it was moved to, and the same one is opened again the next time the application starts.
+- [x] ISC-114.3: A corpus location that cannot be opened is refused naming the folder, rather than opened.
+- [x] ISC-114.4: Anti: a corpus location that cannot be opened never becomes a second, empty corpus somewhere else.
 - [ ] ISC-146: The package installs and uninstalls on a machine that is not the one it was built on.
 
 ## Not yet specified
@@ -421,6 +427,57 @@ Board: 7 · Distribución y backup
   That, and a counter running finer than the client's rate rather than coarser — which reads as a
   dropout between every packet and is refused — are both on the board rather than guessed at here.
 
+- **conjecture** — A corpus is kept out of the folder an uninstall deletes by resolving it through
+  the API that does not return that folder, and by refusing a path that is spelled like it.
+- **refuted-by** — Two reviewers on the opposing model, independently. Where a path is written and
+  where it leads are different things: a folder on any disk that is a link into the container was
+  accepted, and a junction is something a test makes with no privilege at all. The same check was
+  anchored on the local application data folder, which is the one folder a packaged process may be
+  handed already inside the container — so in exactly the case the check exists for it would have
+  compared the container against itself and found nothing wrong with anywhere. Every test was green
+  over both.
+- **learned** — A check that reads a path is a check on spelling. What an uninstall answers is where
+  the path leads, and the anchor a location is judged against has to be one the thing being guarded
+  against cannot move — which the profile is and the application data folder is not.
+- **criterion-now** — The container is the profile's own `AppData\Local\Packages`, and every step
+  from the corpus folder up to its root is asked where it leads; a folder that only reaches the
+  container through a link is refused like one spelled that way, and a folder somewhere else that
+  merely happens to be spelled that way is somebody's own and is left alone.
+
+- **conjecture** — Refusing a location that cannot be opened is what keeps the application from
+  making a second, empty corpus while somebody's meetings sit somewhere else.
+- **refuted-by** — There is a route to it with no location to refuse. Somebody who never moved their
+  corpus drags the folder in Explorer; nothing was ever written down, so resolution finds no setting,
+  falls back to the folder the application would have used, and opens it exactly as it opens a first
+  run. A reviewer found it while every refusal test was green.
+- **learned** — A refusal only reaches the cases where something was written down. Nobody having
+  chosen and what was there being gone are the same thing on disk, so the safety cannot come from
+  telling them apart — it has to come from never making one silently in either.
+- **criterion-now** — Resolution never answers with a folder without also saying whether a corpus is
+  there yet, so making one is something whoever opens it was told about rather than something
+  nothing objected to.
+
+- **conjecture** — Keeping the corpus out of the package's own data folder is enough for it to
+  outlive an uninstall, so the application data folder Windows names for an application is a safe
+  place to put it as long as it is asked for the way that does not return the package's own.
+- **refuted-by** — An audit of the branch, against what a packaged full-trust desktop application
+  does rather than what it is handed. AppData write virtualization is on by default: the path comes
+  back spelled exactly as it was asked for and the bytes land inside the container. Every check was
+  green over a fallback the first uninstall would have deleted — including the one asserting that
+  fallback is not inside the container, which runs unpackaged and so cannot see the redirection at
+  all.
+- **learned** — A folder is not safe for being spelled differently from the unsafe one. What decides
+  is whose writes land in it, and that is answered by the tree it is in rather than by anything the
+  folder itself reports — so the rule has to be about the tree, and the probe has to stand at a
+  folder rather than at a write.
+- **criterion-now** — The corpus is in the user's own profile and never under their application
+  data. What is refused is every application data folder this user has — the profile's own, and
+  whatever Windows answers for the roaming and local ones, which are different folders on a profile
+  where somebody keeps application data elsewhere — the package container being the case an
+  uninstall deletes outright rather than redirects into. A folder that only leads into one of them
+  goes with it: the chain of links is followed to its end rather than one hop, since a disk somebody
+  moved and then a folder somebody else moved still ends in application data.
+
 ## Verification
 
 - ISC-1 — `AudioChannelTests` green 2026-08-07
@@ -528,3 +585,8 @@ Board: 7 · Distribución y backup
 - ISC-156 — `MeetingRecordingsTests.A_meeting_and_its_folder_exist_before_any_of_it_is_captured` and `.A_meeting_is_identified_without_a_title_or_anything_a_provider_says` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-08-18: the row is read back through a second connection and the spool folder is there and holds no file, so what arrives next arrives somewhere already belonging to a meeting, and the id survives having no title and no provider. `.The_meeting_is_recognisable_with_the_database_deleted` then deletes the database and reads the meeting back off its card. What is argued rather than probed is that the corpus really precedes the devices in one press: that ordering is one call before another inside `MeetingRecording.Start`, and opening a device is what a build agent cannot do — the hand probe is `record`. The spool's own card is written once both devices are open and not before, which is ISC-121's doing and is why this claim names the row and the folder and not the card.
 - ISC-157 — `MeetingRecordingsTests.Stopping_a_recording_queues_no_work_on_the_meeting` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-08-18: after a recording is stopped and its audio written, `processing_jobs` is empty read back through a second connection, and the one place that decides answered nothing.
 - ISC-149 — `WaitingRecordingsTests.A_recording_waiting_to_be_decided_about_never_keeps_a_new_meeting_from_being_recorded` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-08-18: with two recordings nobody stopped sitting undecided in the corpus, a whole meeting is recorded and finished over the top of them, and both are still there afterwards — every file hashed before and after and compared, so a build that cleared the way by tidying them up fails rather than passing the first half. Both halves are the claim: nothing refuses to record while something waits, and nothing recording touches what waits. What no probe here covers is a screen adding a gate of its own, because there is no recovery screen yet; the claim is the constraint on the one that comes.
+- ISC-110.1 — `CorpusLocationTests` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-08-19, in the shapes the claim has. `.A_folder_under_the_users_application_data_goes_when_the_package_does` holds nine folders under this user's own `AppData` — the container itself, three folders inside a fabricated package family, application data itself, one folder under each of Local, Roaming and LocalLow, and the temp folder — built from the running profile because a literal `C:\Users\someone\…` is nobody's application data on the machine the test runs on. `.A_folder_outside_it_survives_the_package` is the other side, including a folder on another disk spelled `AppData\Local\Packages`, which is somebody's own. `.A_corpus_under_the_users_application_data_is_refused_though_it_is_there_and_whole` migrates a real corpus into a real folder under `%LOCALAPPDATA%` and removes it again, so what is refused is a corpus that is really there and really opens rather than a string. `.A_folder_that_only_leads_into_the_container_goes_with_it_too` makes a junction with `mklink /J`, which needs no privilege, and holds the refusal to where a folder leads rather than how it is spelled — red 2026-08-18 with the link walk removed, and only that test. `.A_folder_that_leads_into_the_container_through_another_link_goes_with_it_too` is the same through two junctions, which three reviewers on the opposing model found accepted independently of each other: red 2026-08-19 with the chain cut back to one hop, and only that test. `.A_loop_of_links_is_answered_rather_than_followed` points two junctions at each other and asserts an answer comes back at all; what would falsify it is a run that never returns rather than a red test, which is why it is written as the weaker assertion. `.The_folders_refused_are_the_ones_Windows_itself_names` holds the refused folders to the profile's own `AppData` and to what Windows answers for the roaming and local folders — red 2026-08-19 with the last two dropped, and only that test, because on an ordinary profile they are already inside the first and every other assertion passes without them. `.An_application_data_folder_kept_off_the_profile_is_refused_like_any_other` asks the same question of a folder standing in for application data somebody keeps off their profile, which is the case the machine running the test does not have: red 2026-08-19 with the folders it is handed ignored in favour of the profile anchor. `.Nothing_the_application_is_built_out_of_asks_the_package_where_to_write` sweeps `src/` for `ApplicationData.Current`, reading code with comment lines dropped so that it still runs over the one file whose job is to name the API nothing may call; red 2026-08-18 with `Windows.Storage.ApplicationData.Current.LocalFolder` planted in `MeetingTranscriber.App`, naming the file. Red 2026-08-19 with the rule narrowed back to the package container: exactly four failed and 253 stayed green. What no probe here reaches is a packaged process writing under a redirected path — that is ISC-110.2, and refusing the whole tree is what makes this hold without having to see it happen
+- ISC-114.1 — `CorpusLocationTests.With_nobody_having_chosen_the_corpus_is_directly_under_the_users_profile` green 2026-08-19: the fallback and the setting file beside it are both under `%USERPROFILE%\MeetingTranscriber`, compared as paths with nothing read off the disk, so it asserts about this machine without touching the user's own corpus. `.No_folder_the_application_would_write_a_corpus_in_is_under_app_data` is the same answer held against the folders Windows names — both application data folders, the profile's own `AppData` and the package container — asserting of each that a corpus there would be refused and that neither the corpus nor the file saying where it is is under it. `.A_first_corpus_is_never_put_under_app_data` resolves a location whose fallback is `%LOCALAPPDATA%\MeetingTranscriber`, which is where this branch fell back to before the packaging question was answered, and gets a refusal naming it with nothing created. Red 2026-08-19 with the fallback put back under `SpecialFolder.LocalApplicationData`: those first two failed and the other 255 stayed green
+- ISC-114.2 — `CorpusLocationTests.The_corpus_opens_where_the_setting_says` and `.The_same_folder_opens_again_the_next_time_the_application_starts` green 2026-08-18, the second reading it back through a second `CorpusLocation` over the same file so that what is proved is the file and not a field. `.A_corpus_moved_somewhere_else_keeps_every_path_it_recorded` moves a corpus holding a rendered file and a paid response to another folder and opens it from there: the reconciler reports nothing with every artifact hashed, and both files read back byte for byte. A second temp folder and not a second drive, which no build agent has — what the claim turns on is that a stored path is relative to whichever folder the corpus is opened as, and that is what changes
+- ISC-114.3 — `CorpusLocationTests.A_folder_that_does_not_answer_is_refused_naming_it`, `.A_folder_with_no_corpus_in_it_is_refused_rather_than_filled_with_a_new_one`, `.A_corpus_file_of_no_bytes_is_not_a_corpus` and `.A_setting_saying_nothing_usable_is_refused_and_not_read_as_nobody_having_chosen` green 2026-08-18. Each carries the path it refused, and the last is five cases — blank, spaces, two relative paths and a sentence. Red 2026-08-18 with the unusable-setting refusal replaced by the fall back the language preference makes: exactly those five failed and the other twenty stayed green. A folder that is gone and one this user may not read arrive under one refusal deliberately, because Windows answers them the same way and guessing between them would send half the people who hit it to check the wrong thing
+- ISC-114.4 — `CorpusLocationTests.A_folder_that_is_not_there_never_becomes_a_second_empty_corpus`, `.Somewhere_the_application_would_put_a_corpus_says_whether_one_is_there_yet` and `.A_folder_the_next_start_would_refuse_cannot_be_recorded_as_where_the_corpus_is` green 2026-08-18. The second is the one a review found: a refusal only reaches what was written down, and somebody who never moved their corpus and then drags the folder has nothing written down at all. So resolution never answers with a folder without saying whether a corpus is in it, and that test deletes a real corpus out from under the fallback and holds the next answer to saying so — red 2026-08-18 with the fallback claiming a corpus unconditionally. The third is the same rule at the other end: a folder the next start would refuse cannot be recorded as where the corpus is, so the refusal cannot be walked into by writing it down
