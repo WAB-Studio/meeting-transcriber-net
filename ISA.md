@@ -1,6 +1,6 @@
 ---
 phase: climbing
-progress: 105/159
+progress: 105/165
 updated: 2026-08-18
 ---
 
@@ -234,10 +234,16 @@ Why: the application installs, upgrades and comes back from a lost disk, because
 holds artifacts that cannot be obtained again.
 Board: 7 · Distribución y backup
 - [ ] ISC-110: Anti: the corpus never lives in the MSIX package data folder.
+- [ ] ISC-110.1: Anti: no folder the application would open a corpus in is inside the package's own data folder — neither the one it falls back to nor one a person named.
+- [ ] ISC-110.2: A corpus an installed build wrote is still there, whole, after the package is uninstalled.
 - [ ] ISC-111: A snapshot restores to an alternate directory and comes back sound.
 - [ ] ISC-112: An upgrade over an installed build leaves the corpus intact.
 - [ ] ISC-113: The CLI and the MCP server are reachable by app execution alias.
 - [ ] ISC-114: The corpus location is configurable and validated at startup.
+- [ ] ISC-114.1: With nobody having chosen where the corpus goes, the corpus is under the user's own application data.
+- [ ] ISC-114.2: The corpus opens wherever it was moved to, and the same one is opened again the next time the application starts.
+- [ ] ISC-114.3: A corpus location that cannot be opened is refused naming the folder, rather than opened.
+- [ ] ISC-114.4: Anti: a corpus location that cannot be opened never becomes a second, empty corpus somewhere else.
 - [ ] ISC-146: The package installs and uninstalls on a machine that is not the one it was built on.
 
 ## Not yet specified
