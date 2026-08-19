@@ -21,6 +21,10 @@ namespace MeetingTranscriber.App.Tests;
 /// Two halves, because there are two ways to have a live region that says nothing: words bound
 /// where nothing will change them, and words never set at all. Both are structural, which is what
 /// makes them checks a build agent can run — a WinUI tree needs a UI thread and a packaged host.
+/// Which properties count as carrying words, and which ways of carrying them this reads past, are
+/// named on <see cref="Carries"/>.
+/// </para>
+/// <para>
 /// What no probe here reaches is a narrator really reading it out; that is run by hand and written
 /// down, like every other check that needs a packaged host.
 /// </para>
@@ -113,10 +117,29 @@ public class LiveRegionTests
             + "announce nothing: " + string.Join("; ", silent));
     }
 
+    /// <summary>
+    /// Every property a live region's words can arrive on. Read as a set rather than as one name,
+    /// because which one a line uses is a matter of what control it is — a <c>TextBlock</c> says
+    /// <c>Text</c>, anything with content says <c>Content</c>, and a region announced by its
+    /// automation name says that — and a check that knew only the control the screen happens to
+    /// use today would wave the same defect through the day somebody changes it.
+    /// </summary>
+    private static readonly string[] Words = ["Text", "Content", "Header", "AutomationProperties.Name"];
+
     /// <summary>Whether an element says in the XAML what it reads as.</summary>
+    /// <remarks>
+    /// Both spellings again: the attribute, and the child element that sets the same property —
+    /// <c>TextBlock.Text</c> for one of the control's own, and the attached one under its whole
+    /// name. What this does not reach is words that never appear on the element at all: a style or
+    /// a template setting one of these, or a control of our own with a words property under some
+    /// other name. Neither exists on any screen here, and the second half below is what holds a
+    /// region reached by neither, since it is told by name or it is not told at all.
+    /// </remarks>
     private static bool Carries(XElement element) =>
-        element.Attribute("Text") is not null
-        || element.Elements().Any(child => child.Name.LocalName.EndsWith(".Text", StringComparison.Ordinal));
+        element.Attributes().Any(attribute => Words.Contains(attribute.Name.LocalName))
+        || element.Elements().Any(child => Words.Any(word =>
+            child.Name.LocalName == word
+            || child.Name.LocalName.EndsWith("." + word, StringComparison.Ordinal)));
 
     /// <summary>Every element declared a live region, by either spelling of the attached property.</summary>
     private static IReadOnlyList<XElement> LiveRegions(string path) =>

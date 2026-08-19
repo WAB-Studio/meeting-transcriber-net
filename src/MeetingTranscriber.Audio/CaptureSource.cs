@@ -60,8 +60,11 @@ public sealed class CaptureSource : IDisposable
 
     /// <summary>
     /// What the stream ended with, or nothing when it ended without one. Written on the draining
-    /// thread and read on whichever thread is showing a meter, which is why it is volatile: a
-    /// screen asking why a device stopped is asking from outside every lock this file has.
+    /// thread the moment the device lets go of it, and read on the thread that stops this source —
+    /// <see cref="Finish"/>, which is what turns it into the exception the caller hears — and
+    /// cleared again on the thread that hands the source a different stream. Volatile because
+    /// those threads share no lock over it: the one that writes it is inside the device and is
+    /// gone by the time anybody asks.
     /// </summary>
     private volatile Exception? failure;
 

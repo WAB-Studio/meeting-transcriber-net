@@ -29,9 +29,12 @@ public class RecordingMetersTests
     /// <summary>The states a meeting is really being recorded in.</summary>
     /// <remarks>
     /// Both sets are derived from the enum and not listed by hand, and between them they are every
-    /// state there is — which is what `Every_state_is_on_one_side_of_the_meters_or_the_other` holds.
-    /// A state added and not thought about would otherwise be metered by neither theory and go red
-    /// nowhere, and the states most likely to be added next are the ones a recovery screen needs.
+    /// state there is by construction: this one is what <c>IsRecording</c> picks out and
+    /// <see cref="WithNoMeetingRunning"/> is exactly what it leaves, so a state added and not
+    /// thought about lands in one of the two rather than being metered by neither theory and going
+    /// red nowhere. Which states this one holds is not left to that rule to say — it is spelled out
+    /// in <see cref="Only_a_meeting_that_is_running_is_metered"/>. The states most likely to be
+    /// added next are the ones a recovery screen needs.
     /// </remarks>
     public static TheoryData<RecorderState> WhileTheMeetingRuns() =>
         [.. States().Where(state => state.IsRecording())];
