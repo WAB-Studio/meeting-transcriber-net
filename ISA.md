@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 110/165
+progress: 110/173
 updated: 2026-08-19
 ---
 
@@ -156,6 +156,8 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-137: Starting a recording ends at a deadline even when a device never starts.
 - [ ] ISC-138: A recording that did not start names the device that did not answer.
 - [x] ISC-139: Anti: nothing moves a recording from the application it is following to the whole machine's audio without somebody choosing it.
+- [ ] ISC-139.1: Anti: at a prompt, that choice is a key pressed after the offer was on screen, and never one typed before it.
+- [ ] ISC-139.2: Anti: on a screen, there is nothing to press until the offer has been made.
 - [ ] ISC-140: A source whose device counts its frames in a rate of its own has its drift measured and corrected like any other source's, rather than being recorded at the rate its label claims.
 
 ### F4 · WinUI recorder
@@ -177,6 +179,12 @@ Board: 3 · Grabador WinUI
 - [x] ISC-153: The application opens in the language Windows is set to, unless somebody chose another.
 - [x] ISC-156: A meeting's identity, its row in the corpus and the folder its audio goes into all exist before the first sample of it is captured.
 - [x] ISC-157: Anti: stopping a recording queues no work on the meeting.
+- [ ] ISC-158: A meeting is recorded from end to end with nothing typed at a command line.
+- [ ] ISC-158.1: Which microphone a meeting records, and whether channel 0 follows one program or everything the machine plays, are chosen before it starts.
+- [ ] ISC-158.2: A meeting being recorded is paused, resumed and stopped without leaving the application.
+- [ ] ISC-158.3: A meeting recorded from the application arrives in the corpus as the same thing a meeting recorded at a prompt does.
+- [ ] ISC-158.4: What a meeting is expected to be spoken in is said for that meeting, and is never taken from the language the application is being read in.
+- [ ] ISC-158.5: Anti: a recording cannot be started before the microphone, what channel 0 follows and what will be spoken have each been said.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly
