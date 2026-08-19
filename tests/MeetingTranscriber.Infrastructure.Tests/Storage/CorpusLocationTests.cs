@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 using MeetingTranscriber.Domain.Artifacts;
@@ -50,26 +51,77 @@ public class CorpusLocationTests
             .ShouldBeFalse();
     }
 
-    [Theory]
-    [InlineData(@"C:\Users\someone\AppData\Local\Packages\Publisher.App_1abc\LocalCache\Local\MeetingTranscriber")]
-    [InlineData(@"C:\Users\someone\AppData\Local\Packages\Publisher.App_1abc\LocalState")]
-    [InlineData(@"C:\Users\someone\AppData\Local\Packages")]
-    [InlineData(@"c:\users\someone\appdata\local\packages\publisher.app_1abc\localcache")]
-    public void A_folder_inside_the_package_container_goes_when_the_package_does(string path) =>
-        CorpusLocation.InsideThePackageContainer(path).ShouldBeTrue();
+    /// <summary>
+    /// Built under this machine's own profile rather than written out literally, because that is
+    /// what the check is anchored on — a literal <c>C:\Users\someone\...</c> is nobody's container
+    /// on the machine the test runs on, and asserting about it would prove nothing.
+    /// </summary>
+    [Fact]
+    public void A_folder_inside_the_package_container_goes_when_the_package_does()
+    {
+        var container = CorpusLocation.PackageContainerOfThisUser();
+
+        foreach (var inside in new[]
+        {
+            container,
+            Path.Combine(container, "Publisher.App_1abc", "LocalState"),
+            Path.Combine(container, "Publisher.App_1abc", "LocalCache", "Local", "MeetingTranscriber"),
+            Path.Combine(container.ToUpperInvariant(), "PUBLISHER.APP_1ABC", "LOCALCACHE"),
+        })
+        {
+            CorpusLocation.InsideThePackageContainer(inside)
+                .ShouldBeTrue($"'{inside}' is inside '{container}'.");
+        }
+    }
 
     /// <summary>
-    /// The other side of it, and the decoys are the point: what makes a folder the package's is
-    /// the three segments in that order under the profile, not the word <c>Packages</c> appearing
-    /// in the path.
+    /// The other side of it, and the decoys are the point. A folder is the package's for being
+    /// under this user's container, not for being spelled like one: somebody whose corpus sits on
+    /// another disk in a folder that happens to be spelled that way keeps it.
     /// </summary>
-    [Theory]
-    [InlineData(@"C:\Users\someone\AppData\Local\MeetingTranscriber")]
-    [InlineData(@"C:\Users\someone\AppData\Roaming\Packages\MeetingTranscriber")]
-    [InlineData(@"C:\Packages\MeetingTranscriber")]
-    [InlineData(@"D:\Corpus")]
-    public void A_folder_outside_it_survives_the_package(string path) =>
-        CorpusLocation.InsideThePackageContainer(path).ShouldBeFalse();
+    [Fact]
+    public void A_folder_outside_it_survives_the_package()
+    {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        foreach (var outside in new[]
+        {
+            Path.Combine(profile, "AppData", "Local", CorpusLocation.ApplicationFolderName),
+            Path.Combine(profile, "AppData", "Roaming", "Packages", "MeetingTranscriber"),
+            Path.Combine(profile, "Packages", "MeetingTranscriber"),
+            @"D:\archives\AppData\Local\Packages\Meetings",
+            @"D:\Corpus",
+        })
+        {
+            CorpusLocation.InsideThePackageContainer(outside)
+                .ShouldBeFalse($"'{outside}' is nobody's package folder.");
+        }
+    }
+
+    /// <summary>
+    /// Where a path is written and where it leads are two questions, and the uninstall answers the
+    /// second. A folder on any disk that is a link into the container is deleted with the package
+    /// exactly like a folder spelled that way, so a check that only read the spelling would hand
+    /// somebody's paid responses to the next uninstall.
+    /// </summary>
+    [Fact]
+    public void A_folder_that_only_leads_into_the_container_goes_with_it_too()
+    {
+        using var elsewhere = new TemporaryFolder();
+        var link = Path.Combine(elsewhere.Folder.FullName, "corpus");
+        var inside = Path.Combine(
+            CorpusLocation.PackageContainerOfThisUser(),
+            $"MeetingTranscriber.Fabricated_{Guid.NewGuid():n}",
+            "LocalCache");
+
+        // A junction rather than a symbolic link: a symbolic link needs a privilege a build agent
+        // does not have. The target is never created, so no test writes into a real package's
+        // folder — and a link into a folder that is not there is exactly what an uninstall leaves.
+        Junction(link, inside);
+
+        CorpusLocation.InsideThePackageContainer(link).ShouldBeTrue();
+        Naming(elsewhere, link).Resolve().Refusal.ShouldBe(CorpusRefusal.InsideThePackageContainer);
+    }
 
     [Fact]
     public void The_corpus_opens_where_the_setting_says()
@@ -103,7 +155,7 @@ public class CorpusLocationTests
     }
 
     [Fact]
-    public void A_folder_that_is_not_there_is_refused_naming_it()
+    public void A_folder_that_does_not_answer_is_refused_naming_it()
     {
         using var elsewhere = new TemporaryFolder();
         var gone = Path.Combine(elsewhere.Folder.FullName, "on-a-disk-nobody-plugged-in");
@@ -111,7 +163,7 @@ public class CorpusLocationTests
 
         var resolved = location.Resolve();
 
-        resolved.Refusal.ShouldBe(CorpusRefusal.FolderIsNotThere);
+        resolved.Refusal.ShouldBe(CorpusRefusal.FolderDoesNotAnswer);
         resolved.Path.ShouldBe(gone);
         resolved.Folder.ShouldBeNull();
     }
@@ -172,27 +224,44 @@ public class CorpusLocationTests
     public void A_corpus_inside_the_package_container_is_refused_though_it_is_there_and_whole()
     {
         using var elsewhere = new TemporaryFolder();
-        using var container = new TemporaryFolder();
-        var inside = new DirectoryInfo(Path.Combine(
-            container.Folder.FullName, "AppData", "Local", "Packages", "Publisher.App_1abc", "LocalCache"));
-        inside.Create();
-        // Migrating is what puts a corpus in the folder, which is what makes the refusal below
-        // about where it is rather than about it not being there.
-        using (CorpusDatabase.OpenMigrated(inside))
-        {
-        }
 
-        CorpusDatabase.HoldsACorpus(inside).ShouldBeTrue();
+        // A real folder under this user's real package container, under a family name no package
+        // has, removed again at the end. Nowhere else can carry this test: the invariant is about
+        // that folder in particular, and a fabricated one somewhere else is a folder an uninstall
+        // would never touch.
+        var family = new DirectoryInfo(Path.Combine(
+            CorpusLocation.PackageContainerOfThisUser(),
+            $"MeetingTranscriber.Fabricated_{Guid.NewGuid():n}"));
+        var inside = new DirectoryInfo(Path.Combine(family.FullName, "LocalCache", "corpus"));
+        inside.Create();
+
         try
         {
+            // Migrating is what puts a corpus in the folder, which is what makes the refusal below
+            // about where it is rather than about there being nothing there.
+            using (CorpusDatabase.OpenMigrated(inside))
+            {
+            }
+
+            CorpusDatabase.HoldsACorpus(inside).ShouldBeTrue();
+
             var resolved = Naming(elsewhere, inside.FullName).Resolve();
 
             resolved.Refusal.ShouldBe(CorpusRefusal.InsideThePackageContainer);
             resolved.Path.ShouldBe(inside.FullName);
+            resolved.Folder.ShouldBeNull();
         }
         finally
         {
             CorpusDatabase.ClearPoolsFor(inside);
+            try
+            {
+                family.Delete(recursive: true);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // Same call TemporaryFolder makes, for the same two Windows refusals.
+            }
         }
     }
 
@@ -232,6 +301,89 @@ public class CorpusLocationTests
 
         resolved.Refusal.ShouldBeNull();
         resolved.Folder!.FullName.ShouldBe(location.Fallback.FullName);
+    }
+
+    /// <summary>
+    /// The gap an adversarial review found, and the only route left to the failure the whole
+    /// refusal is built against. Somebody drags their corpus folder somewhere else in Explorer
+    /// rather than through the application. There is no setting to refuse — nobody ever chose —
+    /// so resolution lands on the folder the application would have used, which is now empty.
+    /// </summary>
+    /// <remarks>
+    /// What stops it is that resolution never says "open this" without also saying whether there
+    /// is a corpus there. Making one is then something whoever opens it was told about, not
+    /// something nothing objected to — so an empty list is always preceded by a sentence.
+    /// </remarks>
+    [Fact]
+    public void Somewhere_the_application_would_put_a_corpus_says_whether_one_is_there_yet()
+    {
+        using var elsewhere = new TemporaryFolder();
+        var location = At(elsewhere);
+
+        var firstRun = location.Resolve();
+        firstRun.Refusal.ShouldBeNull();
+        firstRun.HoldsACorpus.ShouldBeFalse();
+
+        location.Fallback.Create();
+        using (CorpusDatabase.OpenMigrated(location.Fallback))
+        {
+        }
+
+        try
+        {
+            location.Resolve().HoldsACorpus.ShouldBeTrue();
+
+            // And the drag: the folder goes, and the next start says there is nothing there rather
+            // than opening it as though there had never been anything.
+            CorpusDatabase.ClearPoolsFor(location.Fallback);
+            Directory.Delete(location.Fallback.FullName, recursive: true);
+
+            var afterTheDrag = location.Resolve();
+            afterTheDrag.HoldsACorpus.ShouldBeFalse();
+            afterTheDrag.Path.ShouldBe(location.Fallback.FullName);
+        }
+        finally
+        {
+            CorpusDatabase.ClearPoolsFor(location.Fallback);
+        }
+    }
+
+    /// <summary>
+    /// A corpus somebody moved through the application is a folder that answers and holds one, and
+    /// it says so — the other half of the signal above, which no caller should have to infer from
+    /// the absence of a refusal.
+    /// </summary>
+    [Fact]
+    public void A_corpus_the_setting_names_says_it_is_already_there()
+    {
+        using var corpus = new TemporaryCorpus();
+        Migrated(corpus);
+        using var elsewhere = new TemporaryFolder();
+        var location = At(elsewhere);
+
+        location.Choose(corpus.Root);
+
+        location.Resolve().HoldsACorpus.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The pointer is written beside itself and moved into place, so a machine that stops during
+    /// the write leaves the corpus somebody already has still pointed at.
+    /// </summary>
+    [Fact]
+    public void Recording_where_the_corpus_is_leaves_no_half_written_pointer()
+    {
+        using var corpus = new TemporaryCorpus();
+        Migrated(corpus);
+        using var elsewhere = new TemporaryFolder();
+        var location = At(elsewhere);
+
+        location.Choose(corpus.Root);
+
+        File.ReadAllText(location.Setting.FullName).ShouldBe(corpus.Root.FullName);
+        location.Setting.Directory!.EnumerateFiles()
+            .Select(file => file.Name)
+            .ShouldBe([CorpusLocation.SettingName]);
     }
 
     /// <summary>
@@ -340,6 +492,25 @@ public class CorpusLocationTests
         Environment.NewLine,
         File.ReadLines(file.FullName)
             .Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+
+    /// <summary>
+    /// A directory junction, made the one way that needs no privilege a build agent lacks. .NET
+    /// can create a symbolic link and not a junction, and a symbolic link needs Developer Mode or
+    /// an elevated process — neither of which a test may assume.
+    /// </summary>
+    private static void Junction(string link, string target)
+    {
+        using var mklink = Process.Start(new ProcessStartInfo("cmd.exe", $"/c mklink /J \"{link}\" \"{target}\"")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        }) ?? throw new InvalidOperationException("cmd.exe did not start.");
+
+        mklink.WaitForExit();
+        mklink.ExitCode.ShouldBe(0, $"mklink said: {mklink.StandardError.ReadToEnd()}");
+    }
 
     private static bool IsBuildOutput(FileInfo file)
     {

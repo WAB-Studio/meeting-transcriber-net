@@ -53,7 +53,18 @@ public static class CorpusDatabase
     public static bool HoldsACorpus(DirectoryInfo root)
     {
         var database = new FileInfo(PathIn(root));
-        return database.Exists && database.Length > 0;
+
+        // Length is read behind Exists, and the file can go between the two — a disk unplugged
+        // mid-question. That is not a corpus either, and it is the caller's business how loudly to
+        // say so, so it comes back as the same no rather than as an exception out of a predicate.
+        try
+        {
+            return database.Exists && database.Length > 0;
+        }
+        catch (Exception gone) when (gone is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
