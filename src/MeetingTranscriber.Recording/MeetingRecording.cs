@@ -1,4 +1,5 @@
 using MeetingTranscriber.Audio;
+using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 
@@ -55,8 +56,8 @@ public sealed class MeetingRecording : IDisposable
     /// <summary>The two sources, for a meter to read while the meeting runs.</summary>
     public IReadOnlyList<CaptureSource> Sources => session.Sources;
 
-    /// <summary>Why channel 0 is not following the program it was asked to, or nothing.</summary>
-    public string? FellBack => session.FellBack;
+    /// <summary>What channel 0 is listening to now, which is what it opened with until it is moved.</summary>
+    public CaptureMode Mode => session.Mode;
 
     /// <summary>Whether the meeting is paused.</summary>
     public bool IsPaused => session.IsPaused;
@@ -125,6 +126,23 @@ public sealed class MeetingRecording : IDisposable
 
         return new MeetingRecording(corpus, session, prepared);
     }
+
+    /// <summary>
+    /// Whether channel 0 has heard nothing at all since it opened, for long enough that the program
+    /// it is following is the wrong one. Nothing is done about it until somebody does.
+    /// </summary>
+    public bool HeardNothingFromTheProgram() => session.HeardNothingFromTheProgram();
+
+    /// <summary>
+    /// Somebody choosing the whole machine's audio in place of the program channel 0 is following.
+    /// The meeting goes on, and every notification and other application is in the file from here.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="Stop"/>, not on a thread somebody is looking at: it opens one device, stops
+    /// another and lets a third go, each with its own deadline for a driver that does not answer.
+    /// Unlike <see cref="Stop"/>, the meeting is still being recorded the whole time it runs.
+    /// </remarks>
+    public void RecordTheWholeMachine() => session.RecordTheWholeMachine();
 
     /// <summary>
     /// Pauses the meeting. The clock keeps running: what the pause costs the recording is silence

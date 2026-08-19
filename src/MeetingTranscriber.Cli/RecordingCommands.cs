@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
@@ -66,11 +66,6 @@ public static class RecordingCommands
         Report.Line(output, "meeting", recording.MeetingId.ToString());
         Report.Line(output, "spool", recording.Prepared.Spool.FullName);
         Report.Line(output, "channel 0", recording.Card.Mode.ToString());
-
-        if (recording.FellBack is not null)
-        {
-            Report.Line(output, "fell back", recording.FellBack);
-        }
 
         foreach (var source in recording.Sources)
         {
@@ -296,6 +291,12 @@ public static class RecordingCommands
     {
         using var interrupted = new ManualResetEventSlim(initialState: false);
 
+        var wholeMachine = WholeMachine.AtThePrompt(said =>
+        {
+            recording.RecordTheWholeMachine();
+            Report.Line(said, "channel 0", $"{recording.Mode} — everything this machine plays");
+        });
+
         void Interrupt(object? sender, ConsoleCancelEventArgs pressed)
         {
             // Ctrl+C is somebody stopping the meeting early, not the process dying: cancelled here
@@ -333,6 +334,8 @@ public static class RecordingCommands
                     string.Join(
                         "   ",
                         recording.Sources.Select(source => $"{Name(source.Channel)} {source.Level()}")));
+
+                wholeMachine.Consider(recording.HeardNothingFromTheProgram(), output);
 
                 if (recording.Sources.Any(source => source.HasEnded))
                 {

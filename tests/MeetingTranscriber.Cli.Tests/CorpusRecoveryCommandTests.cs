@@ -1,4 +1,4 @@
-using MeetingTranscriber.Audio;
+﻿using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
@@ -243,8 +243,7 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
             [
                 new SpooledSource(AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.0}.speakers"),
                 new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.0}.jabra"),
-            ],
-            FellBack: null);
+            ]);
 
         SpoolManifest.Write(prepared.Spool, card);
         MeetingRecordings.Began(context, card);

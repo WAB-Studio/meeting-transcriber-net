@@ -282,8 +282,7 @@ public sealed class RecoveryCommandTests : IDisposable
             [
                 new SpooledSource(AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.0}.speakers"),
                 new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.0}.jabra"),
-            ],
-            null));
+            ]));
 
         return meeting;
     }

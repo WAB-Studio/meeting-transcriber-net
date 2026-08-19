@@ -52,6 +52,15 @@ public static class AudioCommands
     /// them become. Ctrl+C stops it early and still reports; killing the process leaves the spools,
     /// which is the point of them.
     /// </summary>
+    /// <remarks>
+    /// Channel 0 following a program that plays nothing is offered the whole machine's audio while
+    /// the run is going, and somebody takes that offer by pressing the key or by having named the
+    /// second with <c>--whole-machine-at</c>. Neither is the recording deciding: the argument is
+    /// how a measurement of what moving costs gets made without a person holding a key down for
+    /// two hours, the way <c>--pause-at</c> is how pausing gets measured. It takes the offer and
+    /// does not stand in for it — a second falling before the rule has said anything moves nothing
+    /// and says so, since what it would otherwise measure is the one move nobody was offered.
+    /// </remarks>
     public static int Capture(Arguments arguments, TextWriter output)
     {
         ArgumentNullException.ThrowIfNull(arguments);
@@ -61,6 +70,7 @@ public static class AudioCommands
         var seconds = arguments.Number("--seconds", 0);
         var wanted = arguments.Optional("--microphone");
         var program = arguments.Optional("--process");
+        var wholeMachineAt = arguments.Number("--whole-machine-at", 0);
         var meeting = arguments.Optional("--meeting") is { } typed
             ? Arguments.Meeting(typed)
             : Guid.NewGuid();
@@ -69,6 +79,35 @@ public static class AudioCommands
         if (seconds == 0)
         {
             throw new UsageException("--seconds is needed, and it takes a whole number above zero.");
+        }
+
+        // The offer is somebody's to take, so taking it from here needs a program to have been
+        // named: what it would otherwise ask for is a move from the whole machine to the whole
+        // machine, which is the run reporting a measurement it did not make.
+        if (wholeMachineAt > 0 && program is null)
+        {
+            throw new UsageException(
+                "--whole-machine-at takes the offer of the whole machine's audio, and there is no "
+                + "offer without --process naming the program channel 0 is following.");
+        }
+
+        if (wholeMachineAt >= seconds)
+        {
+            throw new UsageException(
+                $"--whole-machine-at {wholeMachineAt} falls outside a recording of {seconds} "
+                + "seconds, so the move it asks for would never happen.");
+        }
+
+        // Refused here rather than reported an hour in. Channel 0 is offered the whole machine
+        // only once it has been silent for as long as SilentProgram waits, so a second before that
+        // names a moment at which there is nothing to take, and the run would record the meeting
+        // and report a measurement it did not make.
+        if (wholeMachineAt > 0 && wholeMachineAt * 1000L < SilentProgram.Waits.Milliseconds)
+        {
+            throw new UsageException(
+                $"--whole-machine-at {wholeMachineAt} falls before the whole machine's audio can "
+                + $"have been offered: channel 0 has to have heard nothing for {SilentProgram.Waits} "
+                + "first, and what is not offered cannot be taken.");
         }
 
         var playback = AudioDevices.Playback();
@@ -85,11 +124,6 @@ public static class AudioCommands
             Report.Line(output, "meeting", session.Card.MeetingId.ToString());
             Report.Line(output, "channel 0", session.Mode.ToString());
 
-            if (session.FellBack is not null)
-            {
-                Report.Line(output, "fell back", session.FellBack);
-            }
-
             foreach (var source in session.Sources)
             {
                 Report.Line(output, $"{Name(source.Channel)} hears", source.Listening.Name);
@@ -97,7 +131,7 @@ public static class AudioCommands
                 Report.Line(output, $"{Name(source.Channel)} opened", source.StartedAt.ToString());
             }
 
-            Meter(session, seconds, output);
+            Meter(session, seconds, wholeMachineAt, output);
             session.Stop();
 
             foreach (var source in session.Sources)
@@ -297,11 +331,15 @@ public static class AudioCommands
             Report.Line(output, "still", "being recorded, so there is nothing to decide about it yet");
         }
 
+        // Said whichever of the two files was torn, and beside the card rather than instead of it:
+        // a folder whose changes could not be read still names its meeting, and hiding that would
+        // make a damaged line about one moment cost the account of the whole recording.
         if (recording.Unreadable is { } torn)
         {
-            Report.Line(output, "meeting", $"unnamed: {torn}");
+            Report.Line(output, "unreadable", torn);
         }
-        else if (recording.Card is { } card)
+
+        if (recording.Card is { } card)
         {
             Report.Line(output, "meeting", card.MeetingId.ToString());
             Report.Line(output, "started", card.StartedAt.ToStorage());
@@ -312,15 +350,22 @@ public static class AudioCommands
             {
                 Report.Line(output, $"{Name(source.Channel)} heard", source.Heard);
             }
-
-            if (card.FellBack is not null)
-            {
-                Report.Line(output, "fell back", card.FellBack);
-            }
         }
-        else
+        else if (recording.Unreadable is null)
         {
             Report.Line(output, "meeting", $"unnamed, there is no {SpoolManifest.FileName} here");
+        }
+
+        // After the card and before the bytes, which is the order they happened in: the card says
+        // what each channel opened on, and every line here says what one of them was moved to while
+        // the meeting ran. A folder whose channel 0 was moved and did not say so would tell whoever
+        // found it that their notifications are not in the file.
+        foreach (var change in recording.Changed)
+        {
+            Report.Line(
+                output,
+                $"{Name(change.Channel)} moved",
+                $"at {change.At.ToStorage()}, from '{change.WasHearing}' to '{change.Heard}'");
         }
 
         foreach (var source in recording.Sources)
@@ -383,9 +428,16 @@ public static class AudioCommands
     /// than after. It ends early on Ctrl+C, and on a source that stopped by itself — carrying on
     /// past that would be reporting levels for a stream that is no longer there.
     /// </summary>
-    private static void Meter(CaptureSession session, int seconds, TextWriter output)
+    private static void Meter(
+        CaptureSession session, int seconds, int wholeMachineAt, TextWriter output)
     {
         using var interrupted = new ManualResetEventSlim(initialState: false);
+
+        var wholeMachine = WholeMachine.AtThePrompt(said =>
+        {
+            session.RecordTheWholeMachine();
+            Report.Line(said, "channel 0", $"{session.Mode} — {session.On(AudioChannel.Loopback).Listening.Name}");
+        });
 
         void Interrupt(object? sender, ConsoleCancelEventArgs pressed)
         {
@@ -411,6 +463,13 @@ public static class AudioCommands
                     output,
                     Report.Offset(Duration.FromMilliseconds(second * 1000L)),
                     string.Join("   ", session.Sources.Select(source => $"{Name(source.Channel)} {source.Level()}")));
+
+                wholeMachine.Consider(session.HeardNothingFromTheProgram(), output);
+
+                if (second == wholeMachineAt)
+                {
+                    wholeMachine.Take(output);
+                }
 
                 if (session.Sources.Any(source => source.HasEnded))
                 {

@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
@@ -69,8 +69,7 @@ internal static class Fabricated
         [
             new SpooledSource(AudioChannel.Loopback, "Speakers", "{0.0.0.00000000}.{loopback}"),
             new SpooledSource(AudioChannel.Microphone, "Headset", "{0.0.1.00000000}.{mic}"),
-        ],
-        FellBack: null);
+        ]);
 
     /// <summary>
     /// What a process killed mid-recording leaves: a file ending inside the block it was writing.

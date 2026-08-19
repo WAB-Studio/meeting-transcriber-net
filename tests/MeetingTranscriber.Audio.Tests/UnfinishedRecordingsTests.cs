@@ -47,6 +47,30 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// ISC-77. The card says what channel 0 opened on and never changes; a recording whose channel
+    /// 0 was moved to the whole machine mid-meeting is found again saying both, so somebody
+    /// deciding what to do with the folder knows what is really in the second half of it.
+    /// </summary>
+    [Fact]
+    public void A_recording_whose_channel_was_moved_is_found_again_saying_so()
+    {
+        var folder = Folder("moved");
+        Recorded("moved", both: true);
+        SpoolChanges.Append(folder, new SourceChanged(
+            UtcTimestamp.Parse("2026-08-15T09:41:31.500Z"),
+            AudioChannel.Loopback,
+            "Speakers (Realtek)",
+            "{0.0.0.0}.speakers",
+            "teams (pid 8124)"));
+
+        var moved = UnfinishedRecordings.In(root).ShouldHaveSingleItem();
+
+        moved.Unreadable.ShouldBeNull();
+        moved.Card.ShouldNotBeNull().On(AudioChannel.Loopback).Heard.ShouldBe("Speakers (Realtek)");
+        moved.Changed.ShouldHaveSingleItem().WasHearing.ShouldBe("teams (pid 8124)");
+    }
+
+    /// <summary>
     /// A recording whose card never landed is still a recording: each spool declares its own
     /// format, so passing over it for want of a card would be the silent discard this whole path
     /// exists to make impossible.
@@ -431,8 +455,7 @@ public sealed class UnfinishedRecordingsTests : IDisposable
                 [
                     new SpooledSource(AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.0}.speakers"),
                     new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.0}.jabra"),
-                ],
-                null));
+                ]));
         }
 
         return meeting;

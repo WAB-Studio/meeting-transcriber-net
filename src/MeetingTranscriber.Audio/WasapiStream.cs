@@ -72,12 +72,20 @@ internal sealed class WasapiStream : IDisposable
         AudioClient client,
         WaveFormat format,
         IDisposable? endpoint,
+        FramePositions? placedBy,
         bool numbersFrames)
     {
         this.channel = channel;
         this.client = client;
         this.endpoint = endpoint;
-        positions = numbersFrames ? null : new FramePositions(format.SampleRate);
+
+        // A stream handed somebody else's positions carries on from where they got to, whatever its
+        // own device would have said. That is what a channel moved from one source to another mid
+        // meeting needs — see CaptureSource.MoveTo — and it is the only reason a device that
+        // numbers its own frames would ever be placed by the clock instead.
+        positions = numbersFrames && placedBy is null
+            ? null
+            : placedBy ?? new FramePositions(format.SampleRate);
         WaveFormat = format;
         bytesPerFrame = format.Channels * format.BitsPerSample / 8;
         block = new byte[client.BufferSize * bytesPerFrame];
@@ -89,6 +97,13 @@ internal sealed class WasapiStream : IDisposable
 
     /// <summary>The format the device handed over, in NAudio's terms.</summary>
     internal WaveFormat WaveFormat { get; }
+
+    /// <summary>
+    /// Where this stream's packets are being placed when its device numbers none of them, or
+    /// nothing when the device numbers its own. What a stream taking this one's place is handed,
+    /// so that the channel goes on being laid out by one sequence rather than starting again.
+    /// </summary>
+    internal FramePositions? Positions => positions;
 
     /// <summary>
     /// Whether the draining loop was given up on, so this stream is still inside the device and
@@ -107,7 +122,13 @@ internal sealed class WasapiStream : IDisposable
     /// endpoint is opened: channel 0 records what it is playing and channel 1 what it hears. Passed
     /// as one thing rather than as a channel and a direction, because the two can only ever agree.
     /// </param>
-    internal static WasapiStream On(AudioDevice device, AudioChannel channel)
+    /// <param name="placedBy">
+    /// The positions this stream carries on from, when it is taking another one's place on a
+    /// channel that is already being recorded, or nothing when it is the channel's first stream and
+    /// the device's own numbering is what places it.
+    /// </param>
+    internal static WasapiStream On(
+        AudioDevice device, AudioChannel channel, FramePositions? placedBy = null)
     {
         ArgumentNullException.ThrowIfNull(device);
 
@@ -153,7 +174,7 @@ internal sealed class WasapiStream : IDisposable
             // Handed over rather than wrapped in a catch of its own, and that is the whole reason
             // these two lines are not one: from here the client is what a wedge would be inside and
             // the endpoint is underneath it, so both are let go of together and in that order.
-            return Ready(channel, client!, mixing, direction, endpoint, numbersFrames: true);
+            return Ready(channel, client!, mixing, direction, endpoint, placedBy, numbersFrames: true);
         });
     }
 
@@ -192,6 +213,7 @@ internal sealed class WasapiStream : IDisposable
                 format,
                 converting,
                 endpoint: null,
+                placedBy: null,
                 numbersFrames: false);
         });
     }
@@ -213,6 +235,7 @@ internal sealed class WasapiStream : IDisposable
         WaveFormat format,
         AudioClientStreamFlags how,
         IDisposable? endpoint,
+        FramePositions? placedBy,
         bool numbersFrames)
     {
         try
@@ -225,7 +248,7 @@ internal sealed class WasapiStream : IDisposable
                 format,
                 Guid.Empty);
 
-            return new WasapiStream(channel, client, format, endpoint, numbersFrames);
+            return new WasapiStream(channel, client, format, endpoint, placedBy, numbersFrames);
         }
         catch
         {

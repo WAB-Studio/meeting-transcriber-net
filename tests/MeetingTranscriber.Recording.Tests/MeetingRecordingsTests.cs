@@ -1,4 +1,4 @@
-using MeetingTranscriber.Audio;
+﻿using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Meetings;
@@ -99,8 +99,7 @@ public sealed class MeetingRecordingsTests : IDisposable
                     followedAProgram ? "Teams (4120)" : "Speakers",
                     followedAProgram ? null : "{0.0.0.00000000}.{loopback}"),
                 new SpooledSource(AudioChannel.Microphone, "Headset", "{0.0.1.00000000}.{mic}"),
-            ],
-            FellBack: null);
+            ]);
 
         var run = MeetingRecordings.Began(context, card);
 
