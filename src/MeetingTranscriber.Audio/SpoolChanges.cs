@@ -71,9 +71,10 @@ public static class SpoolChanges
     /// </summary>
     /// <remarks>
     /// One line, in one write, for the reason a block is written in one: what a power cut may cost
-    /// is the line being written and never a line already there. It is called after the channel has
-    /// really moved, so a failure here is a recording that moved and could not say so — which is
-    /// what it says, rather than being swallowed into looking like a move that never happened.
+    /// is the line being written and never a line already there. It is called before the channel
+    /// hands over — the new device is running by then and its blocks are going nowhere — so a
+    /// failure here is a move that does not happen, and that is what it says. The other order would
+    /// leave a folder claiming audio a file does not hold, which is the lie worth preventing.
     /// </remarks>
     public static void Append(DirectoryInfo folder, SourceChanged change)
     {
@@ -92,9 +93,11 @@ public static class SpoolChanges
         catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
         {
             throw new AudioCaptureException(
-                $"The {change.Channel} channel is recording '{change.Heard}' from here on, and "
-                + $"'{file.FullName}' could not be written, so the folder still says it is "
-                + $"recording '{change.WasHearing}': {refused.Message}",
+                $"The {change.Channel} channel is still recording '{change.WasHearing}': "
+                + $"'{file.FullName}' could not be written, and nothing moves before its folder "
+                + $"has said so, because a folder naming a move that did not happen would tell "
+                + $"whoever found it that '{change.Heard}' is in a file that never held it: "
+                + $"{refused.Message}",
                 refused);
         }
     }

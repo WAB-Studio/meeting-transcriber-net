@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
@@ -106,7 +106,7 @@ public static class RecordingCommands
     {
         using var interrupted = new ManualResetEventSlim(initialState: false);
 
-        var wholeMachine = new WholeMachine(said =>
+        var wholeMachine = WholeMachine.AtThePrompt(said =>
         {
             recording.RecordTheWholeMachine();
             Report.Line(said, "channel 0", $"{recording.Mode} — everything this machine plays");

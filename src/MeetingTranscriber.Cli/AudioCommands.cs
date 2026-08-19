@@ -57,7 +57,9 @@ public static class AudioCommands
     /// the run is going, and somebody takes that offer by pressing the key or by having named the
     /// second with <c>--whole-machine-at</c>. Neither is the recording deciding: the argument is
     /// how a measurement of what moving costs gets made without a person holding a key down for
-    /// two hours, the way <c>--pause-at</c> is how pausing gets measured.
+    /// two hours, the way <c>--pause-at</c> is how pausing gets measured. It takes the offer and
+    /// does not stand in for it — a second falling before the rule has said anything moves nothing
+    /// and says so, since what it would otherwise measure is the one move nobody was offered.
     /// </remarks>
     public static int Capture(Arguments arguments, TextWriter output)
     {
@@ -94,6 +96,18 @@ public static class AudioCommands
             throw new UsageException(
                 $"--whole-machine-at {wholeMachineAt} falls outside a recording of {seconds} "
                 + "seconds, so the move it asks for would never happen.");
+        }
+
+        // Refused here rather than reported an hour in. Channel 0 is offered the whole machine
+        // only once it has been silent for as long as SilentProgram waits, so a second before that
+        // names a moment at which there is nothing to take, and the run would record the meeting
+        // and report a measurement it did not make.
+        if (wholeMachineAt > 0 && wholeMachineAt * 1000L < SilentProgram.Waits.Milliseconds)
+        {
+            throw new UsageException(
+                $"--whole-machine-at {wholeMachineAt} falls before the whole machine's audio can "
+                + $"have been offered: channel 0 has to have heard nothing for {SilentProgram.Waits} "
+                + "first, and what is not offered cannot be taken.");
         }
 
         var playback = AudioDevices.Playback();
@@ -419,7 +433,7 @@ public static class AudioCommands
     {
         using var interrupted = new ManualResetEventSlim(initialState: false);
 
-        var wholeMachine = new WholeMachine(said =>
+        var wholeMachine = WholeMachine.AtThePrompt(said =>
         {
             session.RecordTheWholeMachine();
             Report.Line(said, "channel 0", $"{session.Mode} — {session.On(AudioChannel.Loopback).Listening.Name}");
@@ -454,7 +468,7 @@ public static class AudioCommands
 
                 if (second == wholeMachineAt)
                 {
-                    wholeMachine.Press(output);
+                    wholeMachine.Take(output);
                 }
 
                 if (session.Sources.Any(source => source.HasEnded))

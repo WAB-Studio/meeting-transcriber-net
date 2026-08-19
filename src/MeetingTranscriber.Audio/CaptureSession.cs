@@ -280,22 +280,40 @@ public sealed class CaptureSession : IDisposable
                     + $"'{others.Listening.Name}', which is the whole machine's audio.");
             }
 
-            silence ??= SilentPlayback.On(playback);
+            // Nothing is playing into the endpoint yet and this is where that starts: the silence
+            // goes in only for a channel 0 that is on the endpoint, and the guard above says this
+            // one is on a program until the move below. A refusal puts it back, so the ask can be
+            // made again and find the field as it is here.
+            silence = SilentPlayback.On(playback);
 
             var destination = new CaptureTarget.Endpoint(playback);
 
-            // The moment is read where the move happens rather than where somebody pressed. What
-            // separates the two is three devices being dealt with, each with a deadline of its own,
-            // and a folder saying the machine's audio began seconds before it did is a folder that
-            // is wrong about the one thing it was written to be right about.
-            others.MoveTo(destination, () => SpoolChanges.Append(
-                folder,
-                new SourceChanged(
-                    UtcTimestamp.From(TimeProvider.System.GetUtcNow()),
-                    AudioChannel.Loopback,
-                    destination.Name,
-                    playback.Id,
-                    program.Name)));
+            try
+            {
+                // The moment is read where the move happens rather than where somebody pressed.
+                // What separates the two is three devices being dealt with, each with a deadline of
+                // its own, and a folder saying the machine's audio began seconds before it did is a
+                // folder that is wrong about the one thing it was written to be right about.
+                others.MoveTo(destination, () => SpoolChanges.Append(
+                    folder,
+                    new SourceChanged(
+                        UtcTimestamp.From(TimeProvider.System.GetUtcNow()),
+                        AudioChannel.Loopback,
+                        destination.Name,
+                        playback.Id,
+                        program.Name)));
+            }
+            catch
+            {
+                // Put back the way it was found. MoveTo leaves the channel where it was whatever
+                // went wrong, so a refusal that kept the silence would leave this process playing
+                // into a device the recording is not on for the rest of the meeting — and the ask
+                // can be made again, which would then find it already playing and never start it.
+                silence.Dispose();
+                silence = null;
+
+                throw;
+            }
         }
     }
 
