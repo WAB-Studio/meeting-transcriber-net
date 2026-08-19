@@ -329,7 +329,12 @@ public sealed class CaptureSource : IDisposable
         }
         finally
         {
-            if (!stream.Abandoned)
+            // Every stream this source has ever been on, and not only the one it is on now. A
+            // stream given up on is a live thread that may still be inside the callback that writes
+            // each block, and the spool is what that callback writes to — so one this source was
+            // moved off of holds the file open exactly as the current one would. Closing it under
+            // that thread is the rule this whole file is written around, read one stream wider.
+            if (!stream.Abandoned && !replaced.Exists(earlier => earlier.Abandoned))
             {
                 try
                 {
