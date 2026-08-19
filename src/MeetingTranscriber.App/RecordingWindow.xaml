@@ -126,6 +126,10 @@
                 TextWrapping="Wrap"
                 Opacity="0.7" />
             <Button
+                x:Name="MeetingsButton"
+                Click="OnOpenMeetings"
+                Content="{x:Bind In(loc:UiTexts.Meetings)}" />
+            <Button
                 x:Name="PackagingChecksButton"
                 Click="OnOpenPackagingChecks"
                 Content="{x:Bind In(loc:UiTexts.PackagingChecks)}" />

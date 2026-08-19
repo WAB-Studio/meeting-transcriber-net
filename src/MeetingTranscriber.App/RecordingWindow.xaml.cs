@@ -153,6 +153,14 @@ public sealed partial class RecordingWindow : Window
     public event EventHandler? PackagingChecksAsked;
 
     /// <summary>
+    /// Somebody asked what the application owes the meetings already recorded, which is a window
+    /// of its own. It is reached from here because this is where a meeting comes from: stopping
+    /// starts nothing, so the press that decides what happens to a meeting is made from the
+    /// meeting rather than from the recording that made it.
+    /// </summary>
+    public event EventHandler? MeetingsAsked;
+
+    /// <summary>
     /// Reads the whole window in this language: what the XAML bound, the title, the pickers, what
     /// has happened so far and the status line. Nothing on screen is left in the one before.
     /// </summary>
@@ -464,6 +472,9 @@ public sealed partial class RecordingWindow : Window
 
     private void OnOpenPackagingChecks(object sender, RoutedEventArgs e) =>
         PackagingChecksAsked?.Invoke(this, EventArgs.Empty);
+
+    private void OnOpenMeetings(object sender, RoutedEventArgs e) =>
+        MeetingsAsked?.Invoke(this, EventArgs.Empty);
 
     private async void OnRecord(object sender, RoutedEventArgs e)
     {

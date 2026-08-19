@@ -29,6 +29,7 @@ public partial class App : Application
 
     private RecordingWindow? _recorder;
     private MainWindow? _checks;
+    private MeetingsWindow? _meetings;
 
     /// <summary>
     /// What the application is being read in now. Held here rather than read back off the
@@ -37,6 +38,13 @@ public partial class App : Application
     /// card is about wearing a different hat.
     /// </summary>
     private UiLanguage _language = UiLanguages.WhenWindowsSpeaksNeither;
+
+    /// <summary>
+    /// Where the corpus is, answered once at launch. Every window is handed this rather than
+    /// asking for itself, for the reason the class says: two answers to that question is how a
+    /// person's meetings end up in two places.
+    /// </summary>
+    private CorpusFolder? _corpus;
 
     /// <summary>
     /// Initializes the singleton application object.  This is the first line of authored code
@@ -54,10 +62,12 @@ public partial class App : Application
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         _language = UiLanguages.Resolve(_choice.Read(), WindowsLanguages());
+        _corpus = CorpusLocation.OfThisUser().Resolve();
 
-        var window = new RecordingWindow(_language, CorpusLocation.OfThisUser().Resolve());
+        var window = new RecordingWindow(_language, _corpus);
         window.LanguageChosen += OnLanguageChosen;
         window.PackagingChecksAsked += OnPackagingChecksAsked;
+        window.MeetingsAsked += OnMeetingsAsked;
         window.Closed += (_, _) => _recorder = null;
 
         _recorder = window;
@@ -92,6 +102,31 @@ public partial class App : Application
         _checks.Activate();
     }
 
+    /// <summary>
+    /// The meetings already recorded and what the application still owes each one. A window of
+    /// its own rather than a panel on the recorder: what is on it is about meetings that are over,
+    /// and one of them can be pressed while another is being recorded.
+    /// </summary>
+    private void OnMeetingsAsked(object? sender, EventArgs e)
+    {
+        if (_meetings is not null)
+        {
+            _meetings.Activate();
+            return;
+        }
+
+        if (_corpus is not { } corpus)
+        {
+            return;
+        }
+
+        var window = new MeetingsWindow(_language, corpus);
+        window.Closed += (_, _) => _meetings = null;
+
+        _meetings = window;
+        _meetings.Activate();
+    }
+
     private void OnLanguageChosen(object? sender, UiLanguage language)
     {
         _language = language;
@@ -101,6 +136,7 @@ public partial class App : Application
         // the session rather than a session that ends here.
         _recorder?.ReadIn(language);
         _checks?.ReadIn(language);
+        _meetings?.ReadIn(language);
 
         try
         {
@@ -112,6 +148,7 @@ public partial class App : Application
             // choice had stuck, so the only way anybody learns it did not is the next launch.
             _recorder?.Report(UiTexts.LanguageNotRemembered);
             _checks?.Report(UiTexts.LanguageNotRemembered);
+            _meetings?.Report(UiTexts.LanguageNotRemembered);
         }
     }
 }

@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="MeetingTranscriber.App.MeetingsWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MeetingTranscriber.App"
+    xmlns:loc="using:MeetingTranscriber.Presentation"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- No literal on any property a person reads: every one of them names an entry in UiTexts,
+         so `Bindings.Update()` after a language change is the whole of what re-reads this screen.
+         MeetingTranscriber.App.Tests fails the build if a literal creeps back in.
+
+         The cards are built in the code-behind rather than templated here, and that is what makes
+         a language change total: they are thrown away and made again out of the catalogue, so no
+         card can be left holding the words it was born with. What each one looks like is still
+         here, as the styles below, so the code-behind chooses a style and never a colour.
+
+         What each card says and which of its buttons are live is not decided here either. Every
+         one of them comes off an OwedWork, which is the one thing that answers that question and
+         the one thing a build agent can run. -->
+
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="Root" Padding="24" RowSpacing="16">
+        <Grid.Resources>
+            <Style x:Key="MeetingCard" TargetType="Border">
+                <Setter Property="Padding" Value="16" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+            </Style>
+
+            <Style x:Key="MeetingName" TargetType="TextBlock" BasedOn="{StaticResource SubtitleTextBlockStyle}" />
+
+            <Style x:Key="MeetingWhen" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+                <Setter Property="Opacity" Value="0.6" />
+            </Style>
+
+            <Style x:Key="MeetingLine" TargetType="TextBlock">
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="Opacity" Value="0.75" />
+            </Style>
+
+            <!-- The one standing with money or data riding on it does not read as one more grey
+                 caption. It is the only thing on this screen that stops on a person, and the whole
+                 point of showing it is that somebody notices. -->
+            <Style x:Key="MeetingStoppedOnAPerson" TargetType="TextBlock">
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </Style>
+
+            <Style x:Key="TakeTheStage" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}" />
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Spacing="4">
+            <TextBlock Text="{x:Bind In(loc:UiTexts.Meetings)}" Style="{StaticResource TitleTextBlockStyle}" />
+            <TextBlock
+                Text="{x:Bind In(loc:UiTexts.OneCardPerMeeting)}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextWrapping="Wrap"
+                MaxWidth="640"
+                Opacity="0.7" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12">
+            <Button
+                x:Name="RefreshButton"
+                Click="OnRefresh"
+                Content="{x:Bind In(loc:UiTexts.ReadTheMeetingsAgain)}" />
+            <TextBlock
+                x:Name="CountText"
+                VerticalAlignment="Center"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Opacity="0.7" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="2">
+            <StackPanel x:Name="Cards" Spacing="12" />
+        </ScrollViewer>
+
+        <StackPanel Grid.Row="3" Spacing="4">
+            <!-- Said rather than left to be noticed. The rendered files are the one thing here
+                 that will never be a press, so their not being a button is the screen's to explain
+                 instead of looking like a control somebody lost. What it does not say is when they
+                 appear: today they are produced by `rebuild` and `render` at the command line and
+                 never by this application, so a caption about that would be a promise this screen
+                 cannot keep. -->
+            <TextBlock
+                Text="{x:Bind In(loc:UiTexts.TheRenderedFilesAreNeverAskedAbout)}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextWrapping="Wrap"
+                MaxWidth="640"
+                Opacity="0.6" />
+            <TextBlock
+                x:Name="StatusText"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextWrapping="Wrap"
+                Opacity="0.7" />
+        </StackPanel>
+    </Grid>
+</Window>
