@@ -91,12 +91,14 @@ Your final message is one JSON object and nothing else. No prose around it.
 ```text
 {
   "outcome":        "picked" | "blocked" | "no_tasks",
-  "task_id":        string,     // "" unless picked
-  "pr_number":      number | null,   // never absent
-  "why":            string,
-  "skipped":        [{ "task_id": string, "why": string }],
-  "finished":       [{ "task_id": string, "why": string }],
-  "blocked_reason": string      // "" unless blocked
+  "task_id":        the card you picked, empty unless you picked one,
+  "pr_number":      the open PR already on that card, or null — never absent,
+  "why":            what you took, and what you passed to get to it,
+  "skipped":        [{ "task_id": the card,
+                       "why":     what somebody has to bring before anybody can build it }],
+  "finished":       [{ "task_id": the card,
+                       "why":     the PR and the merge commit that already landed it }],
+  "blocked_reason": what stopped you, empty unless blocked
 }
 ```
 

@@ -158,15 +158,21 @@ Your final message is one JSON object and nothing else.
 ```text
 {
   "verdict":              "pass" | "pass_with_followup" | "ask" | "hold",
-  "audited_head_sha":     string,     // the PR's headRefOid, never the record's
-  "reasons":              string[],
-  "unreported_decisions": [{ "what": string, "found_in": string, "invalidates_diff": boolean }],
-  "isc_unproved":         string[],   // "ISC-N — what CI does not corroborate"
-  "isa_edited":           [{ "isc": string, "was": string, "did": "deleted" | "reworded" | "moved" }],
-  "followups_created":    [{ "task_id": string, "name": string }],
-  "actions_taken":        string[],   // what you did, with ids
-  "decisions_owed":       [{ "what": string, "why": string, "options": string[] }],
-  "card":                 { "to": string, "tags": string[] }   // omit to put it back in the pool
+  "audited_head_sha":     the PR's headRefOid, never the one the record gave you,
+  "reasons":              [ what the verdict stands on: the CI run, the card against the diff, the board ],
+  "unreported_decisions": [{ "what":             a decision the record does not declare,
+                             "found_in":         the file and the symbol it is in,
+                             "invalidates_diff": true | false }],
+  "isc_unproved":         [ an ISC id, and what about it CI does not corroborate ],
+  "isa_edited":           [{ "isc": the id,
+                             "was": the claim as you found it,
+                             "did": "deleted" | "reworded" | "moved" }],
+  "followups_created":    [{ "task_id": the card you opened, "name": its title }],
+  "actions_taken":        [ what you actually did, naming ids and run numbers ],
+  "decisions_owed":       [{ "what":    the question as somebody who has not read the diff would ask it,
+                             "why":     what changes with the answer,
+                             "options": [ an answer, and what taking it costs ] }],
+  "card":                 { "to": the status to move it to, "tags": [ the tags it ends with ] }
 }
 ```
 

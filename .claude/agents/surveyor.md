@@ -99,15 +99,21 @@ Your final message is one JSON object and nothing else. No prose around it.
 ```text
 {
   "outcome":        "surveyed" | "blocked",
-  "list":           string,
-  "cards_read":     string[],     // card ids
-  "decisions":      [{ "what": string, "breaks_without_it": string,
-                       "owner": string,          // a card id, "new_card" or "none"
-                       "owner_reason": string, "shape": string }],
-  "ratify":         [{ "structure": string, "found_in": string,
-                       "verdict": "ratify" | "reject", "why": string, "doc_change": string }],
-  "flat":           [{ "what": string, "why_no_structure": string }],
-  "blocked_reason": string        // "" unless blocked
+  "list":           the list you surveyed,
+  "cards_read":     [ every card id you opened ],
+  "decisions":      [{ "what":              the structural decision none of the cards owns,
+                       "breaks_without_it": what goes wrong for somebody using the app,
+                       "owner":             a card id, "new_card" or "none",
+                       "owner_reason":      why that card owns it and not another,
+                       "shape":             what it would be, in one or two sentences }],
+  "ratify":         [{ "structure":  what is already in the tree that no document names,
+                       "found_in":   where it lives,
+                       "verdict":    "ratify" | "reject",
+                       "why":        what that verdict rests on,
+                       "doc_change": the line a document gains or loses }],
+  "flat":           [{ "what":             what looked structural and is not,
+                       "why_no_structure": what makes it ordinary work }],
+  "blocked_reason": what stopped you, empty unless blocked
 }
 ```
 

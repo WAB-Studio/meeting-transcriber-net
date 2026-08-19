@@ -131,16 +131,21 @@ Your final message is one JSON object and nothing else. No prose around it.
 ```text
 {
   "outcome":            "pr_opened" | "already_done" | "needs_grill" | "blocked",
-  "task_id":            string,
-  "pr_number":          number | null,   // never absent
-  "head_sha":           string,          // "" when no PR was opened
-  "isc_closed":         string[],        // "ISC-N"
-  "probes":             [{ "command": string, "passed": boolean }],
-  "decisions_deferred": [{ "what": string, "chose": string, "blocks_the_pr": boolean }],
-  "left_out":           string[],
-  "skipped":            [{ "task_id": string, "needs": string }],
-  "blocked_reason":     string,          // "" unless blocked
-  "decisions_owed":     [{ "what": string, "why": string, "options": string[] }]
+  "task_id":            the card you were given,
+  "pr_number":          the PR you opened or continued, or null — never absent,
+  "head_sha":           the exact commit you delivered, empty when you opened no PR,
+  "isc_closed":         [ the ISC ids this PR closes ],
+  "probes":             [{ "command": what you ran, verbatim, "passed": true | false }],
+  "decisions_deferred": [{ "what":          the fork you met,
+                           "chose":         what you settled on, and why it was yours to settle,
+                           "blocks_the_pr": true | false }],
+  "left_out":           [ what the card asked for and you did not deliver ],
+  "skipped":            [{ "task_id": a card you touched but did not work,
+                           "needs":   what it is waiting on }],
+  "blocked_reason":     what is missing, said as what somebody has to bring,
+  "decisions_owed":     [{ "what":    the fork as somebody who has not read the code would name it,
+                           "why":     what changes with the answer,
+                           "options": [ an answer, and what taking it costs ] }]
 }
 ```
 
