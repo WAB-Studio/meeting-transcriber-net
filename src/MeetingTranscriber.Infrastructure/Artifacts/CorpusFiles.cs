@@ -60,6 +60,21 @@ public static class CorpusFiles
         return new DirectoryInfo(Path.Combine(root.FullName, Spool, meetingId.ToString()));
     }
 
+    /// <summary>
+    /// The folder every recording in progress is spooled under, whether or not any is.
+    /// </summary>
+    /// <remarks>
+    /// The one folder a start after a crash has to look in. It is here rather than composed by
+    /// whoever looks for the same reason <see cref="SpoolFolderFor"/> is: a scan a step to the side
+    /// of where recordings are written is a scan that finds none and says so.
+    /// </remarks>
+    public static DirectoryInfo SpoolRootIn(DirectoryInfo root)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+
+        return new DirectoryInfo(Path.Combine(root.FullName, Spool));
+    }
+
     /// <summary>Where the stored path points on this machine.</summary>
     public static FileInfo Locate(DirectoryInfo root, string relativePath)
     {

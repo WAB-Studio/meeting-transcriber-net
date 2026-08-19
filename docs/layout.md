@@ -56,8 +56,9 @@ other: an edge from `Infrastructure` to `Audio` would put WASAPI behind renderin
 force `Processing` onto a Windows target framework, and an edge the other way would stop the audio
 engine being provable on a machine with no corpus. So the composition sits above both. What is in
 it is the corpus side of recording — the meeting row and its folder before the first sample, the
-run written from the card the recording wrote about itself, and what stopping makes of the spools
-— all of which runs with no device, plus one thin type that opens the devices in that order and is
+run written from the card the recording wrote about itself, what stopping makes of the spools, and
+what a start after a crash finds waiting and makes of one of them — all of which runs with no
+device, plus one thin type that opens the devices in that order and is
 deliberately too small to hold a rule. `MeetingTranscriber.App` was not an option for any of it:
 touching a type from that assembly fires the Windows App SDK module initializer and throws outside
 a packaged host, so anything living there would have no probe a build agent could run.

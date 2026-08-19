@@ -1,7 +1,8 @@
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Recording.Tests;
 
@@ -27,7 +28,76 @@ namespace MeetingTranscriber.Recording.Tests;
 /// </remarks>
 internal static class Fabricated
 {
+    /// <summary>What channel 0's device says it hands over.</summary>
+    internal static readonly StreamFormat StereoFloat = new(48_000, 2, 32, SampleEncoding.IeeeFloat);
+
+    /// <summary>What channel 1's says, which is nothing like it — as a real pair rarely is.</summary>
+    internal static readonly StreamFormat CheapMicrophone = new(44_100, 1, 16, SampleEncoding.Pcm);
+
     private const int PacketFrames = 480;
+
+    /// <summary>
+    /// Both spools of a meeting, written the way a capture writes them, so a meeting can be
+    /// finished or recovered on a machine with no sound card.
+    /// </summary>
+    internal static void Spools(DirectoryInfo into, double seconds)
+    {
+        ArgumentNullException.ThrowIfNull(into);
+
+        into.Create();
+        Write(into, AudioChannel.Loopback, StereoFloat, 48_000, seconds);
+        Write(into, AudioChannel.Microphone, CheapMicrophone, 44_100, seconds);
+    }
+
+    /// <summary>One source's spool, in the format that source's device hands over.</summary>
+    internal static void Write(
+        DirectoryInfo into, AudioChannel channel, StreamFormat format, double rate, double seconds)
+    {
+        using var writer = SpoolWriter.Create(BlockSpool.FileFor(into, channel), channel, format);
+        foreach (var packet in Packets(channel, format, rate, 0, seconds))
+        {
+            writer.Write(packet);
+        }
+    }
+
+    /// <summary>What an ordinary recording of this meeting wrote about itself when it opened.</summary>
+    internal static SpoolCard CardFor(Guid meetingId, UtcTimestamp startedAt) => new(
+        meetingId,
+        Guid.NewGuid(),
+        startedAt,
+        CapturedAudio.Profile,
+        [
+            new SpooledSource(AudioChannel.Loopback, "Speakers", "{0.0.0.00000000}.{loopback}"),
+            new SpooledSource(AudioChannel.Microphone, "Headset", "{0.0.1.00000000}.{mic}"),
+        ]);
+
+    /// <summary>
+    /// What a process killed mid-recording leaves: a file ending inside the block it was writing.
+    /// </summary>
+    /// <remarks>
+    /// Truncation rather than corruption, because that is the shape the failure actually has. The
+    /// blocks before it landed whole and the one being written did not, and what the recording is
+    /// worth is every one of the first and none of the last.
+    /// </remarks>
+    internal static void KilledMidBlock(FileInfo spool, long inside)
+    {
+        ArgumentNullException.ThrowIfNull(spool);
+
+        using var file = spool.Open(FileMode.Open, FileAccess.Write, FileShare.None);
+        file.SetLength(file.Length - inside);
+    }
+
+    /// <summary>
+    /// Takes the file's own header apart, so what is left is no longer a spool at all — a disk
+    /// that gave back bytes it never received, which is what a spool refuses to read as audio.
+    /// </summary>
+    internal static void NoLongerASpool(FileInfo spool)
+    {
+        ArgumentNullException.ThrowIfNull(spool);
+
+        using var file = spool.Open(FileMode.Open, FileAccess.Write, FileShare.None);
+        file.Write(new byte[8]);
+    }
 
     /// <summary>The blocks a device would hand over across that many seconds.</summary>
     internal static IEnumerable<CapturePacket> Packets(
