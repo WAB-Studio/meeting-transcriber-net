@@ -31,8 +31,7 @@ gh pr comment <n> --body-file .scratch/verdict.md
 ```
 
 `PYTHONIOENCODING` is `utf-8`. Write only under `.scratch/`, and pass prose as `@.scratch/verdict.md`.
-The one file outside it you may edit is `ISA.md` on the PR's own branch, under step 4 and nowhere
-else.
+Edit one file outside it: `ISA.md` on the PR's branch, under step 4.
 
 **The commands in this file are all you have.** Do not open the CLI's source. If you need one that is
 not here, say so in `reasons` and stop — do not infer it from an error and do not try flags to see
@@ -112,25 +111,15 @@ what happens to the PR.
 
 ## Step 4 — The claims this PR added
 
-Only what `git diff main...<head> -- ISA.md` introduces. **A claim already on `main` is never yours**:
-one that stopped being true is tombstoned by a person, and `IsaStructureTests` fails on a number
-missing between the first and the last. The `isa` skill sets the bar — apply that one, not a fresh
-one.
+Judge what `git diff main...<head> -- ISA.md` introduces, and nothing else. A claim `main` already
+holds is a person's to tombstone.
 
-- **Born `[x]` in the commit that built it.** Never a claim: a description of what was written, with
-  the code in hand. Delete it.
-- **A second claim over one truth already there.** Delete it — a duplicate holds an `[x]` nothing had
-  to earn.
-- **Nothing on the card or its grill decided it.** Delete it: what the app must do is not the
-  worker's to settle.
-- **It says what makes it true** — a type, a method, a project, a test. Reword to the truth it holds,
-  keeping the ID.
-- **Filed under the wrong goal.** Move it, keeping the ID.
+Delete a claim born `[x]`, one repeating a truth already claimed, and one nothing on the card
+decided. Reword one saying what makes it true instead of what has to be true. Move one filed under
+the wrong goal. Keep the ID wherever you keep the claim, leave its evidence alone, and add none.
 
-Delete only where it leaves no hole in the numbering. Where it would, `hold` and say which claim and
-why instead. Then run `dotnet test --filter "FullyQualifiedName~IsaStructureTests"`, commit to the
-PR's branch and push. **You never add a claim, and you never touch the evidence under a claim you
-left standing.** Every claim you deleted, reworded or moved goes in `isa_edited` with what it was.
+Delete only where no number goes missing; where one would, `hold` and name the claim. Then run
+`IsaStructureTests`, push to the PR's branch, and list what you touched in `isa_edited`.
 
 ## Step 5 — Act
 
