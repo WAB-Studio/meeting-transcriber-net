@@ -141,6 +141,13 @@ public sealed class CorpusLocation
     /// </summary>
     private const string SettingBeingWritten = SettingName + ".new";
 
+    /// <summary>
+    /// How far a chain of links is followed before the question is given up on. A loop is already
+    /// answered by what has been asked about, so this is only about a chain long enough to be a
+    /// stack rather than a disk layout.
+    /// </summary>
+    private const int LinksFollowed = 16;
+
     public CorpusLocation(FileInfo setting, DirectoryInfo fallback)
     {
         ArgumentNullException.ThrowIfNull(setting);
@@ -189,30 +196,41 @@ public sealed class CorpusLocation
     }
 
     /// <summary>
-    /// The folder this user's application data lives under, which a packaged build's writes are
-    /// redirected out of. Nothing the corpus is made of may be at or under it.
+    /// Every folder this user's application data lives under, which a packaged build's writes are
+    /// redirected out of. Nothing the corpus is made of may be at or under any of them.
     /// </summary>
     /// <remarks>
-    /// Anchored on the profile rather than on what
-    /// <see cref="Environment.GetFolderPath(Environment.SpecialFolder)"/> answers for either
-    /// application data folder, which is the point rather than a detail. A packaged process may be
-    /// handed a local application data folder that is already inside the container; anchoring on it
-    /// would then compare the container against itself and find nothing wrong with anywhere. The
-    /// profile is not redirected, so the anchor holds whichever folder the process was handed — and
-    /// a corpus in a folder that merely happens to be spelled <c>AppData</c> on some other disk is
-    /// somebody's own folder and is left alone.
+    /// <para>
+    /// The profile's own <c>AppData</c> first, and then whatever Windows actually answers for the
+    /// roaming and local folders, because those are two different questions on a machine where
+    /// somebody has been told to keep application data elsewhere. Neither alone is enough. The
+    /// profile is not redirected, so it holds when a packaged process is handed a local application
+    /// data folder that is already inside the container — anchoring on that alone would compare the
+    /// container against itself and find nothing wrong with anywhere. And what Windows answers is
+    /// what a person's own <c>%APPDATA%</c> really is, which on a redirected profile is a folder
+    /// the profile anchor never reaches.
+    /// </para>
+    /// <para>
+    /// A corpus in a folder that merely happens to be spelled <c>AppData</c> on some other disk is
+    /// somebody's own folder and is left alone: what is refused is these folders, not that word.
+    /// </para>
     /// </remarks>
-    public static string ApplicationDataOfThisUser() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        "AppData");
+    public static IReadOnlyList<string> ApplicationDataOfThisUser() =>
+    [
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData"),
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+    ];
 
     /// <summary>
-    /// The folder every MSIX package's own data lives under, for this user. Inside
-    /// <see cref="ApplicationDataOfThisUser"/>, and the sharpest case of it: an uninstall deletes
-    /// what is under here outright, rather than first redirecting writes into it.
+    /// The folder every MSIX package's own data lives under, for this user. Inside the profile's
+    /// own application data, and the sharpest case of it: an uninstall deletes what is under here
+    /// outright, rather than first redirecting writes into it.
     /// </summary>
-    public static string PackageContainerOfThisUser() =>
-        Path.Combine(ApplicationDataOfThisUser(), "Local", "Packages");
+    public static string PackageContainerOfThisUser() => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        "AppData", "Local", "Packages");
 
     /// <summary>
     /// Whether a corpus in this folder would go when the package does — for being in the package's
@@ -223,39 +241,29 @@ public sealed class CorpusLocation
         GoesWhenThePackageDoes(path, ApplicationDataOfThisUser());
 
     /// <summary>
-    /// The same question against a named application data folder, which is how it is tested: the
+    /// The same question against named application data folders, which is how it is tested: the
     /// answer has to be about a real profile, and a build agent's profile is not the one a test can
     /// write literal paths for.
     /// </summary>
     /// <remarks>
     /// Where the path is written and where it leads are two questions, and only the second is the
-    /// one that matters — a folder on another disk that is a link into that tree goes with the
-    /// package exactly like a folder spelled that way. So every step from the path up to its root
-    /// is asked whether it is a link, and where a link goes is asked the first question again. One
-    /// hop, not a chain: a link into a link into application data is not a thing anybody has, and
-    /// following forever is how a loop of links becomes a start-up that never finishes.
+    /// one that matters — a folder on another disk that is a link into one of those trees goes with
+    /// the package exactly like a folder spelled that way. So every step from the path up to its
+    /// root is asked whether it is a link, and wherever a link goes the whole question is asked
+    /// again from there: a folder reached through a disk somebody moved, and then through a folder
+    /// somebody else moved, still ends in application data. What stops that being forever is a set
+    /// of everywhere already asked about, so a loop of links is answered rather than followed.
     /// </remarks>
-    public static bool GoesWhenThePackageDoes(string path, string applicationData)
+    public static bool GoesWhenThePackageDoes(string path, IReadOnlyList<string> applicationData)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
-        ArgumentException.ThrowIfNullOrWhiteSpace(applicationData);
+        ArgumentNullException.ThrowIfNull(applicationData);
 
-        var full = Path.GetFullPath(path);
-        if (IsAtOrUnder(full, applicationData))
-        {
-            return true;
-        }
-
-        for (var step = new DirectoryInfo(full); step is not null; step = step.Parent)
-        {
-            if (LinkTargetOf(step) is { } target
-                && IsAtOrUnder(Path.GetFullPath(target), applicationData))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return LeadsIntoApplicationData(
+            Path.GetFullPath(path),
+            applicationData,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            LinksFollowed);
     }
 
     /// <summary>
@@ -332,6 +340,48 @@ public sealed class CorpusLocation
         File.Move(staging, Setting.FullName, overwrite: true);
     }
 
+    /// <summary>
+    /// Whether this folder is in one of those trees, or leads into one. Every step from it up to
+    /// its root is asked where it leads, and wherever a link goes the same question starts again.
+    /// </summary>
+    /// <remarks>
+    /// A set of what has already been asked about, and a depth. The set is not only about loops:
+    /// several links in one ancestor chain each start the question again, so without it the work
+    /// multiplies by every link at every level and a start-up stops. With it, every folder is asked
+    /// about once. The depth is what is left over — a chain long enough to be a stack rather than
+    /// somebody's disks — and giving up there is safe because a folder not shown to lead into
+    /// application data still has to answer everything else before a corpus is opened in it.
+    /// </remarks>
+    private static bool LeadsIntoApplicationData(
+        string full, IReadOnlyList<string> applicationData, HashSet<string> asked, int links)
+    {
+        foreach (var root in applicationData)
+        {
+            if (!string.IsNullOrWhiteSpace(root) && IsAtOrUnder(full, root))
+            {
+                return true;
+            }
+        }
+
+        if (links == 0)
+        {
+            return false;
+        }
+
+        for (var step = new DirectoryInfo(full); step is not null; step = step.Parent)
+        {
+            if (LinkTargetOf(step) is { } target
+                && asked.Add(Path.GetFullPath(target))
+                && LeadsIntoApplicationData(
+                    Path.GetFullPath(target), applicationData, asked, links - 1))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Whether this path is that folder or inside it.</summary>
     private static bool IsAtOrUnder(string path, string root)
     {
@@ -350,9 +400,10 @@ public sealed class CorpusLocation
     {
         try
         {
-            // Not the final target: a link into that tree is read from the link itself, and
-            // asking for the end of the chain would need every step of it to be there — which a
-            // link into a folder an uninstall already deleted is exactly not.
+            // Not the final target, which would need every step of the chain to be there — and
+            // a link into a folder an uninstall already deleted is exactly not. The chain is
+            // followed a hop at a time instead, so each one is judged whether or not the next
+            // answers.
             return folder.ResolveLinkTarget(returnFinalTarget: false)?.FullName;
         }
         catch (Exception unanswered) when (

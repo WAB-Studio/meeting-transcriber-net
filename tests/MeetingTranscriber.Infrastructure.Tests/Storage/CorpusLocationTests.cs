@@ -55,13 +55,8 @@ public class CorpusLocationTests
     {
         var location = CorpusLocation.OfThisUser();
 
-        foreach (var doomed in new[]
-        {
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            CorpusLocation.ApplicationDataOfThisUser(),
-            CorpusLocation.PackageContainerOfThisUser(),
-        })
+        foreach (var doomed in
+            CorpusLocation.ApplicationDataOfThisUser().Append(CorpusLocation.PackageContainerOfThisUser()))
         {
             CorpusLocation.GoesWhenThePackageDoes(doomed)
                 .ShouldBeTrue($"A corpus in '{doomed}' goes when the package does.");
@@ -73,6 +68,45 @@ public class CorpusLocationTests
 
         CorpusLocation.GoesWhenThePackageDoes(location.Fallback.FullName).ShouldBeFalse();
         CorpusLocation.GoesWhenThePackageDoes(location.Setting.Directory!.FullName).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Which folders are refused, rather than that the ones on this machine happen to be. On an
+    /// ordinary profile every application data folder is already inside the profile's own, so a
+    /// rule anchored only there passes every assertion above while leaving somebody whose
+    /// application data was moved off the profile — a redirected folder, a roaming profile — with
+    /// no protection at all. Their corpus would be the one that goes.
+    /// </summary>
+    [Fact]
+    public void The_folders_refused_are_the_ones_Windows_itself_names()
+    {
+        var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        CorpusLocation.ApplicationDataOfThisUser().ShouldBe(
+            [
+                Path.Combine(profile, "AppData"),
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            ],
+            ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// And that being in the list is what refuses a folder, asked of a tree this machine does not
+    /// have: a stand-in for the application data of somebody whose profile keeps it elsewhere.
+    /// Asserting it against the real folders could not tell the two rules apart, because on this
+    /// machine they name the same tree.
+    /// </summary>
+    [Fact]
+    public void An_application_data_folder_kept_off_the_profile_is_refused_like_any_other()
+    {
+        using var elsewhere = new TemporaryFolder();
+        var moved = new[] { Path.Combine(elsewhere.Folder.FullName, "UserData") };
+
+        CorpusLocation.GoesWhenThePackageDoes(Path.Combine(moved[0], "Meetings"), moved)
+            .ShouldBeTrue();
+        CorpusLocation.GoesWhenThePackageDoes(
+            Path.Combine(elsewhere.Folder.FullName, "Meetings"), moved).ShouldBeFalse();
     }
 
     /// <summary>
@@ -114,7 +148,8 @@ public class CorpusLocationTests
     [Fact]
     public void A_folder_under_the_users_application_data_goes_when_the_package_does()
     {
-        var applicationData = CorpusLocation.ApplicationDataOfThisUser();
+        var applicationData = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "AppData");
         var container = CorpusLocation.PackageContainerOfThisUser();
 
         foreach (var doomed in new[]
@@ -184,6 +219,48 @@ public class CorpusLocationTests
 
         CorpusLocation.GoesWhenThePackageDoes(link).ShouldBeTrue();
         Naming(elsewhere, link).Resolve().Refusal.ShouldBe(CorpusRefusal.GoesWhenThePackageDoes);
+    }
+
+    /// <summary>
+    /// One link was followed and the next was not, so a corpus reached through a disk somebody
+    /// moved and then through a folder somebody else moved was accepted while its files were in
+    /// the container all along. Three reviewers found it independently.
+    /// </summary>
+    [Fact]
+    public void A_folder_that_leads_into_the_container_through_another_link_goes_with_it_too()
+    {
+        using var elsewhere = new TemporaryFolder();
+        var first = Path.Combine(elsewhere.Folder.FullName, "corpus");
+        var second = Path.Combine(elsewhere.Folder.FullName, "company-data");
+        var inside = Path.Combine(
+            CorpusLocation.PackageContainerOfThisUser(),
+            $"MeetingTranscriber.Fabricated_{Guid.NewGuid():n}",
+            "LocalCache");
+
+        // Neither target is ever created, so nothing is written inside a real package's folder.
+        Junction(second, inside);
+        Junction(first, second);
+
+        CorpusLocation.GoesWhenThePackageDoes(first).ShouldBeTrue();
+        Naming(elsewhere, first).Resolve().Refusal.ShouldBe(CorpusRefusal.GoesWhenThePackageDoes);
+    }
+
+    /// <summary>
+    /// What following a chain costs if nothing remembers where it has been: two links pointing at
+    /// each other, which is a start-up that never finishes rather than a wrong answer. The
+    /// assertion is that it answers at all.
+    /// </summary>
+    [Fact]
+    public void A_loop_of_links_is_answered_rather_than_followed()
+    {
+        using var elsewhere = new TemporaryFolder();
+        var here = Path.Combine(elsewhere.Folder.FullName, "here");
+        var there = Path.Combine(elsewhere.Folder.FullName, "there");
+
+        Junction(here, there);
+        Junction(there, here);
+
+        CorpusLocation.GoesWhenThePackageDoes(here).ShouldBeFalse();
     }
 
     [Fact]
