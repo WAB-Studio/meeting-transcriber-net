@@ -1,3 +1,4 @@
+using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
 
 using Microsoft.UI.Xaml;
@@ -10,15 +11,32 @@ namespace MeetingTranscriber.App;
 /// Provides application-specific behavior to supplement the default Application class.
 /// </summary>
 /// <remarks>
+/// <para>
 /// It is also the one place that decides what language the application reads in, and the only one
 /// that writes down what somebody chose. A screen is handed the answer and told when it changes;
 /// none of them works it out for itself, or two screens would eventually disagree.
+/// </para>
+/// <para>
+/// And it is where the corpus is resolved: before a window opens, once, and never again from
+/// inside one. Anything that opened a corpus for itself would be a second answer to the one
+/// question the application cannot be wrong about, and the wrong answer to it puts a person's
+/// meetings somewhere an uninstall takes them.
+/// </para>
 /// </remarks>
 public partial class App : Application
 {
     private readonly LanguageChoice _choice = LanguageChoice.OfThisUser();
 
-    private MainWindow? _window;
+    private RecordingWindow? _recorder;
+    private MainWindow? _checks;
+
+    /// <summary>
+    /// What the application is being read in now. Held here rather than read back off the
+    /// preference file: a choice that could not be written is still the language this session is
+    /// in, and a second window opening in the one before it would be the bug the whole language
+    /// card is about wearing a different hat.
+    /// </summary>
+    private UiLanguage _language = UiLanguages.WhenWindowsSpeaksNeither;
 
     /// <summary>
     /// Initializes the singleton application object.  This is the first line of authored code
@@ -35,11 +53,15 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
-        var window = new MainWindow(UiLanguages.Resolve(_choice.Read(), WindowsLanguages()));
-        window.LanguageChosen += OnLanguageChosen;
+        _language = UiLanguages.Resolve(_choice.Read(), WindowsLanguages());
 
-        _window = window;
-        _window.Activate();
+        var window = new RecordingWindow(_language, CorpusLocation.OfThisUser().Resolve());
+        window.LanguageChosen += OnLanguageChosen;
+        window.PackagingChecksAsked += OnPackagingChecksAsked;
+        window.Closed += (_, _) => _recorder = null;
+
+        _recorder = window;
+        _recorder.Activate();
     }
 
     /// <summary>
@@ -49,12 +71,36 @@ public partial class App : Application
     /// </summary>
     private static IReadOnlyList<string> WindowsLanguages() => GlobalizationPreferences.Languages;
 
+    /// <summary>
+    /// The temporary packaging-checks scaffold, which is not part of the product and is reached
+    /// from a corner of the recording screen. It stays until ISC-110 closes: what it answers has
+    /// to be answered from inside the package, so the command line cannot answer it.
+    /// </summary>
+    private void OnPackagingChecksAsked(object? sender, EventArgs e)
+    {
+        if (_checks is not null)
+        {
+            _checks.Activate();
+            return;
+        }
+
+        var window = new MainWindow(_language);
+        window.LanguageChosen += OnLanguageChosen;
+        window.Closed += (_, _) => _checks = null;
+
+        _checks = window;
+        _checks.Activate();
+    }
+
     private void OnLanguageChosen(object? sender, UiLanguage language)
     {
-        // The window reads in it first. What somebody just asked for is not held back by a
+        _language = language;
+
+        // Every window open reads in it first. What somebody just asked for is not held back by a
         // preference file, and a file that cannot be written is a language that does not survive
         // the session rather than a session that ends here.
-        _window?.ReadIn(language);
+        _recorder?.ReadIn(language);
+        _checks?.ReadIn(language);
 
         try
         {
@@ -64,7 +110,8 @@ public partial class App : Application
         {
             // Said rather than swallowed: the application looks exactly as it would have if the
             // choice had stuck, so the only way anybody learns it did not is the next launch.
-            _window?.Report(UiTexts.LanguageNotRemembered);
+            _recorder?.Report(UiTexts.LanguageNotRemembered);
+            _checks?.Report(UiTexts.LanguageNotRemembered);
         }
     }
 }

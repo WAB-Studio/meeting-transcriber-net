@@ -63,6 +63,15 @@ deliberately too small to hold a rule. `MeetingTranscriber.App` was not an optio
 touching a type from that assembly fires the Windows App SDK module initializer and throws outside
 a packaged host, so anything living there would have no probe a build agent could run.
 
+That last sentence is also why the recording screen's rules are here rather than beside the window.
+What can be pressed at any moment — and what a press would have to be answered with first — is
+`RecorderScreen` and the table beside it, which hold no meeting, open no device and start nothing.
+The window sets every control from one of those and asks it again inside each handler, so the half
+of a screen that has rules is the half a build agent runs, and the half that needs a microphone is
+the half a person presses. `MeetingTranscriber.App` references this project and nothing else new:
+`Audio`, `Infrastructure` and `Domain` arrive through it, which is the same composition the command
+line goes through.
+
 `Processing` references `Infrastructure`, and only that way round: rendering reads the paid
 response out of the corpus and puts the derivatives back, so it sits above storage. The opposite
 edge would make SQLite depend on how a Deepgram response is parsed.
@@ -74,8 +83,8 @@ App SDK compiles a module initializer into every assembly that references it, an
 type from `MeetingTranscriber.App` fires it and throws outside a packaged host. Anything about
 the UI that has to be provable lives here rather than beside a window.
 
-`tests/MeetingTranscriber.App.Tests/` follows from that: it references no project either, and
-reads the app's `.xaml` and `.xaml.cs` as source to hold every screen to naming an entry in the
+`tests/MeetingTranscriber.App.Tests/` follows from that: it references no project either — not
+even the one the app itself now references — and reads the app's `.xaml` and `.xaml.cs` as source to hold every screen to naming an entry in the
 catalogue instead of carrying words of its own. Running a WinUI tree would need a UI thread and
 a packaged host, neither of which a build agent has — so the check that needed one is the check
 that would never run.

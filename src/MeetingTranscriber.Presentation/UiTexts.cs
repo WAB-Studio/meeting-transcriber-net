@@ -1,4 +1,4 @@
-namespace MeetingTranscriber.Presentation;
+﻿namespace MeetingTranscriber.Presentation;
 
 /// <summary>
 /// Everything the application says, Spanish first and English second. A screen names an entry
@@ -14,6 +14,147 @@ namespace MeetingTranscriber.Presentation;
 /// </remarks>
 public static class UiTexts
 {
+    // ── The recording screen ─────────────────────────────────────────────────────
+
+    public static UiText RecordAMeeting { get; } = new("Grabar una reunión", "Record a meeting");
+
+    public static UiText Microphone { get; } = new("Micrófono", "Microphone");
+
+    public static UiText NoMicrophoneOnThisMachine { get; } = new(
+        "Esta máquina no tiene ningún micrófono.",
+        "This machine has no microphone.");
+
+    public static UiText WhatToRecordFromThisMachine { get; } =
+        new("Qué grabar de esta máquina", "What to record from this machine");
+
+    public static UiText EverythingThisMachinePlays { get; } = new(
+        "Todo lo que suena en esta máquina",
+        "Everything this machine plays");
+
+    public static UiText RefreshThePrograms { get; } =
+        new("Actualizar la lista", "Refresh the list");
+
+    // Its own question, and the caption is not decoration: this screen has two language pickers on
+    // it and they answer different things. A meeting filed in the language of the menu somebody
+    // happens to read is a meeting transcribed in the wrong one.
+    public static UiText WhatWillBeSpoken { get; } =
+        new("Idioma de la reunión", "The meeting's language");
+
+    public static UiText WhatWillBeSpokenIsAskedEveryTime { get; } = new(
+        "Se pregunta por reunión. El idioma en el que se lee la aplicación no dice en qué se va a "
+        + "hablar.",
+        "Asked for every meeting. The language the application is read in does not say what will "
+        + "be spoken in it.");
+
+    public static UiText Record { get; } = new("Grabar", "Record");
+
+    public static UiText Pause { get; } = new("Pausar", "Pause");
+
+    public static UiText Resume { get; } = new("Seguir", "Carry on");
+
+    public static UiText Stop { get; } = new("Detener", "Stop");
+
+    public static UiText RecordTheWholeMachine { get; } =
+        new("Grabar toda la máquina", "Record the whole machine");
+
+    public static UiText NothingCameFromThatProgram { get; } = new(
+        "No llegó nada de ese programa. Grabar toda la máquina en su lugar mete las "
+        + "notificaciones y todas las demás aplicaciones en la grabación. La reunión sigue "
+        + "corriendo de cualquier manera.",
+        "Nothing at all has come from that program. Recording the whole machine instead puts "
+        + "notifications and every other application in the recording. The meeting keeps running "
+        + "either way.");
+
+    public static UiText NowRecordingTheWholeMachine { get; } = new(
+        "Canal 0: todo lo que suena en esta máquina.",
+        "Channel 0: everything this machine plays.");
+
+    public static UiText ReadyToRecord { get; } = new(
+        "Elegí el micrófono, qué grabar de esta máquina y en qué idioma se va a hablar.",
+        "Choose the microphone, what to record from this machine, and what will be spoken.");
+
+    public static UiText RecordingMeeting { get; } =
+        new("Grabando la reunión {0}.", "Recording meeting {0}.");
+
+    public static UiText PausedAndTheClockKeepsRunning { get; } = new(
+        "En pausa. El reloj de la reunión sigue corriendo, así que la pausa queda adentro como el "
+        + "silencio que fue.",
+        "Paused. The meeting's clock keeps running, so the pause stays in it as the silence it "
+        + "was.");
+
+    public static UiText OpeningTheDevices { get; } = new(
+        "Abriendo el micrófono y el canal 0.",
+        "Opening the microphone and channel 0.");
+
+    public static UiText ThatProgramIsNoLongerRunning { get; } = new(
+        "Ese programa ya no está corriendo, así que no se empezó a grabar: elegí otra vez qué "
+        + "grabar de esta máquina. Su número de proceso puede ser de otra aplicación ahora.",
+        "That program is no longer running, so nothing was started: choose again what to record "
+        + "from this machine. Its process number may belong to another application by now.");
+
+    public static UiText MakingTheMeeting { get; } = new(
+        "Deteniendo. La reunión se está armando con lo que se grabó, y para una reunión larga eso "
+        + "tarda unos minutos.",
+        "Stopping. The meeting is being made out of what was recorded, and for a long meeting that "
+        + "takes some minutes.");
+
+    public static UiText TheMeetingIsRecorded { get; } = new(
+        "Reunión {0} grabada: {1} de audio en {2}.",
+        "Meeting {0} recorded: {1} of audio at {2}.");
+
+    // Said out loud every time, because it is the promise and not an omission.
+    public static UiText NothingWasQueued { get; } = new(
+        "No se puso nada en cola: transcribir es otro botón.",
+        "Nothing was queued: transcribing is a separate press.");
+
+    public static UiText TheRecordingCouldNotStart { get; } =
+        new("No se pudo empezar a grabar.", "The recording could not be started.");
+
+    public static UiText TheMeetingCouldNotBeMade { get; } = new(
+        "La grabación terminó, pero la reunión no se pudo armar. Lo grabado sigue en su carpeta.",
+        "The recording ended, but the meeting could not be made. What was recorded is still in its "
+        + "folder.");
+
+    public static UiText MeetingsAreKeptAt { get; } =
+        new("Las reuniones se guardan en {0}", "Meetings are kept at {0}");
+
+    /// <summary>
+    /// Where the meetings will go, when there is nothing there yet. One entry and not
+    /// <see cref="MeetingsAreKeptAt"/> with this stuck on the end of it: a screen that joined two
+    /// entries would be choosing the punctuation between them, which is a word of its own in a
+    /// language it picked.
+    /// </summary>
+    public static UiText TheFirstRecordingMakesTheCorpusAt { get; } = new(
+        "Las reuniones se guardan en {0}. Todavía no hay un corpus ahí: la primera grabación lo crea.",
+        "Meetings are kept at {0}. There is no corpus there yet: the first recording makes one.");
+
+    public static UiText TheSettingSaysNothingUsable { get; } = new(
+        "El archivo que dice dónde está el corpus no dice nada que se pueda usar: {0}. No se graba "
+        + "hasta que eso se resuelva, para no arrancar un segundo corpus vacío en otro lado.",
+        "The file that says where the corpus is says nothing that can be used: {0}. Nothing is "
+        + "recorded until that is settled, rather than starting a second, empty corpus somewhere "
+        + "else.");
+
+    public static UiText TheCorpusFolderDidNotAnswer { get; } = new(
+        "La carpeta {0} no responde: no está, o este usuario no puede leerla.",
+        "The folder {0} does not answer: it is not there, or this user may not read it.");
+
+    public static UiText ThereIsNoCorpusInThatFolder { get; } = new(
+        "En {0} no hay ningún corpus. No se crea uno nuevo ahí: lo habitual es que esa ruta ya no "
+        + "llegue al corpus al que llegaba.",
+        "There is no corpus in {0}. One is not made there: the usual cause is a path that no "
+        + "longer reaches the corpus it used to.");
+
+    public static UiText TheCorpusFolderGoesWhenThePackageDoes { get; } = new(
+        "{0} se borra cuando se desinstala la aplicación, y ahí adentro quedarían las respuestas "
+        + "que ya se pagaron.",
+        "{0} goes when the application is uninstalled, and the responses already paid for would go "
+        + "with it.");
+
+    public static UiText ChoosingAnotherFolderIsNotHereYet { get; } = new(
+        "Elegir otra carpeta todavía no se hace desde esta pantalla.",
+        "Choosing another folder is not done from this screen yet.");
+
     // ── The packaging checks scaffold ──────────────────────────────────────────────────────────
 
     public static UiText PackagingChecks { get; } =
@@ -30,6 +171,11 @@ public static class UiTexts
     // cannot read is looking for the one word on screen they do recognise, so a picker that
     // translated the names would hide the way back out. Here rather than in a `switch` so the
     // walk over the catalogue sees them like every other word a person reads.
+    //
+    // The recording screen names what will be spoken in a meeting with these same two, and that
+    // is not reuse for its own sake: a language read as its own name is the one spelling nobody
+    // has to translate back, which is the same reason as above arriving at the same answer. What
+    // tells the two pickers apart on that screen is their headers, which do translate.
     public static UiText SpanishName { get; } = new("Español", "Español");
 
     public static UiText EnglishName { get; } = new("English", "English");
