@@ -71,6 +71,45 @@ public class MeetingWorkTests
     }
 
     [Fact]
+    public void A_meeting_on_its_way_out_stopped_on_a_person_is_listed_and_offers_nothing()
+    {
+        // The card's third sentence held against the exclusion above it. Somebody asks to delete a
+        // meeting whose transcription a restart left unsettled: there may be a charge that already
+        // happened, nobody has established whether there was, and this list is the only place that
+        // says which meeting it was. Dropping it would make the deletion the thing that hid the
+        // charge.
+        //
+        // And the exclusion loses nothing, which is why both rules can be kept whole: this meeting
+        // comes back with neither answer on offer, so nothing is ever offered on a meeting somebody
+        // asked to get rid of. That pair is the last two assertions, and they are the ones that
+        // would have to go red for this to be a hole rather than an exception. What the standing
+        // itself means is `MeetingStageTests`' and the unsettled-charge test below — not repeated
+        // here, which leaves this test holding only what is new: the lifecycle, and that it shows.
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+        var work = new MeetingWork(context, Clock);
+
+        var uncertain = work.Take(meeting);
+        uncertain.Start(UtcTimestamp.From(Clock.GetUtcNow()));
+        uncertain.RecoverAfterRestart().ShouldBeTrue();
+
+        var row = context.Meetings.Single(stored => stored.Id == meeting);
+        row.LifecycleState = LifecycleState.Deleting;
+        row.DeletedAt = Recorded;
+        context.SaveChanges();
+
+        var listed = work.Listed();
+
+        listed.Count.ShouldBe(1);
+        listed[0].Meeting.Id.ShouldBe(meeting);
+        listed[0].Owed.WaitsOnSomebody.ShouldBeTrue();
+
+        listed[0].Owed.MayBeTaken.ShouldBeFalse();
+        listed[0].Owed.MayBeLeft.ShouldBeFalse();
+    }
+
+    [Fact]
     public void Taking_a_stage_queues_its_work_and_starts_nothing()
     {
         using var corpus = new TemporaryCorpus();

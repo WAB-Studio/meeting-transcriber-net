@@ -93,8 +93,11 @@
 
         <StackPanel Grid.Row="3" Spacing="4">
             <!-- Said rather than left to be noticed. The rendered files are the one thing here
-                 that happens with nobody pressing anything, so their not being a button is the
-                 screen's to explain instead of looking like a control somebody lost. -->
+                 that will never be a press, so their not being a button is the screen's to explain
+                 instead of looking like a control somebody lost. What it does not say is when they
+                 appear: today they are produced by `rebuild` and `render` at the command line and
+                 never by this application, so a caption about that would be a promise this screen
+                 cannot keep. -->
             <TextBlock
                 Text="{x:Bind In(loc:UiTexts.TheRenderedFilesAreNeverAskedAbout)}"
                 Style="{StaticResource CaptionTextBlockStyle}"

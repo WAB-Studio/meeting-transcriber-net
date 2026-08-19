@@ -176,13 +176,13 @@ public static class UiTexts
 
     public static UiText ReadTheMeetingsAgain { get; } = new("Actualizar", "Refresh");
 
-    // The rendered files are the one thing that happens with nobody pressing anything, so the
-    // screen says why rather than leaving their absence looking like a button somebody lost.
+    // The rendered files are the one thing that will never be a press, so the screen says why
+    // rather than leaving their absence looking like a button somebody lost.
     public static UiText TheRenderedFilesAreNeverAskedAbout { get; } = new(
-        "Los archivos del transcript se hacen solos: no cuestan nada y se pueden volver a "
-        + "producir, así que nunca se preguntan.",
-        "The transcript's files are made without asking: they cost nothing and can be produced "
-        + "again, so they are never something you are asked about.");
+        "Los archivos del transcript nunca se preguntan: no cuestan nada y se pueden volver a "
+        + "producir, así que no son un botón.",
+        "The transcript's files are never something you are asked about: they cost nothing and "
+        + "can be produced again, so they are not a button.");
 
     // What a meeting has got to.
 

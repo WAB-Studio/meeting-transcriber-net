@@ -345,8 +345,11 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
             meeting.HasKey(entity => entity.Id);
             meeting.HasIndex(entity => entity.StartedAt);
-            // The list every window opens on: the meetings that are still here, newest first.
-            // Equality column first, then the one being ordered on.
+            // The meetings that are still here, newest first: equality column first, then the one
+            // being ordered on. `CorpusRebuild.Run` and `CorpusSearch` are who ask for that shape.
+            // The meetings window no longer does — it reads every row and drops what it does not
+            // want in memory, because one of the things it keeps is a meeting on its way out that
+            // is stopped on a person, and `MeetingWork.Listed` says why.
             meeting.HasIndex(entity => new { entity.LifecycleState, entity.StartedAt });
             meeting.HasOne<MeetingTemplate>().WithMany().HasForeignKey(entity => entity.TemplateId)
                 .OnDelete(DeleteBehavior.SetNull);

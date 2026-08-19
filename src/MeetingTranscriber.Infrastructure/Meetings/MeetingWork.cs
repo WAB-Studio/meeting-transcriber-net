@@ -46,9 +46,27 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// Every meeting the corpus is holding and what is owed on it, newest meeting first.
     /// </summary>
     /// <remarks>
-    /// Deleted meetings are left out and meetings on their way out with them: the application owes
-    /// nothing to a meeting somebody asked it to get rid of, and offering to pay for one would be
-    /// the worst possible time to be asked.
+    /// <para>
+    /// What is left out is a meeting on its way out that nothing is stopped on a person about: the
+    /// application owes nothing to a meeting somebody asked it to get rid of, and offering to pay
+    /// for one would be the worst possible time to be asked. Keeping the ones that are stopped
+    /// costs that nothing, because <see cref="StageStanding.StoppedOnAPerson"/> refuses both
+    /// answers, so such a meeting comes back carrying no action at all. What it does carry is a
+    /// charge that may already have happened and nobody has settled — `status` counts those, and
+    /// this is the only place that says which meeting — so dropping it would make the deletion the
+    /// thing that hid the charge.
+    /// </para>
+    /// <para>
+    /// Hence no lifecycle in the query: a `WHERE` mirroring <see cref="OwedWork.WaitsOnSomebody"/>
+    /// would decide one rule in two places, and the day that rule widened the query would quietly
+    /// stop fetching what it now wants. The cost is the `(lifecycle_state, started_at)` index,
+    /// which this read no longer uses.
+    /// </para>
+    /// <para>
+    /// One thing whoever builds deletion inherits: `processing_jobs.meeting_id` cascades, so
+    /// deleting the row takes the awaiting job with it and this list falls quiet again. Either the
+    /// job outlives the meeting, or a meeting with an unsettled charge is not deletable yet.
+    /// </para>
     /// <para>
     /// Three queries rather than one per meeting. The rows are small and the counts are a corpus's
     /// worth rather than a recording's, and only the files that decide a stage are read at all —
@@ -59,7 +77,6 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     {
         var meetings = context.Meetings
             .AsNoTracking()
-            .Where(meeting => meeting.LifecycleState == LifecycleState.Active)
             .OrderByDescending(meeting => meeting.StartedAt)
             .ToList();
 
@@ -71,6 +88,8 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
             .Select(meeting => new MeetingAndWork(
                 meeting,
                 OwedWork.Of(meeting.Id, files[meeting.Id], jobs[meeting.Id])))
+            .Where(entry => entry.Meeting.LifecycleState is LifecycleState.Active
+                || entry.Owed.WaitsOnSomebody)
             .ToList();
     }
 
