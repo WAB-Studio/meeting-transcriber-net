@@ -228,6 +228,27 @@ public sealed partial class RecordingWindow : Window
     }
 
     /// <summary>What the screen says about itself, which is one line and always the same one.</summary>
+    /// <exception cref="InvalidOperationException">
+    /// The screen is in a state this window has no line for.
+    /// </exception>
+    /// <remarks>
+    /// The last arm stops rather than leaving the previous line standing, which is
+    /// <see cref="RecorderStates.Reaches"/> on a state it does not have and
+    /// <see cref="SayWhereTheCorpusIs"/> on a refusal it has no words for: the three tables in
+    /// this window agree that an unknown key stops. Of the three this is the one whose silence
+    /// would be hardest to see — a status line that keeps saying what it last said looks like a
+    /// screen with nothing wrong in it, and somebody reads "recording" off a window that is doing
+    /// something else. A state added to <see cref="RecorderState"/> and not given a line here is
+    /// a fault of the code, which nothing a person does can reach.
+    /// <para>
+    /// It carries no test of the kind <c>CorpusTextTests</c> is for <see cref="SayWhereTheCorpusIs"/>,
+    /// and the difference is where the two would first be met. A corpus refusal fires only for
+    /// somebody whose folder is in that particular state, which a developer may never be in, so
+    /// the throw there could reach a person before anybody saw it. This runs on every refresh in
+    /// every state the screen passes through, and a state with no line here stops the window from
+    /// opening on the first run after it was added.
+    /// </para>
+    /// </remarks>
     private void Announce(RecorderState state)
     {
         switch (state)
@@ -238,8 +259,8 @@ public sealed partial class RecordingWindow : Window
             case RecorderState.Choosing:
                 Status(UiTexts.ReadyToRecord);
                 break;
-            case RecorderState.Recording when _recording is not null:
-                Status(UiTexts.RecordingMeeting, _recording.MeetingId);
+            case RecorderState.Recording:
+                Status(UiTexts.RecordingMeeting, TheMeetingBeingRecorded().MeetingId);
                 break;
             case RecorderState.Paused:
                 Status(UiTexts.PausedAndTheClockKeepsRunning);
@@ -251,9 +272,23 @@ public sealed partial class RecordingWindow : Window
                 Status(UiTexts.MakingTheMeeting);
                 break;
             default:
-                break;
+                throw new InvalidOperationException(
+                    $"This screen has no line for recorder state '{state}'.");
         }
     }
+
+    /// <summary>The meeting being recorded, which only a state that has one may ask for.</summary>
+    /// <remarks>
+    /// <see cref="RecorderStates.Of"/> reads <see cref="RecorderState.Recording"/> off this field
+    /// being set, so the throw is unreachable for as long as the two agree — and saying that is
+    /// the point of it. The alternative is a `!`, which asserts the same thing silently and comes
+    /// back as a <see cref="NullReferenceException"/> naming nothing on the day the two come
+    /// apart; the alternative before that was a guard on the arm, which sent the state to a
+    /// status line that went on saying whatever it last said.
+    /// </remarks>
+    private MeetingRecording TheMeetingBeingRecorded() =>
+        _recording ?? throw new InvalidOperationException(
+            "The screen reads as recording with no meeting under it.");
 
     /// <summary>
     /// Where the meetings go, said before the first one rather than found out afterwards — and
@@ -275,7 +310,9 @@ public sealed partial class RecordingWindow : Window
     {
         var text = _corpus.Refusal switch
         {
-            null => _corpus.HoldsACorpus ? UiTexts.MeetingsAreKeptAt : UiTexts.TheFirstRecordingMakesTheCorpus,
+            null => _corpus.HoldsACorpus
+                ? UiTexts.MeetingsAreKeptAt
+                : UiTexts.TheFirstRecordingMakesTheCorpusAt,
             CorpusRefusal.SettingSaysNothingUsable => UiTexts.TheSettingSaysNothingUsable,
             CorpusRefusal.FolderDoesNotAnswer => UiTexts.TheCorpusFolderDidNotAnswer,
             CorpusRefusal.NoCorpusInTheFolder => UiTexts.ThereIsNoCorpusInThatFolder,
@@ -284,9 +321,9 @@ public sealed partial class RecordingWindow : Window
                 $"This screen has no text for corpus refusal '{_corpus.Refusal}'."),
         };
 
-        CorpusText.Text = _corpus.Refusal is null && !_corpus.HoldsACorpus
-            ? $"{UiTexts.MeetingsAreKeptAt.In(_language, _corpus.Path)} — {text.In(_language)}"
-            : text.In(_language, _corpus.Path);
+        // One entry, read once. Every arm above takes the path and nothing else, so there is no
+        // second case here and no punctuation for this window to choose between two of them.
+        CorpusText.Text = text.In(_language, _corpus.Path);
     }
 
     private void FillThePickers()

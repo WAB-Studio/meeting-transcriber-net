@@ -48,13 +48,28 @@ public class RecorderLanguageTests
     [Fact]
     public void Nothing_a_recording_reaches_knows_what_language_the_application_is_read_in()
     {
+        var engine = typeof(RecorderScreen).Assembly;
+
+        // What a walk did not find is worth nothing until the walk is known to have walked, and
+        // the walk below cannot say so about itself: it is seeded with this test project as well,
+        // which reaches Recording, Testing and — through the AudioDevice above — Audio on its own
+        // account. So an engine that referenced nothing of ours would still leave a populated set
+        // and a green line at the bottom, which is the one build this whole check has to fail on.
+        // Asserting it on the engine alone is what no seed can flatter.
+        engine.GetReferencedAssemblies()
+            .Select(assembly => assembly.Name!)
+            .Where(Ours)
+            .ShouldNotBeEmpty(
+                "MeetingTranscriber.Recording references nothing else of this codebase, so the "
+                + "walk below is over what the test project reaches and says nothing about what "
+                + "a recording does.");
+
         var reached = new HashSet<string>(StringComparer.Ordinal);
-        var pending = new Queue<Assembly>([typeof(RecorderScreen).Assembly, typeof(RecorderLanguageTests).Assembly]);
+        var pending = new Queue<Assembly>([engine, typeof(RecorderLanguageTests).Assembly]);
 
         while (pending.Count > 0)
         {
-            var ours = pending.Dequeue().GetReferencedAssemblies()
-                .Where(assembly => assembly.Name!.StartsWith("MeetingTranscriber.", StringComparison.Ordinal));
+            var ours = pending.Dequeue().GetReferencedAssemblies().Where(assembly => Ours(assembly.Name!));
 
             foreach (var assembly in ours.Where(assembly => reached.Add(assembly.Name!)))
             {
@@ -62,6 +77,14 @@ public class RecorderLanguageTests
             }
         }
 
-        reached.ShouldNotContain(WhereTheApplicationsOwnLanguageLives);
+        reached.ShouldNotContain(
+            WhereTheApplicationsOwnLanguageLives,
+            customMessage: "A recording reaches the catalogue a person reads and the choice of "
+            + "which language to read it in, so a default taken from there would file an English "
+            + "meeting as Spanish for having been recorded from a Spanish menu.");
     }
+
+    /// <summary>Whether an assembly is one of this codebase's.</summary>
+    private static bool Ours(string name) =>
+        name.StartsWith("MeetingTranscriber.", StringComparison.Ordinal);
 }

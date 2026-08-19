@@ -118,9 +118,15 @@ public static class UiTexts
     public static UiText MeetingsAreKeptAt { get; } =
         new("Las reuniones se guardan en {0}", "Meetings are kept at {0}");
 
-    public static UiText TheFirstRecordingMakesTheCorpus { get; } = new(
-        "Todavía no hay un corpus ahí. La primera grabación lo crea.",
-        "There is no corpus there yet. The first recording makes one.");
+    /// <summary>
+    /// Where the meetings will go, when there is nothing there yet. One entry and not
+    /// <see cref="MeetingsAreKeptAt"/> with this stuck on the end of it: a screen that joined two
+    /// entries would be choosing the punctuation between them, which is a word of its own in a
+    /// language it picked.
+    /// </summary>
+    public static UiText TheFirstRecordingMakesTheCorpusAt { get; } = new(
+        "Las reuniones se guardan en {0}. Todavía no hay un corpus ahí: la primera grabación lo crea.",
+        "Meetings are kept at {0}. There is no corpus there yet: the first recording makes one.");
 
     public static UiText TheSettingSaysNothingUsable { get; } = new(
         "El archivo que dice dónde está el corpus no dice nada que se pueda usar: {0}. No se graba "
