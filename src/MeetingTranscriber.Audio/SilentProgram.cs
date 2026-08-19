@@ -37,20 +37,25 @@ public static class SilentProgram
     /// nothing at all in that time, that it is following the wrong program.
     /// </summary>
     /// <param name="listening">What the source is listening to.</param>
-    /// <param name="loudest">The loudest it has been since it opened, which is what it comes to.</param>
+    /// <param name="delivered">
+    /// The loudest the device has handed over since it opened — what it played, and not what the
+    /// recording kept of it. A meeting paused over its first seconds has that stretch replaced with
+    /// silence on the way to the file, and reading that back would tell somebody who paused that
+    /// they had picked the wrong program.
+    /// </param>
     /// <param name="open">How long it has been open.</param>
     /// <remarks>
-    /// The loudest since it opened, and not the last second: a program that played one sentence
-    /// and went quiet is being followed correctly, and a meter emptied every time somebody looked
-    /// at it would call that meeting the wrong program too.
+    /// Since it opened, and not the last second: a program that played one sentence and went quiet
+    /// is being followed correctly, and a meter emptied every time somebody looked at it would call
+    /// that meeting the wrong program too.
     /// </remarks>
-    public static bool HeardNothing(CaptureTarget listening, LevelReading loudest, Duration open)
+    public static bool HeardNothing(CaptureTarget listening, LevelReading delivered, Duration open)
     {
         ArgumentNullException.ThrowIfNull(listening);
 
         // Only ever about a program. A channel listening to the whole machine is silent because
         // nothing is playing, which is the recording somebody asked for and not a wrong choice —
         // there is nothing else to offer them.
-        return listening is CaptureTarget.Program && loudest.IsSilent && open >= Waits;
+        return listening is CaptureTarget.Program && delivered.IsSilent && open >= Waits;
     }
 }

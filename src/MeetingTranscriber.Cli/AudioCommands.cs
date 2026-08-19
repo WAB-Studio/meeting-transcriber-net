@@ -317,11 +317,15 @@ public static class AudioCommands
             Report.Line(output, "still", "being recorded, so there is nothing to decide about it yet");
         }
 
+        // Said whichever of the two files was torn, and beside the card rather than instead of it:
+        // a folder whose changes could not be read still names its meeting, and hiding that would
+        // make a damaged line about one moment cost the account of the whole recording.
         if (recording.Unreadable is { } torn)
         {
-            Report.Line(output, "meeting", $"unnamed: {torn}");
+            Report.Line(output, "unreadable", torn);
         }
-        else if (recording.Card is { } card)
+
+        if (recording.Card is { } card)
         {
             Report.Line(output, "meeting", card.MeetingId.ToString());
             Report.Line(output, "started", card.StartedAt.ToStorage());
@@ -332,9 +336,8 @@ public static class AudioCommands
             {
                 Report.Line(output, $"{Name(source.Channel)} heard", source.Heard);
             }
-
         }
-        else
+        else if (recording.Unreadable is null)
         {
             Report.Line(output, "meeting", $"unnamed, there is no {SpoolManifest.FileName} here");
         }
@@ -418,7 +421,7 @@ public static class AudioCommands
 
         var wholeMachine = new WholeMachine(said =>
         {
-            session.RecordTheWholeMachine(Clock.Now());
+            session.RecordTheWholeMachine();
             Report.Line(said, "channel 0", $"{session.Mode} — {session.On(AudioChannel.Loopback).Listening.Name}");
         });
 
@@ -447,7 +450,7 @@ public static class AudioCommands
                     Report.Offset(Duration.FromMilliseconds(second * 1000L)),
                     string.Join("   ", session.Sources.Select(source => $"{Name(source.Channel)} {source.Level()}")));
 
-                wholeMachine.Consider(session.HeardNothingFromTheProgram(Clock.Now()), output);
+                wholeMachine.Consider(session.HeardNothingFromTheProgram(), output);
 
                 if (second == wholeMachineAt)
                 {

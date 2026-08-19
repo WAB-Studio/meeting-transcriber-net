@@ -22,6 +22,21 @@ public sealed class CaptureSource : IDisposable
     private readonly ManualResetEventSlim ended = new(initialState: false);
 
     /// <summary>
+    /// What the device handed over, before the pause has had its say. The meter beside it is what
+    /// the recording got, which is the right answer for a level somebody is watching and the wrong
+    /// one for whether a program has ever played anything: a meeting paused over its first seconds
+    /// would erase the program's audio and then be told the program was the wrong one.
+    /// </summary>
+    private readonly SourceMeter delivered = new();
+
+    /// <summary>
+    /// The streams this source used to be on, kept so that one given up on is asked again when this
+    /// source is let go of. A stream that would not stop keeps everything it is still using, and
+    /// answering late is what makes those handles releasable at all.
+    /// </summary>
+    private readonly List<WasapiStream> replaced = [];
+
+    /// <summary>
     /// The recording's pause, shared with the other source rather than owned here. Both callbacks
     /// read the one flag, so pausing is a single write and cannot leave one channel recording the
     /// room while the other records silence — see <see cref="RecordingPause"/>.
@@ -35,6 +50,13 @@ public sealed class CaptureSource : IDisposable
     /// the meter and the positions — carries straight on. See <see cref="MoveTo"/>.
     /// </summary>
     private WasapiStream stream;
+
+    /// <summary>
+    /// When it started, on the clock that does not move when the system's does. What the ten
+    /// seconds a silent program is given are counted against — a wall clock corrected mid meeting
+    /// would offer the whole machine at once or never.
+    /// </summary>
+    private long openedAt;
 
     private Exception? failure;
     private bool running;
@@ -97,6 +119,15 @@ public sealed class CaptureSource : IDisposable
     public LevelReading Loudest => meter.Loudest;
 
     /// <summary>
+    /// The loudest the device has handed over since it opened, whether or not the recording was
+    /// paused for it. What says whether a program has ever played anything.
+    /// </summary>
+    public LevelReading Delivered => delivered.Loudest;
+
+    /// <summary>How long it has been open, measured on a clock nothing can correct.</summary>
+    public Duration OpenFor => Duration.FromTimeSpan(TimeProvider.System.GetElapsedTime(openedAt));
+
+    /// <summary>
     /// Whether the stream is over. True before <see cref="Stop"/> means it ended on its own, and
     /// <see cref="Stop"/> is what says why.
     /// </summary>
@@ -125,19 +156,27 @@ public sealed class CaptureSource : IDisposable
     /// different thing entirely from this.
     /// </para>
     /// <para>
-    /// The order is the guarantee. The new device is obtained and initialised while the old one is
-    /// still recording, so a machine that refuses leaves the recording exactly where it was; then
-    /// the old one is stopped and waited for, so the two are never handing blocks to one spool at
-    /// once; and only then is the new one started. A stream that had already ended by itself is
-    /// moved off just the same — that is the case somebody most needs this for — and what it said
-    /// on the way out goes with it, because what a source says about how it ended is about the
-    /// stream it has.
+    /// <b>Nothing is given up until everything that can fail has happened.</b> The new device is
+    /// obtained, initialised and really started while the old one is still the one being recorded —
+    /// its blocks are dropped until this source says otherwise — and only then, with a live device
+    /// in hand, is the channel handed over. Every way this can go wrong is on the near side of that
+    /// one line, so a machine that refuses, a driver that does not answer and a folder that cannot
+    /// be written all leave the recording exactly where it was, still on the program, still able to
+    /// be asked again. Stopping the old device happens afterwards, where it can cost nothing.
     /// </para>
     /// </remarks>
     /// <param name="destination">The endpoint to record from here on.</param>
-    internal void MoveTo(CaptureTarget.Endpoint destination)
+    /// <param name="sayingSo">
+    /// Written down before a byte of the new device reaches this recording, and the last thing that
+    /// may fail. It is this way round because of which lie is worse: a folder claiming a move that
+    /// did not happen says the machine's own audio is in a file that only holds the program's, and
+    /// somebody reads that as their notifications being there when they are not. The other way
+    /// round is the same sentence with the truth in it, and it is the one this exists to prevent.
+    /// </param>
+    internal void MoveTo(CaptureTarget.Endpoint destination, Action sayingSo)
     {
         ArgumentNullException.ThrowIfNull(destination);
+        ArgumentNullException.ThrowIfNull(sayingSo);
 
         var placedBy = stream.Positions
             ?? throw new AudioCaptureException(
@@ -160,6 +199,18 @@ public sealed class CaptureSource : IDisposable
                     + $"{Format}, so it cannot take over: what is already recorded and what would "
                     + "follow it would be two different sources in one file.");
             }
+
+            Underway(next);
+            sayingSo();
+        }
+        catch (COMException refused)
+        {
+            // Windows' own refusal, said as a sentence about the device somebody chose — the same
+            // wrapping opening a source for the first time does, and here it is what keeps a raw
+            // COM failure from reaching a caller that is catching for a recording.
+            DeviceRelease.LetGoOf(next);
+            throw new AudioCaptureException(
+                $"Windows would not record '{destination.Name}': {refused.Message}", refused);
         }
         catch
         {
@@ -167,43 +218,29 @@ public sealed class CaptureSource : IDisposable
             throw;
         }
 
-        running = false;
-        stream.Stop();
-
-        if (!stream.Stopped())
-        {
-            // Nothing is taken away from a device that did not answer, here as anywhere else — and
-            // the device that would have taken over is let go of, because nothing was recorded
-            // through it and a second handle held open helps nobody.
-            DeviceRelease.LetGoOf(next);
-            throw new AudioDeviceWedgedException(
-                $"The {Channel} stream on '{Listening.Name}' did not stop within "
-                + $"{CaptureLoop.StopsWithin.TotalSeconds:0} seconds, so nothing took its place. "
-                + $"Its {Bytes} bytes of audio are in '{File.Name}' and stay there.");
-        }
-
         var previous = stream;
 
-        // Everything the callbacks read is set before the new stream can call one, and the gate is
-        // cleared here rather than after starting: a device that ends the moment it starts would
-        // otherwise have said so into a flag this line then wiped.
-        stream = next;
-        Listening = destination;
+        // Cleared before the handover rather than after it, and the race that leaves is the one
+        // worth having: the old stream ending in the moment between these lines is reported as this
+        // source having ended, which stops the recording and says so. The other order loses a new
+        // stream that died on its first block, and a meeting recording nothing while everything
+        // says it is fine is the failure this codebase is built against.
         failure = null;
         ended.Reset();
+        Listening = destination;
 
-        try
-        {
-            next.Start(Captured, Ended);
-            running = true;
-        }
-        finally
-        {
-            // Whatever the new device said. The old one is stopped and joined by now, so what it
-            // holds is nobody's — and a start that threw leaves this source holding a stream that
-            // never ran, which is what stopping and letting go already handle.
-            previous.Dispose();
-        }
+        // The one line the move happens on. Every block the new device has handed over so far was
+        // dropped, and from here they are the recording — the old one's are dropped by the same
+        // rule read the other way, so the two never write into one spool.
+        Volatile.Write(ref stream, next);
+
+        // Afterwards, and nothing here throws: the channel is recording again, and a device that
+        // will not let go is a handle held rather than a meeting lost. One that was given up on
+        // keeps everything it is still using, and is asked again when this source is let go of.
+        previous.Stop();
+        previous.Stopped();
+        previous.Dispose();
+        replaced.Add(previous);
     }
 
     /// <summary>
@@ -278,6 +315,14 @@ public sealed class CaptureSource : IDisposable
     /// </remarks>
     public void Dispose()
     {
+        // Asked again, whatever they said last time. One of these was given up on and kept every
+        // handle it was using; a loop that came back late is only noticed by whoever asks next,
+        // and this is the last chance anybody does.
+        foreach (var earlier in replaced)
+        {
+            DeviceRelease.LetGoOf(earlier);
+        }
+
         try
         {
             stream.Dispose();
@@ -442,9 +487,40 @@ public sealed class CaptureSource : IDisposable
     {
         // The device was already initialised on this thread, so one Windows will not hand over
         // threw before here rather than on a capture loop nobody is watching.
-        stream.Start(Captured, Ended);
+        Underway(stream);
         StartedAt = UtcTimestamp.From(TimeProvider.System.GetUtcNow());
+        openedAt = TimeProvider.System.GetTimestamp();
         running = true;
+    }
+
+    /// <summary>
+    /// Starts <paramref name="opening"/> draining, and takes what it hands over only while it is
+    /// the stream this source is on.
+    /// </summary>
+    /// <remarks>
+    /// That condition is the whole of how a channel moves from one device to another without ever
+    /// having two of them writing into one spool, and without a moment where neither does. A stream
+    /// starts before it is the source's — its blocks going nowhere, which is what proves the device
+    /// is really running — and the one it replaces stops being the source's the instant the field
+    /// changes, whatever it is still handing over on its way out.
+    /// </remarks>
+    private void Underway(WasapiStream opening)
+    {
+        opening.Start(
+            packet =>
+            {
+                if (ReferenceEquals(Volatile.Read(ref stream), opening))
+                {
+                    Captured(packet);
+                }
+            },
+            stopped =>
+            {
+                if (ReferenceEquals(Volatile.Read(ref stream), opening))
+                {
+                    Ended(stopped);
+                }
+            });
     }
 
     /// <summary>
@@ -463,11 +539,18 @@ public sealed class CaptureSource : IDisposable
         // is no branch here on purpose: the whole decision is one object, so a build that broke
         // pausing would have to delete this line rather than get a condition subtly wrong.
         var heard = pause.Reaching(packet);
+        var level = Levels.Peak(heard.Samples.Span, Format);
 
         // The tally is fed the same block the spool is, silence and all, because what it counts is
         // where the recording got to and not what was in it. A pause is part of the meeting.
         tally.Add(heard);
-        meter.Add(Levels.Peak(heard.Samples.Span, Format));
+        meter.Add(level);
+
+        // The block as the device handed it over, which is the same block unless the meeting is
+        // paused — and the pause is the only thing that ever substitutes one, so the reading is
+        // taken twice only for the stretch where the two really are different.
+        delivered.Add(ReferenceEquals(heard, packet) ? level : Levels.Peak(packet.Samples.Span, Format));
+
         spool.Write(heard);
     }
 

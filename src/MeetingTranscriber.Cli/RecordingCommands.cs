@@ -108,7 +108,7 @@ public static class RecordingCommands
 
         var wholeMachine = new WholeMachine(said =>
         {
-            recording.RecordTheWholeMachine(Clock.Now());
+            recording.RecordTheWholeMachine();
             Report.Line(said, "channel 0", $"{recording.Mode} — everything this machine plays");
         });
 
@@ -150,7 +150,7 @@ public static class RecordingCommands
                         "   ",
                         recording.Sources.Select(source => $"{Name(source.Channel)} {source.Level()}")));
 
-                wholeMachine.Consider(recording.HeardNothingFromTheProgram(Clock.Now()), output);
+                wholeMachine.Consider(recording.HeardNothingFromTheProgram(), output);
 
                 if (recording.Sources.Any(source => source.HasEnded))
                 {

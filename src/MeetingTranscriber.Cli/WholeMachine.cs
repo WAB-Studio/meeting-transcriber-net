@@ -37,6 +37,13 @@ internal sealed class WholeMachine(Action<TextWriter> take)
     {
         ArgumentNullException.ThrowIfNull(output);
 
+        // Read every second, offer or no offer, and that is what makes it an answer to the offer
+        // rather than a key somebody happened to have typed. Anything left in the buffer would
+        // otherwise be waiting there when the warning appeared and would move the recording on the
+        // spot — a choice made before there was anything to choose, and read as informed consent to
+        // put every other application on the machine in the file.
+        var pressed = Pressed();
+
         if (heardNothing && !offered)
         {
             offered = true;
@@ -46,9 +53,13 @@ internal sealed class WholeMachine(Action<TextWriter> take)
                 $"nothing at all has come from that program. Press {Key} to record the whole "
                 + "machine instead, which puts notifications and every other application in the "
                 + "recording. The meeting keeps running either way.");
+
+            // Nothing typed in the second the offer was made answers it either: it was typed before
+            // the words were on screen.
+            return;
         }
 
-        if (offered && Pressed())
+        if (offered && pressed)
         {
             Press(output);
         }
@@ -75,10 +86,15 @@ internal sealed class WholeMachine(Action<TextWriter> take)
         }
         catch (AudioCaptureException refused)
         {
-            // Reported and not thrown. The meeting is still being recorded — both devices are
-            // where they were — and ending a run over a move that did not happen would cost the
-            // recording it was reporting on.
-            Report.Line(output, "not moved", refused.Message);
+            // Reported and not thrown: the meeting is still being recorded either way, and ending
+            // a run over this would cost the recording it was reporting on.
+            //
+            // Under the channel's own name and not under a word like "not moved", because the two
+            // things that reach here are not the same thing. A move that was refused leaves the
+            // channel where it was; a move that happened and could not be written down leaves it
+            // moved, with the folder's account of it short — and each of those messages says which
+            // of the two it is. A label asserting one of them would be wrong half the time.
+            Report.Line(output, "channel 0", refused.Message);
         }
     }
 

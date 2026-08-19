@@ -225,11 +225,10 @@ public sealed class CaptureSession : IDisposable
     /// <see cref="RecordTheWholeMachine"/>, and doing nothing about it is an answer too — a meeting
     /// where only the room is worth recording is a meeting this records.
     /// </remarks>
-    /// <param name="now">The moment being asked about.</param>
-    public bool HeardNothingFromTheProgram(UtcTimestamp now)
+    public bool HeardNothingFromTheProgram()
     {
         var others = On(AudioChannel.Loopback);
-        return SilentProgram.HeardNothing(others.Listening, others.Loudest, now - others.StartedAt);
+        return SilentProgram.HeardNothing(others.Listening, others.Delivered, others.OpenFor);
     }
 
     /// <summary>
@@ -249,14 +248,20 @@ public sealed class CaptureSession : IDisposable
     /// recording onto a device that is not yet producing and open a hole at the seam.
     /// </para>
     /// <para>
+    /// <b>Not on a thread somebody is looking at.</b> Three devices are dealt with here — one
+    /// opened, one stopped, one let go of — and every one of them has its own deadline for a
+    /// driver that does not answer. The meeting carries on being recorded throughout, because the
+    /// devices doing it are not this thread; what a window would freeze is itself.
+    /// </para>
+    /// <para>
     /// What the folder then says is on the card until the move and beside it afterwards: the card
     /// is what was true when the devices opened and is never rewritten, and the change is one line
-    /// appended to <see cref="SpoolChanges"/>. A move that really happened and could not be written
-    /// down says so — the audio is right and the folder's account of it is short.
+    /// appended to <see cref="SpoolChanges"/>. That line lands before the new device's audio does,
+    /// so a machine dying in the middle of this leaves a folder that overstates what is in the file
+    /// rather than one that hides it.
     /// </para>
     /// </remarks>
-    /// <param name="now">When it was chosen.</param>
-    public void RecordTheWholeMachine(UtcTimestamp now)
+    public void RecordTheWholeMachine()
     {
         lock (gate)
         {
@@ -278,12 +283,19 @@ public sealed class CaptureSession : IDisposable
             silence ??= SilentPlayback.On(playback);
 
             var destination = new CaptureTarget.Endpoint(playback);
-            others.MoveTo(destination);
 
-            SpoolChanges.Append(
+            // The moment is read where the move happens rather than where somebody pressed. What
+            // separates the two is three devices being dealt with, each with a deadline of its own,
+            // and a folder saying the machine's audio began seconds before it did is a folder that
+            // is wrong about the one thing it was written to be right about.
+            others.MoveTo(destination, () => SpoolChanges.Append(
                 folder,
                 new SourceChanged(
-                    now, AudioChannel.Loopback, destination.Name, playback.Id, program.Name));
+                    UtcTimestamp.From(TimeProvider.System.GetUtcNow()),
+                    AudioChannel.Loopback,
+                    destination.Name,
+                    playback.Id,
+                    program.Name)));
         }
     }
 

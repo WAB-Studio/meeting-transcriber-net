@@ -15,12 +15,14 @@ namespace MeetingTranscriber.Audio;
 /// <param name="Channel">Which channel moved.</param>
 /// <param name="Heard">What it listens to from here on, as a person would name it.</param>
 /// <param name="DeviceId">
-/// The endpoint it reopens by, or nothing when what it moved to is not a device. The one field
-/// that says which of the two it is, exactly as on the card.
+/// The endpoint it reopens by. Never absent, and that is the shape of what can happen rather than
+/// a field nobody filled in: what a channel is ever moved to is a device. Somebody choosing a
+/// program to follow is somebody starting a recording, so a change naming no device describes a
+/// state this application cannot produce and is refused rather than read.
 /// </param>
 /// <param name="WasHearing">What it was listening to until then.</param>
 public sealed record SourceChanged(
-    UtcTimestamp At, AudioChannel Channel, string Heard, string? DeviceId, string WasHearing);
+    UtcTimestamp At, AudioChannel Channel, string Heard, string DeviceId, string WasHearing);
 
 /// <summary>
 /// What somebody changed about a recording while it was being recorded, beside the card that says
@@ -104,8 +106,10 @@ public static class SpoolChanges
     /// <remarks>
     /// A last line that never finished landing is dropped, the way a spool's last block is: it is
     /// what a machine dying mid-write leaves, and everything before it is still an account of the
-    /// recording. A line that will not read anywhere else is not that — it is a file that has
-    /// stopped being what it says it is, and it throws.
+    /// recording. What says a line never finished is that the file ends without ending the line —
+    /// a complete line that will not read is not a torn write at all, it is a file that has stopped
+    /// being what it says it is, and reading it as "nothing changed" would be this file failing in
+    /// exactly the direction it exists to prevent. That one throws.
     /// </remarks>
     public static IReadOnlyList<SourceChanged> Find(DirectoryInfo folder)
     {
@@ -115,14 +119,21 @@ public static class SpoolChanges
             return [];
         }
 
-        var lines = File.ReadAllLines(file.FullName)
-            .Where(line => !string.IsNullOrWhiteSpace(line))
+        var written = File.ReadAllText(file.FullName);
+        var lines = written
+            .Split('\n')
+            .Select(line => line.Trim('\r'))
+            .Where(line => line.Length > 0)
             .ToArray();
+
+        // The last line of a file that does not end its last line, and nothing else. Every line
+        // above one of those was whole before the next one was begun.
+        var mayBeTorn = !written.EndsWith('\n');
 
         var changes = new List<SourceChanged>(lines.Length);
         for (var index = 0; index < lines.Length; index++)
         {
-            var change = Read(file, lines[index], isLast: index == lines.Length - 1);
+            var change = Read(file, lines[index], isLast: mayBeTorn && index == lines.Length - 1);
             if (change is not null)
             {
                 changes.Add(change);
@@ -166,7 +177,7 @@ public static class SpoolChanges
                 CapturedAudio.ChannelAt(
                     change.Channel ?? throw new AudioContractException("A change names no channel.")),
                 Required(file, "heard", change.Heard),
-                change.DeviceId,
+                Required(file, "device", change.DeviceId),
                 Required(file, "was_hearing", change.WasHearing));
         }
         catch (Exception rejected)

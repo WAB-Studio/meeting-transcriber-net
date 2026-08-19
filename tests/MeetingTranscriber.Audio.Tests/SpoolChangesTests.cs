@@ -114,6 +114,37 @@ public sealed class SpoolChangesTests : IDisposable
     }
 
     /// <summary>
+    /// What a channel is ever moved to is a device, so a change naming none describes a state this
+    /// application cannot produce. Reading it anyway would put a recording that followed a program
+    /// on a folder saying it moved to another program, which nothing can do.
+    /// </summary>
+    [Fact]
+    public void A_change_that_names_no_device_is_refused()
+    {
+        File.WriteAllText(
+            SpoolChanges.In(folder).FullName,
+            "{\"at\":\"2026-08-15T10:14:52.125Z\",\"channel\":0,\"heard\":\"Speakers\","
+            + "\"was_hearing\":\"teams\"}\n");
+
+        Should.Throw<AudioCaptureException>(() => SpoolChanges.Find(folder))
+            .Message.ShouldContain("device");
+    }
+
+    /// <summary>
+    /// A last line that will not read is only a torn write if the file stops in the middle of it.
+    /// One that was finished and still will not read is a file that has stopped being what it says
+    /// it is, and reading it as "nothing was moved" would be this file failing in exactly the
+    /// direction it exists to prevent.
+    /// </summary>
+    [Fact]
+    public void A_finished_line_that_will_not_read_is_refused_rather_than_taken_for_a_torn_write()
+    {
+        File.WriteAllText(SpoolChanges.In(folder).FullName, "{\"at\":\"2026-08-15T10:1\n");
+
+        Should.Throw<AudioCaptureException>(() => SpoolChanges.Find(folder));
+    }
+
+    /// <summary>
     /// A recording is never written over another one, and that covers what it says about itself as
     /// much as its blocks: a folder still holding one recording's changes is refused before a
     /// device is opened.
