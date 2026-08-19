@@ -346,10 +346,12 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             meeting.HasKey(entity => entity.Id);
             meeting.HasIndex(entity => entity.StartedAt);
             // The meetings that are still here, newest first: equality column first, then the one
-            // being ordered on. `CorpusRebuild.Run` and `CorpusSearch` are who ask for that shape.
-            // The meetings window no longer does — it reads every row and drops what it does not
-            // want in memory, because one of the things it keeps is a meeting on its way out that
-            // is stopped on a person, and `MeetingWork.Listed` says why.
+            // being ordered on. `CorpusRebuild.Run` and `CorpusSearch` ask for exactly that, and
+            // use both columns. `MeetingWork.Listed` asks for it or the meetings stopped on a
+            // person — one `OR`, and `MeetingWork.Listed` says why — which SQLite answers by
+            // searching this index on the equality column, the jobs one for the other side, and
+            // sorting the union itself. Half the index, and the rows still narrowed in the
+            // database rather than in the window.
             meeting.HasIndex(entity => new { entity.LifecycleState, entity.StartedAt });
             meeting.HasOne<MeetingTemplate>().WithMany().HasForeignKey(entity => entity.TemplateId)
                 .OnDelete(DeleteBehavior.SetNull);

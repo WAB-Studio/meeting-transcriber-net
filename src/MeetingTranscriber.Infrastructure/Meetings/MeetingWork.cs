@@ -57,10 +57,12 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// thing that hid the charge.
     /// </para>
     /// <para>
-    /// Hence no lifecycle in the query: a `WHERE` mirroring <see cref="OwedWork.WaitsOnSomebody"/>
-    /// would decide one rule in two places, and the day that rule widened the query would quietly
-    /// stop fetching what it now wants. The cost is the `(lifecycle_state, started_at)` index,
-    /// which this read no longer uses.
+    /// Both halves of that are asked of the database, because a row this list will not show is a
+    /// row it should not read, nor read a meeting's files and jobs to find out. What makes a
+    /// meeting wait on somebody is a job row, which SQL can ask about, and the asking is
+    /// <see cref="OwedWork.StopsOnAPerson"/> — the same expression <see cref="OwedWork.Of"/> puts
+    /// to the rows it was handed, so the query cannot come to want one set of meetings while the
+    /// rule wants another.
     /// </para>
     /// <para>
     /// One thing whoever builds deletion inherits: `processing_jobs.meeting_id` cascades, so
@@ -75,8 +77,14 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// </remarks>
     public IReadOnlyList<MeetingAndWork> Listed()
     {
+        var stopped = context.ProcessingJobs
+            .Where(OwedWork.StopsOnAPerson)
+            .Select(job => job.MeetingId);
+
         var meetings = context.Meetings
             .AsNoTracking()
+            .Where(meeting => meeting.LifecycleState == LifecycleState.Active
+                || stopped.Contains(meeting.Id))
             .OrderByDescending(meeting => meeting.StartedAt)
             .ToList();
 
@@ -88,8 +96,6 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
             .Select(meeting => new MeetingAndWork(
                 meeting,
                 OwedWork.Of(meeting.Id, files[meeting.Id], jobs[meeting.Id])))
-            .Where(entry => entry.Meeting.LifecycleState is LifecycleState.Active
-                || entry.Owed.WaitsOnSomebody)
             .ToList();
     }
 

@@ -1,3 +1,5 @@
+using System.Linq.Expressions;
+
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Jobs;
 
@@ -40,6 +42,20 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
     /// which is what keeps the press that spends money from being the one with no way back.
     /// </summary>
     public bool MayBeLeft => Standing.MayBeLeft();
+
+    /// <summary>
+    /// The one job row that stops a meeting on a person, said once as an expression because the
+    /// same question gets asked in two places that cannot share a call: <see cref="Of"/> asks it
+    /// of rows already in hand, and a query wanting to know which meetings wait on somebody asks
+    /// it of the table without loading any of them. One rule, so a screen and the query feeding
+    /// it can never disagree about which meetings are stopped.
+    /// </summary>
+    public static Expression<Func<ProcessingJob, bool>> StopsOnAPerson { get; } =
+        job => job.State == JobState.AwaitingUser;
+
+    // Compiled once, and after the property it is built from: static initialisers run in the
+    // order they are written, so moving this above it would compile a null.
+    private static readonly Predicate<ProcessingJob> Stopped = StopsOnAPerson.Compile().Invoke;
 
     /// <summary>
     /// True when this meeting is stopped on a person. The state with money or data riding on it,
@@ -92,7 +108,7 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
         // turned up, or a capture the restart stopped, would otherwise be invisible on the only
         // screen that shows one at all — and one of them would have an accent button beside it
         // offering to spend again.
-        var standing = Array.Exists(mine, job => job.State is JobState.AwaitingUser)
+        var standing = Array.Exists(mine, Stopped)
             ? StageStanding.StoppedOnAPerson
             : stage.Offers() is { } next
                 ? MeetingStages.StandingOf(mine.Where(job => job.Kind == next).Select(job => job.State))
