@@ -40,7 +40,7 @@ which lands.
 
 Read `ISA.md` **at the PR's tip**, not from disk.
 
-## Step 1 — The five checks
+## Step 1 — The six checks
 
 1. **Did it do what the card asked?** The card description against the diff, never against the PR
    body. What is missing goes to `reasons`.
@@ -56,6 +56,9 @@ Read `ISA.md` **at the PR's tip**, not from disk.
 5. **Were cards moved that the record does not declare?** List the board and compare against
    `skipped[]`. An undeclared card in `pending` is one quietly got rid of. For declared ones, open
    the card: if it was merely hard and needs nobody, put it back to `Open` and record that.
+6. **Is a decision the card settled one the framework or the platform will not take?** Only where
+   the diff shows it. Name what refuses it — taste is not a finding. This is the one check that may
+   go against the card rather than the diff.
 
 ## Step 2 — CI
 
@@ -94,7 +97,9 @@ Three tests, all of which must pass for `ask`:
 - You can say in one sentence what goes wrong when nobody decides.
 
 Read the card's `**Grilled.**` comment first. A decision settled there that the diff went the other
-way on is `hold`, not `ask`.
+way on is `hold`, not `ask` — unless it went that way over check 6, and then it is `ask` and the
+card is what moves. Check 6 is `ask` even though the second test fails: the repo can say an answer
+is wrong and still not say which one replaces it.
 
 **`pass_with_followup`** — the diff holds up and named work is left over.
 

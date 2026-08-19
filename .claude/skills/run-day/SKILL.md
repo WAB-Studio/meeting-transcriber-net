@@ -90,7 +90,17 @@ PR, what has to be settled — and go on.
 **The second card parked in one day ends it**, naming both. A day that ends on that ceiling twice
 means the grill is not catching what it should. Say so plainly.
 
-## 5 · What you say, and when
+## 5 · A decision the user hands you
+
+Decisions arrive outside a grill — over a verdict, in passing, to get a cycle moving — and the
+grill's check on them does not arrive with them. It runs here: an answer the framework or the
+platform will not take gets said before you write it on a card and before you act on it, naming
+what refuses it. Taste fires nothing.
+
+Then take whatever they answer second. What you may not do is write down an answer you had reason
+to question and keep the reason.
+
+## 6 · What you say, and when
 
 **Silence is the default.** You speak when a card is picked, when a cycle closes, when a rule fires,
 and when the day ends. Somebody who asked to be left alone for the day does not want a heartbeat.
@@ -104,7 +114,7 @@ and when the day ends. Somebody who asked to be left alone for the day does not 
 mid-day the day stops where it stood. What survives is on the board and on GitHub, which is the
 whole point, and the next day picks it up from there.
 
-## 6 · Do not touch the repo yourself
+## 7 · Do not touch the repo yourself
 
 The worker owns the checkout. You do not edit files, do not commit and do not switch branches
 between cycles — a dirty tree stops the next worker in its preflight, including over a fix you

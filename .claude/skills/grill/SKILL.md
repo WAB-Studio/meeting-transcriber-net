@@ -83,7 +83,16 @@ its comments, the code it is about, `arquitectura.md`, `ISA.md`.
 
 Then one question at a time, with the options you actually see and what each costs.
 
-## 5 · What you leave
+## 5 · An answer that will not build
+
+They decide what the app does, not what the framework and the platform will do. An answer can be
+right about the product and impossible as given. Say so in the same message as the answer, naming
+what refuses it — once it is on the card it reads as settled to everybody downstream.
+
+Taste fires nothing. Then they answer again, and a cost they took anyway goes in that answer's own
+line, or the next session raises the same objection.
+
+## 6 · What you leave
 
 **Question, answer. Never why.** The alternative that lost, the reasoning that settled it, the case
 that made it obvious: nobody acts on any of those. A decision is followed, not understood.
@@ -161,7 +170,7 @@ python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" move <id> --status O
 ```
 
 
-## 6 · How many
+## 7 · How many
 
 One card is roughly one working session, and some come back unfinished. **Eight or nine grilled
 cards is a full day; three is a morning.** Grill them in one sitting — the user already has the
