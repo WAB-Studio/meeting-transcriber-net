@@ -63,18 +63,26 @@ public sealed record ExportedSource(AudioChannel Channel, FileInfo Wav, int Bloc
 /// <param name="Folder">Where the recording is.</param>
 /// <param name="Card">What it says about itself, or nothing when it never said.</param>
 /// <param name="Unreadable">
-/// Why the card here could not be read, or nothing when there was one and it read, or none. A
-/// recording whose card was torn in half is still a recording, so this is said rather than thrown:
-/// one damaged folder that stopped the others being offered would be the crash winning twice.
+/// Why what this folder says about itself could not be read — the card or the changes beside it —
+/// or nothing when it read, or when there was none. A recording whose card was torn in half is
+/// still a recording, so this is said rather than thrown: one damaged folder that stopped the
+/// others being offered would be the crash winning twice.
 /// </param>
 /// <param name="Running">Whether a capture still holds these files, which on this machine means a meeting in progress.</param>
 /// <param name="Sources">What is on disk for each channel, in channel order.</param>
+/// <param name="Changed">
+/// What somebody moved while it was recording, in the order it happened, which is nothing for
+/// almost every recording. The card says what a channel started on and this says what it ended on,
+/// so a folder whose channel 0 was moved to the whole machine says so rather than still naming the
+/// program it opened against.
+/// </param>
 public sealed record UnfinishedRecording(
     DirectoryInfo Folder,
     SpoolCard? Card,
     string? Unreadable,
     bool Running,
-    IReadOnlyList<UnfinishedSource> Sources)
+    IReadOnlyList<UnfinishedSource> Sources,
+    IReadOnlyList<SourceChanged> Changed)
 {
     /// <summary>
     /// Reads every source through and says what survived, changing nothing. The recording is still
@@ -303,10 +311,12 @@ public static class UnfinishedRecordings
         }
 
         SpoolCard? card = null;
+        IReadOnlyList<SourceChanged> changed = [];
         string? unreadable = null;
         try
         {
             card = SpoolManifest.Find(folder);
+            changed = SpoolChanges.Find(folder);
         }
         catch (AudioCaptureException torn)
         {
@@ -318,6 +328,7 @@ public static class UnfinishedRecordings
             card,
             unreadable,
             Array.Exists(sources, source => BlockSpool.IsStillBeingWritten(source.Blocks)),
-            sources);
+            sources,
+            changed);
     }
 }

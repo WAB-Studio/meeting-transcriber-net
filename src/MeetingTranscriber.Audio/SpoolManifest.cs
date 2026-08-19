@@ -34,23 +34,25 @@ public sealed record SpooledSource(AudioChannel Channel, string Heard, string? D
 /// <param name="StartedAt">When the recording started.</param>
 /// <param name="Profile">What the audio will be transcribed as, which its channel count has to match.</param>
 /// <param name="Sources">What fed each channel, in channel order.</param>
-/// <param name="FellBack">
-/// Why channel 0 is not following the program it was asked to, or nothing when it is — or when no
-/// program was named.
-/// </param>
 public sealed record SpoolCard(
     Guid MeetingId,
     Guid CaptureRunId,
     UtcTimestamp StartedAt,
     SourceProfile Profile,
-    IReadOnlyList<SpooledSource> Sources,
-    string? FellBack)
+    IReadOnlyList<SpooledSource> Sources)
 {
     /// <summary>How channel 0 was obtained, read off what the card says fed it.</summary>
     /// <remarks>
+    /// <para>
     /// Derived rather than stored. A card carrying both this and the source beside it would have
     /// two answers to the same question, and the day they disagreed nothing would say which one
     /// the recording was actually made under.
+    /// </para>
+    /// <para>
+    /// How it was obtained when it opened, which is the only thing this file ever says. A channel 0
+    /// somebody moved to the whole machine an hour in is <see cref="SpoolChanges"/>, and reading
+    /// this alone for what a recording holds would name the program it started against.
+    /// </para>
     /// </remarks>
     public CaptureMode Mode => On(AudioChannel.Loopback).DeviceId is null
         ? CaptureMode.ProcessLoopback
@@ -176,8 +178,8 @@ public static class SpoolManifest
     /// <remarks>
     /// Every field is required. The whole worth of this file is being trusted when there is
     /// nothing left to check it against, so a card answering four of the five questions is one
-    /// somebody would act on; what is genuinely allowed to be absent is why channel 0 fell back,
-    /// because most recordings never asked it to follow anything.
+    /// somebody would act on; the one field allowed to be absent is a source's device, and that is
+    /// the field that says the channel was following a program rather than listening to one.
     /// </remarks>
     public static SpoolCard Read(FileInfo file)
     {
@@ -211,8 +213,7 @@ public static class SpoolManifest
             Identifier(file, "capture_run", card.CaptureRun),
             Parsed(file, "started_at", () => UtcTimestamp.Parse(Required(file, "started_at", card.StartedAt))),
             profile,
-            Sources(file, card, profile),
-            card.FellBack);
+            Sources(file, card, profile));
     }
 
     /// <summary>
@@ -263,8 +264,7 @@ public static class SpoolManifest
         card.StartedAt.ToStorage(),
         card.Profile.ToWireName(),
         [.. card.Sources.Select(source => new Source(
-            CapturedAudio.IndexOf(source.Channel), source.Heard, source.DeviceId))],
-        card.FellBack);
+            CapturedAudio.IndexOf(source.Channel), source.Heard, source.DeviceId))]);
 
     private static Guid Identifier(FileInfo file, string field, string? value) =>
         Guid.TryParse(Required(file, field, value), out var identifier)
@@ -306,8 +306,7 @@ public static class SpoolManifest
         [property: JsonPropertyName("capture_run")] string? CaptureRun,
         [property: JsonPropertyName("started_at")] string? StartedAt,
         [property: JsonPropertyName("source_profile")] string? SourceProfile,
-        [property: JsonPropertyName("sources")] IReadOnlyList<Source>? Sources,
-        [property: JsonPropertyName("fell_back")] string? FellBack);
+        [property: JsonPropertyName("sources")] IReadOnlyList<Source>? Sources);
 
     private sealed record Source(
         [property: JsonPropertyName("channel")] int? Channel,

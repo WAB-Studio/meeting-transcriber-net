@@ -102,8 +102,7 @@ public sealed class MeetingRecordingsTests : IDisposable
                     followedAProgram ? "Teams (4120)" : "Speakers",
                     followedAProgram ? null : "{0.0.0.00000000}.{loopback}"),
                 new SpooledSource(AudioChannel.Microphone, "Headset", "{0.0.1.00000000}.{mic}"),
-            ],
-            FellBack: null);
+            ]);
 
         var run = MeetingRecordings.Began(context, card);
 
@@ -264,8 +263,7 @@ public sealed class MeetingRecordingsTests : IDisposable
         [
             new SpooledSource(AudioChannel.Loopback, "Speakers", "{0.0.0.00000000}.{loopback}"),
             new SpooledSource(AudioChannel.Microphone, "Headset", "{0.0.1.00000000}.{mic}"),
-        ],
-        FellBack: null);
+        ]);
 
     /// <summary>Both spools of a meeting, written the way a capture writes them.</summary>
     private static void Spools(DirectoryInfo into, double seconds)

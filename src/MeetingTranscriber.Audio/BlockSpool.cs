@@ -130,6 +130,7 @@ public static class BlockSpool
             .SelectMany(blocks => new[] { blocks, PlaybackFor(blocks) })
             .Append(MeetingAudio.In(folder))
             .Append(SpoolManifest.In(folder))
+            .Append(SpoolChanges.In(folder))
             .FirstOrDefault(file => file.Exists);
 
         if (taken is not null)

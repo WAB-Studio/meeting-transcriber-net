@@ -1,4 +1,5 @@
 ﻿using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Time;
 
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
@@ -17,24 +18,49 @@ namespace MeetingTranscriber.Audio;
 /// </para>
 /// <para>
 /// Channel 0 is either everything the machine plays or one program and what it started, and that
-/// is the only thing the two shapes of recording disagree about. A program that cannot be followed
-/// is not a failed recording: the meeting still happened, so channel 0 falls back to the whole
-/// machine and the session says it did, which is a warning about notifications and other
-/// applications being in the file rather than a reason to record nothing.
+/// is the only thing the two shapes of recording disagree about. Which of the two it is is
+/// somebody's, start to finish: a program Windows will not follow stops the recording rather than
+/// quietly opening the whole machine, and a program that turns out to be silent is moved to the
+/// whole machine only when somebody says to. Recording every notification and every other
+/// application on the machine is not something this decides on a person's behalf.
 /// </para>
 /// </remarks>
 public sealed class CaptureSession : IDisposable
 {
     private readonly CaptureSource[] sources;
-    private readonly SilentPlayback? silence;
     private readonly RecordingPause pause;
+    private readonly DirectoryInfo folder;
+    private readonly AudioDevice playback;
+
+    /// <summary>
+    /// One caller's, and it is what keeps a recording from being moved while it is being stopped.
+    /// Pausing does not take it — that one crosses threads by design and is one write — and neither
+    /// does anything the devices do: what this covers is the two things a person can press.
+    /// </summary>
+    private readonly Lock gate = new();
+
+    /// <summary>
+    /// What is played into the playback endpoint so that it keeps handing packets over, or nothing
+    /// while channel 0 is following a program. Not readonly, because moving channel 0 to the whole
+    /// machine is where a recording that never needed it starts needing it.
+    /// </summary>
+    private SilentPlayback? silence;
+
+    private bool over;
 
     private CaptureSession(
-        CaptureSource[] sources, SilentPlayback? silence, SpoolCard card, RecordingPause pause)
+        CaptureSource[] sources,
+        SilentPlayback? silence,
+        SpoolCard card,
+        RecordingPause pause,
+        DirectoryInfo folder,
+        AudioDevice playback)
     {
         this.sources = sources;
         this.silence = silence;
         this.pause = pause;
+        this.folder = folder;
+        this.playback = playback;
         Card = card;
     }
 
@@ -47,12 +73,10 @@ public sealed class CaptureSession : IDisposable
     public SpoolCard Card { get; }
 
     /// <summary>
-    /// Why channel 0 is not following the program it was asked to, or nothing when it is — or when
-    /// no program was named.
+    /// How channel 0 is being obtained now, read off what it is actually listening to. The card
+    /// says how it was obtained when the devices opened, and the two differ from the moment
+    /// somebody moves it — see <see cref="RecordTheWholeMachine"/>.
     /// </summary>
-    public string? FellBack => Card.FellBack;
-
-    /// <summary>How channel 0 was obtained, read off what it actually opened.</summary>
     public CaptureMode Mode => On(AudioChannel.Loopback).Listening is CaptureTarget.Program
         ? CaptureMode.ProcessLoopback
         : CaptureMode.FullLoopback;
@@ -62,14 +86,17 @@ public sealed class CaptureSession : IDisposable
     /// what the recording is, and starts recording.
     /// </summary>
     /// <remarks>
-    /// The card is written once both devices are open, because until then nothing knows whether
-    /// channel 0 got the program it was asked for. A recording whose folder cannot be made to say
+    /// The card is written once both devices are open, because until then nothing knows what each
+    /// channel really got. A recording whose folder cannot be made to say
     /// what it is does not go on: what it would leave behind is blocks nobody can attach to a
     /// meeting, which is the case this whole path exists to prevent.
     /// </remarks>
     /// <param name="folder">Where the two spools and the card go. Made if it is not there.</param>
     /// <param name="meetingId">The meeting being recorded, fixed before any of this is called.</param>
-    /// <param name="playback">The endpoint channel 0 listens to, and falls back to.</param>
+    /// <param name="playback">
+    /// The endpoint channel 0 listens to when it is not following a program, and the one it is
+    /// moved onto if somebody later chooses the whole machine.
+    /// </param>
     /// <param name="microphone">The device channel 1 listens to.</param>
     /// <param name="follow">
     /// The program channel 0 should follow, or nothing to record the whole machine.
@@ -90,7 +117,6 @@ public sealed class CaptureSession : IDisposable
 
         SilentPlayback? silence = null;
         var opened = new List<CaptureSource>();
-        string? fellBack = null;
 
         // One for the recording, handed to both sources: pausing has to be a single write, or one
         // channel records the room for as long as it takes to set the second flag.
@@ -117,20 +143,27 @@ public sealed class CaptureSession : IDisposable
                 {
                     opened.Add(Open(channel, target));
                 }
-                // A program that cannot be followed, and not a device that never answered. The
-                // exclusion is spelled out here rather than left to the shape of the type, because
-                // this is the decision that reads the difference: falling back would open the
-                // endpoint while the wedged device is still held by a thread nothing can stop, and
-                // it would do it on no answer at all. So a recording that could not be started does
-                // not start, which is what a person pressing record is told.
+                // A program Windows will not follow used to open the whole machine instead and note
+                // it on the card, and that is the one thing this must never do on its own: what it
+                // produces is a file carrying every notification and every other application on the
+                // machine, which is a different recording from the one somebody asked for and the
+                // kind of difference nobody notices until the meeting is over. So the recording does
+                // not start, and the one thing added here is the sentence saying what the choice
+                // costs — said once, rather than by each screen that has to say it.
+                //
+                // A device that never answered is not this and is not caught: there is nothing to
+                // offer somebody whose machine has stopped answering about a device, and the thread
+                // holding it cannot be stopped.
                 catch (AudioCaptureException cannot)
                     when (target is CaptureTarget.Program && cannot is not AudioDeviceWedgedException)
                 {
-                    fellBack = cannot.Message;
-                    opened.Add(Open(channel, new CaptureTarget.Endpoint(playback)));
+                    throw new AudioCaptureException(
+                        $"{cannot.Message} Nothing was recorded. Recording the whole machine "
+                        + "instead is somebody's choice and not this one's: it puts notifications "
+                        + "and every other application into the file.",
+                        cannot);
                 }
             }
-
         }
         catch
         {
@@ -157,8 +190,7 @@ public sealed class CaptureSession : IDisposable
                 .Select(source => new SpooledSource(
                     source.Channel,
                     source.Listening.Name,
-                    (source.Listening as CaptureTarget.Endpoint)?.Device.Id))],
-            fellBack);
+                    (source.Listening as CaptureTarget.Endpoint)?.Device.Id))]);
 
         try
         {
@@ -179,7 +211,80 @@ public sealed class CaptureSession : IDisposable
             throw;
         }
 
-        return new CaptureSession([.. opened], silence, card, pause);
+        return new CaptureSession([.. opened], silence, card, pause, folder, playback);
+    }
+
+    /// <summary>
+    /// Whether channel 0 has heard nothing at all since it opened, for long enough that following
+    /// that program is what is wrong rather than nobody having spoken yet.
+    /// </summary>
+    /// <remarks>
+    /// Asked rather than announced, and it goes on being true until somebody does something about
+    /// it: a program that cannot be followed throws nothing and ends nothing, so there is no moment
+    /// to raise and the only thing that says so is the level. What is done about it is
+    /// <see cref="RecordTheWholeMachine"/>, and doing nothing about it is an answer too — a meeting
+    /// where only the room is worth recording is a meeting this records.
+    /// </remarks>
+    /// <param name="now">The moment being asked about.</param>
+    public bool HeardNothingFromTheProgram(UtcTimestamp now)
+    {
+        var others = On(AudioChannel.Loopback);
+        return SilentProgram.HeardNothing(others.Listening, others.Loudest, now - others.StartedAt);
+    }
+
+    /// <summary>
+    /// Somebody choosing the whole machine's audio in place of the program channel 0 is following,
+    /// while the meeting is still running. The recording goes on being one recording.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The only way channel 0 ever moves. Nothing here reads a level and decides for itself: what
+    /// this costs is every notification and every other application landing in a file somebody will
+    /// send to a transcription service, and a recording is not allowed to take that on quietly
+    /// because a meter looked wrong for ten seconds.
+    /// </para>
+    /// <para>
+    /// The silence goes into the playback endpoint before the channel is moved onto it. An endpoint
+    /// hands nothing over while nothing is playing into it, so the other order would move the
+    /// recording onto a device that is not yet producing and open a hole at the seam.
+    /// </para>
+    /// <para>
+    /// What the folder then says is on the card until the move and beside it afterwards: the card
+    /// is what was true when the devices opened and is never rewritten, and the change is one line
+    /// appended to <see cref="SpoolChanges"/>. A move that really happened and could not be written
+    /// down says so — the audio is right and the folder's account of it is short.
+    /// </para>
+    /// </remarks>
+    /// <param name="now">When it was chosen.</param>
+    public void RecordTheWholeMachine(UtcTimestamp now)
+    {
+        lock (gate)
+        {
+            if (over)
+            {
+                throw new AudioCaptureException(
+                    "This recording has been stopped, so there is nothing left to move: what its "
+                    + "channel 0 holds is what it recorded.");
+            }
+
+            var others = On(AudioChannel.Loopback);
+            if (others.Listening is not CaptureTarget.Program program)
+            {
+                throw new AudioCaptureException(
+                    $"The {AudioChannel.Loopback} channel is already recording "
+                    + $"'{others.Listening.Name}', which is the whole machine's audio.");
+            }
+
+            silence ??= SilentPlayback.On(playback);
+
+            var destination = new CaptureTarget.Endpoint(playback);
+            others.MoveTo(destination);
+
+            SpoolChanges.Append(
+                folder,
+                new SourceChanged(
+                    now, AudioChannel.Loopback, destination.Name, playback.Id, program.Name));
+        }
     }
 
     /// <summary>
@@ -216,6 +321,14 @@ public sealed class CaptureSession : IDisposable
     /// </summary>
     public void Stop()
     {
+        // Said before the first source is asked, and under the gate a move takes, so that a move
+        // already underway finishes and one that has not started never does. What it stops is a
+        // channel being moved onto a device while this is letting the other one go.
+        lock (gate)
+        {
+            over = true;
+        }
+
         var failures = new List<Exception>();
 
         // Both asked, then both waited on. The other way round leaves the second source recording
@@ -246,6 +359,11 @@ public sealed class CaptureSession : IDisposable
 
     public void Dispose()
     {
+        lock (gate)
+        {
+            over = true;
+        }
+
         // Asked first, all of them, for the same reason Stop asks before it waits — and here it
         // matters more, because disposing is an exit path in its own right. A caller that never
         // reached Stop, or whose Stop threw on the first source, arrives with both devices still

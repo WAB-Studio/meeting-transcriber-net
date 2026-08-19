@@ -222,6 +222,7 @@ MeetingTranscriber/
   spool/
     <meeting_id>/
       manifest.json
+      changes.jsonl        (sólo si alguien movió un canal mientras grababa)
       loopback.blocks
       microphone.blocks
   backups/
@@ -536,7 +537,6 @@ capture_run_id
 started_at
 source_profile
 qué oyó cada canal, con el id del dispositivo
-por qué el canal 0 no siguió el programa que se le pidió
 ```
 
 El id del dispositivo falta exactamente cuando el canal seguía un programa, y eso es lo único
@@ -549,6 +549,14 @@ es donde una escritura cortada cuesta un paquete; un manifiesto reescrito a cada
 bloque sería exactamente la escritura torcida que el spool existe para evitar. No
 lista los archivos que tiene al lado ni sus formatos: están nombrados por la
 fuente que llevan y cada uno declara el suyo.
+
+Lo único que alguien puede cambiar con la reunión en curso —mover el canal 0 al
+loopback completo— va en `changes.jsonl`, al lado de la ficha: una línea por
+cambio, escrita entera de una vez y nunca reescrita, diciendo cuándo fue, qué
+escucha desde ahí y qué escuchaba antes. La ficha dice con qué abrió cada canal y
+esto dice con qué terminó, de modo que una carpeta recuperada tras un cierre
+abrupto no afirma que las notificaciones de la máquina quedaron fuera del archivo
+cuando entraron a mitad de la reunión.
 
 La identidad no depende del título, el nombre de un archivo ni la conexión a un
 proveedor.
@@ -576,14 +584,22 @@ incluye el árbol de procesos cuando Windows lo soporta. Teams, Zoom, navegadore
 y aplicaciones WebView se prueban individualmente porque el audio puede salir de
 procesos auxiliares o compartidos.
 
-Si el proceso seleccionado no produce audio o la API no está disponible, la UI
-ofrece loopback completo y advierte que puede incluir notificaciones y otras
-aplicaciones.
+Si el proceso seleccionado no produce audio, la UI ofrece loopback completo y
+advierte que puede incluir notificaciones y otras aplicaciones. Ofrece: nada mueve
+el canal 0 solo. Aceptarlo mueve el canal con la reunión en curso — la misma
+grabación, el mismo spool, los paquetes colocados donde dejaron los anteriores— y
+el cambio queda escrito al lado de la ficha.
+
+Si la API no está disponible o Windows rechaza seguir el proceso, la grabación no
+empieza y se dice por qué. Abrir el loopback completo en su lugar produciría un
+archivo con todas las notificaciones y todas las demás aplicaciones a partir de
+una pulsación que pedía un programa, y eso no se decide por nadie.
 
 Un proceso que no se puede seguir no falla: Windows acepta cualquier PID y
 entrega un flujo silencioso. Lo que detecta un proceso equivocado es el medidor,
 nunca un error, y por eso el nivel de canal 0 es parte de la pantalla de
-grabación y no un detalle de diagnóstico.
+grabación y no un detalle de diagnóstico. La regla es una sola: el canal 0 sigue
+un programa, no ha oído nada desde que abrió, y han pasado diez segundos.
 
 La aplicación declara y comprueba su versión mínima de Windows en instalación y
 al iniciar; no espera a que la grabación falle para descubrir una API ausente.

@@ -22,8 +22,15 @@ meetings/<meeting_id>/
   summary.md             derived
 spool/<meeting_id>/
   manifest.json          source     what the recording said about itself when it started
+  changes.jsonl          source     what somebody moved while it was recording, if anything
   <channel>.blocks       source     while the blocks are the only recoverable copy
 ```
+
+`changes.jsonl` is a source for the reason the card beside it is, and it is the half the card
+cannot hold: the card is written once and says what each channel opened on, so a channel somebody
+moved to the whole machine an hour in is only written down here. Losing it leaves a folder saying
+its channel 0 followed one program when most of what is in the file is everything the machine
+played. Most recordings never have one.
 
 **Two files are called `manifest.json` and they are not the same card.** The one in a meeting's
 folder is produced from the corpus every time and may be replaced; the one beside a spool is

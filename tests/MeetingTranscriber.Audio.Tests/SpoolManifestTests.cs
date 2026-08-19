@@ -51,37 +51,13 @@ public sealed class SpoolManifestTests : IDisposable
         read.On(AudioChannel.Microphone).Heard.ShouldBe("Jabra Evolve 65");
         read.On(AudioChannel.Microphone).DeviceId.ShouldBe("{0.0.1.00000000}.jabra");
         read.Mode.ShouldBe(CaptureMode.FullLoopback);
-        read.FellBack.ShouldBeNull();
     }
 
     /// <summary>
-    /// ISC-121. A recording that was asked to follow one program and could not says so, and says
-    /// why — otherwise somebody deciding what to do with it has no way to know the file holds
-    /// every notification the machine played over the meeting.
-    /// </summary>
-    [Fact]
-    public void A_recording_whose_channel_0_could_not_follow_its_program_says_so_and_says_why()
-    {
-        var asked = Card() with
-        {
-            Sources =
-            [
-                new SpooledSource(AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.00000000}.speakers"),
-                new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.00000000}.jabra"),
-            ],
-            FellBack = "Windows would not follow 'teams (pid 8124)': the process had no audio session.",
-        };
-
-        SpoolManifest.Write(folder, asked);
-
-        var read = SpoolManifest.Find(folder).ShouldNotBeNull();
-        read.FellBack.ShouldNotBeNull().ShouldContain("teams (pid 8124)");
-        read.Mode.ShouldBe(CaptureMode.FullLoopback);
-    }
-
-    /// <summary>
-    /// The other half of ISC-121: a recording that did follow its program says so, and it says so
-    /// through the one field that decides it rather than through a second one beside it.
+    /// ISC-121. A recording that followed a program says so, and it says so through the one field
+    /// that decides it rather than through a second one beside it. There is no third case on this
+    /// card: a channel 0 that could not follow the program it was asked to never starts recording
+    /// at all, and one moved to the whole machine while the meeting ran says so in SpoolChanges.
     /// </summary>
     [Fact]
     public void A_recording_that_followed_its_program_says_that_instead_of_naming_a_device()
@@ -99,7 +75,6 @@ public sealed class SpoolManifestTests : IDisposable
 
         read.Mode.ShouldBe(CaptureMode.ProcessLoopback);
         read.On(AudioChannel.Loopback).Heard.ShouldBe("teams (pid 8124)");
-        read.FellBack.ShouldBeNull();
     }
 
     /// <summary>
@@ -284,6 +259,5 @@ public sealed class SpoolManifestTests : IDisposable
         [
             new SpooledSource(AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.00000000}.speakers"),
             new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.00000000}.jabra"),
-        ],
-        null);
+        ]);
 }

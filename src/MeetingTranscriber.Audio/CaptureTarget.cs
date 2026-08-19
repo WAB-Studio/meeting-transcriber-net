@@ -31,6 +31,22 @@ public abstract record CaptureTarget
         public override string Name => Device.Name;
 
         internal override WasapiStream Open(AudioChannel channel) => WasapiStream.On(Device, channel);
+
+        /// <summary>
+        /// Opens it to take over a channel that is already being recorded, carrying on from
+        /// <paramref name="placedBy"/> instead of numbering frames of its own.
+        /// </summary>
+        /// <remarks>
+        /// Only an endpoint has this, and that is not an omission: what a channel is ever moved to
+        /// is the whole machine's audio, which is a device. Nothing moves a recording onto a
+        /// program — somebody choosing one is somebody starting a recording.
+        /// </remarks>
+        internal WasapiStream Open(AudioChannel channel, FramePositions placedBy)
+        {
+            ArgumentNullException.ThrowIfNull(placedBy);
+
+            return WasapiStream.On(Device, channel, placedBy);
+        }
     }
 
     /// <summary>
