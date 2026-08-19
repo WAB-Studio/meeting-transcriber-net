@@ -18,8 +18,8 @@ an implementation plan, or after a planning session.
 **Hard constraint:** Reviewers MUST run via the opposite model's CLI (`codex exec` or
 `claude -p`). Do NOT use subagents, the Agent tool, or any internal delegation mechanism as
 reviewers — those run on *your own* model, which defeats the purpose. If the opposite model's CLI
-is not on `PATH`, stop and say so; do not substitute same-model reviewers and call it an
-adversarial review.
+cannot run the review, Step 3b says what to do instead. Never substitute same-model reviewers
+quietly and call it an adversarial review.
 
 ## Step 1 — Load Principles
 
@@ -59,6 +59,29 @@ continuation, so where the two disagree the rule wins.
 Read `references/reviewer-lenses.md` for lens definitions.
 
 ## Step 3 — Detect Model and Spawn Reviewers
+
+### Is the opposite model available?
+
+Probe for `turn.completed` — `which codex` finds a CLI whose quota is spent, and a 401 still
+emits `thread.started`. Read the quota out of the rollout the same run writes:
+
+```sh
+PROBE=$(codex exec --json -m gpt-5.6-luna --skip-git-repo-check "reply with the single word OK" < /dev/null 2>/dev/null)
+echo "$PROBE" | grep -q '"type":"turn.completed"' || FALLBACK=1
+
+TID=$(echo "$PROBE" | grep -m1 -o '"thread_id":"[^"]*"' | cut -d'"' -f4)
+BEFORE=$(grep -ho '"used_percent":[0-9.]*' ~/.codex/sessions/*/*/*/rollout-*-"$TID".jsonl | tail -1 | cut -d: -f2)
+awk "BEGIN{exit !(${BEFORE:-100} >= 90)}" && FALLBACK=1
+```
+
+Go to Step 3b when `FALLBACK` is set, and say so out loud. Never substitute reviewers quietly.
+
+**Under 10% remaining, Codex does not run the review.** Three lenses cost three turns, and a quota
+that runs out mid-review leaves half a review that reads exactly like a whole one.
+
+Run the probe once per review: it costs a turn of the quota it measures. Pin it to
+`gpt-5.6-luna` — it only has to prove the CLI answers, and luna is a tenth of what terra or sol
+cost per token. The reviewers themselves take no `-m`: they run on the configured default.
 
 Reviewer output goes in a scratch directory, and there is exactly one requirement on it: **it must
 not show up as untracked files in the very diff under review.** Anything ignored by git satisfies
@@ -126,12 +149,22 @@ Name each output file after the lens: `skeptic.md`, `architect.md`, `minimalist.
 
 Build each reviewer's prompt using the template in `references/reviewer-prompt.md`.
 
+## Step 3b — The opposite model cannot run it
+
+Spawn the same lenses as subagents on your own model, one per lens, each seeing only its own. The
+scratch directory, the output files and Step 4 are unchanged.
+
+What changes is what the verdict may claim. Say in it that reviewers ran on your own model and
+which of the two reasons it was — the CLI did not answer, or the quota was too low to finish.
+Convergence is the thing this costs: two lenses agreeing is agreement between siblings, so a
+finding that would have stood on two reviewers meeting stands on its own evidence or not at all.
+
 ## Step 4 — Verify and Synthesize Verdict
 
 Before reading reviewer output, log which CLI was used and confirm the output files exist:
 
 ```sh
-echo "reviewer_cli=codex|claude"
+echo "reviewer_cli=codex|claude|same-model"
 ls "$REVIEW_DIR"/*.md
 ```
 

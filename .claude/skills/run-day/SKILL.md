@@ -55,10 +55,14 @@ the card in progress or the PR open, and §3 gets its context back.
 3. **Audit.** The record says `pr_opened` → spawn `auditor` with the PR number and that record. Any
    other outcome closed the card itself and there is nothing to audit.
 4. **Act on the verdict.** This part is yours and there is no subagent for it:
-   - `pass` or `pass_with_followup` → merge the PR. `gh pr merge <n> --merge --delete-branch`. The
-     card stays in `in review`; closing it is the user's.
-   - `hold` → the PR stays open, the card goes where the verdict says with the verdict's own body
-     as a comment.
+   - `pass` or `pass_with_followup` → every finding this card owns goes back to `worker` first,
+     however small, and then audit again. Only once the verdict names none, merge the PR.
+     `gh pr merge <n> --merge --delete-branch`. The card stays in `in review`; closing it is the
+     user's.
+   - `hold` → the PR stays open. Spawn `worker` again on the same card, passing the verdict as its
+     briefing, and audit again.
+   - Three rounds of work and audit on one card is the ceiling. Still holding, send the card where
+     the verdict says with the verdict's own body as a comment, and take the next card.
    - `ask` → a decision nobody here may make. Write it on the card, swap `grilled` for `regrill`,
      send it to `pending`, and take the next card. §4.
 
