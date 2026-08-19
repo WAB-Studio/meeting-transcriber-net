@@ -250,17 +250,6 @@ public static class MeetingRecordings
     }
 
     /// <summary>
-    /// The run this recording was made by: the one its card names, or the meeting's only one when
-    /// the card was never written or was torn in half.
-    /// </summary>
-    /// <remarks>
-    /// Nothing when a meeting whose card is gone has more than one run. That is a recovery somebody
-    /// has to look at rather than a guess this may make: the runs are what say which devices caught
-    /// which stretch, and putting an end on the wrong one is a lie about a meeting that nothing
-    /// afterwards can detect. The meeting still finishes — its audio and its length are read from
-    /// the blocks, which never needed the card.
-    /// </remarks>
-    /// <summary>
     /// This meeting's audio, when the corpus already holds exactly the bytes this finish just
     /// made — and nothing otherwise.
     /// </summary>
@@ -304,6 +293,17 @@ public static class MeetingRecordings
         return filed;
     }
 
+    /// <summary>
+    /// The run this recording was made by: the one its card names, or the meeting's only one when
+    /// the card was never written or was torn in half.
+    /// </summary>
+    /// <remarks>
+    /// Nothing when a meeting whose card is gone has more than one run. That is a recovery somebody
+    /// has to look at rather than a guess this may make: the runs are what say which devices caught
+    /// which stretch, and putting an end on the wrong one is a lie about a meeting that nothing
+    /// afterwards can detect. The meeting still finishes — its audio and its length are read from
+    /// the blocks, which never needed the card.
+    /// </remarks>
     internal static CaptureRun? Ran(CorpusDbContext corpus, Guid meetingId, SpoolCard? card)
     {
         if (card is not null)
