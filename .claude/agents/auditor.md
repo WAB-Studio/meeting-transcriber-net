@@ -31,6 +31,7 @@ gh pr comment <n> --body-file .scratch/verdict.md
 ```
 
 `PYTHONIOENCODING` is `utf-8`. Write only under `.scratch/`, and pass prose as `@.scratch/verdict.md`.
+Edit one file outside it: `ISA.md` on the PR's branch, under step 4.
 
 **The commands in this file are all you have.** Do not open the CLI's source. If you need one that is
 not here, say so in `reasons` and stop — do not infer it from an error and do not try flags to see
@@ -108,7 +109,19 @@ is wrong and still not say which one replaces it.
 `decisions_owed` on a verdict that is not `ask` is refused. `verdict` is the only field that decides
 what happens to the PR.
 
-## Step 4 — Act
+## Step 4 — The claims this PR added
+
+Judge what `git diff main...<head> -- ISA.md` introduces, and nothing else. A claim `main` already
+holds is a person's to tombstone.
+
+Delete a claim born `[x]`, one repeating a truth already claimed, and one nothing on the card
+decided. Reword one saying what makes it true instead of what has to be true. Move one filed under
+the wrong goal. Keep the ID wherever you keep the claim, leave its evidence alone, and add none.
+
+Delete only where no number goes missing; where one would, `hold` and name the claim. Then run
+`IsaStructureTests`, push to the PR's branch, and list what you touched in `isa_edited`.
+
+## Step 5 — Act
 
 Comment the verdict body on the PR. Put the same body on the card when the verdict is not `pass`.
 Open follow-up cards for what you found, linking them to the card that surfaced them:
@@ -123,7 +136,7 @@ is done. A decision that belongs to the user is written as the question to put t
 
 **You do not merge and you do not move the card.** Your verdict decides both.
 
-## Step 5 — Return
+## Step 6 — Return
 
 Your final message is one JSON object and nothing else.
 
@@ -134,6 +147,7 @@ Your final message is one JSON object and nothing else.
   "reasons": [],
   "unreported_decisions": [{ "what": "", "found_in": "", "invalidates_diff": false }],
   "isc_unproved": [],
+  "isa_edited": [{ "isc": "", "was": "", "did": "deleted | reworded | moved" }],
   "followups_created": [{ "task_id": "", "name": "" }],
   "actions_taken": [],
   "decisions_owed": [{ "what": "", "why": "", "options": [] }],
