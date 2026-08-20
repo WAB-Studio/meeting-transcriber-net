@@ -261,8 +261,8 @@ public static class RecordingCommands
         : string.Empty;
 
     /// <summary>
-    /// Which of the three this recording is open to, and where a folder this command cannot
-    /// address is decided about instead.
+    /// Which of the three this recording is open to — none of them while it is still being
+    /// recorded — and where a folder this command cannot address is decided about instead.
     /// </summary>
     /// <remarks>
     /// A recording is named here by its meeting, so a folder nothing says the meeting of is one
@@ -271,6 +271,12 @@ public static class RecordingCommands
     /// </remarks>
     private static string Choices(WaitingRecording recording)
     {
+        // First, because it is the one case where naming a choice at all would be wrong.
+        if (recording.NothingToDecideYet is { } yet)
+        {
+            return $"nothing yet — {yet}";
+        }
+
         if (recording.Unrecoverable is not { } why)
         {
             return "keep, export or discard";

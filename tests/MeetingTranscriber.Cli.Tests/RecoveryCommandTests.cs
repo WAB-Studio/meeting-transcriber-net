@@ -84,6 +84,58 @@ public sealed class RecoveryCommandTests : IDisposable
     }
 
     /// <summary>
+    /// ISC-126 on this surface too, which is the other half of the same start after a crash. The
+    /// same key answers for every folder, so what it says about the one a capture is writing is
+    /// read against what it says about one nothing is — rather than against its own absence.
+    /// </summary>
+    [Fact]
+    public void A_folder_a_capture_is_still_writing_is_listed_with_none_of_the_three_offered()
+    {
+        Recorded("daily", both: true);
+        Recorded("weekly", both: true);
+
+        using var writing = StillRecording("daily");
+
+        var listed = CommandLine.Of("recordings", "--spool", root.FullName);
+
+        listed.Code.ShouldBe(Cli.Ok, listed.Error);
+        listed.Values("choices").ShouldBe(
+            ["nothing yet — it is still being recorded", "keep, export or discard"]);
+    }
+
+    /// <summary>
+    /// And what the listing says is not open is what comes back to somebody who typed it anyway:
+    /// each of the three is refused about the meeting rather than about a block file that would
+    /// not open — which is what a person would otherwise read, under advice to run the command
+    /// again.
+    /// </summary>
+    [Theory]
+    [InlineData("--keep")]
+    [InlineData("--export")]
+    [InlineData("--discard")]
+    public void None_of_the_three_lands_on_a_folder_a_capture_is_still_writing(string decision)
+    {
+        Recorded("daily", both: true);
+        var into = Folder("taken out");
+
+        using var writing = StillRecording("daily");
+
+        string[] typed = ["recover", "--in", Folder("daily").FullName, decision];
+
+        var run = CommandLine.Of(decision is "--export" ? [.. typed, into.FullName] : typed);
+
+        run.Code.ShouldBe(Cli.Refused, run.Output);
+        run.Error.ShouldContain("still being recorded");
+        run.Error.ShouldNotContain(".blocks");
+
+        // Nothing was made, taken out or thrown away — and the destination is not there at all,
+        // which is what a refusal reaching the folder before the audio buys.
+        Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+        MeetingAudio.In(Folder("daily")).Exists.ShouldBeFalse();
+        into.Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
     /// A recording the machine died in the middle of is worth every block that landed, and keeping
     /// it says what the last one cost — and leaves the meeting those blocks are, which is the whole
     /// of what a person came to the folder for.
@@ -256,6 +308,21 @@ public sealed class RecoveryCommandTests : IDisposable
     }
 
     private DirectoryInfo Folder(string name) => new(Path.Combine(root.FullName, name));
+
+    /// <summary>
+    /// The handle a capture holds on its own spool for as long as the meeting lasts, which is what
+    /// a meeting in progress looks like to a start.
+    /// </summary>
+    /// <remarks>
+    /// The same mode <c>SpoolWriter</c> opens with, and not a stricter one. A stand-in that let
+    /// nothing else read would be held by a probe a real capture permits, so the day the check is
+    /// loosened this would stay green over a recording it no longer notices.
+    /// </remarks>
+    private FileStream StillRecording(string name) => new(
+        BlockSpool.FileFor(Folder(name), AudioChannel.Loopback).FullName,
+        FileMode.Open,
+        FileAccess.Write,
+        FileShare.Read);
 
     /// <summary>
     /// A recording left exactly as killing the process during one leaves it. Every source counts

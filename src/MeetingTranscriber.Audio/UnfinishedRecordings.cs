@@ -58,6 +58,11 @@ public sealed record ExportedSource(AudioChannel Channel, FileInfo Wav, int Bloc
 /// hidden — a meeting somebody is in the middle of is the last thing to leave off a list. What it
 /// is not is something to decide about: all three outcomes refuse it, because two of them read a
 /// file that is still growing and the third would throw away a meeting that is still happening.
+/// <see cref="EnsureThereIsSomethingToDecide"/> is where all three refuse it and the only place
+/// that says so, so that a caller reaches the answer about the meeting rather than the answer
+/// about a block file that would not open. That covers the three outcomes and nothing wider:
+/// <see cref="MeetingAudio.Materialise"/> takes the same folder without passing through here, so
+/// whoever reaches the blocks that way still asks.
 /// </para>
 /// </remarks>
 /// <param name="Folder">Where the recording is.</param>
@@ -85,10 +90,57 @@ public sealed record UnfinishedRecording(
     IReadOnlyList<SourceChanged> Changed)
 {
     /// <summary>
+    /// Why there is nothing to decide about this recording yet, or nothing when there is.
+    /// </summary>
+    /// <remarks>
+    /// A meeting a capture is still writing, which is the one case. It is here, beside the three
+    /// outcomes and the handle that answers it, because everything the rule is made of is here.
+    /// The reason on its own, in the middle of a sentence: whoever shows it says what it means for
+    /// them, and <see cref="EnsureThereIsSomethingToDecide"/> is the one that says it for a refusal.
+    /// </remarks>
+    public string? NothingToDecideYet => Running ? "it is still being recorded" : null;
+
+    /// <summary>
+    /// Throws unless this recording is one somebody may decide about, which every one of the three
+    /// outcomes asks before it does anything.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The words, once, where all three reach them. A capture holding the blocks would stop each
+    /// of the three anyway — the file system is what protects them, because
+    /// <see cref="SpoolWriter"/> opens without <see cref="FileShare.Delete"/> and Windows will not
+    /// unlink a file somebody holds that way — but what comes back from a handle is a sentence
+    /// about a file that would not open. The person is deciding about a meeting, so the refusal is
+    /// about the meeting.
+    /// </para>
+    /// <para>
+    /// It says what was observed first and what it means second, so that the one case this cannot
+    /// tell apart — something else on the machine holding a spool open — reads as what was seen
+    /// rather than as an assertion about a meeting nobody is in.
+    /// </para>
+    /// </remarks>
+    public void EnsureThereIsSomethingToDecide()
+    {
+        if (NothingToDecideYet is { } yet)
+        {
+            throw new AudioCaptureException(
+                $"Something is holding the blocks in '{Folder.FullName}' open, which on this "
+                + $"machine is a capture writing them: {yet}, and a meeting that is still happening "
+                + "is not one to decide about yet. Once nothing is holding them, keeping it, "
+                + "taking it out and throwing it away are all open.");
+        }
+    }
+
+    /// <summary>
     /// Reads every source through and says what survived, changing nothing. The recording is still
     /// there afterwards, which is what keeping it means.
     /// </summary>
-    public IReadOnlyList<SurvivingSource> Keep() => [.. Sources.Select(Survived)];
+    public IReadOnlyList<SurvivingSource> Keep()
+    {
+        EnsureThereIsSomethingToDecide();
+
+        return [.. Sources.Select(Survived)];
+    }
 
     /// <summary>
     /// Writes each source into <paramref name="into"/> as a file somebody can play, in the format
@@ -111,6 +163,7 @@ public sealed record UnfinishedRecording(
     public IReadOnlyList<ExportedSource> Export(DirectoryInfo into)
     {
         ArgumentNullException.ThrowIfNull(into);
+        EnsureThereIsSomethingToDecide();
 
         into.Create();
         var claimed = new List<FileInfo>();
@@ -160,6 +213,13 @@ public sealed record UnfinishedRecording(
     /// </remarks>
     public void Discard()
     {
+        // Both, and in this order. The first is what a person is told; the second is asked again
+        // against the file system, because the first is an answer read a moment ago. Neither holds
+        // anything across the delete below — what stops it half way is that `SpoolWriter` opens
+        // without `FileShare.Delete`, so Windows refuses to unlink a block file a capture holds.
+        // This is the check that fails whole instead, before one source has gone and the other has
+        // not.
+        EnsureThereIsSomethingToDecide();
         UnfinishedRecordings.EnsureRemovable(this);
         Folder.Delete(recursive: true);
     }

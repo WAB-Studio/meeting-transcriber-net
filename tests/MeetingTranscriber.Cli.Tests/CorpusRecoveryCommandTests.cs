@@ -54,6 +54,66 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
         run.Value("choices").ShouldBe("keep, export or discard");
     }
 
+    /// <summary>
+    /// ISC-126 at the surface a person reads it off. A meeting somebody is in the middle of is on
+    /// the list — it is the last thing to hide — and what is open about it is nothing: the three
+    /// all read or remove files the capture still holds, so a line naming one of them would be
+    /// this list saying a choice was there and the choice failing on a file handle.
+    /// </summary>
+    [Fact]
+    public void A_meeting_still_being_recorded_is_listed_with_none_of_the_three_offered()
+    {
+        var meeting = Killed();
+        using var held = StillRecording(meeting);
+
+        var run = CommandLine.Of("recovery", "--corpus", Root);
+
+        run.Code.ShouldBe(Cli.Ok, run.Error);
+        run.Value("meeting").ShouldBe(meeting.ToString());
+        run.Value("length").ShouldBe("still being recorded, so its blocks cannot be read yet");
+
+        var choices = run.Value("choices");
+        choices.ShouldContain("still being recorded");
+        choices.ShouldNotContain("keep");
+        choices.ShouldNotContain("export");
+        choices.ShouldNotContain("discard");
+    }
+
+    /// <summary>
+    /// The other half, and the reason the words above are not enough on their own: what the list
+    /// says is not open has to be what the command answers when somebody types it anyway. All
+    /// three are refused for the meeting still happening, rather than reaching a spool a capture
+    /// is holding and coming back about a block file.
+    /// </summary>
+    [Theory]
+    [InlineData("--keep")]
+    [InlineData("--export")]
+    [InlineData("--discard")]
+    public void None_of_the_three_lands_on_a_meeting_that_is_still_being_recorded(string decision)
+    {
+        var meeting = Killed();
+        var into = Path.Combine(Root, "taken out");
+        using var held = StillRecording(meeting);
+
+        string[] typed = ["recovery", "--corpus", Root, "--meeting", meeting.ToString(), decision];
+
+        var run = CommandLine.Of(decision is "--export" ? [.. typed, into] : typed);
+
+        run.Code.ShouldBe(Cli.Refused, run.Output);
+        run.Error.ShouldContain("still being recorded");
+
+        // Not about a file that would not open, and not sending somebody off to one of the other
+        // two — they are shut for the same reason this one is.
+        run.Error.ShouldNotContain(".blocks");
+        run.Error.ShouldNotContain("still open");
+
+        // And it is all still there, undecided: the folder, and no meeting made out of it.
+        var folder = CorpusFiles.SpoolFolderFor(corpus.Root, meeting);
+        folder.Exists.ShouldBeTrue();
+        MeetingAudio.In(folder).Exists.ShouldBeFalse();
+        new DirectoryInfo(into).Exists.ShouldBeFalse();
+    }
+
     [Fact]
     public void A_corpus_with_nothing_waiting_says_so_rather_than_saying_nothing()
     {
@@ -254,6 +314,19 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
 
         return prepared.MeetingId;
     }
+
+    /// <summary>
+    /// Puts a recording back into the state a meeting in progress leaves it in: the handle a
+    /// capture holds on its own spool for as long as the meeting lasts.
+    /// </summary>
+    /// <remarks>
+    /// The same mode <c>SpoolWriter</c> opens with, and not a stricter one. A stand-in that let
+    /// nothing else read would be held by a probe a real capture permits, so the day the check is
+    /// loosened this would stay green over a recording it no longer notices.
+    /// </remarks>
+    private FileStream StillRecording(Guid meeting) =>
+        BlockSpool.FileFor(CorpusFiles.SpoolFolderFor(corpus.Root, meeting), AudioChannel.Microphone)
+            .Open(FileMode.Open, FileAccess.Write, FileShare.Read);
 
     private static void Spool(DirectoryInfo folder, AudioChannel channel)
     {

@@ -205,10 +205,24 @@ public static class AudioCommands
         {
             Report.Line(output, "recording", recording.Folder.Name);
             Describe(recording, output);
+
+            // Every recording, the way the corpus-aware listing does it, and last for the same
+            // reason: a key that appears only to say there are none reads as its own absence
+            // meaning the opposite of what it means on the other listing. This command names a
+            // folder rather than a meeting, so the three are all there is to say — which of them
+            // a corpus would shut is `recovery --corpus`, and it says so there.
+            Report.Line(output, "choices", Choices(recording));
         }
 
         return Cli.Ok;
     }
+
+    /// <summary>
+    /// Which of the three this folder is open to, which is all of them unless a capture is still
+    /// writing it.
+    /// </summary>
+    private static string Choices(UnfinishedRecording recording) =>
+        recording.NothingToDecideYet is { } yet ? $"nothing yet — {yet}" : "keep, export or discard";
 
     /// <summary>
     /// What happens to one recording nobody stopped: it is kept — which is where the recording the
@@ -240,6 +254,11 @@ public static class AudioCommands
         var recording = UnfinishedRecordings.At(folder);
         Report.Line(output, "folder", recording.Folder.FullName);
         Describe(recording, output);
+
+        // Said before any of the three is reached. Keeping one goes through the file the two
+        // sources become before it goes through `Keep`, so a meeting still being recorded would
+        // otherwise fail there — on a block file, and under advice to run this again.
+        recording.EnsureThereIsSomethingToDecide();
 
         if (discard)
         {
@@ -338,11 +357,6 @@ public static class AudioCommands
     /// </summary>
     private static void Describe(UnfinishedRecording recording, TextWriter output)
     {
-        if (recording.Running)
-        {
-            Report.Line(output, "still", "being recorded, so there is nothing to decide about it yet");
-        }
-
         // Said whichever of the two files was torn, and beside the card rather than instead of it:
         // a folder whose changes could not be read still names its meeting, and hiding that would
         // make a damaged line about one moment cost the account of the whole recording.

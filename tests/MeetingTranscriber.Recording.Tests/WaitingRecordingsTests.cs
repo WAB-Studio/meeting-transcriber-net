@@ -192,18 +192,27 @@ public sealed class WaitingRecordingsTests : IDisposable
         var prepared = MeetingRecordings.Open(context, "es", recordedAt);
         Fabricated.Spools(prepared.Spool, seconds: 1);
 
-        // A capture holds its spools open for as long as the meeting lasts, which is what says on
-        // this machine that a meeting is in progress.
+        // The handle a capture holds on its own spool for as long as the meeting lasts, in the
+        // mode a capture holds it in, which is what says on this machine that one is in progress.
         using var held = BlockSpool.FileFor(prepared.Spool, AudioChannel.Microphone)
-            .Open(FileMode.Open, FileAccess.Write, FileShare.None);
+            .Open(FileMode.Open, FileAccess.Write, FileShare.Read);
 
         var waiting = WaitingRecordings.In(context).Single();
 
         waiting.MeetingId.ShouldBe(prepared.MeetingId);
         waiting.Running.ShouldBeTrue();
-        waiting.Unrecoverable.ShouldNotBeNull().ShouldContain("still being recorded");
+        waiting.NothingToDecideYet.ShouldNotBeNull().ShouldContain("still being recorded");
 
-        Should.Throw<RecordingException>(() => WaitingRecordings.Recover(context, waiting, openedAgainAt));
+        // Nothing is wrong with it — that is the point of the two being separate questions. There
+        // is no reason a choice is shut on this recording; it is simply not finished, and a reason
+        // here would be one that says the other two are open when all three are not.
+        waiting.Unrecoverable.ShouldBeNull();
+
+        var refused = Should.Throw<AudioCaptureException>(
+            () => WaitingRecordings.Recover(context, waiting, openedAgainAt));
+
+        // And the refusal does not go on to offer the two that are shut as well.
+        refused.Message.ShouldNotContain("still open");
     }
 
     /// <summary>
@@ -228,6 +237,10 @@ public sealed class WaitingRecordingsTests : IDisposable
         waiting.MeetingId.ShouldBe(recorded);
         waiting.Meeting.ShouldBeNull();
         waiting.Unrecoverable.ShouldNotBeNull().ShouldContain(recorded.ToString());
+
+        // A recording nothing is writing is one to decide about, whatever is shut to it. This is
+        // the other side of the property the meeting still happening answers.
+        waiting.NothingToDecideYet.ShouldBeNull();
         Should.Throw<RecordingException>(() => WaitingRecordings.Recover(started, waiting, openedAgainAt));
 
         // The audio is still somebody's to take out, which is the whole reason it is on the list.
