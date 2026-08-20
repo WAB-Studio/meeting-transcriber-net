@@ -99,6 +99,12 @@ that would never run.
 project: it reads `ISA.md` at the repo root. The claims surface is a repo document rather than a
 layer, so its gate does not belong under any one of them.
 
+What a screen looks like lives in `docs/design.md` — the tokens, the type ramp, the radii, the
+meter's anatomy and the rules the design imposes — with the thirteen artboards it was written from
+beside it in `docs/design/`. Nothing under `src/` reads that folder and nothing builds it: they are
+pictures a person opens. A screen is built from the prose, and the artboards are what the prose is
+checked against.
+
 `tools/` is run by hand and is not part of the product. Nothing under `src/` may reference it or
 know the Python system existed, so deleting the importer is deleting two folders rather than
 untangling the application — its README says what that deletion is.

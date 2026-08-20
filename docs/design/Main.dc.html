@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: transparent; }
+    a { color: #4F7561; } a:hover { color: #3C5B4A; }
+  </style>
+</helmet>
+
+<div style="width: 1120px; height: 720px; box-sizing: border-box; padding: 30px 40px 30px 40px; display: flex; flex-direction: column; gap: 20px; overflow: hidden; background: #FCFCFB; color: #1C1B19; font-family: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 20px;">
+
+  <div style="flex: none; display: flex; align-items: center; gap: 11px; padding: 0 6px;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-linecap="round"><path d="M8 7a7 7 0 0 0 0 10" stroke="#1C1B19" stroke-width="2.2"></path><path d="M14.5 5a9.5 9.5 0 0 1 0 14" stroke="#4F7561" stroke-width="2.2"></path></svg>
+    <span style="font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.015em;">Meeting Transcriber</span>
+    <div style="margin-left: auto; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 999px;">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9B9891" stroke-width="1.5"><circle cx="12" cy="12" r="3"></circle><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4L6 18M18 18l-1.6-1.6M7.6 7.6L6 6"></path></svg>
+    </div>
+  </div>
+
+  <div style="flex: none; padding: 22px 24px; background: #F4F3EF; border-radius: 18px; display: flex; flex-direction: column; gap: 17px;">
+
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div style="font-size: 26px; line-height: 32px; font-weight: 600; letter-spacing: -.02em;">Grabar una reunión</div>
+      <div style="margin-left: auto; display: flex; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px; height: 33px; padding: 0 14px; background: #FCFCFB; border-radius: 999px;">
+          <span style="font-size: 14px;">Español</span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6E6C66" stroke-width="2.2" stroke-linecap="round"><path d="M5 9l7 7 7-7"></path></svg>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; height: 33px; padding: 0 14px; background: #FCFCFB; border-radius: 999px;">
+          <span style="font-size: 14px;">Deepgram nova-3</span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6E6C66" stroke-width="2.2" stroke-linecap="round"><path d="M5 9l7 7 7-7"></path></svg>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px;">
+
+      <div style="padding: 14px 16px 15px 16px; background: #FCFCFB; border-radius: 13px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 9px;">
+          <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 10px; line-height: 16px; color: #9B9891; letter-spacing: .08em;">CH0</span>
+          <span style="font-size: 14px; line-height: 18px; font-weight: 600;">Los otros</span>
+          <div style="display: flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; background: #F4F3EF; border-radius: 999px; min-width: 0;">
+            <span style="font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Microsoft Teams</span>
+            <svg style="flex: none;" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#6E6C66" stroke-width="2.4" stroke-linecap="round"><path d="M5 9l7 7 7-7"></path></svg>
+          </div>
+          <span style="margin-left: auto; font-size: 12px; line-height: 18px; color: #4F7561; white-space: nowrap;">se escucha</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="position: relative; height: 20px;">
+            <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(90deg, #E1DED7 0 3px, transparent 3px 6px);"></div>
+            <div style="position: absolute; inset: 0; clip-path: inset(0 0 0 80%); background-image: repeating-linear-gradient(90deg, #EDD5C7 0 3px, transparent 3px 6px);"></div>
+            <div style="position: absolute; inset: 0; clip-path: inset(0 27% 0 0); background-image: repeating-linear-gradient(90deg, #4F7561 0 3px, transparent 3px 6px);"></div>
+            <div style="position: absolute; left: 84%; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: #C2683C;"></div>
+          </div>
+          <div style="position: relative; height: 12px; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 9px; line-height: 12px; color: #9B9891;">
+            <span style="position: absolute; left: 0;">−60</span><span style="position: absolute; left: 33.3%;">−40</span><span style="position: absolute; left: 66.7%;">−20</span><span style="position: absolute; left: 80%; color: #C2683C;">−12</span><span style="position: absolute; right: 0; color: #1C1B19;">0</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 10px; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace;">
+          <span style="font-size: 14px; line-height: 18px; font-weight: 500;">−16.2 dB</span>
+          <span style="margin-left: auto; font-size: 11px; line-height: 18px; color: #C2683C;">pico −9.4</span>
+        </div>
+      </div>
+
+      <div style="padding: 14px 16px 15px 16px; background: #FCFCFB; border-radius: 13px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 9px;">
+          <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 10px; line-height: 16px; color: #9B9891; letter-spacing: .08em;">CH1</span>
+          <span style="font-size: 14px; line-height: 18px; font-weight: 600;">Yo</span>
+          <div style="display: flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; background: #F4F3EF; border-radius: 999px; min-width: 0;">
+            <span style="font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Yeti Nano</span>
+            <svg style="flex: none;" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#6E6C66" stroke-width="2.4" stroke-linecap="round"><path d="M5 9l7 7 7-7"></path></svg>
+          </div>
+          <span style="margin-left: auto; font-size: 12px; line-height: 18px; color: #4F7561; white-space: nowrap;">se escucha</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="position: relative; height: 20px;">
+            <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(90deg, #E1DED7 0 3px, transparent 3px 6px);"></div>
+            <div style="position: absolute; inset: 0; clip-path: inset(0 0 0 80%); background-image: repeating-linear-gradient(90deg, #EDD5C7 0 3px, transparent 3px 6px);"></div>
+            <div style="position: absolute; inset: 0; clip-path: inset(0 49% 0 0); background-image: repeating-linear-gradient(90deg, #4F7561 0 3px, transparent 3px 6px);"></div>
+            <div style="position: absolute; left: 60%; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: #C2683C;"></div>
+          </div>
+          <div style="position: relative; height: 12px; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 9px; line-height: 12px; color: #9B9891;">
+            <span style="position: absolute; left: 0;">−60</span><span style="position: absolute; left: 33.3%;">−40</span><span style="position: absolute; left: 66.7%;">−20</span><span style="position: absolute; left: 80%; color: #C2683C;">−12</span><span style="position: absolute; right: 0; color: #1C1B19;">0</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: baseline; gap: 10px; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace;">
+          <span style="font-size: 14px; line-height: 18px; font-weight: 500;">−29.4 dB</span>
+          <span style="margin-left: auto; font-size: 11px; line-height: 18px; color: #C2683C;">pico −24.1</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <div style="display: flex; padding: 3px; background: #E6E4DE; border-radius: 999px;">
+        <span style="padding: 7px 16px; border-radius: 999px; background: #FCFCFB; font-size: 14px; line-height: 18px; font-weight: 500;">En vivo</span>
+        <span style="padding: 7px 16px; border-radius: 999px; font-size: 14px; line-height: 18px; color: #6E6C66;">Al terminar</span>
+      </div>
+      <button style="margin-left: auto; display: flex; align-items: center; gap: 11px; height: 46px; padding: 0 24px; background: #1C1B19; border: none; border-radius: 999px; color: #FCFCFB; font-family: inherit; font-size: 15px; font-weight: 500; cursor: pointer;">
+        <svg width="12" height="12" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#FCFCFB"></circle></svg>
+        Empezar a grabar
+      </button>
+    </div>
+
+  </div>
+
+  <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 9px; padding: 0 6px;">
+
+    <div style="flex: none; display: flex; align-items: baseline; gap: 10px;">
+      <span style="font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.015em;">Reuniones</span>
+      <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 20px; color: #9B9891;">34</span>
+    </div>
+
+    <div style="flex: none; display: flex; align-items: center; gap: 16px; padding: 12px 18px; background: #EEF2EF; border-radius: 13px;">
+      <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0;">
+        <span style="font-size: 14px; line-height: 20px; font-weight: 600;">Comité de arquitectura</span>
+        <span style="font-size: 13px; line-height: 19px; color: #6E6C66;">Quedó a mitad de transcribir. Puede que ya se haya cobrado.</span>
+      </div>
+      <div style="margin-left: auto; display: flex; gap: 8px; flex: none;">
+        <button style="height: 32px; padding: 0 14px; background: #4F7561; border: none; border-radius: 999px; color: #FCFCFB; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;">Buscar el resultado</button>
+        <button style="height: 32px; padding: 0 14px; background: transparent; border: none; border-radius: 999px; color: #6E6C66; font-family: inherit; font-size: 13px; cursor: pointer;">Reintentar · se cobra</button>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-radius: 13px; background: #F4F3EF;">
+        <span style="font-size: 14px; line-height: 20px;">Sync de producto</span>
+        <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 20px; color: #9B9891;">HOY 09:30 · 47:12</span>
+        <span style="margin-left: auto; font-size: 13px; line-height: 20px; color: #4F7561;">transcribiendo</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-radius: 13px; background: #F4F3EF;">
+        <span style="font-size: 14px; line-height: 20px;">Entrevista — Marina Robles</span>
+        <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 20px; color: #9B9891;">AYER 16:00 · 1:12:04</span>
+        <span style="margin-left: auto; font-size: 13px; line-height: 20px; color: #9B9891;">148 turnos</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-radius: 13px; background: #F4F3EF;">
+        <span style="font-size: 14px; line-height: 20px;">Retro de sprint</span>
+        <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 20px; color: #9B9891;">15 AGO · 38:22</span>
+        <span style="margin-left: auto; font-size: 13px; line-height: 20px; color: #9B9891;">3 voces sin nombre</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-radius: 13px; background: #F4F3EF;">
+        <span style="font-size: 14px; line-height: 20px;">Llamada con proveedor</span>
+        <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 20px; color: #9B9891;">14 AGO · 22:40</span>
+        <span style="margin-left: auto; font-size: 13px; line-height: 20px; color: #9B9891;">en cola</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
