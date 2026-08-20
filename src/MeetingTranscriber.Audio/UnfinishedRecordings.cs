@@ -1,4 +1,4 @@
-﻿using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Audio;
@@ -60,8 +60,9 @@ public sealed record ExportedSource(AudioChannel Channel, FileInfo Wav, int Bloc
 /// file that is still growing and the third would throw away a meeting that is still happening.
 /// <see cref="EnsureThereIsSomethingToDecide"/> is where all three refuse it and the only place
 /// that says so, so that a caller reaches the answer about the meeting rather than the answer
-/// about a block file that would not open — and so that a surface built later gets it by
-/// construction instead of by remembering to ask.
+/// about a block file that would not open. That covers the three outcomes and nothing wider:
+/// <see cref="MeetingAudio.Materialise"/> takes the same folder without passing through here, so
+/// whoever reaches the blocks that way still asks.
 /// </para>
 /// </remarks>
 /// <param name="Folder">Where the recording is.</param>
@@ -93,14 +94,11 @@ public sealed record UnfinishedRecording(
     /// </summary>
     /// <remarks>
     /// A meeting a capture is still writing, which is the one case. It is here, beside the three
-    /// outcomes and the handle that answers it, because everything the rule is made of is here:
-    /// a copy of it anywhere else is a surface that can forget to ask, which is what happens the
-    /// first time somebody writes a second one.
+    /// outcomes and the handle that answers it, because everything the rule is made of is here.
+    /// The reason on its own, in the middle of a sentence: whoever shows it says what it means for
+    /// them, and <see cref="EnsureThereIsSomethingToDecide"/> is the one that says it for a refusal.
     /// </remarks>
-    public string? NothingToDecideYet => Running
-        ? "it is still being recorded, and a meeting that is still happening is not one to decide "
-            + "about yet"
-        : null;
+    public string? NothingToDecideYet => Running ? "it is still being recorded" : null;
 
     /// <summary>
     /// Throws unless this recording is one somebody may decide about, which every one of the three
@@ -109,15 +107,16 @@ public sealed record UnfinishedRecording(
     /// <remarks>
     /// <para>
     /// The words, once, where all three reach them. A capture holding the blocks would stop each
-    /// of the three anyway — the file system is what actually protects them, and
-    /// <see cref="UnfinishedRecordings.EnsureRemovable"/> is what makes that atomic with the
-    /// delete — but what comes back from a handle is a sentence about a file that would not open.
-    /// The person is deciding about a meeting, so the refusal is about the meeting.
+    /// of the three anyway — the file system is what protects them, because
+    /// <see cref="SpoolWriter"/> opens without <see cref="FileShare.Delete"/> and Windows will not
+    /// unlink a file somebody holds that way — but what comes back from a handle is a sentence
+    /// about a file that would not open. The person is deciding about a meeting, so the refusal is
+    /// about the meeting.
     /// </para>
     /// <para>
-    /// It says what is mechanically true first and what it means second, so that the one case this
-    /// cannot tell apart — something else on the machine holding a spool open — reads as what was
-    /// observed rather than as an assertion about a meeting nobody is in.
+    /// It says what was observed first and what it means second, so that the one case this cannot
+    /// tell apart — something else on the machine holding a spool open — reads as what was seen
+    /// rather than as an assertion about a meeting nobody is in.
     /// </para>
     /// </remarks>
     public void EnsureThereIsSomethingToDecide()
@@ -125,9 +124,10 @@ public sealed record UnfinishedRecording(
         if (NothingToDecideYet is { } yet)
         {
             throw new AudioCaptureException(
-                $"'{Folder.FullName}' is not one to decide about yet: {yet}. Something is holding "
-                + "its blocks open, which on this machine is a capture writing them; once nothing "
-                + "is, keeping it, taking it out and throwing it away are all open.");
+                $"Something is holding the blocks in '{Folder.FullName}' open, which on this "
+                + $"machine is a capture writing them: {yet}, and a meeting that is still happening "
+                + "is not one to decide about yet. Once nothing is holding them, keeping it, "
+                + "taking it out and throwing it away are all open.");
         }
     }
 
@@ -213,9 +213,12 @@ public sealed record UnfinishedRecording(
     /// </remarks>
     public void Discard()
     {
-        // Both, and in this order. The first is what a person is told; the second is what actually
-        // stands between this and a folder it should never have removed, and it is asked again
-        // against the file system because the first is an answer read a moment ago.
+        // Both, and in this order. The first is what a person is told; the second is asked again
+        // against the file system, because the first is an answer read a moment ago. Neither holds
+        // anything across the delete below — what stops it half way is that `SpoolWriter` opens
+        // without `FileShare.Delete`, so Windows refuses to unlink a block file a capture holds.
+        // This is the check that fails whole instead, before one source has gone and the other has
+        // not.
         EnsureThereIsSomethingToDecide();
         UnfinishedRecordings.EnsureRemovable(this);
         Folder.Delete(recursive: true);

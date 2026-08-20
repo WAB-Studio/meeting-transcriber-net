@@ -85,9 +85,29 @@ public sealed class RecoveryCommandTests : IDisposable
 
     /// <summary>
     /// ISC-126 on this surface too, which is the other half of the same start after a crash. The
-    /// folder is listed saying nothing about it is anybody's yet, and each of the three typed
-    /// anyway comes back about the meeting rather than about a block file that would not open —
-    /// which is what a person would otherwise read, under advice to run the command again.
+    /// same key answers for every folder, so what it says about the one a capture is writing is
+    /// read against what it says about one nothing is — rather than against its own absence.
+    /// </summary>
+    [Fact]
+    public void A_folder_a_capture_is_still_writing_is_listed_with_none_of_the_three_offered()
+    {
+        Recorded("daily", both: true);
+        Recorded("weekly", both: true);
+
+        using var writing = StillRecording("daily");
+
+        var listed = CommandLine.Of("recordings", "--spool", root.FullName);
+
+        listed.Code.ShouldBe(Cli.Ok, listed.Error);
+        listed.Values("choices").ShouldBe(
+            ["nothing yet — it is still being recorded", "keep, export or discard"]);
+    }
+
+    /// <summary>
+    /// And what the listing says is not open is what comes back to somebody who typed it anyway:
+    /// each of the three is refused about the meeting rather than about a block file that would
+    /// not open — which is what a person would otherwise read, under advice to run the command
+    /// again.
     /// </summary>
     [Theory]
     [InlineData("--keep")]
@@ -98,17 +118,7 @@ public sealed class RecoveryCommandTests : IDisposable
         Recorded("daily", both: true);
         var into = Folder("taken out");
 
-        // Held before the command runs, which is what a meeting in progress looks like to a start:
-        // writing the spool, and letting nothing else write it.
-        using var writing = new FileStream(
-            BlockSpool.FileFor(Folder("daily"), AudioChannel.Loopback).FullName,
-            FileMode.Open,
-            FileAccess.Write,
-            FileShare.Read);
-
-        CommandLine.Of("recordings", "--spool", root.FullName)
-            .Value("choices")
-            .ShouldStartWith("nothing yet — it is still being recorded");
+        using var writing = StillRecording("daily");
 
         string[] typed = ["recover", "--in", Folder("daily").FullName, decision];
 
@@ -298,6 +308,21 @@ public sealed class RecoveryCommandTests : IDisposable
     }
 
     private DirectoryInfo Folder(string name) => new(Path.Combine(root.FullName, name));
+
+    /// <summary>
+    /// The handle a capture holds on its own spool for as long as the meeting lasts, which is what
+    /// a meeting in progress looks like to a start.
+    /// </summary>
+    /// <remarks>
+    /// The same mode <c>SpoolWriter</c> opens with, and not a stricter one. A stand-in that let
+    /// nothing else read would be held by a probe a real capture permits, so the day the check is
+    /// loosened this would stay green over a recording it no longer notices.
+    /// </remarks>
+    private FileStream StillRecording(string name) => new(
+        BlockSpool.FileFor(Folder(name), AudioChannel.Loopback).FullName,
+        FileMode.Open,
+        FileAccess.Write,
+        FileShare.Read);
 
     /// <summary>
     /// A recording left exactly as killing the process during one leaves it. Every source counts

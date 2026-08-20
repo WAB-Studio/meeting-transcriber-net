@@ -8,18 +8,23 @@ public sealed record Run(int Code, string Output, string Error)
     /// count back out. Reading the report rather than the corpus is the point: the command line is
     /// the only thing under test, so what it says has to be enough to carry on with.
     /// </summary>
-    public string Value(string label)
-    {
-        var line = Output.Split('\n')
-            .Select(text => text.TrimEnd('\r'))
-            .FirstOrDefault(text => text.StartsWith(label, StringComparison.Ordinal)
-                && text.Length > label.Length
-                && text[label.Length] is ' ');
+    public string Value(string label) => Values(label).FirstOrDefault()
+        ?? throw new InvalidOperationException($"Nothing in the report says '{label}':\n{Output}{Error}");
 
-        return line is null
-            ? throw new InvalidOperationException($"Nothing in the report says '{label}':\n{Output}{Error}")
-            : line[label.Length..].Trim();
-    }
+    /// <summary>
+    /// What every line with that label says, in the order they were written. A listing repeats its
+    /// labels once per recording, so this is how a test reads what was said about all of them
+    /// rather than about whichever came first.
+    /// </summary>
+    public IReadOnlyList<string> Values(string label) =>
+    [
+        .. Output.Split('\n')
+            .Select(text => text.TrimEnd('\r'))
+            .Where(text => text.StartsWith(label, StringComparison.Ordinal)
+                && text.Length > label.Length
+                && text[label.Length] is ' ')
+            .Select(text => text[label.Length..].Trim()),
+    ];
 }
 
 /// <summary>

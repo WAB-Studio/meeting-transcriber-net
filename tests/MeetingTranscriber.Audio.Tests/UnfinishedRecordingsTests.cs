@@ -330,12 +330,9 @@ public sealed class UnfinishedRecordingsTests : IDisposable
         Recorded("daily", both: true);
         var recording = UnfinishedRecordings.At(Folder("daily"));
 
-        // The handle a capture holds on its own spool: writing it, and letting nothing else write.
-        using var writing = new FileStream(
-            BlockSpool.FileFor(Folder("daily"), AudioChannel.Loopback).FullName,
-            FileMode.Open,
-            FileAccess.Write,
-            FileShare.Read);
+        // Taken after the recording was read, which is what leaves the snapshot saying nothing is
+        // writing while something is. The refusal comes from the file system for that reason.
+        using var writing = Recording(AudioChannel.Loopback);
 
         Should.Throw<AudioCaptureException>(recording.Discard).Message.ShouldContain("still running");
         Folder("daily").Exists.ShouldBeTrue();

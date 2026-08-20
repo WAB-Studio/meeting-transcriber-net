@@ -158,12 +158,6 @@ public static class RecordingCommands
                 $"No recording of meeting {meetingId} is waiting to be decided about in "
                 + $"'{corpus.Root.FullName}'. Run this without --meeting to see what is.");
 
-        // Before the folder line and before any of the three, so that what the listing says is not
-        // open comes back the same way to somebody who typed it anyway. Each of the three asks
-        // this itself; asking here is what keeps the answer about the meeting rather than about
-        // whichever file the chosen one happened to open first.
-        recording.Spooled.EnsureThereIsSomethingToDecide();
-
         Report.Line(output, "folder", recording.Folder.FullName);
 
         if (discard)
@@ -277,9 +271,7 @@ public static class RecordingCommands
     /// </remarks>
     private static string Choices(WaitingRecording recording)
     {
-        // First, because it is the one case where naming a choice at all would be wrong. A
-        // recording a capture is still writing is not one of the three refusing it — it is a
-        // meeting that has not finished, and nothing about it is anybody's to decide until it has.
+        // First, because it is the one case where naming a choice at all would be wrong.
         if (recording.NothingToDecideYet is { } yet)
         {
             return $"nothing yet — {yet}";
