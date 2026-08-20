@@ -59,14 +59,14 @@ public sealed class UnfinishedRecordingsTests : IDisposable
         SpoolChanges.Append(folder, new SourceChanged(
             UtcTimestamp.Parse("2026-08-15T09:41:31.500Z"),
             AudioChannel.Loopback,
-            "Speakers (Realtek)",
-            "{0.0.0.0}.speakers",
+            "everything this machine plays",
             "teams (pid 8124)"));
 
         var moved = UnfinishedRecordings.In(root).ShouldHaveSingleItem();
 
         moved.Unreadable.ShouldBeNull();
-        moved.Card.ShouldNotBeNull().On(AudioChannel.Loopback).Heard.ShouldBe("Speakers (Realtek)");
+        moved.Card.ShouldNotBeNull().On(AudioChannel.Loopback).Heard
+            .ShouldBe("everything this machine plays");
         moved.Changed.ShouldHaveSingleItem().WasHearing.ShouldBe("teams (pid 8124)");
     }
 
@@ -485,8 +485,9 @@ public sealed class UnfinishedRecordingsTests : IDisposable
                 Guid.NewGuid(),
                 UtcTimestamp.Parse("2026-08-15T09:41:07.250Z"),
                 SourceProfile.Multichannel,
+                CaptureMode.FullLoopback,
                 [
-                    new SpooledSource(AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.0}.speakers"),
+                    new SpooledSource(AudioChannel.Loopback, "everything this machine plays", null),
                     new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.0}.jabra"),
                 ]));
         }

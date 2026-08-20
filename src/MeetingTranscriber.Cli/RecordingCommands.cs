@@ -55,13 +55,12 @@ public static class RecordingCommands
                 + $"and in that order: 0 < pause < resume < --seconds {seconds}.");
         }
 
-        var playback = AudioDevices.Playback();
         var microphone = AudioDevices.Choose(AudioDevices.Microphones(), wanted);
         var follow = program is null ? null : AudioProcesses.Choose(AudioProcesses.Running(), program);
 
         using var context = corpus.Write();
         using var recording = MeetingRecording.Start(
-            context, language, playback, microphone, follow, Clock.Now());
+            context, language, microphone, follow, Clock.Now());
 
         Report.Line(output, "meeting", recording.MeetingId.ToString());
         Report.Line(output, "spool", recording.Prepared.Spool.FullName);
@@ -300,7 +299,15 @@ public static class RecordingCommands
         var wholeMachine = WholeMachine.AtThePrompt(said =>
         {
             recording.RecordTheWholeMachine();
-            Report.Line(said, "channel 0", $"{recording.Mode} — everything this machine plays");
+
+            // Read off what the channel is really listening to now, the way the capture command
+            // reads it. Spelled here as well it would be one phrase in two places, and the day
+            // they differed a prompt would name something no folder holds.
+            Report.Line(
+                said,
+                "channel 0",
+                $"{recording.Mode} — {recording.Sources.Single(source =>
+                    source.Channel == AudioChannel.Loopback).Listening.Name}");
         });
 
         void Interrupt(object? sender, ConsoleCancelEventArgs pressed)

@@ -98,6 +98,59 @@ public class FramePositionsTests
         positions.For(At(110), timingIsSound: true, Packet).ShouldBe(Packet + (10 * Rate / 1000));
     }
 
+    /// <summary>
+    /// Asking where a packet goes moves the sequence past it, and never back. That is what makes it
+    /// a question only about a packet the recording is keeping: a channel being moved has two
+    /// streams handing blocks over at once, and one asked about a block it is going to drop would
+    /// push everything after it along by that block's length — permanently, because a packet is
+    /// never placed before the end of the one before it.
+    /// </summary>
+    [Fact]
+    public void Asking_where_a_packet_goes_moves_the_sequence_past_it()
+    {
+        var positions = new FramePositions(Rate);
+        positions.For(At(100), timingIsSound: true, Packet);
+
+        // The block the other stream handed over and nobody kept.
+        positions.For(At(100), timingIsSound: true, Packet).ShouldBe(Packet);
+
+        // Ten milliseconds on, which the clock says is one packet in — and it is two, because the
+        // dropped one was asked about. The push is what the code must not let happen, not what this
+        // arithmetic should forgive: the clamp is the same one that keeps a real dropout a gap.
+        positions.For(At(110), timingIsSound: true, Packet).ShouldBe(2 * Packet);
+    }
+
+    /// <summary>
+    /// Two device threads are alive over one sequence for the moment a channel takes to hand over,
+    /// so it is asked from both. What comes out has to be a sequence: every position distinct, none
+    /// overlapping the one before it, and the four numbers behind them never half written.
+    /// </summary>
+    [Fact]
+    public void Two_callers_at_once_still_get_one_sequence()
+    {
+        const int each = 2_000;
+        var positions = new FramePositions(Rate);
+        var placed = new System.Collections.Concurrent.ConcurrentBag<long>();
+
+        Parallel.For(0, 2, thread =>
+        {
+            for (var packet = 0; packet < each; packet++)
+            {
+                placed.Add(positions.For(At(100 + (packet * 10)), timingIsSound: true, Packet));
+            }
+        });
+
+        var order = placed.Order().ToArray();
+        order.Length.ShouldBe(2 * each);
+        order.Distinct().Count().ShouldBe(order.Length);
+
+        for (var index = 1; index < order.Length; index++)
+        {
+            (order[index] - order[index - 1]).ShouldBeGreaterThanOrEqualTo(
+                Packet, $"packet {index} lands over the one before it");
+        }
+    }
+
     [Fact]
     public void A_source_arriving_at_no_rate_at_all_is_refused()
     {

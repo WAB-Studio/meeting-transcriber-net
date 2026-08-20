@@ -74,14 +74,12 @@ public sealed class MeetingRecording : IDisposable
     /// </remarks>
     /// <param name="corpus">The corpus to record into.</param>
     /// <param name="language">What the meeting is expected to be spoken in.</param>
-    /// <param name="playback">The endpoint channel 0 listens to, and falls back to.</param>
     /// <param name="microphone">The device channel 1 listens to.</param>
     /// <param name="follow">The program channel 0 should follow, or nothing for the whole machine.</param>
     /// <param name="now">When record was pressed.</param>
     public static MeetingRecording Start(
         CorpusDbContext corpus,
         string language,
-        AudioDevice playback,
         AudioDevice microphone,
         AudioProcess? follow,
         UtcTimestamp now)
@@ -95,8 +93,7 @@ public sealed class MeetingRecording : IDisposable
         // taking it back here would be this type deleting from the corpus on a path where nothing
         // went wrong with the corpus. What it leaves is a meeting with no audio, which the meeting
         // list and recovery both already have to be able to show.
-        var session = CaptureSession.Start(
-            prepared.Spool, prepared.MeetingId, playback, microphone, follow);
+        var session = CaptureSession.Start(prepared.Spool, prepared.MeetingId, microphone, follow);
 
         try
         {
@@ -138,9 +135,9 @@ public sealed class MeetingRecording : IDisposable
     /// The meeting goes on, and every notification and other application is in the file from here.
     /// </summary>
     /// <remarks>
-    /// Like <see cref="Stop"/>, not on a thread somebody is looking at: it opens one device, stops
-    /// another and lets a third go, each with its own deadline for a driver that does not answer.
-    /// Unlike <see cref="Stop"/>, the meeting is still being recorded the whole time it runs.
+    /// Like <see cref="Stop"/>, not on a thread somebody is looking at: it opens one device and
+    /// stops another, each with its own deadline for a driver that does not answer. Unlike
+    /// <see cref="Stop"/>, the meeting is still being recorded the whole time it runs.
     /// </remarks>
     public void RecordTheWholeMachine() => session.RecordTheWholeMachine();
 

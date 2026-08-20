@@ -36,7 +36,7 @@ public sealed class RecoveryCommandTests : IDisposable
         run.Value("meeting").ShouldBe(meeting.ToString());
         run.Value("started").ShouldBe("2026-08-15T09:41:07.250Z");
         run.Value("profile").ShouldBe("multichannel");
-        run.Value("ch0 heard").ShouldBe("Speakers (Realtek)");
+        run.Value("ch0 heard").ShouldBe("everything this machine plays");
         run.Value("ch1 heard").ShouldBe("Jabra Evolve 65");
         run.Value("ch0 holds").ShouldStartWith("loopback.blocks,");
         run.Value("ch1 holds").ShouldStartWith("microphone.blocks,");
@@ -346,8 +346,9 @@ public sealed class RecoveryCommandTests : IDisposable
             Guid.NewGuid(),
             UtcTimestamp.Parse("2026-08-15T09:41:07.250Z"),
             SourceProfile.Multichannel,
+            CaptureMode.FullLoopback,
             [
-                new SpooledSource(AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.0}.speakers"),
+                new SpooledSource(AudioChannel.Loopback, "everything this machine plays", null),
                 new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.0}.jabra"),
             ]));
 

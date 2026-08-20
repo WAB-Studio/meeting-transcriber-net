@@ -7,8 +7,8 @@ namespace MeetingTranscriber.Audio;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Releasing a WASAPI client, an endpoint or a playback is a synchronous call into the driver, and
-/// a driver can wedge on being let go of exactly as it can wedge on being drained. Done on the
+/// Releasing a WASAPI client or the endpoint it came off is a synchronous call into the driver,
+/// and a driver can wedge on being let go of exactly as it can wedge on being drained. Done on the
 /// caller's thread, that is an application which will not close after a meeting somebody already
 /// recorded — the same failure <see cref="CaptureLoop"/> exists for, one line further down.
 /// </para>

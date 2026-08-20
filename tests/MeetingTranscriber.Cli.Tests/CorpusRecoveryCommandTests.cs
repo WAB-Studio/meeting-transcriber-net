@@ -300,8 +300,9 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
             Guid.NewGuid(),
             startedAt,
             CapturedAudio.Profile,
+            CaptureMode.FullLoopback,
             [
-                new SpooledSource(AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.0}.speakers"),
+                new SpooledSource(AudioChannel.Loopback, "everything this machine plays", null),
                 new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.0}.jabra"),
             ]);
 

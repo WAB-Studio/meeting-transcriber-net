@@ -26,11 +26,26 @@ public sealed record ChannelReading
     public required AudioChannel Channel { get; init; }
 
     /// <summary>
-    /// What it is capturing, as it was capturing it when this was read: the device, or the program
-    /// channel 0 is following. Read off the source rather than off the card beside the blocks, so a
-    /// channel somebody moved to the whole machine says the whole machine from the moment it moves.
+    /// What it is capturing, as it was capturing it when this was read — the device or the program
+    /// — or nothing at all when it is capturing the whole machine. Read off the source rather than
+    /// off the card beside the blocks, so a channel somebody moved to the whole machine says so
+    /// from the moment it moves.
     /// </summary>
-    public required string Capturing { get; init; }
+    /// <remarks>
+    /// Nothing rather than a phrase, for the reason <see cref="Loudness"/> hands back nothing: a
+    /// device's name and a program's are names this machine gave, and they read the same in every
+    /// language. "Everything this machine plays" is a sentence, and a sentence belongs to the
+    /// catalogue a screen names an entry in — so the one case that needs words hands back none.
+    /// It is the ordinary case rather than a corner, since it is what a recording nobody pointed at
+    /// a program is capturing.
+    /// </remarks>
+    /// <remarks>
+    /// Nullable and required at once, which is not a contradiction: nothing is one of the answers,
+    /// so it has to be sayable — and required is what keeps saying it apart from not saying
+    /// anything. Without it a caller that forgot this field would compile into a reading claiming
+    /// the recording is of everything this machine plays.
+    /// </remarks>
+    public required string? Capturing { get; init; }
 
     /// <summary>The loudest this channel was over the stretch this reading covers.</summary>
     public required LevelReading Level { get; init; }
@@ -100,14 +115,34 @@ public sealed record ChannelReading
         [
             .. recording.Sources
                 .OrderBy(source => CapturedAudio.IndexOf(source.Channel))
-                .Select(source => new ChannelReading
-                {
-                    Channel = source.Channel,
-                    Capturing = source.Listening.Name,
-                    Level = source.Level(),
-                    Stopped = source.HasEnded,
-                }),
+                .Select(source => Of(
+                    source.Listening, source.Level(), stopped: source.HasEnded)),
         ];
+    }
+
+    /// <summary>
+    /// One channel's reading, built from what it is listening to rather than from a name somebody
+    /// read off it — which is the whole of the rule, and the reason this is not four initialisers
+    /// at the one call site that needs a device to reach.
+    /// </summary>
+    /// <param name="listening">What the channel has open, which also says which channel it is.</param>
+    /// <param name="level">The loudest it has been since the look before.</param>
+    /// <param name="stopped">Whether its stream is over.</param>
+    public static ChannelReading Of(CaptureTarget listening, LevelReading level, bool stopped)
+    {
+        ArgumentNullException.ThrowIfNull(listening);
+
+        return new ChannelReading
+        {
+            Channel = listening.Channel,
+
+            // The name where it is one this machine gave, and nothing where it would be a sentence
+            // this application wrote — see Capturing, which is where that costs somebody the
+            // language they read in.
+            Capturing = listening is CaptureTarget.TheWholeMachine ? null : listening.Name,
+            Level = level,
+            Stopped = stopped,
+        };
     }
 }
 

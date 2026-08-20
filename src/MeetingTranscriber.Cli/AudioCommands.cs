@@ -122,7 +122,6 @@ public static class AudioCommands
                 + "first, and what is not offered cannot be taken.");
         }
 
-        var playback = AudioDevices.Playback();
         var microphone = AudioDevices.Choose(AudioDevices.Microphones(), wanted);
         var follow = program is null ? null : AudioProcesses.Choose(AudioProcesses.Running(), program);
 
@@ -130,7 +129,7 @@ public static class AudioCommands
         // says so: a recording still being written is a file this build refuses to read, which is
         // the same refusal that stops somebody being told a meeting still going on had ended.
         var spools = new List<(AudioChannel Channel, FileInfo Blocks)>();
-        using (var session = CaptureSession.Start(folder, meeting, playback, microphone, follow))
+        using (var session = CaptureSession.Start(folder, meeting, microphone, follow))
         {
             Report.Line(output, "folder", folder.FullName);
             Report.Line(output, "meeting", session.Card.MeetingId.ToString());

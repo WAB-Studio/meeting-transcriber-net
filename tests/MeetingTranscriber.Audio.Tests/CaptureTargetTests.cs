@@ -15,5 +15,6 @@ public class CaptureTargetTests
     {
         new CaptureTarget.Program(new AudioProcess(1000, "msedge", 900)).Name.ShouldBe("msedge (pid 1000)");
         new CaptureTarget.Endpoint(new AudioDevice("{id}", "Altavoces", true)).Name.ShouldBe("Altavoces");
+        new CaptureTarget.TheWholeMachine().Name.ShouldBe("everything this machine plays");
     }
 }

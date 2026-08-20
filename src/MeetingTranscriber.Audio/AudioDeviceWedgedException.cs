@@ -14,10 +14,10 @@ namespace MeetingTranscriber.Audio;
 /// </para>
 /// <para>
 /// One decision reads the difference, and it reads it at its own catch rather than by this type
-/// standing outside the family: a session asked to follow one program falls back to the whole
-/// machine's audio when that program cannot be recorded, and a device that never answered is not a
-/// program that cannot be followed. Falling back over one would open a second device while the
-/// first is still held by a thread nothing can stop, on no answer at all.
+/// standing outside the family: a session asked to follow a program Windows refuses says what
+/// recording the whole machine instead would cost, and a device that never answered is not a
+/// program that was refused. Saying it over one would offer somebody a second recording while a
+/// thread nothing can stop is still inside the first device, on no answer at all.
 /// </para>
 /// </remarks>
 public sealed class AudioDeviceWedgedException : AudioCaptureException

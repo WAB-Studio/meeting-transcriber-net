@@ -14,9 +14,8 @@ namespace MeetingTranscriber.Audio;
 /// following and its process id.
 /// </param>
 /// <param name="DeviceId">
-/// The endpoint this reopens by, or nothing when the channel was following a program rather than
-/// listening to a device. It is the one field that says which of the two it was, so nothing else
-/// stores that and nothing else can disagree with it.
+/// The endpoint this reopens by, or nothing when no device fed the channel. Channel 0 is always
+/// the second: neither way of obtaining it is a device, and a card saying otherwise is refused.
 /// </param>
 public sealed record SpooledSource(AudioChannel Channel, string Heard, string? DeviceId);
 
@@ -33,31 +32,27 @@ public sealed record SpooledSource(AudioChannel Channel, string Heard, string? D
 /// <param name="CaptureRunId">This run of it, so the row describing the run can be written again.</param>
 /// <param name="StartedAt">When the recording started.</param>
 /// <param name="Profile">What the audio will be transcribed as, which its channel count has to match.</param>
+/// <param name="Mode">
+/// How channel 0 was obtained when it opened, which is the only thing this file ever says about it.
+/// A channel 0 somebody moved to the whole machine an hour in is <see cref="SpoolChanges"/>, and
+/// reading this alone for what a recording holds would name what it started as.
+/// </param>
 /// <param name="Sources">What fed each channel, in channel order.</param>
+/// <remarks>
+/// The mode is written down rather than worked out from the source beside it, because there is
+/// nothing left to work it out from: neither shape of channel 0 names a device, so the absence that
+/// used to tell them apart now says the same thing about both. The source's name is for a person to
+/// read and this is what the recording was, and they cannot disagree — a card whose channel 0 names
+/// a device is refused where it is read rather than reconciled here.
+/// </remarks>
 public sealed record SpoolCard(
     Guid MeetingId,
     Guid CaptureRunId,
     UtcTimestamp StartedAt,
     SourceProfile Profile,
+    CaptureMode Mode,
     IReadOnlyList<SpooledSource> Sources)
 {
-    /// <summary>How channel 0 was obtained, read off what the card says fed it.</summary>
-    /// <remarks>
-    /// <para>
-    /// Derived rather than stored. A card carrying both this and the source beside it would have
-    /// two answers to the same question, and the day they disagreed nothing would say which one
-    /// the recording was actually made under.
-    /// </para>
-    /// <para>
-    /// How it was obtained when it opened, which is the only thing this file ever says. A channel 0
-    /// somebody moved to the whole machine an hour in is <see cref="SpoolChanges"/>, and reading
-    /// this alone for what a recording holds would name the program it started against.
-    /// </para>
-    /// </remarks>
-    public CaptureMode Mode => On(AudioChannel.Loopback).DeviceId is null
-        ? CaptureMode.ProcessLoopback
-        : CaptureMode.FullLoopback;
-
     /// <summary>What fed <paramref name="channel"/>.</summary>
     public SpooledSource On(AudioChannel channel) =>
         Sources.FirstOrDefault(source => source.Channel == channel)
@@ -177,9 +172,9 @@ public static class SpoolManifest
     /// <summary>Reads a card back with nothing else open — no corpus, no database, one file.</summary>
     /// <remarks>
     /// Every field is required. The whole worth of this file is being trusted when there is
-    /// nothing left to check it against, so a card answering four of the five questions is one
-    /// somebody would act on; the one field allowed to be absent is a source's device, and that is
-    /// the field that says the channel was following a program rather than listening to one.
+    /// nothing left to check it against, so a card answering all but one of the questions is one
+    /// somebody would act on; the one field allowed to be absent is a source's device, and it is
+    /// absent for both channel 0s, neither of which is a device.
     /// </remarks>
     public static SpoolCard Read(FileInfo file)
     {
@@ -213,6 +208,11 @@ public static class SpoolManifest
             Identifier(file, "capture_run", card.CaptureRun),
             Parsed(file, "started_at", () => UtcTimestamp.Parse(Required(file, "started_at", card.StartedAt))),
             profile,
+            Parsed(
+                file,
+                "others_capture_mode",
+                () => CaptureModes.FromWireName(
+                    Required(file, "others_capture_mode", card.OthersCaptureMode))),
             Sources(file, card, profile));
     }
 
@@ -226,6 +226,14 @@ public static class SpoolManifest
     /// hand or half rewritten looks like, and either would come back as a recording with a channel
     /// whose device nobody knows — or with the wrong one, which is worse. The count is the
     /// profile's own rule rather than a number written here.
+    /// </remarks>
+    /// <remarks>
+    /// A channel 0 naming a device is refused for the same reason and it is the newer half of it.
+    /// Neither way of obtaining channel 0 is a device, so a card carrying one describes a recording
+    /// this application cannot have made — and read anyway it would put an endpoint's id and an
+    /// endpoint's name on a run row beside a mode saying the recording was of something else, past
+    /// the one check the corpus has. What says which of the two it was is the card's own mode, and
+    /// this is what keeps the field beside it from being a second answer that disagrees.
     /// </remarks>
     private static SpooledSource[] Sources(FileInfo file, Card card, SourceProfile profile)
     {
@@ -255,6 +263,15 @@ public static class SpoolManifest
                 + "the other one.");
         }
 
+        var others = Array.Find(sources, source => source.Channel == AudioChannel.Loopback);
+        if (others?.DeviceId is not null)
+        {
+            throw new AudioCaptureException(
+                $"'{file.FullName}' says the {AudioChannel.Loopback} channel was fed by device "
+                + $"'{others.DeviceId}', and no device ever feeds it: what it holds is one "
+                + "program's audio or everything the machine plays, and neither is an endpoint.");
+        }
+
         return sources;
     }
 
@@ -263,6 +280,7 @@ public static class SpoolManifest
         card.CaptureRunId.ToString(),
         card.StartedAt.ToStorage(),
         card.Profile.ToWireName(),
+        card.Mode.ToWireName(),
         [.. card.Sources.Select(source => new Source(
             CapturedAudio.IndexOf(source.Channel), source.Heard, source.DeviceId))]);
 
@@ -306,6 +324,7 @@ public static class SpoolManifest
         [property: JsonPropertyName("capture_run")] string? CaptureRun,
         [property: JsonPropertyName("started_at")] string? StartedAt,
         [property: JsonPropertyName("source_profile")] string? SourceProfile,
+        [property: JsonPropertyName("others_capture_mode")] string? OthersCaptureMode,
         [property: JsonPropertyName("sources")] IReadOnlyList<Source>? Sources);
 
     private sealed record Source(

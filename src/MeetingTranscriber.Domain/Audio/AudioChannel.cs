@@ -13,7 +13,7 @@ namespace MeetingTranscriber.Domain.Audio;
 /// </remarks>
 public enum AudioChannel
 {
-    /// <summary>Channel 0 — what the machine played: the selected process, or full loopback as fallback.</summary>
+    /// <summary>Channel 0 — what was played: the selected process, or everything this machine plays.</summary>
     Loopback = 0,
 
     /// <summary>Channel 1 — what the selected microphone picked up.</summary>

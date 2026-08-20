@@ -17,8 +17,7 @@ public sealed class SilentProgramTests
     private static readonly CaptureTarget Program =
         new CaptureTarget.Program(new AudioProcess(8124, "teams", StartedBy: 1084));
 
-    private static readonly CaptureTarget WholeMachine =
-        new CaptureTarget.Endpoint(new AudioDevice("{0.0.0.0}.speakers", "Speakers (Realtek)", IsDefault: true));
+    private static readonly CaptureTarget WholeMachine = new CaptureTarget.TheWholeMachine();
 
     private static readonly LevelReading Nothing = new(0f);
 

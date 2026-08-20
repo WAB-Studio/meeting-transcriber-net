@@ -536,12 +536,13 @@ meeting_id
 capture_run_id
 started_at
 source_profile
-qué oyó cada canal, con el id del dispositivo
+others_capture_mode
+qué oyó cada canal, con el id del dispositivo cuando hay uno
 ```
 
-El id del dispositivo falta exactamente cuando el canal seguía un programa, y eso es lo único
-que dice cuál de las dos formas fue: un campo aparte diciendo lo mismo podría contradecirlo, y
-el día que se contradijeran nada sabría bajo cuál se grabó.
+El canal 0 nunca lleva id de dispositivo, porque ninguna de sus dos formas es un dispositivo: el
+que dice cuál de las dos fue es `others_capture_mode`. Se dedujo del id ausente mientras el
+loopback completo era un endpoint; desde que no lo es, la ausencia dice lo mismo de las dos.
 
 Se escribe una vez y no se vuelve a tocar. Todo lo que cambia mientras se graba
 —hasta dónde llegó cada fuente, qué se pudo recuperar— vive en los bloques, que
@@ -565,7 +566,7 @@ proveedor.
 
 Se abren dos flujos:
 
-- **loopback:** audio del proceso seleccionado o loopback completo como fallback;
+- **loopback:** audio del proceso seleccionado, o todo lo que reproduce la máquina;
 - **micrófono:** micrófono seleccionado.
 
 El contrato de canales es estable:
@@ -579,10 +580,21 @@ Los dos nombran un origen de audio y no una persona. Un canal es determinista
 sobre por qué dispositivo entró el sonido, y no dice cuánta gente habló por él:
 dos personas en la misma sala comparten un micrófono.
 
-La captura por proceso usa `ActivateAudioInterfaceAsync` con process loopback e
-incluye el árbol de procesos cuando Windows lo soporta. Teams, Zoom, navegadores
-y aplicaciones WebView se prueban individualmente porque el audio puede salir de
-procesos auxiliares o compartidos.
+Las dos formas del canal 0 son la misma llamada: `ActivateAudioInterfaceAsync`
+con process loopback, incluyendo el árbol del proceso elegido, o excluyendo el
+árbol de la propia aplicación —que es todo lo demás en la máquina—. Ninguna de
+las dos abre un dispositivo. Teams, Zoom, navegadores y aplicaciones WebView se
+prueban individualmente porque el audio puede salir de procesos auxiliares o
+compartidos.
+
+El canal 0 no es el audio de una salida: es lo que reproduce esta máquina, salga
+por donde salga, de modo que con parlantes y auriculares a la vez entran los dos.
+No se graba el endpoint de reproducción con un loopback porque un endpoint no
+entrega nada mientras nada suene por él —ni silencio, ni paquetes— y mantenerlo
+despierto obligaba a que grabar dependiera de poder abrir una reproducción. Del
+endpoint por defecto se sigue leyendo el formato, que es lo único que el
+dispositivo virtual no dice: preguntarle no es reproducir por él.
+`docs/process-capture.md` tiene lo medido y lo que no lo está.
 
 Si el proceso seleccionado no produce audio, la UI ofrece loopback completo y
 advierte que puede incluir notificaciones y otras aplicaciones. Ofrece: nada mueve
@@ -1112,7 +1124,8 @@ Casos:
 
 - micrófono y loopback con señales conocidas;
 - proceso objetivo y árbol de hijos;
-- fallback a loopback completo;
+- paso de un programa a toda la máquina con la reunión en curso;
+- parlantes tomados en modo exclusivo por otra aplicación;
 - Teams, Zoom, Meet y navegadores;
 - altavoces, auriculares USB y Bluetooth;
 - suspensión y reanudación;
@@ -1159,7 +1172,7 @@ a terminar: la próxima la retoma en vez de empezar otra.
 1. **Deriva entre micrófono y loopback.** Es el mayor riesgo técnico y se valida
    antes de completar WinUI.
 2. **Captura por proceso multiproceso.** El PID visible puede no ser quien emite
-   el audio; siempre existe fallback a loopback completo.
+   el audio; siempre se puede pasar a toda la máquina con la reunión en curso.
 3. **Eco del sistema en el micrófono.** Puede duplicar voces aunque los canales
    estén temporalmente alineados; debe medirse y explicarse al usuario.
 4. **Cobro sin artefacto.** Sin backend no existe garantía exactly-once alrededor

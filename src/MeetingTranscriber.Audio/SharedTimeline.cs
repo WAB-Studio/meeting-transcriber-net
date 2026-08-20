@@ -40,8 +40,9 @@ public sealed class SharedTimeline
     /// </summary>
     /// <remarks>
     /// Both streams open within tens of milliseconds of each other and neither goes quiet on its
-    /// own — <see cref="SilentPlayback"/> exists so that the loopback endpoint keeps handing over
-    /// packets through a silent meeting. Half a minute of one device saying nothing while the other
+    /// own: a microphone hands over what a silent room sounds like, and channel 0 comes off a
+    /// process loopback, which Windows hands silence rather than nothing when the processes it is
+    /// following are playing nothing. Half a minute of one device saying nothing while the other
     /// records is that device gone, and waiting for it is what turns a streaming component into one
     /// that holds two hours of the survivor in memory and then loses the meeting to it.
     /// </remarks>
