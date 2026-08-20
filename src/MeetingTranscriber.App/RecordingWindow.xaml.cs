@@ -285,7 +285,9 @@ public sealed partial class RecordingWindow : Window
     /// <para>
     /// A refusal answers with what it last said, and writes nothing. This runs once a second, so a
     /// machine whose audio stack is momentarily busy would otherwise put the same sentence in the
-    /// report sixty times a minute — and the thing being reported is a line beside a meter.
+    /// report sixty times a minute — and the thing being reported is a line beside a meter. A
+    /// machine that has stopped answering altogether reads the same way here and costs the deadline
+    /// once rather than once a second, which is the asking's own rule and not this screen's.
     /// </para>
     /// </remarks>
     private AudioDevice? PlayingThrough()

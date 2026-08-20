@@ -9,14 +9,25 @@ namespace MeetingTranscriber.Audio;
 /// What this machine offers to record from, and how a name somebody typed becomes one of them.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Enumeration and choice are separate on purpose: which endpoints exist is the machine's answer
 /// and changes when somebody unplugs a headset, while which one was meant is a rule, and a rule
 /// gets tested. <see cref="Choose"/> is that rule and it touches no device.
+/// </para>
+/// <para>
+/// Which is also why only one of the two is bounded. Both questions this puts to the machine go
+/// through <see cref="DeviceEnquiry"/>, because either can sit inside a stuck audio service for as
+/// long as that service likes; the rule waits on nothing and needs no deadline.
+/// </para>
 /// </remarks>
 public static class AudioDevices
 {
-    /// <summary>Every microphone Windows currently has active.</summary>
-    public static IReadOnlyList<AudioDevice> Microphones() => Endpoints(DataFlow.Capture);
+    /// <summary>
+    /// Every microphone Windows currently has active, or a refusal when it will not say within the
+    /// deadline every wait on this machine's audio shares.
+    /// </summary>
+    public static IReadOnlyList<AudioDevice> Microphones() =>
+        DeviceEnquiry.Answering("the microphones on this machine", () => Endpoints(DataFlow.Capture));
 
     /// <summary>
     /// The endpoint the machine is playing through. There is exactly one at a time: it is where
@@ -26,8 +37,16 @@ public static class AudioDevices
     /// Nothing records it. Channel 0 is what this machine's processes play and comes off no
     /// endpoint, so what this is for is what an endpoint can still say about a meeting: whether
     /// what is played comes out into the room, where the microphone hears it a second time.
+    /// <para>
+    /// Bounded like the list of microphones, and it is the one asked most often: a meeting on
+    /// screen asks it once a second, so a machine that stopped answering is a screen that would
+    /// stop redrawing.
+    /// </para>
     /// </remarks>
-    public static AudioDevice Playback() => Ask(() =>
+    public static AudioDevice Playback() =>
+        DeviceEnquiry.Answering("the device this machine plays through", PlayingThrough);
+
+    private static AudioDevice PlayingThrough() => Ask(() =>
     {
         using var enumerator = new MMDeviceEnumerator();
         if (!enumerator.HasDefaultAudioEndpoint(DataFlow.Render, Role.Console))
@@ -210,6 +229,14 @@ public static class AudioDevices
     /// whose audio service is not running throws from the first call, and "0x80070490" is not
     /// something anybody acts on.
     /// </summary>
+    /// <remarks>
+    /// A refusal and never a deadline, though it is the one funnel every question in this file goes
+    /// through and so the obvious place to put one. <see cref="Open"/> and <see cref="EngineFormat"/>
+    /// are called from inside a <see cref="DeviceOpen"/> ask that is already counting, and a
+    /// deadline here would be a second one over the same device — which is the thing a device
+    /// costing exactly one deadline exists to prevent. The two questions that are nobody else's
+    /// ask are bounded where they are asked instead.
+    /// </remarks>
     private static T Ask<T>(Func<T> question)
     {
         try

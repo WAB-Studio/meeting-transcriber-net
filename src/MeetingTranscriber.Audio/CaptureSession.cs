@@ -428,9 +428,11 @@ public sealed class CaptureSession : IDisposable
     /// </para>
     /// <para>
     /// The machine is asked outside the gate and the move is made inside it. Asking is a
-    /// synchronous call into the audio stack with no deadline of its own, and the gate is what
-    /// somebody pressing stop is waiting on — so what is held while an audio service is thinking is
-    /// nothing at all.
+    /// synchronous call into the audio stack, bounded by its own deadline but not instant, and the
+    /// gate is what somebody pressing stop is waiting on — so what is held while an audio service
+    /// is thinking is nothing at all. A machine that stopped answering is a look that throws and is
+    /// caught above, and the next one two seconds later costs nothing, since a question still out
+    /// there is refused rather than asked again.
     /// </para>
     /// </remarks>
     private void FollowWhateverReplacedIt()
