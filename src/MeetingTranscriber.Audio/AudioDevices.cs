@@ -15,9 +15,11 @@ namespace MeetingTranscriber.Audio;
 /// gets tested. <see cref="Choose"/> is that rule and it touches no device.
 /// </para>
 /// <para>
-/// Which is also why only one of the two is bounded. Both questions this puts to the machine go
-/// through <see cref="DeviceEnquiry"/>, because either can sit inside a stuck audio service for as
-/// long as that service likes; the rule waits on nothing and needs no deadline.
+/// Which is also why only one of the two is bounded. The two questions asked here on nobody else's
+/// behalf — the microphones and the playback endpoint — go through <see cref="DeviceEnquiry"/>,
+/// because either can sit inside a stuck audio service for as long as that service likes. The rule
+/// waits on nothing and needs no deadline, and the two questions asked from inside somebody else's
+/// deadline are the subject of the remark on <see cref="Ask"/>.
 /// </para>
 /// </remarks>
 public static class AudioDevices
@@ -39,8 +41,7 @@ public static class AudioDevices
     /// what is played comes out into the room, where the microphone hears it a second time.
     /// <para>
     /// Bounded like the list of microphones, and it is the one asked most often: a meeting on
-    /// screen asks it once a second, so a machine that stopped answering is a screen that would
-    /// stop redrawing.
+    /// screen asks it once a second, which is what <see cref="DeviceEnquiry"/> is written against.
     /// </para>
     /// </remarks>
     public static AudioDevice Playback() =>
@@ -235,7 +236,9 @@ public static class AudioDevices
     /// are called from inside a <see cref="DeviceOpen"/> ask that is already counting, and a
     /// deadline here would be a second one over the same device — which is the thing a device
     /// costing exactly one deadline exists to prevent. The two questions that are nobody else's
-    /// ask are bounded where they are asked instead.
+    /// ask are bounded where they are asked instead, and a third one added here is bounded the
+    /// same way: at the method that asks it, and never at this funnel. Nothing goes red if it is
+    /// not, which is the one thing this arrangement cannot enforce.
     /// </remarks>
     private static T Ask<T>(Func<T> question)
     {

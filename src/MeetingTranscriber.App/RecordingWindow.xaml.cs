@@ -144,14 +144,20 @@ public sealed partial class RecordingWindow : Window
         _watch.Tick += OnWatch;
         Closed += OnClosed;
 
-        _microphones = [.. Ask(AudioDevices.Microphones)];
+        var microphones = Ask(AudioDevices.Microphones);
+        _microphones = [.. microphones ?? []];
         _sources = SourcesNow();
 
         // A report line and not the status one. The status says what the screen is doing and is
         // rewritten every time anything changes, so a machine with no microphone would announce it
         // once and lose it to the next refresh — and it is the one thing on this screen that
         // cannot be got round by pressing something else.
-        if (_microphones.Length == 0)
+        //
+        // Said only when the machine answered. An empty picker means one of two different things
+        // and a machine that would not say is the other one: it has already put what Windows said
+        // in the report, and following that with this would tell somebody whose audio service is
+        // stuck that their microphone does not exist.
+        if (microphones is { Count: 0 })
         {
             Say(UiTexts.NoMicrophoneOnThisMachine);
         }
@@ -596,7 +602,7 @@ public sealed partial class RecordingWindow : Window
     private RecorderSource[] SourcesNow() =>
     [
         RecorderSource.TheWholeMachine,
-        .. Ask(AudioProcesses.Running)
+        .. (Ask(AudioProcesses.Running) ?? [])
             .OrderBy(program => program.Name, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(program => program.Id)
             .Select(RecorderSource.Following),
@@ -610,7 +616,11 @@ public sealed partial class RecordingWindow : Window
     /// not say. A window that would not start because the audio stack was busy is worse than one
     /// that opens with an empty picker and a line saying so.
     /// </summary>
-    private IReadOnlyList<T> Ask<T>(Func<IReadOnlyList<T>> machine)
+    /// <returns>
+    /// What the machine said, or nothing at all when it would not say — which is not the same
+    /// answer as an empty list and is not shown as one. What it said instead is in the report.
+    /// </returns>
+    private IReadOnlyList<T>? Ask<T>(Func<IReadOnlyList<T>> machine)
     {
         try
         {
@@ -619,7 +629,7 @@ public sealed partial class RecordingWindow : Window
         catch (AudioCaptureException unanswered)
         {
             Dump(unanswered.Message);
-            return [];
+            return null;
         }
     }
 
@@ -799,9 +809,14 @@ public sealed partial class RecordingWindow : Window
     /// By name as well as by number. A process id on its own says nothing — Windows reuses them —
     /// and the pair is what says this is still the program that was picked rather than whatever
     /// inherited its number.
+    /// <para>
+    /// A machine that would not say reads the same as one that says the program is gone, which is
+    /// the answer to give when this is what stands between somebody and a recording of the wrong
+    /// process: it is not still running until something says it is.
+    /// </para>
     /// </remarks>
     private bool StillRunning(RecorderSource following) =>
-        Ask(AudioProcesses.Running).Any(program =>
+        (Ask(AudioProcesses.Running) ?? []).Any(program =>
             program.Id == following.Follow!.Id
             && string.Equals(program.Name, following.Follow.Name, StringComparison.OrdinalIgnoreCase));
 

@@ -13,9 +13,16 @@ namespace MeetingTranscriber.Audio;
 /// abandoned rather than answered.
 /// </para>
 /// <para>
-/// What a body given up on is still holding stays held, which is what abandoning anything here
-/// means: the thread is inside the audio stack, so anything it obtained a moment later is something
-/// nothing out here ever learns about and nothing may close.
+/// What a body given up on is still holding stays held: the thread is inside the audio stack, so
+/// anything it obtained a moment later is something nothing out here ever learns about and nothing
+/// may close. What that costs is each caller's to say.
+/// </para>
+/// <para>
+/// The thread is an ordinary one and so joins the multi-threaded apartment, where a window makes
+/// its calls from the single-threaded one it owns. That is how every device has been opened since
+/// starting a recording was bounded, and listing them here now goes the same way: the `devices`
+/// command run against this machine on 2026-08-20 named both endpoints, which one it plays
+/// through, and the form factor each driver's property store holds.
 /// </para>
 /// <para>
 /// The mechanism and no policy: what the deadline expiring means, and whether the question should

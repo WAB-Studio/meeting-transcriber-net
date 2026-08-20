@@ -6,8 +6,8 @@ namespace MeetingTranscriber.Audio.Tests;
 /// The one question every test that wedges a device asks about what it timed: was that the
 /// deadline, or no deadline at all? A loop that will not come back, a loop that will not start, a
 /// device that will not answer, a device that refuses and will not be let go of, handles that will
-/// not close — all of them time a wait against <see cref="CaptureLoop.StopsWithin"/> and all of
-/// them mean the same thing by it.
+/// not close, a machine that will not say what it has — all of them time a wait against
+/// <see cref="CaptureLoop.StopsWithin"/> and all of them mean the same thing by it.
 /// </summary>
 /// <remarks>
 /// Answered here rather than in each of those, because neither end of the bound is about the thing
@@ -49,5 +49,23 @@ internal static class Deadlines
     {
         waited.ShouldBeGreaterThanOrEqualTo(CaptureLoop.StopsWithin - Slack);
         waited.ShouldBeLessThan(CaptureLoop.StopsWithin * 2);
+    }
+
+    /// <summary>
+    /// Asserts the other half of the same question: that a wait was not the deadline, which is what
+    /// every one of those tests measures its wedge against. Anything a person would not notice
+    /// passes — the point is that no deadline was spent, and a second is three orders of magnitude
+    /// of room for a build agent to be busy in.
+    /// </summary>
+    /// <param name="waited">What a <see cref="Stopwatch"/> measured across the wait.</param>
+    internal static void ShouldHaveComeBackAtOnce(this TimeSpan waited) =>
+        waited.ShouldBeLessThan(TimeSpan.FromSeconds(1));
+
+    /// <summary>How long <paramref name="step"/> took, for the tests that assert one of the two.</summary>
+    internal static TimeSpan Time(Action step)
+    {
+        var clock = Stopwatch.StartNew();
+        step();
+        return clock.Elapsed;
     }
 }

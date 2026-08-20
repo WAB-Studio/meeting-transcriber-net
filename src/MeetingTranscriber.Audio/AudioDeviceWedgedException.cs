@@ -11,8 +11,8 @@ namespace MeetingTranscriber.Audio;
 /// What the narrower type adds is that no answer arrived and the thread that asked is still in
 /// there. What that costs is the two factories' to say and not this type's: a device that never
 /// answered is one this application holds until it is restarted, while a machine that never
-/// answered a question about its devices holds nothing and is simply not asked again until it
-/// comes back.
+/// answered a question about its devices holds no device at all and is simply not asked another
+/// until it comes back.
 /// </para>
 /// <para>
 /// One decision reads the difference, and it reads it at its own catch rather than by this type
@@ -47,9 +47,17 @@ public sealed class AudioDeviceWedgedException : AudioCaptureException
 
     /// <summary>
     /// What a machine that will not say what it can record from is said to be. The other half of
-    /// the same sentence: nothing was opened, so nothing is held — what it costs is that this
-    /// question, and every other one about this machine's audio, is refused until it comes back.
+    /// the same sentence: no device was opened and none is held, so what it costs is that this
+    /// question, and every other one about which devices this machine has, is refused until the
+    /// one still out there comes back.
     /// </summary>
+    /// <remarks>
+    /// It says the devices and not the audio, and the difference is a promise this cannot keep:
+    /// getting hold of a device goes through <see cref="DeviceOpen"/>, which reads none of this, so
+    /// somebody who presses record while a question is still out there waits a deadline of their
+    /// own. Whether pressing record should be refused on what listing learnt is a decision about
+    /// what a person is allowed to try, and it is not one this sentence gets to make quietly.
+    /// </remarks>
     /// <param name="asked">
     /// What was asked about, said the way a person would hear it and read as the end of the
     /// sentence. It is the question still out there, which on the second go is not the one the
@@ -57,6 +65,6 @@ public sealed class AudioDeviceWedgedException : AudioCaptureException
     /// </param>
     public static AudioDeviceWedgedException NoAnswerAbout(string asked) =>
         new($"Windows has not answered about {asked} in {CaptureLoop.StopsWithin.TotalSeconds:0} "
-            + "seconds, and it has not refused either. Nothing more is asked about this machine's "
-            + "audio until that question comes back.");
+            + "seconds, and it has not refused either. Nothing more is asked about the devices on "
+            + "this machine until that question comes back.");
 }
