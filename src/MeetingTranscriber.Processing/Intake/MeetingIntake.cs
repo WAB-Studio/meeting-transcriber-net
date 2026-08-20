@@ -34,6 +34,12 @@ public sealed record MeetingDetails(
     string? Context = null);
 
 /// <summary>What one intake produced, and whether the corpus already had it.</summary>
+/// <param name="PutBack">
+/// The paths that had no file and have one again, because the response handed over turned out to
+/// be what a row of this corpus was missing. A caller that answers "already here" and has quietly
+/// written a paid file back is telling somebody nothing changed while something did, and that
+/// their corpus had a hole in it is the one thing they would have wanted to know.
+/// </param>
 public sealed record ReceivedMeeting(
     Guid MeetingId,
     bool WasAlreadyThere,
@@ -41,7 +47,8 @@ public sealed record ReceivedMeeting(
     Artifact Response,
     Artifact Manifest,
     Artifact Transcript,
-    Artifact Utterances);
+    Artifact Utterances,
+    IReadOnlyList<string> PutBack);
 
 /// <summary>
 /// A paid Deepgram response on disk becoming a meeting of this corpus: the response filed as the
@@ -115,9 +122,10 @@ public static class MeetingIntake
         // this method. They go back before anything is derived from them, through the same door the
         // restore command uses and on the same terms: the corpus finds the rows these bytes belong
         // under, and this hands over no row of its own even though it is holding one.
+        IReadOnlyList<string> putBack = [];
         if (already is not null)
         {
-            ArtifactRestore.Restore(context, bytes, now);
+            putBack = ArtifactRestore.Restore(context, bytes, now).PutBack;
         }
 
         // Before the render and on every filing, including one that found the meeting already
@@ -142,7 +150,8 @@ public static class MeetingIntake
             stored,
             manifest,
             rendered.Transcript,
-            rendered.Utterances);
+            rendered.Utterances,
+            putBack);
     }
 
     /// <summary>

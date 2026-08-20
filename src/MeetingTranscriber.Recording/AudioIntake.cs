@@ -45,13 +45,21 @@ public sealed record BroughtDetails(
 /// that is already here, so this says which of the two happened rather than leaving a caller to
 /// read it off a meeting id it has never seen before.
 /// </param>
+/// <param name="PutBack">
+/// The paths that had no file and have one again, because the audio handed over turned out to be
+/// what a row of this corpus was missing. It is here so that a caller can say it happened: a
+/// command that answers "this audio was already here" and has quietly written a file is telling
+/// somebody nothing changed while something did, and the one thing they would have wanted to know
+/// is that their corpus had a hole in it.
+/// </param>
 public sealed record BroughtMeeting(
     Guid MeetingId,
     Artifact Audio,
     SourceProfile Profile,
     Duration Length,
     bool MixedDown,
-    bool WasAlreadyThere);
+    bool WasAlreadyThere,
+    IReadOnlyList<string> PutBack);
 
 /// <summary>
 /// Audio somebody brought becoming a meeting of this corpus: what the file is decided from the
@@ -72,12 +80,17 @@ public sealed record BroughtMeeting(
 /// read and carry around, so on its own it is the weakest evidence in the folder, while a file
 /// being bit-for-bit the shape <see cref="MeetingAudio.Interchange"/> fixes is the hardest thing
 /// there to arrive at by accident. Everything else — one track or six, off a phone, out of a
-/// conferencing tool, exported by something nobody here has heard of — is a single track: averaged
-/// down to mono and transcribed with the speakers told apart by the provider. That is not a
-/// default anybody may override, and there is no argument for overriding it, because the cost of
-/// being wrong is not a worse transcript: channel 0 is the loopback and channel 1 is the
-/// microphone, so a stereo file taken as two sources puts the user's name on words a stranger
-/// said.
+/// conferencing tool, exported by something nobody here has heard of, and this application's own
+/// recording arriving without the folder that says so — is a single track: averaged down to mono
+/// and transcribed with the speakers told apart by the provider. Those are the two outcomes and
+/// there is no third, because nothing here can tell this application's own recording, dragged out
+/// of its folder, from a stereo export that happens to match it — so a refusal aimed at the first
+/// turns away the second, which is a meeting somebody has. That is not a default anybody may
+/// override either, and there is no argument for overriding it, because the cost of being wrong is
+/// not a worse transcript: channel 0 is the loopback and channel 1 is the microphone, so a stereo
+/// file taken as two sources puts the user's name on words a stranger said. What the mix down
+/// costs is said instead of hidden — <see cref="BroughtMeeting.MixedDown"/> at the time, and the
+/// meeting's own history afterwards.
 /// </para>
 /// <para>
 /// It sits here rather than in <c>Processing</c> because it is the same join <c>Recording</c>
@@ -96,9 +109,9 @@ public static class AudioIntake
     /// </summary>
     /// <remarks>
     /// The file is read and what it is is settled before a row exists, and the order is the point.
-    /// A file this build cannot open, or one whose shape and whose folder cannot be reconciled, is
-    /// refused with the corpus untouched; refused a step later it would leave a meeting with no
-    /// audio under it and a folder somebody has to work out how to clean up.
+    /// A file this build cannot open, or one that is already a file of this corpus, is refused with
+    /// the corpus untouched; refused a step later it would leave a meeting with no audio under it
+    /// and a folder somebody has to work out how to clean up.
     /// </remarks>
     public static BroughtMeeting Bring(
         CorpusDbContext corpus,
@@ -159,15 +172,35 @@ public static class AudioIntake
             // arrives at a channel count nobody decided for it rather than at a meeting.
             profile.EnsureChannelCount(stored.Format.Channels);
 
+            // One handle, opened here and kept for as long as these bytes are needed. What is
+            // hashed and what is restored from have to be the same read: in the branch that did not
+            // mix down these are the person's own file, on a path anything may replace, and two
+            // opens would let the corpus be told one thing and given another.
+            using var content = bytes.Open(new FileStreamOptions
+            {
+                Mode = FileMode.Open,
+                Access = FileAccess.Read,
+                Share = FileShare.Read,
+            });
+
             // The same bytes handed over twice are the meeting that is already here, which is what
             // somebody re-running a command that half worked is doing. Hashed after the mix down
             // because the mix down is deterministic — the same file poured through the same code
             // gives the same track — so what is compared is what would land, not what arrived.
-            var sha256 = CorpusFiles.Sha256Of(bytes);
-            var already = corpus.Artifacts.FirstOrDefault(
-                row => row.Kind == ArtifactKind.Audio && row.Sha256 == sha256);
+            var sha256 = CorpusFiles.Sha256Of(content);
 
-            var filed = already ?? Filed(corpus, meetingId, audio, bytes, profile, stored, details, now);
+            // Ordered, so that identical input gives the same answer twice. Nothing today puts two
+            // audio rows under one hash — this door dedupes on it and a meeting's own audio never
+            // comes back through — but an unordered read of a non-unique index is a meeting id
+            // chosen by whatever the database happened to return first, which is not a fact.
+            var already = corpus.Artifacts
+                .Where(row => row.Kind == ArtifactKind.Audio && row.Sha256 == sha256)
+                .OrderBy(row => row.RelativePath)
+                .FirstOrDefault();
+
+            var filed = already
+                ?? Filed(corpus, meetingId, audio, bytes, profile, format, stored, details, now);
+            IReadOnlyList<string> putBack = [];
 
             if (already is not null)
             {
@@ -176,13 +209,25 @@ public static class AudioIntake
                 // would put it right are open in this method. They go back through the same door
                 // the restore command uses and on the same terms: the corpus finds the rows these
                 // bytes belong under, and nothing here hands it a row of its own.
-                using var content = bytes.OpenRead();
-                ArtifactRestore.Restore(corpus, content, now);
+                //
+                // What it did is carried back out rather than dropped. Restoring is a decision with
+                // a person in it, and the person here decided by handing the file over — but they
+                // asked to bring audio in, so a file put back is not what they were expecting and
+                // is the half of the answer they would not otherwise get.
+                putBack = ArtifactRestore.Restore(corpus, content, now).PutBack;
+
+                // On every filing, including one that found the meeting already here. That is
+                // ISC-50's rule and not a decision taken here: a meeting's folder carries a card
+                // saying what the corpus now says about it, after it is filed, filed again, renamed
+                // or rebuilt — so a filing that finds the card missing, or saying what the corpus
+                // no longer says, is what puts it right. It is not reported for the same reason:
+                // the card is produced from the row every time and replacing it destroys nothing,
+                // which is what makes it different from the source that came back above.
                 MeetingManifest.Write(corpus, already.MeetingId, now);
             }
 
             return new BroughtMeeting(
-                filed.MeetingId, filed, profile, stored.Length, mixDown, already is not null);
+                filed.MeetingId, filed, profile, stored.Length, mixDown, already is not null, putBack);
         }
         finally
         {
@@ -216,12 +261,14 @@ public static class AudioIntake
     /// else somebody happened to drop in the folder.
     /// </para>
     /// <para>
-    /// With no card there is no answer, and the refusal is the point. Both alternatives lose
-    /// something nobody can get back: filed as two sources it would put a name on a stranger's
-    /// words, and averaged to mono it would destroy the split between what the machine played and
-    /// what the microphone heard — silently, on a recording this application made, which is the one
-    /// loss nobody would ever find out about. Refusing is not asking what a channel carries; it is
-    /// saying which folder the file has to be brought in from.
+    /// <b>Vouched or not vouched, and nothing in between.</b> A card that is not there, and a card
+    /// that is there and does not read as one, are the same answer — because a refusal is the one
+    /// outcome this cannot afford. Nothing in this build can tell this application's own recording,
+    /// dragged out of its folder, from somebody's 16 kHz stereo export, so a refusal aimed at the
+    /// first lands on the second, and what it turns away is a meeting somebody has.
+    /// <c>manifest.json</c> is not a name this product owns either — a browser extension, an MSIX
+    /// package and a web app all write one — so a file refused for the JSON beside it would be
+    /// refused over a file its owner never thought about.
     /// </para>
     /// </remarks>
     private static SourceProfile ProfileOf(FileInfo audio, StreamFormat format)
@@ -231,30 +278,27 @@ public static class AudioIntake
             return SourceProfile.Diarize;
         }
 
-        if (CardAbout(audio) is not { } card)
-        {
-            throw new RecordingException(
-                $"'{audio.FullName}' is {format}, which is exactly what a recording of this "
-                + "application comes out as, and nothing beside it says whether it is one. Bring "
-                + $"it in from the folder it was filed in, where the {MeetingManifest.FileName} "
-                + "next to it says what its channels are — taking it as two sources would put a "
-                + "name on words a stranger said, and mixing it down would throw the two sources "
-                + "away.");
-        }
-
-        return card.Profile;
+        return CardAbout(audio)?.Profile ?? SourceProfile.Diarize;
     }
 
     /// <summary>
-    /// The recovery card this file is the audio of, or nothing when no card is about this file.
+    /// The recovery card this file is the audio of, or nothing when nothing beside it is one.
     /// </summary>
     /// <remarks>
-    /// A card that is there and cannot be read is neither, and it throws rather than being treated
-    /// as absent. A spool folder's card lands here too — <see cref="MeetingAudio.Materialise"/>
-    /// writes an <c>audio.wav</c> beside the blocks — and it is refused by that reader, because it
-    /// answers a different set of questions. That is the right answer for a different reason as
-    /// well: those blocks reach the corpus through recovery, so bringing their playback in here
-    /// would be the same meeting twice.
+    /// <para>
+    /// A card that will not read as a meeting's is nothing rather than a refusal, and it is the
+    /// only honest answer: this is reached by a file whose name and shape somebody else's export
+    /// can have, so throwing here would turn any <c>manifest.json</c> in the folder — a browser
+    /// extension's, a package's, a web app's — into a reason to reject their audio. The rule that
+    /// gives is the one nobody would design: delete the JSON you did not know was there and the
+    /// same import goes through.
+    /// </para>
+    /// <para>
+    /// It costs nothing that was being protected. A recording of this application that has not been
+    /// stopped yet is spooled under the corpus's own <c>spool/</c>, so its playback never reaches
+    /// this method at all — <see cref="EnsureItCameFromOutside"/> runs first and refuses it by
+    /// where it is, which is a fact about this corpus rather than a guess about a file.
+    /// </para>
     /// </remarks>
     private static MeetingCard? CardAbout(FileInfo audio)
     {
@@ -265,7 +309,19 @@ public static class AudioIntake
         }
 
         var card = new FileInfo(Path.Combine(folder.FullName, MeetingManifest.FileName));
-        return card.Exists ? MeetingManifest.Read(card) : null;
+        if (!card.Exists)
+        {
+            return null;
+        }
+
+        try
+        {
+            return MeetingManifest.Read(card);
+        }
+        catch (ManifestException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -316,6 +372,20 @@ public static class AudioIntake
     }
 
     /// <summary>
+    /// What the file was when it arrived and what became of its channels, for the line the corpus
+    /// keeps about it.
+    /// </summary>
+    /// <remarks>
+    /// Both halves in one sentence, because the second only means anything against the first: a
+    /// meeting that says one channel says nothing about whether there were ever two.
+    /// </remarks>
+    private static string ArrivedAs(StreamFormat arrived, StreamFormat stored) =>
+        arrived.Channels == stored.Channels
+            ? $"which arrived as {arrived} and went in as it was"
+            : $"which arrived as {arrived} and went in with its {arrived.Channels} channels "
+              + "averaged into one";
+
+    /// <summary>
     /// The meeting, the audio it is built on and the card that says what it is, as one thing.
     /// </summary>
     /// <remarks>
@@ -331,6 +401,7 @@ public static class AudioIntake
         FileInfo brought,
         FileInfo bytes,
         SourceProfile profile,
+        StreamFormat arrived,
         AudioOnDisk stored,
         BroughtDetails details,
         UtcTimestamp now)
@@ -362,13 +433,20 @@ public static class AudioIntake
         // own: a meeting made out of a WAV somebody had and one whose response they paid Deepgram
         // for are different things to find later, and one word for both would make the audit unable
         // to tell them apart.
+        //
+        // It says what the file arrived as and not only where it was, and that half is the whole
+        // point of the line. A file whose channels were averaged on the way in and a file that
+        // only ever had one are the same meeting afterwards in every other place the corpus looks
+        // — same profile, same length, same card, field for field — so without this the only
+        // account of a meeting having lost its two sources is a line of console output from the
+        // afternoon somebody ran the command.
         corpus.AuditEvents.Add(new AuditEvent
         {
             OccurredAt = now,
             Actor = AuditActor.App,
             Action = "audio imported",
             MeetingId = meetingId,
-            Detail = $"the audio at '{brought.FullName}'",
+            Detail = $"the audio at '{brought.FullName}', {ArrivedAs(arrived, stored.Format)}",
         });
 
         corpus.SaveChanges();

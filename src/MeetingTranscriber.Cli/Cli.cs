@@ -200,8 +200,7 @@ public static class Cli
     /// The failures that are answers rather than defects: a corpus that is not there or not sound,
     /// a response that cannot be read, a meeting that cannot be rendered, a query the index
     /// refuses, a machine with no microphone to give, a disk that will not give the file up, a
-    /// recording that names a meeting this corpus does not have, a recovery card beside audio
-    /// somebody is bringing in that cannot be read as one.
+    /// recording that names a meeting this corpus does not have.
     /// Anything else is a bug and comes out as one.
     /// </summary>
     private static bool IsRefusal(Exception exception) => exception
@@ -210,7 +209,6 @@ public static class Cli
         or CorpusIntegrityException
         or CorpusSearchException
         or IntakeException
-        or ManifestException
         or RenderException
         or DeepgramResponseException
         or AudioContractException

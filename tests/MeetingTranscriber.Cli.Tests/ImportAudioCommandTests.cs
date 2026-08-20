@@ -129,6 +129,38 @@ public sealed class ImportAudioCommandTests : IDisposable
         again.Value("meeting").ShouldBe($"{first.Value("meeting")} (this audio was already here)");
 
         CommandLine.Of("status", "--corpus", root).Value("meetings").ShouldBe("1 active");
+        again.Values("put back").ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// And when the corpus had the row and had lost the file, the report names the file that came
+    /// back instead of answering "already here" over a write nobody was told about.
+    /// </summary>
+    [Fact]
+    public void Audio_that_puts_a_lost_file_back_says_which_file()
+    {
+        using var corpus = new TemporaryCorpus();
+        var root = corpus.Root.FullName;
+
+        CommandLine.Of("migrate", "--corpus", root).Code.ShouldBe(Cli.Ok);
+        var file = Wav("call.wav", channels: 2).FullName;
+
+        var first = CommandLine.Of(
+            "import-audio", file, "--corpus", root, "--started-at", StartedAt);
+        first.Code.ShouldBe(Cli.Ok, first.Error);
+
+        var audio = first.Value("audio");
+        File.Delete(Path.Combine(root, audio));
+
+        var again = CommandLine.Of(
+            "import-audio", file, "--corpus", root, "--started-at", StartedAt);
+
+        again.Code.ShouldBe(Cli.Ok, again.Error);
+        again.Value("put back").ShouldBe(audio);
+
+        // And the corpus is sound afterwards, which is what the file coming back was for.
+        var sound = CommandLine.Of("check", "--corpus", root, "--verify-contents");
+        sound.Code.ShouldBe(Cli.Ok, sound.Error);
     }
 
     /// <summary>

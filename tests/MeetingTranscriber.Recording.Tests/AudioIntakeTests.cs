@@ -212,28 +212,70 @@ public sealed class AudioIntakeTests : IDisposable
     }
 
     /// <summary>
-    /// A file that is exactly what this application records, with nothing beside it saying whether
-    /// it is one, is refused rather than guessed at.
+    /// ISC-151 and ISC-159. A file that is exactly what this application records, with nothing
+    /// beside it saying whether it is one, is a single track like every other file nothing vouches
+    /// for — and it enters saying the channels were averaged.
     /// </summary>
     /// <remarks>
-    /// It is the case that used to be answered silently and wrongly in both directions: taken as
-    /// two sources it puts somebody's name on a stranger's words, and averaged to mono it destroys
-    /// the split between what the machine played and what the microphone heard on a recording this
-    /// application made. The refusal says which folder to bring it in from, which is not the same
-    /// as asking what a channel carries.
+    /// There are two outcomes here and not three. Nothing in this build can tell this application's
+    /// own recording, dragged out of its folder, from somebody's 16 kHz stereo export, so a refusal
+    /// aimed at the first would land on the second and turn a meeting somebody has into one they
+    /// cannot import. The cost it takes instead is that a recording of this application arriving
+    /// without its folder loses the split between the two sources — which is why the losing is what
+    /// this asserts, and not just the profile.
     /// </remarks>
     [Fact]
-    public void Audio_shaped_like_this_applications_own_with_nothing_saying_so_is_refused()
+    public void Audio_shaped_like_this_applications_own_with_nothing_saying_so_is_one_track()
     {
         var orphan = new FileInfo(Path.Combine(elsewhere.FullName, MeetingAudio.FileName));
         ForeignWav.Steady(orphan, MeetingAudio.Interchange.SampleRate, 16_000, 0.5f, 0.25f);
 
         using var context = corpus.OpenMigrated();
+        var brought = AudioIntake.Bring(context, orphan, details, now);
 
-        Should.Throw<RecordingException>(() => AudioIntake.Bring(context, orphan, details, now))
-            .Message.ShouldContain(MeetingManifest.FileName);
+        brought.Profile.ShouldBe(SourceProfile.Diarize);
+        brought.MixedDown.ShouldBeTrue();
+        Filed(brought).Channels.ShouldBe(AudioFiles.OneTrack);
 
-        NothingWasFiled();
+        // What landed is what the row says landed. The mix down is the one step on this path that
+        // writes bytes the caller never saw, so a row describing a file the corpus does not hold
+        // is the failure it could produce and nothing downstream would ever notice.
+        CorpusFiles.Sha256Of(CorpusFiles.Locate(corpus.Root, brought.Audio.RelativePath))
+            .ShouldBe(brought.Audio.Sha256);
+
+        using var reopened = corpus.Open();
+        reopened.Meetings.Single().SourceProfile.ShouldBe(SourceProfile.Diarize);
+    }
+
+    /// <summary>
+    /// ISC-160. The corpus itself remembers that the channels were averaged, so the loss outlives
+    /// the console line that reported it.
+    /// </summary>
+    /// <remarks>
+    /// The two meetings here are indistinguishable everywhere else the corpus looks — same profile,
+    /// same length, same card field for field — because a meeting that says one channel says
+    /// nothing about whether there were ever two. Somebody asking in six months why a meeting they
+    /// remember recording has one track has the audit trail and nothing else, which is why this is
+    /// probed by reading rows back rather than by reading a report.
+    /// </remarks>
+    [Fact]
+    public void What_became_of_the_channels_is_still_in_the_corpus_afterwards()
+    {
+        using var context = corpus.OpenMigrated();
+
+        var averaged = AudioIntake.Bring(
+            context, Foreign("call.wav", 44_100, 0.5f, 0.25f), details, now);
+        var untouched = AudioIntake.Bring(
+            context, Foreign("phone.wav", 44_100, 0.5f), details, now);
+
+        using var reopened = corpus.Open();
+
+        // Everything else really does agree, so the audit line is carrying the whole difference.
+        reopened.Meetings.Select(meeting => meeting.SourceProfile).Distinct()
+            .ShouldBe([SourceProfile.Diarize]);
+
+        Said(reopened, averaged.MeetingId).ShouldContain("2 channels averaged into one");
+        Said(reopened, untouched.MeetingId).ShouldNotContain("averaged");
     }
 
     /// <summary>
@@ -259,23 +301,63 @@ public sealed class AudioIntakeTests : IDisposable
     }
 
     /// <summary>
-    /// A card that is there and cannot be read stops the import instead of quietly being treated as
-    /// audio from somewhere else. A recording of this application's own, mixed down to mono because
-    /// the file saying what it was had been torn in half, is a loss nobody would notice.
+    /// ISC-159. A card that does not read as a meeting's vouches for nothing, and the file goes in
+    /// as the single track everything nothing vouches for goes in as.
     /// </summary>
+    /// <remarks>
+    /// The file here is somebody else's, and <c>manifest.json</c> is not a name this product owns
+    /// — a browser extension, a package and a web app all write one. Refusing over it would mean
+    /// rejecting a stranger's audio for a JSON file they never thought about, and would leave the
+    /// rule "delete the file you did not know was there and the same import goes through". That is
+    /// the same shape as refusing over a missing card, which is why it gets the same answer.
+    /// </remarks>
     [Fact]
-    public void A_card_that_cannot_be_read_stops_the_import()
+    public void A_card_that_does_not_read_as_a_meetings_vouches_for_nothing()
     {
-        var folder = Recorded();
+        var folder = new DirectoryInfo(Path.Combine(elsewhere.FullName, "downloads"));
+        folder.Create();
         File.WriteAllText(
-            Path.Combine(folder.FullName, MeetingManifest.FileName), "{\"meeting\": \"not-an-id\"}");
+            Path.Combine(folder.FullName, MeetingManifest.FileName),
+            "{\"name\": \"Some Extension\", \"version\": \"1.0\"}");
+
+        var audio = new FileInfo(Path.Combine(folder.FullName, MeetingAudio.FileName));
+        ForeignWav.Steady(audio, MeetingAudio.Interchange.SampleRate, 16_000, 0.5f, 0.25f);
 
         using var context = corpus.OpenMigrated();
+        var brought = AudioIntake.Bring(context, audio, details, now);
 
-        Should.Throw<ManifestException>(
-            () => AudioIntake.Bring(context, MeetingAudio.In(folder), details, now));
+        brought.Profile.ShouldBe(SourceProfile.Diarize);
+        brought.MixedDown.ShouldBeTrue();
+        Filed(brought).Channels.ShouldBe(AudioFiles.OneTrack);
+    }
 
-        NothingWasFiled();
+    /// <summary>
+    /// A recording this corpus has not stopped yet is not something to bring in, and what refuses
+    /// it is where it is rather than anything read out of it.
+    /// </summary>
+    /// <remarks>
+    /// Its blocks are spooled under the corpus's own folder and reach a meeting through recovery,
+    /// so bringing their playback in here would be the same meeting twice. That is worth a probe
+    /// because it is the one thing the card reader used to be relied on for — a spool's card is
+    /// under the same name and answers a different set of questions, so it used to fail to parse
+    /// and refuse by accident. The rule that really holds it runs first and does not depend on a
+    /// file parsing.
+    /// </remarks>
+    [Fact]
+    public void A_recording_this_corpus_has_not_stopped_yet_is_not_something_to_bring_in()
+    {
+        using var context = corpus.OpenMigrated();
+
+        var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 1);
+        var playback = MeetingAudio.Materialise(prepared.Spool).File;
+
+        // It really is the shape a recording comes out as, so nothing but where it sits is left to
+        // refuse it on.
+        AudioFiles.FormatOf(playback).ShouldBe(MeetingAudio.Interchange);
+
+        Should.Throw<RecordingException>(() => AudioIntake.Bring(context, playback, details, now))
+            .Message.ShouldContain("already a file of this corpus");
     }
 
     /// <summary>
@@ -320,9 +402,42 @@ public sealed class AudioIntakeTests : IDisposable
         again.WasAlreadyThere.ShouldBeTrue();
         again.MeetingId.ShouldBe(first.MeetingId);
 
+        again.PutBack.ShouldBeEmpty();
+
         using var reopened = corpus.Open();
         reopened.Meetings.Select(meeting => meeting.Id).ShouldBe([first.MeetingId]);
         reopened.Artifacts.Count(row => row.Kind == ArtifactKind.Audio).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// And the same audio handed over to a corpus that has the row and has lost the file puts the
+    /// file back — and says which one, rather than answering "already here" over a write.
+    /// </summary>
+    /// <remarks>
+    /// Naming it is the whole point of the test. Somebody re-running this reads the answer as a
+    /// command that did nothing, and a file having come back means their corpus had a hole in it a
+    /// moment ago — which is worth going to look at, and is invisible if the only thing said is
+    /// that the meeting was already there.
+    /// </remarks>
+    [Fact]
+    public void Audio_a_row_is_missing_comes_back_and_the_answer_says_which_file()
+    {
+        var file = Foreign("call.wav", 44_100, 0.5f, 0.25f);
+
+        using var context = corpus.OpenMigrated();
+        var first = AudioIntake.Bring(context, file, details, now);
+
+        var lost = CorpusFiles.Locate(corpus.Root, first.Audio.RelativePath);
+        lost.Delete();
+
+        var again = AudioIntake.Bring(context, file, details, now);
+
+        again.WasAlreadyThere.ShouldBeTrue();
+        again.PutBack.ShouldBe([first.Audio.RelativePath]);
+
+        lost.Refresh();
+        lost.Exists.ShouldBeTrue(lost.FullName);
+        CorpusFiles.Sha256Of(lost).ShouldBe(first.Audio.Sha256);
     }
 
     /// <summary>
@@ -487,6 +602,11 @@ public sealed class AudioIntakeTests : IDisposable
     /// <summary>What the corpus ended up holding, read back off the disk.</summary>
     private StreamFormat Filed(BroughtMeeting brought) =>
         AudioFiles.Read(CorpusFiles.Locate(corpus.Root, brought.Audio.RelativePath)).Format;
+
+    /// <summary>What the corpus recorded about this meeting having been brought in.</summary>
+    private static string Said(CorpusDbContext corpus, Guid meetingId) => corpus.AuditEvents
+        .Single(row => row.MeetingId == meetingId && row.Action == "audio imported")
+        .Detail ?? string.Empty;
 
     /// <summary>The corpus as it was before anything was brought in: no meeting, and no file.</summary>
     private void NothingWasFiled()

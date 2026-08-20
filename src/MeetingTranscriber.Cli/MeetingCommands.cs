@@ -51,6 +51,7 @@ public static class MeetingCommands
                 : $"{received.MeetingId}");
         Report.Line(output, "response", received.Response.RelativePath);
         Report.Line(output, "manifest", received.Manifest.RelativePath);
+        PutBack(output, received.PutBack);
         Rendered(output, received.Turns, received.Transcript.RelativePath, received.Utterances.RelativePath);
         return Cli.Ok;
     }
@@ -98,7 +99,27 @@ public static class MeetingCommands
                 : brought.Profile.ToWireName());
         Report.Line(output, "audio", brought.Audio.RelativePath);
         Report.Line(output, "length", Report.Offset(brought.Length));
+        PutBack(output, brought.PutBack);
         return Cli.Ok;
+    }
+
+    /// <summary>
+    /// Names every file a filing put back, and writes nothing when it put none back.
+    /// </summary>
+    /// <remarks>
+    /// Both doors, and one line of code so that they cannot drift. Handing a file the corpus
+    /// already has is read as a command that did nothing, so a source this put back on the way past
+    /// is exactly what a report saying nothing would hide — and what it means is that the corpus
+    /// was missing a file it cannot produce again, which is worth going to look at. Named rather
+    /// than counted for the reason the restore command names them: a path is something to act on
+    /// and a number is not.
+    /// </remarks>
+    private static void PutBack(TextWriter output, IReadOnlyList<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            Report.Line(output, "put back", path);
+        }
     }
 
     public static int Render(Arguments arguments, TextWriter output)
