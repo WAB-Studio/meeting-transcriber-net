@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
@@ -72,6 +72,14 @@ public static class AudioCommands
     /// two hours, the way <c>--pause-at</c> is how pausing gets measured. It takes the offer and
     /// does not stand in for it — a second falling before the rule has said anything moves nothing
     /// and says so, since what it would otherwise measure is the one move nobody was offered.
+    /// <para>
+    /// Channel 1 moves onto another microphone at <c>--then-microphone-at</c>, which is the same
+    /// kind of argument for the same reason: what a device taken away mid meeting costs is only
+    /// measurable against two real endpoints, and nobody is going to unplug one at a stopwatch.
+    /// It is somebody choosing a microphone, which is a thing this application offers; a microphone
+    /// Windows takes away is followed without anybody asking, and that one no argument stands in
+    /// for because there is no choice in it.
+    /// </para>
     /// </remarks>
     public static int Capture(Arguments arguments, TextWriter output)
     {
@@ -83,6 +91,8 @@ public static class AudioCommands
         var wanted = arguments.Optional("--microphone");
         var program = arguments.Optional("--process");
         var wholeMachineAt = arguments.Number("--whole-machine-at", 0);
+        var thenMicrophone = arguments.Optional("--then-microphone");
+        var thenMicrophoneAt = arguments.Number("--then-microphone-at", 0);
         var meeting = arguments.Optional("--meeting") is { } typed
             ? Arguments.Meeting(typed)
             : Guid.NewGuid();
@@ -122,7 +132,28 @@ public static class AudioCommands
                 + "first, and what is not offered cannot be taken.");
         }
 
-        var microphone = AudioDevices.Choose(AudioDevices.Microphones(), wanted);
+        if ((thenMicrophone is null) != (thenMicrophoneAt == 0))
+        {
+            throw new UsageException(
+                "--then-microphone and --then-microphone-at go together: one names the device "
+                + "channel 1 moves onto and the other the second it moves, and neither means "
+                + "anything alone.");
+        }
+
+        if (thenMicrophoneAt >= seconds)
+        {
+            throw new UsageException(
+                $"--then-microphone-at {thenMicrophoneAt} falls outside a recording of {seconds} "
+                + "seconds, so the move it asks for would never happen.");
+        }
+
+        var microphones = AudioDevices.Microphones();
+        var microphone = AudioDevices.Choose(microphones, wanted);
+
+        // Both endpoints are settled before a device is opened, so a name nothing on this machine
+        // answers to is a refusal now rather than a meeting recorded and then a move that could not
+        // be made.
+        var moveTo = thenMicrophone is null ? null : AudioDevices.Choose(microphones, thenMicrophone);
         var follow = program is null ? null : AudioProcesses.Choose(AudioProcesses.Running(), program);
 
         // The session is let go of before anything reads its spools back, and the scope is what
@@ -142,7 +173,7 @@ public static class AudioCommands
                 Report.Line(output, $"{Name(source.Channel)} opened", source.StartedAt.ToString());
             }
 
-            Meter(session, seconds, wholeMachineAt, output);
+            Meter(session, seconds, wholeMachineAt, (thenMicrophoneAt, moveTo), output);
             session.Stop();
 
             foreach (var source in session.Sources)
@@ -346,7 +377,8 @@ public static class AudioCommands
                     // enough to say otherwise, and for a source whose counter was given up on it
                     // stays the label however long the meeting was.
                     + $"{source.MeasuredRate:0} Hz"
-                    + $"{(source.CounterGivenUp ? ", counter given up on" : string.Empty)}"));
+                    + $"{(source.CounterGivenUp ? ", counter given up on" : string.Empty)}"
+                    + $"{Devices(source)}"));
         }
     }
 
@@ -410,13 +442,30 @@ public static class AudioCommands
     /// channels on the shared timeline, and that is a different file — but it is read through the
     /// same path a recovery takes, so every capture is a run of the code a crash will depend on.
     /// </summary>
+    /// <remarks>
+    /// A source whose device changed to one handing over another format has no one playable file,
+    /// and that is said on this line rather than thrown: the meeting's own audio is already made by
+    /// the time this runs, and a run that reported nothing about a recording it had just written
+    /// would be the diagnostics costing the diagnosis.
+    /// </remarks>
     private static string PlayedBack(FileInfo blocks)
     {
-        var replayed = BlockSpool.ToWav(blocks);
+        try
+        {
+            var replayed = BlockSpool.ToWav(blocks);
 
-        return string.Create(
-            CultureInfo.InvariantCulture,
-            $"{BlockSpool.PlaybackFor(blocks).Name}, {replayed.Blocks} blocks{Cut(replayed.Discarded)}");
+            return string.Create(
+                CultureInfo.InvariantCulture,
+                $"{BlockSpool.PlaybackFor(blocks).Name}, {replayed.Blocks} blocks{Cut(replayed.Discarded)}");
+        }
+        catch (AudioCaptureException cannot)
+        {
+            // Said as a failure and never as a line like the ones above it. Every reason lands here
+            // — a source that changed format, a spool that is not a spool, a header that does not
+            // hash — and what they have in common is that the meeting's own audio is already made,
+            // so the diagnostics beside it are not worth failing the run over.
+            return $"not made: {cannot.Message}";
+        }
     }
 
     /// <summary>What one source turned out to be worth, on the line a person reads it off.</summary>
@@ -454,9 +503,17 @@ public static class AudioCommands
     /// past that would be reporting levels for a stream that is no longer there.
     /// </summary>
     private static void Meter(
-        CaptureSession session, int seconds, int wholeMachineAt, TextWriter output)
+        CaptureSession session,
+        int seconds,
+        int wholeMachineAt,
+        (int At, AudioDevice? Device) microphone,
+        TextWriter output)
     {
         using var interrupted = new ManualResetEventSlim(initialState: false);
+
+        // What each channel was on the last time this looked, so that a move is reported as the
+        // change it is rather than as a name printed every second.
+        var listening = session.Sources.ToDictionary(source => source.Channel, source => source.Listening);
 
         var wholeMachine = WholeMachine.AtThePrompt(said =>
         {
@@ -496,7 +553,23 @@ public static class AudioCommands
                     wholeMachine.Take(output);
                 }
 
-                if (session.Sources.Any(source => source.HasEnded))
+                if (second == microphone.At && microphone.Device is { } moveTo)
+                {
+                    session.RecordFrom(moveTo);
+                }
+
+                // Every move and every death, whoever made it. A microphone Windows takes away is
+                // followed by the recording itself, so a run that only reported the moves it was
+                // asked to make would say nothing at all about the one thing this command is the
+                // only way to observe.
+                listening = Moved(session, listening, output);
+
+                // A channel 0 that ended is one nothing will take over: what it was following is
+                // gone and moving it onto the whole machine is somebody's choice, so there is
+                // nothing left for this run to measure. A microphone that ended is the other case
+                // entirely — the recording is already looking for whatever replaced it — so the run
+                // carries on, and the line above is where it says what it moved to.
+                if (session.On(AudioChannel.Loopback).HasEnded)
                 {
                     return;
                 }
@@ -506,6 +579,41 @@ public static class AudioCommands
         {
             Console.CancelKeyPress -= Interrupt;
         }
+    }
+
+    /// <summary>
+    /// How many devices fed a channel, said only when it was more than one — which is what keeps
+    /// the rate on the same line from being read as one measurement of one crystal.
+    /// </summary>
+    private static string Devices(SourceSummary source) => source.Stretches > 1
+        ? string.Create(CultureInfo.InvariantCulture, $", {source.Stretches} devices")
+        : string.Empty;
+
+    /// <summary>
+    /// Says what changed about what each channel is listening to, and hands back what they are on
+    /// now.
+    /// </summary>
+    private static Dictionary<AudioChannel, CaptureTarget> Moved(
+        CaptureSession session,
+        Dictionary<AudioChannel, CaptureTarget> was,
+        TextWriter output)
+    {
+        foreach (var source in session.Sources)
+        {
+            if (was[source.Channel] != source.Listening)
+            {
+                Report.Line(
+                    output,
+                    Name(source.Channel),
+                    $"{was[source.Channel].Name} → {source.Listening.Name}");
+            }
+            else if (source.HasEnded)
+            {
+                Report.Line(output, Name(source.Channel), "the stream ended by itself");
+            }
+        }
+
+        return session.Sources.ToDictionary(source => source.Channel, source => source.Listening);
     }
 
     /// <summary>

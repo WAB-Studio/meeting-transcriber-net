@@ -38,6 +38,60 @@ public sealed class SpoolChangesTests : IDisposable
         read.WasHearing.ShouldBe("teams (pid 8124)");
     }
 
+    /// <summary>
+    /// ISC-161. A channel whose device was taken away comes to name two devices over one meeting.
+    /// The card says the one it opened on and this says the one that fed the rest of it, by the id
+    /// that reopens it and not only by a name two identical headsets would share.
+    /// </summary>
+    [Fact]
+    public void A_channel_whose_device_changed_says_which_device_fed_the_rest_of_the_meeting()
+    {
+        SpoolChanges.Append(folder, Replaced());
+
+        var read = SpoolChanges.Find(folder).ShouldHaveSingleItem();
+        read.At.ShouldBe(Moved);
+        read.Channel.ShouldBe(AudioChannel.Microphone);
+        read.Heard.ShouldBe("Realtek Microphone Array");
+        read.WasHearing.ShouldBe("Jabra Evolve 65");
+        read.DeviceId.ShouldBe("{0.0.1.00000000}.{9c1a-realtek}");
+    }
+
+    /// <summary>
+    /// ISC-161. Anti: neither way of obtaining channel 0 is an endpoint, so a line saying it moved
+    /// onto one describes a recording this application cannot have made. It is refused where it is
+    /// written and where it is read, because a folder can be edited by hand between the two.
+    /// </summary>
+    [Fact]
+    public void A_channel_zero_is_never_said_to_have_moved_onto_a_device()
+    {
+        Should.Throw<AudioCaptureException>(() => SpoolChanges.Append(
+                folder, Moving() with { DeviceId = "{0.0.1.00000000}.{9c1a-realtek}" }))
+            .Message.ShouldContain("no device ever feeds it");
+
+        SpoolChanges.In(folder).Exists.ShouldBeFalse("nothing moved, so nothing is written down");
+
+        File.WriteAllText(
+            SpoolChanges.In(folder).FullName,
+            "{\"at\":\"2026-08-15T10:14:00.000Z\",\"channel\":0,\"heard\":\"everything this "
+            + "machine plays\",\"was_hearing\":\"teams (pid 8124)\",\"device\":\"{0.0.1.0}.x\"}"
+            + Environment.NewLine);
+
+        Should.Throw<AudioCaptureException>(() => SpoolChanges.Find(folder))
+            .Message.ShouldContain("no device ever feeds it");
+    }
+
+    /// <summary>
+    /// A channel 0 that moved names no device, which is not a field left out: what it moved to is
+    /// everything the machine plays, and nothing reopens that by an id.
+    /// </summary>
+    [Fact]
+    public void A_channel_zero_that_moved_names_no_device()
+    {
+        SpoolChanges.Append(folder, Moving());
+
+        SpoolChanges.Find(folder).ShouldHaveSingleItem().DeviceId.ShouldBeNull();
+    }
+
     /// <summary>Almost every recording changes nothing, and that reads as nothing rather than as a failure.</summary>
     [Fact]
     public void A_recording_nobody_moved_says_nothing()
@@ -174,4 +228,11 @@ public sealed class SpoolChangesTests : IDisposable
         AudioChannel.Loopback,
         "everything this machine plays",
         "teams (pid 8124)");
+
+    private static SourceChanged Replaced() => new(
+        Moved,
+        AudioChannel.Microphone,
+        "Realtek Microphone Array",
+        "Jabra Evolve 65",
+        "{0.0.1.00000000}.{9c1a-realtek}");
 }

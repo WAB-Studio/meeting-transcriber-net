@@ -1,4 +1,4 @@
-﻿using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Audio;
@@ -40,6 +40,27 @@ public sealed class CaptureSession : IDisposable
     /// </summary>
     private readonly Lock gate = new();
 
+    /// <summary>
+    /// How long the thread that follows a device Windows took away sleeps between looks. Slow on
+    /// purpose: what it costs to be late is that much more of the meeting missing off one channel,
+    /// and what it costs to be quick is the audio stack asked about its endpoints every tick of a
+    /// two hour meeting for an answer that changes twice a year.
+    /// </summary>
+    private static readonly TimeSpan Looks = TimeSpan.FromSeconds(2);
+
+    /// <summary>What ends the thread that follows, and what it sleeps on so it ends at once.</summary>
+    private readonly CancellationTokenSource stopping = new();
+
+    /// <summary>
+    /// What the thread that follows last moved a channel onto, and how many blocks that channel had
+    /// taken when it did — which together say whether opening the same endpoint again is worth
+    /// doing. See <see cref="ReplacedDevice.IsWorthTrying"/>, which is the rule; this is only what
+    /// it is asked about.
+    /// </summary>
+    private readonly Dictionary<AudioChannel, (string Device, long Packets)> followed = [];
+
+    private Thread? following;
+    private bool followingCameBack;
     private bool over;
 
     private CaptureSession(
@@ -179,7 +200,55 @@ public sealed class CaptureSession : IDisposable
             throw;
         }
 
-        return new CaptureSession([.. opened], card, pause, folder);
+        var session = new CaptureSession([.. opened], card, pause, folder);
+        session.Follow();
+        return session;
+    }
+
+    /// <summary>
+    /// Somebody choosing another microphone for channel 1 while the meeting is running. The
+    /// recording goes on being one recording, with everything the device that is leaving caught
+    /// still in the file and everything the one taking over catches behind it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What the two devices number their frames in has nothing in common, so this is a stretch and
+    /// not a continuation: the channel comes to name two devices over one meeting, and what stands
+    /// between them is the audio nobody was handed while the changeover happened, recorded as the
+    /// gap it really was. <see cref="CaptureSource.MoveTo"/> is where that is decided.
+    /// </para>
+    /// <para>
+    /// <b>Not on a thread somebody is looking at</b>, for the reason
+    /// <see cref="RecordTheWholeMachine"/> is not: two devices are dealt with, each with its own
+    /// deadline for a driver that does not answer.
+    /// </para>
+    /// </remarks>
+    /// <param name="microphone">The endpoint channel 1 listens to from here on.</param>
+    public void RecordFrom(AudioDevice microphone)
+    {
+        ArgumentNullException.ThrowIfNull(microphone);
+
+        lock (gate)
+        {
+            EnsureRunning(AudioChannel.Microphone);
+
+            var mine = On(AudioChannel.Microphone);
+
+            // The same device again is refused only while it is still recording. A channel whose
+            // stream died and whose endpoint Windows still names is the case this must not refuse:
+            // a driver that reset is the same id and a different open, and refusing it would leave
+            // the meeting with no microphone for the sake of comparing two strings.
+            if (!mine.HasEnded
+                && mine.Listening is CaptureTarget.Endpoint on
+                && on.Device.Id == microphone.Id)
+            {
+                throw new AudioCaptureException(
+                    $"The {AudioChannel.Microphone} channel is already recording "
+                    + $"'{microphone.Name}'.");
+            }
+
+            Move(AudioChannel.Microphone, new CaptureTarget.Endpoint(microphone), microphone.Id);
+        }
     }
 
     /// <summary>
@@ -228,41 +297,189 @@ public sealed class CaptureSession : IDisposable
     {
         lock (gate)
         {
-            if (over)
-            {
-                throw new AudioCaptureException(
-                    "This recording has been stopped, so there is nothing left to move: what its "
-                    + "channel 0 holds is what it recorded.");
-            }
+            EnsureRunning(AudioChannel.Loopback);
 
             var others = On(AudioChannel.Loopback);
-            if (others.Listening is not CaptureTarget.Program program)
+            if (others.Listening is not CaptureTarget.Program)
             {
                 throw new AudioCaptureException(
                     $"The {AudioChannel.Loopback} channel is already recording "
                     + $"'{others.Listening.Name}', which is the whole machine's audio.");
             }
 
-            var destination = new CaptureTarget.TheWholeMachine();
-
-            // The moment is read where the move happens rather than where somebody pressed. What
-            // separates the two is two devices being dealt with, each with a deadline of its own,
-            // and a folder saying the machine's audio began seconds before it did is a folder that
-            // is wrong about the one thing it was written to be right about.
-            //
-            // Nothing is caught. MoveTo leaves the channel exactly where it was whatever went
-            // wrong, and there is nothing else here to put back: the move opens one device and
-            // starts nothing else, so a refusal is a recording still on its program and an ask that
-            // can be made again.
-            others.MoveTo(destination, () => SpoolChanges.Append(
-                folder,
-                new SourceChanged(
-                    UtcTimestamp.From(TimeProvider.System.GetUtcNow()),
-                    AudioChannel.Loopback,
-                    destination.Name,
-                    program.Name)));
+            Move(AudioChannel.Loopback, new CaptureTarget.TheWholeMachine(), deviceId: null);
         }
     }
+
+    /// <summary>
+    /// Moves one channel onto <paramref name="destination"/> and writes the move down, which is the
+    /// whole of what every move here is made of.
+    /// </summary>
+    /// <remarks>
+    /// The moment is read where the move happens rather than where somebody pressed or where a
+    /// device was noticed gone. What separates the two is two devices being dealt with, each with a
+    /// deadline of its own, and a folder saying a channel changed seconds before it did is a folder
+    /// that is wrong about the one thing it was written to be right about.
+    /// <para>
+    /// Nothing is caught. <see cref="CaptureSource.MoveTo"/> leaves the channel exactly where it
+    /// was whatever went wrong, and there is nothing else here to put back: a move opens one device
+    /// and starts nothing else, so a refusal is a recording still on what it was on and an ask that
+    /// can be made again.
+    /// </para>
+    /// </remarks>
+    private void Move(AudioChannel channel, CaptureTarget destination, string? deviceId)
+    {
+        var source = On(channel);
+        var was = source.Listening.Name;
+
+        source.MoveTo(destination, () => SpoolChanges.Append(
+            folder,
+            new SourceChanged(
+                UtcTimestamp.From(TimeProvider.System.GetUtcNow()),
+                channel,
+                destination.Name,
+                was,
+                deviceId)));
+    }
+
+    /// <summary>Refuses a move onto a recording that has already been stopped.</summary>
+    private void EnsureRunning(AudioChannel channel)
+    {
+        if (over)
+        {
+            throw new AudioCaptureException(
+                "This recording has been stopped, so there is nothing left to move: what its "
+                + $"{channel} channel holds is what it recorded.");
+        }
+    }
+
+    /// <summary>
+    /// Starts the thread that follows Windows when a device this recording is on is taken away.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Here rather than in a screen's tick, because a meeting recorded at a prompt is as much a
+    /// meeting as one recorded in the application: a microphone somebody unplugged has to be
+    /// followed by whoever is doing the recording, and that is this. A background thread, so a
+    /// process that is being torn down is not held open by it, and one thread for the session
+    /// rather than one per source — what it does is a move, and a move takes the gate anyway.
+    /// </para>
+    /// <para>
+    /// Started once both devices are open and the folder has its card, so there is nothing it can
+    /// find half built.
+    /// </para>
+    /// </remarks>
+    private void Follow()
+    {
+        following = new Thread(Watching)
+        {
+            IsBackground = true,
+            Name = "capture follows the device",
+        };
+
+        following.Start();
+    }
+
+    /// <summary>Looks, moves, and never lets either take the recording down.</summary>
+    /// <remarks>
+    /// Every failure is swallowed and looked at again, and this is one of the few places that is
+    /// right: there is nobody to throw to. A machine that will not open its replacement endpoint,
+    /// a folder that cannot be written, a device that answers a second later — each of them leaves
+    /// the channel exactly where it was, which is stopped, and what says so is the reading a screen
+    /// already shows. Throwing from here would end the process and the meeting with it, over a
+    /// channel that was already silent.
+    /// </remarks>
+    private void Watching()
+    {
+        while (!stopping.Token.WaitHandle.WaitOne(Looks))
+        {
+            try
+            {
+                FollowWhateverReplacedIt();
+            }
+            catch (Exception left)
+            {
+                // Every one of them, and broad on purpose: this is the top of a thread, so what is
+                // not caught here ends the process and the meeting with it — which is the outcome
+                // the summary says this exists to prevent, and it would be reached by exactly the
+                // machine this feature is for. Windows refusing an endpoint another application has
+                // in exclusive mode arrives as a COMException and is the ordinary way in.
+                _ = left;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Moves a channel whose device went away onto whatever Windows now names in its place.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Which sources those are is <see cref="ReplacedDevice"/>'s and not this method's, because it
+    /// is the boundary between two opposite promises and it is decided here on a thread no probe
+    /// reaches.
+    /// </para>
+    /// <para>
+    /// The machine is asked outside the gate and the move is made inside it. Asking is a
+    /// synchronous call into the audio stack with no deadline of its own, and the gate is what
+    /// somebody pressing stop is waiting on — so what is held while an audio service is thinking is
+    /// nothing at all.
+    /// </para>
+    /// </remarks>
+    private void FollowWhateverReplacedIt()
+    {
+        CaptureSource? waiting;
+        lock (gate)
+        {
+            waiting = over ? null : Array.Find(sources, Went);
+        }
+
+        if (waiting is null)
+        {
+            return;
+        }
+
+        var replacement = AudioDevices.Choose(AudioDevices.Microphones(), wanted: null);
+
+        lock (gate)
+        {
+            // Asked again with the gate held. Between the two the recording may have been stopped,
+            // or somebody may have chosen a microphone themselves — and a channel that is recording
+            // again is not one to move off whatever it is now on.
+            if (over || !Went(waiting) || !WorthTrying(waiting, replacement))
+            {
+                return;
+            }
+
+            // Written down before the move rather than after it, so that a move which throws still
+            // counts as having been tried: what would otherwise happen is the same endpoint being
+            // opened again every two seconds for the rest of the meeting.
+            followed[waiting.Channel] = (replacement.Id, waiting.Packets.Packets);
+            Move(waiting.Channel, new CaptureTarget.Endpoint(replacement), replacement.Id);
+        }
+    }
+
+    /// <summary>Whether this source's device went away and is one to follow onto another.</summary>
+    /// <remarks>
+    /// Asked of <see cref="ReplacedDevice"/> rather than decided here: which channel may move on
+    /// its own is the one decision on this thread worth holding a build over, and nothing on this
+    /// thread can be run on a machine with no devices.
+    /// </remarks>
+    private static bool Went(CaptureSource source) =>
+        ReplacedDevice.IsFollowed(source.Listening, source.HasEnded);
+
+    /// <summary>
+    /// Whether opening <paramref name="replacement"/> for <paramref name="source"/> is worth doing,
+    /// given what following last moved it onto and what that brought.
+    /// </summary>
+    /// <remarks>
+    /// The rule is <see cref="ReplacedDevice.IsWorthTrying"/>'s; what is here is the two numbers it
+    /// is asked about, which are the ones only a running source has. A move that brought nothing is
+    /// one where the block count has not moved since it was made.
+    /// </remarks>
+    private bool WorthTrying(CaptureSource source, AudioDevice replacement) =>
+        !followed.TryGetValue(source.Channel, out var last)
+        || ReplacedDevice.IsWorthTrying(
+            replacement, last.Device, broughtNothing: source.Packets.Packets == last.Packets);
 
     /// <summary>
     /// Whether the meeting is paused, so both sources are spooling silence rather than what their
@@ -306,6 +523,8 @@ public sealed class CaptureSession : IDisposable
             over = true;
         }
 
+        Stopped();
+
         var failures = new List<Exception>();
 
         // Both asked, then both waited on. The other way round leaves the second source recording
@@ -341,6 +560,8 @@ public sealed class CaptureSession : IDisposable
             over = true;
         }
 
+        Stopped();
+
         // Asked first, all of them, for the same reason Stop asks before it waits — and here it
         // matters more, because disposing is an exit path in its own right. A caller that never
         // reached Stop, or whose Stop threw on the first source, arrives with both devices still
@@ -357,6 +578,47 @@ public sealed class CaptureSession : IDisposable
             // handles are let go, and Stop is where a failure is reported.
             source.LetGo();
         }
+
+        // Last, and only for a thread that really came back. What it sleeps on is what would be
+        // let go of here, and a thread given up on is one that may still be about to read it —
+        // disposing it under that thread throws where nothing is catching, which is the process and
+        // the meeting rather than a handle held to the end of it.
+        if (followingCameBack)
+        {
+            stopping.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Ends the thread that follows and waits for it, so that nothing opens a device while the
+    /// sources are being let go of.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What keeps a look that is still running from touching a source is not this wait: it is the
+    /// gate. <c>over</c> is set under it before this runs, so a move already underway finished
+    /// first and one that has not started never will — the same guarantee somebody pressing stop
+    /// mid move already had.
+    /// </para>
+    /// <para>
+    /// So the wait is bounded, and it is bounded for the reason every other wait on a device in
+    /// this file is: the thread can be inside a synchronous call into the audio stack, and a
+    /// machine whose audio service has wedged after an unplug is exactly the machine this feature
+    /// exists for. Waiting for it without a deadline would make stopping a meeting wait on the
+    /// thing that broke. What being given up on costs is one background thread left sleeping and
+    /// the handle it sleeps on kept, which is the same answer a device given up on gets.
+    /// </para>
+    /// </remarks>
+    private void Stopped()
+    {
+        if (following is null)
+        {
+            return;
+        }
+
+        stopping.Cancel();
+        followingCameBack = following.Join(CaptureLoop.StopsWithin);
+        following = null;
     }
 
     /// <summary>

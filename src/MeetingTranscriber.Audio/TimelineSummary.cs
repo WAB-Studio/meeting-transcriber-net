@@ -34,9 +34,20 @@ public sealed record TimelineSummary(Duration Length, IReadOnlyList<SourceSummar
 /// the meeting either way; what is gone is the drift measurement, and a rate that reads as measured
 /// while being the label is the one thing this exists to stop.
 /// </param>
+/// <param name="Stretches">
+/// How many devices fed this channel over the recording. One for almost every recording; more when
+/// a device was unplugged mid meeting, or Windows moved the channel to another one.
+/// </param>
+/// <remarks>
+/// More than one stretch is what says a channel came to name more than one device, which is the
+/// difference between the missing above being a device that dropped audio and a device that was
+/// replaced. Which devices they were, and when each took over, is the recording's own folder — this
+/// says what the audio turned out to be and never what anything was called.
+/// </remarks>
 public sealed record SourceSummary(
     AudioChannel Channel,
     double MeasuredRate,
     Duration Missing,
     Duration Waited,
-    bool CounterGivenUp);
+    bool CounterGivenUp,
+    int Stretches);

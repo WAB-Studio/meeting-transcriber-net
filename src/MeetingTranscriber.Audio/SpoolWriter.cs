@@ -26,7 +26,12 @@ public sealed class SpoolWriter : IDisposable
 {
     private readonly FileStream file;
     private readonly AudioChannel channel;
-    private readonly int frameBytes;
+
+    /// <summary>
+    /// The frame width of the stretch being written now, which is the file header's until a
+    /// device that hands over another format takes this source over.
+    /// </summary>
+    private int frameBytes;
     private byte[] block;
     private long bytes;
 
@@ -121,7 +126,10 @@ public sealed class SpoolWriter : IDisposable
         }
     }
 
-    /// <summary>Writes one packet as one block.</summary>
+    /// <summary>
+    /// Writes one packet as one block, behind the record saying this source changed device when it
+    /// is the packet that says so.
+    /// </summary>
     public void Write(CapturePacket packet)
     {
         ArgumentNullException.ThrowIfNull(packet);
@@ -141,14 +149,28 @@ public sealed class SpoolWriter : IDisposable
                 + "produced a stretch of no audio, which is not something that happens.");
         }
 
+        // Every check first and then every write, which matters more here than it looks. A packet
+        // that opens a stretch is two records, and writing the first of them before the second is
+        // known to be sound would leave a file saying every block behind it is another device's
+        // — including the ones the device that is leaving is still handing over. So the width this
+        // packet claims to be frames of is the one it declares, and nothing lands until it is.
+        var frame = packet.Opening is { } declared
+            ? declared.Channels * declared.BytesPerSample
+            : frameBytes;
+
         // A device hands over frames, so half of one is not something a device produced. Refused
         // here, where it is still a defect: written down, it would shift every sample after it onto
         // the other channel of a recording nothing else could tell was wrong.
-        if (frameBytes <= 0 || (samples.Length % frameBytes) != 0)
+        if (frame <= 0 || (samples.Length % frame) != 0)
         {
             throw new AudioContractException(
-                $"A {channel} packet of {samples.Length} bytes is not whole frames of {frameBytes} "
+                $"A {channel} packet of {samples.Length} bytes is not whole frames of {frame} "
                 + "bytes, so it is not what this source's device hands over.");
+        }
+
+        if (packet.Opening is { } opening)
+        {
+            Stretch(opening);
         }
 
         var length = BlockSpool.BlockHeaderBytes + samples.Length + BlockSpool.ChecksumBytes;
@@ -173,6 +195,42 @@ public sealed class SpoolWriter : IDisposable
 
         file.Write(whole);
         Interlocked.Add(ref bytes, samples.Length);
+    }
+
+    /// <summary>
+    /// Writes down that this source is a different device from here on, and what that device hands
+    /// over.
+    /// </summary>
+    /// <remarks>
+    /// The format is written as the caller declares it, the way the file's own header is: what a
+    /// stretch may be is settled where the device is opened, which is before a packet of it exists.
+    /// What is refused here is a format nothing could be whole frames of, because that one would
+    /// otherwise be caught by every block after it rather than by the record that said it.
+    /// </remarks>
+    private void Stretch(StreamFormat opening)
+    {
+        var frame = opening.Channels * opening.BytesPerSample;
+        if (frame <= 0)
+        {
+            throw new AudioContractException(
+                $"The {channel} source was handed over to a device at {opening}, whose frames are "
+                + $"{frame} bytes. Nothing a device produces is whole frames of that.");
+        }
+
+        var record = new byte[BlockSpool.StretchBytes];
+        BlockSpool.StretchMagic.CopyTo(record);
+
+        var said = record.AsSpan(BlockSpool.MagicBytes, 16);
+        BinaryPrimitives.WriteInt32LittleEndian(said, opening.SampleRate);
+        BinaryPrimitives.WriteInt32LittleEndian(said[4..], opening.Channels);
+        BinaryPrimitives.WriteInt32LittleEndian(said[8..], opening.BitsPerSample);
+        BinaryPrimitives.WriteInt32LittleEndian(said[12..], (int)opening.Encoding);
+        BinaryPrimitives.WriteUInt64LittleEndian(
+            record.AsSpan(BlockSpool.StretchBytes - BlockSpool.ChecksumBytes),
+            BlockSpool.Checksum(said, []));
+
+        file.Write(record);
+        frameBytes = frame;
     }
 
     /// <summary>Hands over whatever is still held here, without asking the disk to commit it.</summary>

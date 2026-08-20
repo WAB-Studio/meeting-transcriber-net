@@ -20,6 +20,8 @@ public class RecordingMetersTests
 
     private static readonly LevelReading Nothing = new(0f);
 
+    private static readonly AudioDevice Jabra = new("{0.0.1.0}.jabra", "Jabra Evolve 65", false);
+
     private static readonly AudioDevice Speakers =
         new("{speakers}", "Desk speakers", IsDefault: true) { Kind = EndpointKind.Speakers };
 
@@ -215,20 +217,10 @@ public class RecordingMetersTests
     [Fact]
     public void A_channel_capturing_the_whole_machine_hands_a_screen_no_words()
     {
-        ChannelReading.Of(
-            new CaptureTarget.TheWholeMachine(), Speech, stopped: false).Capturing.ShouldBeNull();
-
-        ChannelReading.Of(
-                new CaptureTarget.Program(new AudioProcess(8124, "teams", StartedBy: 1084)),
-                Speech,
-                stopped: false)
+        Reading(new CaptureTarget.TheWholeMachine()).Capturing.ShouldBeNull();
+        Reading(new CaptureTarget.Program(new AudioProcess(8124, "teams", StartedBy: 1084)))
             .Capturing.ShouldBe("teams (pid 8124)");
-
-        ChannelReading.Of(
-                new CaptureTarget.Endpoint(new AudioDevice("{0.0.1.0}.jabra", "Jabra Evolve 65", false)),
-                Speech,
-                stopped: false)
-            .Capturing.ShouldBe("Jabra Evolve 65");
+        Reading(new CaptureTarget.Endpoint(Jabra)).Capturing.ShouldBe("Jabra Evolve 65");
     }
 
     /// <summary>
@@ -238,14 +230,67 @@ public class RecordingMetersTests
     [Fact]
     public void A_reading_is_the_channel_the_thing_it_is_listening_to_feeds()
     {
-        ChannelReading.Of(new CaptureTarget.TheWholeMachine(), Speech, stopped: false)
-            .Channel.ShouldBe(AudioChannel.Loopback);
+        Reading(new CaptureTarget.TheWholeMachine()).Channel.ShouldBe(AudioChannel.Loopback);
+        Reading(new CaptureTarget.Endpoint(Jabra)).Channel.ShouldBe(AudioChannel.Microphone);
+    }
 
-        ChannelReading.Of(
-                new CaptureTarget.Endpoint(new AudioDevice("{0.0.1.0}.jabra", "Jabra Evolve 65", false)),
-                Speech,
-                stopped: false)
-            .Channel.ShouldBe(AudioChannel.Microphone);
+    /// <summary>
+    /// ISC-141. A device unplugged mid meeting is followed to whatever Windows moved to, so without
+    /// this the label above the meter would quietly start naming another microphone and nothing on
+    /// the screen would say it had.
+    /// </summary>
+    [Fact]
+    public void A_reading_of_a_channel_that_changed_device_says_what_it_moved_from_and_to()
+    {
+        var realtek = new CaptureTarget.Endpoint(new AudioDevice("{0.0.1.0}.realtek", "Realtek Array", true));
+
+        var moved = ChannelReading.Of(realtek, Speech, stopped: false, new CaptureTarget.Endpoint(Jabra));
+
+        moved.Moved.ShouldBeTrue();
+        moved.WasCapturing.ShouldBe("Jabra Evolve 65");
+        moved.Capturing.ShouldBe("Realtek Array");
+    }
+
+    /// <summary>
+    /// Anti: a channel still on what the recording opened with has nothing to say about moving, and
+    /// a line shown for one that never moved is a screen telling somebody about an event that did
+    /// not happen.
+    /// </summary>
+    [Fact]
+    public void A_reading_of_a_channel_that_never_moved_says_nothing_about_moving()
+    {
+        // The same device described two ways, which is what a source hands back for a channel that
+        // never moved: what names an endpoint is its id, and everything else this machine says
+        // about one is an answer that changes while a meeting runs. A microphone that became the
+        // default half way through is the same microphone.
+        var still = ChannelReading.Of(
+            new CaptureTarget.Endpoint(Jabra),
+            Speech,
+            stopped: false,
+            new CaptureTarget.Endpoint(Jabra with { IsDefault = true }));
+
+        still.Moved.ShouldBeFalse();
+        still.WasCapturing.ShouldBeNull();
+        Reading(new CaptureTarget.Endpoint(Jabra)).Moved.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// ISC-141, for the channel whose move is somebody's choice. What it moved to is a sentence
+    /// this application wrote rather than a name the machine gave, so the reading hands back none
+    /// for it and the catalogue has the words — the same rule the label above the meter follows.
+    /// </summary>
+    [Fact]
+    public void A_channel_zero_moved_to_the_whole_machine_says_what_it_was_following_and_no_words_for_what_it_is()
+    {
+        var moved = ChannelReading.Of(
+            new CaptureTarget.TheWholeMachine(),
+            Speech,
+            stopped: false,
+            new CaptureTarget.Program(new AudioProcess(8124, "teams", StartedBy: 1084)));
+
+        moved.Moved.ShouldBeTrue();
+        moved.WasCapturing.ShouldBe("teams (pid 8124)");
+        moved.Capturing.ShouldBeNull();
     }
 
     [Fact]
@@ -256,7 +301,16 @@ public class RecordingMetersTests
         properties
             .Where(property => property.PropertyType == typeof(string))
             .Select(property => property.Name)
-            .ShouldBe([nameof(ChannelReading.Capturing), nameof(ChannelReading.Loudness)], ignoreOrder: true);
+            .ShouldBe(
+                [
+                    nameof(ChannelReading.Capturing),
+                    nameof(ChannelReading.WasCapturing),
+                    nameof(ChannelReading.Loudness),
+                ],
+                ignoreOrder: true,
+                "every string on a reading is a name this machine gave or a measurement, and each "
+                + "of these hands back nothing rather than a sentence for the one case that would "
+                + "need words. A fourth one is a screen printing English in one language.");
 
         properties
             .Where(property => typeof(Exception).IsAssignableFrom(property.PropertyType))
@@ -280,12 +334,17 @@ public class RecordingMetersTests
                 Reading(AudioChannel.Microphone, mine, mineStopped),
             ]);
 
+    /// <summary>A channel on what it opened with, which is every reading but a moved one's.</summary>
+    private static ChannelReading Reading(CaptureTarget listening) =>
+        ChannelReading.Of(listening, Speech, stopped: false, listening);
+
     private static ChannelReading Reading(
         AudioChannel channel, LevelReading level, bool stopped = false) =>
         new()
         {
             Channel = channel,
             Capturing = channel == AudioChannel.Loopback ? "Desk speakers" : "A microphone",
+            WasCapturing = null,
             Level = level,
             Stopped = stopped,
         };

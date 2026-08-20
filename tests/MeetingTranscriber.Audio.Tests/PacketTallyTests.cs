@@ -10,6 +10,7 @@ namespace MeetingTranscriber.Audio.Tests;
 public class PacketTallyTests
 {
     private static readonly StreamFormat StereoFloat = new(48_000, 2, 32, SampleEncoding.IeeeFloat);
+    private static readonly StreamFormat CheapMicrophone = new(44_100, 1, 16, SampleEncoding.Pcm);
 
     /// <summary>The frames one fabricated packet carries, and therefore 10 ms of a 48 kHz device.</summary>
     private const int PacketFrames = 480;
@@ -136,6 +137,51 @@ public class PacketTallyTests
         tally.Lost.Milliseconds.ShouldBe(0);
         tally.Closest.Milliseconds.ShouldBe(0);
         tally.Furthest.Milliseconds.ShouldBe(0);
+    }
+
+    /// <summary>
+    /// ISC-78 and ISC-70. A device replaced mid meeting numbers its frames from its own zero, so
+    /// what the one before it covered has to be banked in the unit the two share before either
+    /// number can be read as the other's — counted on in the new device's frames, a channel that
+    /// had covered a second would come back covering three tenths of one.
+    /// </summary>
+    [Fact]
+    public void A_source_whose_device_changed_keeps_what_the_one_before_it_covered()
+    {
+        var second = Fabricated.TakingOver(
+            CheapMicrophone,
+            Fabricated.Packets(
+                AudioChannel.Loopback, CheapMicrophone, 44_100, 2, 3, Fabricated.Quiet, 441));
+
+        var tally = Take(Packets().Concat(second));
+
+        tally.Packets.ShouldBe(200);
+
+        // A second of each device and the second between them, which is the changeover: time the
+        // meeting ran and nobody was handed, so it is covered and lost at once. Measured from this
+        // source's own origin and clamped at what it has covered, which is the rule the timeline
+        // places a stretch by — the two numbers are shown to the same person and have to agree.
+        tally.Covers.Milliseconds.ShouldBeInRange(2_950, 3_050);
+        tally.Lost.Milliseconds.ShouldBeInRange(950, 1_050);
+    }
+
+    /// <summary>
+    /// Anti: the same two devices with no gap between them cost the tally nothing at all. What is
+    /// banked at a seam is what really went by, so a changeover a device made in its stride is not
+    /// a second of the meeting invented for it.
+    /// </summary>
+    [Fact]
+    public void A_device_replaced_with_no_gap_loses_nothing_to_the_changeover()
+    {
+        var second = Fabricated.TakingOver(
+            CheapMicrophone,
+            Fabricated.Packets(
+                AudioChannel.Loopback, CheapMicrophone, 44_100, 1, 2, Fabricated.Quiet, 441));
+
+        var tally = Take(Packets().Concat(second));
+
+        tally.Covers.Milliseconds.ShouldBeInRange(1_950, 2_050);
+        tally.Lost.Milliseconds.ShouldBeLessThan(50);
     }
 
     /// <summary>One second of a 48 kHz device, in the packets it would hand over.</summary>

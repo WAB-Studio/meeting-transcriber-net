@@ -31,8 +31,11 @@ public sealed class PacketTally
     private const long TicksPerMillisecond = MonotonicInstant.TicksPerSecond / 1000;
 
     private readonly Lock gate = new();
-    private readonly StreamFormat format;
-    private readonly SourcePositions positions;
+
+    /// <summary>The device feeding this source now, and where its packets sit.</summary>
+    private StreamFormat format;
+    private SourcePositions positions;
+
     private MonotonicInstant previous;
     private long first;
     private long next;
@@ -41,6 +44,18 @@ public sealed class PacketTally
     private long unvouched;
     private long closest;
     private long furthest;
+
+    /// <summary>What every device before the one feeding this source now added up to.</summary>
+    private long coveredMs;
+    private long lostMs;
+
+    /// <summary>
+    /// The instant this source's first vouched packet was read at, which is what a seam between two
+    /// devices is measured from.
+    /// </summary>
+    private MonotonicInstant origin;
+    private bool anchored;
+
     private bool started;
     private bool vouched;
     private bool stepped;
@@ -75,7 +90,7 @@ public sealed class PacketTally
         {
             lock (gate)
             {
-                return Length(started ? next - first : 0);
+                return Duration.FromMilliseconds(coveredMs + Milliseconds(started ? next - first : 0));
             }
         }
     }
@@ -91,7 +106,7 @@ public sealed class PacketTally
         {
             lock (gate)
             {
-                return Length(lost);
+                return Duration.FromMilliseconds(lostMs + Milliseconds(lost));
             }
         }
     }
@@ -153,10 +168,14 @@ public sealed class PacketTally
     {
         ArgumentNullException.ThrowIfNull(packet);
 
-        var frames = Samples.FramesIn(packet.Samples.Length, format);
-
         lock (gate)
         {
+            if (packet.Opening is { } opening)
+            {
+                Changed(opening, packet);
+            }
+
+            var frames = Samples.FramesIn(packet.Samples.Length, format);
             packets++;
 
             // The same numbers the rebuild will lay the recording out on, from the same place, and
@@ -180,6 +199,12 @@ public sealed class PacketTally
             {
                 unvouched++;
                 return;
+            }
+
+            if (!anchored)
+            {
+                anchored = true;
+                origin = packet.CapturedAt;
             }
 
             // Measured against the last instant the device did vouch for, which is why a packet it
@@ -209,6 +234,44 @@ public sealed class PacketTally
         stepped = true;
     }
 
-    private Duration Length(long frames) =>
-        Duration.FromMilliseconds(frames * 1000 / format.SampleRate);
+    /// <summary>
+    /// Closes off the device that is leaving and starts the one taking over.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Everything above is counted in one device's frames, and the device replacing it numbers its
+    /// own from its own zero — so what the one leaving covered and lost is banked in the unit the
+    /// two share before either number can be read as the other's.
+    /// </para>
+    /// <para>
+    /// The seam between them is on the clock and nowhere else, for the same reason: no counter
+    /// spans it. It is measured from this source's own origin and clamped at what it has already
+    /// covered, which is the rule <see cref="TimelineSource"/> places a stretch by — and it has to
+    /// be the same rule, or the length a person is shown when a capture stops and the length of the
+    /// recording it rebuilds into would disagree at every changeover. It is time the meeting ran
+    /// and nobody was handed, which is covered and lost at once.
+    /// </para>
+    /// </remarks>
+    private void Changed(StreamFormat opening, CapturePacket packet)
+    {
+        coveredMs += Milliseconds(started ? next - first : 0);
+        lostMs += Milliseconds(lost);
+
+        if (anchored && packet.TimingIsSound)
+        {
+            var seam = Math.Max(0, (packet.CapturedAt.Since(origin) / TicksPerMillisecond) - coveredMs);
+            coveredMs += seam;
+            lostMs += seam;
+        }
+
+        format = opening;
+        positions = new SourcePositions(opening.SampleRate);
+        started = false;
+        vouched = false;
+        first = 0;
+        next = 0;
+        lost = 0;
+    }
+
+    private long Milliseconds(long frames) => frames * 1000 / format.SampleRate;
 }

@@ -1,4 +1,4 @@
-﻿namespace MeetingTranscriber.Presentation;
+namespace MeetingTranscriber.Presentation;
 
 /// <summary>
 /// Everything the application says, Spanish first and English second. A screen names an entry
@@ -172,6 +172,28 @@ public static class UiTexts
         "Channel 1 stopped recording on its own — the microphone was unplugged, or Windows closed "
         + "it. Nothing you say from here on is being recorded; channel 0 still is. What was "
         + "already recorded is in its folder and is not lost.");
+
+    /// <summary>
+    /// What a channel that changed device mid meeting says, naming the device it moved to.
+    /// </summary>
+    /// <remarks>
+    /// One entry for either channel and for either way a channel moves, because what a person has
+    /// to be told is the same in all of them: this channel is no longer on what the recording
+    /// started on, the recording did not stop, and here is what it is on now. It says nothing about
+    /// why, deliberately — somebody choosing the whole machine's audio and Windows taking a
+    /// microphone away are the same news to whoever is in the meeting, and a sentence that named
+    /// the cause would be two sentences one of which is usually wrong.
+    /// <para>
+    /// The two names go in as values, which is what keeps a device's name — a name this machine
+    /// gave, and the same in every language — out of the catalogue.
+    /// </para>
+    /// </remarks>
+    public static UiText TheChannelMovedToAnotherDevice { get; } = new(
+        "Este canal ya no graba «{0}»: desde que cambió graba «{1}». La grabación no se cortó, y "
+        + "lo que haya pasado entre los dos queda dicho como el hueco que fue.",
+        "This channel is no longer recording ‘{0}’: since it changed it is recording "
+        + "‘{1}’. The recording did not stop, and whatever happened between the two is said "
+        + "as the gap it was.");
 
     public static UiText MeetingsAreKeptAt { get; } =
         new("Las reuniones se guardan en {0}", "Meetings are kept at {0}");

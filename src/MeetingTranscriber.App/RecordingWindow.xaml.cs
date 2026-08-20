@@ -333,6 +333,22 @@ public sealed partial class RecordingWindow : Window
         Tell(HeardTwice, meters.TheOthersAreHeardTwice, UiTexts.TheOthersAreHeardTwice);
         Tell(OthersStopped, others?.Stopped ?? false, UiTexts.TheOthersChannelStoppedOnItsOwn);
         Tell(MineStopped, mine?.Stopped ?? false, UiTexts.TheMicrophoneChannelStoppedOnItsOwn);
+
+        // What each channel moved from and to, as values rather than as words in the catalogue:
+        // both are names this machine gave and read the same in every language. A channel still on
+        // what it opened with hands back nothing to move from, which is what says the line off.
+        Tell(
+            OthersMoved,
+            others?.Moved ?? false,
+            UiTexts.TheChannelMovedToAnotherDevice,
+            Capturing(others?.WasCapturing),
+            Capturing(others?.Capturing));
+        Tell(
+            MineMoved,
+            mine?.Moved ?? false,
+            UiTexts.TheChannelMovedToAnotherDevice,
+            Capturing(mine?.WasCapturing),
+            Capturing(mine?.Capturing));
     }
 
     /// <summary>What one channel's meter reads as: what it is capturing, and how loud.</summary>
@@ -357,7 +373,7 @@ public sealed partial class RecordingWindow : Window
 
         // The catalogue where the reading hands back no name, which is a channel capturing the
         // whole machine — the same shape as the level below it, and for the same reason.
-        capturing.Text = reading.Capturing ?? In(UiTexts.EverythingThisMachinePlays);
+        capturing.Text = Capturing(reading.Capturing);
         meter.Value = reading.Meter;
 
         // A level is a measurement and reads the same in every language, so the reading hands one
@@ -397,9 +413,26 @@ public sealed partial class RecordingWindow : Window
     /// one binds them in the XAML or is never told anything at all.
     /// </para>
     /// </remarks>
-    private void Tell(TextBlock line, bool showing, UiText says)
+    /// <summary>
+    /// What a channel is capturing, in words a person reads: the name where the reading has one,
+    /// and the catalogue's sentence where it hands back none — which is a channel on the whole
+    /// machine's audio, the one thing nothing this machine named.
+    /// </summary>
+    private string Capturing(string? capturing) => capturing ?? In(UiTexts.EverythingThisMachinePlays);
+
+    /// <param name="values">
+    /// What the entry leaves room for, where it leaves room for anything. An entry told nothing is
+    /// read rather than formatted, which is not a shortcut: a line with no values is every line on
+    /// this screen but one, and putting them all through a formatter would turn an entry somebody
+    /// later writes a brace into from a stray character on screen into a screen that throws while a
+    /// meeting is being recorded.
+    /// </param>
+    private void Tell(TextBlock line, bool showing, UiText says, params object?[] values)
     {
-        var words = showing ? In(says) : string.Empty;
+        ArgumentNullException.ThrowIfNull(says);
+
+        var said = values.Length == 0 ? In(says) : says.In(_language, values);
+        var words = showing ? said : string.Empty;
 
         if (line.Text == words)
         {

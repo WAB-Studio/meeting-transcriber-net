@@ -15,14 +15,17 @@ namespace MeetingTranscriber.Audio;
 /// <param name="Channel">Which channel moved.</param>
 /// <param name="Heard">What it listens to from here on, as a person would name it.</param>
 /// <param name="WasHearing">What it was listening to until then.</param>
+/// <param name="DeviceId">
+/// The endpoint it reopens by from here on, or nothing when what it moved to is no device.
+/// </param>
 /// <remarks>
-/// There is no device on it, and that is the shape of what can happen rather than a field left out:
-/// what a channel is ever moved to is everything the machine plays, which comes off a virtual
-/// device no id names and no id reopens. What it was on and what it is on now are both said in
-/// words, because words are all either of them has.
+/// The device is the same field the card carries for what a channel opened on, and it is under the
+/// same rule: a microphone is an endpoint and has one, and neither way of obtaining channel 0 is a
+/// device, so a change naming a device on channel 0 is refused rather than reconciled. What a
+/// channel moved to is always said in words as well, because words are all a channel 0 has.
 /// </remarks>
 public sealed record SourceChanged(
-    UtcTimestamp At, AudioChannel Channel, string Heard, string WasHearing);
+    UtcTimestamp At, AudioChannel Channel, string Heard, string WasHearing, string? DeviceId = null);
 
 /// <summary>
 /// What somebody changed about a recording while it was being recorded, beside the card that says
@@ -32,9 +35,12 @@ public sealed record SourceChanged(
 /// <para>
 /// The card is written once and never touched again, so that what a folder says about itself is
 /// what was true when the devices opened and cannot be half rewritten by a process that died. That
-/// leaves nowhere for a change made an hour in — and there is one: channel 0 moves from the program
-/// it was following to the whole machine when somebody chooses it. A recording whose folder still
-/// named the program would tell whoever found it that their notifications are not in the file.
+/// leaves nowhere for a change made an hour in — and there are two. Channel 0 moves from the program
+/// it was following to the whole machine when somebody chooses it: a recording whose folder still
+/// named the program would tell whoever found it that their notifications are not in the file. And
+/// a channel whose device was unplugged follows Windows to whatever replaced it, so the channel
+/// comes to name two devices over one meeting — what the card says is the one it opened on, and
+/// what says which device fed the rest of the meeting is here.
 /// </para>
 /// <para>
 /// So it is a file of its own, appended to and never rewritten: one line per change, each line
@@ -81,6 +87,8 @@ public static class SpoolChanges
         ArgumentNullException.ThrowIfNull(change);
 
         var file = In(folder);
+        Sound(file, change);
+
         var line = Encoding.UTF8.GetBytes(
             JsonSerializer.Serialize(Stored(change), OneLine) + Environment.NewLine);
 
@@ -175,12 +183,15 @@ public static class SpoolChanges
 
         try
         {
-            return new SourceChanged(
-                UtcTimestamp.Parse(Required(file, "at", change.At)),
-                CapturedAudio.ChannelAt(
-                    change.Channel ?? throw new AudioContractException("A change names no channel.")),
-                Required(file, "heard", change.Heard),
-                Required(file, "was_hearing", change.WasHearing));
+            return Sound(
+                file,
+                new SourceChanged(
+                    UtcTimestamp.Parse(Required(file, "at", change.At)),
+                    CapturedAudio.ChannelAt(
+                        change.Channel ?? throw new AudioContractException("A change names no channel.")),
+                    Required(file, "heard", change.Heard),
+                    Required(file, "was_hearing", change.WasHearing),
+                    change.DeviceId));
         }
         catch (Exception rejected)
             when (rejected is AudioContractException or ArgumentException or FormatException)
@@ -188,6 +199,26 @@ public static class SpoolChanges
             throw new AudioCaptureException(
                 $"'{file.FullName}' has a change this build cannot read: {rejected.Message}");
         }
+    }
+
+    /// <summary>
+    /// The change, unless it says a channel 0 was moved onto a device. The card refuses the same
+    /// thing about what a channel opened on, and for the same reason: neither way of obtaining
+    /// channel 0 is an endpoint, so a line saying otherwise describes a recording this application
+    /// cannot have made — and read anyway it would put an endpoint's id on a channel whose audio came
+    /// from somewhere else entirely.
+    /// </summary>
+    private static SourceChanged Sound(FileInfo file, SourceChanged change)
+    {
+        if (change.Channel == AudioChannel.Loopback && change.DeviceId is not null)
+        {
+            throw new AudioCaptureException(
+                $"'{file.FullName}' says the {AudioChannel.Loopback} channel moved onto device "
+                + $"'{change.DeviceId}', and no device ever feeds it: what it holds is one "
+                + "program's audio or everything the machine plays, and neither is an endpoint.");
+        }
+
+        return change;
     }
 
     private static string Required(FileInfo file, string field, string? value) =>
@@ -200,7 +231,8 @@ public static class SpoolChanges
         change.At.ToStorage(),
         CapturedAudio.IndexOf(change.Channel),
         change.Heard,
-        change.WasHearing);
+        change.WasHearing,
+        change.DeviceId);
 
     /// <summary>
     /// A change as it is on disk, separate from <see cref="SourceChanged"/> for the reason the
@@ -211,5 +243,6 @@ public static class SpoolChanges
         [property: JsonPropertyName("at")] string? At,
         [property: JsonPropertyName("channel")] int? Channel,
         [property: JsonPropertyName("heard")] string? Heard,
-        [property: JsonPropertyName("was_hearing")] string? WasHearing);
+        [property: JsonPropertyName("was_hearing")] string? WasHearing,
+        [property: JsonPropertyName("device")] string? DeviceId);
 }
