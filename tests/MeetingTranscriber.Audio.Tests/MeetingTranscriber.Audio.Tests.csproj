@@ -11,6 +11,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MeetingTranscriber.Audio\MeetingTranscriber.Audio.csproj" />
+    <!-- For ForeignWav and nothing else: a WAV written byte by byte, which three suites need and
+         none may hold a copy of. It arrives with a path to Infrastructure, and that path is not an
+         invitation — the engine is provable on a machine with no corpus, and a test in here that
+         opened one would be testing something other than the engine. -->
+    <ProjectReference Include="..\MeetingTranscriber.Testing\MeetingTranscriber.Testing.csproj" />
   </ItemGroup>
 
   <ItemGroup>

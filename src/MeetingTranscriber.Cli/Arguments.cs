@@ -172,6 +172,29 @@ public sealed class Arguments
                 + "'2026-03-04 14:00' both read.");
     }
 
+    /// <summary>
+    /// What a meeting is expected to be spoken in, or <paramref name="fallback"/> when nobody
+    /// said.
+    /// </summary>
+    /// <remarks>
+    /// Its own reader rather than <see cref="Optional"/>, because a blank one is a command line
+    /// that does not say what it looks like it says. Every other option that carries a value
+    /// refuses a bad one here, where the refusal can name the flag; read as a plain string it
+    /// reached the domain instead, and came back out at the prompt as an argument name and a stack
+    /// trace.
+    /// </remarks>
+    public string Language(string name, string fallback)
+    {
+        if (Optional(name) is not { } text)
+        {
+            return fallback;
+        }
+
+        return string.IsNullOrWhiteSpace(text)
+            ? throw new UsageException($"{name} takes what the meeting is spoken in, and got nothing.")
+            : text;
+    }
+
     /// <summary>A source profile under the name it is stored and requested under.</summary>
     public SourceProfile Profile(string name)
     {

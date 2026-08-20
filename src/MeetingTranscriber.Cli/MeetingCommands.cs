@@ -1,7 +1,9 @@
-﻿using MeetingTranscriber.Domain.Time;
+﻿using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Intake;
 using MeetingTranscriber.Processing.Rendering;
+using MeetingTranscriber.Recording;
 
 namespace MeetingTranscriber.Cli;
 
@@ -23,7 +25,7 @@ public static class MeetingCommands
     /// </summary>
     private const string DefaultLanguage = "es";
 
-    public static int Import(Arguments arguments, TextWriter output)
+    public static int ImportResponse(Arguments arguments, TextWriter output)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
@@ -33,7 +35,7 @@ public static class MeetingCommands
         var details = new MeetingDetails(
             arguments.Instant("--started-at"),
             arguments.Profile("--profile"),
-            arguments.Optional("--language") ?? DefaultLanguage,
+            arguments.Language("--language", DefaultLanguage),
             arguments.Optional("--title"),
             arguments.Optional("--context"));
         arguments.EnsureNothingLeftOver();
@@ -50,6 +52,52 @@ public static class MeetingCommands
         Report.Line(output, "response", received.Response.RelativePath);
         Report.Line(output, "manifest", received.Manifest.RelativePath);
         Rendered(output, received.Turns, received.Transcript.RelativePath, received.Utterances.RelativePath);
+        return Cli.Ok;
+    }
+
+    /// <summary>
+    /// Brings an audio file in as a meeting of its own.
+    /// </summary>
+    /// <remarks>
+    /// <b>There is no <c>--profile</c> on it, and there is not going to be one.</b> What the audio
+    /// is gets decided from the file and the folder it came in — see <see cref="AudioIntake"/> —
+    /// and a flag here would be the one way back to somebody declaring that two channels of a file
+    /// off a phone are a meeting's loopback and microphone. That is also the difference from
+    /// <see cref="ImportResponse"/> one line above, which takes a response somebody has already paid for
+    /// and is told what it was recorded as, because by then it is a fact about a request that was
+    /// made rather than a guess about a file.
+    /// </remarks>
+    public static int ImportAudio(Arguments arguments, TextWriter output)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        ArgumentNullException.ThrowIfNull(output);
+
+        var corpus = Corpus.At(arguments);
+        var audio = new FileInfo(arguments.Only("The audio file to bring in"));
+        var details = new BroughtDetails(
+            arguments.Instant("--started-at"),
+            arguments.Language("--language", DefaultLanguage),
+            arguments.Optional("--title"),
+            arguments.Optional("--context"));
+        arguments.EnsureNothingLeftOver();
+
+        using var context = corpus.Write();
+        var brought = AudioIntake.Bring(context, audio, details, Clock.Now());
+
+        Report.Line(
+            output,
+            "meeting",
+            brought.WasAlreadyThere
+                ? $"{brought.MeetingId} (this audio was already here)"
+                : $"{brought.MeetingId}");
+        Report.Line(
+            output,
+            "profile",
+            brought.MixedDown
+                ? $"{brought.Profile.ToWireName()} (mixed down to one track)"
+                : brought.Profile.ToWireName());
+        Report.Line(output, "audio", brought.Audio.RelativePath);
+        Report.Line(output, "length", Report.Offset(brought.Length));
         return Cli.Ok;
     }
 

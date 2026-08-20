@@ -59,7 +59,10 @@ it is the corpus side of recording — the meeting row and its folder before the
 run written from the card the recording wrote about itself, what stopping makes of the spools, and
 what a start after a crash finds waiting and makes of one of them — all of which runs with no
 device, plus one thin type that opens the devices in that order and is
-deliberately too small to hold a rule. `MeetingTranscriber.App` was not an option for any of it:
+deliberately too small to hold a rule. Audio somebody brought in from outside is here for that same
+reason and not a second one: reading a WAV is the engine's and filing a meeting is the corpus's, and
+whether a two-channel file is a meeting's two sources is decided from both — the audio's own shape
+and the recovery card beside it. `MeetingTranscriber.App` was not an option for any of it:
 touching a type from that assembly fires the Windows App SDK module initializer and throws outside
 a packaged host, so anything living there would have no probe a build agent could run.
 

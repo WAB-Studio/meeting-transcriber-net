@@ -125,7 +125,7 @@ public class CliWalkthroughTests
         CommandLine.Of("migrate", "--corpus", root);
 
         var refused = CommandLine.Of(
-            "import",
+            "import-response",
             DeepgramFixtures.PathOf(Fixture),
             "--corpus",
             root,
@@ -141,7 +141,7 @@ public class CliWalkthroughTests
     }
 
     private static Run Import(string root) => CommandLine.Of(
-        "import",
+        "import-response",
         DeepgramFixtures.PathOf(Fixture),
         "--corpus",
         root,

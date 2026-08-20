@@ -77,12 +77,21 @@ public static class Cli
             $"compact {Corpus.Option} <directory>",
             "reclaim space and put the search indexes back, which is never one without the other",
             DiagnosticCommands.Compact),
+        // Two doors, and each says which one it is. `import` on its own was unambiguous for
+        // exactly as long as a response was the only thing a meeting could be made out of.
         new(
-            "import",
-            $"import <{MeetingIntake.ResponseFileName}> {Corpus.Option} <directory> --started-at <instant>"
-            + " --profile <multichannel|diarize> [--title <text>] [--context <text>] [--language <code>]",
+            "import-response",
+            $"import-response <{MeetingIntake.ResponseFileName}> {Corpus.Option} <directory>"
+            + " --started-at <instant> --profile <multichannel|diarize> [--title <text>]"
+            + " [--context <text>] [--language <code>]",
             "file a paid response as a meeting and render everything derived from it",
-            MeetingCommands.Import),
+            MeetingCommands.ImportResponse),
+        new(
+            "import-audio",
+            $"import-audio <file.wav> {Corpus.Option} <directory> --started-at <instant>"
+            + " [--language <code>] [--title <text>] [--context <text>]",
+            "bring audio in as a meeting, as whatever the file and its folder say it is",
+            MeetingCommands.ImportAudio),
         new(
             "render",
             $"render <meeting-id> {Corpus.Option} <directory>",
@@ -191,7 +200,8 @@ public static class Cli
     /// The failures that are answers rather than defects: a corpus that is not there or not sound,
     /// a response that cannot be read, a meeting that cannot be rendered, a query the index
     /// refuses, a machine with no microphone to give, a disk that will not give the file up, a
-    /// recording that names a meeting this corpus does not have.
+    /// recording that names a meeting this corpus does not have, a recovery card beside audio
+    /// somebody is bringing in that cannot be read as one.
     /// Anything else is a bug and comes out as one.
     /// </summary>
     private static bool IsRefusal(Exception exception) => exception
@@ -200,6 +210,7 @@ public static class Cli
         or CorpusIntegrityException
         or CorpusSearchException
         or IntakeException
+        or ManifestException
         or RenderException
         or DeepgramResponseException
         or AudioContractException
