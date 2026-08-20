@@ -1,4 +1,4 @@
-using MeetingTranscriber.Domain.Audio;
+﻿using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Audio;
@@ -41,11 +41,17 @@ public sealed class CaptureSession : IDisposable
     private readonly Lock gate = new();
 
     /// <summary>
-    /// How long the thread that follows a device Windows took away sleeps between looks. Slow on
-    /// purpose: what it costs to be late is that much more of the meeting missing off one channel,
-    /// and what it costs to be quick is the audio stack asked about its endpoints every tick of a
-    /// two hour meeting for an answer that changes twice a year.
+    /// How long the thread that follows a device Windows took away sleeps between looks.
     /// </summary>
+    /// <remarks>
+    /// Not a measurement: what it bounds is how much of the meeting is missing off a channel
+    /// between the device going away and the recording being back on one, and two seconds is where
+    /// a person would put that rather than where a run put it. A tick with both sources recording
+    /// takes the gate, looks at two fields and sleeps again — <see cref="FollowWhateverReplacedIt"/>
+    /// comes back before it asks the audio stack anything. It is once a source has ended that
+    /// every tick enumerates the machine's endpoints, and what bounds the moving onto them is
+    /// <see cref="ReplacedDevice.IsWorthTrying"/> rather than this number.
+    /// </remarks>
     private static readonly TimeSpan Looks = TimeSpan.FromSeconds(2);
 
     /// <summary>What ends the thread that follows, and what it sleeps on so it ends at once.</summary>

@@ -1,4 +1,4 @@
-using MeetingTranscriber.Domain.Audio;
+﻿using MeetingTranscriber.Domain.Audio;
 
 using NAudio.Wave;
 
@@ -131,7 +131,9 @@ public sealed class SpoolStretchTests : IDisposable
     /// <summary>
     /// ISC-124. One device's audio is one format all the way down, so the file somebody plays to
     /// hear what a device caught cannot hold two of them — and it says so rather than handing back
-    /// the half it could pour.
+    /// the half it could pour. What it says has to be true of a recording being recovered as much
+    /// as of a finished one: those blocks are where both stretches are, and the meeting's own audio
+    /// is made from them rather than already sitting there.
     /// </summary>
     [Fact]
     public void A_source_that_changed_format_is_not_poured_into_one_playable_file()
@@ -139,8 +141,15 @@ public sealed class SpoolStretchTests : IDisposable
         Write(Packets(MonoFloat, 0, 1)
             .Concat(Fabricated.TakingOver(CheapMicrophone, Packets(CheapMicrophone, 2, 3))));
 
-        Should.Throw<AudioCaptureException>(() => BlockSpool.ToWav(File))
-            .Message.ShouldContain(MeetingAudio.FileName);
+        var refusal = Should.Throw<AudioCaptureException>(() => BlockSpool.ToWav(File)).Message;
+
+        // Both files, and the blocks are the load-bearing half. Naming only the meeting's own audio
+        // sends whoever is recovering a spool at a file that recording never had — it is made from
+        // these blocks, not sitting beside them — so what the sentence has to carry is where the
+        // two stretches really are. The clause saying what makes the other file is prose and is not
+        // pinned here; the rule it exists for is in this test's summary.
+        refusal.ShouldContain(File.Name);
+        refusal.ShouldContain(MeetingAudio.FileName);
 
         // And nothing is left standing under that name. Half a source is what the next attempt
         // would find and what somebody would play as though it were the whole of it.

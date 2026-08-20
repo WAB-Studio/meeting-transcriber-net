@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 
 using MeetingTranscriber.Domain.Audio;
 
@@ -211,8 +211,9 @@ public static class BlockSpool
     /// A source that changed device is refused when the device that took over hands over another
     /// format, and it is refused rather than converted: a WAV is one format all the way down, and
     /// what this file is for is hearing what a device really caught. What holds both stretches at
-    /// once is the meeting's own audio, which is where the two of them are already one file — so
-    /// the refusal says that rather than leaving somebody with half a recording and no sentence.
+    /// once is the meeting's own audio — so the refusal says where that comes from rather than
+    /// leaving somebody with half a recording and no sentence, and it says it in terms that are
+    /// true of a recording being recovered, which has never had that file.
     /// </remarks>
     public static Replayed ToWav(FileInfo blocks, FileInfo wav)
     {
@@ -233,8 +234,10 @@ public static class BlockSpool
                             $"'{blocks.Name}' hands over {spool.Format} and then {stretch}, because "
                             + "the device feeding it changed while the meeting was running. One "
                             + $"device's audio is one format all the way down, so '{wav.Name}' "
-                            + $"cannot hold both; '{MeetingAudio.FileName}' is where the two are "
-                            + "one recording.");
+                            + $"cannot hold both. Both stretches are in '{blocks.Name}' and stay "
+                            + $"there; what holds them as one recording is '{MeetingAudio.FileName}', "
+                            + "which is made from them when the meeting is finished or when a "
+                            + "recording waiting in the folder is kept.");
                     }
 
                     writer.Write(packet.Samples.Span);

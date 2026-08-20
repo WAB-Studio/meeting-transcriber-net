@@ -1,4 +1,4 @@
-namespace MeetingTranscriber.Presentation;
+﻿namespace MeetingTranscriber.Presentation;
 
 /// <summary>
 /// Everything the application says, Spanish first and English second. A screen names an entry

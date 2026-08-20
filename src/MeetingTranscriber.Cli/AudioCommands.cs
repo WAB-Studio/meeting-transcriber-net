@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;

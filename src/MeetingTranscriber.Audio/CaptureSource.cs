@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
@@ -67,6 +67,14 @@ public sealed class CaptureSource : IDisposable
     /// gone by the time anybody asks.
     /// </summary>
     private volatile Exception? failure;
+
+    /// <summary>
+    /// The move this source is on, or nothing before it has ever been moved. Read on the draining
+    /// thread of every stream this source has had and written on the thread that moves it, which
+    /// is what makes a stream ending long after the channel left it tell the right move — and the
+    /// right move, being the one that replaced it, is retired and says nothing.
+    /// </summary>
+    private Handover? moving;
 
     /// <summary>Backs <see cref="Listening"/>, which says there why it is not an auto-property.</summary>
     private CaptureTarget listening;
@@ -217,6 +225,11 @@ public sealed class CaptureSource : IDisposable
     /// be written all leave the recording exactly where it was, still on the program, still able to
     /// be asked again. Stopping the old device happens afterwards, where it can cost nothing.
     /// </para>
+    /// <para>
+    /// One thing is not on the near side of that line and cannot be put there: a replacement that
+    /// started and then died before the channel reached it. Ordering the two writes differently
+    /// only moves which end is lost, so it is a <see cref="Handover"/> that decides who reports.
+    /// </para>
     /// </remarks>
     /// <param name="destination">What to record from here on.</param>
     /// <param name="sayingSo">
@@ -257,6 +270,13 @@ public sealed class CaptureSource : IDisposable
                 $"Windows would not record '{destination.Name}': {refused.Message}", refused);
         }
 
+        // What both threads say what they did to, so that a replacement dying between being
+        // started and being handed the channel is reported by whichever of them is second. The one
+        // it replaces is retired here rather than when it finished, because a stream goes on
+        // ending after the channel has left it and only a live move may report anything.
+        var handover = new Handover(Ended);
+        Interlocked.Exchange(ref moving, handover)?.Retire();
+
         try
         {
             var taking = StreamFormat.Of(next.WaveFormat);
@@ -280,7 +300,7 @@ public sealed class CaptureSource : IDisposable
                     + "what would follow it would be two different sources in one stretch.");
             }
 
-            Underway(next, placedBy is null ? taking : null);
+            Underway(next, placedBy is null ? taking : null, handover);
             sayingSo();
         }
         catch (COMException refused)
@@ -304,7 +324,8 @@ public sealed class CaptureSource : IDisposable
         // worth having: the old stream ending in the moment between these lines is reported as this
         // source having ended, which stops the recording and says so. The other order loses a new
         // stream that died on its first block, and a meeting recording nothing while everything
-        // says it is fine is the failure this codebase is built against.
+        // says it is fine is the failure this codebase is built against. What this clearing would
+        // itself erase is `handover`'s, and is put back on top of it below.
         failure = null;
         ended.Reset();
         Listening = destination;
@@ -314,13 +335,28 @@ public sealed class CaptureSource : IDisposable
         // rule read the other way, so the two never write into one spool.
         Volatile.Write(ref stream, next);
 
-        // Afterwards, and nothing here throws: the channel is recording again, and a device that
-        // will not let go is a handle held rather than a meeting lost. One that was given up on
-        // keeps everything it is still using, and is asked again when this source is let go of.
-        previous.Stop();
-        previous.Stopped();
-        previous.Dispose();
-        replaced.Add(previous);
+        try
+        {
+            // Immediately after that line and before the old device is touched: from here the
+            // channel is on the new stream, so a replacement that died while the two lines above
+            // were running is this source having ended, and this is the arrival that says so.
+            handover.TookOver();
+        }
+        finally
+        {
+            // The old device is let go of whatever saying that cost, which is what the `finally`
+            // is for: this is the only reference to it, so a throw on the line above would leave a
+            // live device draining into nothing with nobody able to ask it again — and it would
+            // throw out of a move the folder has already recorded as made.
+            //
+            // Nothing here throws: the channel is recording again, and a device that will not let
+            // go is a handle held rather than a meeting lost. One that was given up on keeps
+            // everything it is still using, and is asked again when this source is let go of.
+            previous.Stop();
+            previous.Stopped();
+            previous.Dispose();
+            replaced.Add(previous);
+        }
     }
 
     /// <summary>
@@ -597,7 +633,13 @@ public sealed class CaptureSource : IDisposable
     /// The format to declare on the first block of this stream that becomes the recording, when
     /// this stream is a device taking the source over, and nothing when it is not.
     /// </param>
-    private void Underway(WasapiStream starting, StreamFormat? seam = null)
+    /// <param name="handover">
+    /// The move this stream is being started for, when it is one taking the source over, and
+    /// nothing when this stream is the one the source opened with. It is what an end arriving
+    /// before the channel hands over is said to instead of being dropped — which is only ever this
+    /// stream's case, since the stream being replaced is one the channel has already left.
+    /// </param>
+    private void Underway(WasapiStream starting, StreamFormat? seam = null, Handover? handover = null)
     {
         // Settled once, here, and carried into the callback. Every block this stream hands over is
         // read at the format this stream really opened at — a field read on the capture thread could
@@ -627,10 +669,18 @@ public sealed class CaptureSource : IDisposable
             },
             stopped =>
             {
+                // While this stream is the one blocks are read from, its end is this source's and
+                // is said straight out. Otherwise it belongs to the move that brought this stream
+                // in, which knows whether it is still the source's move and whether the channel
+                // reached this stream — and reports, or does not, on those two answers. The stream
+                // the source opened with has no move behind it, so its end there is nobody's.
                 if (ReferenceEquals(Volatile.Read(ref stream), starting))
                 {
                     Ended(stopped);
+                    return;
                 }
+
+                handover?.Ended(stopped);
             });
     }
 

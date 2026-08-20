@@ -1,4 +1,4 @@
-using MeetingTranscriber.Domain.Audio;
+﻿using MeetingTranscriber.Domain.Audio;
 
 using NAudio.Wave;
 
