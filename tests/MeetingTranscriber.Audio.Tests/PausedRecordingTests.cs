@@ -190,9 +190,18 @@ public sealed class PausedRecordingTests : IDisposable
     }
 
     /// <summary>
-    /// Both sources of one meeting, with the stretch between <paramref name="pausedFrom"/> and
-    /// <paramref name="pausedUntil"/> going through the substitution a paused capture makes.
+    /// Both sources of one meeting, live at once, with the stretch between
+    /// <paramref name="pausedFrom"/> and <paramref name="pausedUntil"/> going through the
+    /// substitution a paused capture makes.
     /// </summary>
+    /// <remarks>
+    /// One <see cref="RecordingPause"/> for the recording, pressed once and read by both sources,
+    /// which is what a capture has: the button is the meeting's and not a source's. So the two
+    /// spools are interleaved rather than written one after the other — whichever block was read
+    /// first goes first, the way a capture takes them — and the press lands in the middle of both
+    /// streams rather than between them. What these spools are written through is the production
+    /// object rather than a stand-in for it.
+    /// </remarks>
     private void Record(
         double seconds,
         double pausedFrom,
@@ -200,54 +209,26 @@ public sealed class PausedRecordingTests : IDisposable
         Func<double, float>? room = null)
     {
         var heard = room ?? Fabricated.Bursts(0.25);
-
-        // The one a recording has, shared by both sources exactly as a capture shares it - so what
-        // these spools are written through is the production object rather than a stand-in for it.
-        Write(
-            new RecordingPause(),
-            AudioChannel.Loopback,
-            StereoFloat,
-            48_000,
-            seconds,
-            heard,
-            pausedFrom,
-            pausedUntil);
-        Write(
-            new RecordingPause(),
-            AudioChannel.Microphone,
-            CheapMicrophone,
-            44_100,
-            seconds,
-            heard,
-            pausedFrom,
-            pausedUntil);
-    }
-
-    /// <summary>
-    /// One source's spool, with pause and resume pressed at the seconds they were asked for and
-    /// every block going through <see cref="RecordingPause.Reaching"/> on its way to the writer -
-    /// which is exactly what a capture does with the block its device hands it.
-    /// </summary>
-    private void Write(
-        RecordingPause pause,
-        AudioChannel channel,
-        StreamFormat format,
-        double realRate,
-        double seconds,
-        Func<double, float> room,
-        double pausedFrom,
-        double pausedUntil)
-    {
-        // The device's own position says when the block was, which is the only clock a paused
-        // capture has: the pause is pressed by when the block belongs and never by counting them.
-        var framesPerSecond = format.SampleRate;
+        var pause = new RecordingPause();
         var pressed = false;
         var released = false;
 
-        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, format);
-        foreach (var packet in Fabricated.Packets(channel, format, realRate, 0, seconds, room))
+        using var others = Spool(AudioChannel.Loopback, StereoFloat);
+        using var mine = Spool(AudioChannel.Microphone, CheapMicrophone);
+
+        foreach (var packet in Fabricated.Merged(
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, seconds, heard),
+            Fabricated.Packets(AudioChannel.Microphone, CheapMicrophone, 44_100, 0, seconds, heard)))
         {
-            var at = packet.DevicePosition / (double)framesPerSecond;
+            var loopback = packet.Channel is AudioChannel.Loopback;
+
+            // The device's own position says when the block was, which is the only clock a paused
+            // capture has: the pause is pressed by when the block belongs and never by counting
+            // them. Once for the recording, so the source that did not carry the press is silenced
+            // by having read the same answer — which is the whole of what one pause per recording
+            // buys, and what a flag per source would lose.
+            var at = packet.DevicePosition
+                / (double)(loopback ? StereoFloat.SampleRate : CheapMicrophone.SampleRate);
 
             if (!pressed && at >= pausedFrom)
             {
@@ -261,9 +242,15 @@ public sealed class PausedRecordingTests : IDisposable
                 released = true;
             }
 
-            writer.Write(pause.Reaching(packet));
+            // Every block goes through Reaching on its way to the writer, which is exactly what a
+            // capture does with the block its device hands it.
+            (loopback ? others : mine).Write(pause.Reaching(packet));
         }
     }
+
+    /// <summary>One source's spool, open for as long as the recording is.</summary>
+    private SpoolWriter Spool(AudioChannel channel, StreamFormat format) =>
+        SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, format);
 
     /// <summary>
     /// One block of a loud room, with numbers on it nothing could produce by accident — so a
