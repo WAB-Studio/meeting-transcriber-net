@@ -30,6 +30,14 @@ namespace MeetingTranscriber.Audio;
 /// </remarks>
 public sealed class FramePositions
 {
+    /// <summary>
+    /// One sequence, one caller at a time. A channel being moved has two device threads alive over
+    /// it for the moment it takes to hand over, and each answer here is measured from the one
+    /// before it — so two of them interleaving would tear the four numbers this is, and what would
+    /// come out is a channel laid out from a position nothing produced.
+    /// </summary>
+    private readonly Lock ordering = new();
+
     private readonly int sampleRate;
     private MonotonicInstant anchor;
     private long anchoredAt;
@@ -44,9 +52,17 @@ public sealed class FramePositions
     }
 
     /// <summary>
-    /// Where the next packet's first frame goes. Called once per packet, in the order the device
-    /// handed them over, because each answer is measured from the one before it.
+    /// Where the next packet's first frame goes. Called once per packet the recording takes, in the
+    /// order the device handed them over, because each answer is measured from the one before it.
     /// </summary>
+    /// <remarks>
+    /// <b>Only for a packet that is being kept.</b> This advances, so a packet asked about and then
+    /// dropped moves the sequence past audio no file holds — and since a packet is never placed
+    /// before the end of the one before it, that push never comes back: the channel is laid out
+    /// late by the length of what was dropped, for the rest of the meeting. What drops packets is a
+    /// channel being moved from one device to another, which has two streams handing blocks over at
+    /// once for a moment, so this is asked after that decision and never before it.
+    /// </remarks>
     /// <param name="at">The instant the device read the packet.</param>
     /// <param name="timingIsSound">
     /// Whether the device vouched for that instant. When it did not there is nothing to place the
@@ -59,9 +75,12 @@ public sealed class FramePositions
     /// <param name="frames">How many frames the packet carries.</param>
     public long For(MonotonicInstant at, bool timingIsSound, int frames)
     {
-        var where = Where(at, timingIsSound);
-        next = where + frames;
-        return where;
+        lock (ordering)
+        {
+            var where = Where(at, timingIsSound);
+            next = where + frames;
+            return where;
+        }
     }
 
     private long Where(MonotonicInstant at, bool timingIsSound)

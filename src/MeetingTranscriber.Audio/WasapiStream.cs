@@ -48,7 +48,10 @@ internal sealed class WasapiStream : IDisposable
     /// <summary>The endpoint the client came from, or nothing when it came from a process.</summary>
     private readonly IDisposable? endpoint;
 
-    /// <summary>Where each packet goes, or nothing when the device numbers its own frames.</summary>
+    /// <summary>
+    /// Where each packet goes, or nothing when the device numbers its own frames — which is a
+    /// microphone and nothing else, since the virtual device channel 0 comes off numbers none.
+    /// </summary>
     private readonly FramePositions? positions;
     private readonly byte[] block;
     private readonly int bytesPerFrame;
@@ -72,20 +75,12 @@ internal sealed class WasapiStream : IDisposable
         AudioClient client,
         WaveFormat format,
         IDisposable? endpoint,
-        FramePositions? placedBy,
-        bool numbersFrames)
+        FramePositions? positions)
     {
         this.channel = channel;
         this.client = client;
         this.endpoint = endpoint;
-
-        // A stream handed somebody else's positions carries on from where they got to, whatever its
-        // own device would have said. That is what a channel moved from one source to another mid
-        // meeting needs — see CaptureSource.MoveTo — and it is the only reason a device that
-        // numbers its own frames would ever be placed by the clock instead.
-        positions = numbersFrames && placedBy is null
-            ? null
-            : placedBy ?? new FramePositions(format.SampleRate);
+        this.positions = positions;
         WaveFormat = format;
         bytesPerFrame = format.Channels * format.BitsPerSample / 8;
         block = new byte[client.BufferSize * bytesPerFrame];
@@ -106,6 +101,30 @@ internal sealed class WasapiStream : IDisposable
     internal FramePositions? Positions => positions;
 
     /// <summary>
+    /// Says where <paramref name="packet"/> belongs on the channel, for a device that numbers no
+    /// frames of its own; a device that numbers them is already right and comes back untouched.
+    /// </summary>
+    /// <remarks>
+    /// Asked by whoever is keeping the packet and never by the loop that drained it, because the
+    /// sequence advances: a channel being moved has two streams handing blocks over for a moment
+    /// and only one of them is the recording, so placing a block before that was decided would push
+    /// the channel past audio no file holds. See <see cref="FramePositions.For"/>, which is where
+    /// that costs the rest of the meeting.
+    /// </remarks>
+    internal CapturePacket Place(CapturePacket packet)
+    {
+        ArgumentNullException.ThrowIfNull(packet);
+
+        return positions is null
+            ? packet
+            : packet with
+            {
+                DevicePosition = positions.For(
+                    packet.CapturedAt, packet.TimingIsSound, packet.Samples.Length / bytesPerFrame),
+            };
+    }
+
+    /// <summary>
     /// Whether the draining loop was given up on, so this stream is still inside the device and
     /// everything it holds is still being used by a thread nothing can stop. What a caller reads
     /// before letting go of anything of its own that the loop hands blocks to.
@@ -116,28 +135,15 @@ internal sealed class WasapiStream : IDisposable
     /// Opens <paramref name="device"/> for capture onto <paramref name="channel"/>, in the format
     /// the machine is already mixing at.
     /// </summary>
-    /// <param name="device">The endpoint to record.</param>
+    /// <param name="device">The endpoint to record, which is a microphone.</param>
     /// <param name="channel">
-    /// Which of the two channels its blocks feed, which is also the whole of what decides how the
-    /// endpoint is opened: channel 0 records what it is playing and channel 1 what it hears. Passed
-    /// as one thing rather than as a channel and a direction, because the two can only ever agree.
+    /// Which channel its blocks are labelled with. Carried rather than decided on: an endpoint is
+    /// captured one way only, and which channel it feeds is the session's to settle — see
+    /// <see cref="CaptureTarget.Endpoint"/>, which is the only thing that builds one of these.
     /// </param>
-    /// <param name="placedBy">
-    /// The positions this stream carries on from, when it is taking another one's place on a
-    /// channel that is already being recorded, or nothing when it is the channel's first stream and
-    /// the device's own numbering is what places it.
-    /// </param>
-    internal static WasapiStream On(
-        AudioDevice device, AudioChannel channel, FramePositions? placedBy = null)
+    internal static WasapiStream On(AudioDevice device, AudioChannel channel)
     {
         ArgumentNullException.ThrowIfNull(device);
-
-        var direction = channel switch
-        {
-            AudioChannel.Loopback => AudioClientStreamFlags.Loopback,
-            AudioChannel.Microphone => AudioClientStreamFlags.None,
-            _ => throw new AudioContractException($"There is no way to capture '{channel}'."),
-        };
 
         // Every line of it behind one deadline, because every line of it is a synchronous call into
         // the same driver: opening the endpoint, asking it for its client, reading what the machine
@@ -174,20 +180,58 @@ internal sealed class WasapiStream : IDisposable
             // Handed over rather than wrapped in a catch of its own, and that is the whole reason
             // these two lines are not one: from here the client is what a wedge would be inside and
             // the endpoint is underneath it, so both are let go of together and in that order.
-            return Ready(channel, client!, mixing, direction, endpoint, placedBy, numbersFrames: true);
+            //
+            // Captured and never played back, and nothing places its packets: an endpoint numbers
+            // its own frames. Channel 0 is no endpoint, so neither of those is a case here.
+            return Ready(
+                channel, client!, mixing, AudioClientStreamFlags.None, endpoint, positions: null);
         });
     }
 
     /// <summary>
-    /// Opens what <paramref name="process"/> and the processes it started are playing, onto channel
-    /// 0. There is no endpoint behind it, so the format is the one the audio engine is mixing at
-    /// rather than one a device named: the virtual client will not say what it mixes at, and asking
-    /// for what the engine already produces is what keeps channel 0 the same file either way.
+    /// Opens what <paramref name="process"/> and the processes it started are playing, onto
+    /// channel 0.
     /// </summary>
+    /// <remarks>
+    /// It takes no positions to carry on from, and that is the shape of what can happen: a
+    /// recording is moved onto the whole machine and never onto a program, so a program's stream is
+    /// always a channel's first.
+    /// </remarks>
+    /// <param name="process">The program to follow.</param>
     internal static WasapiStream Following(AudioProcess process)
     {
         ArgumentNullException.ThrowIfNull(process);
 
+        return Loopback("program", () => ProcessLoopback.Following(process), placedBy: null);
+    }
+
+    /// <summary>
+    /// Opens everything this machine is playing, wherever it comes out, onto channel 0.
+    /// </summary>
+    /// <remarks>
+    /// The same activation as <see cref="Following"/> under the other mode, so a recording moved
+    /// from a program to the machine changes which processes are being listened to and nothing
+    /// else: the same format, the same absent frame numbering, the same file.
+    /// </remarks>
+    /// <param name="placedBy">
+    /// The positions this stream carries on from, when it is taking a program's place on a channel
+    /// that is already being recorded, or nothing when it is the channel's first stream.
+    /// </param>
+    internal static WasapiStream TheWholeMachine(FramePositions? placedBy = null) =>
+        Loopback("machine", ProcessLoopback.EverythingThisMachinePlays, placedBy);
+
+    /// <summary>
+    /// Opens channel 0, which is a process loopback either way. There is no endpoint behind it, so
+    /// the format is the one the audio engine is mixing at rather than one a device named: the
+    /// virtual client will not say what it mixes at, and asking for what the engine already
+    /// produces is what keeps channel 0 the same file however it was opened.
+    /// </summary>
+    /// <param name="named">What this way in is called in the name of the thread that opens it.</param>
+    /// <param name="activate">What produces the client, which is the whole of what the two differ by.</param>
+    /// <param name="placedBy">The positions to carry on from, or nothing to start a sequence.</param>
+    private static WasapiStream Loopback(
+        string named, Func<AudioClient> activate, FramePositions? placedBy)
+    {
         // Set even though the format asked for is the one the engine mixes at, so that a machine
         // mixing at something this cannot ask for gets a conversion instead of a refusal.
         const AudioClientStreamFlags converting =
@@ -198,23 +242,23 @@ internal sealed class WasapiStream : IDisposable
         // Behind the deadline for the reason the endpoint way in is, and it is not a lesser case
         // because there is no device named: asking what the engine mixes at opens the playback
         // endpoint and asks its client, which is the same driver and the same way of not answering.
-        return DeviceOpen.Answering($"{AudioChannel.Loopback} program", () =>
+        return DeviceOpen.Answering($"{AudioChannel.Loopback} {named}", () =>
         {
             // Asked for before anything is activated, and that order is the point: it is the one
             // step here that can fail without a client to let go of, and a client obtained first
             // would be left open by a machine that had just lost its playback endpoint.
             var format = AudioDevices.EngineFormat();
 
-            // It numbers nothing: every packet comes back at frame zero, measured on this machine
-            // over ten seconds of a program playing a tone. See FramePositions for what stands in.
+            // The virtual device numbers nothing: every packet comes back at frame zero, measured
+            // on this machine over ten seconds of a program playing a tone. See FramePositions for
+            // what stands in, and CaptureSource.MoveTo for why one is ever handed in.
             return Ready(
                 AudioChannel.Loopback,
-                ProcessLoopback.For(process),
+                activate(),
                 format,
                 converting,
                 endpoint: null,
-                placedBy: null,
-                numbersFrames: false);
+                placedBy ?? new FramePositions(format.SampleRate));
         });
     }
 
@@ -235,8 +279,7 @@ internal sealed class WasapiStream : IDisposable
         WaveFormat format,
         AudioClientStreamFlags how,
         IDisposable? endpoint,
-        FramePositions? placedBy,
-        bool numbersFrames)
+        FramePositions? positions)
     {
         try
         {
@@ -248,7 +291,7 @@ internal sealed class WasapiStream : IDisposable
                 format,
                 Guid.Empty);
 
-            return new WasapiStream(channel, client, format, endpoint, placedBy, numbersFrames);
+            return new WasapiStream(channel, client, format, endpoint, positions);
         }
         catch
         {
@@ -301,7 +344,7 @@ internal sealed class WasapiStream : IDisposable
         // The answer first, whichever side of the deadline it landed on. A device that refused has
         // answered and its loop is already returning, so reading the refusal before the deadline is
         // what keeps a machine that said no from being reported as one that said nothing — and a
-        // process loopback that said no falls back to the endpoint, where a wedged one must not.
+        // refusal is what a person is told about and offered something to do, where a wedge is not.
         if (refused is not null)
         {
             // Waited for rather than assumed. The body sets that and returns, so the thread is over
@@ -507,14 +550,15 @@ internal sealed class WasapiStream : IDisposable
             if (frames > 0)
             {
                 var at = MonotonicInstant.FromTicks(instant);
-                var vouched = !flags.HasFlag(AudioClientBufferFlags.TimestampError);
 
+                // The device's own number, unplaced. Where it belongs on the channel is Place's,
+                // and it is asked by whoever keeps the packet — see there for why not here.
                 captured?.Invoke(new CapturePacket(
                     channel,
-                    positions?.For(at, vouched, frames) ?? position,
+                    position,
                     at,
                     block.AsMemory(0, length),
-                    vouched));
+                    !flags.HasFlag(AudioClientBufferFlags.TimestampError)));
             }
         }
     }

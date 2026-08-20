@@ -103,9 +103,9 @@ public sealed class CaptureSource : IDisposable
     public AudioChannel Channel { get; }
 
     /// <summary>
-    /// What Windows has open for it: an endpoint, or one program's audio. What it is listening to
-    /// now, which is what it opened with unless somebody moved it — the card beside the blocks is
-    /// where what it opened with is kept.
+    /// What Windows has open for it: an endpoint, one program's audio, or everything this machine
+    /// plays. What it is listening to now, which is what it opened with unless somebody moved it —
+    /// the card beside the blocks is where what it opened with is kept.
     /// </summary>
     /// <remarks>
     /// Read and written the way <see cref="stream"/> is, and for the same reason: this is the one
@@ -178,11 +178,11 @@ public sealed class CaptureSource : IDisposable
     /// than in it.
     /// </para>
     /// <para>
-    /// Only a source whose device numbers no frames can be moved, which is exactly a channel
-    /// following a program: it is already being placed by the machine's clock, so the stream taking
-    /// over carries on from the same sequence and there is no seam to reconcile. One that numbers
-    /// its own frames would arrive with a counter of its own that means nothing here, and that is a
-    /// different thing entirely from this.
+    /// Only a source whose device numbers no frames can be moved, which is exactly a channel 0: it
+    /// is already being placed by the machine's clock, and so is the stream taking over, so that
+    /// one carries on from the same sequence and there is no seam to reconcile. A microphone
+    /// numbers its own frames and is refused here — its counter means nothing to another device,
+    /// and nothing asks it to move anyway.
     /// </para>
     /// <para>
     /// <b>Nothing is given up until everything that can fail has happened.</b> The new device is
@@ -194,7 +194,7 @@ public sealed class CaptureSource : IDisposable
     /// be asked again. Stopping the old device happens afterwards, where it can cost nothing.
     /// </para>
     /// </remarks>
-    /// <param name="destination">The endpoint to record from here on.</param>
+    /// <param name="destination">What to record from here on.</param>
     /// <param name="sayingSo">
     /// Written down before a byte of the new device reaches this recording, and the last thing that
     /// may fail. It is this way round because of which lie is worse: a folder claiming a move that
@@ -202,7 +202,7 @@ public sealed class CaptureSource : IDisposable
     /// somebody reads that as their notifications being there when they are not. The other way
     /// round is the same sentence with the truth in it, and it is the one this exists to prevent.
     /// </param>
-    internal void MoveTo(CaptureTarget.Endpoint destination, Action sayingSo)
+    internal void MoveTo(CaptureTarget.TheWholeMachine destination, Action sayingSo)
     {
         ArgumentNullException.ThrowIfNull(destination);
         ArgumentNullException.ThrowIfNull(sayingSo);
@@ -213,7 +213,7 @@ public sealed class CaptureSource : IDisposable
                 + "frames, so it is not something this moves: what places its audio is the device "
                 + "that counted it.");
 
-        var next = destination.Open(Channel, placedBy);
+        var next = destination.Open(placedBy);
         try
         {
             var format = StreamFormat.Of(next.WaveFormat);
@@ -221,8 +221,8 @@ public sealed class CaptureSource : IDisposable
             {
                 // The spool declares one format in its header and every block in it is read back
                 // that way, so a device handing over something else cannot be poured into it. Both
-                // ways of opening channel 0 ask for what the audio engine is mixing at, so this is
-                // the machine having changed what that is underneath a meeting.
+                // ways of opening channel 0 ask for what the audio engine is mixing at, so the only
+                // way here is the machine having changed what that is underneath a meeting.
                 throw new AudioCaptureException(
                     $"'{destination.Name}' hands over {format} and the {Channel} recording is "
                     + $"{Format}, so it cannot take over: what is already recorded and what would "
@@ -434,16 +434,19 @@ public sealed class CaptureSource : IDisposable
     }
 
     /// <summary>
-    /// Opens <paramref name="listening"/> onto <paramref name="channel"/> and starts recording it.
+    /// Opens <paramref name="listening"/> onto the channel it feeds and starts recording it.
     /// Anything the machine refuses comes back as a throw, with nothing left open and no file
     /// left behind — and a device that never answered at all comes back as a throw too, at the
     /// deadline, leaving behind only what a thread still inside that device is using.
     /// </summary>
-    internal static CaptureSource Open(
-        AudioChannel channel, CaptureTarget listening, FileInfo file, RecordingPause pause)
+    internal static CaptureSource Open(CaptureTarget listening, FileInfo file, RecordingPause pause)
     {
         ArgumentNullException.ThrowIfNull(listening);
         ArgumentNullException.ThrowIfNull(file);
+
+        // The target's and never a second answer beside it: what feeds which channel is fixed by
+        // what the target is, and a channel passed in here could disagree with the stream's own.
+        var channel = listening.Channel;
 
         WasapiStream? stream = null;
         SpoolWriter? spool = null;
@@ -477,7 +480,7 @@ public sealed class CaptureSource : IDisposable
 
         try
         {
-            stream = listening.Open(channel);
+            stream = listening.Open();
             var format = StreamFormat.Of(stream.WaveFormat);
 
             // Asked before the device is started rather than answered by its first block: a width
@@ -543,9 +546,13 @@ public sealed class CaptureSource : IDisposable
         opening.Start(
             packet =>
             {
+                // Placed inside the condition and never before it. A stream that is not this
+                // source's is one whose blocks go nowhere, and the sequence a channel is laid out
+                // by advances every time it is asked — so asking for a block that is about to be
+                // dropped would push the rest of the meeting along by its length.
                 if (ReferenceEquals(Volatile.Read(ref stream), opening))
                 {
-                    Captured(packet);
+                    Captured(opening.Place(packet));
                 }
             },
             stopped =>

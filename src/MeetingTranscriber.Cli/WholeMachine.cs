@@ -140,7 +140,7 @@ public sealed class WholeMachine
             // a run over this would cost the recording it was reporting on.
             //
             // Under the channel's own name rather than under a word like "not moved", because what
-            // this line is for is the sentence saying which device the meeting is on now — and
+            // this line is for is the sentence saying what the meeting is on now — and
             // every way of reaching here leaves the channel where it was, so each message says so
             // itself and in its own terms. Nothing hands over until the new device is running and
             // the folder has said so.

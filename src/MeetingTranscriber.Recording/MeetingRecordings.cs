@@ -111,8 +111,8 @@ public static class MeetingRecordings
     /// Built from the card and from nothing else, which is what keeps the two from disagreeing:
     /// the card is the only account of what was true when the devices opened, and a row filled
     /// from what the caller believed it asked for would say the program was followed on a
-    /// recording that fell back to the whole machine. It is also why the card carries a run id at
-    /// all — this row can be written again from a folder found after a crash.
+    /// recording that opened on the whole machine instead. It is also why the card carries a run id
+    /// at all — this row can be written again from a folder found after a crash.
     /// </remarks>
     /// <remarks>
     /// It takes no instant of its own: when the run started is the card's, read off the devices
@@ -131,12 +131,12 @@ public static class MeetingRecordings
             Id = card.CaptureRunId,
             MeetingId = card.MeetingId,
             StartedAt = card.StartedAt,
-            OthersDeviceId = others.DeviceId,
-
-            // A channel following a program has no endpoint, and the card says so by carrying no
-            // device id. What it heard is the program, so that is what the run is told it was.
-            OthersDeviceName = others.DeviceId is null ? null : others.Heard,
-            OthersProcess = others.DeviceId is null ? others.Heard : null,
+            // Empty, both of them, and not a branch that could fill them: channel 0 is not a
+            // device either way round, and a card saying it was is refused where the card is read.
+            // The two columns outlive this by a migration and nothing else.
+            OthersDeviceId = null,
+            OthersDeviceName = null,
+            OthersProcess = card.Mode is CaptureMode.ProcessLoopback ? others.Heard : null,
             OthersCaptureMode = card.Mode,
             MeDeviceId = me.DeviceId,
             MeDeviceName = me.Heard,

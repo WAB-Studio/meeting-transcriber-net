@@ -1,9 +1,6 @@
 ﻿using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
-using NAudio.CoreAudioApi;
-using NAudio.Wave;
-
 namespace MeetingTranscriber.Audio;
 
 /// <summary>
@@ -24,13 +21,17 @@ namespace MeetingTranscriber.Audio;
 /// whole machine only when somebody says to. Recording every notification and every other
 /// application on the machine is not something this decides on a person's behalf.
 /// </para>
+/// <para>
+/// Neither of the two is a device. Both are the same process loopback under two modes, so nothing
+/// here opens a playback stream, names an endpoint for channel 0 or has anything to put back if
+/// one refuses — which is why a session takes a microphone and no second device.
+/// </para>
 /// </remarks>
 public sealed class CaptureSession : IDisposable
 {
     private readonly CaptureSource[] sources;
     private readonly RecordingPause pause;
     private readonly DirectoryInfo folder;
-    private readonly AudioDevice playback;
 
     /// <summary>
     /// One caller's, and it is what keeps a recording from being moved while it is being stopped.
@@ -39,28 +40,17 @@ public sealed class CaptureSession : IDisposable
     /// </summary>
     private readonly Lock gate = new();
 
-    /// <summary>
-    /// What is played into the playback endpoint so that it keeps handing packets over, or nothing
-    /// while channel 0 is following a program. Not readonly, because moving channel 0 to the whole
-    /// machine is where a recording that never needed it starts needing it.
-    /// </summary>
-    private SilentPlayback? silence;
-
     private bool over;
 
     private CaptureSession(
         CaptureSource[] sources,
-        SilentPlayback? silence,
         SpoolCard card,
         RecordingPause pause,
-        DirectoryInfo folder,
-        AudioDevice playback)
+        DirectoryInfo folder)
     {
         this.sources = sources;
-        this.silence = silence;
         this.pause = pause;
         this.folder = folder;
-        this.playback = playback;
         Card = card;
     }
 
@@ -77,9 +67,7 @@ public sealed class CaptureSession : IDisposable
     /// says how it was obtained when the devices opened, and the two differ from the moment
     /// somebody moves it — see <see cref="RecordTheWholeMachine"/>.
     /// </summary>
-    public CaptureMode Mode => On(AudioChannel.Loopback).Listening is CaptureTarget.Program
-        ? CaptureMode.ProcessLoopback
-        : CaptureMode.FullLoopback;
+    public CaptureMode Mode => ObtainedAs(On(AudioChannel.Loopback).Listening);
 
     /// <summary>
     /// Opens both streams into <paramref name="folder"/>, one spool each, writes the card saying
@@ -93,10 +81,6 @@ public sealed class CaptureSession : IDisposable
     /// </remarks>
     /// <param name="folder">Where the two spools and the card go. Made if it is not there.</param>
     /// <param name="meetingId">The meeting being recorded, fixed before any of this is called.</param>
-    /// <param name="playback">
-    /// The endpoint channel 0 listens to when it is not following a program, and the one it is
-    /// moved onto if somebody later chooses the whole machine.
-    /// </param>
     /// <param name="microphone">The device channel 1 listens to.</param>
     /// <param name="follow">
     /// The program channel 0 should follow, or nothing to record the whole machine.
@@ -104,44 +88,29 @@ public sealed class CaptureSession : IDisposable
     public static CaptureSession Start(
         DirectoryInfo folder,
         Guid meetingId,
-        AudioDevice playback,
         AudioDevice microphone,
         AudioProcess? follow = null)
     {
         ArgumentNullException.ThrowIfNull(folder);
-        ArgumentNullException.ThrowIfNull(playback);
         ArgumentNullException.ThrowIfNull(microphone);
 
         folder.Create();
         BlockSpool.EnsureNothingRecordedIn(folder);
 
-        SilentPlayback? silence = null;
         var opened = new List<CaptureSource>();
 
         // One for the recording, handed to both sources: pausing has to be a single write, or one
         // channel records the room for as long as it takes to set the second flag.
         var pause = new RecordingPause();
 
-        CaptureSource Open(AudioChannel channel, CaptureTarget target)
-        {
-            // Only ever for the whole machine's loopback, and before it opens, so the endpoint is
-            // already handing packets over by the time anything is listening for them. A program's
-            // audio needs none of it: silence played by this process is not that program's.
-            if (channel == AudioChannel.Loopback && target is CaptureTarget.Endpoint)
-            {
-                silence ??= SilentPlayback.On(playback);
-            }
-
-            return CaptureSource.Open(channel, target, BlockSpool.FileFor(folder, channel), pause);
-        }
-
         try
         {
-            foreach (var (channel, target) in InChannelOrder(Others(follow, playback), microphone))
+            foreach (var target in InChannelOrder(Others(follow), microphone))
             {
                 try
                 {
-                    opened.Add(Open(channel, target));
+                    opened.Add(CaptureSource.Open(
+                        target, BlockSpool.FileFor(folder, target.Channel), pause));
                 }
                 // A program Windows will not follow used to open the whole machine instead and note
                 // it on the card, and that is the one thing this must never do on its own: what it
@@ -176,7 +145,6 @@ public sealed class CaptureSession : IDisposable
                 source.Discard();
             }
 
-            silence?.Dispose();
             throw;
         }
 
@@ -185,6 +153,7 @@ public sealed class CaptureSession : IDisposable
             Guid.NewGuid(),
             opened.Min(source => source.StartedAt),
             CapturedAudio.Profile,
+            ObtainedAs(opened.Single(source => source.Channel == AudioChannel.Loopback).Listening),
             [.. opened
                 .OrderBy(source => CapturedAudio.IndexOf(source.Channel))
                 .Select(source => new SpooledSource(
@@ -207,11 +176,10 @@ public sealed class CaptureSession : IDisposable
                 source.LetGo();
             }
 
-            silence?.Dispose();
             throw;
         }
 
-        return new CaptureSession([.. opened], silence, card, pause, folder, playback);
+        return new CaptureSession([.. opened], card, pause, folder);
     }
 
     /// <summary>
@@ -243,15 +211,10 @@ public sealed class CaptureSession : IDisposable
     /// because a meter looked wrong for ten seconds.
     /// </para>
     /// <para>
-    /// The silence goes into the playback endpoint before the channel is moved onto it. An endpoint
-    /// hands nothing over while nothing is playing into it, so the other order would move the
-    /// recording onto a device that is not yet producing and open a hole at the seam.
-    /// </para>
-    /// <para>
-    /// <b>Not on a thread somebody is looking at.</b> Three devices are dealt with here — one
-    /// opened, one stopped, one let go of — and every one of them has its own deadline for a
-    /// driver that does not answer. The meeting carries on being recorded throughout, because the
-    /// devices doing it are not this thread; what a window would freeze is itself.
+    /// <b>Not on a thread somebody is looking at.</b> Two devices are dealt with here — one opened
+    /// and one stopped and let go of — and each has its own deadline for a driver that does not
+    /// answer. The meeting carries on being recorded throughout, because the devices doing it are
+    /// not this thread; what a window would freeze is itself.
     /// </para>
     /// <para>
     /// What the folder then says is on the card until the move and beside it afterwards: the card
@@ -280,40 +243,24 @@ public sealed class CaptureSession : IDisposable
                     + $"'{others.Listening.Name}', which is the whole machine's audio.");
             }
 
-            // Nothing is playing into the endpoint yet and this is where that starts: the silence
-            // goes in only for a channel 0 that is on the endpoint, and the guard above says this
-            // one is on a program until the move below. A refusal puts it back, so the ask can be
-            // made again and find the field as it is here.
-            silence = SilentPlayback.On(playback);
+            var destination = new CaptureTarget.TheWholeMachine();
 
-            var destination = new CaptureTarget.Endpoint(playback);
-
-            try
-            {
-                // The moment is read where the move happens rather than where somebody pressed.
-                // What separates the two is three devices being dealt with, each with a deadline of
-                // its own, and a folder saying the machine's audio began seconds before it did is a
-                // folder that is wrong about the one thing it was written to be right about.
-                others.MoveTo(destination, () => SpoolChanges.Append(
-                    folder,
-                    new SourceChanged(
-                        UtcTimestamp.From(TimeProvider.System.GetUtcNow()),
-                        AudioChannel.Loopback,
-                        destination.Name,
-                        playback.Id,
-                        program.Name)));
-            }
-            catch
-            {
-                // Put back the way it was found. MoveTo leaves the channel where it was whatever
-                // went wrong, so a refusal that kept the silence would leave this process playing
-                // into a device the recording is not on for the rest of the meeting — and the ask
-                // can be made again, which would then find it already playing and never start it.
-                silence.Dispose();
-                silence = null;
-
-                throw;
-            }
+            // The moment is read where the move happens rather than where somebody pressed. What
+            // separates the two is two devices being dealt with, each with a deadline of its own,
+            // and a folder saying the machine's audio began seconds before it did is a folder that
+            // is wrong about the one thing it was written to be right about.
+            //
+            // Nothing is caught. MoveTo leaves the channel exactly where it was whatever went
+            // wrong, and there is nothing else here to put back: the move opens one device and
+            // starts nothing else, so a refusal is a recording still on its program and an ask that
+            // can be made again.
+            others.MoveTo(destination, () => SpoolChanges.Append(
+                folder,
+                new SourceChanged(
+                    UtcTimestamp.From(TimeProvider.System.GetUtcNow()),
+                    AudioChannel.Loopback,
+                    destination.Name,
+                    program.Name)));
         }
     }
 
@@ -410,8 +357,6 @@ public sealed class CaptureSession : IDisposable
             // handles are let go, and Stop is where a failure is reported.
             source.LetGo();
         }
-
-        silence?.Dispose();
     }
 
     /// <summary>
@@ -432,19 +377,33 @@ public sealed class CaptureSession : IDisposable
     }
 
     /// <summary>What channel 0 was asked to listen to, before anything says whether it can.</summary>
-    private static CaptureTarget Others(AudioProcess? follow, AudioDevice playback) =>
-        follow is null ? new CaptureTarget.Endpoint(playback) : new CaptureTarget.Program(follow);
+    private static CaptureTarget Others(AudioProcess? follow) =>
+        follow is null ? new CaptureTarget.TheWholeMachine() : new CaptureTarget.Program(follow);
 
     /// <summary>
-    /// What feeds which channel, ordered by the contract rather than by the order these two are
-    /// written in, so channel 0 is opened first because it is channel 0.
+    /// How channel 0 is being obtained, asked of the thing it is listening to — the one type that
+    /// knows the ways in. Asked both while the meeting runs and when the card is written, so a
+    /// recording cannot be described one way in its folder and another way on a screen.
     /// </summary>
-    private static IEnumerable<(AudioChannel Channel, CaptureTarget Target)> InChannelOrder(
+    /// <remarks>
+    /// Refused rather than defaulted. A channel 0 listening to something that is no way of
+    /// obtaining channel 0 is a recording nothing could describe, and the answer that would be
+    /// invented here is the one nobody would go looking for.
+    /// </remarks>
+    private static CaptureMode ObtainedAs(CaptureTarget others) =>
+        others.Mode ?? throw new AudioContractException(
+            $"The {AudioChannel.Loopback} channel is listening to '{others.Name}', which is not "
+            + "something channel 0 is ever obtained as.");
+
+    /// <summary>
+    /// What feeds each channel, ordered by the contract rather than by the order these two are
+    /// written in, so channel 0 is opened first because it is channel 0. Which channel each one
+    /// feeds is its own and is not paired up here — a pairing is a second answer, and the day it
+    /// disagreed with the stream a source would be recording one channel and labelled the other.
+    /// </summary>
+    private static IEnumerable<CaptureTarget> InChannelOrder(
         CaptureTarget others,
         AudioDevice microphone) =>
-        new[]
-        {
-            (Channel: AudioChannel.Microphone, Target: (CaptureTarget)new CaptureTarget.Endpoint(microphone)),
-            (Channel: AudioChannel.Loopback, Target: others),
-        }.OrderBy(source => CapturedAudio.IndexOf(source.Channel));
+        new CaptureTarget[] { new CaptureTarget.Endpoint(microphone), others }
+            .OrderBy(target => CapturedAudio.IndexOf(target.Channel));
 }

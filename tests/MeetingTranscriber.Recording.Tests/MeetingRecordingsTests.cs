@@ -93,11 +93,12 @@ public sealed class MeetingRecordingsTests : IDisposable
             Guid.NewGuid(),
             now,
             CapturedAudio.Profile,
+            followedAProgram ? CaptureMode.ProcessLoopback : CaptureMode.FullLoopback,
             [
                 new SpooledSource(
                     AudioChannel.Loopback,
-                    followedAProgram ? "Teams (4120)" : "Speakers",
-                    followedAProgram ? null : "{0.0.0.00000000}.{loopback}"),
+                    followedAProgram ? "Teams (4120)" : "everything this machine plays",
+                    null),
                 new SpooledSource(AudioChannel.Microphone, "Headset", "{0.0.1.00000000}.{mic}"),
             ]);
 
@@ -110,18 +111,20 @@ public sealed class MeetingRecordingsTests : IDisposable
         run.SampleRate.ShouldBe(CapturedAudio.SampleRate);
         run.ChannelCount.ShouldBe(CapturedAudio.ChannelCount);
 
+        // Channel 0 is not a device either way, so the run names none of one — what it says
+        // instead is which of the two it was, and the program's name only when there was one.
+        run.OthersDeviceName.ShouldBeNull();
+        run.OthersDeviceId.ShouldBeNull();
+
         if (followedAProgram)
         {
             run.OthersCaptureMode.ShouldBe(CaptureMode.ProcessLoopback);
             run.OthersProcess.ShouldBe("Teams (4120)");
-            run.OthersDeviceName.ShouldBeNull();
-            run.OthersDeviceId.ShouldBeNull();
         }
         else
         {
             run.OthersCaptureMode.ShouldBe(CaptureMode.FullLoopback);
             run.OthersProcess.ShouldBeNull();
-            run.OthersDeviceName.ShouldBe("Speakers");
         }
     }
 

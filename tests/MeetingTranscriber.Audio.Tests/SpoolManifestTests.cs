@@ -36,9 +36,13 @@ public sealed class SpoolManifestTests : IDisposable
         read.Profile.ShouldBe(SourceProfile.Multichannel);
     }
 
-    /// <summary>ISC-120. Which device fed which channel, in the channel order the contract fixes.</summary>
+    /// <summary>
+    /// ISC-120. What fed which channel, in the channel order the contract fixes. Channel 1 is a
+    /// device and names one; channel 0 is what this machine was playing, which is no device, so
+    /// what it carries is the words a person reads and no id.
+    /// </summary>
     [Fact]
-    public void A_recording_says_which_device_fed_each_of_its_channels()
+    public void A_recording_says_what_fed_each_of_its_channels()
     {
         SpoolManifest.Write(folder, Card());
 
@@ -46,35 +50,38 @@ public sealed class SpoolManifestTests : IDisposable
 
         read.Sources.Select(source => source.Channel)
             .ShouldBe([AudioChannel.Loopback, AudioChannel.Microphone]);
-        read.On(AudioChannel.Loopback).Heard.ShouldBe("Speakers (Realtek)");
-        read.On(AudioChannel.Loopback).DeviceId.ShouldBe("{0.0.0.00000000}.speakers");
+        read.On(AudioChannel.Loopback).Heard.ShouldBe("everything this machine plays");
+        read.On(AudioChannel.Loopback).DeviceId.ShouldBeNull();
         read.On(AudioChannel.Microphone).Heard.ShouldBe("Jabra Evolve 65");
         read.On(AudioChannel.Microphone).DeviceId.ShouldBe("{0.0.1.00000000}.jabra");
         read.Mode.ShouldBe(CaptureMode.FullLoopback);
     }
 
     /// <summary>
-    /// ISC-121. A recording that followed a program says so, and it says so through the one field
-    /// that decides it rather than through a second one beside it. There is no third case on this
-    /// card: a channel 0 that could not follow the program it was asked to never starts recording
-    /// at all, and one moved to the whole machine while the meeting ran says so in SpoolChanges.
+    /// ISC-121. Which of the two channel 0 opened as is a field of the card's own, because neither
+    /// of them names a device and there is nothing else left to tell them apart by.
     /// </summary>
-    [Fact]
-    public void A_recording_that_followed_its_program_says_that_instead_of_naming_a_device()
+    [Theory]
+    [InlineData(CaptureMode.ProcessLoopback, "teams (pid 8124)")]
+    [InlineData(CaptureMode.FullLoopback, "everything this machine plays")]
+    public void Which_of_the_two_channel_zero_opened_as_is_the_cards_own_field(
+        CaptureMode mode, string heard)
     {
         SpoolManifest.Write(folder, Card() with
         {
+            Mode = mode,
             Sources =
             [
-                new SpooledSource(AudioChannel.Loopback, "teams (pid 8124)", null),
+                new SpooledSource(AudioChannel.Loopback, heard, null),
                 new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.00000000}.jabra"),
             ],
         });
 
         var read = SpoolManifest.Find(folder).ShouldNotBeNull();
 
-        read.Mode.ShouldBe(CaptureMode.ProcessLoopback);
-        read.On(AudioChannel.Loopback).Heard.ShouldBe("teams (pid 8124)");
+        read.Mode.ShouldBe(mode);
+        read.On(AudioChannel.Loopback).Heard.ShouldBe(heard);
+        read.On(AudioChannel.Loopback).DeviceId.ShouldBeNull();
     }
 
     /// <summary>
@@ -135,6 +142,7 @@ public sealed class SpoolManifestTests : IDisposable
     [InlineData("\"capture_run\"", "capture_run")]
     [InlineData("\"started_at\"", "started_at")]
     [InlineData("\"source_profile\"", "source_profile")]
+    [InlineData("\"others_capture_mode\"", "others_capture_mode")]
     public void A_card_missing_something_that_identifies_the_recording_is_refused(string key, string says)
     {
         SpoolManifest.Write(folder, Card());
@@ -163,6 +171,29 @@ public sealed class SpoolManifestTests : IDisposable
     }
 
     /// <summary>
+    /// Neither way of obtaining channel 0 is a device, so a card saying one fed it describes a
+    /// recording this application cannot have made. Refused rather than read: read, its device
+    /// would land on the run row beside a mode saying the recording was of something else, and the
+    /// corpus checks the mode and not the pair.
+    /// </summary>
+    [Fact]
+    public void A_card_saying_a_device_fed_channel_zero_is_refused()
+    {
+        SpoolManifest.Write(folder, Card() with
+        {
+            Sources =
+            [
+                new SpooledSource(
+                    AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.00000000}.speakers"),
+                new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.00000000}.jabra"),
+            ],
+        });
+
+        Should.Throw<AudioCaptureException>(() => SpoolManifest.Find(folder))
+            .Message.ShouldContain("{0.0.0.00000000}.speakers");
+    }
+
+    /// <summary>
     /// A source that says nothing about which channel it was is not channel 0 by default. Reading
     /// it as one would put the microphone's device on the loopback's line.
     /// </summary>
@@ -188,7 +219,7 @@ public sealed class SpoolManifestTests : IDisposable
     {
         SpoolManifest.Write(folder, Card() with
         {
-            Sources = [new SpooledSource(AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.0}.speakers")],
+            Sources = [new SpooledSource(AudioChannel.Loopback, "everything this machine plays", null)],
         });
 
         Should.Throw<AudioCaptureException>(() => SpoolManifest.Find(folder))
@@ -206,6 +237,24 @@ public sealed class SpoolManifestTests : IDisposable
 
         Should.Throw<AudioCaptureException>(() => SpoolManifest.Read(card))
             .Message.ShouldContain("sources");
+    }
+
+    /// <summary>
+    /// A mode this build does not know is not guessed at either. What it decides is whether the
+    /// file holds one program or the whole machine, and a recording described as the wrong one of
+    /// those is exactly what somebody would act on without checking.
+    /// </summary>
+    [Fact]
+    public void A_card_naming_a_capture_mode_this_build_does_not_have_is_refused()
+    {
+        SpoolManifest.Write(folder, Card());
+        var card = SpoolManifest.In(folder);
+        File.WriteAllText(
+            card.FullName,
+            File.ReadAllText(card.FullName).Replace("full_loopback", "FullLoopback", StringComparison.Ordinal));
+
+        Should.Throw<AudioCaptureException>(() => SpoolManifest.Read(card))
+            .Message.ShouldContain("others_capture_mode");
     }
 
     [Fact]
@@ -235,6 +284,7 @@ public sealed class SpoolManifestTests : IDisposable
         written.ShouldContain("\"capture_run\"");
         written.ShouldContain("\"started_at\": \"2026-08-15T09:41:07.250Z\"");
         written.ShouldContain("\"source_profile\": \"multichannel\"");
+        written.ShouldContain("\"others_capture_mode\": \"full_loopback\"");
         written.ShouldContain("\"channel\": 0");
         written.ShouldContain(Environment.NewLine);
     }
@@ -256,8 +306,9 @@ public sealed class SpoolManifestTests : IDisposable
         Guid.NewGuid(),
         Started,
         SourceProfile.Multichannel,
+        CaptureMode.FullLoopback,
         [
-            new SpooledSource(AudioChannel.Loopback, "Speakers (Realtek)", "{0.0.0.00000000}.speakers"),
+            new SpooledSource(AudioChannel.Loopback, "everything this machine plays", null),
             new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.00000000}.jabra"),
         ]);
 }

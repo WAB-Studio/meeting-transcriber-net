@@ -102,15 +102,30 @@ public partial class CorpusNamingTests
     }
 
     /// <summary>
-    /// The profile is the one enum whose stored name is also published: it is what the provider
-    /// is asked for. The convention has to keep agreeing with the domain's own mapping.
+    /// Two enums are spelled twice: the profile, because it is what the provider is asked for, and
+    /// the capture mode, because a recording's own folder says how its channel 0 was obtained and
+    /// is read with no database open. One spelling is this convention, mechanical over every
+    /// member; the other is a switch in the domain, written by hand. They have to keep agreeing or
+    /// one recording is two different recordings depending which of them was asked.
     /// </summary>
-    [Theory]
-    [InlineData(SourceProfile.Multichannel)]
-    [InlineData(SourceProfile.Diarize)]
-    public void The_source_profile_convention_agrees_with_the_domain(SourceProfile profile)
+    /// <remarks>
+    /// Every member rather than the ones there are today, and that is the whole point of the shape:
+    /// the convention widens the corpus's CHECK for a member added tomorrow on its own, while the
+    /// hand-written half would first say so by throwing at the moment a card is written — which is
+    /// after both devices are open and a meeting is already being recorded.
+    /// </remarks>
+    [Fact]
+    public void The_conventions_that_are_spelled_twice_agree_with_the_domain()
     {
-        WireNames<SourceProfile>.Of(profile).ShouldBe(profile.ToWireName());
+        foreach (var profile in Enum.GetValues<SourceProfile>())
+        {
+            WireNames<SourceProfile>.Of(profile).ShouldBe(profile.ToWireName());
+        }
+
+        foreach (var mode in Enum.GetValues<CaptureMode>())
+        {
+            WireNames<CaptureMode>.Of(mode).ShouldBe(mode.ToWireName());
+        }
     }
 
     [Fact]

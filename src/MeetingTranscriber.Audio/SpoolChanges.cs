@@ -14,15 +14,15 @@ namespace MeetingTranscriber.Audio;
 /// <param name="At">When it moved.</param>
 /// <param name="Channel">Which channel moved.</param>
 /// <param name="Heard">What it listens to from here on, as a person would name it.</param>
-/// <param name="DeviceId">
-/// The endpoint it reopens by. Never absent, and that is the shape of what can happen rather than
-/// a field nobody filled in: what a channel is ever moved to is a device. Somebody choosing a
-/// program to follow is somebody starting a recording, so a change naming no device describes a
-/// state this application cannot produce and is refused rather than read.
-/// </param>
 /// <param name="WasHearing">What it was listening to until then.</param>
+/// <remarks>
+/// There is no device on it, and that is the shape of what can happen rather than a field left out:
+/// what a channel is ever moved to is everything the machine plays, which comes off a virtual
+/// device no id names and no id reopens. What it was on and what it is on now are both said in
+/// words, because words are all either of them has.
+/// </remarks>
 public sealed record SourceChanged(
-    UtcTimestamp At, AudioChannel Channel, string Heard, string DeviceId, string WasHearing);
+    UtcTimestamp At, AudioChannel Channel, string Heard, string WasHearing);
 
 /// <summary>
 /// What somebody changed about a recording while it was being recorded, beside the card that says
@@ -180,7 +180,6 @@ public static class SpoolChanges
                 CapturedAudio.ChannelAt(
                     change.Channel ?? throw new AudioContractException("A change names no channel.")),
                 Required(file, "heard", change.Heard),
-                Required(file, "device", change.DeviceId),
                 Required(file, "was_hearing", change.WasHearing));
         }
         catch (Exception rejected)
@@ -201,7 +200,6 @@ public static class SpoolChanges
         change.At.ToStorage(),
         CapturedAudio.IndexOf(change.Channel),
         change.Heard,
-        change.DeviceId,
         change.WasHearing);
 
     /// <summary>
@@ -213,6 +211,5 @@ public static class SpoolChanges
         [property: JsonPropertyName("at")] string? At,
         [property: JsonPropertyName("channel")] int? Channel,
         [property: JsonPropertyName("heard")] string? Heard,
-        [property: JsonPropertyName("device")] string? DeviceId,
         [property: JsonPropertyName("was_hearing")] string? WasHearing);
 }

@@ -197,11 +197,57 @@ public class RecordingMetersTests
     /// <remarks>
     /// Read off the type rather than listed, so a string added later is held to the same answer
     /// instead of arriving behind a check that only knew the two there were. The two allowed are
-    /// both data: the name a device's maker gave it, and a number. Exceptions are named separately
-    /// because that is the shape the failure really had — the words arrived as
-    /// <c>Ending?.Message</c>, so a check that only swept <c>string</c> would wave through the
-    /// exception itself and be flattened one layer up.
+    /// both data: a name this machine gave — a device's, or a program's with its process id — and a
+    /// number. Each hands back nothing for the case that would be a sentence instead, which for the
+    /// level is a channel that heard nothing and for the name is a channel capturing the whole
+    /// machine; the words for those are the catalogue's. Exceptions are named separately because
+    /// that is the shape the failure really had — the words arrived as <c>Ending?.Message</c>, so a
+    /// check that only swept <c>string</c> would wave through the exception itself and be flattened
+    /// one layer up.
     /// </remarks>
+    /// <summary>
+    /// The same rule at the one place a reading is built from a live channel. A device and a
+    /// program are names this machine gave and go on the reading as they are; the whole machine is
+    /// a sentence this application wrote, so the reading carries none and the screen asks the
+    /// catalogue. It is the ordinary case and not a corner — it is what a recording nobody pointed
+    /// at a program is capturing.
+    /// </summary>
+    [Fact]
+    public void A_channel_capturing_the_whole_machine_hands_a_screen_no_words()
+    {
+        ChannelReading.Of(
+            new CaptureTarget.TheWholeMachine(), Speech, stopped: false).Capturing.ShouldBeNull();
+
+        ChannelReading.Of(
+                new CaptureTarget.Program(new AudioProcess(8124, "teams", StartedBy: 1084)),
+                Speech,
+                stopped: false)
+            .Capturing.ShouldBe("teams (pid 8124)");
+
+        ChannelReading.Of(
+                new CaptureTarget.Endpoint(new AudioDevice("{0.0.1.0}.jabra", "Jabra Evolve 65", false)),
+                Speech,
+                stopped: false)
+            .Capturing.ShouldBe("Jabra Evolve 65");
+    }
+
+    /// <summary>
+    /// And which channel each one is comes off the target too, so a reading cannot be built saying
+    /// the microphone is capturing what the machine played.
+    /// </summary>
+    [Fact]
+    public void A_reading_is_the_channel_the_thing_it_is_listening_to_feeds()
+    {
+        ChannelReading.Of(new CaptureTarget.TheWholeMachine(), Speech, stopped: false)
+            .Channel.ShouldBe(AudioChannel.Loopback);
+
+        ChannelReading.Of(
+                new CaptureTarget.Endpoint(new AudioDevice("{0.0.1.0}.jabra", "Jabra Evolve 65", false)),
+                Speech,
+                stopped: false)
+            .Channel.ShouldBe(AudioChannel.Microphone);
+    }
+
     [Fact]
     public void A_reading_says_nothing_in_words_of_its_own()
     {

@@ -19,10 +19,14 @@ public static class AudioDevices
     public static IReadOnlyList<AudioDevice> Microphones() => Endpoints(DataFlow.Capture);
 
     /// <summary>
-    /// The endpoint the machine is playing through, which is the one full loopback listens to.
-    /// There is exactly one at a time: it is where Windows sends sound, not a choice this
-    /// application makes.
+    /// The endpoint the machine is playing through. There is exactly one at a time: it is where
+    /// Windows sends sound, not a choice this application makes.
     /// </summary>
+    /// <remarks>
+    /// Nothing records it. Channel 0 is what this machine's processes play and comes off no
+    /// endpoint, so what this is for is what an endpoint can still say about a meeting: whether
+    /// what is played comes out into the room, where the microphone hears it a second time.
+    /// </remarks>
     public static AudioDevice Playback() => Ask(() =>
     {
         using var enumerator = new MMDeviceEnumerator();
@@ -83,8 +87,8 @@ public static class AudioDevices
 
     /// <summary>
     /// The format the audio engine is mixing at, which is the format everything being played is
-    /// already in. Asked of the playback endpoint because that is where the mix goes; a capture that
-    /// follows a process has no endpoint of its own to ask.
+    /// already in. Asked of the playback endpoint because that is where the mix goes; channel 0 has
+    /// no endpoint of its own to ask, either way it is obtained.
     /// </summary>
     internal static WaveFormat EngineFormat() => Ask(() =>
     {

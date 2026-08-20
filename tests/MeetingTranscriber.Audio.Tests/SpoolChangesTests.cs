@@ -34,8 +34,7 @@ public sealed class SpoolChangesTests : IDisposable
         var read = SpoolChanges.Find(folder).ShouldHaveSingleItem();
         read.At.ShouldBe(Moved);
         read.Channel.ShouldBe(AudioChannel.Loopback);
-        read.Heard.ShouldBe("Speakers (Realtek)");
-        read.DeviceId.ShouldBe("{0.0.0.00000000}.speakers");
+        read.Heard.ShouldBe("everything this machine plays");
         read.WasHearing.ShouldBe("teams (pid 8124)");
     }
 
@@ -58,14 +57,14 @@ public sealed class SpoolChangesTests : IDisposable
         SpoolChanges.Append(folder, Moving() with
         {
             At = Moved + Duration.FromSeconds(90),
-            Heard = "Altavoces (High Definition Audio Device)",
-            WasHearing = "Speakers (Realtek)",
+            WasHearing = "msedge (pid 1000)",
         });
 
         var read = SpoolChanges.Find(folder);
         read.Count.ShouldBe(2);
-        read[0].Heard.ShouldBe("Speakers (Realtek)");
-        read[1].Heard.ShouldBe("Altavoces (High Definition Audio Device)");
+        read[0].WasHearing.ShouldBe("teams (pid 8124)");
+        read[0].At.ShouldBe(Moved);
+        read[1].WasHearing.ShouldBe("msedge (pid 1000)");
         read[1].At.ShouldBe(Moved + Duration.FromSeconds(90));
     }
 
@@ -114,20 +113,20 @@ public sealed class SpoolChangesTests : IDisposable
     }
 
     /// <summary>
-    /// What a channel is ever moved to is a device, so a change naming none describes a state this
-    /// application cannot produce. Reading it anyway would put a recording that followed a program
-    /// on a folder saying it moved to another program, which nothing can do.
+    /// A change that does not say what the channel was on before it says nothing worth reading: the
+    /// card names what the recording opened on, so a line that only names what it moved to leaves
+    /// somebody unable to tell which stretch of the file is which.
     /// </summary>
     [Fact]
-    public void A_change_that_names_no_device_is_refused()
+    public void A_change_that_does_not_say_what_the_channel_was_on_is_refused()
     {
         File.WriteAllText(
             SpoolChanges.In(folder).FullName,
-            "{\"at\":\"2026-08-15T10:14:52.125Z\",\"channel\":0,\"heard\":\"Speakers\","
-            + "\"was_hearing\":\"teams\"}\n");
+            "{\"at\":\"2026-08-15T10:14:52.125Z\",\"channel\":0,"
+            + "\"heard\":\"everything this machine plays\"}\n");
 
         Should.Throw<AudioCaptureException>(() => SpoolChanges.Find(folder))
-            .Message.ShouldContain("device");
+            .Message.ShouldContain("was_hearing");
     }
 
     /// <summary>
@@ -173,7 +172,6 @@ public sealed class SpoolChangesTests : IDisposable
     private static SourceChanged Moving() => new(
         Moved,
         AudioChannel.Loopback,
-        "Speakers (Realtek)",
-        "{0.0.0.00000000}.speakers",
+        "everything this machine plays",
         "teams (pid 8124)");
 }

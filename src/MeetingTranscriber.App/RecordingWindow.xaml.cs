@@ -355,7 +355,9 @@ public sealed partial class RecordingWindow : Window
             return;
         }
 
-        capturing.Text = reading.Capturing;
+        // The catalogue where the reading hands back no name, which is a channel capturing the
+        // whole machine — the same shape as the level below it, and for the same reason.
+        capturing.Text = reading.Capturing ?? In(UiTexts.EverythingThisMachinePlays);
         meter.Value = reading.Meter;
 
         // A level is a measurement and reads the same in every language, so the reading hands one
@@ -710,7 +712,6 @@ public sealed partial class RecordingWindow : Window
                     return (Context: context, Recording: MeetingRecording.Start(
                         context,
                         chosen.Spoken!,
-                        AudioDevices.Playback(),
                         chosen.Microphone!,
                         chosen.Source!.Follow,
                         Now()));
