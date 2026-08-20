@@ -248,8 +248,14 @@ public sealed class AudioIntakeTests : IDisposable
     }
 
     /// <summary>
-    /// ISC-160. The corpus itself remembers that the channels were averaged, so the loss outlives
-    /// the console line that reported it.
+    /// The corpus itself remembers that the channels were averaged, so the loss outlives the
+    /// console line that reported it. No claim requires this one: ISC-160 said it and was
+    /// tombstoned on 2026-08-20 because nobody had decided the corpus is obliged to disclose a mix
+    /// down — the claim was written and closed in the same pass as the code it described. The
+    /// behaviour and this probe stay because they are right, not because the ISA asks for them, so
+    /// whoever finds this test in the way answers that question on the board first rather than
+    /// deleting the only durable account a person gets of a meeting having lost the split between
+    /// what the machine played and what the microphone heard.
     /// </summary>
     /// <remarks>
     /// The two meetings here are indistinguishable everywhere else the corpus looks — same profile,
