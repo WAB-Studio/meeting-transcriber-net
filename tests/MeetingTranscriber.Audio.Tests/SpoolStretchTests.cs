@@ -1,4 +1,4 @@
-﻿using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Audio;
 
 using NAudio.Wave;
 
@@ -124,8 +124,16 @@ public sealed class SpoolStretchTests : IDisposable
 
         using var reader = SpoolReader.Open(File);
 
-        Should.Throw<AudioCaptureException>(() => reader.Packets().ToList())
-            .Message.ShouldContain("cannot read");
+        var refused = Should.Throw<AudioCaptureException>(() => reader.Packets().ToList());
+
+        refused.Message.ShouldContain("cannot read");
+
+        // And it is not the one refusal a caller is allowed to report and carry on past. A source
+        // this build cannot decode and a source that simply holds two formats look alike from the
+        // outside and are opposites underneath: one is an artifact nobody here can get a recording
+        // out of, the other is a recording that is entirely fine and a convenience file that
+        // cannot exist. Only the second is a NoSinglePlaybackException.
+        refused.ShouldNotBeOfType<NoSinglePlaybackException>();
     }
 
     /// <summary>
@@ -141,7 +149,10 @@ public sealed class SpoolStretchTests : IDisposable
         Write(Packets(MonoFloat, 0, 1)
             .Concat(Fabricated.TakingOver(CheapMicrophone, Packets(CheapMicrophone, 2, 3))));
 
-        var refusal = Should.Throw<AudioCaptureException>(() => BlockSpool.ToWav(File)).Message;
+        // The narrow type and not the family: it is what says this refusal is a fine recording
+        // without a convenience file rather than an artifact that cannot be read, and a caller
+        // with other work to do reads exactly that to decide whether it may carry on.
+        var refusal = Should.Throw<NoSinglePlaybackException>(() => BlockSpool.ToWav(File)).Message;
 
         // Both files, and the blocks are the load-bearing half. Naming only the meeting's own audio
         // sends whoever is recovering a spool at a file that recording never had — it is made from

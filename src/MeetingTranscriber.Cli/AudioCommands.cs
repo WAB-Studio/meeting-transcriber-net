@@ -446,7 +446,11 @@ public static class AudioCommands
     /// A source whose device changed to one handing over another format has no one playable file,
     /// and that is said on this line rather than thrown: the meeting's own audio is already made by
     /// the time this runs, and a run that reported nothing about a recording it had just written
-    /// would be the diagnostics costing the diagnosis.
+    /// would be the diagnostics costing the diagnosis. That one case only. A spool that will not
+    /// open — a header that does not hash, a magic that is not this file's, a version this build
+    /// does not write — still ends the run red, because the sentence above says this path is the
+    /// one a recovery depends on, and a capture that wrote a spool it cannot read back has to say
+    /// so where somebody is looking rather than on a line among the levels.
     /// </remarks>
     private static string PlayedBack(FileInfo blocks)
     {
@@ -458,12 +462,15 @@ public static class AudioCommands
                 CultureInfo.InvariantCulture,
                 $"{BlockSpool.PlaybackFor(blocks).Name}, {replayed.Blocks} blocks{Cut(replayed.Discarded)}");
         }
-        catch (AudioCaptureException cannot)
+        catch (NoSinglePlaybackException cannot)
         {
-            // Said as a failure and never as a line like the ones above it. Every reason lands here
-            // — a source that changed format, a spool that is not a spool, a header that does not
-            // hash — and what they have in common is that the meeting's own audio is already made,
-            // so the diagnostics beside it are not worth failing the run over.
+            // Said as a failure and never as a line like the ones above it — but only this reason.
+            // A source that came to hold two formats is a recording that is entirely fine and a
+            // convenience file that cannot exist, so the run reports it and goes on. A spool that
+            // would not open at all is the opposite and is deliberately not caught: this is the
+            // only place the read path a recovery takes gets exercised on every capture, and
+            // rendering "the spool I just wrote does not hash" as one more line here would leave a
+            // green run over a recording nobody can get back.
             return $"not made: {cannot.Message}";
         }
     }
@@ -499,9 +506,19 @@ public static class AudioCommands
 
     /// <summary>
     /// One line a second, so what is being written is visible while it is being written rather
-    /// than after. It ends early on Ctrl+C, and on a source that stopped by itself — carrying on
-    /// past that would be reporting levels for a stream that is no longer there.
+    /// than after. It ends early on Ctrl+C, and on channel 0 stopping by itself — carrying on past
+    /// that would be reporting levels for a stream that is no longer there.
     /// </summary>
+    /// <remarks>
+    /// Channel 0 and not either channel. It used to be either, and it had to stop being: this
+    /// command is the only place a microphone being taken away can be watched, and the whole of
+    /// what there is to watch happens after the microphone has ended. A run that stopped there
+    /// would end at the instant before the recording did the one thing it is being asked to prove
+    /// it does, and would report the death as the last thing that ever happened on the channel.
+    /// The bound is unchanged either way — the loop still runs the seconds it was asked for — so
+    /// what carrying on costs on a microphone that never comes back is a channel reading silent,
+    /// which is the true reading and the one worth seeing.
+    /// </remarks>
     private static void Meter(
         CaptureSession session,
         int seconds,
@@ -564,11 +581,13 @@ public static class AudioCommands
                 // only way to observe.
                 listening = Moved(session, listening, output);
 
-                // A channel 0 that ended is one nothing will take over: what it was following is
-                // gone and moving it onto the whole machine is somebody's choice, so there is
-                // nothing left for this run to measure. A microphone that ended is the other case
-                // entirely — the recording is already looking for whatever replaced it — so the run
-                // carries on, and the line above is where it says what it moved to.
+                // Why only channel 0: it is the one end nothing will take over. What it was
+                // following is gone, and moving it onto the whole machine is somebody's choice
+                // this run is not entitled to make, so there is nothing further to measure. A
+                // microphone that ended has not finished happening — the recording is already
+                // looking for whatever replaced it, and the move it finds is the thing this whole
+                // command exists to make observable, so stopping here would throw away the only
+                // measurement worth taking.
                 if (session.On(AudioChannel.Loopback).HasEnded)
                 {
                     return;

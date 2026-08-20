@@ -1,4 +1,4 @@
-﻿namespace MeetingTranscriber.Audio.Tests;
+namespace MeetingTranscriber.Audio.Tests;
 
 /// <summary>
 /// A replacement device that dies in the window between being started and being handed the

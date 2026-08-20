@@ -1,4 +1,4 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 
 using MeetingTranscriber.Domain.Audio;
 
@@ -213,7 +213,10 @@ public static class BlockSpool
     /// what this file is for is hearing what a device really caught. What holds both stretches at
     /// once is the meeting's own audio — so the refusal says where that comes from rather than
     /// leaving somebody with half a recording and no sentence, and it says it in terms that are
-    /// true of a recording being recovered, which has never had that file.
+    /// true of a recording being recovered, which has never had that file. It is refused as a
+    /// <see cref="NoSinglePlaybackException"/> rather than a bare
+    /// <see cref="AudioCaptureException"/>, because a caller with other work to do is entitled to
+    /// carry on past this one and is not entitled to carry on past a spool that would not open.
     /// </remarks>
     public static Replayed ToWav(FileInfo blocks, FileInfo wav)
     {
@@ -230,7 +233,7 @@ public static class BlockSpool
                 {
                     if (packet.Opening is { } stretch && stretch != spool.Format)
                     {
-                        throw new AudioCaptureException(
+                        throw new NoSinglePlaybackException(
                             $"'{blocks.Name}' hands over {spool.Format} and then {stretch}, because "
                             + "the device feeding it changed while the meeting was running. One "
                             + $"device's audio is one format all the way down, so '{wav.Name}' "
