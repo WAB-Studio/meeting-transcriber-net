@@ -149,6 +149,15 @@
                     TextWrapping="Wrap"
                     MaxWidth="640"
                     Visibility="Collapsed" />
+                <!-- A channel that changed what it is on mid meeting, which is an event for the
+                     same reason a device dying is: the label above it changes quietly, and what
+                     the recording holds from here on is another source. Told, not bound. -->
+                <TextBlock
+                    x:Name="OthersMoved"
+                    AutomationProperties.LiveSetting="Assertive"
+                    TextWrapping="Wrap"
+                    MaxWidth="640"
+                    Visibility="Collapsed" />
             </StackPanel>
 
             <StackPanel Spacing="2">
@@ -168,6 +177,13 @@
                 <!-- Told, not bound, for the reason channel 0's line says. -->
                 <TextBlock
                     x:Name="MineStopped"
+                    AutomationProperties.LiveSetting="Assertive"
+                    TextWrapping="Wrap"
+                    MaxWidth="640"
+                    Visibility="Collapsed" />
+                <!-- Told, not bound, for the reason channel 0's line says. -->
+                <TextBlock
+                    x:Name="MineMoved"
                     AutomationProperties.LiveSetting="Assertive"
                     TextWrapping="Wrap"
                     MaxWidth="640"

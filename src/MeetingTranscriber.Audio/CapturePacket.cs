@@ -28,9 +28,11 @@ namespace MeetingTranscriber.Audio;
 /// thing that can disagree with the number beside it.
 /// </para>
 /// <para>
-/// The format is not on the packet: a source declares it once when the timeline is built, because
-/// a device that changes format mid recording is a new stretch of the recording rather than an odd
-/// packet, and nothing yet asks the timeline for that.
+/// The format is not on every packet, and it is on exactly the packets where a source starts
+/// being a different device: <see cref="Opening"/>. A device that changes format mid recording is
+/// a new stretch of the recording rather than an odd packet, so what declares a format is the
+/// packet that begins a stretch, and every packet after it is that stretch's until the next one
+/// says otherwise.
 /// </para>
 /// <para>
 /// Nor is the unit of <see cref="DevicePosition"/>, and that one is not a decision but something
@@ -53,9 +55,22 @@ namespace MeetingTranscriber.Audio;
 /// samples are still the meeting and <see cref="DevicePosition"/> is still where they go, and only
 /// the observation of how fast this device runs is thrown away.
 /// </param>
+/// <param name="Opening">
+/// The format this packet's device hands over, when this packet is the first of a stretch that
+/// device is recording, and nothing on every other packet.
+/// </param>
+/// <remarks>
+/// A stretch is what a channel that changed device is made of. The device that takes over numbers
+/// its frames from its own zero and is free to hand over another format entirely, so
+/// <see cref="DevicePosition"/> on this packet is measured against nothing before it and the
+/// samples behind it are read at this format rather than at the one before. Everything either side
+/// of the seam is still one source and one file — what the gap between them is worth is the
+/// timeline's, and it is worth exactly the audio that never arrived.
+/// </remarks>
 public sealed record CapturePacket(
     AudioChannel Channel,
     long DevicePosition,
     MonotonicInstant CapturedAt,
     ReadOnlyMemory<byte> Samples,
-    bool TimingIsSound = true);
+    bool TimingIsSound = true,
+    StreamFormat? Opening = null);

@@ -41,6 +41,10 @@ public sealed class BlockSpoolTests : IDisposable
             read[index].DevicePosition.ShouldBe(written[index].DevicePosition);
             read[index].CapturedAt.ShouldBe(written[index].CapturedAt);
             read[index].TimingIsSound.ShouldBe(written[index].TimingIsSound);
+
+            // Nothing took this source over, so no block of it says a device did: a seam is one
+            // record of its own and not a field every block carries.
+            read[index].Opening.ShouldBeNull();
             read[index].Samples.ToArray().ShouldBe(written[index].Samples.ToArray());
         }
     }

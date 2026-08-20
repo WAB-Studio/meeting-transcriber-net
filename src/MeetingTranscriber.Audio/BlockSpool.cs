@@ -30,6 +30,13 @@ namespace MeetingTranscriber.Audio;
 /// whatever survived: a spool whose samples can only be decoded by a second file has two ways to
 /// be lost instead of one.
 /// </para>
+/// <para>
+/// A source that changed device mid meeting declares the new one where it happened, as a record of
+/// its own in the same stream. That keeps the property above rather than bending it: the header is
+/// still what the first block is read at, and every block after a stretch record is read at what
+/// that record says — so the file still says what all of itself holds, with nothing beside it. What
+/// it stops being is one format, which is what a channel that came to name two devices really is.
+/// </para>
 /// </remarks>
 public static class BlockSpool
 {
@@ -40,14 +47,21 @@ public static class BlockSpool
     /// The shape of this file. A reader refuses a version it was not written for rather than
     /// reading the fields it recognises out of a layout that moved.
     /// </summary>
-    public const int Version = 1;
+    /// <remarks>
+    /// Version 2 since 2026-08-20, when a source became able to change device mid recording. A
+    /// version 1 reader meets the stretch record as a magic it does not know and stops there, which
+    /// is how it ends a file — so it would hand back everything before the changeover as the whole
+    /// recording, quietly, with the rest of the meeting sitting in the file behind it. Nothing has
+    /// shipped, so there is no version 1 spool anywhere and nothing reads one.
+    /// </remarks>
+    public const int Version = 2;
 
     /// <summary>
     /// Bytes of the file header: the magic, the version, the channel, the format, and a checksum
     /// over all of it but the magic.
     /// </summary>
     /// <remarks>
-    /// These three are part of the format and not an implementation detail of writing it. What a
+    /// These sizes are part of the format and not an implementation detail of writing it. What a
     /// recording costs on disk, and where in the file one block ends and the next begins, are
     /// arithmetic anybody holding a spool is entitled to do.
     /// </remarks>
@@ -55,6 +69,20 @@ public static class BlockSpool
 
     /// <summary>Bytes in front of a block's samples: the magic, the position, the instant and how many.</summary>
     public const int BlockHeaderBytes = 28;
+
+    /// <summary>
+    /// Bytes of a stretch record: the magic, the four numbers a format is, and a checksum over
+    /// them.
+    /// </summary>
+    /// <remarks>
+    /// Checksummed like a block and for the same reason, which matters more here than it does
+    /// there: every sample of the rest of the file is read through these sixteen bytes, so a torn
+    /// one read anyway would decode the second device's audio at a width it never used.
+    /// </remarks>
+    public const int StretchBytes = MagicBytes + 16 + ChecksumBytes;
+
+    /// <summary>Bytes of the magic that says which kind of record starts here.</summary>
+    public const int MagicBytes = 4;
 
     /// <summary>Bytes behind a block's samples, which is what says the block is whole.</summary>
     public const int ChecksumBytes = 8;
@@ -71,6 +99,16 @@ public static class BlockSpool
 
     /// <summary>Marks a block, so "this is not a block" is decidable before anything is hashed.</summary>
     internal static ReadOnlySpan<byte> BlockMagic => "BLK1"u8;
+
+    /// <summary>
+    /// Marks the point where this source became a different device, carrying the format that
+    /// device hands over.
+    /// </summary>
+    /// <remarks>
+    /// The same width as a block's magic, so which kind of record starts here is one read of four
+    /// bytes and neither kind has to be tried against the other's layout.
+    /// </remarks>
+    internal static ReadOnlySpan<byte> StretchMagic => "STR1"u8;
 
     /// <summary>The blocks of <paramref name="channel"/>, in a folder holding one recording.</summary>
     /// <remarks>
@@ -169,21 +207,57 @@ public static class BlockSpool
     /// not a question a pour can answer — it is answered by whoever claimed the name, which for an
     /// export is the file system.
     /// </remarks>
+    /// <remarks>
+    /// A source that changed device is refused when the device that took over hands over another
+    /// format, and it is refused rather than converted: a WAV is one format all the way down, and
+    /// what this file is for is hearing what a device really caught. What holds both stretches at
+    /// once is the meeting's own audio — so the refusal says where that comes from rather than
+    /// leaving somebody with half a recording and no sentence, and it says it in terms that are
+    /// true of a recording being recovered, which has never had that file. It is refused as a
+    /// <see cref="NoSinglePlaybackException"/> rather than a bare
+    /// <see cref="AudioCaptureException"/>, because a caller with other work to do is entitled to
+    /// carry on past this one and is not entitled to carry on past a spool that would not open.
+    /// </remarks>
     public static Replayed ToWav(FileInfo blocks, FileInfo wav)
     {
         ArgumentNullException.ThrowIfNull(wav);
 
         using var spool = SpoolReader.Open(blocks);
-        using var writer = new WaveFileWriter(wav.FullName, WaveFormatOf(spool.Format));
 
-        var written = 0;
-        foreach (var packet in spool.Packets())
+        try
         {
-            writer.Write(packet.Samples.Span);
-            written++;
-        }
+            var written = 0;
+            using (var writer = new WaveFileWriter(wav.FullName, WaveFormatOf(spool.Format)))
+            {
+                foreach (var packet in spool.Packets())
+                {
+                    if (packet.Opening is { } stretch && stretch != spool.Format)
+                    {
+                        throw new NoSinglePlaybackException(
+                            $"'{blocks.Name}' hands over {spool.Format} and then {stretch}, because "
+                            + "the device feeding it changed while the meeting was running. One "
+                            + $"device's audio is one format all the way down, so '{wav.Name}' "
+                            + $"cannot hold both. Both stretches are in '{blocks.Name}' and stay "
+                            + $"there; what holds them as one recording is '{MeetingAudio.FileName}', "
+                            + "which is made from them when the meeting is finished or when a "
+                            + "recording waiting in the folder is kept.");
+                    }
 
-        return new Replayed(spool.Format, written, spool.Discarded);
+                    writer.Write(packet.Samples.Span);
+                    written++;
+                }
+            }
+
+            return new Replayed(spool.Format, written, spool.Discarded);
+        }
+        catch
+        {
+            // What the pour got as far as is not a playback of anything: it stops at the seam, and
+            // a file standing under that name is one the next attempt would find and one somebody
+            // would play as though it were the whole source.
+            Erase(wav);
+            throw;
+        }
     }
 
     /// <summary>

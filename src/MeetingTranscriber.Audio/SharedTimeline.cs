@@ -104,9 +104,31 @@ public sealed class SharedTimeline
             var index = CapturedAudio.IndexOf(packet.Channel);
             if (gone[index])
             {
-                throw new AudioCaptureException(
-                    $"The {packet.Channel} source went quiet for {Stalls / CapturedAudio.SampleRate} seconds "
-                    + "and the recording went on without it, so this packet has nowhere left to go.");
+                // A source given up on comes back as a device that has not spoken yet, and as
+                // nothing else. That one shares no counter and no clock anchor with what it
+                // replaced, so it has somewhere to go: it is placed from where the recording has
+                // already got to, and the whole stretch nobody could be handed is the gap it was.
+                // A late packet of the device that stalled has no such fresh start — it would be
+                // laid down over frames that are already the meeting, which is what going on
+                // without it means.
+                //
+                // Two ways of being that device and not one, because a seam is said once: the
+                // packet that carries the format, and every packet behind it until one the source
+                // can really place — a device that has just started is entitled to disown the
+                // instant on its first block, and the one that says so is the one it is said on.
+                if (packet.Opening is null && !sources[index].Between)
+                {
+                    throw new AudioCaptureException(
+                        $"The {packet.Channel} source went quiet for {Stalls / CapturedAudio.SampleRate} seconds "
+                        + "and the recording went on without it, so this packet has nowhere left to go.");
+                }
+
+                // Said once, here, because here is the event: how far the recording got without
+                // this source is the one thing about the file a source cannot see, and the device
+                // taking over is placed from there rather than from where its own clock alone
+                // would put it.
+                sources[index].GivenUpAt(Math.Max(0, emitted - offsets[index]));
+                gone[index] = false;
             }
 
             sources[index].Take(packet);
@@ -186,7 +208,8 @@ public sealed class SharedTimeline
             source.Rate,
             Length(source.Missing + offsets[index] + Math.Max(0, emitted - covered)),
             Length(offsets[index]),
-            source.CounterGivenUp);
+            source.CounterGivenUp,
+            source.Stretches);
     }
 
     /// <summary>

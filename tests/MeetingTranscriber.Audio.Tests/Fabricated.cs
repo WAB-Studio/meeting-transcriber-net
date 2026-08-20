@@ -158,6 +158,61 @@ internal static class Fabricated
         }
     }
 
+    /// <summary>
+    /// The same packets, with the first one saying it opens a stretch of its own at
+    /// <paramref name="format"/> — which is what a device that takes a channel over hands the
+    /// timeline, and what a spool records where the changeover happened.
+    /// </summary>
+    /// <remarks>
+    /// Said on the first packet and on no other, because that is what a device change is: one seam
+    /// and then an ordinary source. A helper rather than a line in each test, since a stretch
+    /// declared twice is a stretch of no length between two of them and would pass anyway.
+    /// </remarks>
+    internal static IEnumerable<CapturePacket> TakingOver(
+        StreamFormat format, IEnumerable<CapturePacket> packets)
+    {
+        var seam = true;
+        foreach (var packet in packets)
+        {
+            yield return seam ? packet with { Opening = format } : packet;
+            seam = false;
+        }
+    }
+
+    /// <summary>
+    /// The same packets with the first <paramref name="head"/> of them carrying WASAPI's timestamp
+    /// error, which is what a device that has just started is entitled to hand over.
+    /// </summary>
+    /// <remarks>
+    /// The instant on those goes with the flag, and that is the whole point of the fixture: the
+    /// flag says the device could not tell when it read the count, so what is left in the field
+    /// beside it is whatever the driver had — a zero, a stale value, the tick it was holding. A
+    /// test that lowered the flag over a correct instant would be probing the flag rather than what
+    /// reading a number the device disowns costs, which an adversarial pass measured as the rest of
+    /// a meeting laid down seven seconds early.
+    /// </remarks>
+    /// <param name="head">How many of the first packets the device will not vouch for.</param>
+    /// <param name="packets">The packets it hands over.</param>
+    /// <param name="instead">
+    /// What is left in the instant of a packet the device disowned. Nothing at all is a driver that
+    /// zeroed the field, which reads as an hour before this meeting started.
+    /// </param>
+    internal static IEnumerable<CapturePacket> Unvouched(
+        int head, IEnumerable<CapturePacket> packets, double instead = 0)
+    {
+        var taken = 0;
+        foreach (var packet in packets)
+        {
+            yield return taken++ < head
+                ? packet with
+                {
+                    TimingIsSound = false,
+                    CapturedAt = MonotonicInstant.FromMilliseconds(instead),
+                }
+                : packet;
+        }
+    }
+
     /// <summary>A burst of <paramref name="lengthMs"/> at every whole multiple of <paramref name="everySeconds"/>.</summary>
     /// <remarks>
     /// A marker rather than music: what the alignment tests need is an edge whose arrival can be

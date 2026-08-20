@@ -47,6 +47,26 @@ public sealed record ChannelReading
     /// </remarks>
     public required string? Capturing { get; init; }
 
+    /// <summary>
+    /// What it was capturing when the recording started, when that is not what it is capturing
+    /// now — and nothing at all when the channel is still on what it opened with.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nothing rather than a repeat of <see cref="Capturing"/>, because the two saying different
+    /// things is the whole of what this is for: a channel that moved is one a person has to be told
+    /// about while the meeting is running, and one that did not is a line that should not be there
+    /// at all. A device unplugged mid meeting is followed to whatever Windows moved to, so without
+    /// this the screen would quietly start naming another microphone and nothing would say it had.
+    /// </para>
+    /// <para>
+    /// A name where it is one this machine gave and nothing where it would be a sentence, exactly
+    /// as <see cref="Capturing"/> does — so a channel 0 that moved off a program onto the whole
+    /// machine says what it was following here and hands the screen no words for what it is now.
+    /// </para>
+    /// </remarks>
+    public required string? WasCapturing { get; init; }
+
     /// <summary>The loudest this channel was over the stretch this reading covers.</summary>
     public required LevelReading Level { get; init; }
 
@@ -68,6 +88,9 @@ public sealed record ChannelReading
 
     /// <summary>Whether nothing at all arrived on this channel in the stretch just read.</summary>
     public bool IsSilent => Level.IsSilent;
+
+    /// <summary>Whether this channel is no longer capturing what the recording started on.</summary>
+    public bool Moved => WasCapturing is not null;
 
     /// <summary>
     /// How loud it was, as a number a person reads, or nothing at all when nothing arrived.
@@ -116,21 +139,25 @@ public sealed record ChannelReading
             .. recording.Sources
                 .OrderBy(source => CapturedAudio.IndexOf(source.Channel))
                 .Select(source => Of(
-                    source.Listening, source.Level(), stopped: source.HasEnded)),
+                    source.Listening, source.Level(), stopped: source.HasEnded, source.OpenedOn)),
         ];
     }
 
     /// <summary>
     /// One channel's reading, built from what it is listening to rather than from a name somebody
-    /// read off it — which is the whole of the rule, and the reason this is not four initialisers
-    /// at the one call site that needs a device to reach.
+    /// read off it — which is the whole of the rule, and the reason this is not spelled out as an
+    /// initialiser at the one call site that needs a device to reach.
     /// </summary>
     /// <param name="listening">What the channel has open, which also says which channel it is.</param>
     /// <param name="level">The loudest it has been since the look before.</param>
     /// <param name="stopped">Whether its stream is over.</param>
-    public static ChannelReading Of(CaptureTarget listening, LevelReading level, bool stopped)
+    /// <param name="opened">What the channel opened on, which is <paramref name="listening"/>
+    /// itself for a channel that never moved.</param>
+    public static ChannelReading Of(
+        CaptureTarget listening, LevelReading level, bool stopped, CaptureTarget opened)
     {
         ArgumentNullException.ThrowIfNull(listening);
+        ArgumentNullException.ThrowIfNull(opened);
 
         return new ChannelReading
         {
@@ -139,11 +166,36 @@ public sealed record ChannelReading
             // The name where it is one this machine gave, and nothing where it would be a sentence
             // this application wrote — see Capturing, which is where that costs somebody the
             // language they read in.
-            Capturing = listening is CaptureTarget.TheWholeMachine ? null : listening.Name,
+            Capturing = Named(listening),
+
+            WasCapturing = Same(listening, opened) ? null : Named(opened),
             Level = level,
             Stopped = stopped,
         };
     }
+
+    /// <summary>
+    /// What a screen may print for a target: the name where it is one this machine gave, and
+    /// nothing where it would be a sentence this application wrote.
+    /// </summary>
+    private static string? Named(CaptureTarget target) =>
+        target is CaptureTarget.TheWholeMachine ? null : target.Name;
+
+    /// <summary>Whether these two are the same thing to listen to.</summary>
+    /// <remarks>
+    /// An endpoint by its id and nothing else, because that is what names a device — the rest of
+    /// what this machine says about one is an answer that changes. A microphone that became the
+    /// default while the meeting ran is described differently and is the same microphone, and
+    /// comparing the descriptions would put a line on the screen saying a channel moved from a
+    /// device to itself.
+    /// </remarks>
+    private static bool Same(CaptureTarget listening, CaptureTarget opened) =>
+        (listening, opened) switch
+        {
+            (CaptureTarget.Endpoint now, CaptureTarget.Endpoint before) =>
+                string.Equals(now.Device.Id, before.Device.Id, StringComparison.OrdinalIgnoreCase),
+            _ => listening == opened,
+        };
 }
 
 /// <summary>

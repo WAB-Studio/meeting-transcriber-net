@@ -12,10 +12,22 @@ namespace MeetingTranscriber.Audio;
 /// defect in this code; this one means the machine said no, which is an answer a person acts on.
 /// </para>
 /// <para>
-/// Not sealed, and <see cref="AudioDeviceWedgedException"/> is the one thing under it: a device
-/// that never answered at all is still this machine not giving the application the audio it asked
-/// for, so everything catching this to mean "the recording could not happen" keeps catching it.
-/// Where the difference matters, the catch says so itself.
+/// Not sealed, and what a type under it has to earn is a caller rather than a cause. Every one of
+/// them is still this machine not handing over the audio that was asked for, so everything
+/// catching this to mean "the recording could not happen" goes on catching all of them, and a
+/// narrower type on its own buys nothing: a cause with nowhere to be read is a message. The rule
+/// is a catch that can be pointed at, whose answer has to come out differently — and the
+/// difference is read there, at that catch, rather than by the type standing outside the family.
+/// Everywhere else naming one of them names this one, which is what the rule comes to in practice.
+/// </para>
+/// <para>
+/// The two that exist sit either side of what such a catch decides: whether there is still a
+/// recording. <see cref="AudioDeviceWedgedException"/> is worse than a refusal — the device never
+/// answered at all, so the thread that asked is still inside it, and the one place that would
+/// offer somebody a second recording has to stop making the offer. A
+/// <see cref="NoSinglePlaybackException"/> is not a failure at all — the recording is whole, and
+/// what cannot exist is only the single-format file poured for convenience — so the one caller
+/// with other work to do is entitled to say it and carry on.
 /// </para>
 /// </remarks>
 public class AudioCaptureException : InvalidOperationException

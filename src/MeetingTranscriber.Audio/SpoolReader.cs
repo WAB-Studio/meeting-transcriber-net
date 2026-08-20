@@ -116,12 +116,12 @@ public sealed class SpoolReader : IDisposable
 
             var channel = CapturedAudio.ChannelAt(BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(12)));
             var format = Readable(
-                file,
+                file.FullName,
                 new StreamFormat(
                     BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(16)),
                     BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(20)),
                     BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(24)),
-                    Encoding(file, BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(28)))));
+                    Encoding(file.FullName, BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(28)))));
 
             return new SpoolReader(stream, channel, format);
         }
@@ -136,29 +136,59 @@ public sealed class SpoolReader : IDisposable
     /// Every whole block, in the order it was written. Reading to the end is what settles
     /// <see cref="Discarded"/>.
     /// </summary>
+    /// <remarks>
+    /// A stretch record is not a packet and never comes back as one. What it does is change the
+    /// format everything behind it is read at, and hang itself on the next packet — see
+    /// <see cref="CapturePacket.Opening"/> — so a device that took this source over says so on the
+    /// first block it really handed over rather than on a record with no audio in it. A record with
+    /// nothing behind it is a changeover the recording was cut off in the middle of, and it says
+    /// exactly as much as it should: nothing.
+    /// </remarks>
     public IEnumerable<CapturePacket> Packets()
     {
         file.Position = BlockSpool.HeaderBytes;
         Interlocked.Exchange(ref discarded, 0);
 
-        var header = new byte[BlockSpool.BlockHeaderBytes];
+        var magic = new byte[BlockSpool.MagicBytes];
+        var header = new byte[BlockSpool.BlockHeaderBytes - BlockSpool.MagicBytes];
+        var stretch = new byte[BlockSpool.StretchBytes - BlockSpool.MagicBytes];
         var trailer = new byte[BlockSpool.ChecksumBytes];
         var whole = 0L;
+        var format = Format;
+        StreamFormat? opening = null;
 
         while (true)
         {
-            if (Read(header) < header.Length
-                || !header.AsSpan(0, BlockSpool.BlockMagic.Length).SequenceEqual(BlockSpool.BlockMagic))
+            if (Read(magic) < magic.Length)
             {
                 break;
             }
 
-            // Whole frames of this file's own format, because a device hands over frames: a length
-            // that is not is a length read out of something that is not a block, and half a frame
-            // of audio would shift every sample after it onto the wrong channel.
-            var samples = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(20));
+            if (magic.AsSpan().SequenceEqual(BlockSpool.StretchMagic))
+            {
+                if (Read(stretch) < stretch.Length || Opening(stretch) is not { } taking)
+                {
+                    break;
+                }
+
+                whole += magic.Length + stretch.Length;
+                format = taking;
+                opening = taking;
+                continue;
+            }
+
+            if (!magic.AsSpan().SequenceEqual(BlockSpool.BlockMagic) || Read(header) < header.Length)
+            {
+                break;
+            }
+
+            // Whole frames of the format this stretch of the file is in, because a device hands
+            // over frames: a length that is not is a length read out of something that is not a
+            // block, and half a frame of audio would shift every sample after it onto the wrong
+            // channel.
+            var samples = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(16));
             if (samples is <= 0 or > BlockSpool.MostBytesInABlock
-                || (samples % (Format.Channels * Format.BytesPerSample)) != 0)
+                || (samples % (format.Channels * format.BytesPerSample)) != 0)
             {
                 break;
             }
@@ -169,22 +199,56 @@ public sealed class SpoolReader : IDisposable
                 break;
             }
 
-            if (BinaryPrimitives.ReadUInt64LittleEndian(trailer)
-                != BlockSpool.Checksum(header.AsSpan(4, BlockSpool.BlockHeaderBytes - 4), body))
+            if (BinaryPrimitives.ReadUInt64LittleEndian(trailer) != BlockSpool.Checksum(header, body))
             {
                 break;
             }
 
-            whole += header.Length + samples + trailer.Length;
+            whole += magic.Length + header.Length + samples + trailer.Length;
             yield return new CapturePacket(
                 Channel,
-                BinaryPrimitives.ReadInt64LittleEndian(header.AsSpan(4)),
-                MonotonicInstant.FromTicks(BinaryPrimitives.ReadInt64LittleEndian(header.AsSpan(12))),
+                BinaryPrimitives.ReadInt64LittleEndian(header),
+                MonotonicInstant.FromTicks(BinaryPrimitives.ReadInt64LittleEndian(header.AsSpan(8))),
                 body,
-                (BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(24)) & 1) == 1);
+                (BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(20)) & 1) == 1,
+                opening);
+
+            // Said once, on the first block the new device really handed over. Every block after it
+            // is that stretch's and says nothing, which is what keeps a stretch a seam rather than
+            // something every packet has to carry.
+            opening = null;
         }
 
         Interlocked.Exchange(ref discarded, file.Length - BlockSpool.HeaderBytes - whole);
+    }
+
+    /// <summary>
+    /// The format a stretch record declares, or nothing when the record is not whole or says
+    /// something no device hands over.
+    /// </summary>
+    /// <remarks>
+    /// Nothing rather than a throw, and it is the same answer a torn block gets: the tail of a
+    /// recording the machine died in the middle of is dropped, and everything above it is still the
+    /// meeting. A record that hashes to what was written and still names a format this build cannot
+    /// read is the other case — it is not a torn write, it is a spool describing a device this
+    /// build has no way to decode — and that one is refused where the format is refused, which is
+    /// the same place the file's own header is refused.
+    /// </remarks>
+    private StreamFormat? Opening(ReadOnlySpan<byte> stretch)
+    {
+        var said = stretch[..16];
+        if (BinaryPrimitives.ReadUInt64LittleEndian(stretch[16..]) != BlockSpool.Checksum(said, []))
+        {
+            return null;
+        }
+
+        return Readable(
+            file.Name,
+            new StreamFormat(
+                BinaryPrimitives.ReadInt32LittleEndian(said),
+                BinaryPrimitives.ReadInt32LittleEndian(said[4..]),
+                BinaryPrimitives.ReadInt32LittleEndian(said[8..]),
+                Encoding(file.Name, BinaryPrimitives.ReadInt32LittleEndian(said[12..]))));
     }
 
     public void Dispose() => file.Dispose();
@@ -195,12 +259,12 @@ public sealed class SpoolReader : IDisposable
     /// come back as a resampler dividing by zero or a WAV nothing will play — a failure about the
     /// recording, arriving somewhere that cannot say which file was wrong.
     /// </summary>
-    private static StreamFormat Readable(FileInfo file, StreamFormat format)
+    private static StreamFormat Readable(string path, StreamFormat format)
     {
         if (format.SampleRate <= 0 || format.Channels <= 0)
         {
             throw new AudioCaptureException(
-                $"'{file.FullName}' says its samples arrived at {format.SampleRate} Hz on "
+                $"'{path}' says its samples arrived at {format.SampleRate} Hz on "
                 + $"{format.Channels} channels, which is not a recording.");
         }
 
@@ -210,17 +274,17 @@ public sealed class SpoolReader : IDisposable
         }
         catch (AudioCaptureException unreadable)
         {
-            throw new AudioCaptureException($"'{file.FullName}': {unreadable.Message}", unreadable);
+            throw new AudioCaptureException($"'{path}': {unreadable.Message}", unreadable);
         }
 
         return format;
     }
 
-    private static SampleEncoding Encoding(FileInfo file, int stored) =>
+    private static SampleEncoding Encoding(string path, int stored) =>
         stored == (int)SampleEncoding.Pcm || stored == (int)SampleEncoding.IeeeFloat
             ? (SampleEncoding)stored
             : throw new AudioCaptureException(
-                $"'{file.FullName}' says its samples are encoded as {stored}, which this build "
+                $"'{path}' says its samples are encoded as {stored}, which this build "
                 + "cannot read.");
 
     private int Read(Span<byte> into) => file.ReadAtLeast(into, into.Length, throwOnEndOfStream: false);

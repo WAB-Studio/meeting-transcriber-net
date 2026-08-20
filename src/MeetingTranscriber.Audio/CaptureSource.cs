@@ -44,10 +44,12 @@ public sealed class CaptureSource : IDisposable
     private readonly RecordingPause pause;
 
     /// <summary>
-    /// The stream feeding this source now. Not the one it opened with: a channel following a
-    /// program is moved to the whole machine's audio when somebody chooses it, and what makes that
-    /// one recording rather than two is that everything around this field — the spool, the tally,
-    /// the meter and the positions — carries straight on. See <see cref="MoveTo"/>.
+    /// The stream feeding this source now, which is not always the one it opened with: a channel
+    /// following a program is moved to the whole machine's audio when somebody chooses it, and a
+    /// channel whose endpoint went away is moved onto whatever replaced it. What makes either one
+    /// recording rather than two is that the spool and the meter carry straight on. Whether the
+    /// frame counter does is what tells the two handovers apart, and <see cref="MoveTo"/> reads
+    /// that off the stream rather than off the destination.
     /// </summary>
     private WasapiStream stream;
 
@@ -67,6 +69,14 @@ public sealed class CaptureSource : IDisposable
     /// gone by the time anybody asks.
     /// </summary>
     private volatile Exception? failure;
+
+    /// <summary>
+    /// The move this source is on, or nothing before it has ever been moved. Read on the draining
+    /// thread of every stream this source has had and written on the thread that moves it, which
+    /// is what makes a stream ending long after the channel left it tell the right move — and the
+    /// right move, being the one that replaced it, is retired and says nothing.
+    /// </summary>
+    private Handover? moving;
 
     /// <summary>Backs <see cref="Listening"/>, which says there why it is not an auto-property.</summary>
     private CaptureTarget listening;
@@ -91,6 +101,7 @@ public sealed class CaptureSource : IDisposable
     {
         Channel = channel;
         this.listening = listening;
+        OpenedOn = listening;
         Format = format;
         File = file;
         this.stream = stream;
@@ -119,8 +130,26 @@ public sealed class CaptureSource : IDisposable
         private set => Volatile.Write(ref listening, value);
     }
 
-    /// <summary>The format that device handed over.</summary>
+    /// <summary>
+    /// The format the device this source opened on handed over, which is what its spool's own
+    /// header says it holds.
+    /// </summary>
+    /// <remarks>
+    /// What this source opened at and never what it is on now, deliberately. A device that took
+    /// this source over is free to hand over another format entirely, and the file says so where a
+    /// file has to — in the record that marks the seam — rather than in a field that would then be
+    /// the one thing on this object disagreeing with the header beside it. What a block is read at
+    /// is the format of the stream that handed it over, settled where that stream is started.
+    /// </remarks>
     public StreamFormat Format { get; }
+
+    /// <summary>What this source opened on, whatever it is listening to now.</summary>
+    /// <remarks>
+    /// Kept beside <see cref="Listening"/> rather than read off the card in the folder, because
+    /// what is watching a meeting run has the source and not the folder — and because the two
+    /// differing is the whole of what a screen has to be able to say about a channel that moved.
+    /// </remarks>
+    public CaptureTarget OpenedOn { get; }
 
     /// <summary>The spool its blocks are being written to.</summary>
     public FileInfo File { get; }
@@ -178,11 +207,16 @@ public sealed class CaptureSource : IDisposable
     /// than in it.
     /// </para>
     /// <para>
-    /// Only a source whose device numbers no frames can be moved, which is exactly a channel 0: it
-    /// is already being placed by the machine's clock, and so is the stream taking over, so that
-    /// one carries on from the same sequence and there is no seam to reconcile. A microphone
-    /// numbers its own frames and is refused here — its counter means nothing to another device,
-    /// and nothing asks it to move anyway.
+    /// <b>There are two handovers and one thing decides which.</b> A source whose device numbers no
+    /// frames of its own is being placed by the machine's clock, and so is the stream taking over:
+    /// that one carries on from the same sequence at the same format, and there is no seam to
+    /// reconcile — which is exactly a channel 0 moved onto the whole machine. A source whose device
+    /// numbers its own frames is placed by that counter, and the counter of whatever replaces it
+    /// starts again at its own zero — which is a microphone — so what it opens is a stretch of its
+    /// own: its own format, its own anchor, and everything between the two devices counted as the
+    /// audio that never arrived. Which of the two it is is read off the stream and never off the
+    /// kind of thing the destination is, so a fourth way of opening a channel is placed by what it
+    /// does rather than by a list somewhere that would have to remember it.
     /// </para>
     /// <para>
     /// <b>Nothing is given up until everything that can fail has happened.</b> The new device is
@@ -193,6 +227,11 @@ public sealed class CaptureSource : IDisposable
     /// be written all leave the recording exactly where it was, still on the program, still able to
     /// be asked again. Stopping the old device happens afterwards, where it can cost nothing.
     /// </para>
+    /// <para>
+    /// One thing is not on the near side of that line and cannot be put there: a replacement that
+    /// started and then died before the channel reached it. Ordering the two writes differently
+    /// only moves which end is lost, so it is a <see cref="Handover"/> that decides who reports.
+    /// </para>
     /// </remarks>
     /// <param name="destination">What to record from here on.</param>
     /// <param name="sayingSo">
@@ -202,34 +241,68 @@ public sealed class CaptureSource : IDisposable
     /// somebody reads that as their notifications being there when they are not. The other way
     /// round is the same sentence with the truth in it, and it is the one this exists to prevent.
     /// </param>
-    internal void MoveTo(CaptureTarget.TheWholeMachine destination, Action sayingSo)
+    internal void MoveTo(CaptureTarget destination, Action sayingSo)
     {
         ArgumentNullException.ThrowIfNull(destination);
         ArgumentNullException.ThrowIfNull(sayingSo);
 
-        var placedBy = stream.Positions
-            ?? throw new AudioCaptureException(
-                $"The {Channel} source is listening to '{Listening.Name}', which numbers its own "
-                + "frames, so it is not something this moves: what places its audio is the device "
-                + "that counted it.");
+        if (destination.Channel != Channel)
+        {
+            throw new AudioCaptureException(
+                $"'{destination.Name}' feeds the {destination.Channel} channel and this source is "
+                + $"the {Channel} one. What a channel is listening to may change; which channel it "
+                + "feeds is what it is.");
+        }
 
-        var next = destination.Open(placedBy);
+        var placedBy = stream.Positions;
+
+        // Wrapped where it is made rather than in the catch below, because the catch below never
+        // saw it: opening is what activates the COM object, so a machine that refuses hands back a
+        // raw COMException before there is anything to release. Reaching a caller that way it was
+        // an exception nothing on the thread that follows a device catches, which ends the process
+        // and the meeting with it.
+        WasapiStream next;
         try
         {
-            var format = StreamFormat.Of(next.WaveFormat);
-            if (format != Format)
+            next = destination.Open(placedBy);
+        }
+        catch (COMException refused)
+        {
+            throw new AudioCaptureException(
+                $"Windows would not record '{destination.Name}': {refused.Message}", refused);
+        }
+
+        // What both threads say what they did to, so that a replacement dying between being
+        // started and being handed the channel is reported by whichever of them is second. The one
+        // it replaces is retired here rather than when it finished, because a stream goes on
+        // ending after the channel has left it and only a live move may report anything.
+        var handover = new Handover(Ended);
+        Interlocked.Exchange(ref moving, handover)?.Retire();
+
+        try
+        {
+            var taking = StreamFormat.Of(next.WaveFormat);
+
+            // Asked before the channel hands over rather than answered by the first block of the
+            // new device: a width nothing here can read is knowable now, and a channel that moved
+            // onto one would meter and spool nothing until somebody stopped the meeting.
+            Levels.EnsureMeterable(taking);
+
+            if (placedBy is not null && taking != Format)
             {
-                // The spool declares one format in its header and every block in it is read back
-                // that way, so a device handing over something else cannot be poured into it. Both
-                // ways of opening channel 0 ask for what the audio engine is mixing at, so the only
-                // way here is the machine having changed what that is underneath a meeting.
+                // A stream carrying a sequence on is one stretch with the one before it, so the two
+                // are read back at one format and a device handing over another one cannot take
+                // over. Both ways of opening channel 0 ask for what the audio engine is mixing at,
+                // so the only way here is the machine having changed what that is underneath a
+                // meeting. A device that numbers its own frames is not this case at all: what it
+                // opens is a stretch, which is allowed to be anything the device hands over.
                 throw new AudioCaptureException(
-                    $"'{destination.Name}' hands over {format} and the {Channel} recording is "
-                    + $"{Format}, so it cannot take over: what is already recorded and what would "
-                    + "follow it would be two different sources in one file.");
+                    $"'{destination.Name}' hands over {taking} and the {Channel} recording is "
+                    + $"{Format}, so it cannot carry on placing it: what is already recorded and "
+                    + "what would follow it would be two different sources in one stretch.");
             }
 
-            Underway(next);
+            Underway(next, placedBy is null ? taking : null, handover);
             sayingSo();
         }
         catch (COMException refused)
@@ -253,7 +326,8 @@ public sealed class CaptureSource : IDisposable
         // worth having: the old stream ending in the moment between these lines is reported as this
         // source having ended, which stops the recording and says so. The other order loses a new
         // stream that died on its first block, and a meeting recording nothing while everything
-        // says it is fine is the failure this codebase is built against.
+        // says it is fine is the failure this codebase is built against. What this clearing would
+        // itself erase is `handover`'s, and is put back on top of it below.
         failure = null;
         ended.Reset();
         Listening = destination;
@@ -263,13 +337,28 @@ public sealed class CaptureSource : IDisposable
         // rule read the other way, so the two never write into one spool.
         Volatile.Write(ref stream, next);
 
-        // Afterwards, and nothing here throws: the channel is recording again, and a device that
-        // will not let go is a handle held rather than a meeting lost. One that was given up on
-        // keeps everything it is still using, and is asked again when this source is let go of.
-        previous.Stop();
-        previous.Stopped();
-        previous.Dispose();
-        replaced.Add(previous);
+        try
+        {
+            // Immediately after that line and before the old device is touched: from here the
+            // channel is on the new stream, so a replacement that died while the two lines above
+            // were running is this source having ended, and this is the arrival that says so.
+            handover.TookOver();
+        }
+        finally
+        {
+            // The old device is let go of whatever saying that cost, which is what the `finally`
+            // is for: this is the only reference to it, so a throw on the line above would leave a
+            // live device draining into nothing with nobody able to ask it again — and it would
+            // throw out of a move the folder has already recorded as made.
+            //
+            // Nothing here throws: the channel is recording again, and a device that will not let
+            // go is a handle held rather than a meeting lost. One that was given up on keeps
+            // everything it is still using, and is asked again when this source is let go of.
+            previous.Stop();
+            previous.Stopped();
+            previous.Dispose();
+            replaced.Add(previous);
+        }
     }
 
     /// <summary>
@@ -480,7 +569,7 @@ public sealed class CaptureSource : IDisposable
 
         try
         {
-            stream = listening.Open();
+            stream = listening.Open(carryingOn: null);
             var format = StreamFormat.Of(stream.WaveFormat);
 
             // Asked before the device is started rather than answered by its first block: a width
@@ -541,26 +630,59 @@ public sealed class CaptureSource : IDisposable
     /// is really running — and the one it replaces stops being the source's the instant the field
     /// changes, whatever it is still handing over on its way out.
     /// </remarks>
-    private void Underway(WasapiStream opening)
+    /// <param name="starting">The stream to drain.</param>
+    /// <param name="seam">
+    /// The format to declare on the first block of this stream that becomes the recording, when
+    /// this stream is a device taking the source over, and nothing when it is not.
+    /// </param>
+    /// <param name="handover">
+    /// The move this stream is being started for, when it is one taking the source over, and
+    /// nothing when this stream is the one the source opened with. It is what an end arriving
+    /// before the channel hands over is said to instead of being dropped — which is only ever this
+    /// stream's case, since the stream being replaced is one the channel has already left.
+    /// </param>
+    private void Underway(WasapiStream starting, StreamFormat? seam = null, Handover? handover = null)
     {
-        opening.Start(
+        // Settled once, here, and carried into the callback. Every block this stream hands over is
+        // read at the format this stream really opened at — a field read on the capture thread could
+        // be the other device's for the instant a channel takes to hand over, and one block decoded
+        // at the wrong width is noise nothing downstream could trace back.
+        var arriving = StreamFormat.Of(starting.WaveFormat);
+
+        // The seam belongs to this stream for exactly the reason the format above does, and it was
+        // a field on the source until an adversarial pass found what that costs: between the moment
+        // it is set and the moment the channel hands over, the stream still being recorded is the
+        // old one, so the old device's own callback could take it — and one of its blocks would go
+        // into the spool behind a record declaring the next device's format. Held here, only the
+        // stream it belongs to can take it, and it is taken once.
+        var opening = seam;
+
+        starting.Start(
             packet =>
             {
                 // Placed inside the condition and never before it. A stream that is not this
                 // source's is one whose blocks go nowhere, and the sequence a channel is laid out
                 // by advances every time it is asked — so asking for a block that is about to be
                 // dropped would push the rest of the meeting along by its length.
-                if (ReferenceEquals(Volatile.Read(ref stream), opening))
+                if (ReferenceEquals(Volatile.Read(ref stream), starting))
                 {
-                    Captured(opening.Place(packet));
+                    Captured(starting.Place(packet), arriving, ref opening);
                 }
             },
             stopped =>
             {
-                if (ReferenceEquals(Volatile.Read(ref stream), opening))
+                // While this stream is the one blocks are read from, its end is this source's and
+                // is said straight out. Otherwise it belongs to the move that brought this stream
+                // in, which knows whether it is still the source's move and whether the channel
+                // reached this stream — and reports, or does not, on those two answers. The stream
+                // the source opened with has no move behind it, so its end there is nobody's.
+                if (ReferenceEquals(Volatile.Read(ref stream), starting))
                 {
                     Ended(stopped);
+                    return;
                 }
+
+                handover?.Ended(stopped);
             });
     }
 
@@ -569,18 +691,31 @@ public sealed class CaptureSource : IDisposable
     /// and nothing here infers any of it — see <see cref="WasapiStream"/> for why that matters and
     /// <see cref="PacketTally"/> for what the positions then add up to.
     /// </summary>
-    private void Captured(CapturePacket packet)
+    /// <param name="packet">The block, as this stream's device handed it over.</param>
+    /// <param name="arriving">The format this stream's device hands over.</param>
+    /// <param name="opening">
+    /// This stream's seam, taken exactly once by the first block of it that really becomes the
+    /// recording. Everything downstream reads it as the seam it is: the spool writes the new format
+    /// down, the tally starts counting again, and the timeline closes the stretch before it and
+    /// opens one here.
+    /// </param>
+    private void Captured(CapturePacket packet, StreamFormat arriving, ref StreamFormat? opening)
     {
         if (packet.Samples.Length <= 0)
         {
             return;
         }
 
+        if (Interlocked.Exchange(ref opening, null) is { } stretch)
+        {
+            packet = packet with { Opening = stretch };
+        }
+
         // The pause decides what this block is worth to the recording, and it is asked once. There
         // is no branch here on purpose: the whole decision is one object, so a build that broke
         // pausing would have to delete this line rather than get a condition subtly wrong.
         var heard = pause.Reaching(packet);
-        var level = Levels.Peak(heard.Samples.Span, Format);
+        var level = Levels.Peak(heard.Samples.Span, arriving);
 
         // The tally is fed the same block the spool is, silence and all, because what it counts is
         // where the recording got to and not what was in it. A pause is part of the meeting.
@@ -590,7 +725,7 @@ public sealed class CaptureSource : IDisposable
         // The block as the device handed it over, which is the same block unless the meeting is
         // paused — and the pause is the only thing that ever substitutes one, so the reading is
         // taken twice only for the stretch where the two really are different.
-        delivered.Add(ReferenceEquals(heard, packet) ? level : Levels.Peak(packet.Samples.Span, Format));
+        delivered.Add(ReferenceEquals(heard, packet) ? level : Levels.Peak(packet.Samples.Span, arriving));
 
         spool.Write(heard);
     }

@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 122/177
+progress: 124/177
 updated: 2026-08-20
 ---
 
@@ -137,7 +137,7 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-75: A recording cut off mid-block comes back to its last whole block.
 - [x] ISC-76: Finishing the same recording twice produces the same file.
 - [x] ISC-77: A recording following one application that brings back no audio offers the whole machine's audio in its place, while the meeting is still running.
-- [ ] ISC-78: A device changing mid-recording does not end the recording.
+- [x] ISC-78: A device changing mid-recording does not end the recording.
 - [x] ISC-117: A recording that follows one application carries what that application played, including what the processes it started played.
 - [x] ISC-118: Anti: a recording that follows one application carries nothing another application played over it.
 - [x] ISC-119: A recording says in its own folder which meeting it is, when it started and under what profile, with nothing else read.
@@ -171,7 +171,7 @@ Board: 3 · Grabador WinUI
 - [x] ISC-81: A recording that was paused is one meeting as long as the clock says, carrying the paused stretch as the silence it was.
 - [x] ISC-82: A meeting says what stage it is at and what the application would do to it next.
 - [x] ISC-83: An audio file from disk becomes a meeting, whatever its channel count.
-- [ ] ISC-141: A recording whose device changed says so while the meeting is still running, naming what it moved to.
+- [x] ISC-141: A recording whose device changed says so while the meeting is still running, naming what it moved to.
 - [x] ISC-147: A meeting whose next stage was declined can be offered that stage again later.
 - [x] ISC-148: What a meeting is waiting for survives the application closing and opening again.
 - [x] ISC-149: Anti: a recording waiting to be decided about never keeps a new meeting from being recorded.
@@ -526,6 +526,8 @@ Board: 7 · Distribución y backup
   another application does with the speakers cannot cost a meeting a stretch of itself.
 
 ## Verification
+- ISC-78 — `DeviceChangeTests` and `SpoolStretchTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-20, and the 24 s `capture --microphone fifine --then-microphone "GENERAL WEBCAM" --then-microphone-at 12` run of that day on this machine. A device change is a new stretch of the same source — its own format, its own anchor, its own counter — and every case is fabricated packets, which is what lets two devices with nothing in common exist on a machine with nothing plugged into it: the replacement's counter from its own zero, its format at 44 100 where the first was 48 000, the seam counted as the audio that never arrived, and the replacement arriving after the recording had already given the channel up. The hand run is the same handover against two real endpoints: the channel handed over live at 0:00:12, both spools ran to 0:00:24, `audio.wav` came out one file of 386118 frames, ch1 is loud either side of the seam and the seam is 33 ms recorded as missing. What the run cannot reach is a replacement at another format — both endpoints on this machine mix at 48 000 Hz, so that half is fabricated only — and the follow itself, which needs a device physically unplugged; the rule that decides which channel is ever followed and whether a replacement is worth opening is `ReplacedDeviceTests`, and the thread around it is argued. Red 2026-08-20 with the stretch mark ignored: 4 of 7 device-change tests failed and the rest of the 273 stayed green. An adversarial pass over the branch falsified four more shapes of it, each reproduced against the real timeline before it was fixed — a first block whose instant the device disowned placed the rest of the meeting seven seconds early with a summary byte-identical to a correct one; the same block after a give-up lost the meeting entirely; a replacement for a device that never spoke was laid out from frame zero; and a `COMException` from opening the replacement escaped onto the thread that follows, where nothing catches. The two that survive as probes are `.A_replacement_whose_first_blocks_carry_no_sound_instant_still_lands_where_it_belongs` and `.A_replacement_for_a_device_that_never_spoke_lands_where_the_recording_got_to`. A second adversarial pass, over the branch as it stood, falsified the shape a move takes when the replacement dies before the channel reaches it — the end was dropped and the source went back to not-ended, so a microphone was silent with every reading green and stopped being followed — and then falsified the first fix for it, which reported a healthy channel as ended on its second device change and moved it again every two seconds after that. `HandoverTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-20 holds what came out of both: whichever arrival is second reports, once, and a move the channel has already left reports nothing. Four mutations one at a time, each red at the test named for it — retiring made a no-op, each of the two arrivals made silent, and the lock taken out, which the race there loses between 34 and 93 goes of 5 000 without and 0 of 200 000 with. What no probe reaches is the wiring, since making a driver die inside a window milliseconds wide needs the hardware this claim already says it cannot have, so that a source on a dead replacement says it ended is read off `CaptureSource.MoveTo`
+- ISC-141 — `RecordingMetersTests` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-08-20: a reading carries what its channel opened on when that is not what it is on now, and nothing at all when it is. Both halves are probed and the second is the one that matters — a line shown for a channel that never moved is a screen telling somebody about an event that did not happen — and what says two readings are the same device is the endpoint's id, since a microphone that became the default half way through a meeting is described differently and is the same microphone. `.A_channel_zero_moved_to_the_whole_machine_says_what_it_was_following_and_no_words_for_what_it_is` holds the other channel's move under the rule that keeps English off a reading. What is argued rather than probed is the window: `LiveRegionTests` holds that the two lines exist, are not bound in the XAML and are told their words by the code that shows them, but reaching a WinUI tree needs a UI thread and a packaged host, so which channel's line is which is seen by recording a meeting. The `capture --then-microphone` run of 2026-08-20 is that meeting from the side a prompt can see: `ch1  Micrófono (fifine Microphone) → Micrófono (GENERAL WEBCAM)` is printed at the second the channel handed over, off the same two values the screen reads
 
 - ISC-1 — `AudioChannelTests` green 2026-08-07
 - ISC-2 — `SourceProfileTests` green 2026-08-07
