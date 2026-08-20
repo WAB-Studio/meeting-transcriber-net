@@ -126,7 +126,8 @@ Said out loud, because channel 0 is now obtained one way only and there is no se
 - **The packaged host.** Every run here is `capture`, which is the unpackaged command line. Nothing
   has yet activated `VAD\Process_Loopback` from the MSIX/WinUI process, and until this change there
   was an ordinary `WasapiLoopbackCapture` underneath for the machine's audio. One recording started
-  from the installed application is what closes it.
+  from the installed application is what closes it, and it is ISC-73.2.2 — open, which is why
+  ISC-73.2 above it is open with the runs on this page closing only its leaf.
 - **Two render endpoints at once.** Speakers and a headset both playing is the case this change is
   meant to improve on, and this machine has one output. What is written above is what the API
   means, not a measurement.

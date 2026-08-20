@@ -39,7 +39,13 @@ public sealed record ChannelReading
     /// It is the ordinary case rather than a corner, since it is what a recording nobody pointed at
     /// a program is capturing.
     /// </remarks>
-    public string? Capturing { get; init; }
+    /// <remarks>
+    /// Nullable and required at once, which is not a contradiction: nothing is one of the answers,
+    /// so it has to be sayable — and required is what keeps saying it apart from not saying
+    /// anything. Without it a caller that forgot this field would compile into a reading claiming
+    /// the recording is of everything this machine plays.
+    /// </remarks>
+    public required string? Capturing { get; init; }
 
     /// <summary>The loudest this channel was over the stretch this reading covers.</summary>
     public required LevelReading Level { get; init; }

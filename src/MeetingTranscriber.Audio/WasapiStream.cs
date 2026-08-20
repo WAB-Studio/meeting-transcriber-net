@@ -137,13 +137,31 @@ internal sealed class WasapiStream : IDisposable
     /// </summary>
     /// <param name="device">The endpoint to record, which is a microphone.</param>
     /// <param name="channel">
-    /// Which channel its blocks are labelled with. Carried rather than decided on: an endpoint is
-    /// captured one way only, and which channel it feeds is the session's to settle — see
-    /// <see cref="CaptureTarget.Endpoint"/>, which is the only thing that builds one of these.
+    /// Which channel its blocks are labelled with, and the microphone's is the only one it may be.
+    /// Taken as a parameter rather than assumed so that the label a stream carries and the channel
+    /// its target says it feeds are the same answer — see <see cref="CaptureTarget.Endpoint"/>,
+    /// which is the only thing that builds one of these, and would otherwise be able to disagree
+    /// with this silently.
     /// </param>
+    /// <exception cref="AudioContractException">
+    /// The channel asked for is not the microphone's.
+    /// </exception>
     internal static WasapiStream On(AudioDevice device, AudioChannel channel)
     {
         ArgumentNullException.ThrowIfNull(device);
+
+        // Refused before anything is opened, rather than left to the one caller that reaches this.
+        // An endpoint is a microphone and channel 0 is never one, so asking for an endpoint on
+        // channel 0 is a wiring mistake that would open the microphone and label its blocks with
+        // the loopback's number — the recording carrying the microphone on channel 0, which is
+        // the one thing this part of the contract exists to forbid. The switch this replaced turned
+        // the channel into a stream direction and so refused as a side effect; there is one
+        // direction left now, and the refusal has to be said out loud to survive that.
+        if (channel is not AudioChannel.Microphone)
+        {
+            throw new AudioContractException(
+                $"An endpoint is a microphone, so there is no capturing one onto '{channel}'.");
+        }
 
         // Every line of it behind one deadline, because every line of it is a synchronous call into
         // the same driver: opening the endpoint, asking it for its client, reading what the machine

@@ -58,8 +58,10 @@ public sealed class SpoolManifestTests : IDisposable
     }
 
     /// <summary>
-    /// ISC-121. Which of the two channel 0 opened as is a field of the card's own, because neither
-    /// of them names a device and there is nothing else left to tell them apart by.
+    /// ISC-120, the other half of it: what fed channel 0 is a field of the card's own, because
+    /// neither shape of it names a device and there is nothing else left to tell them apart by.
+    /// Not ISC-121 — that one is a channel that stopped following its program saying so and
+    /// saying when, which is the changes file's and not the card's.
     /// </summary>
     [Theory]
     [InlineData(CaptureMode.ProcessLoopback, "teams (pid 8124)")]

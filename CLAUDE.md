@@ -116,8 +116,8 @@ Breaking one corrupts meetings already recorded and artifacts already paid for.
 
 - Channel 0 is the loopback, channel 1 is the microphone. The number is the channel index Deepgram
   reports back, not an internal detail, so only `CapturedAudio` turns a channel into a position.
-  A channel names where sound came from and never a person: `Speakers.Resolve` settles the user
-  only when the microphone caught exactly one speaker, and every other waits for somebody to say.
+  A channel names a source and never a person: `Speakers.Resolve` settles the user only when the
+  microphone caught exactly one speaker, and every other label waits for somebody to say who it is.
 - `multichannel` is two channels, `diarize` is one. A profile that disagrees with its audio throws.
 - Instants are UTC to the millisecond (`UtcTimestamp`); lengths and timeline offsets are whole
   milliseconds (`Duration`). A bare `DateTime` or `TimeSpan` does not cross into the domain.
