@@ -168,9 +168,11 @@ public abstract record CaptureTarget
 
         /// <remarks>
         /// The one way in that takes a sequence to carry on from, and it is not an accident of what
-        /// it is: this is the thing a channel already being recorded is ever moved to, and it comes
-        /// off a virtual device that numbers nothing — so the channel goes on being laid out by the
-        /// instants it was already being laid out by, and there is no seam to reconcile.
+        /// it is: this is the thing a channel already being recorded is ever carried on to, and it
+        /// comes off a virtual device that numbers nothing — so the channel goes on being laid out
+        /// by the instants it was already being laid out by, and there is no seam to reconcile. A
+        /// channel moved onto an endpoint is the other handover, and what it opens is a stretch of
+        /// its own.
         /// </remarks>
         internal override WasapiStream Open(FramePositions? carryingOn) =>
             WasapiStream.TheWholeMachine(carryingOn);

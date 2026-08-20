@@ -35,8 +35,10 @@ public sealed class CaptureSession : IDisposable
 
     /// <summary>
     /// One caller's, and it is what keeps a recording from being moved while it is being stopped.
-    /// Pausing does not take it — that one crosses threads by design and is one write — and neither
-    /// does anything the devices do: what this covers is the two things a person can press.
+    /// Pausing does not take it — that one crosses threads by design and is one write. Everything
+    /// that moves a channel or ends the recording does, and that is no longer only what a person
+    /// presses: the thread that follows a device Windows took away takes it as well, which is why
+    /// it asks the machine outside the gate and makes the move inside it.
     /// </summary>
     private readonly Lock gate = new();
 

@@ -44,10 +44,12 @@ public sealed class CaptureSource : IDisposable
     private readonly RecordingPause pause;
 
     /// <summary>
-    /// The stream feeding this source now. Not the one it opened with: a channel following a
-    /// program is moved to the whole machine's audio when somebody chooses it, and what makes that
-    /// one recording rather than two is that everything around this field — the spool, the tally,
-    /// the meter and the positions — carries straight on. See <see cref="MoveTo"/>.
+    /// The stream feeding this source now, which is not always the one it opened with: a channel
+    /// following a program is moved to the whole machine's audio when somebody chooses it, and a
+    /// channel whose endpoint went away is moved onto whatever replaced it. What makes either one
+    /// recording rather than two is that the spool and the meter carry straight on. Whether the
+    /// frame counter does is what tells the two handovers apart, and <see cref="MoveTo"/> reads
+    /// that off the stream rather than off the destination.
     /// </summary>
     private WasapiStream stream;
 

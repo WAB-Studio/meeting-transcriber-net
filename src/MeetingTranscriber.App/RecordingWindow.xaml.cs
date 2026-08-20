@@ -334,8 +334,10 @@ public sealed partial class RecordingWindow : Window
         Tell(OthersStopped, others?.Stopped ?? false, UiTexts.TheOthersChannelStoppedOnItsOwn);
         Tell(MineStopped, mine?.Stopped ?? false, UiTexts.TheMicrophoneChannelStoppedOnItsOwn);
 
-        // What each channel moved from and to, as values rather than as words in the catalogue:
-        // both are names this machine gave and read the same in every language. A channel still on
+        // What each channel moved from and to, as values rather than as words in the catalogue: a
+        // device name is what this machine gave it and reads the same in every language. Where the
+        // reading has no such name the value is the catalogue's own sentence in the language being
+        // read, which is what Capturing is for and the one place it happens. A channel still on
         // what it opened with hands back nothing to move from, which is what says the line off.
         Tell(
             OthersMoved,
@@ -384,6 +386,13 @@ public sealed partial class RecordingWindow : Window
     }
 
     /// <summary>
+    /// What a channel is capturing, in words a person reads: the name where the reading has one,
+    /// and the catalogue's sentence where it hands back none — which is a channel on the whole
+    /// machine's audio, the one thing nothing this machine named.
+    /// </summary>
+    private string Capturing(string? capturing) => capturing ?? In(UiTexts.EverythingThisMachinePlays);
+
+    /// <summary>
     /// Shows or hides one of the lines somebody reading this screen through a narrator has to be
     /// told about the moment it appears, and says what it says while showing it.
     /// </summary>
@@ -413,17 +422,10 @@ public sealed partial class RecordingWindow : Window
     /// one binds them in the XAML or is never told anything at all.
     /// </para>
     /// </remarks>
-    /// <summary>
-    /// What a channel is capturing, in words a person reads: the name where the reading has one,
-    /// and the catalogue's sentence where it hands back none — which is a channel on the whole
-    /// machine's audio, the one thing nothing this machine named.
-    /// </summary>
-    private string Capturing(string? capturing) => capturing ?? In(UiTexts.EverythingThisMachinePlays);
-
     /// <param name="values">
     /// What the entry leaves room for, where it leaves room for anything. An entry told nothing is
-    /// read rather than formatted, which is not a shortcut: a line with no values is every line on
-    /// this screen but one, and putting them all through a formatter would turn an entry somebody
+    /// read rather than formatted, which is not a shortcut: most lines on this screen leave room
+    /// for nothing at all, and putting them all through a formatter would turn an entry somebody
     /// later writes a brace into from a stray character on screen into a screen that throws while a
     /// meeting is being recorded.
     /// </param>

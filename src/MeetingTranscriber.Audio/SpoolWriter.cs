@@ -98,8 +98,9 @@ public sealed class SpoolWriter : IDisposable
             BinaryPrimitives.WriteInt32LittleEndian(header.AsSpan(28), (int)format.Encoding);
 
             // The same treatment every block gets, and for the same reason: these thirty two bytes
-            // decide how every sample in the file is read, so a header that says 44 101 Hz where
-            // 44 100 was written would come back as a recording rather than as a refusal.
+            // decide how the file's samples are read until a stretch record says otherwise, so a
+            // header that says 44 101 Hz where 44 100 was written would come back as a recording
+            // rather than as a refusal.
             BinaryPrimitives.WriteUInt64LittleEndian(
                 header.AsSpan(BlockSpool.HeaderBytes - BlockSpool.ChecksumBytes),
                 BlockSpool.Checksum(header.AsSpan(8, BlockSpool.HeaderBytes - BlockSpool.ChecksumBytes - 8), []));

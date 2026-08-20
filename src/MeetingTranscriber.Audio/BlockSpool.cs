@@ -61,7 +61,7 @@ public static class BlockSpool
     /// over all of it but the magic.
     /// </summary>
     /// <remarks>
-    /// These three are part of the format and not an implementation detail of writing it. What a
+    /// These sizes are part of the format and not an implementation detail of writing it. What a
     /// recording costs on disk, and where in the file one block ends and the next begins, are
     /// arithmetic anybody holding a spool is entitled to do.
     /// </remarks>

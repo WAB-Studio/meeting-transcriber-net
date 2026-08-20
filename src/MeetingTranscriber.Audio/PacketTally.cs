@@ -68,7 +68,9 @@ public sealed class PacketTally
         positions = new SourcePositions(format.SampleRate);
     }
 
-    /// <summary>How many blocks the device has handed over.</summary>
+    /// <summary>
+    /// How many blocks this source has been handed, across every device that fed it.
+    /// </summary>
     public long Packets
     {
         get
@@ -128,9 +130,10 @@ public sealed class PacketTally
     }
 
     /// <summary>
-    /// The shortest the device went between reading two consecutive packets, and the longest.
-    /// Both are the device's own clock: instants stamped on the thread that collected the packets
-    /// would instead read as a burst of no time at all and then the whole of one poll.
+    /// The shortest the source went between reading two consecutive packets, and the longest. A
+    /// device change does not start them again, so both span every device that fed the channel.
+    /// Both are read off the device's own clock: instants stamped on the thread that collected the
+    /// packets would instead read as a burst of no time at all and then the whole of one poll.
     /// </summary>
     public Duration Closest
     {

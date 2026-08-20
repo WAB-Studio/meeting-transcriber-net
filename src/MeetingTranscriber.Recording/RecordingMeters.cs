@@ -145,8 +145,8 @@ public sealed record ChannelReading
 
     /// <summary>
     /// One channel's reading, built from what it is listening to rather than from a name somebody
-    /// read off it — which is the whole of the rule, and the reason this is not four initialisers
-    /// at the one call site that needs a device to reach.
+    /// read off it — which is the whole of the rule, and the reason this is not spelled out as an
+    /// initialiser at the one call site that needs a device to reach.
     /// </summary>
     /// <param name="listening">What the channel has open, which also says which channel it is.</param>
     /// <param name="level">The loudest it has been since the look before.</param>
