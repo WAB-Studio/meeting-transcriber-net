@@ -11,5 +11,36 @@ namespace MeetingTranscriber.Audio;
 /// </remarks>
 public sealed record AudioDevice(string Id, string Name, bool IsDefault)
 {
+    /// <summary>
+    /// What the endpoint says it is, or <see cref="EndpointKind.Unsaid"/> when nothing asked it.
+    /// </summary>
+    /// <remarks>
+    /// Part of the value like every other field here, the same way <see cref="IsDefault"/> is:
+    /// this record is what the machine answered about an endpoint, and two answers that disagree
+    /// are two answers. What names the endpoint is <see cref="Id"/>, and anything asking whether
+    /// two of these are the same device asks that — which is what the window's picker does. The
+    /// alternative would be an <c>Equals</c> written by hand to leave one field out, and the next
+    /// field added would have to remember it.
+    /// <para>
+    /// Not positional, because no caller outside enumeration can answer it: the form factor is
+    /// read off an open endpoint, so everywhere else is a device nothing asked, which is what the
+    /// default says rather than something each call site has to spell.
+    /// </para>
+    /// </remarks>
+    public EndpointKind Kind { get; init; } = EndpointKind.Unsaid;
+
+    /// <summary>
+    /// Whether what is played through this endpoint comes out into the room, where the microphone
+    /// recording the meeting hears it a second time.
+    /// </summary>
+    /// <remarks>
+    /// Speakers and nothing else, including the endpoint that did not say. What this feeds is a
+    /// warning that costs nothing to be sure of, and its whole worth is that it is never wrong:
+    /// told once that the room can hear them while they are wearing headphones, nobody reads the
+    /// line again. Measuring how much of channel 0 really comes back in on channel 1 is the audio
+    /// engine's, and it is not this.
+    /// </remarks>
+    public bool PlaysIntoTheRoom => Kind is EndpointKind.Speakers;
+
     public override string ToString() => IsDefault ? $"{Name} (default)" : Name;
 }

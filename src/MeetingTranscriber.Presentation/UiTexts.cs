@@ -115,6 +115,64 @@ public static class UiTexts
         "The recording ended, but the meeting could not be made. What was recorded is still in its "
         + "folder.");
 
+    // ── The meters, while a meeting is being recorded ────────────────────────────
+
+    // The channel number is in the name a person reads, and not decoration. It is the number the
+    // provider reports back and the number a citation is anchored by, so somebody looking at a
+    // transcript later and somebody watching this meter are reading the same two numbers.
+    public static UiText Channel0TheOthers { get; } =
+        new("Canal 0 · los demás", "Channel 0 · the others");
+
+    public static UiText Channel1Me { get; } = new("Canal 1 · yo", "Channel 1 · me");
+
+    /// <summary>
+    /// A channel that brought back nothing at all in the second just read. Said in words beside
+    /// the bar rather than left to an empty bar: an empty bar and a bar nobody has drawn yet look
+    /// the same, and the case this exists for — a microphone muted in Windows — never moves it.
+    /// </summary>
+    public static UiText NothingIsArriving { get; } = new("nada", "nothing");
+
+    /// <summary>
+    /// ISC-150. What it says about itself matters as much as what it says: somebody who reads it
+    /// as a measurement of their echo will go looking for one, and there is none — this is what
+    /// kind of device Windows says the meeting is being played through, and nothing more.
+    /// </summary>
+    public static UiText TheOthersAreHeardTwice { get; } = new(
+        "Estás escuchando la reunión por parlantes, así que el micrófono capta a los demás una "
+        + "segunda vez. Lo dice el tipo de dispositivo de reproducción y no una medición del eco. "
+        + "Con auriculares no pasa.",
+        "You are listening to this meeting through speakers, so the microphone is picking the "
+        + "other side up a second time. That is what kind of playback device this is, not a "
+        + "measurement of the echo. A headset avoids it.");
+
+    /// <summary>
+    /// One channel's device gone while the meeting carries on. Two entries and not one with the
+    /// channel as a value: what each of them costs is different, and a person deciding what to do
+    /// needs to be told which half of the conversation they still have.
+    /// </summary>
+    /// <remarks>
+    /// Neither says to press stop, and that is not an omission. Stopping a meeting one of whose
+    /// sources ended by itself does not make a meeting — the source says so as it is let go of, and
+    /// the recording comes back refused — so what is on disk is dealt with afterwards rather than
+    /// by a press. Saying "stop and keep what it has" would be this screen promising an outcome the
+    /// press does not produce, which is worse than saying nothing.
+    /// </remarks>
+    public static UiText TheOthersChannelStoppedOnItsOwn { get; } = new(
+        "El canal 0 dejó de grabar solo: se desconectó el dispositivo o Windows lo cerró. Lo que "
+        + "digan los demás desde acá no queda en la grabación; el micrófono sigue grabando. Lo que "
+        + "ya se grabó está en su carpeta y no se pierde.",
+        "Channel 0 stopped recording on its own — the device was unplugged, or Windows closed it. "
+        + "Nothing the other side says from here on is being recorded; the microphone still is. "
+        + "What was already recorded is in its folder and is not lost.");
+
+    public static UiText TheMicrophoneChannelStoppedOnItsOwn { get; } = new(
+        "El canal 1 dejó de grabar solo: se desconectó el micrófono o Windows lo cerró. Lo que "
+        + "digas desde acá no queda en la grabación; el canal 0 sigue grabando. Lo que ya se grabó "
+        + "está en su carpeta y no se pierde.",
+        "Channel 1 stopped recording on its own — the microphone was unplugged, or Windows closed "
+        + "it. Nothing you say from here on is being recorded; channel 0 still is. What was "
+        + "already recorded is in its folder and is not lost.");
+
     public static UiText MeetingsAreKeptAt { get; } =
         new("Las reuniones se guardan en {0}", "Meetings are kept at {0}");
 

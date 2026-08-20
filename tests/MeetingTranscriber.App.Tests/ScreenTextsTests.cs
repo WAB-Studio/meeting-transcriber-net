@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -43,17 +42,17 @@ public partial class ScreenTextsTests
         "ToolTipService.ToolTip",
     ];
 
-    public static TheoryData<string> Screens() => [.. Sources(".xaml").Select(file => file.FullName)];
+    public static TheoryData<string> Screens() => [.. AppSources.With(".xaml").Select(file => file.FullName)];
 
-    public static TheoryData<string> CodeBehind() => [.. Sources(".cs").Select(file => file.FullName)];
+    public static TheoryData<string> CodeBehind() => [.. AppSources.With(".cs").Select(file => file.FullName)];
 
     [Fact]
     public void There_are_screens_to_check()
     {
         // Without this the three below pass by finding nothing, which is how a path that stopped
         // resolving reads exactly like a codebase with nothing wrong in it.
-        Sources(".xaml").ShouldNotBeEmpty();
-        Sources(".cs").ShouldNotBeEmpty();
+        AppSources.With(".xaml").ShouldNotBeEmpty();
+        AppSources.With(".cs").ShouldNotBeEmpty();
     }
 
     [Theory]
@@ -109,24 +108,6 @@ public partial class ScreenTextsTests
         assigned.ShouldBeEmpty(
             $"{Path.GetFileName(path)} assigns words a person reads instead of a text from "
             + "UiTexts: " + string.Join("; ", assigned));
-    }
-
-    /// <summary>
-    /// Every hand-written source of the application. `obj` and `bin` are skipped: what the XAML
-    /// compiler generates in there is a copy of what was already checked.
-    /// </summary>
-    private static IReadOnlyList<FileInfo> Sources(string extension, [CallerFilePath] string thisFile = "")
-    {
-        var app = new DirectoryInfo(Path.GetFullPath(Path.Combine(
-            Path.GetDirectoryName(thisFile)!, "..", "..", "src", "MeetingTranscriber.App")));
-
-        return app
-            .EnumerateFiles("*", SearchOption.AllDirectories)
-            .Where(file => string.Equals(file.Extension, extension, StringComparison.OrdinalIgnoreCase))
-            .Where(file => !file.FullName.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-            .Where(file => !file.FullName.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-            .OrderBy(file => file.FullName, StringComparer.Ordinal)
-            .ToArray();
     }
 
     /// <summary>

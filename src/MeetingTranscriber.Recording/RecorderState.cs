@@ -125,6 +125,25 @@ public static class RecorderStates
             [RecorderState.WithoutACorpus] = Set(),
         }.ToFrozenDictionary();
 
+    /// <summary>
+    /// Whether a meeting is being recorded in this state, which is what says there is anything to
+    /// meter.
+    /// </summary>
+    /// <remarks>
+    /// Paused counts. The clock is still running and both devices are still open — what a paused
+    /// meeting records is silence of exactly the length it lasted — so a screen that hid the
+    /// meters for it would take the levels away at the one moment somebody is looking to see
+    /// whether the pause took.
+    /// <para>
+    /// Starting and finishing do not. In neither is there a device to read: one has not opened
+    /// them yet and the other has already let them go, and a meter that went on showing its last
+    /// reading through the minutes it takes to make a long meeting is a screen saying a recording
+    /// is still going.
+    /// </para>
+    /// </remarks>
+    public static bool IsRecording(this RecorderState state) =>
+        state is RecorderState.Recording or RecorderState.Paused;
+
     /// <summary>What a screen in this state reaches.</summary>
     public static IReadOnlySet<RecorderPress> Reaches(this RecorderState state) =>
         Presses.TryGetValue(state, out var presses)

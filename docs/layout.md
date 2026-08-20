@@ -66,6 +66,9 @@ a packaged host, so anything living there would have no probe a build agent coul
 That last sentence is also why the recording screen's rules are here rather than beside the window.
 What can be pressed at any moment — and what a press would have to be answered with first — is
 `RecorderScreen` and the table beside it, which hold no meeting, open no device and start nothing.
+What the screen shows while a meeting runs is `RecordingMeters`, and it is the other shape: it
+answers about a recording, so one half of it takes the numbers and holds the rules, and the other
+half is the projection off two open devices that no build agent can run.
 The window sets every control from one of those and asks it again inside each handler, so the half
 of a screen that has rules is the half a build agent runs, and the half that needs a microphone is
 the half a person presses. `MeetingTranscriber.App` references this project and nothing else new:

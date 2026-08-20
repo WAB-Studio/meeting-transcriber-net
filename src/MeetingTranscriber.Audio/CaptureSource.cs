@@ -58,7 +58,19 @@ public sealed class CaptureSource : IDisposable
     /// </summary>
     private long openedAt;
 
-    private Exception? failure;
+    /// <summary>
+    /// What the stream ended with, or nothing when it ended without one. Written on the draining
+    /// thread the moment the device lets go of it, and read on the thread that stops this source —
+    /// <see cref="Finish"/>, which is what turns it into the exception the caller hears — and
+    /// cleared again on the thread that hands the source a different stream. Volatile because
+    /// those threads share no lock over it: the one that writes it is inside the device and is
+    /// gone by the time anybody asks.
+    /// </summary>
+    private volatile Exception? failure;
+
+    /// <summary>Backs <see cref="Listening"/>, which says there why it is not an auto-property.</summary>
+    private CaptureTarget listening;
+
     private bool running;
 
     /// <summary>
@@ -78,7 +90,7 @@ public sealed class CaptureSource : IDisposable
         RecordingPause pause)
     {
         Channel = channel;
-        Listening = listening;
+        this.listening = listening;
         Format = format;
         File = file;
         this.stream = stream;
@@ -95,7 +107,17 @@ public sealed class CaptureSource : IDisposable
     /// now, which is what it opened with unless somebody moved it — the card beside the blocks is
     /// where what it opened with is kept.
     /// </summary>
-    public CaptureTarget Listening { get; private set; }
+    /// <remarks>
+    /// Read and written the way <see cref="stream"/> is, and for the same reason: this is the one
+    /// thing about a source that changes while it is recording, and a screen showing what each
+    /// channel is capturing reads it from a thread that has nothing to do with the one that moved
+    /// it.
+    /// </remarks>
+    public CaptureTarget Listening
+    {
+        get => Volatile.Read(ref listening);
+        private set => Volatile.Write(ref listening, value);
+    }
 
     /// <summary>The format that device handed over.</summary>
     public StreamFormat Format { get; }
@@ -132,6 +154,13 @@ public sealed class CaptureSource : IDisposable
     /// <see cref="Stop"/> is what says why.
     /// </summary>
     public bool HasEnded => ended.IsSet;
+
+    // What the stream threw on its way out is deliberately not offered here. It was, once, so that
+    // a screen could print it while the meeting ran — and what a person got was a COMException, or
+    // this file's own sentence, or the filesystem's, all of it framework English on a screen every
+    // word of which is owed in two languages. A channel that died is said in words the catalogue
+    // owns; the machine's own text is put in the sentence Finish throws, where it is read by
+    // whoever is diagnosing a meeting rather than by whoever is recording one.
 
     /// <summary>The loudest block since this was last asked, which is what a meter shows.</summary>
     public LevelReading Level() => meter.Read();

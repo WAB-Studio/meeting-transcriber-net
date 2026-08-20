@@ -30,6 +30,18 @@ public static class AudioCommands
         Report.Line(output, "playback", playback.ToString());
         Report.Line(output, "id", playback.Id);
 
+        // What the endpoint declares itself to be, and what rests on it: the recording screen puts
+        // a line beside the meters when the meeting is coming out into the room, because then the
+        // microphone is recording the other side a second time. Reported here because this is the
+        // command that says what this machine is, and it is where somebody checks that answer
+        // against the device they are actually wearing.
+        Report.Line(
+            output,
+            "form factor",
+            playback.PlaysIntoTheRoom
+                ? $"{playback.Kind} — the microphone hears the others twice"
+                : playback.Kind.ToString());
+
         var microphones = AudioDevices.Microphones();
         if (microphones.Count == 0)
         {
