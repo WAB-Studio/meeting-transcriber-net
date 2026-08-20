@@ -84,6 +84,48 @@ public sealed class RecoveryCommandTests : IDisposable
     }
 
     /// <summary>
+    /// ISC-126 on this surface too, which is the other half of the same start after a crash. The
+    /// folder is listed saying nothing about it is anybody's yet, and each of the three typed
+    /// anyway comes back about the meeting rather than about a block file that would not open —
+    /// which is what a person would otherwise read, under advice to run the command again.
+    /// </summary>
+    [Theory]
+    [InlineData("--keep")]
+    [InlineData("--export")]
+    [InlineData("--discard")]
+    public void None_of_the_three_lands_on_a_folder_a_capture_is_still_writing(string decision)
+    {
+        Recorded("daily", both: true);
+        var into = Folder("taken out");
+
+        // Held before the command runs, which is what a meeting in progress looks like to a start:
+        // writing the spool, and letting nothing else write it.
+        using var writing = new FileStream(
+            BlockSpool.FileFor(Folder("daily"), AudioChannel.Loopback).FullName,
+            FileMode.Open,
+            FileAccess.Write,
+            FileShare.Read);
+
+        CommandLine.Of("recordings", "--spool", root.FullName)
+            .Value("choices")
+            .ShouldStartWith("nothing yet — it is still being recorded");
+
+        string[] typed = ["recover", "--in", Folder("daily").FullName, decision];
+
+        var run = CommandLine.Of(decision is "--export" ? [.. typed, into.FullName] : typed);
+
+        run.Code.ShouldBe(Cli.Refused, run.Output);
+        run.Error.ShouldContain("still being recorded");
+        run.Error.ShouldNotContain(".blocks");
+
+        // Nothing was made, taken out or thrown away — and the destination is not there at all,
+        // which is what a refusal reaching the folder before the audio buys.
+        Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+        MeetingAudio.In(Folder("daily")).Exists.ShouldBeFalse();
+        into.Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
     /// A recording the machine died in the middle of is worth every block that landed, and keeping
     /// it says what the last one cost — and leaves the meeting those blocks are, which is the whole
     /// of what a person came to the folder for.

@@ -46,23 +46,36 @@ public sealed record WaitingRecording(UnfinishedRecording Spooled, Guid? Meeting
     public long Bytes => Spooled.Sources.Sum(source => source.Bytes);
 
     /// <summary>
+    /// Why there is nothing to decide about this recording yet, or nothing when there is — the
+    /// spool's own answer, which is where the rule and the three outcomes it shuts both live.
+    /// </summary>
+    /// <remarks>
+    /// The two questions this type answers about a recording, and they are not the same one.
+    /// <see cref="Unrecoverable"/> names the single choice a damaged recording is shut out of,
+    /// with the other two still open; this one shuts all three, because the recording is
+    /// unfinished rather than broken. Whoever shows a recording asks this first: a meeting that is
+    /// still happening is nothing to decide about, and everything the other property has to say
+    /// about it is about a recording that has not stopped yet.
+    /// </remarks>
+    public string? NothingToDecideYet => Spooled.NothingToDecideYet;
+
+    /// <summary>
     /// Why this cannot become a meeting somebody plays, or nothing when it can.
     /// </summary>
     /// <remarks>
     /// Said rather than discovered by pressing the button. Every one of them is a recording
     /// somebody still has to decide about — taking one out to a folder and throwing one away both
     /// stay open — so answering here is the difference between one choice being unavailable and a
-    /// recording looking like it is not there.
+    /// recording looking like it is not there. That is what keeps the recording still being
+    /// written out of this list: all three are shut on that one, so a reason here that offered the
+    /// other two would be a sentence about a meeting still happening that is not true of it.
+    /// <see cref="NothingToDecideYet"/> is that case, and the engine refuses all three outcomes
+    /// itself, so nothing rests on which of the two a caller thought to ask.
     /// </remarks>
     public string? Unrecoverable
     {
         get
         {
-            if (Running)
-            {
-                return "it is still being recorded";
-            }
-
             if (MeetingId is not Guid meeting)
             {
                 return "nothing here says which meeting it is";
@@ -175,7 +188,8 @@ public static class WaitingRecordings
     /// <remarks>
     /// A meeting still being recorded is in the list and says so, rather than being left out: the
     /// meeting somebody is in the middle of is the last thing to hide, and what it is not is
-    /// something to decide about — <see cref="WaitingRecording.Unrecoverable"/> says which.
+    /// something to decide about — <see cref="WaitingRecording.NothingToDecideYet"/> says so, and
+    /// it is the first thing anything showing one of these asks.
     /// </remarks>
     public static IReadOnlyList<WaitingRecording> In(CorpusDbContext corpus)
     {
@@ -233,6 +247,12 @@ public static class WaitingRecordings
     {
         ArgumentNullException.ThrowIfNull(corpus);
         ArgumentNullException.ThrowIfNull(recording);
+
+        // The spool's own refusal, asked rather than restated, and before the one below it: a
+        // meeting that has not stopped is not a recording this can find anything wrong with. It is
+        // what stands between a long finish and the blocks a capture is still writing, which is
+        // the same thing `Keep`, `Export` and `Discard` each ask before they touch a file.
+        recording.Spooled.EnsureThereIsSomethingToDecide();
 
         if (recording.Unrecoverable is not null)
         {

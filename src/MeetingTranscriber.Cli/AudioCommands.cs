@@ -241,6 +241,11 @@ public static class AudioCommands
         Report.Line(output, "folder", recording.Folder.FullName);
         Describe(recording, output);
 
+        // Said before any of the three is reached. Keeping one goes through the file the two
+        // sources become before it goes through `Keep`, so a meeting still being recorded would
+        // otherwise fail there — on a block file, and under advice to run this again.
+        recording.EnsureThereIsSomethingToDecide();
+
         if (discard)
         {
             recording.Discard();
@@ -338,9 +343,11 @@ public static class AudioCommands
     /// </summary>
     private static void Describe(UnfinishedRecording recording, TextWriter output)
     {
-        if (recording.Running)
+        // The spool's own words rather than this command's, so that the two listings a person can
+        // reach say one thing about the same folder.
+        if (recording.NothingToDecideYet is { } yet)
         {
-            Report.Line(output, "still", "being recorded, so there is nothing to decide about it yet");
+            Report.Line(output, "choices", $"nothing yet — {yet}");
         }
 
         // Said whichever of the two files was torn, and beside the card rather than instead of it:

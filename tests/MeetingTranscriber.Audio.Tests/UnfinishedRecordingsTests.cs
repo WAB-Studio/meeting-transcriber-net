@@ -284,6 +284,42 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// The same three, refused on what the recording is rather than on what a handle did. The
+    /// difference from the test above is the order: this one is found while the capture is already
+    /// writing, which is what a start after a crash finds, so the refusal is reached before any
+    /// file is opened and says what a person is deciding about — a meeting that has not stopped.
+    /// </summary>
+    [Fact]
+    public void A_recording_found_while_it_is_being_written_refuses_the_three_by_naming_the_meeting()
+    {
+        Recorded("daily", both: true);
+
+        using var writing = Recording(AudioChannel.Loopback);
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        recording.NothingToDecideYet.ShouldNotBeNull().ShouldContain("still being recorded");
+
+        Refuses(() => recording.Keep());
+        Refuses(() => recording.Export(Folder("out")));
+        Refuses(recording.Discard);
+
+        Folder("daily").Exists.ShouldBeTrue();
+
+        // Not even the folder somebody named to take it out into: a refusal that had already made
+        // one would leave an empty directory behind as the only trace of the attempt.
+        Folder("out").Exists.ShouldBeFalse();
+
+        void Refuses(Action decision)
+        {
+            var thrown = Should.Throw<AudioCaptureException>(decision);
+
+            thrown.Message.ShouldContain("still being recorded");
+            thrown.Message.ShouldContain(Folder("daily").FullName);
+            thrown.Message.ShouldNotContain(".blocks");
+        }
+    }
+
+    /// <summary>
     /// A meeting still being recorded is not a recording nobody stopped. Throwing one away would
     /// be the worst of the three outcomes landing on the one recording somebody is in the middle
     /// of, so it is refused where the refusal can still name what is happening.

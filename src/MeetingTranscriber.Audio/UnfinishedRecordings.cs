@@ -1,4 +1,4 @@
-using MeetingTranscriber.Domain.Audio;
+﻿using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Audio;
@@ -58,6 +58,10 @@ public sealed record ExportedSource(AudioChannel Channel, FileInfo Wav, int Bloc
 /// hidden — a meeting somebody is in the middle of is the last thing to leave off a list. What it
 /// is not is something to decide about: all three outcomes refuse it, because two of them read a
 /// file that is still growing and the third would throw away a meeting that is still happening.
+/// <see cref="EnsureThereIsSomethingToDecide"/> is where all three refuse it and the only place
+/// that says so, so that a caller reaches the answer about the meeting rather than the answer
+/// about a block file that would not open — and so that a surface built later gets it by
+/// construction instead of by remembering to ask.
 /// </para>
 /// </remarks>
 /// <param name="Folder">Where the recording is.</param>
@@ -85,10 +89,58 @@ public sealed record UnfinishedRecording(
     IReadOnlyList<SourceChanged> Changed)
 {
     /// <summary>
+    /// Why there is nothing to decide about this recording yet, or nothing when there is.
+    /// </summary>
+    /// <remarks>
+    /// A meeting a capture is still writing, which is the one case. It is here, beside the three
+    /// outcomes and the handle that answers it, because everything the rule is made of is here:
+    /// a copy of it anywhere else is a surface that can forget to ask, which is what happens the
+    /// first time somebody writes a second one.
+    /// </remarks>
+    public string? NothingToDecideYet => Running
+        ? "it is still being recorded, and a meeting that is still happening is not one to decide "
+            + "about yet"
+        : null;
+
+    /// <summary>
+    /// Throws unless this recording is one somebody may decide about, which every one of the three
+    /// outcomes asks before it does anything.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The words, once, where all three reach them. A capture holding the blocks would stop each
+    /// of the three anyway — the file system is what actually protects them, and
+    /// <see cref="UnfinishedRecordings.EnsureRemovable"/> is what makes that atomic with the
+    /// delete — but what comes back from a handle is a sentence about a file that would not open.
+    /// The person is deciding about a meeting, so the refusal is about the meeting.
+    /// </para>
+    /// <para>
+    /// It says what is mechanically true first and what it means second, so that the one case this
+    /// cannot tell apart — something else on the machine holding a spool open — reads as what was
+    /// observed rather than as an assertion about a meeting nobody is in.
+    /// </para>
+    /// </remarks>
+    public void EnsureThereIsSomethingToDecide()
+    {
+        if (NothingToDecideYet is { } yet)
+        {
+            throw new AudioCaptureException(
+                $"'{Folder.FullName}' is not one to decide about yet: {yet}. Something is holding "
+                + "its blocks open, which on this machine is a capture writing them; once nothing "
+                + "is, keeping it, taking it out and throwing it away are all open.");
+        }
+    }
+
+    /// <summary>
     /// Reads every source through and says what survived, changing nothing. The recording is still
     /// there afterwards, which is what keeping it means.
     /// </summary>
-    public IReadOnlyList<SurvivingSource> Keep() => [.. Sources.Select(Survived)];
+    public IReadOnlyList<SurvivingSource> Keep()
+    {
+        EnsureThereIsSomethingToDecide();
+
+        return [.. Sources.Select(Survived)];
+    }
 
     /// <summary>
     /// Writes each source into <paramref name="into"/> as a file somebody can play, in the format
@@ -111,6 +163,7 @@ public sealed record UnfinishedRecording(
     public IReadOnlyList<ExportedSource> Export(DirectoryInfo into)
     {
         ArgumentNullException.ThrowIfNull(into);
+        EnsureThereIsSomethingToDecide();
 
         into.Create();
         var claimed = new List<FileInfo>();
@@ -160,6 +213,10 @@ public sealed record UnfinishedRecording(
     /// </remarks>
     public void Discard()
     {
+        // Both, and in this order. The first is what a person is told; the second is what actually
+        // stands between this and a folder it should never have removed, and it is asked again
+        // against the file system because the first is an answer read a moment ago.
+        EnsureThereIsSomethingToDecide();
         UnfinishedRecordings.EnsureRemovable(this);
         Folder.Delete(recursive: true);
     }
