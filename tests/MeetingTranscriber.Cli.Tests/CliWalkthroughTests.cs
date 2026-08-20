@@ -108,7 +108,40 @@ public class CliWalkthroughTests
         second.Value("meeting").ShouldStartWith(first.Value("meeting"));
         second.Output.ShouldContain("already here");
         second.Value("turns").ShouldBe(first.Value("turns"));
+        second.Values("put back").ShouldBeEmpty();
         CommandLine.Of("status", "--corpus", root).Value("meetings").ShouldBe("1 active");
+    }
+
+    /// <summary>
+    /// And when the corpus had the row and had lost the paid file, handing it over again puts it
+    /// back and the report names it — the same answer the audio door gives, because it is the same
+    /// thing happening.
+    /// </summary>
+    /// <remarks>
+    /// The two doors saying it the same way is what the test is for. One of them naming repairs
+    /// teaches somebody that this tool names repairs, and the other one's silence would then read
+    /// as "nothing was missing" over a corpus that had a hole in it a moment ago.
+    /// </remarks>
+    [Fact]
+    public void A_response_that_puts_a_lost_file_back_says_which_file()
+    {
+        using var corpus = new TemporaryCorpus();
+        var root = corpus.Root.FullName;
+        CommandLine.Of("migrate", "--corpus", root);
+
+        var first = Import(root);
+        first.Code.ShouldBe(Cli.Ok, first.Error);
+
+        var response = first.Value("response");
+        File.Delete(Path.Combine(root, response));
+
+        var again = Import(root);
+
+        again.Code.ShouldBe(Cli.Ok, again.Error);
+        again.Value("put back").ShouldBe(response);
+
+        var sound = CommandLine.Of("check", "--corpus", root, "--verify-contents");
+        sound.Code.ShouldBe(Cli.Ok, sound.Error);
     }
 
     /// <summary>
@@ -125,7 +158,7 @@ public class CliWalkthroughTests
         CommandLine.Of("migrate", "--corpus", root);
 
         var refused = CommandLine.Of(
-            "import",
+            "import-response",
             DeepgramFixtures.PathOf(Fixture),
             "--corpus",
             root,
@@ -141,7 +174,7 @@ public class CliWalkthroughTests
     }
 
     private static Run Import(string root) => CommandLine.Of(
-        "import",
+        "import-response",
         DeepgramFixtures.PathOf(Fixture),
         "--corpus",
         root,

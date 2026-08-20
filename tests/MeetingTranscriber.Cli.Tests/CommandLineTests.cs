@@ -38,8 +38,9 @@ public class CommandLineTests
         run.Code.ShouldBe(Cli.Ok);
         foreach (var command in new[]
         {
-            "migrate", "status", "check", "sweep", "restore", "compact", "import", "render", "rebuild",
-            "devices", "capture", "recordings", "recover", "search",
+            "migrate", "status", "check", "sweep", "restore", "compact", "import-response",
+            "import-audio", "render", "rebuild", "devices", "capture", "recordings", "recover",
+            "search",
         })
         {
             run.Output.ShouldContain(command);
@@ -326,7 +327,7 @@ public class CommandLineTests
     }
 
     private static Run Import(string root) => CommandLine.Of(
-        "import",
+        "import-response",
         DeepgramFixtures.PathOf(Fixture),
         "--corpus",
         root,

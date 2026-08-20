@@ -223,11 +223,20 @@ public static class BlockSpool
     /// why that happened rather than that a handle would not close on the way out.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// One of these, here, rather than one per file that needs it. What may be taken away and what
     /// may not is the rule this whole path is built on, and a copy of it in each of four files is
     /// four chances for the fifth to be written differently.
+    /// </para>
+    /// <para>
+    /// Public for that reason and not because anything outside wanted a delete. It was internal
+    /// until a working file was made outside this assembly, and the first caller who could not
+    /// reach the rule wrote it again — badly, as a bare <c>Delete</c> in a <c>finally</c>, which
+    /// throws over a locked handle and replaces whatever failure was already on its way out. A
+    /// rule with no door is a rule that gets reinvented.
+    /// </para>
     /// </remarks>
-    internal static void Erase(FileInfo file)
+    public static void Erase(FileInfo file)
     {
         ArgumentNullException.ThrowIfNull(file);
 

@@ -77,12 +77,21 @@ public static class Cli
             $"compact {Corpus.Option} <directory>",
             "reclaim space and put the search indexes back, which is never one without the other",
             DiagnosticCommands.Compact),
+        // Two doors, and each says which one it is. `import` on its own was unambiguous for
+        // exactly as long as a response was the only thing a meeting could be made out of.
         new(
-            "import",
-            $"import <{MeetingIntake.ResponseFileName}> {Corpus.Option} <directory> --started-at <instant>"
-            + " --profile <multichannel|diarize> [--title <text>] [--context <text>] [--language <code>]",
+            "import-response",
+            $"import-response <{MeetingIntake.ResponseFileName}> {Corpus.Option} <directory>"
+            + " --started-at <instant> --profile <multichannel|diarize> [--title <text>]"
+            + " [--context <text>] [--language <code>]",
             "file a paid response as a meeting and render everything derived from it",
-            MeetingCommands.Import),
+            MeetingCommands.ImportResponse),
+        new(
+            "import-audio",
+            $"import-audio <file.wav> {Corpus.Option} <directory> --started-at <instant>"
+            + " [--language <code>] [--title <text>] [--context <text>]",
+            "bring audio in as a meeting, as whatever the file and its folder say it is",
+            MeetingCommands.ImportAudio),
         new(
             "render",
             $"render <meeting-id> {Corpus.Option} <directory>",
