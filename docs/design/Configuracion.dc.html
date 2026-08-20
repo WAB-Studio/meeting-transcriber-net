@@ -1,0 +1,141 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: transparent; }
+    a { color: #4F7561; } a:hover { color: #3C5B4A; }
+  </style>
+</helmet>
+
+<div style="width: 1120px; height: 760px; box-sizing: border-box; padding: 30px 40px; display: flex; flex-direction: column; gap: 18px; overflow: hidden; background: #FCFCFB; color: #1C1B19; font-family: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 20px;">
+
+  <div style="flex: none; display: flex; align-items: center; gap: 12px; padding: 0 6px;">
+    <div style="width: 34px; height: 34px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 999px; background: #F4F3EF;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1C1B19" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg>
+    </div>
+    <div style="font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -.02em;">Configuración</div>
+  </div>
+
+  <div style="flex: 1; min-height: 0; display: flex; gap: 16px; padding: 0 6px;">
+
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+
+      <div style="padding: 20px 22px; background: #F4F3EF; border-radius: 16px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="font-size: 16px; line-height: 22px; font-weight: 600;">Cuando termina una grabación</div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #EEF2EF; border-radius: 12px;">
+            <span style="width: 16px; height: 16px; flex: none; border-radius: 50%; background: #4F7561; box-shadow: inset 0 0 0 4px #FCFCFB;"></span>
+            <div style="display: flex; flex-direction: column; gap: 1px;">
+              <span style="font-size: 15px; line-height: 21px; font-weight: 500;">Transcribirla y resumirla</span>
+              <span style="font-size: 13px; line-height: 19px; color: #6E6C66;">Queda lista para leer sin que tengas que hacer nada.</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px;">
+            <span style="width: 16px; height: 16px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px #C3BFB6;"></span>
+            <div style="display: flex; flex-direction: column; gap: 1px;">
+              <span style="font-size: 15px; line-height: 21px;">Sólo transcribirla</span>
+              <span style="font-size: 13px; line-height: 19px; color: #6E6C66;">El resumen se pide después, una por una.</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px;">
+            <span style="width: 16px; height: 16px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px #C3BFB6;"></span>
+            <div style="display: flex; flex-direction: column; gap: 1px;">
+              <span style="font-size: 15px; line-height: 21px;">Preguntarme cada vez</span>
+              <span style="font-size: 13px; line-height: 19px; color: #6E6C66;">Nada se cobra sin que lo apretés vos.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding: 20px 22px; background: #F4F3EF; border-radius: 16px; display: flex; flex-direction: column; gap: 12px;">
+        <div style="font-size: 16px; line-height: 22px; font-weight: 600;">Dónde se guarda</div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 13px; line-height: 20px; padding: 7px 14px; border-radius: 999px; background: #FCFCFB;">D:\Corpus\reuniones</span>
+          <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: #9B9891;">34 reuniones · 12,4 GB</span>
+          <button style="margin-left: auto; height: 34px; padding: 0 15px; background: #FCFCFB; border: none; border-radius: 999px; color: #1C1B19; font-family: inherit; font-size: 14px; cursor: pointer;">Cambiar</button>
+        </div>
+      </div>
+
+      <div style="padding: 20px 22px; background: #F4F3EF; border-radius: 16px; display: flex; align-items: center; gap: 16px;">
+        <div style="font-size: 16px; line-height: 22px; font-weight: 600;">Idioma de la app</div>
+        <div style="margin-left: auto; display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 14px; background: #FCFCFB; border-radius: 999px;">
+          <span style="font-size: 14px;">Español</span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6E6C66" stroke-width="2.2" stroke-linecap="round"><path d="M5 9l7 7 7-7"></path></svg>
+        </div>
+      </div>
+
+    </div>
+
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px;">
+
+      <div style="padding: 20px 22px; background: #F4F3EF; border-radius: 16px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; align-items: baseline; gap: 10px;">
+          <span style="font-size: 16px; line-height: 22px; font-weight: 600;">Transcribir con</span>
+          <span style="font-size: 13px; line-height: 22px; color: #9B9891;">pasa el audio a texto</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #EEF2EF; border-radius: 12px;">
+            <span style="width: 16px; height: 16px; flex: none; border-radius: 50%; background: #4F7561; box-shadow: inset 0 0 0 4px #FCFCFB;"></span>
+            <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0;">
+              <span style="font-size: 15px; line-height: 21px; font-weight: 500;">Deepgram nova-3</span>
+              <span style="font-size: 13px; line-height: 19px; color: #6E6C66;">En internet. Se cobra por minuto de audio.</span>
+            </div>
+            <span style="margin-left: auto; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: #C2683C; border-bottom: 1.5px dashed #C2683C;">[costo] / min</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px;">
+            <span style="width: 16px; height: 16px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px #C3BFB6;"></span>
+            <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0;">
+              <span style="font-size: 15px; line-height: 21px;">Un modelo en esta máquina</span>
+              <span style="font-size: 13px; line-height: 19px; color: #6E6C66;">Sin internet y sin costo. Tarda más y ocupa disco.</span>
+            </div>
+            <button style="margin-left: auto; height: 32px; padding: 0 14px; background: #FCFCFB; border: none; border-radius: 999px; color: #1C1B19; font-family: inherit; font-size: 13px; cursor: pointer;">Descargar</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding: 20px 22px; background: #F4F3EF; border-radius: 16px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; align-items: baseline; gap: 10px;">
+          <span style="font-size: 16px; line-height: 22px; font-weight: 600;">Resumir con</span>
+          <span style="font-size: 13px; line-height: 22px; color: #9B9891;">saca decisiones, pendientes y preguntas</span>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #EEF2EF; border-radius: 12px;">
+            <span style="width: 16px; height: 16px; flex: none; border-radius: 50%; background: #4F7561; box-shadow: inset 0 0 0 4px #FCFCFB;"></span>
+            <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0;">
+              <span style="font-size: 15px; line-height: 21px; font-weight: 500;">Claude</span>
+              <span style="font-size: 13px; line-height: 19px; color: #6E6C66;">En internet. Se cobra por reunión resumida.</span>
+            </div>
+            <span style="margin-left: auto; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 12px; color: #C2683C; border-bottom: 1.5px dashed #C2683C;">[costo]</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px;">
+            <span style="width: 16px; height: 16px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px #C3BFB6;"></span>
+            <div style="display: flex; flex-direction: column; gap: 1px; min-width: 0;">
+              <span style="font-size: 15px; line-height: 21px;">Un modelo en esta máquina</span>
+              <span style="font-size: 13px; line-height: 19px; color: #6E6C66;">Sin internet y sin costo. Resume peor que el de arriba.</span>
+            </div>
+            <button style="margin-left: auto; height: 32px; padding: 0 14px; background: #FCFCFB; border: none; border-radius: 999px; color: #1C1B19; font-family: inherit; font-size: 13px; cursor: pointer;">Descargar</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="padding: 18px 22px; background: #EEF2EF; border-radius: 16px; font-size: 14px; line-height: 21px; color: #6E6C66;">Transcribir y resumir se cobran por separado. Si uno de los dos falla, el otro ya está hecho y no se vuelve a pagar.</div>
+
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

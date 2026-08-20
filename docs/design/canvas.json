@@ -1,0 +1,43 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Flujo" },
+    { "id": "page-2", "name": "Sistema" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "title": "Inicio", "x": 0, "y": 0, "w": 1120, "h": 720, "page": "page-1" },
+    { "file": "GrabandoVivo.dc.html", "title": "Grabando · en vivo", "x": 1200, "y": 0, "w": 1120, "h": 720, "page": "page-1" },
+    { "file": "GrabandoDiferido.dc.html", "title": "Grabando · al terminar", "x": 2400, "y": 0, "w": 1120, "h": 720, "page": "page-1" },
+    { "file": "NadaLlego.dc.html", "title": "No llegó nada del programa", "x": 3600, "y": 0, "w": 1120, "h": 720, "page": "page-1" },
+
+    { "file": "Fallo.dc.html", "title": "Se murió una fuente", "x": 0, "y": 840, "w": 1120, "h": 720, "page": "page-1" },
+    { "file": "AlParar.dc.html", "title": "Al parar", "x": 1200, "y": 840, "w": 1120, "h": 720, "page": "page-1" },
+    { "file": "Configuracion.dc.html", "title": "Configuración", "x": 2400, "y": 840, "w": 1120, "h": 760, "page": "page-1" },
+    { "file": "Recuperacion.dc.html", "title": "Recuperación", "x": 3600, "y": 840, "w": 1120, "h": 720, "page": "page-1" },
+
+    { "file": "Reunion.dc.html", "title": "La reunión", "x": 0, "y": 1680, "w": 1120, "h": 860, "page": "page-1" },
+    { "file": "Clasificar.dc.html", "title": "De qué fue", "x": 1200, "y": 1680, "w": 1120, "h": 720, "page": "page-1" },
+    { "file": "QuienEsQuien.dc.html", "title": "Quién es quién", "x": 2400, "y": 1680, "w": 1120, "h": 720, "page": "page-1" },
+    { "file": "Correcciones.dc.html", "title": "Palabras que salen mal", "x": 3600, "y": 1680, "w": 1120, "h": 820, "page": "page-1" },
+
+    { "file": "Sistema.dc.html", "title": "Olivo · sistema visual", "x": 0, "y": 0, "w": 1120, "h": 1560, "page": "page-2" }
+  ],
+  "annotations": [
+    { "id": "f-intro", "x": 0, "y": -330, "w": 940, "page": "page-1", "text": "Doce pantallas en Olivo. Fila 1: grabar. Fila 2: lo que pasa cuando la grabación termina o se rompe. Fila 3: lo que se hace con la reunión después.\nEsta vuelta salió afuera todo el vocabulario del dominio: nada de work_of, ni árbol, ni reglas explicadas, ni etiquetas de hablante. Si una línea existía para explicar cómo funciona la app por dentro, se fue." },
+
+    { "id": "f-inicio", "x": 0, "y": -180, "w": 340, "page": "page-1", "text": "El selector de programa y el de micrófono están pegados al medidor: se elige, se mira, se elige el siguiente. Es el caso de los tres Teams." },
+    { "id": "f-vivo", "x": 1200, "y": -180, "w": 340, "page": "page-1", "text": "En vivo, el texto aparece palabra por palabra y la cola va en gris: eso es lo provisorio, que el proveedor todavía corrige. Lo gris no es lo que se guarda." },
+    { "id": "f-diferido", "x": 2400, "y": -180, "w": 340, "page": "page-1", "text": "Al terminar, la pantalla es más callada a propósito: sin transcripción, los medidores se quedan con el lugar. No hay relleno inventado para tapar el hueco." },
+    { "id": "f-nada", "x": 3600, "y": -180, "w": 340, "page": "page-1", "text": "Cambiar de programa está junto al medidor del canal 0, que es la evidencia. Deuda: cambiar de fuente sin cortar la grabación el motor todavía no lo puede hacer — está en la card 86ak17xae, en curso." },
+
+    { "id": "f-fallo", "x": 0, "y": 730, "w": 340, "page": "page-1", "text": "Perder el micrófono no mata la reunión: el canal 0 sigue y se ve que sigue. Cambiar de micrófono al vuelo tiene la misma deuda de motor." },
+    { "id": "f-parar", "x": 1200, "y": 730, "w": 340, "page": "page-1", "text": "Sin el cartel de «no cierres la app». Si se cierra, se recupera en la próxima. La reunión ya aparece abajo, guardándose." },
+    { "id": "t-config", "x": 2400, "y": 730, "w": 340, "page": "page-1", "text": "Elegir entre transcribir y resumir dejó de ser una pantalla por reunión: es una preferencia que se pone una vez.\nLos dos motores son elecciones separadas, con su costo cada una, y «un modelo en esta máquina» es una opción más, no un caso especial. Los importes van como [costo]: el precio real sale de tu cuenta y no lo invento." },
+    { "id": "f-recup", "x": 3600, "y": 730, "w": 340, "page": "page-1", "text": "La reunión en curso va siempre arriba, y no ofrece ninguna de las tres: todavía no hay nada que decidir." },
+
+    { "id": "f-leer", "x": 0, "y": 1560, "w": 620, "page": "page-1", "text": "La pantalla de leer la transcripción ya no existe: nadie abre una app para leer 148 turnos. En su lugar está lo que dejó la IA, y la transcripción pasó a ser lo que abre una cita — se despliega ahí mismo, sin irse a otro lado.\nEn el reproductor, las marcas de colores son las citas del resumen: se ve dónde cae cada cosa a lo largo de la hora." },
+    { "id": "c-clasificar", "x": 1200, "y": 1560, "w": 340, "page": "page-1", "text": "Las plantillas son las trece reuniones de arquitectura.md §5.3, pero sólo por su nombre: qué llena cada una no se explica, se ve al elegirla. Sin árbol, sin roles con nombre técnico, sin panel de ayuda." },
+    { "id": "c-quien", "x": 2400, "y": 1560, "w": 340, "page": "page-1", "text": "Las voces se llaman «Tu micrófono», «Voz 1», «Voz 2», y no por la etiqueta con la que se guardan. Cada una trae un fragmento y un corte de audio; la que habla poco trae tres." },
+    { "id": "c-correcciones", "x": 3600, "y": 1560, "w": 340, "page": "page-1", "text": "El problema no era aplicar las correcciones sino encontrarlas: nadie va a leer el corpus buscando qué salió mal. Acá la persona escribe la palabra como va y el corpus le devuelve cómo quedó escrita; abajo aparecen solas las que sonaron dudosas y se parecen a algo que decís seguido. Ninguna de las dos listas necesita que un modelo lea las reuniones." }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

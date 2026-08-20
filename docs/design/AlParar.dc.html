@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: transparent; }
+    a { color: #4F7561; } a:hover { color: #3C5B4A; }
+  </style>
+</helmet>
+
+<div style="width: 1120px; height: 720px; box-sizing: border-box; padding: 30px 40px; display: flex; flex-direction: column; gap: 20px; overflow: hidden; background: #FCFCFB; color: #1C1B19; font-family: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 20px;">
+
+  <div style="flex: none; display: flex; align-items: center; gap: 11px; padding: 0 6px;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-linecap="round"><path d="M8 7a7 7 0 0 0 0 10" stroke="#1C1B19" stroke-width="2.2"></path><path d="M14.5 5a9.5 9.5 0 0 1 0 14" stroke="#4F7561" stroke-width="2.2"></path></svg>
+    <span style="font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.015em;">Meeting Transcriber</span>
+    <div style="margin-left: auto; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 999px;">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#9B9891" stroke-width="1.5"><circle cx="12" cy="12" r="3"></circle><path d="M12 3.5v2.2M12 18.3v2.2M20.5 12h-2.2M5.7 12H3.5M18 6l-1.6 1.6M7.6 16.4L6 18M18 18l-1.6-1.6M7.6 7.6L6 6"></path></svg>
+    </div>
+  </div>
+
+  <div style="flex: none; padding: 24px 26px; background: #F4F3EF; border-radius: 18px; display: flex; flex-direction: column; gap: 20px;">
+
+    <div style="display: flex; flex-direction: column; gap: 3px;">
+      <div style="font-size: 26px; line-height: 32px; font-weight: 600; letter-spacing: -.02em;">Guardando la reunión</div>
+      <div style="font-size: 14px; line-height: 20px; color: #6E6C66;">Sync de producto · 47 min · las dos fuentes ya dejaron de escribir</div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px; max-width: 640px;">
+      <div style="display: flex; align-items: baseline;">
+        <span style="font-size: 14px; line-height: 20px;">Escribiendo el audio en el corpus</span>
+        <span style="margin-left: auto; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 12px; line-height: 20px; color: #6E6C66;">148 MB de 214 MB</span>
+      </div>
+      <div style="position: relative; height: 6px; border-radius: 999px; background: #E6E4DE;">
+        <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 69%; border-radius: 999px; background: #4F7561;"></div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 11px;">
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <svg style="flex: none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4F7561" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"></path></svg>
+        <span style="font-size: 14px; line-height: 20px; color: #6E6C66;">Las dos fuentes dejaron de escribir</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <svg style="flex: none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4F7561" stroke-width="2.2" stroke-linecap="round"><path d="M12 3.5a8.5 8.5 0 1 1-8.5 8.5"></path><path d="M3.5 12a8.5 8.5 0 0 1 3-6.5" opacity=".25"></path></svg>
+        <span style="font-size: 14px; line-height: 20px;">Guardando el audio de los dos canales</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; opacity: .45;">
+        <svg style="flex: none;" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6E6C66" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"></circle></svg>
+        <span style="font-size: 14px; line-height: 20px;">Mandarla a transcribir con nova-3</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 9px; padding: 0 6px;">
+
+    <div style="flex: none; display: flex; align-items: baseline; gap: 10px;">
+      <span style="font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.015em;">Reuniones</span>
+      <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 20px; color: #9B9891;">35</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 6px;">
+      <div style="display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-radius: 13px; background: #EEF2EF;">
+        <span style="font-size: 14px; line-height: 20px; font-weight: 600;">Sync de producto</span>
+        <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 20px; color: #9B9891;">RECIÉN · 47:12</span>
+        <span style="margin-left: auto; font-size: 13px; line-height: 20px; color: #4F7561;">guardando</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-radius: 13px; background: #F4F3EF;">
+        <span style="font-size: 14px; line-height: 20px;">Entrevista — Marina Robles</span>
+        <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 20px; color: #9B9891;">AYER 16:00 · 1:12:04</span>
+        <span style="margin-left: auto; font-size: 13px; line-height: 20px; color: #9B9891;">148 turnos</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-radius: 13px; background: #F4F3EF;">
+        <span style="font-size: 14px; line-height: 20px;">Retro de sprint</span>
+        <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 20px; color: #9B9891;">15 AGO · 38:22</span>
+        <span style="margin-left: auto; font-size: 13px; line-height: 20px; color: #9B9891;">3 voces sin nombre</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 14px; padding: 10px 18px; border-radius: 13px; background: #F4F3EF;">
+        <span style="font-size: 14px; line-height: 20px;">Llamada con proveedor</span>
+        <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 20px; color: #9B9891;">14 AGO · 22:40</span>
+        <span style="margin-left: auto; font-size: 13px; line-height: 20px; color: #9B9891;">en cola</span>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
