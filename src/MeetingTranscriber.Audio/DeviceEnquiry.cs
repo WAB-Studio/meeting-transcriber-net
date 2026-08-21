@@ -46,78 +46,79 @@ namespace MeetingTranscriber.Audio;
 /// </para>
 /// <para>
 /// Remembered on the deadline and never at the start, which is what keeps a healthy machine free:
-/// two callers really do ask the same thing at once — the window listing the microphones as it
-/// opens, the watcher listing them on its own thread — and a question refused because another was
-/// in flight would be a device change missed on a machine with nothing wrong with it. The cost of
-/// that choice is the one window this cannot close: callers already inside their first five
-/// seconds are not stopped by what the first of them learns, so each of them pays the deadline
-/// once. Once at all, and never once per look, is the whole of what is claimed.
+/// an ask refused because another was in flight would refuse a caller nothing had gone wrong for.
+/// The cost of that choice is the one window this cannot close: a caller already inside its own
+/// five seconds is not stopped by what another learns, so each of them pays the deadline once —
+/// and so does a caller arriving in the moment between one giving up and writing that down. Once
+/// at all, and never once per look, is the whole of what is claimed.
 /// </para>
 /// <para>
-/// All of them and not the last one, for as many as are out there asking the same thing. A machine
-/// that came back from one of those while another is still out is not a machine answering that
-/// question: the second thread is inside the same call, and admitting a look on that evidence puts
-/// the deadline back into every poll — which is the freeze again, in the shape that is hardest to
-/// see. What it costs is that a body which never comes back at all leaves this application unable
-/// to ask that one thing until it is restarted, and that is deliberate: it is what a device given
-/// up on already costs here, and a question whose thread is permanently inside a driver is one a
-/// fresh ask would wedge in too.
+/// Two callers do overlap and it is the two questions, not one question twice: the screen asks
+/// what the machine plays through on its dispatcher while the watcher lists the microphones on its
+/// own thread, and both are live for the whole of a meeting. So the deadline paid once is paid
+/// once per question, which is also the whole of what the scoping above changes — nothing in the
+/// product puts two asks of one question in flight at the same moment.
+/// </para>
+/// <para>
+/// What a body that never comes back at all costs is that this application cannot ask that one
+/// thing until it is restarted, and that is deliberate: it is what a device given up on already
+/// costs here, and an ask whose thread is permanently inside a driver is one a fresh ask would
+/// wedge in too. A machine that comes back late is forgiven at the next look, since what came back
+/// is dropped before anything is refused.
 /// </para>
 /// </remarks>
 public static class DeviceEnquiry
 {
     /// <summary>
-    /// Every question this machine was given up on and has not come back from, oldest first.
-    /// Guarded by its own lock, since two threads ask and either may be the one that gives up.
+    /// Every ask this machine was given up on and has not come back from, oldest first. Guarded by
+    /// its own lock, since two threads ask and either may be the one that gives up.
     /// </summary>
     /// <remarks>
-    /// A list and not one slot per question, because what a caller has to read is whether anything
-    /// asking its own question is still out there, which one slot cannot say: a second one given up
-    /// on would either forget the first or be forgotten by it, and each of those admits a look while
-    /// a thread is still inside the audio service. It holds one entry per thread that asks, since
-    /// nothing asking the same thing is admitted while it has any, and it empties itself as those
-    /// threads come back.
+    /// One entry per thread given up on, and not one slot per question, because the list is this at
+    /// its simplest: adding, dropping what came back and asking whether any of them is still out
+    /// there are one line each over a list, where a slot per question is the same three lines plus a
+    /// rule for what happens when a second ask of one question is given up on while the first still
+    /// has a thread inside the audio service. Nothing in the product puts two asks of one question
+    /// in flight at once, so that rule would decide nothing anybody could reach — which is an
+    /// argument for the list rather than for the rule, and never a claim that the case is handled.
     /// </remarks>
-    private static readonly List<Question> GivenUpOn = [];
+    private static readonly List<Outstanding> GivenUpOn = [];
 
     /// <summary>
     /// Asks <paramref name="question"/> of this machine on a thread of its own and comes back with
     /// what it answered — or at <see cref="CaptureLoop.StopsWithin"/>, saying nothing answered, and
     /// at once rather than at the deadline when the same question is already out there.
     /// </summary>
-    /// <param name="asked">
-    /// What is being asked about, said the way a person would hear it and read as the end of a
-    /// sentence about Windows not answering. Also what the thread is called in a debugger, and what
-    /// says two asks are the same question: the memory is scoped to it, so two callers spelling one
-    /// question two ways would each pay their own deadline, and two spelling different questions the
-    /// same way would refuse each other. Both are why the words live on <see cref="AudioDevices"/>,
-    /// one per question, and are never composed at a call site.
-    /// </param>
     /// <param name="question">
+    /// Which of the things this application asks about. It is the identity the memory is kept
+    /// against, so what makes two asks the same question is being the same one of these —
+    /// <see cref="DeviceQuestion"/> says why that is an object and not the words on it.
+    /// </param>
+    /// <param name="ask">
     /// The whole of what touches the audio stack, run once. Everything it opens it also lets go of,
     /// on its own thread, because a thread given up on is still inside all of it.
     /// </param>
-    public static T Answering<T>(string asked, Func<T> question)
+    public static T Answering<T>(DeviceQuestion question, Func<T> ask)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(asked);
         ArgumentNullException.ThrowIfNull(question);
+        ArgumentNullException.ThrowIfNull(ask);
 
-        if (StillOutThere(asked))
+        if (StillOutThere(question))
         {
-            throw AudioDeviceWedgedException.NoAnswerAbout(asked);
+            throw AudioDeviceWedgedException.NoAnswerAbout(question.Asked);
         }
 
-        var mine = new Question(asked);
+        var mine = new Outstanding(question);
 
         try
         {
             return AudioAsk.Answering(
-                asked,
+                question.Asked,
                 () =>
                 {
                     try
                     {
-                        return question();
+                        return ask();
                     }
                     finally
                     {
@@ -128,7 +129,7 @@ public static class DeviceEnquiry
                         mine.Answered = true;
                     }
                 },
-                () => AudioDeviceWedgedException.NoAnswerAbout(asked));
+                () => AudioDeviceWedgedException.NoAnswerAbout(question.Asked));
         }
         catch (AudioDeviceWedgedException)
         {
@@ -141,35 +142,35 @@ public static class DeviceEnquiry
     }
 
     /// <summary>
-    /// Whether this machine is still being waited on for <paramref name="asked"/> in particular.
-    /// Every question that has come back is dropped on the way past, whichever one it was, since
+    /// Whether this machine is still being waited on for <paramref name="question"/> in particular.
+    /// Everything that has come back is dropped on the way past, whichever question it was, since
     /// this is the only moment anything reads the memory at all.
     /// </summary>
-    private static bool StillOutThere(string asked)
+    private static bool StillOutThere(DeviceQuestion question)
     {
         lock (GivenUpOn)
         {
-            GivenUpOn.RemoveAll(question => question.Answered);
-            return GivenUpOn.Exists(question => question.Is(asked));
+            GivenUpOn.RemoveAll(outstanding => outstanding.Answered);
+            return GivenUpOn.Exists(outstanding => outstanding.About == question);
         }
     }
 
-    private static void Remember(Question question)
+    private static void Remember(Outstanding outstanding)
     {
         lock (GivenUpOn)
         {
-            GivenUpOn.Add(question);
+            GivenUpOn.Add(outstanding);
         }
     }
 
-    /// <summary>One question and whether the machine ever came back from it.</summary>
+    /// <summary>One ask given up on, and whether the machine ever came back from it.</summary>
     /// <remarks>
-    /// The thread <see cref="AudioAsk"/> starts would answer the same question and is not handed
-    /// out for it: what has to be known here is whether the question came back, and a mechanism
-    /// that throws when it does not would have to give the thread back through the exception or an
-    /// out parameter to say so.
+    /// The thread <see cref="AudioAsk"/> starts would answer the same thing and is not handed out
+    /// for it: what has to be known here is whether the ask came back, and a mechanism that throws
+    /// when it does not would have to give the thread back through the exception or an out
+    /// parameter to say so.
     /// </remarks>
-    private sealed class Question(string asked)
+    private sealed class Outstanding(DeviceQuestion about)
     {
         /// <summary>
         /// Set by the thread that was asked, read by whoever asks next. Volatile rather than under
@@ -178,18 +179,12 @@ public static class DeviceEnquiry
         /// </summary>
         private volatile bool answered;
 
+        internal DeviceQuestion About => about;
+
         internal bool Answered
         {
             get => answered;
             set => answered = value;
         }
-
-        /// <summary>Whether this is the question <paramref name="other"/> names.</summary>
-        /// <remarks>
-        /// Ordinal, because these are not words being compared for a person: they are two call
-        /// sites naming one question, and a culture that decided they matched would be a caller
-        /// refused over somebody's locale.
-        /// </remarks>
-        internal bool Is(string other) => string.Equals(asked, other, StringComparison.Ordinal);
     }
 }

@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
@@ -29,7 +29,7 @@ public static class AudioDevices
     /// deadline every wait on this machine's audio shares.
     /// </summary>
     public static IReadOnlyList<AudioDevice> Microphones() =>
-        DeviceEnquiry.Answering("the microphones on this machine", () => Endpoints(DataFlow.Capture));
+        DeviceEnquiry.Answering(DeviceQuestion.Microphones, () => Endpoints(DataFlow.Capture));
 
     /// <summary>
     /// The endpoint the machine is playing through. There is exactly one at a time: it is where
@@ -45,7 +45,7 @@ public static class AudioDevices
     /// </para>
     /// </remarks>
     public static AudioDevice Playback() =>
-        DeviceEnquiry.Answering("the device this machine plays through", PlayingThrough);
+        DeviceEnquiry.Answering(DeviceQuestion.PlaybackDevice, PlayingThrough);
 
     private static AudioDevice PlayingThrough() => Ask(() =>
     {

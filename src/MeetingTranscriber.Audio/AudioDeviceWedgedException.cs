@@ -11,8 +11,8 @@
 /// What the narrower type adds is that no answer arrived and the thread that asked is still in
 /// there. What that costs is the two factories' to say and not this type's: a device that never
 /// answered is one this application holds until it is restarted, while a machine that never
-/// answered a question about its devices holds no device at all and is simply not asked another
-/// until it comes back.
+/// answered a question about its devices holds no device at all and is simply not asked that one
+/// again until it comes back.
 /// </para>
 /// <para>
 /// One decision reads the difference, and it reads it at its own catch rather than by this type

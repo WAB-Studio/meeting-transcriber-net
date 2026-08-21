@@ -435,12 +435,9 @@ public sealed class CaptureSession : IDisposable
     /// still out there is what refuses it rather than the machine being asked again.
     /// </para>
     /// <para>
-    /// This question and no other, which is what keeps that cheapness from being paid for here.
-    /// The memory in <see cref="DeviceEnquiry"/> is scoped to what was asked, so the screen's
-    /// once-a-second look at what the machine plays through — a line beside a meter — cannot be
-    /// what stops a channel being followed onto whatever replaced its device. A meeting that lost
-    /// a microphone is the path that matters most on this thread, and it waits on nothing a person
-    /// is only reading.
+    /// This question and no other, which is what keeps that cheapness from being paid for here: a
+    /// screen looking at something else cannot be what stops a channel being followed onto whatever
+    /// replaced its device. Why the memory is scoped that way is <see cref="DeviceEnquiry"/>'s.
     /// </para>
     /// </remarks>
     private void FollowWhateverReplacedIt()

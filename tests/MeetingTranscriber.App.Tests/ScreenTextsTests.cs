@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace MeetingTranscriber.App.Tests;
@@ -109,6 +109,87 @@ public partial class ScreenTextsTests
             $"{Path.GetFileName(path)} assigns words a person reads instead of a text from "
             + "UiTexts: " + string.Join("; ", assigned));
     }
+
+    /// <summary>
+    /// ISC-152's other half on a screen that prints what a machine said. A path, a device's own
+    /// name or a message off an exception is data and goes in the report untranslated — but never
+    /// on a line of its own, where English reads as the application talking to somebody who chose
+    /// Spanish. So a sentence from the catalogue says what happened first, and the words go under
+    /// it.
+    /// </summary>
+    /// <remarks>
+    /// The rule was written on <c>Dump</c> and enforced by nothing, and two sites had already got
+    /// past it — one of them added by the pass that quoted the rule while breaking it. Read off the
+    /// source for the reason the rest of this class is: a WinUI tree needs a UI thread and a
+    /// packaged host, so a check that ran a window would never run.
+    /// <para>
+    /// What it reads is the method the call sits in: somewhere above it, and before the signature
+    /// of whatever method that is, a sentence has to have gone into the same report. Not the line
+    /// immediately above, because the report is written in order and a heading with a loop of lines
+    /// under it is the shape half of these take. The method is the boundary because it is where a
+    /// report line stops being reachable from what was said before it.
+    /// </para>
+    /// <para>
+    /// A blank line is not a machine's words and is not asked for one.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(CodeBehind))]
+    public void No_screen_prints_what_a_machine_said_on_a_line_of_its_own(string path)
+    {
+        var lines = File.ReadAllLines(path);
+        var bare = new List<string>();
+
+        for (var at = 0; at < lines.Length; at++)
+        {
+            if (!DumpsWhatAMachineSaid().IsMatch(lines[at]))
+            {
+                continue;
+            }
+
+            var said = false;
+            for (var back = at - 1; back >= 0; back--)
+            {
+                if (SaysSomethingFirst().IsMatch(lines[back]))
+                {
+                    said = true;
+                    break;
+                }
+
+                if (OpensAMember().IsMatch(lines[back]))
+                {
+                    break;
+                }
+            }
+
+            if (!said)
+            {
+                bare.Add($"line {at + 1}: {lines[at].Trim()}");
+            }
+        }
+
+        bare.ShouldBeEmpty(
+            $"{Path.GetFileName(path)} puts what a machine said in the report with no sentence "
+            + "from the catalogue over it: " + string.Join("; ", bare));
+    }
+
+    /// <summary>
+    /// A call that puts a machine's own words in the report — not the method itself, and not the
+    /// blank line that separates two parts of one.
+    /// </summary>
+    [GeneratedRegex(@"(?<![\w.])Dump\((?!string )(?!string\.Empty\))")]
+    private static partial Regex DumpsWhatAMachineSaid();
+
+    /// <summary>A call that puts a sentence from the catalogue in the report.</summary>
+    [GeneratedRegex(@"(?<![\w.])(Say|Report)\(")]
+    private static partial Regex SaysSomethingFirst();
+
+    /// <summary>
+    /// The signature of a member of the class, which is as far back as a sentence already said
+    /// can reach.
+    /// </summary>
+    [GeneratedRegex(@"^ {4}(public|private|protected|internal)\b[^;]*\(")]
+    private static partial Regex OpensAMember();
 
     /// <summary>
     /// A quoted string — plain, verbatim or interpolated — landing on one of the properties a

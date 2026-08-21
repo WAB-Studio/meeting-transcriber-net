@@ -17,16 +17,6 @@ namespace MeetingTranscriber.Audio.Tests;
 /// </remarks>
 public class DeviceEnquiryTests
 {
-    /// <summary>What the two callers this application has ask about, in their own words.</summary>
-    /// <remarks>
-    /// Spelled here as constants because the memory is keyed on them: a test that reworded one
-    /// would be testing two questions where the product asks one, and would pass for the wrong
-    /// reason. That these really are the words <c>AudioDevices</c> passes is
-    /// <see cref="Both_questions_this_application_asks_about_devices_go_through_the_deadline"/>.
-    /// </remarks>
-    private const string TheMicrophones = "the microphones on this machine";
-    private const string ThePlaybackDevice = "the device this machine plays through";
-
     /// <summary>
     /// ISC-163. The body never comes back, which is the audio service stuck inside the enumerator,
     /// the default endpoint or a driver's property store — everything listing the microphones
@@ -49,7 +39,7 @@ public class DeviceEnquiryTests
             var clock = Stopwatch.StartNew();
 
             var wedged = Should.Throw<AudioDeviceWedgedException>(() => DeviceEnquiry.Answering(
-                TheMicrophones,
+                DeviceQuestion.Microphones,
                 () =>
                 {
                     // Uncancellable on purpose: this stands in for a thread inside the audio
@@ -62,11 +52,11 @@ public class DeviceEnquiryTests
             clock.Elapsed.ShouldHaveWaitedTheDeadline();
 
             listed.ShouldBeFalse();
-            wedged.Message.ShouldContain(TheMicrophones);
+            wedged.Message.ShouldContain(DeviceQuestion.Microphones.Asked);
         }
         finally
         {
-            TheMachineComesBack(stuck, TheMicrophones);
+            TheMachineComesBack(stuck, DeviceQuestion.Microphones);
         }
     }
 
@@ -81,7 +71,7 @@ public class DeviceEnquiryTests
         var devices = new object();
         object? listed = null;
 
-        Deadlines.Time(() => listed = DeviceEnquiry.Answering(TheMicrophones, () => devices))
+        Deadlines.Time(() => listed = DeviceEnquiry.Answering(DeviceQuestion.Microphones, () => devices))
             .ShouldHaveComeBackAtOnce();
 
         listed.ShouldBeSameAs(devices);
@@ -101,13 +91,13 @@ public class DeviceEnquiryTests
         var clock = Stopwatch.StartNew();
 
         var thrown = Should.Throw<COMException>(() =>
-            DeviceEnquiry.Answering<object>(TheMicrophones, () => throw refusal));
+            DeviceEnquiry.Answering<object>(DeviceQuestion.Microphones, () => throw refusal));
 
         clock.Elapsed.ShouldHaveComeBackAtOnce();
         thrown.ShouldBeSameAs(refusal);
 
         // And it left nothing behind: a refusal is an answer, so the next question is asked.
-        DeviceEnquiry.Answering(TheMicrophones, () => true).ShouldBeTrue();
+        DeviceEnquiry.Answering(DeviceQuestion.Microphones, () => true).ShouldBeTrue();
     }
 
     /// <summary>
@@ -127,13 +117,13 @@ public class DeviceEnquiryTests
         try
         {
             Should.Throw<AudioDeviceWedgedException>(() =>
-                DeviceEnquiry.Answering(TheMicrophones, Wedging(stuck)));
+                DeviceEnquiry.Answering(DeviceQuestion.Microphones, Wedging(stuck)));
 
             var asked = false;
             var clock = Stopwatch.StartNew();
 
             var refused = Should.Throw<AudioDeviceWedgedException>(() => DeviceEnquiry.Answering(
-                TheMicrophones,
+                DeviceQuestion.Microphones,
                 () =>
                 {
                     asked = true;
@@ -142,11 +132,11 @@ public class DeviceEnquiryTests
 
             clock.Elapsed.ShouldHaveComeBackAtOnce();
             asked.ShouldBeFalse();
-            refused.Message.ShouldContain(TheMicrophones);
+            refused.Message.ShouldContain(DeviceQuestion.Microphones.Asked);
         }
         finally
         {
-            TheMachineComesBack(stuck, TheMicrophones);
+            TheMachineComesBack(stuck, DeviceQuestion.Microphones);
         }
     }
 
@@ -171,12 +161,12 @@ public class DeviceEnquiryTests
         try
         {
             Should.Throw<AudioDeviceWedgedException>(() =>
-                DeviceEnquiry.Answering(ThePlaybackDevice, Wedging(stuck)));
+                DeviceEnquiry.Answering(DeviceQuestion.PlaybackDevice, Wedging(stuck)));
 
             var listed = false;
 
             Deadlines.Time(() =>
-                    DeviceEnquiry.Answering(TheMicrophones, () => listed = true).ShouldBeTrue())
+                    DeviceEnquiry.Answering(DeviceQuestion.Microphones, () => listed = true).ShouldBeTrue())
                 .ShouldHaveComeBackAtOnce();
 
             // Not only that it came back, but that the machine was the one that answered: a refusal
@@ -184,34 +174,60 @@ public class DeviceEnquiryTests
             // from the clock.
             listed.ShouldBeTrue();
 
+            // And across the seam the product actually uses, since a lambda handed in here proves
+            // the mechanism and not the call the watcher makes. What this machine answers with is
+            // its own business — a build agent has no microphone and may refuse outright — so what
+            // is asserted is that the refusal, if there is one, is not this memory's, and that no
+            // deadline was spent reaching it.
+            Deadlines.Time(() =>
+            {
+                try
+                {
+                    AudioDevices.Microphones();
+                }
+                catch (AudioCaptureException itsOwn)
+                {
+                    itsOwn.ShouldNotBeOfType<AudioDeviceWedgedException>();
+                }
+            }).ShouldHaveComeBackAtOnce();
+
             // And the wedged one is still wedged, so what is being measured is the scope of the
             // memory and not the memory having quietly emptied itself.
             Should.Throw<AudioDeviceWedgedException>(() =>
-                DeviceEnquiry.Answering(ThePlaybackDevice, () => new object()));
+                DeviceEnquiry.Answering(DeviceQuestion.PlaybackDevice, () => new object()));
         }
         finally
         {
-            TheMachineComesBack(stuck, ThePlaybackDevice);
+            TheMachineComesBack(stuck, DeviceQuestion.PlaybackDevice);
         }
     }
 
     /// <summary>
-    /// ISC-162 with two callers asking one question at once, which the product does have: the
-    /// window lists the microphones as it opens while the watcher lists them on a thread of its
-    /// own. Each pays the deadline once, because neither is stopped by what the other has not yet
-    /// learnt — and from the moment either of them gives up, that question is not asked again.
+    /// ISC-162 and ISC-164 together, with the two callers that really do overlap: the screen asks
+    /// what this machine plays through on its dispatcher while the watcher lists the microphones on
+    /// a thread of its own, and both are live for the whole of a meeting. Each pays the deadline
+    /// once and neither is stopped by the other, which is the two claims meeting — a deadline paid
+    /// once is paid once per question, and one question out there refuses only itself.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Then the half a single remembered question cannot hold: the machine comes back from the
-    /// second and is still inside the first, which is not a machine answering. Asking again on that
-    /// evidence would put the deadline back into every look, which is the freeze in the shape that
-    /// is hardest to see, so it stays refused until both are back.
+    /// Then what the pruning must not do: the later of the two comes back while the earlier is
+    /// still inside the audio stack, and the earlier one stays refused. One thread out of the audio
+    /// service is not the service answering, and forgiving the wrong entry would put the deadline
+    /// back into every look — the freeze in the shape that is hardest to see. The one that came
+    /// back is asked again in the same breath, since forgiving it is the other half of the same
+    /// line.
     /// </para>
     /// <para>
     /// A second between them on purpose. It makes which of the two is given up on last a fact
     /// rather than a race, so a run that admits a look after the later one comes back is this test
     /// finding a defect rather than this test being flaky.
+    /// </para>
+    /// <para>
+    /// Two callers of one question at once is not written here, because the product has none: the
+    /// window lists the microphones in its constructor, once, before any meeting exists, and the
+    /// watcher lists them only while one is running. What holds the memory to more than one entry
+    /// is that it is a list, and that is said where the list is.
     /// </para>
     /// </remarks>
     [Fact]
@@ -229,28 +245,29 @@ public class DeviceEnquiryTests
                 Thread.Sleep(TimeSpan.FromSeconds(1));
                 secondWaited = Deadlines.Time(() => Should.Throw<AudioDeviceWedgedException>(() =>
                     DeviceEnquiry.Answering(
-                        TheMicrophones,
+                        DeviceQuestion.PlaybackDevice,
                         Wedging(stuckSecond, cameBack: secondCameBack))));
             })
             {
                 IsBackground = true,
-                Name = "the window opening",
+                Name = "the screen looking",
             };
 
             second.Start();
 
             Deadlines.Time(() => Should.Throw<AudioDeviceWedgedException>(() =>
-                    DeviceEnquiry.Answering(TheMicrophones, Wedging(stuckFirst))))
+                    DeviceEnquiry.Answering(DeviceQuestion.Microphones, Wedging(stuckFirst))))
                 .ShouldHaveWaitedTheDeadline();
 
             // Joined before it is read, which is also what makes what that thread measured visible
-            // here at all.
+            // here at all. That it waited the deadline is the half that matters: it was inside its
+            // own five seconds while the other gave up, and was not refused for it.
             second.Join();
             secondWaited.ShouldHaveWaitedTheDeadline();
 
             var asked = false;
             Deadlines.Time(() => Should.Throw<AudioDeviceWedgedException>(() =>
-                    DeviceEnquiry.Answering(TheMicrophones, () => asked = true)))
+                    DeviceEnquiry.Answering(DeviceQuestion.Microphones, () => asked = true)))
                 .ShouldHaveComeBackAtOnce();
             asked.ShouldBeFalse();
 
@@ -261,14 +278,18 @@ public class DeviceEnquiryTests
                 .ShouldBeTrue();
 
             Deadlines.Time(() => Should.Throw<AudioDeviceWedgedException>(() =>
-                    DeviceEnquiry.Answering(TheMicrophones, () => asked = true)))
+                    DeviceEnquiry.Answering(DeviceQuestion.Microphones, () => asked = true)))
                 .ShouldHaveComeBackAtOnce();
             asked.ShouldBeFalse();
+
+            // And the one that came back is asked again, so the entry was dropped rather than the
+            // two of them being forgiven or held together.
+            DeviceEnquiry.Answering(DeviceQuestion.PlaybackDevice, () => true).ShouldBeTrue();
         }
         finally
         {
             stuckSecond.Set();
-            TheMachineComesBack(stuckFirst, TheMicrophones);
+            TheMachineComesBack(stuckFirst, DeviceQuestion.Microphones);
         }
     }
 
@@ -293,28 +314,29 @@ public class DeviceEnquiryTests
     [Fact]
     public void Both_questions_this_application_asks_about_devices_go_through_the_deadline()
     {
-        ItsOwnCallerIsRefused(TheMicrophones, () => AudioDevices.Microphones());
-        ItsOwnCallerIsRefused(ThePlaybackDevice, () => AudioDevices.Playback());
+        ItsOwnCallerIsRefused(DeviceQuestion.Microphones, () => AudioDevices.Microphones());
+        ItsOwnCallerIsRefused(DeviceQuestion.PlaybackDevice, () => AudioDevices.Playback());
     }
 
     /// <summary>
     /// Wedges one question and asserts that the method which asks it comes back at once refusing,
     /// rather than reaching the machine.
     /// </summary>
-    private static void ItsOwnCallerIsRefused(string asked, Action caller)
+    private static void ItsOwnCallerIsRefused(DeviceQuestion question, Action caller)
     {
         using var stuck = new ManualResetEventSlim(initialState: false);
 
         try
         {
-            Should.Throw<AudioDeviceWedgedException>(() => DeviceEnquiry.Answering(asked, Wedging(stuck)));
+            Should.Throw<AudioDeviceWedgedException>(() =>
+                DeviceEnquiry.Answering(question, Wedging(stuck)));
 
             Deadlines.Time(() => Should.Throw<AudioDeviceWedgedException>(caller))
                 .ShouldHaveComeBackAtOnce();
         }
         finally
         {
-            TheMachineComesBack(stuck, asked);
+            TheMachineComesBack(stuck, question);
         }
     }
 
@@ -331,7 +353,8 @@ public class DeviceEnquiryTests
         };
 
     /// <summary>
-    /// Lets the wedged bodies go and waits until <paramref name="asked"/> is answered again, which
+    /// Lets the wedged bodies go and waits until <paramref name="question"/> is answered again,
+    /// which
     /// is the one thing every test that leaves a question out there owes the next one — and, in
     /// passing, the half of ISC-162 that keeps it from being this application having given up on
     /// Windows for good.
@@ -346,7 +369,7 @@ public class DeviceEnquiryTests
     /// catch, so a machine that never comes back fails here saying so rather than timing out.
     /// </para>
     /// </remarks>
-    private static void TheMachineComesBack(ManualResetEventSlim stuck, string asked)
+    private static void TheMachineComesBack(ManualResetEventSlim stuck, DeviceQuestion question)
     {
         stuck.Set();
 
@@ -355,7 +378,7 @@ public class DeviceEnquiryTests
         {
             try
             {
-                DeviceEnquiry.Answering(asked, () => true).ShouldBeTrue();
+                DeviceEnquiry.Answering(question, () => true).ShouldBeTrue();
                 return;
             }
             catch (AudioDeviceWedgedException)
@@ -364,6 +387,6 @@ public class DeviceEnquiryTests
             }
         }
 
-        DeviceEnquiry.Answering(asked, () => true).ShouldBeTrue();
+        DeviceEnquiry.Answering(question, () => true).ShouldBeTrue();
     }
 }
