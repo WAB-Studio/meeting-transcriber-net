@@ -44,15 +44,27 @@ namespace MeetingTranscriber.Audio;
 public sealed class CaptureLoop : IDisposable
 {
     /// <summary>
-    /// How long anything waits for a device before giving up on it — this loop and
-    /// <see cref="DeviceRelease"/> alike. One number for every wait on the way into and out of a
-    /// recording, so what "did not answer" means is the same sentence everywhere.
+    /// How long anything waits on this machine's audio before giving up on it — this loop,
+    /// <see cref="DeviceRelease"/> and <see cref="DeviceEnquiry"/> alike. One number for every wait
+    /// this application spends on a device or on a question about devices, so what "did not answer"
+    /// means is the same sentence everywhere.
     /// </summary>
     /// <remarks>
-    /// Per device and not per recording, and that is worth saying out loud: a session opens three
-    /// devices and lets three go, and waits this at worst once for each — once for whichever of
-    /// opening, starting, draining or releasing that device wedged on, since a device only ever
-    /// wedges once and everything after that moment is skipped rather than waited for.
+    /// <para>
+    /// Per device where a device is held, and not per recording: a session opens three devices and
+    /// lets three go, and waits this at worst once for each — once for whichever of opening,
+    /// starting, draining or releasing that device wedged on, since a device only ever wedges once
+    /// and everything after that moment is skipped rather than waited for.
+    /// </para>
+    /// <para>
+    /// Per question where no device is held at all, which is the other half of what this number
+    /// bounds and belongs to no recording: <see cref="DeviceEnquiry"/> spends it asking this
+    /// machine what it can record from, and the recording screen's picker pays one in its
+    /// constructor, before a meeting exists. There are two such questions — which microphones this
+    /// machine has, and what it plays through — each with its own deadline to spend once, since a
+    /// question given up on is refused rather than put again until its body comes back. So a wedged
+    /// audio service costs a caller that looks on a timer this number once and not once per look.
+    /// </para>
     /// </remarks>
     public static readonly TimeSpan StopsWithin = TimeSpan.FromSeconds(5);
 

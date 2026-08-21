@@ -134,8 +134,12 @@ public static class DeviceEnquiry
         catch (AudioDeviceWedgedException)
         {
             // The deadline, or a body that threw this type itself — which nothing in this
-            // application does, and which costs nothing if something starts to: it comes with its
-            // body already come back, so the next caller reads it as answered and drops it.
+            // application does today, and which is remembered rather than told apart because
+            // remembering it costs nothing. A body that threw has come back, so its `finally` has
+            // already set `Answered` before the throw reaches here: the entry goes in inert,
+            // refuses nobody, and the next reader drops it on the way past. Telling the two apart
+            // would be a second exception type carried for a case whose only effect is one list
+            // entry that the next question deletes.
             Remember(mine);
             throw;
         }

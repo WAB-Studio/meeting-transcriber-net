@@ -188,6 +188,15 @@ public partial class ScreenTextsTests
     /// The signature of a member of the class, which is as far back as a sentence already said
     /// can reach.
     /// </summary>
+    /// <remarks>
+    /// An access modifier at exactly four spaces, which is every member of the four screens as
+    /// they are written, and the limit of what this probe covers. Three shapes would scan past
+    /// their own method and could be let through by a <c>Say</c> belonging to the one above it: a
+    /// <c>Dump</c> inside a local function, one inside a nested type, and one in a member written
+    /// with no modifier at all. None of the three exists in these files today, which is why the
+    /// pattern is this and not a parse — but a green run over a screen that grows one proves
+    /// nothing, so whoever writes the first one widens this in the same pass.
+    /// </remarks>
     [GeneratedRegex(@"^ {4}(public|private|protected|internal)\b[^;]*\(")]
     private static partial Regex OpensAMember();
 
