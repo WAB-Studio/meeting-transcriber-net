@@ -15,31 +15,51 @@ work a card other than the one you were given.
 
 ## What you are given
 
-A card id. Sometimes a PR number, meaning work on that card is already in flight. Sometimes a
-briefing on what was already done — read it before the card.
+A card id — **a card is an issue, and its id is its issue number**. Sometimes a PR number, meaning
+work on that card is already in flight. Sometimes a briefing on what was already done — read it
+before the card.
 
 ## The CLI
 
-`python` is the first word and the path goes whole. `PYTHONIOENCODING` is `utf-8`. Address the card
-by id only.
-
 ```powershell
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" move <id> --status "in progress"
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text @.scratch/note.md
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" create --list "<list>" --name "BUG - ..." --desc @.scratch/found.md
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" link <new-id> --needs <origin-id>
+gh issue view <n> --json number,title,body,labels,state,comments
+gh issue comment <n> --body-file .scratch/note.md
+gh issue create --title "BUG - ..." --body-file .scratch/found.md --label bug --label <F>
+gh project item-list 1 --owner WAB-Studio --format json --limit 200
 ```
 
-`create` is for the one thing CLAUDE.md says becomes a card: a fix too big to land inline. Anything
-smaller goes in the record and nowhere else.
+The board is `WAB-Studio` project **1**, `Meeting Transcriber`. Moving a card is two commands — find
+the item, set the field:
 
-Prose longer than one line goes in a file under `.scratch/` and is passed as `@path`. A refused call
-goes in `left_out` and you stop trying to spell around it.
+```powershell
+$item = (gh project item-list 1 --owner WAB-Studio --format json --limit 200 | ConvertFrom-Json).items |
+        Where-Object { $_.content.number -eq <n> } | Select-Object -ExpandProperty id
+gh project item-edit --id $item --project-id PVT_kwDOCo2sl84BhFA- `
+  --field-id PVTSSF_lADOCo2sl84BhFA-zhgCKFM --single-select-option-id <option>
+```
 
-**The commands in this file are all you have.** Do not open the CLI's source. If you need one that is
-not here, say so in `left_out` and stop — do not infer it from an error and do not try flags to see
-which lands.
+| Status        | `<option>` |
+| ------------- | ---------- |
+| `Backlog`     | `f75ad846` |
+| `Ready`       | `61e4505c` |
+| `In progress` | `47fc9ee4` |
+| `In review`   | `df73e18b` |
+| `Testing`     | `1811706d` |
+| `Done`        | `98236657` |
+
+You move a card to `In progress` and nowhere else. `In review` moves itself off `Closes #N`, and no
+worker ever writes `Done`.
+
+`gh issue create` is for the one thing CLAUDE.md says becomes a card: a fix too big to land inline.
+It carries one type label and one `F` label, and its body names the card it came out of —
+`**Depends on:** #<origin>` when it blocks that one, a plain `#<origin>` reference when it does not.
+Anything smaller goes in the record and nowhere else.
+
+Prose longer than one line goes in a file under `.scratch/` and is passed as `--body-file`. A refused
+call goes in `left_out` and you stop trying to spell around it.
+
+**The commands in this file are all you have.** If you need one that is not here, say so in
+`left_out` and stop — do not infer it from an error and do not try flags to see which lands.
 
 ## Step 0 — Before anything
 
@@ -59,8 +79,8 @@ A merged commit does not prove the behaviour is there. Read the card's **Done wh
 against `main` as it stands; run the four commands if the card names ISCs.
 
 - **Behaviour present** → `outcome: "already_done"`, `pr_number` naming the PR that landed it. Move
-  the card to `in review` yourself and comment saying which commit carried it and what you ran. Do
-  not close it, and build nothing.
+  the card to `Testing` yourself — it is merged and nobody has confirmed it — and comment saying
+  which commit carried it and what you ran. Do not close it, and build nothing.
 - **Behaviour absent** → ordinary work. Build it.
 
 ## Step 2 — Read the card
@@ -98,11 +118,7 @@ it does not show from outside, decide it yourself and record it in `decisions_de
 its own line. `/adversarial-review` over any diff past 50 non-comment lines, and what the verdict
 confirms gets fixed in the same pass.
 
-Move the card on starting:
-
-```powershell
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" move <id> --status "in progress"
-```
+Move the card to `In progress` on starting — the branch is the fact that earns the move.
 
 **A number that did not come out of a run does not get written** — not in code, not in `ISA.md`, not
 in a comment.
@@ -120,11 +136,12 @@ Leave it at `.scratch/current.md`. Do not move or file it.
 
 ## Step 5 — Deliver
 
-Branch, commit, `gh pr create`. **You do not merge.** Then:
+Branch, commit, `gh pr create`. **You do not merge.** The PR body carries `Closes #<n>`, which is
+what moves the card to `In review` — you do not move it yourself, and you do check it landed there.
+Then:
 
 ```powershell
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" move <id> --status "in review"
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text @.scratch/done.md
+gh issue comment <n> --body-file .scratch/done.md
 ```
 
 Every comment you leave on a card opens with `[Worker]`:

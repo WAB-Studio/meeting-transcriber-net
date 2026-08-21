@@ -492,3 +492,7 @@ $RECYCLE.BIN/
 # refused for being outside the working directory, so this is the only writable ground an
 # unattended session has. Ignored so what lands here never reaches the diff being reviewed.
 /.scratch/
+
+# Per-machine Claude Code settings: which global skills this repo turns off, and whatever
+# else one machine needs and the next does not. The shared ones are in .claude/settings.json.
+/.claude/settings.local.json
