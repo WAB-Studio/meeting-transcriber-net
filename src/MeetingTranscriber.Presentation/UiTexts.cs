@@ -24,6 +24,14 @@ public static class UiTexts
         "Esta máquina no tiene ningún micrófono.",
         "This machine has no microphone.");
 
+    // Said before the machine's own words go in the report and never instead of them: what the
+    // audio stack hands back is a COMException's English, and a report that opened with it would
+    // be the application talking in a language nobody chose. Dump's remark on the recording screen
+    // is where that rule is written down.
+    public static UiText WindowsDidNotSayWhatThisMachineHas { get; } = new(
+        "Windows no dijo qué tiene esta máquina.",
+        "Windows did not say what this machine has.");
+
     public static UiText WhatToRecordFromThisMachine { get; } =
         new("Qué grabar de esta máquina", "What to record from this machine");
 

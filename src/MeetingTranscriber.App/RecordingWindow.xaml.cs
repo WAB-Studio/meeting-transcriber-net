@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
@@ -154,9 +154,9 @@ public sealed partial class RecordingWindow : Window
         // cannot be got round by pressing something else.
         //
         // Said only when the machine answered. An empty picker means one of two different things
-        // and a machine that would not say is the other one: it has already put what Windows said
-        // in the report, and following that with this would tell somebody whose audio service is
-        // stuck that their microphone does not exist.
+        // and a machine that would not say is the other one: it has already said so in the report,
+        // in this application's words and in Windows' own, and following that with this would tell
+        // somebody whose audio service is stuck that their microphone does not exist.
         if (microphones is { Count: 0 })
         {
             Say(UiTexts.NoMicrophoneOnThisMachine);
@@ -618,7 +618,8 @@ public sealed partial class RecordingWindow : Window
     /// </summary>
     /// <returns>
     /// What the machine said, or nothing at all when it would not say — which is not the same
-    /// answer as an empty list and is not shown as one. What it said instead is in the report.
+    /// answer as an empty list and is not shown as one. What happened is in the report either way,
+    /// as a sentence from the catalogue with the audio stack's own words under it.
     /// </returns>
     private IReadOnlyList<T>? Ask<T>(Func<IReadOnlyList<T>> machine)
     {
@@ -628,6 +629,11 @@ public sealed partial class RecordingWindow : Window
         }
         catch (AudioCaptureException unanswered)
         {
+            // The sentence first and the machine's words under it, which is Dump's own rule and
+            // the reason there is a catalogue entry for this at all: what comes off the audio
+            // stack is a COMException's English, and alone on a line it reads as this application
+            // talking to somebody in a language they did not choose.
+            Say(UiTexts.WindowsDidNotSayWhatThisMachineHas);
             Dump(unanswered.Message);
             return null;
         }
