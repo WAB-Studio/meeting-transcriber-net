@@ -1,4 +1,4 @@
-namespace MeetingTranscriber.Audio;
+﻿namespace MeetingTranscriber.Audio;
 
 /// <summary>
 /// Raised when this machine neither gave the application what it asked for nor refused it: a driver
@@ -47,9 +47,9 @@ public sealed class AudioDeviceWedgedException : AudioCaptureException
 
     /// <summary>
     /// What a machine that will not say what it can record from is said to be. The other half of
-    /// the same sentence: no device was opened and none is held, so what it costs is that this
-    /// question, and every other one about which devices this machine has, is refused until the
-    /// one still out there comes back.
+    /// the same sentence: no device was opened and none is held, so what it costs is that this one
+    /// question is refused until the body still out there comes back — and only this one, since a
+    /// caller asking the machine something else is a caller with a deadline of its own.
     /// </summary>
     /// <remarks>
     /// It says the devices and not the audio, and the difference is a promise this cannot keep:
@@ -60,11 +60,11 @@ public sealed class AudioDeviceWedgedException : AudioCaptureException
     /// </remarks>
     /// <param name="asked">
     /// What was asked about, said the way a person would hear it and read as the end of the
-    /// sentence. It is the question still out there, which on the second go is not the one the
-    /// caller just asked.
+    /// sentence. Always the question the caller just asked, whether the deadline expired on it here
+    /// and now or on a body that is still out there from a look before.
     /// </param>
     public static AudioDeviceWedgedException NoAnswerAbout(string asked) =>
         new($"Windows has not answered about {asked} in {CaptureLoop.StopsWithin.TotalSeconds:0} "
-            + "seconds, and it has not refused either. Nothing more is asked about the devices on "
-            + "this machine until that question comes back.");
+            + "seconds, and it has not refused either. It is not asked that again until the "
+            + "question comes back.");
 }

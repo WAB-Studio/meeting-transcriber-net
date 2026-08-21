@@ -431,8 +431,16 @@ public sealed class CaptureSession : IDisposable
     /// synchronous call into the audio stack, bounded by its own deadline but not instant, and the
     /// gate is what somebody pressing stop is waiting on — so what is held while an audio service
     /// is thinking is nothing at all. A machine that stopped answering is a look that throws and is
-    /// caught above, and the next one two seconds later costs nothing, since a question still out
-    /// there is refused rather than asked again.
+    /// caught above, and the next one two seconds later costs nothing, since this question being
+    /// still out there is what refuses it rather than the machine being asked again.
+    /// </para>
+    /// <para>
+    /// This question and no other, which is what keeps that cheapness from being paid for here.
+    /// The memory in <see cref="DeviceEnquiry"/> is scoped to what was asked, so the screen's
+    /// once-a-second look at what the machine plays through — a line beside a meter — cannot be
+    /// what stops a channel being followed onto whatever replaced its device. A meeting that lost
+    /// a microphone is the path that matters most on this thread, and it waits on nothing a person
+    /// is only reading.
     /// </para>
     /// </remarks>
     private void FollowWhateverReplacedIt()
