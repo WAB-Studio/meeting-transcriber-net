@@ -492,3 +492,6 @@ $RECYCLE.BIN/
 # refused for being outside the working directory, so this is the only writable ground an
 # unattended session has. Ignored so what lands here never reaches the diff being reviewed.
 /.scratch/
+
+# A session-local briefing that must never reach the diff: it is about the board, not the code.
+/CLAUDE.local.md
