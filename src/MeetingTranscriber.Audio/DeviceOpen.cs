@@ -1,5 +1,3 @@
-using System.Runtime.ExceptionServices;
-
 namespace MeetingTranscriber.Audio;
 
 /// <summary>
@@ -25,6 +23,11 @@ namespace MeetingTranscriber.Audio;
 /// when its device got going; a release has nothing to hand back and swallows what it catches. This
 /// one hands back what the device gave — or throws what the device said, as the device said it,
 /// because the sentence a person acts on is Windows' own.
+/// </para>
+/// <para>
+/// The thread and the deadline are <see cref="AudioAsk"/>'s and shared with
+/// <see cref="DeviceEnquiry"/>. What is here is the half those two disagree about: a device given
+/// up on is a device held, and that is what somebody is told.
 /// </para>
 /// </remarks>
 public static class DeviceOpen
@@ -61,67 +64,6 @@ public static class DeviceOpen
         ArgumentException.ThrowIfNullOrWhiteSpace(device);
         ArgumentNullException.ThrowIfNull(open);
 
-        // What the answer is announced on and what this waits on. A monitor rather than an event,
-        // for the reason CaptureLoop's gate is one: a thread given up on may answer at any point
-        // afterwards, so the one thing this must not be is something with a handle to close.
-        var gate = new object();
-        var answered = false;
-        T? opened = default;
-        Exception? refused = null;
-
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                opened = open();
-            }
-            catch (Exception no)
-            {
-                refused = no;
-            }
-
-            // Written before the gate is taken and not under it, which is what makes the deadline
-            // mean the device rather than the lock: the one thread waiting reads this at its
-            // deadline while holding the gate, so a device that answered a moment earlier and is
-            // still queueing for the lock would otherwise read as one that never answered at all.
-            Volatile.Write(ref answered, true);
-
-            lock (gate)
-            {
-                Monitor.PulseAll(gate);
-            }
-        })
-        {
-            IsBackground = true,
-            Name = device,
-        };
-
-        thread.Start();
-
-        lock (gate)
-        {
-            // One wait and no loop around it, for the reason CaptureLoop gives: what is waited for
-            // only ever goes from unsaid to said, there is exactly one thread waiting, and the pulse
-            // happens under this lock — so a wake with nothing said is the deadline having passed.
-            // Read once more afterwards for the same reason it is written before the gate.
-            if (!Volatile.Read(ref answered))
-            {
-                Monitor.Wait(gate, CaptureLoop.StopsWithin);
-            }
-
-            if (!Volatile.Read(ref answered))
-            {
-                throw AudioDeviceWedgedException.NoAnswerFrom(device);
-            }
-        }
-
-        if (refused is not null)
-        {
-            ExceptionDispatchInfo.Capture(refused).Throw();
-        }
-
-        // Never the default: nothing sets the gate without having set one of these two first, and
-        // the read above is what makes both visible on this thread.
-        return opened!;
+        return AudioAsk.Answering(device, open, () => AudioDeviceWedgedException.NoAnswerFrom(device));
     }
 }

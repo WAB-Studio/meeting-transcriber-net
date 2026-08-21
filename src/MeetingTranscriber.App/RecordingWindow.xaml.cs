@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
@@ -144,14 +144,20 @@ public sealed partial class RecordingWindow : Window
         _watch.Tick += OnWatch;
         Closed += OnClosed;
 
-        _microphones = [.. Ask(AudioDevices.Microphones)];
+        var microphones = Ask(AudioDevices.Microphones, UiTexts.WindowsDidNotSayWhatMicrophonesThereAre);
+        _microphones = [.. microphones ?? []];
         _sources = SourcesNow();
 
         // A report line and not the status one. The status says what the screen is doing and is
         // rewritten every time anything changes, so a machine with no microphone would announce it
         // once and lose it to the next refresh — and it is the one thing on this screen that
         // cannot be got round by pressing something else.
-        if (_microphones.Length == 0)
+        //
+        // Said only when the machine answered. An empty picker means one of two different things
+        // and a machine that would not say is the other one: it has already said so in the report,
+        // in this reader's language and in the machine's own words, and following that with this
+        // would tell somebody whose audio service is stuck that their microphone does not exist.
+        if (microphones is { Count: 0 })
         {
             Say(UiTexts.NoMicrophoneOnThisMachine);
         }
@@ -285,7 +291,9 @@ public sealed partial class RecordingWindow : Window
     /// <para>
     /// A refusal answers with what it last said, and writes nothing. This runs once a second, so a
     /// machine whose audio stack is momentarily busy would otherwise put the same sentence in the
-    /// report sixty times a minute — and the thing being reported is a line beside a meter.
+    /// report sixty times a minute — and the thing being reported is a line beside a meter. A
+    /// machine that has stopped answering altogether reads the same way here and costs the deadline
+    /// once rather than once a second, which is the asking's own rule and not this screen's.
     /// </para>
     /// </remarks>
     private AudioDevice? PlayingThrough()
@@ -594,7 +602,7 @@ public sealed partial class RecordingWindow : Window
     private RecorderSource[] SourcesNow() =>
     [
         RecorderSource.TheWholeMachine,
-        .. Ask(AudioProcesses.Running)
+        .. (Ask(AudioProcesses.Running, UiTexts.WindowsDidNotSayWhatIsPlaying) ?? [])
             .OrderBy(program => program.Name, StringComparer.CurrentCultureIgnoreCase)
             .ThenBy(program => program.Id)
             .Select(RecorderSource.Following),
@@ -608,16 +616,33 @@ public sealed partial class RecordingWindow : Window
     /// not say. A window that would not start because the audio stack was busy is worse than one
     /// that opens with an empty picker and a line saying so.
     /// </summary>
-    private IReadOnlyList<T> Ask<T>(Func<IReadOnlyList<T>> machine)
+    /// <param name="machine">The question, which is asked once.</param>
+    /// <param name="unanswered">
+    /// What to say when it will not answer, in this reader's language. Handed in rather than picked
+    /// here, because this method funnels more than one question — the microphones and the programs
+    /// that are playing — and a sentence about one over an answer about the other is a report
+    /// saying something that did not happen.
+    /// </param>
+    /// <returns>
+    /// What the machine said, or nothing at all when it would not say — which is not the same
+    /// answer as an empty list and is not shown as one. What happened is in the report either way,
+    /// as a sentence from the catalogue with the machine's own words under it.
+    /// </returns>
+    private IReadOnlyList<T>? Ask<T>(Func<IReadOnlyList<T>> machine, UiText unanswered)
     {
         try
         {
             return machine();
         }
-        catch (AudioCaptureException unanswered)
+        catch (AudioCaptureException wouldNotSay)
         {
-            Dump(unanswered.Message);
-            return [];
+            // The sentence first and the words under it, which is Dump's own rule: what comes off
+            // an exception here is English whoever wrote it — Windows', or this application's —
+            // and alone on a line it reads as the application talking to somebody in a language
+            // they did not choose.
+            Say(unanswered);
+            Dump(wouldNotSay.Message);
+            return null;
         }
     }
 
@@ -797,9 +822,14 @@ public sealed partial class RecordingWindow : Window
     /// By name as well as by number. A process id on its own says nothing — Windows reuses them —
     /// and the pair is what says this is still the program that was picked rather than whatever
     /// inherited its number.
+    /// <para>
+    /// A machine that would not say reads the same as one that says the program is gone, which is
+    /// the answer to give when this is what stands between somebody and a recording of the wrong
+    /// process: it is not still running until something says it is.
+    /// </para>
     /// </remarks>
     private bool StillRunning(RecorderSource following) =>
-        Ask(AudioProcesses.Running).Any(program =>
+        (Ask(AudioProcesses.Running, UiTexts.WindowsDidNotSayWhatIsPlaying) ?? []).Any(program =>
             program.Id == following.Follow!.Id
             && string.Equals(program.Name, following.Follow.Name, StringComparison.OrdinalIgnoreCase));
 
@@ -953,6 +983,7 @@ public sealed partial class RecordingWindow : Window
             // folder, and a folder refuses a write for reasons that have nothing to do with a
             // device.
             _taken = false;
+            Say(UiTexts.TheWholeMachineCouldNotBeRecorded);
             Dump(refused.Message);
         }
         finally

@@ -24,6 +24,24 @@ public static class UiTexts
         "Esta máquina no tiene ningún micrófono.",
         "This machine has no microphone.");
 
+    // These three are said before the machine's own words go in the report and never instead of
+    // them: what comes back off an exception is English either way, and a report that opened with
+    // it would be this application talking in a language nobody chose. Dump's remark on the
+    // recording screen is where that rule is written down. One per question rather than one for
+    // all of them, because the sentence a person reads has to be about what was asked — a line
+    // about devices over an answer about programs is a report that misreports.
+    public static UiText WindowsDidNotSayWhatMicrophonesThereAre { get; } = new(
+        "Windows no dijo qué micrófonos hay en esta máquina.",
+        "Windows did not say what microphones this machine has.");
+
+    public static UiText WindowsDidNotSayWhatIsPlaying { get; } = new(
+        "Windows no dijo qué programas están sonando.",
+        "Windows did not say which programs are playing.");
+
+    public static UiText TheWholeMachineCouldNotBeRecorded { get; } = new(
+        "No se pudo pasar a grabar toda la máquina.",
+        "Recording the whole machine could not be taken up.");
+
     public static UiText WhatToRecordFromThisMachine { get; } =
         new("Qué grabar de esta máquina", "What to record from this machine");
 
