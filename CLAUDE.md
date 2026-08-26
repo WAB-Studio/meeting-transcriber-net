@@ -91,23 +91,20 @@ and do not block. `dotnet format` has to pass clean.
 Every line here says **when** to reach for something, so it cannot live in the skill it points at:
 that rule would only be read by whoever already decided. The *how* is the skill's, and is not here.
 
-`ISA.md` says what done means and the board says what to do next. **A claim closes on a probe that
-ran, never on a task moving, and `ISA.md` is never edited by hand: steps 1 and 3 run through the
-`isa` skill**, which owns how a claim is written, scored and closed — and what a failed probe says
-about whether the code or the claim is wrong.
+**Issues, the board, branches, the PR and the review are the `github` skill's alone.**
 
-1. Work starts from a board task, and the claims it closes exist in `ISA.md` before anything is
-   built — if they do not, they get written first, each stating what would prove it false.
-2. The task names them, and the pointer only ever goes that way.
+`ISA.md` says what done means, and is never edited by hand: steps 1 and 3 run through the `isa`
+skill. **A claim closes on a probe that ran, never on a task moving.**
+
+1. The claims a piece of work closes exist in `ISA.md` before anything is built — if they do not,
+   they get written first, each stating what would prove it false.
+2. A task names them, and the pointer only ever goes that way.
 3. Closing is running the probe and marking the claim closed; `IsaStructureTests` fails if the
    count disagrees.
 4. A diff over 50 lines that are not comments runs `/adversarial-review` first, and what the
-   verdict confirms gets fixed in the same pass. The task then moves to `in review` with the
-   evidence and the verdict in a comment. Closing it is the user's.
-5. A session ends on the PR opened and never merged, standing on a clean `main`, so the next one
-   cuts a branch from a current one instead of writing over it. Merging is the user's, and so is
-   closing the card — the unattended loop excepted, which merges on its own audit's verdict. A red
-   command or an unfixed finding stops the PR, and the session's last words say so, and why.
+   verdict confirms gets fixed in the same pass.
+5. A session ends on the PR opened and never merged, standing on a clean `main`. A red command or
+   an unfixed finding stops the PR, and the session's last words say so, and why.
 
 ## The contract
 
