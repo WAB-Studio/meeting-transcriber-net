@@ -70,52 +70,25 @@ Then start again at the pick. Nothing paces this.
 
 ## 3 · More than one card at a time
 
-One card at a time is the default and needs no reason. Running two is a decision, and it is yours:
-the picker returns one card and knows nothing about the other.
+One card at a time is the default. Two is your decision — the picker knows about neither.
 
-**A parallel worker gets its own worktree, and a worktree never lives inside the repository.** They
-go in `../worktrees/<branch>`, a sibling of the checkout in the folder the repository itself sits
-in. Inside it, a worktree is untracked in the checkout that owns it, and the build output it leaves
-behind outlives `git worktree remove` and stops the next worker's preflight over a tree it never
-dirtied.
+**Where a worktree goes:** `../worktrees/<branch>`, a sibling of the checkout, never inside it. Cut
+it off a clean `main`. The main checkout stays one worker's. Delete it when its PR merges, not when
+it opens — a `hold` sends the worker back into it.
 
-The main checkout is one worker's. Everything beside it is cut off a clean `main` into a worktree
-of its own.
+**Run two when** the cards sit in different projects, or one of them is tests or documents only.
 
-**What may run beside something else:** cards in different projects, a test-only card beside a
-feature, a document beside code. The test is not whether the diffs overlap. It is whether either
-card changes what the other is being built against.
+**Never run two when** either card refactors, moves or renames what exists; changes a contract
+under `Domain/`, a migration, or a name that reaches disk; settles a convention; or edits `ISA.md`.
+The second card would be built against a shape that stopped being true and would land green
+agreeing with nothing.
 
-**What may not, however far apart the files sit:**
+Conflicting lines at merge are expected and are not the thing being avoided.
 
-- a refactor, or anything that moves, renames or resplits what already exists
-- a change to a contract under `Domain/`, a migration, or a rename that reaches disk
-- a convention, a naming pass, or an edit to `ISA.md`
-- a card whose own body says it is deciding the shape of something
+**Tell each worker which folders its card owns and which it may not enter.** Say another card is
+running; never say which.
 
-Those get the day to themselves — not because the merge would conflict, but because the second
-card is then built against a shape that stopped being true, and it lands green agreeing with
-nothing.
-
-**Text conflicts are expected and are not the thing being avoided.** Two cards appending to
-`Directory.Packages.props` or to the same document is a line resolved at merge. What has no merge
-marker is a disagreement about what something is for.
-
-**Name what each worker owns in its briefing** — the folders its card lives in, and the ones it
-may not enter — and say another card is being built at the same time without saying which. A
-worker that knows only its card widens into whatever it finds; a worker that knows whose card is
-beside it starts reasoning about somebody else's diff.
-
-**Merge one at a time, and audit against what is already merged.** A verdict read before another
-PR went in is a verdict on a diff that no longer describes `main`.
-
-**The worktree is deleted when its PR merges, and not before.** A `hold` sends the worker back
-into it, so removing it at the PR is throwing away the tree the next round needs. On the merge:
-`git worktree remove`, then `git worktree prune` and delete the folder by hand if build output
-refuses to go.
-
-Every worker runs a full build and a full test run, so what caps how many run at once is what this
-machine compiles at the same time, not how many cards look independent.
+**Merge one at a time**, and audit against what is already merged.
 
 ## 4 · A stage that comes back with nothing
 
