@@ -38,6 +38,25 @@ Borrow gh's for the one command rather than writing it into the machine's git co
 git -c credential.helper="!gh auth git-credential" push -u origin <branch>
 ```
 
+## Building the app project locks the solution build out of its own output
+
+`dotnet build src/MeetingTranscriber.App -p:Platform=x64` is how the packaged application is
+refreshed for `tools/MeetingTranscriber.UiProbe`, and it leaves MSBuild worker processes alive by
+default. Those nodes are holding `MeetingTranscriber.Presentation.dll` and
+`MeetingTranscriber.Domain.dll` open, and the shared projects have no `Platforms`, so they write to
+the same `bin/Debug/net10.0` either way. The next `dotnet build` of the solution — which is
+AnyCPU, so it is a different set of nodes — dies with a dozen `MSB3027` copy failures naming a
+process id, which reads as a stray editor or a running app and is neither.
+
+Turn the reuse off on the app build, which is the one that is out of step:
+
+```powershell
+dotnet build src/MeetingTranscriber.App/MeetingTranscriber.App.csproj -p:Platform=x64 -nodeReuse:false
+```
+
+`dotnet build-server shutdown` clears it after the fact, at the price of every other build on the
+machine starting cold. The fix that removes the flag is issue #173.
+
 ## A test filter without a project runs everything and passes
 
 `dotnet test --filter "FullyQualifiedName~X"` is silently ignored by the Microsoft.Testing.Platform

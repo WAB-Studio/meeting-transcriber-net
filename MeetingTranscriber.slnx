@@ -45,5 +45,8 @@
     <!-- Run by hand, in the solution so the build and the formatter still see it. -->
     <Project Path="tools/MeetingTranscriber.CorpusFixtures/MeetingTranscriber.CorpusFixtures.csproj" />
     <Project Path="tools/MeetingTranscriber.CorpusImport/MeetingTranscriber.CorpusImport.csproj" />
+    <!-- Starts the application and presses what is on it. It needs a desktop somebody is logged
+         into, so it is the one project here that is only ever run by hand. -->
+    <Project Path="tools/MeetingTranscriber.UiProbe/MeetingTranscriber.UiProbe.csproj" />
   </Folder>
 </Solution>
