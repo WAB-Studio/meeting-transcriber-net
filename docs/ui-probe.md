@@ -10,12 +10,14 @@ Run it by hand. It needs an interactive desktop, so it is never part of a build 
 ## Once per machine
 
 If anybody else is driving the app from another checkout, give this one a package of its own. Write
-`PackageIdentity.props` at the top of the checkout, taking the suffix from the folder — that keeps
-it short and stops two checkouts choosing the same one. It is in `.gitignore`, and every build here
-picks it up from then on:
+`PackageIdentity.props` at the top of the checkout, putting a name of your own in it — `-slot-3`,
+`-mine`. **Thirteen characters at most, including the dash**, and different from every other
+checkout on this machine. Windows caps a package name at fifty and this one already spends
+thirty-six on a GUID; over that, `Add-AppxPackage` refuses the manifest and does not say why. It is
+in `.gitignore`, and every build here picks it up from then on:
 
 ```powershell
-"<Project><PropertyGroup><PackageIdentitySuffix>-$(Split-Path -Leaf (Get-Location))</PackageIdentitySuffix></PropertyGroup></Project>" |
+"<Project><PropertyGroup><PackageIdentitySuffix>-slot-3</PackageIdentitySuffix></PropertyGroup></Project>" |
   Set-Content PackageIdentity.props
 ```
 
