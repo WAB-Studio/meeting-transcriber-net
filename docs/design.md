@@ -342,10 +342,26 @@ them rather than a special case. Amounts go as `[costo]`.
 written beside it, the control ranks, the two notices and the rules. It is this document as a
 picture. If the two ever disagree, this document is what a screen is built from.
 
+## Every screen is built out of components
+
+**Nothing on a screen is drawn twice.** A button, the meter, a meeting's row, a notice, a picker
+pinned to its meter: each is one control with its own file, used from wherever it is needed. A
+screen is a composition of them and holds no drawing of its own.
+
+The reason is not tidiness. This design will be iterated on — the person who owns it says so — and
+an iteration that has to be applied twelve times is an iteration that gets applied nine times and
+forgotten in three. One place per thing is what makes a redesign a diff instead of a sweep.
+
+Which pieces earn a component is the builder's judgement, and the floor is: **anything the same on
+two screens is one component before it is on the second one.**
+
 ## Where the artboards and this document disagree
 
-Three places. Each is an earlier pass a later decision replaced, and each is listed so nobody copies
-the stale value out of the markup.
+Every line here is a place the markup carries something a later decision replaced. **The artboards
+have not been redrawn against them** — that is a design pass of its own, and this list is what it
+works from. Until then this document wins and nobody copies the stale value out of the markup.
+
+### Values and copy an earlier pass left behind
 
 1. **`GrabandoVivo` paints the second speaker `#8E7CC3`.** The speaker palette is `#4F7561`,
    `#A0567A` and `#C3BFB6`; `Reunion`, `Clasificar` and `QuienEsQuien` all use `#A0567A`. Use
@@ -357,6 +373,47 @@ the stale value out of the markup.
 3. **`Fallo` runs the meter's above-−12 layer out to the retained peak rather than to the level**,
    which puts orange 9% past where the level actually is. `Sistema` is the component's own sheet and
    runs it from 80% to the level; that is the rule.
+4. **`Recuperacion` explains the mechanism** — *«Todavía no hay nada que decidir: algo sigue
+   escribiendo esta grabación»*. The rule above is that the order **is** the statement: the one
+   still running sits at the top and offers none of the three, and that is the whole of it. The
+   line goes.
+5. **Two notes in `canvas.json` are stale.** `Fallo`'s says changing microphone mid-recording is
+   engine debt — it is merged (ISC-78). `NadaLlego`'s says the same of changing program — that was
+   decided on 2026-08-25 and is now work with a card, not a refusal.
+
+### What the grill of 2026-08-25 changed
+
+The sitting that defined the twelve screens settled these against the markup. Each names the card
+that carries it.
+
+1. **`Main` · the two-way *En vivo / Al terminar* pill stays and is chosen per meeting** (#97).
+   `Configuracion` never mentions live or deferred; it owns which engine and what happens at the
+   end.
+2. **`Main` · a meeting with no name reads *Sin nombre*** (#97). The summary gives it one when it
+   arrives, and a pencil beside the name edits it by hand at any time.
+3. **`Main` · a row's small status line is one text, not four** (#97). *transcribiendo*, *148
+   turnos*, *3 voces sin nombre* and *en cola* collapse into a single discreet line — *necesita
+   revisión* and the like — and a meeting with nothing pending shows none.
+4. **`Main` · a row carries *Ver la reunión* and the next step's button** (#97) — transcribe,
+   summarise, name the voices. A meeting already transcribing is not offered transcribing again.
+5. **`Main` · the meetings list is a drawer** (#97). Small it scrolls; a press raises it to the
+   full height of the window. No search field yet — that is #127, with the index behind it — and
+   no paging: the whole list loads.
+6. **`Configuracion` · *Preguntarme cada vez* becomes *No hacer nada*** (#108). Nothing runs on its
+   own; transcribing and summarising are asked for from the meetings list. Nothing asks anything.
+7. **`Configuracion` · a row saying who is using the application** (new card), with the name and
+   optionally the company and since when.
+8. **A first-run moment that does not exist yet** (new card): the first time the application opens,
+   it asks who is using it. That is where the microphone's resolved voice gets a person's name.
+9. **`Reunion` needs its small version** (#104): recorded and not transcribed is the player, the
+   date, the duration and *Transcribirla*, and nothing else. With *No hacer nada* as an option that
+   is the ordinary case, not an edge.
+10. **`Clasificar` · *Ninguna* and *Dejarla sin clasificar* are two different things** (#105).
+    *Ninguna* is «none of the thirteen fits, I fill the fields myself» and is the shell a later card
+    grows into templates of one's own; *Dejarla sin clasificar* is the meeting stored with no links
+    at all, found by text, which is what §5.3 says of a casual chat.
+11. **The product's name and mark stay placeholder** (#96). *Meeting Transcriber* and any SVG until
+    somebody decides otherwise; it is a component like everything else and changing it is one file.
 
 ## Opening the artboards
 

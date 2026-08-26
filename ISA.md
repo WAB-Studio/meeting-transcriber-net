@@ -1,7 +1,7 @@
 ﻿---
 phase: climbing
-progress: 127/181
-updated: 2026-08-20
+progress: 127/189
+updated: 2026-08-25
 ---
 
 # ISA — meeting-transcriber-net
@@ -165,6 +165,7 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-163: Asking this machine what it can record from comes back at a deadline, even when the audio service never answers.
 - [x] ISC-162: Anti: a question this machine has not come back from is not put to it again until it does, so a screen that looks every second costs one deadline and not one at every look.
 - [x] ISC-164: Anti: a question this machine has not come back from stops no other question about its devices being asked, so a meeting following a microphone that went away is never held up by a screen looking at what the machine plays through.
+- [ ] ISC-169: A meeting following one program goes on following another without the recording stopping.
 
 ### F4 · WinUI recorder
 Why: the application replaces OBS. Recording, pausing, stopping and recovering happen in one
@@ -186,13 +187,20 @@ Board: 3 · Grabador WinUI
 - [x] ISC-152: Every text a person reads in the application is there in both Spanish and English.
 - [x] ISC-153: The application opens in the language Windows is set to, unless somebody chose another.
 - [x] ISC-156: A meeting's identity, its row in the corpus and the folder its audio goes into all exist before the first sample of it is captured.
-- [x] ISC-157: Anti: stopping a recording queues no work on the meeting.
+- [x] ISC-157: Anti: stopping a recording queues no work on the meeting that nobody asked for beforehand.
+- [ ] ISC-157.1: What happens to a meeting when its recording ends is what the person settled beforehand, and nothing else.
 - [ ] ISC-158: A meeting is recorded from end to end with nothing typed at a command line.
 - [ ] ISC-158.1: Which microphone a meeting records, and whether channel 0 follows one program or everything the machine plays, are chosen before it starts.
 - [ ] ISC-158.2: A meeting being recorded is paused, resumed and stopped without leaving the application.
 - [ ] ISC-158.3: A meeting recorded from the application arrives in the corpus as the same thing a meeting recorded at a prompt does.
 - [x] ISC-158.4: What a meeting is expected to be spoken in is said for that meeting, and is never taken from the language the application is being read in.
 - [x] ISC-158.5: Anti: a recording cannot be started before the microphone, what channel 0 follows and what will be spoken have each been said.
+- [ ] ISC-158.6: A microphone connected while the application is open can be recorded with, without closing it.
+- [ ] ISC-165: A meeting's name is the person's to set, at any time after it was recorded.
+- [ ] ISC-165.1: Anti: a meeting nobody has named never reads under a name the application invented for it.
+- [ ] ISC-166: Who is using the application is asked once and is what the microphone's own voice resolves to from then on.
+- [ ] ISC-167: Anti: playing back what a meeting recorded never requires a transcription to have been paid for.
+- [ ] ISC-168: A meeting whose transcription arrived has its readable files without anybody asking for them.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly

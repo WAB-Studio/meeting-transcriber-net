@@ -98,7 +98,7 @@ the repository, not in the project.
 | Status        | Means                                      | Moves                          |
 | ------------- | ------------------------------------------ | ------------------------------ |
 | `Backlog`     | Exists so it is not forgotten. Not defined | Auto, when the issue is opened |
-| `Ready`       | Defined and unblocked. Taken from the top  | You, when you define it        |
+| `Ready`       | Defined. Taken from the top                | You, when you define it        |
 | `In progress` | Has a branch, no PR yet                    | **You, when you branch**       |
 | `In review`   | Has an open PR                             | Auto, on `Closes #N`           |
 | `Testing`     | Merged. Nobody has run it and confirmed    | **You, when it merges**        |
@@ -139,6 +139,10 @@ replacing the body rather than stacking under it.
 Those four — `Claim`, `Delivers`, `Screen`, `Proof` — are required, and `none` is a whole answer for
 two of them. Never invent a screen to fill the line. A card missing one is not `Ready`, and the
 picker sends it back.
+
+**A block does not hold a card out of `Ready`.** `Ready` means defined and nothing else. What is
+waiting rides on the card as `**Depends on:** #N`, and whoever takes it looks then at whether that
+issue is closed — a block lifted last week should not have cost the card a column move nobody made.
 
 **The order inside `Ready` is the user's judgment.** No agent invents it or slips a card ahead. An
 agent may _propose_ an order with the context the user lacks — a dependency, a claim already closed
