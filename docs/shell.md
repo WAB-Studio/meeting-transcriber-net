@@ -1,6 +1,6 @@
 # Running things by hand
 
-Three ways a command on this machine does something other than what it looks like it did. Each one
+Four ways a command on this machine does something other than what it looks like it did. Each one
 costs an hour the first time because the failure names the wrong cause.
 
 ## PowerShell re-encodes a UTF-8 file it reads
