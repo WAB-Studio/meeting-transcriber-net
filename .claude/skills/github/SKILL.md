@@ -50,7 +50,7 @@ announced nowhere.
 When the work belongs to no claim — dependencies, cleanup, a formatting adjustment:
 
 ```markdown
-**Claim:** none — <why this work is not a claim>
+**Claim:** none
 
 **Done when:** <what has to be true, and how you know>
 ```
