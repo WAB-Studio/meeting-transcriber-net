@@ -40,7 +40,7 @@ progress and GitHub says which PR is open — and those two are what a next sess
 the one you kept is the one nobody else can see.
 
 Which means a day that dies is picked up by starting a new one: the picker reads the board, finds
-the card in progress or the PR open, and §3 gets its context back.
+the card in progress or the PR open, and §4 gets its context back.
 
 ## 2 · The cycle
 
@@ -51,7 +51,7 @@ the card in progress or the PR open, and §3 gets its context back.
      `skipped` to `Backlog` with its reason, `finished` to `In review` — because a subagent that
      moves a card and then dies has taken it out of the pool with nothing saying why.
 2. **Work.** Spawn `worker` with the card id, and the PR number if the pick found one. If the card
-   was `In progress` or its PR is open, spawn `recoverer` first and pass the worker its briefing. §3.
+   was `In progress` or its PR is open, spawn `recoverer` first and pass the worker its briefing. §4.
 3. **Audit.** The record says `pr_opened` → spawn `auditor` with the PR number and that record. Any
    other outcome closed the card itself and there is nothing to audit.
 4. **Act on the verdict.** This part is yours and there is no subagent for it:
@@ -64,11 +64,37 @@ the card in progress or the PR open, and §3 gets its context back.
    - Three rounds of work and audit on one card is the ceiling. Still holding, send the card where
      the verdict says with the verdict's own body as a comment, and take the next card.
    - `ask` → a decision nobody here may make. Write it on the card, label it `question`, send it
-     back to `Backlog`, and take the next card. §4.
+     back to `Backlog`, and take the next card. §5.
 
 Then start again at the pick. Nothing paces this.
 
-## 3 · A stage that comes back with nothing
+## 3 · Cards in parallel
+
+One card at a time is the default. How many run beside it is your decision — the picker knows about
+none of them.
+
+**Where a worktree goes:** `../worktrees/<branch>`, a sibling of the checkout, never inside it. One
+worktree a worker, cut off a clean `main`. The main checkout stays one worker's. Delete it when its
+PR merges, not when it opens — a `hold` sends the worker back into it.
+
+**Run cards together when** they sit in different projects, or all but one are tests or documents
+only.
+
+**Never run a card beside anything when** it refactors, moves or renames what exists; changes a
+contract under `Domain/`, a migration, or a name that reaches disk; settles a convention; or edits
+`ISA.md`. Whatever ran beside it was built against a shape that stopped being true, and lands green
+agreeing with nothing.
+
+Conflicting lines at merge are expected and are not the thing being avoided.
+
+**Tell each worker which folders its card owns and which it may not enter.** Say other cards are
+running; never say which.
+
+**Merge one at a time**, and audit against what is already merged.
+
+The ceiling is what this machine builds and tests at once, not how many cards look independent.
+
+## 4 · A stage that comes back with nothing
 
 A subagent can end holding nothing useful: it returns prose instead of its contract, or it dies, or
 it answers about the wrong card. **That is not the day ending.** It costs one stage, and the fix is
@@ -85,7 +111,7 @@ context.
 committed and no PR is a cycle whose work a later session can find or rebuild. Say what was lost
 and move on; standing still costs more than rebuilding.
 
-## 4 · Nothing here waits for the user
+## 5 · Nothing here waits for the user
 
 A cycle that meets a decision neither the worker nor the audit can make writes it on the card, sends
 the card back to `Backlog` labelled `question`, and takes the next task. Say it in one line — the card, the
@@ -94,7 +120,7 @@ PR, what has to be settled — and go on.
 **The second card parked in one day ends it**, naming both. A day that ends on that ceiling twice
 means the grill is not catching what it should. Say so plainly.
 
-## 5 · A decision the user hands you
+## 6 · A decision the user hands you
 
 Decisions arrive outside a grill — over a verdict, in passing, to get a cycle moving — and the
 grill's check on them does not arrive with them. It runs here: an answer the framework or the
@@ -104,7 +130,7 @@ what refuses it. Taste fires nothing.
 Then take whatever they answer second. What you may not do is write down an answer you had reason
 to question and keep the reason.
 
-## 6 · What you say, and when
+## 7 · What you say, and when
 
 **Silence is the default.** You speak when a card is picked, when a cycle closes, when a rule fires,
 and when the day ends. Somebody who asked to be left alone for the day does not want a heartbeat.
@@ -120,10 +146,12 @@ whole point, and the next day picks it up from there.
 
 Every comment you leave on a card opens with `[Day]`.
 
-## 7 · Do not touch the repo yourself
+## 8 · Do not touch the repo yourself
 
 The worker owns the checkout. You do not edit files, do not commit and do not switch branches
 between cycles — a dirty tree stops the next worker in its preflight, including over a fix you
 found. Write it on a card and let a later day take it.
 
-The one exception is the merge in §2, which touches GitHub rather than the checkout.
+The one exception is the merge in §2, which touches GitHub rather than the checkout. Cutting and
+removing the worktrees of §3 is not a second exception: they sit outside the checkout, and the
+reason they sit outside it is that a worktree inside one is a dirty tree under another name.
