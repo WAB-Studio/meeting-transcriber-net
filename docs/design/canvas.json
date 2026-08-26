@@ -83,15 +83,6 @@
       "page": "page-1"
     },
     {
-      "file": "Recuperacion.dc.html",
-      "title": "Recuperación",
-      "x": 3600,
-      "y": 840,
-      "w": 1120,
-      "h": 720,
-      "page": "page-1"
-    },
-    {
       "file": "Reunion.dc.html",
       "title": "La reunión",
       "x": 0,
@@ -155,12 +146,21 @@
       "h": 720
     },
     {
+      "file": "Persona.dc.html",
+      "title": "Agregar a alguien",
+      "page": "page-1",
+      "x": 2400,
+      "y": 2660,
+      "w": 1120,
+      "h": 720
+    },
+    {
       "file": "Sistema.dc.html",
       "title": "Olivo · sistema visual",
       "x": 0,
       "y": 0,
       "w": 1120,
-      "h": 2736,
+      "h": 3920,
       "page": "page-2"
     }
   ],
@@ -171,7 +171,7 @@
       "y": -330,
       "w": 940,
       "page": "page-1",
-      "text": "Dieciséis pantallas en Olivo. Fila 1: grabar. Fila 2: lo que pasa cuando la grabación termina o se rompe. Fila 3: lo que se hace con la reunión después. Fila 4: lo que cruza todo el flujo.\nNada de vocabulario del dominio, nada explicando el mecanismo, y una sola oración por pantalla — sólo donde algo falló. Los radios son los de la plataforma: 4 lo que se aprieta, 8 una tarjeta, 12 lo único que interrumpe la pantalla."
+      "text": "Dieciséis pantallas en Olivo. Fila 1: grabar. Fila 2: lo que pasa cuando la grabación termina o se rompe. Fila 3: lo que se hace con la reunión después. Fila 4: lo que cruza todo el flujo.\nDos lugares fijos para los botones en las dieciséis: a la izquierda lo neutro, a la derecha el acto, y lo que se pierde o se cobra apartado más a la izquierda. Un verbo por acto. Radios 4 / 8 / 12 y círculo sólo donde la cosa es genuinamente redonda. Una oración por pantalla, y sólo donde algo falló."
     },
     {
       "id": "f-inicio",
@@ -227,15 +227,7 @@
       "y": 730,
       "w": 340,
       "page": "page-1",
-      "text": "Elegir entre transcribir y resumir dejó de ser una pantalla por reunión: es una preferencia que se pone una vez.\nLos dos motores son elecciones separadas, con su costo cada una, y «un modelo en esta máquina» es una opción más, no un caso especial. Los importes van como [costo]: el precio real sale de tu cuenta y no lo invento."
-    },
-    {
-      "id": "f-recup",
-      "x": 3600,
-      "y": 730,
-      "w": 340,
-      "page": "page-1",
-      "text": "La reunión en curso va siempre arriba, y no ofrece ninguna de las tres: todavía no hay nada que decidir."
+      "text": "Qué pasa al terminar una grabación se lleva un tercio de la pantalla porque es la única elección de acá que gasta plata. Los dos motores comparten una tarjeta, y los tres ajustes callados van densos sobre el papel."
     },
     {
       "id": "f-leer",
@@ -251,7 +243,7 @@
       "y": 1560,
       "w": 340,
       "page": "page-1",
-      "text": "Las plantillas son las trece reuniones de arquitectura.md §5.3, pero sólo por su nombre: qué llena cada una no se explica, se ve al elegirla. Sin árbol, sin roles con nombre técnico, sin panel de ayuda."
+      "text": "Cada cadena es un vínculo dibujado como su camino en el árbol. El + de adentro baja un nivel en el mismo árbol; agregar otra cadena es otro control, abajo. Una reunión de dos empresas es normal, no una excepción."
     },
     {
       "id": "c-quien",
@@ -300,6 +292,14 @@
       "w": 620,
       "page": "page-1",
       "text": "Lo único que detiene la pantalla es un cobro. Transcribir estima sobre la duración real de la reunión; resumir muestra el precio oficial del modelo y no estima nada, porque no hay estimación honesta."
+    },
+    {
+      "id": "x-persona",
+      "x": 2400,
+      "y": 2540,
+      "w": 340,
+      "page": "page-1",
+      "text": "El segundo y último diálogo. Agrega una afiliación y nunca reemplaza una: alguien tiene tantas como tenga, cada una con su período."
     }
   ],
   "launch": {

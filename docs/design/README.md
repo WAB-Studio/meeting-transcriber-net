@@ -37,7 +37,6 @@ of why a screen is shaped the way it is, and they are mined into `../design.md`.
 | Flujo | It ended or broke | `Fallo.dc.html` | A source died |
 | Flujo | It ended or broke | `AlParar.dc.html` | Stopping |
 | Flujo | It ended or broke | `Configuracion.dc.html` | Settings |
-| Flujo | It ended or broke | `Recuperacion.dc.html` | Unfinished recordings |
 | Flujo | Afterwards | `Reunion.dc.html` | The meeting |
 | Flujo | Afterwards | `ReunionCruda.dc.html` | The meeting, recorded and nothing else |
 | Flujo | Afterwards | `Clasificar.dc.html` | What it was about |
@@ -45,10 +44,11 @@ of why a screen is shaped the way it is, and they are mined into `../design.md`.
 | Flujo | Afterwards | `Correcciones.dc.html` | Words that come out wrong |
 | Flujo | Across the flow | `Primera.dc.html` | The first time it opens — who is using it |
 | Flujo | Across the flow | `Costo.dc.html` | What a charge costs, asked once |
+| Flujo | Across the flow | `Persona.dc.html` | Adding somebody, from wherever |
 | Sistema | — | `Sistema.dc.html` | Olivo — the system sheet |
 
 Every artboard is 1120 wide; the flow is 720 tall except `Reunion` (860), `Correcciones` (820) and
-`Configuracion` (760), and the system sheet is 2736.
+`Configuracion` (760), and the system sheet is 3920.
 
 ## The names and the copy
 
@@ -56,7 +56,6 @@ The filenames and every word on these pages are Spanish, because the product is 
 are the product's own words. That is the exception `CLAUDE.md` allows for what a person reads, not
 a licence for anything else in the repo.
 
-The copy was redrawn on 2026-08-26 against the rules `../design.md` now carries: one sentence per
-screen and only where something failed, neutral Spanish with no voseo, and no line that exists to
-explain how the application works inside. Read a string against that section before it becomes an
-entry of `UiTexts` — the section also records what an earlier pass left behind.
+Read a string against `../design.md` before it becomes an entry of `UiTexts`: one sentence per
+screen and only where something failed, neutral Spanish with no voseo, no line that exists to
+explain how the application works inside, and one verb per act from the closed table there.
