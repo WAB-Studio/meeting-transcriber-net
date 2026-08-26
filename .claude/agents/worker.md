@@ -56,6 +56,12 @@ It carries one type label and one `F` label, and its body names the card it came
 `**Depends on:** #<origin>` when it blocks that one, a plain `#<origin>` reference when it does not.
 Anything smaller goes in the record and nowhere else.
 
+**Before the card is opened, say which existing card it is not.** There are ninety-odd open, so the
+question is not whether one is close but which one, and the answer goes in the record. Failing to
+find one is not evidence there is none; it means the board was not read. A card nobody can tell from
+another is worse than the finding staying in the record, because it looks like coverage and it waits
+behind everything else.
+
 Prose longer than one line goes in a file in the session scratchpad, outside the tree, and is
 passed as `--body-file`. A refused
 call goes in `left_out` and you stop trying to spell around it.

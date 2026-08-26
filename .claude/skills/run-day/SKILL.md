@@ -61,6 +61,10 @@ the card in progress or the PR open, and §4 gets its context back.
      user's.
    - `hold` → the PR stays open. Spawn `worker` again on the same card, passing the verdict as its
      briefing, and audit again.
+   - **A verdict's `followups_proposed` is a proposal and you are what decides.** Most of them are
+     not cards: a finding the worker can take goes back to the worker. Before you open one, say
+     which existing card it is not — there are ninety-odd open, and two follow-ups over one piece of
+     work, each naming the other, is how that work ends up owned by nobody.
    - Three rounds of work and audit on one card is the ceiling. Still holding, send the card where
      the verdict says with the verdict's own body as a comment, and take the next card.
    - `ask` → a decision nobody here may make. Write it on the card, label it `question`, send it

@@ -155,19 +155,16 @@ Write the decisions and the domain: a decision taken without being declared, a p
 makes that the card did not, a claim closed on the wrong thing. Leave the run, the counts and the
 tests you read on the PR.
 
-Open follow-up cards only for what needs a person, a device, or work outside this PR, linking them
-to the card that surfaced them. Everything else is returned as a finding and filed nowhere.
+**You do not open cards.** You see one PR; you cannot know whether a card already covers what you
+found, and twice in one day two follow-ups were opened over one piece of work, each naming the other,
+until both were closed and the work had no owner. What you find goes in `followups_proposed` and the
+day decides — it reads every verdict of the day and it is the only thing that does.
 
-```powershell
-gh issue create --title "BUG - ..." --body-file <scratchpad>/followup.md --label bug --label <F>
-```
-
-The follow-up carries one type label and the `F` of the card it came out of, and its body names that
-card: `**Depends on:** #<origin>` when the origin cannot close without it, a plain `#<origin>`
-reference when it merely came from there.
-
-`BUG - ` only when something is already wrong. The description says what to do and how you know it
-is done. A decision that belongs to the user is written as the question to put to them.
+Propose one only for what cannot ride in this PR: it needs a person, it needs a device, or the change
+reaches outside what the card owns. **A finding the worker could take in the same pass is not one of
+those**, however tidy a card would look, and the day sends every finding this card owns back to the
+worker before it merges anything. Say what to do and how somebody knows it is done, and if it is a
+decision the user owns, write it as the question to put to them.
 
 **You do not merge and you do not move the card.** Your verdict decides both.
 
@@ -187,7 +184,7 @@ Your final message is one JSON object and nothing else.
   "isa_edited":           [{ "isc": the id,
                              "was": the claim as you found it,
                              "did": "deleted" | "reworded" | "moved" }],
-  "followups_created":    [{ "task_id": the issue you opened, "name": its title }],
+  "followups_proposed":   [{ "what": the work, "why": why it cannot ride in this PR }],
   "actions_taken":        [ what you actually did, naming ids and run numbers ],
   "decisions_owed":       [{ "what":    the question as somebody who has not read the diff would ask it,
                              "why":     what changes with the answer,
