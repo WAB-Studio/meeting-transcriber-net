@@ -53,6 +53,21 @@ public partial class ScreenTextsTests
     /// properties that are not here carry no words at all — a live setting, a landmark type, a
     /// position in a set — and there is nothing in them to say twice.
     /// </para>
+    /// <para>
+    /// <c>AcceleratorKey</c> and <c>AccessKey</c> are the two worth arguing about, and the argument
+    /// was had rather than skipped. Being in this list costs them the markup half as well: a screen
+    /// writing <c>AutomationProperties.AcceleratorKey="Control+G"</c> has to bind a catalogue entry
+    /// instead, and none of the screens still to be built has been written yet, so the cost lands on
+    /// people who were not in this decision. They stay because the string is not the binding — a
+    /// <c>KeyboardAccelerator</c> is — it is the sentence a screen reader reads out, and the letter
+    /// in it follows the verb it abbreviates. <c>Control+G</c> for <em>grabar</em> is <c>Control+R</c>
+    /// for <em>record</em>, so a screen that hard-codes one announces the wrong key to whoever is
+    /// reading the other language. Where a screen does want the same keys in both, the catalogue
+    /// already refuses two versions that are equal until somebody says which kind of entry it is,
+    /// which is the conversation worth having and not a cost to avoid. Dropping them would buy back
+    /// some ceremony on screens nobody has written and pay for it with a spoken string in one
+    /// language, which is the silent failure of the two.
+    /// </para>
     /// </remarks>
     private static readonly HashSet<string> Reads =
     [
