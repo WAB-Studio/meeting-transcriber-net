@@ -1,0 +1,77 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: transparent; }
+    a { color: #4F7561; } a:hover { color: #3C5B4A; }
+  </style>
+</helmet>
+
+<div style="width: 1120px; height: 720px; box-sizing: border-box; padding: 30px 40px; display: flex; flex-direction: column; overflow: hidden; background: #FCFCFB; color: #1C1B19; font-family: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 20px;">
+
+  <div style="flex: none; display: flex; align-items: center; gap: 11px; padding: 0 6px;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-linecap="round"><path d="M8 7a7 7 0 0 0 0 10" stroke="#1C1B19" stroke-width="2.2"></path><path d="M14.5 5a9.5 9.5 0 0 1 0 14" stroke="#4F7561" stroke-width="2.2"></path></svg>
+    <span style="font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.015em;">Meeting Transcriber</span>
+  </div>
+
+  <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; padding: 0 6px;">
+
+    <div style="width: 620px; display: flex; flex-direction: column;">
+
+      <div style="font-size: 26px; line-height: 32px; font-weight: 600; letter-spacing: -.02em; margin-bottom: 30px;">Antes de empezar</div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.015em;">Quién usa la aplicación</div>
+        <div style="box-sizing: border-box; width: 100%; height: 34px; display: flex; align-items: center; padding: 0 12px; border: 1px solid #E6E4DE; border-radius: 4px; background: #FCFCFB; font-size: 14px; line-height: 20px;">Carolina Nieto</div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 26px;">
+        <div style="font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.015em;">Cuando termina una grabación</div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; align-items: center; gap: 14px; height: 42px; padding: 0 16px; background: #EEF2EF; border-radius: 8px;">
+            <span style="width: 16px; height: 16px; flex: none; border-radius: 50%; background: #4F7561; box-shadow: inset 0 0 0 4px #FCFCFB;"></span>
+            <span style="font-size: 15px; line-height: 26px; font-weight: 500;">Transcribirla y resumirla</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 14px; height: 42px; padding: 0 16px; border-radius: 8px;">
+            <span style="width: 16px; height: 16px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px #C3BFB6;"></span>
+            <span style="font-size: 15px; line-height: 26px;">Sólo transcribirla</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 14px; height: 42px; padding: 0 16px; border-radius: 8px;">
+            <span style="width: 16px; height: 16px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px #C3BFB6;"></span>
+            <span style="font-size: 15px; line-height: 26px;">No hacer nada</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 26px;">
+        <div style="font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.015em;">Dónde se guarda</div>
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="box-sizing: border-box; flex: 1; min-width: 0; height: 34px; display: flex; align-items: center; padding: 0 12px; border: 1px solid #E6E4DE; border-radius: 4px; background: #FCFCFB; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px;">C:\Users\carolina\Documentos\Reuniones</div>
+          <button style="flex: none; height: 30px; padding: 0 14px; background: #F4F3EF; border: none; border-radius: 4px; color: #1C1B19; font-family: inherit; font-size: 14px; cursor: pointer;">Cambiar</button>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; margin-top: 34px;">
+        <button style="height: 46px; padding: 0 24px; background: #1C1B19; border: none; border-radius: 4px; color: #FCFCFB; font-family: inherit; font-size: 15px; line-height: 20px; font-weight: 500; cursor: pointer;">Guardar</button>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
