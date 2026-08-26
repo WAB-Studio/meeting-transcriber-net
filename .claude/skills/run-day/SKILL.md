@@ -77,12 +77,16 @@ none of them.
 it. One slot a worker. The main checkout is a slot like any other and stays one worker's.
 
 **Slots are taken and given back, never created and destroyed.** Add slot-N+1 when every slot is
-busy. On the merge, return the slot: `git checkout main`, `git pull`, `git reset --hard`,
-`git clean -fd`. Never `-fdx` — `bin/` and `obj/` are what the slot is for, and a worker that
-starts on a cold build has paid for a slot it did not get.
+busy. On the merge, return the slot: `git fetch`, `git checkout --detach origin/main`,
+`git reset --hard`, `git clean -fd`. Never `-fdx` — `bin/` and `obj/` are what the slot is for, and
+a worker that starts on a cold build has paid for a slot it did not get.
 
-**A slot is free when `git worktree list` puts it on `main` and `git status` is clean.** Anything
-else is a worker's, or is wreckage — read it before you hand it out.
+**A returned slot sits on a detached HEAD, never on `main`.** Git gives a branch to one worktree at
+a time, so the second slot to try `git checkout main` cannot have it, and neither can the worker
+who needs it next. A worker cuts its branch off the detached commit.
+
+**A slot is free when it is detached and `git status` is clean.** Anything else is a worker's, or
+is wreckage — read it before you hand it out.
 
 **Run cards together when** they sit in different projects, or all but one are tests or documents
 only.
