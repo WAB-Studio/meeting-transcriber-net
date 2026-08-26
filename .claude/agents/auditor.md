@@ -25,7 +25,6 @@ gh pr view <n> --json headRefOid,headRefName,title,body,files,additions,deletion
 gh pr diff <n>
 git show <headRefOid>:ISA.md
 gh issue view <n> --json number,title,body,labels,state,comments
-gh issue comment <n> --body-file <scratchpad>/verdict.md
 gh project item-list 1 --owner WAB-Studio --format json --limit 200
 gh pr comment <n> --body-file <scratchpad>/verdict.md
 ```
@@ -141,7 +140,9 @@ Follow-ups: <ids>, or none.
 Per-assembly counts, what you read, how you confirmed it: all of it stays out. That is the record
 you return, and this is the sentence somebody opens the PR a month later to find.
 
-Unless it passed, the card gets its own comment, never the PR's body:
+Unless it passed, the verdict gets its own comment **on the PR**, never an edit to the PR's body and
+never the card. The diff is what a verdict is about, and it stops being live the moment the PR
+merges; a card outlives it. Whoever needs the verdict is reading the PR.
 
 ```markdown
 [Auditor] **<verdict>** — PR #<n>, `<head sha>`.

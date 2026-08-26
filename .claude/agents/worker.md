@@ -23,7 +23,8 @@ before the card.
 
 ```powershell
 gh issue view <n> --json number,title,body,labels,state,comments
-gh issue comment <n> --body-file <scratchpad>/note.md
+gh pr comment <pr> --body-file <scratchpad>/note.md
+gh issue comment <n> --body-file <scratchpad>/note.md   # only when no PR of yours carries it
 gh issue create --title "BUG - ..." --body-file <scratchpad>/found.md --label bug --label <F>
 gh project item-list 1 --owner WAB-Studio --format json --limit 200
 ```
@@ -133,13 +134,18 @@ what moves the card to `In review` — you do not move it yourself, and you do c
 Then:
 
 ```powershell
-gh issue comment <n> --body-file <scratchpad>/done.md
+gh pr comment <pr> --body-file <scratchpad>/done.md
 ```
 
-Every comment you leave on a card opens with `[Worker]`:
+**It goes on the PR and not on the card.** The diff is what it is about, and the PR is where anybody
+who follows the merge back is already standing. A card outlives its PR and says what the work was
+for; it does not carry the traffic of getting there. The one comment that still belongs on a card is
+the `already_done` one in step 1, because no PR of yours carries that.
+
+Every comment you leave opens with `[Worker]`:
 
 ```markdown
-[Worker] **In review.** PR #<n>, head `<sha>`.
+[Worker] **In review.** Card #<n>, head `<sha>`.
 ```
 
 Write the decisions and the domain: what a meeting, a recording or the corpus does now that it did
