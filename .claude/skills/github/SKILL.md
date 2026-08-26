@@ -92,21 +92,24 @@ Issues say what the work is. **The board says what order it goes in** — `WAB-S
 `Meeting Transcriber`. What it shows is `Status` and the labels; the feature and the claim live on
 the issue, not in a field that can drift from it.
 
-Only issues are items. Never add a PR to the board. `Closes #N` couples them, and that link lives in
-the repository, not in the project.
+Only issues are items. Never add a PR to the board. A plain `Card #N` couples them, and that link
+lives in the repository, not in the project.
 
 | Status        | Means                                      | Moves                          |
 | ------------- | ------------------------------------------ | ------------------------------ |
 | `Backlog`     | Exists so it is not forgotten. Not defined | Auto, when the issue is opened |
 | `Ready`       | Defined. Taken from the top                | You, when you define it        |
 | `In progress` | Has a branch, no PR yet                    | **You, when you branch**       |
-| `In review`   | Has an open PR                             | Auto, on `Closes #N`           |
+| `In review`   | Has an open PR                             | **You, when you open the PR**  |
 | `Testing`     | Merged. Nobody has run it and confirmed    | **You, when it merges**        |
 | `Done`        | Confirmed by a person                      | Auto, when you close the issue |
 
-Drag two cards, ever: `Ready → In progress` and `In review → Testing`. The rest moves itself.
+Drag three, ever: `Ready → In progress`, `In progress → In review` and `In review → Testing`.
 
-Put `Closes #N` in every PR that has an issue.
+Put `Card #N` in every PR that has an issue, and **never a closing keyword** — not `Closes`, not
+`Fixes`, not `Resolves`. A closing keyword closes the issue the moment the PR merges, and the
+project's own `item closed` workflow then sets `Done`. That skips `Testing`, which is the status
+that means somebody ran it. `Done` is a person saying it works, and a merge is not a person.
 
 Never move a card to `Done` for merging. Move it to `Testing`, confirm it works, then close the
 issue. Nothing has shipped and there is no deploy, so confirming is running the built app, or
@@ -181,7 +184,7 @@ gh project item-edit --id $item --project-id PVT_kwDOCo2sl84BhFA- `
 `Open the recorder on the main screen, not the diagnostic panel`
 
 ```markdown
-Closes #142.
+Card #142.
 Claims: ISC-142, ISC-143.
 
 ## What changed
@@ -194,9 +197,10 @@ The door into the app was a panel built to debug capture, so the first thing a p
 something nobody outside this repo can read.
 ```
 
-- **Two different lines.** `Closes #N` is the issue, and it only appears when the issue existed
-  before the branch — no issue, no line. `Claims:` is the ISA, and is `none` when the PR closed no
-  claim. Neither ever names something that is not there.
+- **Two different lines.** `Card #N` is the issue, and it only appears when the issue existed
+  before the branch — no issue, no line. It is a reference and never a closing keyword: the card
+  outlives the merge and a person closes it. `Claims:` is the ISA, and is `none` when the PR closed
+  no claim. Neither ever names something that is not there.
 - A claim closes on its probe, recorded in `## Verification` through the `isa` skill, **in the same
   PR**. An ISA updated afterwards never gets updated.
 - **Optional section:** `## Additional notes` — the riskiest part, what was left out, what has to
