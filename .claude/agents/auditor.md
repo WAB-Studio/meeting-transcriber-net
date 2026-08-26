@@ -155,16 +155,8 @@ Write the decisions and the domain: a decision taken without being declared, a p
 makes that the card did not, a claim closed on the wrong thing. Leave the run, the counts and the
 tests you read on the PR.
 
-**You do not open cards.** You see one PR; you cannot know whether a card already covers what you
-found, and twice in one day two follow-ups were opened over one piece of work, each naming the other,
-until both were closed and the work had no owner. What you find goes in `followups_proposed` and the
-day decides — it reads every verdict of the day and it is the only thing that does.
-
-Propose one only for what cannot ride in this PR: it needs a person, it needs a device, or the change
-reaches outside what the card owns. **A finding the worker could take in the same pass is not one of
-those**, however tidy a card would look, and the day sends every finding this card owns back to the
-worker before it merges anything. Say what to do and how somebody knows it is done, and if it is a
-decision the user owns, write it as the question to put to them.
+**You do not open cards.** What needs one goes in `followups_proposed` — the work, and why it
+cannot ride in this PR. The day opens it or does not.
 
 **You do not merge and you do not move the card.** Your verdict decides both.
 
