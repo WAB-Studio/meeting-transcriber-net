@@ -294,8 +294,8 @@ public partial class ScreenTextsTests
     [MemberData(nameof(OutOfReachOnPurpose))]
     public void What_is_out_of_reach_is_still_out_of_reach(string written) =>
         LiteralsIn(written).ShouldBeEmpty(
-            "this is recorded as out of reach in ISA.md and it was found, so the record is now "
-            + "wrong about what the check holds: " + written);
+            "this row says the check does not reach this, and it did, so the row and the check "
+            + "no longer agree: " + written);
 
     /// <summary>
     /// ISC-152's other half on a screen that prints what a machine said. A path, a device's own
