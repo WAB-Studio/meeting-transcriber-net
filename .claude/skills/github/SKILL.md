@@ -112,45 +112,33 @@ Never move a card to `Done` for merging. Move it to `Testing`, confirm it works,
 issue. Nothing has shipped and there is no deploy, so confirming is running the built app, or
 reading the probe that ran. The evidence that closes the card is the evidence that ticks its claim.
 
-**The cost is paid on the way in.** A card in `Backlog` is a title and a claim; a card in `Ready`
-already says what it delivers, what proves it, where it is seen and what it depends on. Starting one
-means reading one card, not auditing the board.
-
-**Defining a card rewrites its body**, and that is what makes the promise durable:
+**The cost is paid on the way in.** `Backlog` is a title. `Ready` is this template filled in,
+replacing the body rather than stacking under it.
 
 ```markdown
-Today the recorder opens on a diagnostic panel, and the meeting that stopped mid-recording is
-announced nowhere.
+<what is wrong today, in a line or two>
 
-**Claim:** `ISA.md` · ISC-142
+**Claim:** ISC-N, or `none`. The id and nothing else.
 
 **Delivers**
 
-- one screen carries recording, the meeting list and the one waiting on a decision
-- both meters are on it before recording starts, each next to its own selector
-- a meeting waiting on a decision is a row with two actions, never a pop-up
+- <what somebody can do that they could not before>
+- <one bullet each: the requirement, never how it is built — that is the PR's>
 
-**Screen:** `docs/design/Main.dc.html` — the artboard is merged; `docs/design.md` says how to read it
+**Screen:** `docs/design/<Artboard>.dc.html`, or `none`.
 
-**Proof:** `dotnet test --no-build --filter MainWindow`
+**Proof:** <what a person does to see it work>, and the automated tests there should be. Few.
+
+**Depends on:** #N. Drop the line when nothing blocks it.
 
 **Decisions**
 
-- **The act is the button, not the form** (2026-08-20). Microphone and program are confirmed at a
-  glance, so the meters are on this screen before recording starts.
+- **<the fork, and the answer>** (YYYY-MM-DD). Drop the section when no grill settled anything.
 ```
 
-**`Decisions` is what a grill settled**, one bullet each, dated where the date matters: the fork that
-was met and the answer, never the reasoning that got there. It is the one part of a card that is not
-the present — a decision stays true after the card closes — and it is what keeps the next session
-from reopening what a person already answered. A card with no grill behind it has no such section.
-
-**Every card says where it is seen.** `Screen:` names the screen and the artboard in `docs/design/`
-that decides it, or says `none` and what confirms it instead. Without that line the card does not
-enter `Ready`. Never invent a screen to fill it — `none` is a whole answer.
-
-Without that, `Ready` promises a definition the next session cannot read. The description is the
-present, so defining replaces the one-line body instead of stacking under it.
+Those four — `Claim`, `Delivers`, `Screen`, `Proof` — are required, and `none` is a whole answer for
+two of them. Never invent a screen to fill the line. A card missing one is not `Ready`, and the
+picker sends it back.
 
 **The order inside `Ready` is the user's judgment.** No agent invents it or slips a card ahead. An
 agent may _propose_ an order with the context the user lacks — a dependency, a claim already closed

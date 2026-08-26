@@ -48,23 +48,23 @@ the card in progress or the PR open, and §3 gets its context back.
    - `no_tasks` or `blocked` → the day ends. Say why.
    - A card → say the card and the `why` in one line, before you spawn anything else.
    - It also returns `skipped[]` and `finished[]`. **You do the board moves it declared** —
-     `skipped` to `pending` with its reason, `finished` to `in review` — because a subagent that
+     `skipped` to `Backlog` with its reason, `finished` to `In review` — because a subagent that
      moves a card and then dies has taken it out of the pool with nothing saying why.
 2. **Work.** Spawn `worker` with the card id, and the PR number if the pick found one. If the card
-   was `in progress` or its PR is open, spawn `recoverer` first and pass the worker its briefing. §3.
+   was `In progress` or its PR is open, spawn `recoverer` first and pass the worker its briefing. §3.
 3. **Audit.** The record says `pr_opened` → spawn `auditor` with the PR number and that record. Any
    other outcome closed the card itself and there is nothing to audit.
 4. **Act on the verdict.** This part is yours and there is no subagent for it:
    - `pass` or `pass_with_followup` → every finding this card owns goes back to `worker` first,
      however small, and then audit again. Only once the verdict names none, merge the PR.
-     `gh pr merge <n> --merge --delete-branch`. The card stays in `in review`; closing it is the
+     `gh pr merge <n> --merge --delete-branch`. The card stays in `In review`; closing it is the
      user's.
    - `hold` → the PR stays open. Spawn `worker` again on the same card, passing the verdict as its
      briefing, and audit again.
    - Three rounds of work and audit on one card is the ceiling. Still holding, send the card where
      the verdict says with the verdict's own body as a comment, and take the next card.
-   - `ask` → a decision nobody here may make. Write it on the card, swap `grilled` for `regrill`,
-     send it to `pending`, and take the next card. §4.
+   - `ask` → a decision nobody here may make. Write it on the card, label it `question`, send it
+     back to `Backlog`, and take the next card. §4.
 
 Then start again at the pick. Nothing paces this.
 
@@ -77,7 +77,7 @@ to give the next attempt the context the last one had.
 Spawn `recoverer` with the card id. Pass its briefing to a fresh agent of the stage that failed, and
 go on.
 
-**Twice on the same stage in one cycle and you stop trying.** Leave the card in `in progress`, say
+**Twice on the same stage in one cycle and you stop trying.** Leave the card in `In progress`, say
 so, and take the next card: a stage that fails twice with context in hand is not failing over
 context.
 
@@ -88,7 +88,7 @@ and move on; standing still costs more than rebuilding.
 ## 4 · Nothing here waits for the user
 
 A cycle that meets a decision neither the worker nor the audit can make writes it on the card, sends
-the card to `pending` tagged `regrill`, and takes the next task. Say it in one line — the card, the
+the card back to `Backlog` labelled `question`, and takes the next task. Say it in one line — the card, the
 PR, what has to be settled — and go on.
 
 **The second card parked in one day ends it**, naming both. A day that ends on that ceiling twice

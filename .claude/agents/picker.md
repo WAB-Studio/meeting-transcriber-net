@@ -71,6 +71,9 @@ closed. Take it as given.
 
 ## Step 4 — Candidates you cannot take
 
+- **Not defined.** A `Ready` card whose body is missing any of `**Claim:**`, `**Delivers**`,
+  `**Screen:**` or `**Proof:**`. `none` counts as filled in; absent does not. Put it in `skipped[]`
+  with `why` naming the lines it lacks, and go on to the next candidate.
 - **Needs something no command here can reach** — a real meeting, two sound cards, a device unplugged
   mid recording, hardware drift. Put it in `skipped[]` with `why` written as what somebody has to
   bring, and go on to the next candidate.
