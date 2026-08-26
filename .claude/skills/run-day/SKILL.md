@@ -57,9 +57,8 @@ the card in progress or the PR open, and §4 gets its context back.
 4. **Act on the verdict.** This part is yours and there is no subagent for it:
    - `pass` or `pass_with_followup` → every finding this card owns goes back to `worker` first,
      however small, and then audit again. Only once the verdict names none, merge the PR.
-     `gh pr merge <n> --merge --delete-branch`, then move the card to `Testing` — nothing on GitHub
-     moves it, and `Testing` is what says it is merged and nobody has run it. Closing it is the
-     user's, and closing is what makes it `Done`.
+     `gh pr merge <n> --merge --delete-branch`. The card stays in `In review`; closing it is the
+     user's.
    - `hold` → the PR stays open. Spawn `worker` again on the same card, passing the verdict as its
      briefing, and audit again.
    - Three rounds of work and audit on one card is the ceiling. Still holding, send the card where
