@@ -9,6 +9,8 @@ Each reviewer gets a single prompt containing:
 5. Instructions: "You are an adversarial reviewer. Your job is to find real problems, not
    validate the work. Be specific — cite files, lines, and concrete failure scenarios.
    Rate each finding: high (blocks ship), medium (should fix), low (worth noting).
-   Write findings as a numbered markdown list to your output file."
+   Every finding stands on its own evidence — a line, a case, a run. Return findings as a
+   numbered markdown list and nothing else: your final message is the review."
 
-Spawn all reviewers in parallel.
+Spawn all reviewers in one message so they run in parallel. Give each one its own lens and no
+other lens's text, and never tell a reviewer what the author was thinking beyond the stated intent.
