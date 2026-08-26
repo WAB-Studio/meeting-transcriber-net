@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: transparent; }
+    a { color: #4F7561; } a:hover { color: #3C5B4A; }
+  </style>
+</helmet>
+
+<div style="width: 1120px; height: 720px; box-sizing: border-box; padding: 30px 40px; display: flex; flex-direction: column; overflow: hidden; background: #FCFCFB; color: #1C1B19; font-family: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 20px;">
+
+  <div style="flex: none; display: flex; align-items: center; gap: 11px; padding: 0 6px;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke-linecap="round"><path d="M8 7a7 7 0 0 0 0 10" stroke="#1C1B19" stroke-width="2.2"></path><path d="M14.5 5a9.5 9.5 0 0 1 0 14" stroke="#4F7561" stroke-width="2.2"></path></svg>
+    <span style="font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.015em;">Meeting Transcriber</span>
+  </div>
+
+  <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; padding: 0 6px;">
+
+    <div style="width: 520px; display: flex; flex-direction: column; gap: 28px;">
+
+      <div style="font-size: 26px; line-height: 32px; font-weight: 600; letter-spacing: -.02em;">Quién usa esta aplicación</div>
+
+      <div style="display: flex; flex-direction: column; gap: 16px;">
+
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <span style="font-size: 14px; line-height: 20px; color: #6E6C66;">Nombre</span>
+          <div style="box-sizing: border-box; width: 100%; height: 34px; display: flex; align-items: center; padding: 0 12px; border: 1px solid #E6E4DE; border-radius: 4px; background: #FCFCFB; font-size: 14px; line-height: 20px;">Carolina Nieto</div>
+        </div>
+
+        <div style="display: flex; gap: 12px;">
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 14px; line-height: 20px; color: #6E6C66;">Empresa</span>
+            <div style="box-sizing: border-box; width: 100%; height: 34px; display: flex; align-items: center; padding: 0 12px; border: 1px solid #DEDBD4; border-radius: 4px; font-size: 14px; line-height: 20px;"></div>
+          </div>
+          <div style="flex: none; width: 168px; display: flex; flex-direction: column; gap: 6px;">
+            <span style="font-size: 14px; line-height: 20px; color: #6E6C66;">Desde</span>
+            <div style="box-sizing: border-box; width: 100%; height: 34px; display: flex; align-items: center; padding: 0 12px; border: 1px solid #DEDBD4; border-radius: 4px; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #9B9891;">mes y año</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="display: flex;">
+        <div style="height: 46px; display: flex; align-items: center; padding: 0 24px; border-radius: 4px; background: #1C1B19; color: #FCFCFB; font-size: 14px; line-height: 20px; font-weight: 500;">Continuar</div>
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

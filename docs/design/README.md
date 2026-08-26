@@ -1,6 +1,6 @@
 # The Olivo artboards
 
-Thirteen screens as pictures. **`../design.md` is the authority** — this folder is what it was
+Seventeen screens as pictures. **`../design.md` is the authority** — this folder is what it was
 written from, and where the two disagree that document says so and wins.
 
 ## Opening one
@@ -23,28 +23,32 @@ Nothing under `src/` reads these files. They are read by people.
 
 ## What is here
 
-`canvas.json` is the index: it names the thirteen, lays them out on two pages — *Flujo* and
+`canvas.json` is the index: it names the seventeen, lays them out on two pages — *Flujo* and
 *Sistema* — and carries the note written against each screen. Those notes are the shortest statement
 of why a screen is shaped the way it is, and they are mined into `../design.md`.
 
-| Page | File | Screen |
-| --- | --- | --- |
-| Flujo | `Main.dc.html` | Inicio — recording and the meetings, on one screen |
-| Flujo | `GrabandoVivo.dc.html` | Recording, transcribing live |
-| Flujo | `GrabandoDiferido.dc.html` | Recording, transcribing at the end |
-| Flujo | `NadaLlego.dc.html` | Nothing arrived from the program |
-| Flujo | `Fallo.dc.html` | A source died |
-| Flujo | `AlParar.dc.html` | Stopping |
-| Flujo | `Configuracion.dc.html` | Settings |
-| Flujo | `Recuperacion.dc.html` | Unfinished recordings |
-| Flujo | `Reunion.dc.html` | The meeting |
-| Flujo | `Clasificar.dc.html` | What it was about |
-| Flujo | `QuienEsQuien.dc.html` | Who is who |
-| Flujo | `Correcciones.dc.html` | Words that come out wrong |
-| Sistema | `Sistema.dc.html` | Olivo — the system sheet |
+| Page | Row | File | Screen |
+| --- | --- | --- | --- |
+| Flujo | Recording | `Main.dc.html` | Inicio — recording and the meetings, on one screen |
+| Flujo | Recording | `MainAbierto.dc.html` | Inicio, with the meetings drawer raised |
+| Flujo | Recording | `GrabandoVivo.dc.html` | Recording, transcribing live |
+| Flujo | Recording | `GrabandoDiferido.dc.html` | Recording, transcribing at the end |
+| Flujo | Recording | `NadaLlego.dc.html` | Nothing arrived from the program |
+| Flujo | It ended or broke | `Fallo.dc.html` | A source died |
+| Flujo | It ended or broke | `AlParar.dc.html` | Stopping |
+| Flujo | It ended or broke | `Configuracion.dc.html` | Settings |
+| Flujo | It ended or broke | `Recuperacion.dc.html` | Unfinished recordings |
+| Flujo | Afterwards | `Reunion.dc.html` | The meeting |
+| Flujo | Afterwards | `ReunionCruda.dc.html` | The meeting, recorded and nothing else |
+| Flujo | Afterwards | `Clasificar.dc.html` | What it was about |
+| Flujo | Afterwards | `QuienEsQuien.dc.html` | Who is who |
+| Flujo | Afterwards | `Correcciones.dc.html` | Words that come out wrong |
+| Flujo | Across the flow | `Primera.dc.html` | The first time it opens — who is using it |
+| Flujo | Across the flow | `Costo.dc.html` | What a charge costs, asked once |
+| Sistema | — | `Sistema.dc.html` | Olivo — the system sheet |
 
 Every artboard is 1120 wide; the flow is 720 tall except `Reunion` (860), `Correcciones` (820) and
-`Configuracion` (760), and the system sheet is 1560.
+`Configuracion` (760), and the system sheet is 2736.
 
 ## The names and the copy
 
@@ -52,6 +56,7 @@ The filenames and every word on these pages are Spanish, because the product is 
 are the product's own words. That is the exception `CLAUDE.md` allows for what a person reads, not
 a licence for anything else in the repo.
 
-The copy is a draft. `../design.md` names the three places the markup carries a value or a phrasing
-that a later decision replaced — the voseo especially. Read a string against that section before it
-becomes an entry of `UiTexts`.
+The copy was redrawn on 2026-08-26 against the rules `../design.md` now carries: one sentence per
+screen and only where something failed, neutral Spanish with no voseo, and no line that exists to
+explain how the application works inside. Read a string against that section before it becomes an
+entry of `UiTexts` — the section also records what an earlier pass left behind.

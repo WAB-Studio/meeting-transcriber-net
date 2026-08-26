@@ -24,6 +24,12 @@ means.
 
 Everything else is paper, card, ink and three greys. Colour is information; it is never decoration.
 
+**Two surfaces, and there were three.** Papel and tarjeta, and they alternate: the window is papel,
+a card laid on it is tarjeta, and a control sitting on that card is papel again. The third value
+was an *inner card* at `#FCFCFB` — the same number as the paper — used for a block nested three
+deep, which is depth as decoration and nothing else. Where a card genuinely holds two things, a 1px
+`#E6E4DE` rule separates them; it does not get a surface of its own.
+
 ## Colour
 
 The value and the role are fixed here. The resource key is this document's suggestion and the
@@ -33,7 +39,6 @@ first screen to need one settles it — but every screen after that uses the sam
 | --- | --- | --- | --- |
 | Papel — paper | `#FCFCFB` | the window's background | `PaperBrush` |
 | Tarjeta — card | `#F4F3EF` | a block laid on the paper | `CardBrush` |
-| Tarjeta interior — inner card | `#FCFCFB` | a block inside a card, and every control sitting on one | `CardInnerBrush` |
 | Tinte de decisión — decision tint | `#EEF2EF` | something waiting on the person; the selected option of a set | `DecisionTintBrush` |
 | Tinte de atención — attention tint | `#F8EDE6` | something lost or about to be | `AttentionTintBrush` |
 | Tinta — ink | `#1C1B19` | text, and the fill of the principal act | `InkBrush` |
@@ -76,9 +81,16 @@ Sizes are written `size/line-height` in px.
 | Section | Space Grotesk | 17/22 | 600 | `-.015em` |
 | Transcript | Space Grotesk | 15/26 | 400 | — |
 | Body | Space Grotesk | 14/20 | 400 | — |
-| Secondary | Space Grotesk | 13/19 | 400 | — |
-| Data | mono | 11/18, small caps | 400 | — |
-| Micro | mono | 9–10 | 400 | `.08–.09em` when it is a label |
+| Data | mono | 11/18 | 400 | — |
+
+Seven ranks, and there were nine. Body 14 and a Secondary 13 sat one point apart, which nobody can
+see and which only made every block a choice; a second line that is quieter is quieter by colour,
+which the three inks already do. The 9–10 micro label went with it.
+
+**A label is never set in capitals and never tracked out.** `DOS CANALES`, `148 TURNOS`,
+`ASÍ QUEDÓ ESCRITA` — spaced small capitals as a data label is the most borrowed gesture in
+software of the last five years, and mono at 11 already reads as a number without raising its
+voice.
 
 The stopwatch is 62/72 on a screen it owns. Where a live transcript or an alert owns the screen
 instead, it drops to 40/48 and keeps everything else.
@@ -92,14 +104,26 @@ monospace` for numbers, so a machine without the two fonts still reads.
 
 ## Radii
 
-- Large card — **18**
-- Small card, or a row in a list — **13–14**
-- Inner card — **11–12**
-- **Everything that gets pressed — 999**
+Four values, and they are the platform's:
 
-The rule underneath: **pills for what gets pressed, rounded rectangles only for containing.** A
-rectangle is never a control and a pill is never a container. Somebody scanning a screen should be
-able to tell what is pressable without reading a word of it.
+- Anything pressed — **4**
+- A card, or a row in a list — **8**
+- The one thing that interrupts the screen — **12**
+- A circle, where the thing is genuinely round: the back button, a speaker's dot, a radio
+
+**999 does not exist here, and neither does a fifth value.** The design this replaces used a full
+pill on everything pressable — a hundred and thirty of them across thirteen screens — and seven
+different radii for containers where it declared three. The result was that nothing on any screen
+had a straight corner, so shape carried no information at all: the eye had nothing to catch on, and
+the whole thing read as generated rather than drawn.
+
+Four and eight are what Windows itself uses, and what every well-built application on it uses. That
+is the grammar of the platform and it is not what makes any application ugly.
+
+**What tells a control from a container is not its radius.** It is fill, weight and height — the
+ranks below. A pressable thing is filled or ruled and stands 34 to 46 tall; a container is flat and
+holds things. Somebody scanning a screen still knows what to press, and now they also know what is
+important, which a page of identical pills could never say.
 
 ## Spacing
 
@@ -111,10 +135,12 @@ able to tell what is pressable without reading a word of it.
 
 ## Heights
 
+Height is now half of what says a thing is pressable, so it is fixed rather than ranged:
+
 - The principal act — **46**
 - A normal button — **42**
-- A control pill — **33–36**
-- A small pill — **30–32**
+- A control — **34**
+- A small button inside a row — **30**
 - The round back button — **34**
 
 ## Controls
@@ -126,21 +152,43 @@ Five ranks, and a screen has at most one of the first.
 | The principal act | tinta `#1C1B19` | papel | the one thing this screen is for: start recording, stop, save |
 | Recommended | olivo | papel | the cheap or safe way out of a decision |
 | Has a consequence | pico | papel | it costs money, or something is lost |
-| Normal | tarjeta `#F4F3EF` | tinta | everything else |
+| Normal | tarjeta `#F4F3EF` on papel; papel with a 1px rule on tarjeta | tinta | everything else |
 | At the margin | none | secundario | dismiss, cancel, leave it as it was |
 
-A drop-down is a pill on the card's inner colour with a 11px chevron in secondary. A two-way choice
-is two pills inside a `#E6E4DE` trough with 3px of padding; the chosen one is papel with weight 500
-and the other is secondary with no fill. A set of more than two is a radio row: a 16px circle,
-olivo with a 4px papel inset when chosen and a 1.5px `#C3BFB6` ring when not, and the whole chosen
-row sits on the decision tint.
+**A button that opens the question is not the button that answers it.** The next step on a meeting's
+row — *Transcribir*, *Resumir* — costs nothing to press: it opens the dialogue where the charge is
+actually agreed to. So it takes the **normal** rank, and pico appears only on the act inside that
+dialogue. A list of twelve meetings with twelve orange buttons spends the colour that is supposed to
+mean *this one costs money*, and once it is spent nothing on the screen can say it any more.
 
-An optional or empty control — *add somebody*, *+*, *none of these* — is a pill with no fill and a
-1px `#DEDBD4` inset ring.
+The normal rank has two fills for the same reason the surfaces alternate: a tarjeta button on a
+tarjeta row is invisible. On papel it is tarjeta; on tarjeta it is papel with a 1px `#E6E4DE` rule.
+
+**A row has one priority, not two.** In a meeting's row, *Ver la reunión* sits at the margin and the
+next step takes the normal rank. Two filled buttons side by side in a list ask the eye to choose
+between them on every row, which is a decision nobody is making.
+
+**One status is olivo and the rest are secondary.** *transcribiendo* is a row that is alive and
+running, which is what olivo means everywhere else in this application. Everything else a row can
+say about itself — *necesita revisión*, *en cola* — is quiet.
+
+A drop-down is a 34-high control on papel with a 1px `#E6E4DE` rule and an 11px chevron in
+secondary. A two-way choice is two halves inside a `#E6E4DE` trough with 3px of padding, the trough
+at radius 4 and each half at 3; the chosen one is papel with weight 500 and the other is secondary
+with no fill. A set of more than two is a radio row: a 16px circle — genuinely round — olivo with a
+4px papel inset when chosen and a 1.5px `#C3BFB6` ring when not, and the whole chosen row sits on
+the decision tint.
+
+An optional or empty control — *add somebody*, *+*, *none of these* — has no fill and a 1px
+`#DEDBD4` inset ring.
 
 ## Notices
 
-Two, and neither is ever a pop-up.
+Two, and neither is ever a pop-up. **The only thing that stops the screen is a charge.**
+
+A source that died, a program that brought nothing back, a recording waiting to be decided about, a
+render that failed: every one of those is a line or a row where the thing itself is, and never a
+dialogue. What interrupts is money, once, at the moment somebody asks for it — see below.
 
 **Something is waiting on a decision** sits on the decision tint `#EEF2EF`, in the list, the height
 of a row. Title 14/20 600, second line 13/19 secondary, and its answers are small pills on the
@@ -150,6 +198,31 @@ right — the recommended one first, the one that costs money beside it saying s
 triangle in pico. It says **what was observed before what it means**, and it carries the way out
 next to it. "The Yeti Nano stopped responding at 08:12" and then what that costs, not the other way
 round.
+
+### What a charge costs, asked once
+
+The one dialogue in the application. It exists because a charge is the one thing that cannot be
+undone by pressing again, and because putting the price in the row instead — *puede que ya se haya
+cobrado*, *reintentar · se cobra* — made every screen carry a sentence about money that ninety-nine
+readings out of a hundred did not need.
+
+It opens on the press, not before it. Radius 12, on the elevated surface, over a `rgba(28,27,25,.32)`
+scrim. It says what is about to happen, what it costs, and offers two answers: the act, and leaving
+it as it was. Nothing else — no explanation of how the price was reached, no note about the
+provider.
+
+The two are not asked the same way, because only one of them can be known in advance:
+
+- **Transcribing** carries a figure worked out from the meeting's own length. It reads as an
+  estimate and says so in the number's own words, not in a sentence beside it.
+- **Summarising** carries the model's published price and nothing worked out at all. There is no
+  honest estimate for it, and inventing one would be the worst thing on this page.
+
+Both go as `[costo]` until a real run produces a number.
+
+The amount takes the stopwatch rank dropped to 40/48 — the ramp already lets it drop for a screen
+an alert owns, and this is that. The dialogue's title takes the sub-screen rank, 20/26: the panel is
+not a screen, and the screen title inside it reads as shouting.
 
 ## The meter
 
@@ -170,11 +243,18 @@ Linear in dBFS from **−60 at the left to 0 at the right**. Everything else fol
 
     x = (dB + 60) / 60      clamped to 0…1
 
-The scale sits under the bar in 9px mono: `−60 −40 −20 −12 0`, at 0%, 33.3%, 66.7%, 80% and 100%.
+The scale sits under the bar in the mono data rank — 11/18 — reading `−60 −40 −20 −12 0` at 0%,
+33.3%, 66.7%, 80% and 100%. It was 9px until the ramp lost its floor; the numbers under the bar are
+data like any other, and there is no rank below the one data has.
+
 The **−12 is in pico** and the **0 is in ink**; the rest is tertiary.
 
 **The zero is always there.** Without the scale under it, the bars are decoration: nothing says
 whether −16 is close to clipping or nowhere near it.
+
+**Anything that shows a level has square ends.** The meter and a progress bar are the same kind of
+thing — a quantity drawn as a length — so the four-value radius scale does not reach them: they get
+zero. A rounded cap on a bar that is six pixels tall is a cap that lies about where the level is.
 
 ### The four layers, bottom to top
 
@@ -239,6 +319,28 @@ These do not show in the markup and are as load-bearing as any colour.
   artboards still carry the voseo the rule replaced — see the bottom of this page.
 - **Amounts of money are `[costo]` until a run produces one.** The real price comes off the person's
   own account and is never invented on a mockup or in a string.
+- **A screen gets one sentence, and only where something failed.** Everything else on it is a
+  label. The design this replaces put a second explanatory line under every option and every
+  notice — *queda lista para leer sin que tengas que hacer nada*, *nada se borra hasta que decidas*,
+  *conservar la mete en el corpus como una reunión* — which is the voice of something being helpful
+  at somebody rather than an application saying what it is. **If an option needs a line explaining
+  it, its name is wrong**, and the name gets fixed instead.
+
+### And five things this application is not
+
+Taking the platform's geometry is right and taking its skin is not. What makes Windows' own settings
+ugly is none of the radii — every well-built application on the system uses the same four and eight —
+so each of these is named so that a later pass cannot arrive at it by drifting:
+
+- **Never an icon inside a rounded square.** It is the single most recognisable gesture of a
+  settings list and it turns forty different things into forty of the same thing.
+- **Never mica or acrylic.** Papel is opaque. A translucent window is one where nothing weighs
+  anything.
+- **Never the system accent colour.** This application has two colours and they are on this page.
+- **Never a list whose rows all weigh the same.** The stopwatch is 62 and a datum is 11 because one
+  of them matters more. A screen where everything is the same size is a screen that decided nothing.
+- **Never hierarchy made only of bold.** Size, colour and space carry it; weight is the last
+  resort, not the first.
 
 And what the code already required and still does:
 
@@ -254,9 +356,9 @@ And what the code already required and still does:
 - **The application has no spare screens.** Recording and the meetings are one screen. The only
   thing that lives apart is the settings.
 
-## The thirteen screens
+## The seventeen screens
 
-`docs/design/` holds one file per screen. Twelve are the flow and the thirteenth is the system
+`docs/design/` holds one file per screen. Sixteen are the flow and the seventeenth is the system
 sheet. `canvas.json` carries their layout and the note that was written against each.
 
 ### The flow — recording
@@ -336,6 +438,26 @@ summarising stopped being a screen per meeting and became a preference set once.
 are separate choices with a separate cost each, and *a model on this machine* is one option among
 them rather than a special case. Amounts go as `[costo]`.
 
+### The four the grill of 2026-08-25 added
+
+**`Costo`** · The dialogue. Two of them on one artboard, side by side, because the difference
+between them is the whole point: transcribing carries a figure worked out from the meeting's length
+and says it is an estimate; summarising carries the model's published price and estimates nothing.
+The only thing in this application that stops the screen.
+
+**`ReunionCruda`** · The meeting, recorded and nothing else. The player, the date, the duration and
+*Transcribirla*. With *No hacer nada* available in the settings this is what a meeting looks like
+most of the time, not an edge, and hearing what was recorded never costs anything.
+
+**`Primera`** · The first time the application opens. Who is using it — the name, and optionally the
+company and since when. One question, answered once. Everything else about the application is
+already usable; this is the one thing it cannot work out on its own, and every citation of every
+meeting depends on it.
+
+**`MainAbierto`** · The main screen with the meetings drawer raised to the full height of the
+window. The same screen, not another one: the recording card is still above and slides out of the
+way. The list scrolls whole — no paging, and no search field until the index behind it exists.
+
 ### The system sheet
 
 **`Sistema`** · Olivo laid out visually — the type ramp, the swatches, the meter with its anatomy
@@ -355,65 +477,32 @@ forgotten in three. One place per thing is what makes a redesign a diff instead 
 Which pieces earn a component is the builder's judgement, and the floor is: **anything the same on
 two screens is one component before it is on the second one.**
 
-## Where the artboards and this document disagree
+## What the artboards were redrawn against
 
-Every line here is a place the markup carries something a later decision replaced. **The artboards
-have not been redrawn against them** — that is a design pass of its own, and this list is what it
-works from. Until then this document wins and nobody copies the stale value out of the markup.
+**On 2026-08-26 all seventeen were redrawn against this page**, so it and the markup agree. This
+section is the record of what that pass changed, kept because a value nobody can see the reason for
+is a value the next pass restores.
 
-### Values and copy an earlier pass left behind
+What an earlier pass had left behind, now gone: `GrabandoVivo` painting the second speaker
+`#8E7CC3` instead of `#A0567A`; voseo across four screens; `Fallo` running the meter's above-−12
+layer out to the retained peak rather than to the level, which put orange nine per cent past where
+the level actually was; `Recuperacion` explaining in words what the order of its list already said;
+and two notes in `canvas.json` calling settled work engine debt.
 
-1. **`GrabandoVivo` paints the second speaker `#8E7CC3`.** The speaker palette is `#4F7561`,
-   `#A0567A` and `#C3BFB6`; `Reunion`, `Clasificar` and `QuienEsQuien` all use `#A0567A`. Use
-   `#A0567A`.
-2. **Several artboards write their copy in voseo** — *Escuchá el fragmento*, *cambialo acá abajo y
-   mirá el medidor*, *sin que lo apretés vos*, *algo que decís seguido*. The neutral-Spanish rule is
-   newer than that copy. **Do not lift a string out of an artboard into `UiTexts` without reading it
-   against that rule first.**
-3. **`Fallo` runs the meter's above-−12 layer out to the retained peak rather than to the level**,
-   which puts orange 9% past where the level actually is. `Sistema` is the component's own sheet and
-   runs it from 80% to the level; that is the rule.
-4. **`Recuperacion` explains the mechanism** — *«Todavía no hay nada que decidir: algo sigue
-   escribiendo esta grabación»*. The rule above is that the order **is** the statement: the one
-   still running sits at the top and offers none of the three, and that is the whole of it. The
-   line goes.
-5. **Two notes in `canvas.json` are stale.** `Fallo`'s says changing microphone mid-recording is
-   engine debt — it is merged (ISC-78). `NadaLlego`'s says the same of changing program — that was
-   decided on 2026-08-25 and is now work with a card, not a refusal.
+What the grill of 2026-08-25 changed, now drawn: the two-way *En vivo / Al terminar* chosen per
+meeting on `Main`; a meeting with no name reading *Sin nombre*, with a pencil to rename it; a row's
+four different statuses collapsed into one quiet line; *Ver la reunión* and one next-step button per
+row; the meetings list as a drawer that raises to the window's height; *Preguntarme cada vez*
+becoming *No hacer nada*; a settings row for who is using the application; and *Ninguna* reading as
+a different thing from *Dejarla sin clasificar*.
 
-### What the grill of 2026-08-25 changed
+And what the pass found rather than applied: **`Clasificar` was drawing twelve of the thirteen
+meetings.** *Dos proyectos* — §5.3 number five, which `ClassificationStoriesTests` stores — had
+never been on the artboard. It is there now.
 
-The sitting that defined the twelve screens settled these against the markup. Each names the card
-that carries it.
-
-1. **`Main` · the two-way *En vivo / Al terminar* pill stays and is chosen per meeting** (#97).
-   `Configuracion` never mentions live or deferred; it owns which engine and what happens at the
-   end.
-2. **`Main` · a meeting with no name reads *Sin nombre*** (#97). The summary gives it one when it
-   arrives, and a pencil beside the name edits it by hand at any time.
-3. **`Main` · a row's small status line is one text, not four** (#97). *transcribiendo*, *148
-   turnos*, *3 voces sin nombre* and *en cola* collapse into a single discreet line — *necesita
-   revisión* and the like — and a meeting with nothing pending shows none.
-4. **`Main` · a row carries *Ver la reunión* and the next step's button** (#97) — transcribe,
-   summarise, name the voices. A meeting already transcribing is not offered transcribing again.
-5. **`Main` · the meetings list is a drawer** (#97). Small it scrolls; a press raises it to the
-   full height of the window. No search field yet — that is #127, with the index behind it — and
-   no paging: the whole list loads.
-6. **`Configuracion` · *Preguntarme cada vez* becomes *No hacer nada*** (#108). Nothing runs on its
-   own; transcribing and summarising are asked for from the meetings list. Nothing asks anything.
-7. **`Configuracion` · a row saying who is using the application** (new card), with the name and
-   optionally the company and since when.
-8. **A first-run moment that does not exist yet** (new card): the first time the application opens,
-   it asks who is using it. That is where the microphone's resolved voice gets a person's name.
-9. **`Reunion` needs its small version** (#104): recorded and not transcribed is the player, the
-   date, the duration and *Transcribirla*, and nothing else. With *No hacer nada* as an option that
-   is the ordinary case, not an edge.
-10. **`Clasificar` · *Ninguna* and *Dejarla sin clasificar* are two different things** (#105).
-    *Ninguna* is «none of the thirteen fits, I fill the fields myself» and is the shell a later card
-    grows into templates of one's own; *Dejarla sin clasificar* is the meeting stored with no links
-    at all, found by text, which is what §5.3 says of a casual chat.
-11. **The product's name and mark stay placeholder** (#96). *Meeting Transcriber* and any SVG until
-    somebody decides otherwise; it is a component like everything else and changing it is one file.
+The two things still open are the product's name and mark, which stay placeholder, and the
+seventeenth screen's own copy: `Sistema` is this document as a picture, so it is the one artboard
+that has to be re-read whenever this page changes.
 
 ## Opening the artboards
 
