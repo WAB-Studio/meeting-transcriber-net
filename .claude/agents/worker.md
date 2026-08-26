@@ -48,8 +48,7 @@ gh project item-edit --id $item --project-id PVT_kwDOCo2sl84BhFA- `
 | `Testing`     | `1811706d` |
 | `Done`        | `98236657` |
 
-You move a card to `In progress` and to `In review`, and nowhere else. Nothing on GitHub moves it,
-and no
+You move a card to `In progress` and nowhere else. `In review` moves itself off `Closes #N`, and no
 worker ever writes `Done`.
 
 `gh issue create` is for the one thing CLAUDE.md says becomes a card: a fix too big to land inline.
@@ -130,10 +129,8 @@ in a comment.
 
 ## Step 5 — Deliver
 
-Branch, commit, `gh pr create`. **You do not merge.** The PR body carries `Card #<n>` and never a
-closing keyword — a keyword closes the issue at merge and the project sends it straight to `Done`,
-skipping the status that means somebody ran it. Nothing moves the card for you: move it to
-`In review` yourself, and check it landed there.
+Branch, commit, `gh pr create`. **You do not merge.** The PR body carries `Closes #<n>`, which is
+what moves the card to `In review` — you do not move it yourself, and you do check it landed there.
 Then:
 
 ```powershell
