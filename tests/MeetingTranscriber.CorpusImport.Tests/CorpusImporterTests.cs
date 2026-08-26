@@ -103,9 +103,14 @@ public class CorpusImporterTests
         var importer = new CorpusImporter(context, Clock);
 
         importer.Import(new LegacyCorpus(legacy.Directory));
-        Directory.Move(
-            Path.Combine(legacy.Directory.FullName, "2026-07-29 09-35-15"),
-            Path.Combine(legacy.Directory.FullName, "2026-07-29 09-35-16"));
+
+        // The folder was written and read back a moment ago, so this rename carries the hazard
+        // #81 measured and Folders explains. It has never been seen refused here — this is the
+        // same shape as the rename that was, taken through the same helper rather than left to
+        // be found the hard way.
+        Folders.MoveWaitingOutWhoeverHasIt(
+            new DirectoryInfo(Path.Combine(legacy.Directory.FullName, "2026-07-29 09-35-15")),
+            new DirectoryInfo(Path.Combine(legacy.Directory.FullName, "2026-07-29 09-35-16")));
         var second = importer.Import(new LegacyCorpus(legacy.Directory));
 
         second.MeetingsImported.ShouldBe(0);
