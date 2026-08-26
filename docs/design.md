@@ -318,15 +318,13 @@ and a screen that moves for any other reason is a screen that has not decided wh
 | A control answering the press — fill, ring, tick | **150 ms** | straight in, no easing worth naming |
 | Something entering or leaving — a row, a notice, a clip | **250 ms** | decelerating in, accelerating out |
 | The meetings drawer, and a dialogue arriving | **300 ms** | the same pair, over a distance you can follow |
+| A meter's level falling back | **20 dB in 1.5 s** | a rate, not a duration — and rising is immediate |
 
 Entering decelerates and leaving accelerates, which is the platform's own grammar and reads as
 weight rather than as an effect. Nothing eases both ways; nothing bounces; nothing overshoots.
 
 ### What never moves
 
-- **The meter.** It is instantaneous by definition, and a level that eases toward its value is a
-  level that is wrong for a quarter of a second, every quarter of a second. Interpolating it does
-  not smooth it — it lies about it.
 - **The stopwatch.** It counts. A number that animates between two values is unreadable at exactly
   the moment somebody is reading it.
 - **Anything that happens on every element.** A list whose rows arrive one after another says the
@@ -348,9 +346,10 @@ The one component that is this application's own, and the one nothing else can b
 
 ### What it is for
 
-**Instantaneous, never historical.** Its job before a recording starts is to answer *which of the
-three processes called Teams is the one making the sound* while the person clicks from one to the
-next. A strip of the last few seconds answers for the process before this one, which is the wrong
+**It shows now, never a history.** Its job before a recording starts is to answer *which of the three
+processes called Teams is the one making the sound* while the person clicks from one to the next.
+That is about what it draws — the level as it stands — and not about whether it moves; how it moves
+is below. A strip of the last few seconds answers for the process before this one, which is the wrong
 answer at the moment it is read. **Never a strip of the last few seconds.**
 
 Its job during a recording is smaller and the same: this source is still arriving.
@@ -390,6 +389,24 @@ All four use the same 3px-on, 3px-off segment pattern, so the segments of every 
 
 Clip each layer rather than sizing it. A sized layer re-tiles its own pattern and the segments walk
 as the level moves.
+
+### Its ballistics
+
+**The level rises at once and falls back slowly.** Both halves are the rule and they are not the
+same rule.
+
+Rising is immediate: the bar is at the new level on the next frame it is drawn. Easing the rise is
+the one thing here that is actually wrong — a slow attack under-reports a transient, and this meter's
+job includes saying *saturando*, so a peak it smoothed away is a clip nobody was told about.
+
+Falling is smooth, and its rate is fixed rather than a duration: **20 dB in a second and a half**,
+which on this scale is a third of the bar. A level that drops instantly flickers at every gap
+between words and is unreadable; every meter ever built falls slowly for that reason, and the
+professional ones fall slower still — a broadcast peak meter takes between 1.7 and 2.8 seconds to
+drop 20 dB.
+
+The retained peak is the other half of the same idea and needs no rate: it stands where the loudest
+moment was and does not decay at all.
 
 ### The retained peak
 
