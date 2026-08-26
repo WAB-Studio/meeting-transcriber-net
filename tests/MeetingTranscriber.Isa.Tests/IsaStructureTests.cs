@@ -24,15 +24,22 @@ public class IsaStructureTests
     /// a test in a whole sentence — which is exactly what the format spec asks a stub to be. A
     /// limit over the line would have to fail it to catch anything, while still passing a tighter
     /// essay. With the backticked spans out ISC-50 is 133, and the file turns out bimodal: 91
-    /// stubs at 541 or below, the other 36 at 606 or above, and nothing in between. Those 65
-    /// characters are the widest gap anywhere below 1000, and this number is the middle of it, so
-    /// the limit is not a line anything currently sits close to on either side.
+    /// stubs at 541 or below, the other 36 at 606 or above, and nothing in between. This number
+    /// sits in that 65-character gap, 34 above the highest of the 91 and 31 below the lowest of
+    /// the 36 — near enough the middle, and it is the gap between the two populations rather than
+    /// the widest gap in the file, since there are wider ones higher up inside the essays.
     ///
-    /// The headroom answers the one exception the format spec named when it argued this could not
-    /// be a character count: a claim closed on a hand run carries numbers CI will never produce
-    /// again, and nothing else holds them. Those are ISC-58 at 229 and ISC-67 at 320 — well
-    /// inside, because what carries a stub past this limit is never the numbers. It is the
-    /// retelling around them, and the retelling is what has somewhere else to be.
+    /// The 91 are the population that matters, because nobody had ever flagged one of them: their
+    /// median is 22 and their largest is ISC-114.2 at 541. So this limit is the one thing a hard
+    /// gate has to be — above every stub the people writing them thought was fine — and it is not
+    /// the target. The target is the median. A stub written up against this number is a stub that
+    /// read the ceiling as the standard, which is the habit the gate exists to break.
+    ///
+    /// The headroom clears the one exception the format spec named when it argued this could not
+    /// be a character count: a claim closed on a hand run has no test to name and carries numbers
+    /// CI will never produce again. Those two stubs are ISC-73.1 at 385 and ISC-118 at 353 — the
+    /// only two in the file with no backticked span at all, which is what that exception looks
+    /// like from here, and both well inside.
     /// </remarks>
     private const int LongestStubProse = 575;
 
@@ -161,6 +168,16 @@ public class IsaStructureTests
             + "one of the two is wrong.");
     }
 
+    [Fact]
+    public void One_claim_closes_on_one_stub()
+    {
+        // The dodge the size gate below creates, and the reason it is written down the moment the
+        // gate is: a stub too long for check 11 passes it by being cut in half under the same ID,
+        // and every other check here is happy — the claim still has its evidence, and both halves
+        // still parse. A claim closes on one line or the retelling has just moved.
+        isa.Stubs.Select(stub => stub.Id).ShouldBeUnique();
+    }
+
     /// <summary>
     /// `## Verification` is append-only, and until this check nothing bounded what got appended.
     /// The rule that a stub is a pointer lived only in the format spec and the skill, which is
@@ -171,6 +188,13 @@ public class IsaStructureTests
     [Fact]
     public void A_stub_points_at_its_evidence_instead_of_retelling_it()
     {
+        // Checked first because the gate below is measured through it: the one way that measure
+        // fails open is a dropped backtick welding two pointers into a single span and taking the
+        // prose between them out of the count.
+        isa.Stubs.Where(stub => !stub.PointersClose).Select(stub => stub.Id).ShouldBeEmpty(
+            "a stub with an odd number of backticks does not measure what it looks like it "
+            + "measures, so the size gate reads it as shorter than it is.");
+
         var overlong = isa.Stubs
             .Where(stub => stub.Prose.Length > LongestStubProse)
             .Select(stub => $"{stub.Id} ({stub.Prose.Length})")

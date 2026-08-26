@@ -171,9 +171,11 @@ internal sealed partial class IsaDocument
                 // What is left after the `- ISC-N — ` prefix and the backticked spans come out is
                 // the prose. A stub is one physical line — a wrapped one would fail the stray-line
                 // check above it — so the whole stub is here and nothing has to be joined first.
+                var evidence = line[match.Length..];
                 stubs.Add(new Stub(
                     match.Groups["id"].Value,
-                    Pointer().Replace(line[match.Length..], string.Empty)));
+                    evidence,
+                    Pointer().Replace(evidence, string.Empty)));
             }
         }
 
@@ -216,11 +218,23 @@ internal sealed partial class IsaDocument
     internal sealed record Claim(string Id, bool Closed, string Text, string Feature);
 
     /// <summary>
-    /// A provenance stub, as the claim it closes and the prose it carries beyond its pointers.
-    /// The split is the whole point: naming four test methods precisely is what the format asks
-    /// for and costs nothing, while the sentences around them are what the size gate is over.
+    /// A provenance stub: the claim it closes, everything after the `- ISC-N — ` prefix, and that
+    /// same evidence with its pointers taken out. The split is the whole point — naming four test
+    /// methods precisely is what the format asks for and costs nothing, while the sentences around
+    /// them are what the size gate is over. <paramref name="Evidence"/> is kept beside the prose
+    /// because a measure that only ever sees its own output cannot be checked for having read the
+    /// line correctly, which is what the backtick-parity gate does with it.
     /// </summary>
-    internal sealed record Stub(string Id, string Prose);
+    internal sealed record Stub(string Id, string Evidence, string Prose)
+    {
+        /// <summary>
+        /// Whether the backticks close. They always have, and the gate is over the one way this
+        /// measure fails open rather than shut: <c>Pointer()</c> pairs ticks, so a single dropped
+        /// tick makes one span out of everything between two unrelated ones, and several hundred
+        /// characters of prose stop being counted at all.
+        /// </summary>
+        public bool PointersClose => Evidence.Count(character => character == '`') % 2 == 0;
+    }
 
     internal sealed class Feature(string id, string name)
     {

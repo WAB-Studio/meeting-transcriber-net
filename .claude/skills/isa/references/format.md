@@ -161,20 +161,20 @@ Mechanical, enforced by `IsaStructureTests`, and hard failures:
 9. `## Learning` is whole entries of four labels in order, and nothing else.
 10. No number is missing between the first ID and the last, at the root and under every parent.
 11. No `## Verification` stub carries more than 575 characters of prose outside its pointers.
+12. No ISC ID carries two `## Verification` stubs.
 
 Check 11 was advisory until 2026-08-26, on the argument that a pointer cannot be told from a
-paragraph by counting characters. That is true of the line, which in this repo is mostly test
-names — seven of them is 668 characters saying nothing but where to look. It is not true of what
-is left once the backticked spans come out. Measured over the 127 stubs of that day, the file was
-bimodal on that number: 91 stubs at 541 or below, 36 at 606 or above, nothing in between. The
-limit is the middle of the gap. The exception the advisory existed to protect survives it — a
-claim closed on a hand run carries numbers CI will never produce again, and the two stubs that do
-sit at 229 and 320, nowhere near it.
+paragraph by counting characters. That holds for the line, which here is mostly test names — seven
+of them is 668 characters saying nothing but where to look — and not for what is left once the
+backticked spans come out. On that measure the 127 stubs of that day were bimodal, 91 at 541 or
+below and 36 at 606 or above with nothing between, and the limit is the middle of the gap. It
+clears the case the advisory existed to protect: a claim closed on a hand run has no test to name
+and carries numbers CI will never produce again, and the two such stubs, ISC-73.1 and ISC-118, cost
+385 and 353.
 
-What made this worth a gate rather than a note is where the rule lived. The section is
-append-only, and whoever appends to it greps their own ISC and never opens the file: they see a
-three-thousand-character neighbour and write to that precedent, having never read the line here
-that says not to. A rule about a file's shape has to fail the build or it only describes the past.
+The reason it is a gate and not a note is where the rule lived. Whoever appends to an append-only
+section greps their own ISC and never opens the file, so they take the neighbour as the model and
+never read this line at all.
 
 Check 10 is the other hand of check 4. A duplicate ID is a number issued twice; a hole is a claim
 deleted instead of tombstoned, or a run of them shifted down to close one — which silently

@@ -136,8 +136,10 @@ vision → `## Out of Scope` in `arquitectura.md` §16.
 
 ### CheckCompleteness — score the articulation
 
-Structural checks are the gate test's job; run `dotnet test --filter "FullyQualifiedName~IsaStructureTests"`
-rather than re-checking them by eye. What only a reading catches:
+Structural checks are the gate test's job; run
+`dotnet test tests/MeetingTranscriber.Isa.Tests --no-build -- --filter-class "*IsaStructureTests"`
+rather than re-checking them by eye — named that way round because the `--filter` form below is
+the one that passes without running anything. What only a reading catches:
 
 - A claim that names a type, a method or a test instead of the truth it is there to hold. A
   refactor that changes nothing a person would notice should not touch a single claim.
@@ -168,12 +170,11 @@ free prose.
   learned / criterion-now. A partial entry does not get written. This is not a changelog; `git
   log -- ISA.md` is that.
 - **Verification** — one line per closed claim. The proof lives in git and CI; the ISA points at
-  it. An entry that grows into a paragraph gets collapsed back, and since 2026-08-26 the gate test
-  does the collapsing for you by going red: 575 characters of prose outside the backticked
-  pointers. Test names and commands do not count against it, so name every probe precisely and put
-  nothing else there. Before appending, read a neighbour or two — the section is append-only, and
-  what it was full of until that date was three-thousand-character retellings each written to the
-  precedent of the last.
+  it. An entry that grows into a paragraph gets collapsed back, and gate 11 now goes red instead of
+  waiting for somebody to notice. Name every probe precisely — test names, commands and paths cost
+  nothing against that gate — and write nothing else. Do not reach for a neighbour as a model: the
+  section is append-only, every writer before you had one too, and that is exactly how it filled up
+  with retellings. `format.md` has the shape and the number.
 
 **A decision does not go in this file at all**, and the section that held them was removed on
 2026-08-13. A rejected alternative goes as a comment in the file where somebody would try it
