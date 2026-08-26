@@ -81,9 +81,11 @@ PR merges, not when it opens — a `hold` sends the worker back into it.
 only.
 
 **Never run a card beside anything when** it refactors, moves or renames what exists; changes a
-contract under `Domain/`, a migration, or a name that reaches disk; settles a convention; or edits
-`ISA.md`. Whatever ran beside it was built against a shape that stopped being true, and lands green
-agreeing with nothing.
+contract under `Domain/`, a migration, or a name that reaches disk; settles a convention; or adds,
+splits or renumbers a claim in `ISA.md`. Whatever ran beside it was built against a shape that
+stopped being true, and lands green agreeing with nothing.
+
+Closing a claim on its own evidence is not that, and runs in parallel like anything else.
 
 Conflicting lines at merge are expected and are not the thing being avoided.
 
