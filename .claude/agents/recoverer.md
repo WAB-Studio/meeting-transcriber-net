@@ -39,11 +39,16 @@ gh pr checks <n>
 ## Step 3 — The card
 
 ```powershell
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>
+gh issue view <n> --json number,title,body,labels,state,comments
+gh project item-list 1 --owner WAB-Studio --format json --limit 200
 ```
 
-**The commands in this file are all you have.** Do not open the CLI's source. If you need one that is
-not here, say so in the briefing and go on with what you could read.
+A card is an issue, and its id is its issue number. The issue carries the description and the
+comments; the board — `WAB-Studio` project **1** — carries the status, which is the one thing the
+issue does not say.
+
+**The commands in this file are all you have.** If you need one that is not here, say so in the
+briefing and go on with what you could read.
 
 Take the description, the `**Grilled.**` comment with the decisions already settled, and every
 comment a previous cycle left — including any saying why it was parked.

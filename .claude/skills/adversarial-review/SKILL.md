@@ -84,26 +84,18 @@ Run the probe once per review: it costs a turn of the quota it measures. Pin it 
 cost per token. The reviewers themselves take no `-m`: they run on the configured default.
 
 Reviewer output goes in a scratch directory, and there is exactly one requirement on it: **it must
-not show up as untracked files in the very diff under review.** Anything ignored by git satisfies
-that. Being outside the repo is one way to get it and not the only one — which matters, because
-here it is the one way that does not work.
-
-In this repo it is `/.scratch/reviews/`, inside the working tree deliberately and ignored at the
-root. **One folder per review, and all of them under `reviews/`** — the scratch root is where a
-session keeps the thing it is working on right now, and a review that leaves its own directory
-beside that buries it.
+not show up as untracked files in the very diff under review.** The session scratchpad the
+environment names is outside the tree, so it satisfies that by construction. **One folder per
+review.**
 
 ```sh
-REVIEW_DIR="$(git rev-parse --show-toplevel)/.scratch/reviews/$$"
+REVIEW_DIR="<scratchpad>/reviews/$$"
 mkdir -p "$REVIEW_DIR"
 ```
 
-An unattended session has nowhere else to write. `mktemp -d` lands in `/tmp` and is refused for
-being outside the allowed working directory; the session scratchpad the environment names is
-refused for the same reason; and `.claude/` is refused as a sensitive path however the permissions
-read. A worker that meets all three in a row falls back to capturing reviewer output as stdout,
-which does produce a review and quietly costs the two things these files are for: the `.err` that
-diagnoses a reviewer which produced nothing, and the empty output file that says one hung.
+Never fall back to capturing reviewer output as stdout. It does produce a review and quietly costs
+the two things these files are for: the `.err` that diagnoses a reviewer which produced nothing, and
+the empty output file that says one hung.
 
 `-o` is written by the CLI itself and not by the sandboxed command inside it, so the reviewer's own
 read-only sandbox does not stand in its way.
@@ -187,6 +179,6 @@ Append the Lead Judgment section to the verdict (see `references/verdict-format.
 
 Vendored from [poteto/noodle](https://github.com/poteto/noodle)
 `.agents/skills/adversarial-review/`. Changes from upstream: the `brain/principles.md` dependency
-is vendored into `references/principles/`, the scratch directory moved from `/tmp` to the repo's
-own ignored `/.scratch/reviews/` — the only ground an unattended session may write — the `schedule:`
-frontmatter key became prose, and the size thresholds count only non-comment lines.
+is vendored into `references/principles/`, the scratch directory moved from `/tmp` to the session
+scratchpad, the `schedule:` frontmatter key became prose, and the size thresholds count only
+non-comment lines.

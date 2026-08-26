@@ -24,18 +24,20 @@ probes it says ran, what decisions it says it made, and the head SHA it says it 
 gh pr view <n> --json headRefOid,headRefName,title,body,files,additions,deletions
 gh pr diff <n>
 git show <headRefOid>:ISA.md
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" task <id>
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" tasks --space MeetingTranscriber
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" comment <id> --text @.scratch/verdict.md
-gh pr comment <n> --body-file .scratch/verdict.md
+gh issue view <n> --json number,title,body,labels,state,comments
+gh issue comment <n> --body-file <scratchpad>/verdict.md
+gh project item-list 1 --owner WAB-Studio --format json --limit 200
+gh pr comment <n> --body-file <scratchpad>/verdict.md
 ```
 
-`PYTHONIOENCODING` is `utf-8`. Write only under `.scratch/`, and pass prose as `@.scratch/verdict.md`.
-Edit one file outside it: `ISA.md` on the PR's branch, under step 4.
+A card is an issue, and its id is its issue number. The board is `WAB-Studio` project **1**,
+`Meeting Transcriber`; `item-list` gives every card with its `status` and its `labels` in one call.
 
-**The commands in this file are all you have.** Do not open the CLI's source. If you need one that is
-not here, say so in `reasons` and stop — do not infer it from an error and do not try flags to see
-which lands.
+Prose goes in a file in the session scratchpad, outside the tree, passed as `--body-file`. One file
+in the tree is yours to edit: `ISA.md` on the PR's branch, under step 4.
+
+**The commands in this file are all you have.** If you need one that is not here, say so in `reasons`
+and stop — do not infer it from an error and do not try flags to see which lands.
 
 `headRefOid` is your `audited_head_sha`. Take it from the PR, never from the record.
 
@@ -55,8 +57,8 @@ Read `ISA.md` **at the PR's tip**, not from disk.
    time it). Anything you cannot corroborate that way goes to `isc_unproved`.
 4. **Is `blocks_the_pr` true on each declared decision?** Recompute it from the diff.
 5. **Were cards moved that the record does not declare?** List the board and compare against
-   `skipped[]`. An undeclared card in `pending` is one quietly got rid of. For declared ones, open
-   the card: if it was merely hard and needs nobody, put it back to `Open` and record that.
+   `skipped[]`. An undeclared card sent out of `Ready` is one quietly got rid of. For declared ones,
+   open the card: if it was merely hard and needs nobody, put it back in `Ready` and record that.
 6. **Is a decision the card settled one the framework or the platform will not take?** Only where
    the diff shows it. Name what refuses it — taste is not a finding. This is the one check that may
    go against the card rather than the diff.
@@ -84,9 +86,10 @@ not run — above all the cross-model review over a diff past 50 non-comment lin
 count from the diff.
 
 Say where the card goes in `card`. Leave the field out to put it back in the pool. Use
-`{"to": "Open", "tags": ["regrill"]}` when what the diff got wrong was never settled on the card. Use
-`"pending"` when it should not be picked up until a person looks. A card whose comments show it was
-already sent back once goes to `pending` whatever you name.
+`{"to": "Backlog", "labels": []}` when what the diff got wrong was never settled on the card — it is
+not defined, so it is not `Ready`. Use `{"to": "Backlog", "labels": ["question"]}` when it should not
+be picked up until a person decides. A card whose comments show it was already sent back once takes
+the `question` label whatever you name.
 
 **`ask`** — the diff holds up and one decision in it belongs to a person. Write it in
 `decisions_owed`: `what` named the way somebody who has not read the diff would name it, `why` saying
@@ -155,9 +158,12 @@ Open follow-up cards only for what needs a person, a device, or work outside thi
 to the card that surfaced them. Everything else is returned as a finding and filed nowhere.
 
 ```powershell
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" create --list "<list>" --name "BUG - ..." --desc @.scratch/followup.md
-python "$env:USERPROFILE\.claude\skills\clickup\clickup.py" link <new-id> --needs <origin-id>
+gh issue create --title "BUG - ..." --body-file <scratchpad>/followup.md --label bug --label <F>
 ```
+
+The follow-up carries one type label and the `F` of the card it came out of, and its body names that
+card: `**Depends on:** #<origin>` when the origin cannot close without it, a plain `#<origin>`
+reference when it merely came from there.
 
 `BUG - ` only when something is already wrong. The description says what to do and how you know it
 is done. A decision that belongs to the user is written as the question to put to them.
@@ -180,12 +186,12 @@ Your final message is one JSON object and nothing else.
   "isa_edited":           [{ "isc": the id,
                              "was": the claim as you found it,
                              "did": "deleted" | "reworded" | "moved" }],
-  "followups_created":    [{ "task_id": the card you opened, "name": its title }],
+  "followups_created":    [{ "task_id": the issue you opened, "name": its title }],
   "actions_taken":        [ what you actually did, naming ids and run numbers ],
   "decisions_owed":       [{ "what":    the question as somebody who has not read the diff would ask it,
                              "why":     what changes with the answer,
                              "options": [ an answer, and what taking it costs ] }],
-  "card":                 { "to": the status to move it to, "tags": [ the tags it ends with ] }
+  "card":                 { "to": the status to move it to, "labels": [ the labels it ends with ] }
 }
 ```
 
