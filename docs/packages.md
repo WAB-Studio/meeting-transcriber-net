@@ -31,7 +31,8 @@ in a hurry later, mid-task.
 | Windows credentials | `Meziantou.Framework.Win32.CredentialManager` |
 | Audio | `NAudio.Wasapi` |
 | Deepgram | `HttpClient` + `System.Text.Json`, no SDK |
-| MCP | `ModelContextProtocol.Core` |
+| MCP, in the app | `ModelContextProtocol`, which is `.Core` plus the hosting and DI it is served under |
+| MCP, in the UI probe | `ModelContextProtocol.Core` alone: a hand-run tool has no host to put it in |
 | MVVM | `CommunityToolkit.Mvvm` |
 | DI, hosting and logging | `Microsoft.Extensions.*` |
 | Tests | xUnit v3 + Shouldly |

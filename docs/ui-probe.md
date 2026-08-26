@@ -141,7 +141,7 @@ to `wait` for something on the screen you meant. It is never whichever window is
 - **`press` is `Invoke` only, and `type` is `SetValue` only.** Either one fails naming what the
   control offers instead, which is how you find out it wanted another verb.
 - **It will not bring a window forward.** A window behind another still photographs correctly.
-- **It uses the real corpus and the real preference file.** Put a setting back if you changed one,
-  and do not press Record — issue #172.
+- **It uses the real corpus and the real preference file.** That is deliberate: it drives the real
+  application. Put a setting back if you changed one, and do not press Record — it writes a meeting.
 - **It drives only the application it started**, and closes only that one — including when it is
   killed rather than asked, once the application is running.
