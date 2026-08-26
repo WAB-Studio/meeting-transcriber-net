@@ -8,31 +8,76 @@ namespace MeetingTranscriber.Infrastructure.Tests.Storage;
 /// </summary>
 public class FoldersTests
 {
+    /// <summary>
+    /// How long the handle is held once the waiting has started. Ten times any refusal ever
+    /// measured here and fifty times under the patience below, for one reason: the count this
+    /// test asserts is only honest if the first attempt cannot have found the folder already
+    /// free. A machine that stalls this thread for a fifth of a second between starting the one
+    /// below and the first rename would turn that into a red, and a stall that size is a red
+    /// worth having.
+    /// </summary>
+    private const int HoldForMilliseconds = 200;
+
     [Fact]
     public void A_folder_somebody_is_still_reading_moves_once_they_let_go()
     {
-        using var root = new TemporaryFolder();
+        using var root = new TemporaryFolderUnderTemp();
         var from = Written(root, "from");
-        var reader = new FileStream(
+
+        // Disposed from two places on purpose. The thread further down is the one that matters —
+        // letting go while the move is waiting is what this test asserts — and the using is what
+        // guarantees the handle is gone when the test leaves, including on the path where the
+        // move throws and every line after it is skipped. Without it a red here would leave a
+        // handle alive until finalization, and the folder's own cleanup would swallow the delete
+        // it then fails, quietly leaving the tree behind. The Join below keeps the two from
+        // being the same dispose at the same time.
+        using var reader = new FileStream(
             Path.Combine(from.FullName, "inner", "held.txt"), FileMode.Open, FileAccess.Read);
 
         // That the handle really does refuse the rename, so what follows is the waiting working
         // and not a folder nothing was holding.
         Should.Throw<IOException>(() => Directory.Move(from.FullName, Path.Combine(root.Folder.FullName, "never")));
 
+        // Guarded because this thread is the process's and not xunit's: an exception out of it is
+        // unhandled and takes the test host down, and the run then says the host died rather than
+        // saying which test did. The using above is what actually guarantees the handle closes,
+        // so a failure here is worth an assertion and not worth a process.
+        Exception? lettingGoFailed = null;
         var letting = new Thread(() =>
         {
-            Thread.Sleep(20);
-            reader.Dispose();
+            Thread.Sleep(HoldForMilliseconds);
+
+            try
+            {
+                reader.Dispose();
+            }
+            catch (Exception failed)
+            {
+                lettingGoFailed = failed;
+            }
         });
         letting.Start();
 
         // Generous on purpose: what is under test is that the retry happens at all, and a machine
-        // slow enough to stretch twenty milliseconds past the default would fail this for timing.
+        // slow enough to stretch the hold past the default would fail this for timing.
         var to = new DirectoryInfo(Path.Combine(root.Folder.FullName, "to"));
-        Folders.MoveWaitingOutWhoeverHasIt(from, to, patienceMilliseconds: 10_000);
+        int refusals;
+        try
+        {
+            refusals = Folders.MoveWaitingOutWhoeverHasIt(from, to, patienceMilliseconds: 10_000);
+        }
+        finally
+        {
+            letting.Join();
+        }
 
-        letting.Join();
+        lettingGoFailed.ShouldBeNull();
+
+        // The assertion this test exists for. Every one below it is just as true of a run where
+        // the handle had already gone and the first rename walked straight through — which is
+        // exactly what a green suite cannot tell you, and why the helper counts.
+        refusals.ShouldBeGreaterThan(0);
+
         to.Exists.ShouldBeTrue();
         Directory.Exists(from.FullName).ShouldBeFalse();
         File.ReadAllText(Path.Combine(to.FullName, "inner", "held.txt")).ShouldBe("held");
@@ -45,7 +90,7 @@ public class FoldersTests
     [Fact]
     public void A_folder_nobody_lets_go_of_is_a_red_and_not_a_wait()
     {
-        using var root = new TemporaryFolder();
+        using var root = new TemporaryFolderUnderTemp();
         var from = Written(root, "from");
         using var reader = new FileStream(
             Path.Combine(from.FullName, "inner", "held.txt"), FileMode.Open, FileAccess.Read);
@@ -56,7 +101,7 @@ public class FoldersTests
             patienceMilliseconds: 30));
 
         gaveUp.Message.ShouldContain(from.FullName);
-        gaveUp.Message.ShouldContain("ClearPoolsFor");
+        gaveUp.Message.ShouldContain("a handle this suite still holds");
         gaveUp.InnerException.ShouldBeOfType<IOException>();
         Directory.Exists(from.FullName).ShouldBeTrue();
     }
@@ -69,7 +114,7 @@ public class FoldersTests
     [Fact]
     public void A_refusal_that_is_not_somebody_reading_comes_straight_back()
     {
-        using var root = new TemporaryFolder();
+        using var root = new TemporaryFolderUnderTemp();
         var from = Written(root, "from");
         var occupied = new DirectoryInfo(Path.Combine(root.Folder.FullName, "occupied"));
         occupied.Create();
@@ -77,12 +122,14 @@ public class FoldersTests
         var refused = Should.Throw<IOException>(
             () => Folders.MoveWaitingOutWhoeverHasIt(from, occupied, patienceMilliseconds: 30_000));
 
-        // Windows' own, not one this helper built after waiting: nothing was ever going to change.
+        // Windows' own, not one this helper built after waiting: nothing was ever going to change,
+        // so none of the advice it gives about who might be holding the folder is offered either.
         refused.InnerException.ShouldBeNull();
+        refused.Message.ShouldNotContain("a handle this suite still holds");
         Directory.Exists(from.FullName).ShouldBeTrue();
     }
 
-    private static DirectoryInfo Written(TemporaryFolder root, string name)
+    private static DirectoryInfo Written(TemporaryFolderUnderTemp root, string name)
     {
         var folder = new DirectoryInfo(Path.Combine(root.Folder.FullName, name));
         folder.CreateSubdirectory("inner");
@@ -90,10 +137,31 @@ public class FoldersTests
         return folder;
     }
 
-    /// <summary>A folder of this test's own, and nothing about where a corpus may live.</summary>
-    private sealed class TemporaryFolder : IDisposable
+    /// <summary>
+    /// A folder of this test's own, and nothing about where a corpus may live.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>CorpusLocationTests</c> keeps a <c>TemporaryFolderOutsideApplicationData</c>, which is
+    /// this same folder-and-shrug with a different root and a pool clear, and until this pass
+    /// both were called <c>TemporaryFolder</c>. The constraint runs one way: that one cannot be
+    /// this one, because <c>%TEMP%</c> is under this user's application data and a corpus there
+    /// is refused, which is the thing it exists to assert. This one could have been that one —
+    /// build output is writable, and clearing a pool over a folder holding no database does
+    /// nothing.
+    /// </para>
+    /// <para>
+    /// It is not, because taking it would put an assertion about where a corpus may live in the
+    /// path of a test that has nothing to say about that, and a red here would then be about the
+    /// wrong thing. That is a reason to keep two, and not a reason to keep two <em>copies</em>:
+    /// the folder-and-shrug is written out again in every test project in this repo and wants one
+    /// owner next to <c>TemporaryCorpus</c>, which the PR this comment arrived in priced and left
+    /// to a card of its own rather than doing on the way past.
+    /// </para>
+    /// </remarks>
+    private sealed class TemporaryFolderUnderTemp : IDisposable
     {
-        public TemporaryFolder()
+        public TemporaryFolderUnderTemp()
         {
             Folder = new DirectoryInfo(Path.Combine(
                 Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
