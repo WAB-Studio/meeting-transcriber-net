@@ -153,7 +153,11 @@ rather than re-checking them by eye. What only a reading catches:
 - A closed claim whose `## Verification` stub names a test that no longer exists, or names
   nothing runnable. This is the one the removal of `## Test Strategy` made worth looking for.
 
-Report gaps; do not silently fix them.
+Report gaps; do not silently fix them. The one exception is the last of them: a stub naming a test
+that does not do what the claim says was never evidence, so striking it is not a silent fix. But it
+is half an act — strike it and append the evidence that does hold the claim in the same pass, or
+put the claim back to open. A claim left reading closed over evidence that does not cover it is
+worse than the false stub was.
 
 ### Append — the two append-only sections
 

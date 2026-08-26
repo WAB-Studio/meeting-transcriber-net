@@ -14,6 +14,8 @@ src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
 src/MeetingTranscriber.Recording/         a meeting recorded into a corpus: where the audio engine and the corpus meet
 tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
 tools/MeetingTranscriber.CorpusImport/    reads a Python corpus in, then gets deleted
+tools/MeetingTranscriber.UiProbe/         starts the application, reads its window and presses what is on it —
+                                          as a script, and as an MCP server an agent drives a turn at a time
 tests/MeetingTranscriber.Testing/         what a test opens: corpus, SQL, fixture inventory
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```
@@ -93,7 +95,9 @@ the UI that has to be provable lives here rather than beside a window.
 even the one the app itself now references — and reads the app's `.xaml` and `.xaml.cs` as source to hold every screen to naming an entry in the
 catalogue instead of carrying words of its own. Running a WinUI tree would need a UI thread and
 a packaged host, neither of which a build agent has — so the check that needed one is the check
-that would never run.
+that would never run there. It runs somewhere: `tools/MeetingTranscriber.UiProbe` starts the
+packaged application on a desktop somebody is logged into and reads the tree itself, by hand and
+never in a build. `docs/ui-probe.md` is when to reach for it.
 
 `tests/MeetingTranscriber.Isa.Tests/` is the exception to that pattern and references no `src/`
 project: it reads `ISA.md` at the repo root. The claims surface is a repo document rather than a
@@ -107,7 +111,11 @@ checked against.
 
 `tools/` is run by hand and is not part of the product. Nothing under `src/` may reference it or
 know the Python system existed, so deleting the importer is deleting two folders rather than
-untangling the application — its README says what that deletion is.
+untangling the application — its README says what that deletion is. The UI probe is in here for the
+same reason and a second one: it needs an interactive desktop, so no build agent can run it and
+nothing under `tests/` may come to depend on it. It references no project at all — touching a type
+from `MeetingTranscriber.App` would fire the Windows App SDK module initializer in the probe's own
+process — and reaches the application only the way anybody else does, through the shell.
 
 The project split in `arquitectura.md` §3 is the destination, not the scaffolding: a project
 appears when there is code to put in it, and one the destination never named appears when the code

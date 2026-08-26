@@ -72,6 +72,7 @@ something here has stopped earning its place, and the fix is to move a section o
 | `docs/corpus.md` | Deciding what gets backed up, what is deletable, what is rebuildable. |
 | `docs/process-capture.md` | How channel 0 is captured either way: what Windows gives, and what was probed. |
 | `docs/reference-behaviour.md` | Grouping turns, and where .NET departs from the Python system. |
+| `docs/ui-probe.md` | Seeing a screen actually run: starting the app, reading its tree, pressing what is on it. |
 
 ## Nothing has shipped yet
 

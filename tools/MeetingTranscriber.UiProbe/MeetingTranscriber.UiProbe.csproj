@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>MeetingTranscriber.UiProbe</RootNamespace>
+    <!-- Not because anything here is WPF. The Windows Desktop pack is where the three things this
+         tool cannot do without live: the managed UI Automation client `System.Windows.Automation`,
+         `PngBitmapEncoder`, and `Dispatcher`, which is the pump the server host serves every call
+         on. All three ship in the runtime, so reading a window, writing a picture of it and
+         pumping a thread cost this repository no package reference at all. -->
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol.Core" />
+  </ItemGroup>
+
+</Project>

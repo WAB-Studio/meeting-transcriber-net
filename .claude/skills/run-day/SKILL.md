@@ -73,9 +73,20 @@ Then start again at the pick. Nothing paces this.
 One card at a time is the default. How many run beside it is your decision — the picker knows about
 none of them.
 
-**Where a worktree goes:** `../worktrees/<branch>`, a sibling of the checkout, never inside it. One
-worktree a worker, cut off a clean `main`. The main checkout stays one worker's. Delete it when its
-PR merges, not when it opens — a `hold` sends the worker back into it.
+**Where a worker works:** a slot at `../worktrees/slot-N`, a sibling of the checkout, never inside
+it. One slot a worker. The main checkout is a slot like any other and stays one worker's.
+
+**Slots are taken and given back, never created and destroyed.** Add slot-N+1 when every slot is
+busy. On the merge, return the slot: `git fetch`, `git checkout --detach origin/main`,
+`git reset --hard`, `git clean -fd`. Never `-fdx` — `bin/` and `obj/` are what the slot is for, and
+a worker that starts on a cold build has paid for a slot it did not get.
+
+**A returned slot sits on a detached HEAD, never on `main`.** Git gives a branch to one worktree at
+a time, so the second slot to try `git checkout main` cannot have it, and neither can the worker
+who needs it next. A worker cuts its branch off the detached commit.
+
+**A slot is free when it is detached and `git status` is clean.** Anything else is a worker's, or
+is wreckage — read it before you hand it out.
 
 **Run cards together when** they sit in different projects, or all but one are tests or documents
 only.
@@ -152,6 +163,6 @@ The worker owns the checkout. You do not edit files, do not commit and do not sw
 between cycles — a dirty tree stops the next worker in its preflight, including over a fix you
 found. Write it on a card and let a later day take it.
 
-The one exception is the merge in §2, which touches GitHub rather than the checkout. Cutting and
-removing the worktrees of §3 is not a second exception: they sit outside the checkout, and the
-reason they sit outside it is that a worktree inside one is a dirty tree under another name.
+The one exception is the merge in §2, which touches GitHub rather than the checkout. Taking and
+returning the slots of §3 is not a second exception: they sit outside the checkout, and the reason
+they sit outside it is that a worktree inside one is a dirty tree under another name.
