@@ -68,27 +68,31 @@ the card in progress or the PR open, and §4 gets its context back.
 
 Then start again at the pick. Nothing paces this.
 
-## 3 · More than one card at a time
+## 3 · Cards in parallel
 
-One card at a time is the default. Two is your decision — the picker knows about neither.
+One card at a time is the default. How many run beside it is your decision — the picker knows about
+none of them.
 
-**Where a worktree goes:** `../worktrees/<branch>`, a sibling of the checkout, never inside it. Cut
-it off a clean `main`. The main checkout stays one worker's. Delete it when its PR merges, not when
-it opens — a `hold` sends the worker back into it.
+**Where a worktree goes:** `../worktrees/<branch>`, a sibling of the checkout, never inside it. One
+worktree a worker, cut off a clean `main`. The main checkout stays one worker's. Delete it when its
+PR merges, not when it opens — a `hold` sends the worker back into it.
 
-**Run two when** the cards sit in different projects, or one of them is tests or documents only.
+**Run cards together when** they sit in different projects, or all but one are tests or documents
+only.
 
-**Never run two when** either card refactors, moves or renames what exists; changes a contract
-under `Domain/`, a migration, or a name that reaches disk; settles a convention; or edits `ISA.md`.
-The second card would be built against a shape that stopped being true and would land green
+**Never run a card beside anything when** it refactors, moves or renames what exists; changes a
+contract under `Domain/`, a migration, or a name that reaches disk; settles a convention; or edits
+`ISA.md`. Whatever ran beside it was built against a shape that stopped being true, and lands green
 agreeing with nothing.
 
 Conflicting lines at merge are expected and are not the thing being avoided.
 
-**Tell each worker which folders its card owns and which it may not enter.** Say another card is
+**Tell each worker which folders its card owns and which it may not enter.** Say other cards are
 running; never say which.
 
 **Merge one at a time**, and audit against what is already merged.
+
+The ceiling is what this machine builds and tests at once, not how many cards look independent.
 
 ## 4 · A stage that comes back with nothing
 
