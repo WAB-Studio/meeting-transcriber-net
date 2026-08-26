@@ -48,7 +48,7 @@ dotnet run --project tools/MeetingTranscriber.UiProbe -- --out $env:TEMP\ui-prob
 ```
 
 ```text
-7feb8c95-4553-46f0-a036-6574f4cd7cb4_savbypjtf9g9c!App is process 33464, from C:\...\win-x64\MeetingTranscriber.App.exe
+7feb8c95-4553-46f0-a036-6574f4cd7cb4_savbypjtf9g9c!App is process 38352, from C:\...\win-x64\MeetingTranscriber.App.exe
   see recorder
     recorder.tree.txt and recorder.png (1920x1023)
   press MeetingsButton
@@ -63,14 +63,16 @@ done, in C:\Users\pc\AppData\Local\Temp\ui-probe
 
 - `see <name>` — write `<name>.tree.txt` and `<name>.png` of the screen. Changes nothing.
 - `press <element>` — invoke it. Fails if it is disabled or cannot be invoked.
+- `type <element> <text>` — set a field's value. Fails if it is disabled, read only, or takes none.
 - `choose <list> <item>` — open the list, pick the item by name, shut it again.
 - `wait <element>` — block until it is on a window, and make that window the screen from then on.
 
-Put a `wait` after any `press` whose effect you are about to `see`. It is the only thing here that
-synchronises.
+Put a `wait` after any `press`, `type` or `choose` whose effect you are about to `see`. It is the
+only thing here that synchronises.
 
 A tree line is `Type #x:Name "what it says"`, indented by depth, with `value=`, `help=`, `status=`,
-`disabled` and `offscreen` appended when they apply. Grep it:
+`disabled` and `offscreen` appended when they apply. `value=` is what `type` left in a field. Grep
+it:
 
 ```text
       ComboBox #MicrophonePicker "Micrófono"
@@ -99,8 +101,8 @@ started · `3` the probe broke, which is not news about a screen
 
 ## What it will not do
 
-- **There is no `type`.** No screen has a field yet; the first one that does adds the verb.
-- **`press` is `Invoke` only.** It fails naming what the control offers instead.
+- **`press` is `Invoke` only, and `type` is `SetValue` only.** Either one fails naming what the
+  control offers instead, which is how you find out it wanted another verb.
 - **It will not bring a window forward.** A window behind another still photographs correctly.
 - **It uses the real corpus and the real preference file.** Put a setting back if a script changed
   it, and do not press Record — issue #172.

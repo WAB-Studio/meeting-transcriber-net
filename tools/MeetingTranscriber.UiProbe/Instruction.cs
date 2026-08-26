@@ -1,18 +1,12 @@
 namespace MeetingTranscriber.UiProbe;
 
 /// <summary>
-/// The four things a probe can do to a running application.
+/// The five things a probe can do to a running application.
 /// </summary>
 /// <remarks>
 /// Closed on purpose, and small on purpose. Everything a screen is checked for is some
-/// arrangement of these — get in, look, press, pick from a list — and a fifth verb should have to
-/// argue that no arrangement of the four would have done.
-/// <para>
-/// There is deliberately no verb for typing. The card asked for one; no screen in this
-/// application has a field, so a <c>type</c> here would be the one instruction that had never run
-/// against a window — in a tool whose whole premise is that only a running window tells the
-/// truth. The screen that first grows a field adds it, against a real target.
-/// </para>
+/// arrangement of these — get in, look, press, fill in, pick from a list — and a sixth verb should
+/// have to argue that no arrangement of the five would have done.
 /// </remarks>
 internal enum Verb
 {
@@ -21,6 +15,9 @@ internal enum Verb
 
     /// <summary>Do to a control what pressing it does.</summary>
     Press,
+
+    /// <summary>Put text in a field.</summary>
+    Type,
 
     /// <summary>Pick a named thing out of a list.</summary>
     Choose,
@@ -36,6 +33,7 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
     {
         [Verb.See] = 1,
         [Verb.Press] = 1,
+        [Verb.Type] = 2,
         [Verb.Choose] = 2,
         [Verb.Wait] = 1,
     };

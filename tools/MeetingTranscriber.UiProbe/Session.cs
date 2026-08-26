@@ -33,6 +33,9 @@ internal sealed class Session(LaunchedApp app, string folder, TextWriter log)
             case Verb.Press:
                 Press(step.Subject);
                 break;
+            case Verb.Type:
+                Type(step.Subject, step.Detail);
+                break;
             case Verb.Choose:
                 Choose(step.Subject, step.Detail);
                 break;
@@ -100,12 +103,48 @@ internal sealed class Session(LaunchedApp app, string folder, TextWriter log)
         Thread.Sleep(HedgeAfterAPress);
     }
 
+    /// <summary>
+    /// The value is set rather than typed key by key: what a probe wants in the field is what
+    /// somebody meant to leave there, not the six intermediate strings on the way. Held to the
+    /// same three questions <see cref="Press"/> asks — is it dead, does it take this at all, and
+    /// if not what does it take — because a field that silently refused would be a screen this
+    /// tool said nothing about.
+    /// </summary>
+    private void Type(string target, string text)
+    {
+        var element = Search.One(app.Windows.Active(), target);
+
+        if (Reading.Flag(() => element.Current.IsEnabled) == false)
+        {
+            throw new ProbeFailed($"{ElementWords.Line(element)} is disabled: nothing can be typed into it.");
+        }
+
+        if (!Search.Supports(element, ValuePattern.Pattern))
+        {
+            throw new ProbeFailed(
+                $"{ElementWords.Line(element)} does not take a value. "
+                + $"What it offers instead: {Offers(element)}.");
+        }
+
+        var field = (ValuePattern)element.GetCurrentPattern(ValuePattern.Pattern);
+        if (Reading.Flag(() => field.Current.IsReadOnly) != false)
+        {
+            throw new ProbeFailed($"{ElementWords.Line(element)} is read only.");
+        }
+
+        field.SetValue(text);
+        Thread.Sleep(HedgeAfterAPress);
+    }
+
     private static string Offers(AutomationElement element)
     {
         var patterns = Reading.Of(() => element.GetSupportedPatterns()) ?? [];
 
+        // `InvokePatternIdentifiers.Pattern` reads as `Invoke`. The point of this list is to tell
+        // whoever hit it which verb the control wants, and the suffix is on every entry.
         return patterns.Length > 0
-            ? string.Join(", ", patterns.Select(one => one.ProgrammaticName))
+            ? string.Join(", ", patterns.Select(one =>
+                one.ProgrammaticName.Replace("PatternIdentifiers.Pattern", string.Empty)))
             : "nothing";
     }
 
