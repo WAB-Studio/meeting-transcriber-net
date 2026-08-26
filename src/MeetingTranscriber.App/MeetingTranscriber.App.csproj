@@ -73,4 +73,63 @@
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
   </PropertyGroup>
+
+  <!--
+    `PackageIdentitySuffix` appends to <Identity Name> in the AppxManifest.xml the build writes, so
+    one checkout can register a package of its own instead of taking the machine's one registration
+    off whoever had it. Who sets it and what it buys them is docs/ui-probe.md: it is an agent
+    driving the app's windows from a worktree beside other agents doing the same. Empty is the
+    default and the whole build is then what it always was.
+
+    It comes out of a file at the top of the checkout, untracked and named in .gitignore, and never
+    off a command line. A worker cannot type it on every build: `dotnet build` over the solution is
+    a step this repo requires on every pass, and one of those without the argument would poke the
+    shared identity back into the manifest, leave the suffixed registration pointing at it, and put
+    the checkout straight back into the collision this exists to end. A fact about a folder has to
+    live in the folder. It is not in Package.appxmanifest for the mirror-image reason: that file is
+    versioned, so a suffix there is an uncommitted edit sitting in every worktree, and a dirty tree
+    stops the next worker's preflight.
+
+    `AfterGenerateAppxManifest` is the Windows App SDK's own hook, and it is the one moment that
+    works: the manifest exists by then, and the recipe, the payload and the registration are all
+    still ahead. The name is composed from the source manifest rather than from the generated one,
+    so the suffix goes on once however many times this runs — an incremental build leaves the
+    manifest alone and this still finds the name it is meant to end at. It runs whether or not a
+    suffix was asked for, and writes only when the file disagrees with the answer: deleting the
+    file puts the identity back where writing it found it, and a build with no file writes nothing
+    at all.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\PackageIdentity.props"
+          Condition="Exists('$(MSBuildThisFileDirectory)..\..\PackageIdentity.props')" />
+
+  <Target Name="SuffixThePackageIdentity" AfterTargets="AfterGenerateAppxManifest">
+    <PropertyGroup>
+      <_PackageIdentityQuery>/p:Package/p:Identity/@Name</_PackageIdentityQuery>
+      <_PackageManifestNamespace>&lt;Namespace Prefix="p" Uri="http://schemas.microsoft.com/appx/manifest/foundation/windows10" /&gt;</_PackageManifestNamespace>
+    </PropertyGroup>
+
+    <!-- A transform and not %(AppxManifest.FullPath): batching over an empty item list skips the
+         task without a word, and the identity read out of nothing is the empty string, which the
+         poke below would then write into the manifest. -->
+    <XmlPeek XmlInputPath="@(AppxManifest->'%(FullPath)')"
+             Namespaces="$(_PackageManifestNamespace)"
+             Query="$(_PackageIdentityQuery)">
+      <Output TaskParameter="Result" PropertyName="_PackageIdentityInTheSource" />
+    </XmlPeek>
+
+    <Error Condition="'$(_PackageIdentityInTheSource)' == ''"
+           Text="@(AppxManifest) has no &lt;Identity Name&gt;, so there is no name for the package identity to be built out of. Nothing was written to $(FinalAppxManifestName)." />
+
+    <XmlPeek XmlInputPath="$(FinalAppxManifestName)"
+             Namespaces="$(_PackageManifestNamespace)"
+             Query="$(_PackageIdentityQuery)">
+      <Output TaskParameter="Result" PropertyName="_PackageIdentityAsGenerated" />
+    </XmlPeek>
+
+    <XmlPoke Condition="'$(_PackageIdentityAsGenerated)' != '$(_PackageIdentityInTheSource)$(PackageIdentitySuffix)'"
+             XmlInputPath="$(FinalAppxManifestName)"
+             Namespaces="$(_PackageManifestNamespace)"
+             Query="$(_PackageIdentityQuery)"
+             Value="$(_PackageIdentityInTheSource)$(PackageIdentitySuffix)" />
+  </Target>
 </Project>

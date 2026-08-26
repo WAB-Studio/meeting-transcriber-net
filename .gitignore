@@ -493,3 +493,9 @@ $RECYCLE.BIN/
 # Per-machine Claude Code settings: which global skills this repo turns off, and whatever
 # else one machine needs and the next does not. The shared ones are in .claude/settings.json.
 /.claude/settings.local.json
+
+# The package identity of this one checkout, so a worktree driving the UI probe registers a
+# package of its own instead of taking the machine's one registration. Untracked on purpose:
+# it is a fact about a folder, and the next worktree's answer is not this one's.
+# docs/ui-probe.md says what goes in it.
+/PackageIdentity.props
