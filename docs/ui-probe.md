@@ -19,7 +19,7 @@ If that does not end in `\win-x64`, replace it. Remove it first — registering 
 registration keeps the old location:
 
 ```powershell
-dotnet build src/MeetingTranscriber.App/MeetingTranscriber.App.csproj -p:Platform=x64 -nodeReuse:false
+dotnet build src/MeetingTranscriber.App/MeetingTranscriber.App.csproj -p:Platform=x64
 Get-AppxPackage -Name 7feb8c95-4553-46f0-a036-6574f4cd7cb4 | Remove-AppxPackage
 Add-AppxPackage -Register (Resolve-Path src/MeetingTranscriber.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/AppxManifest.xml)
 ```
@@ -31,7 +31,7 @@ worktree, but it drives the checkout whose package is registered above — from 
 refuses and says which one that is.
 
 ```powershell
-dotnet build tools/MeetingTranscriber.UiProbe/MeetingTranscriber.UiProbe.csproj -nodeReuse:false
+dotnet build tools/MeetingTranscriber.UiProbe/MeetingTranscriber.UiProbe.csproj
 claude mcp add ui-probe --scope user -- (Resolve-Path tools/MeetingTranscriber.UiProbe/bin/Debug/net10.0-windows/MeetingTranscriber.UiProbe.exe) --mcp
 claude mcp get ui-probe
 ```
@@ -41,8 +41,7 @@ stdout, and stdout is the protocol.
 
 ## Every run
 
-Build the application first, and keep `-nodeReuse:false` or the next solution build fails with
-`MSB3027` (`docs/shell.md`). Build the tool too if you changed it — MCP starts the exe, not the
+Build the application first. Build the tool too if you changed it — MCP starts the exe, not the
 source.
 
 Anything is refused once the application is older than the code on disk. To pick up a change:
