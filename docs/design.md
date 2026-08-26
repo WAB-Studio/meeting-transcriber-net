@@ -165,7 +165,9 @@ dialogue. A list of twelve meetings with twelve orange buttons spends the colour
 mean *this one costs money*, and once it is spent nothing on the screen can say it any more.
 
 The normal rank has two fills for the same reason the surfaces alternate: a tarjeta button on a
-tarjeta row is invisible. On papel it is tarjeta; on tarjeta it is papel with a 1px `#E6E4DE` rule.
+tarjeta row is invisible. On papel it is tarjeta with no rule; on tarjeta it is papel with a 1px
+`#E1DED7` rule — **not `#E6E4DE`**, which is the dividing rule and against tarjeta is four per cent
+of nothing, so the button reads as a stray outline rather than a thing to press.
 
 ### Two places, and they mean the same thing everywhere
 
@@ -189,6 +191,10 @@ is answered by *do I keep this?* — keep or discard. Exporting it is a copy and
 recording is still waiting afterwards, so it is not an answer, and it does not sit in an answer's
 place.
 
+**How many shapes a row of this list has is not settled**, and the number of them is the thing to
+watch: whether *Ver la reunión* is always there, or the row is itself the thing you press, is open.
+It changes no engine and costs nothing to change later.
+
 ### One verb per act
 
 The same act is never said two ways. Pointing a channel at another source is *Cambiar* wherever it
@@ -207,7 +213,7 @@ already named.
 | File it under what it was about | *Clasificar* |
 | Keep or throw away an unfinished recording | *Conservar* · *Descartar* |
 | Commit a form | *Guardar* |
-| Walk away from one | *Dejarlo como está* |
+| Walk away from one | *Cancelar* |
 | File a meeting under nothing, on purpose | *Dejarla sin clasificar* |
 | Add a person, anywhere | *Agregar a alguien* |
 
@@ -289,6 +295,52 @@ Same panel as the charge: radius 12, papel, the same scrim. What it asks is the 
 the organization and since when — a person carries as many affiliations as they have, each with its
 own period, so this dialogue adds one and never replaces what is there. Two answers, in the two
 places the grammar fixes: *Guardar* on the right, *Dejarlo como está* on the left.
+
+## Movement
+
+**Every screen ships moving.** Motion is not a polish pass that arrives once the screens work — a
+screen built still and animated afterwards animates whatever it happens to have, which is how an
+application ends up with the same fade on everything. It is decided with the screen, like colour.
+
+And like colour, **it is information and never decoration.** Movement answers exactly two questions,
+and a screen that moves for any other reason is a screen that has not decided what it means:
+
+- **Where did this come from, and where did it go?** The drawer rising is what says it is the same
+  screen and not another one. A row leaving the list is what says it is the row you just decided
+  about.
+- **Did something just change that I was not looking at?** A notice arriving beside a meter, a
+  dialogue taking the screen, a status line turning over.
+
+### What moves
+
+| What | How long | How |
+| --- | --- | --- |
+| A control answering the press — fill, ring, tick | **150 ms** | straight in, no easing worth naming |
+| Something entering or leaving — a row, a notice, a clip | **250 ms** | decelerating in, accelerating out |
+| The meetings drawer, and a dialogue arriving | **300 ms** | the same pair, over a distance you can follow |
+
+Entering decelerates and leaving accelerates, which is the platform's own grammar and reads as
+weight rather than as an effect. Nothing eases both ways; nothing bounces; nothing overshoots.
+
+### What never moves
+
+- **The meter.** It is instantaneous by definition, and a level that eases toward its value is a
+  level that is wrong for a quarter of a second, every quarter of a second. Interpolating it does
+  not smooth it — it lies about it.
+- **The stopwatch.** It counts. A number that animates between two values is unreadable at exactly
+  the moment somebody is reading it.
+- **Anything that happens on every element.** A list whose rows arrive one after another says the
+  list is important; a list of thirty says it twelve seconds late. Rows arrive together or not at
+  all.
+- **Anything on hover.** A screen that reacts to a passing cursor is a screen with a hundred small
+  events in it, none of which somebody asked for.
+
+### When Windows says no
+
+Windows carries a setting for people who need the screen to stay still, and **it is obeyed**. With
+animations off, every duration above is zero: the drawer is up, the notice is there, the dialogue
+has the screen. Nothing is lost by turning them off — which is the test of whether a piece of
+movement was carrying information or making up for a layout that did not explain itself.
 
 ## The meter
 
@@ -477,8 +529,8 @@ meetings list like any other: on the decision tint, at the top, *Conservar* on t
 *Descartar*. The one still running sits above them and offers nothing at all, because there is
 nothing to decide about it yet — the order is the statement and no line says it.
 
-*Nada se borra hasta que usted decida* is the meetings list's one sentence, shown only while
-something is waiting.
+The list carries no sentence. Nothing is deleted until somebody chooses it, and saying so is the
+application reassuring the reader about a thing it was never going to do.
 
 ### The flow — afterwards
 
