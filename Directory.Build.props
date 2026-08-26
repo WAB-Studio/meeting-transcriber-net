@@ -9,4 +9,23 @@
   <!-- Warnings are compiled as errors in CI, with -warnaserror.
        On the development machine they show up and do not block. -->
 
+  <!-- Only the application has a platform: it is the self-contained x64 build that goes inside the
+       MSIX. Every library here is AnyCPU and has no reason not to be.
+
+       Without this, `Platform=x64` on the command line reaches every referenced project as a global
+       property, and a project that never asked for a platform gets compiled a second time as x64
+       into `bin/x64/`. So `dotnet build src/MeetingTranscriber.App -p:Platform=x64` and a plain
+       solution build each produce their own `MeetingTranscriber.Presentation.dll` — one PE32+/AMD64
+       and one PE32/I386 — and both copy it over the same file in the application's output. That
+       rewrite happens on every alternation even when no source changed, and whichever command ran
+       last decides which of the two the application actually carries.
+
+       This makes each ProjectReference negotiate instead: a project declaring no `Platforms` is
+       AnyCPU, so MSBuild undefines `Platform` for it and it builds once, to `bin/<Configuration>/`,
+       for both commands. One library, one binary, one path — and the copy that used to overwrite a
+       file a reused MSBuild node still had open is now skipped as unchanged. -->
+  <PropertyGroup>
+    <EnableDynamicPlatformResolution>true</EnableDynamicPlatformResolution>
+  </PropertyGroup>
+
 </Project>
