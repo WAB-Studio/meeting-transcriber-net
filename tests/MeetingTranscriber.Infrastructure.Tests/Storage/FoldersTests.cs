@@ -111,6 +111,16 @@ public class FoldersTests
     /// and then the same red a quarter of a second later, which is the way to teach somebody that
     /// this helper is where their time goes.
     /// </summary>
+    /// <remarks>
+    /// The thirty seconds below is not a copied constant and is not generosity — do not shrink it.
+    /// It is a trap, and the only one this test has. Every assertion here passes instantly when
+    /// the helper is right, because a destination that already exists is handed straight back;
+    /// they would also pass under the default patience if the helper were wrong, a quarter of a
+    /// second later and looking exactly the same. Set against thirty seconds, a misclassification
+    /// stops being invisible: it costs half a minute of every CI run until somebody fixes it,
+    /// which is precisely the cost <see cref="Folders"/> exists to keep off the suite. What proves
+    /// nothing waited is the null inner exception; what makes anybody notice is the clock.
+    /// </remarks>
     [Fact]
     public void A_refusal_that_is_not_somebody_reading_comes_straight_back()
     {

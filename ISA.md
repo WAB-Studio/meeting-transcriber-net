@@ -1,7 +1,7 @@
 ﻿---
 phase: climbing
 progress: 127/189
-updated: 2026-08-25
+updated: 2026-08-26
 ---
 
 # ISA — meeting-transcriber-net
@@ -576,7 +576,7 @@ Board: 7 · Distribución y backup
 - ISC-31 — `CorpusImporterTests.An_imported_extraction_arrives_with_the_run_it_came_out_of` and `.A_decision_and_an_action_projected_from_it_hang_off_that_run` green 2026-08-07
 - ISC-32 — `DeepgramTranscriptParserTests` green 2026-08-07
 - ISC-33 — `CliWalkthroughTests.A_response_becomes_a_meeting_that_renders_rebuilds_and_is_found_again` green 2026-08-07
-- ISC-34 — `CliWalkthroughTests.The_same_response_imported_twice_is_one_meeting`, `CorpusImporterTests.Importing_the_same_corpus_twice_imports_it_once` and `.Importing_again_does_not_duplicate_or_rewrite_the_derivatives` green 2026-08-07; the audio door too, `AudioIntakeTests.The_same_audio_brought_in_twice_is_one_meeting` (both a single track and a pair, compared after the mix down because that is what would land) and `ImportAudioCommandTests.Bringing_the_same_audio_in_twice_is_one_meeting` (`tests/MeetingTranscriber.Recording.Tests`, `tests/MeetingTranscriber.Cli.Tests`) green 2026-08-20
+- ISC-34 — `CliWalkthroughTests.The_same_response_imported_twice_is_one_meeting`, `CorpusImporterTests.Importing_the_same_corpus_twice_imports_it_once` and `.Importing_again_does_not_duplicate_or_rewrite_the_derivatives` green 2026-08-07; the folder-name half, `CorpusImporterTests.A_meeting_whose_folder_was_renamed_is_still_the_same_meeting` (`tests/MeetingTranscriber.CorpusImport.Tests`) green 2026-08-26; the audio door too, `AudioIntakeTests.The_same_audio_brought_in_twice_is_one_meeting` (both a single track and a pair, compared after the mix down because that is what would land) and `ImportAudioCommandTests.Bringing_the_same_audio_in_twice_is_one_meeting` (`tests/MeetingTranscriber.Recording.Tests`, `tests/MeetingTranscriber.Cli.Tests`) green 2026-08-20
 - ISC-35 — `CorpusRebuildTests.Deleting_every_derived_row_and_projecting_again_leaves_every_other_table_as_it_was` green 2026-08-07, which holds the classifications and the speaker assignments a person edited as well as the rows nothing touched
 - ISC-36 — `CorpusRebuildTests.Rebuilding_produces_the_same_projections_and_the_same_files` and `MeetingRendererTests.Rendering_again_leaves_the_sources_alone_and_produces_the_same_files` green 2026-08-07
 - ISC-37 — `CorpusRebuildTests.A_claim_cannot_cite_a_turn_the_meeting_never_had` green 2026-08-07
