@@ -1,12 +1,20 @@
 namespace MeetingTranscriber.UiProbe;
 
 /// <summary>
-/// The five things a probe can do to a running application.
+/// How a command line spells the five things a probe can do to a running application.
 /// </summary>
 /// <remarks>
+/// The things themselves are <see cref="Session"/>'s; this is one host's vocabulary for them, and
+/// the server has its own because the two do not line up — a <c>see</c> here names the pair of
+/// files it writes, and a <c>see</c> there names nothing. Generating one from the other would have
+/// meant one special case for every verb, which is not an abstraction removing a decision.
+/// <see cref="CommandLine.Do"/> throws on a verb it does not handle, so the drift that costs is
+/// loud rather than a script that runs and does nothing.
+/// <para>
 /// Closed on purpose, and small on purpose. Everything a screen is checked for is some
 /// arrangement of these — get in, look, press, fill in, pick from a list — and a sixth verb should
 /// have to argue that no arrangement of the five would have done.
+/// </para>
 /// </remarks>
 internal enum Verb
 {

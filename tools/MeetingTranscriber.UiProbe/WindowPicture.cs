@@ -34,7 +34,12 @@ internal static class WindowPicture
 {
     private static readonly TimeSpan ToDraw = TimeSpan.FromSeconds(10);
 
-    internal static string WriteTo(string path, AutomationElement window)
+    /// <summary>
+    /// The PNG itself, and not a file. One host writes it under a name somebody chose and the
+    /// other hands the bytes back inside the turn that asked for them, so a picture that could
+    /// only exist as a path would have made the second one read what it had just written.
+    /// </summary>
+    internal static (byte[] Png, string Size) Of(AutomationElement window)
     {
         var handle = AppWindows.Handle(window);
 
@@ -70,10 +75,10 @@ internal static class WindowPicture
         var png = new PngBitmapEncoder();
         png.Frames.Add(BitmapFrame.Create(picture));
 
-        using var file = File.Create(path);
-        png.Save(file);
+        using var encoded = new MemoryStream();
+        png.Save(encoded);
 
-        return $"{rect.Width}x{rect.Height}";
+        return (encoded.ToArray(), $"{rect.Width}x{rect.Height}");
     }
 
     /// <summary>

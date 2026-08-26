@@ -28,7 +28,7 @@ internal sealed class AppWindows(int processId)
     private IntPtr _named;
 
     /// <summary>
-    /// Says which window the rest of the script is about. <see cref="Verb.Wait"/> is the only
+    /// Says which window the rest of the session is about. <see cref="Session.Wait"/> is the only
     /// caller: waiting for something is how a script says it has arrived somewhere, so the window
     /// that had it is the screen from then on.
     /// </summary>

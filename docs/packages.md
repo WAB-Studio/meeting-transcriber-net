@@ -31,7 +31,7 @@ in a hurry later, mid-task.
 | Windows credentials | `Meziantou.Framework.Win32.CredentialManager` |
 | Audio | `NAudio.Wasapi` |
 | Deepgram | `HttpClient` + `System.Text.Json`, no SDK |
-| MCP | `ModelContextProtocol` |
+| MCP | `ModelContextProtocol.Core` |
 | MVVM | `CommunityToolkit.Mvvm` |
 | DI, hosting and logging | `Microsoft.Extensions.*` |
 | Tests | xUnit v3 + Shouldly |

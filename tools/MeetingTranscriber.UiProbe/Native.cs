@@ -19,6 +19,15 @@ internal static class Native
     internal const uint DIB_RGB_COLORS = 0;
     internal const uint WM_CLOSE = 0x0010;
 
+    /// <summary><c>JobObjectExtendedLimitInformation</c>.</summary>
+    internal const int JobObjectExtendedLimitInformation = 9;
+
+    /// <summary>
+    /// <c>JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE</c>: when the last handle to the job goes, so does
+    /// everything in it.
+    /// </summary>
+    internal const uint JobLimitKillOnJobClose = 0x2000;
+
     /// <summary>
     /// <c>DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2</c>. Without it Windows lies to this process
     /// about where the window is and how big, and the picture comes out cropped on any display
@@ -150,4 +159,65 @@ internal static class Native
     internal class ApplicationActivationManager
     {
     }
+
+    /// <summary>
+    /// <c>JOBOBJECT_BASIC_LIMIT_INFORMATION</c>. Every field is here and only one is set, because
+    /// the structure is passed by size and a short one is rejected — see <see cref="Leash"/>.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct JobBasicLimits
+    {
+        internal long PerProcessUserTimeLimit;
+        internal long PerJobUserTimeLimit;
+        internal uint LimitFlags;
+        internal nuint MinimumWorkingSetSize;
+        internal nuint MaximumWorkingSetSize;
+        internal uint ActiveProcessLimit;
+        internal nuint Affinity;
+        internal uint PriorityClass;
+        internal uint SchedulingClass;
+    }
+
+    /// <summary><c>IO_COUNTERS</c>: read, never written, and part of the size.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct IoCounters
+    {
+        internal ulong ReadOperationCount;
+        internal ulong WriteOperationCount;
+        internal ulong OtherOperationCount;
+        internal ulong ReadTransferCount;
+        internal ulong WriteTransferCount;
+        internal ulong OtherTransferCount;
+    }
+
+    /// <summary><c>JOBOBJECT_EXTENDED_LIMIT_INFORMATION</c>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct JobExtendedLimits
+    {
+        internal JobBasicLimits BasicLimitInformation;
+        internal IoCounters IoInfo;
+        internal nuint ProcessMemoryLimit;
+        internal nuint JobMemoryLimit;
+        internal nuint PeakProcessMemoryUsed;
+        internal nuint PeakJobMemoryUsed;
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern IntPtr CreateJobObject(IntPtr security, string? name);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetInformationJobObject(
+        IntPtr job,
+        int informationClass,
+        ref JobExtendedLimits information,
+        uint length);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool AssignProcessToJobObject(IntPtr job, IntPtr process);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool CloseHandle(IntPtr handle);
 }

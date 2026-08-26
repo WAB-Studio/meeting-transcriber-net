@@ -108,9 +108,12 @@ internal static class UiTree
     internal static string Render(AutomationElement window)
     {
         var text = new StringBuilder();
+        // Through Reading like every other read in this tool. It was not, and that mattered: a
+        // press that closes the window it was on races this line, and an unguarded throw here
+        // comes back as "the probe broke" about a press that worked.
         text.Append("window \"").Append(ElementWords.Name(window)).Append('"')
             .Append(" hwnd=0x").Append(AppWindows.Handle(window).ToString("X8"))
-            .Append(" pid=").Append(window.Current.ProcessId)
+            .Append(" pid=").Append(Reading.Of(() => window.Current.ProcessId.ToString()) ?? "gone")
             .Append(" read ").Append(DateTime.UtcNow.ToString("O"))
             .AppendLine();
 
