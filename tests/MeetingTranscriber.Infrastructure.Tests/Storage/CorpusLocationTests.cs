@@ -550,6 +550,12 @@ public class CorpusLocationTests
     /// turns on is that a stored path is relative to whichever folder the corpus is opened as, and
     /// that is what changes here.
     /// </summary>
+    /// <remarks>
+    /// Moved and not copied, and that is the assertion rather than an incidental choice: a copy
+    /// would leave the files where they were, so a path that had been stored absolute would still
+    /// find them and this would go green over the one mistake it exists to catch. Only the old
+    /// folder ceasing to exist makes a stale path fail.
+    /// </remarks>
     [Fact]
     public void A_corpus_moved_somewhere_else_keeps_every_path_it_recorded()
     {
@@ -569,9 +575,10 @@ public class CorpusLocationTests
             response = Written(context, meeting, "deepgram.json", ArtifactKind.DeepgramResponse, "{\"paid\":true}");
         }
 
-        // The folder cannot move while a pooled connection still holds the database open.
+        // The folder cannot move while a pooled connection holds the database open, and it cannot
+        // move while anything else has a file under it open either — see Folders for the second.
         CorpusDatabase.ClearPoolsFor(origin);
-        Directory.Move(origin.FullName, destination.FullName);
+        Folders.MoveWaitingOutWhoeverHasIt(origin, destination);
 
         try
         {
