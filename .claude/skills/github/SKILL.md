@@ -203,6 +203,19 @@ something nobody outside this repo can read.
   happen next. There are no others. Keep it to a screen: the review, how it was diagnosed and what
   proved it stay out.
 
+### How it is written
+
+The body and every comment on it.
+
+- One screen. Over it, cut.
+- One sentence per decision: what was decided and why, together.
+- A rejected alternative goes in that same sentence, or nowhere.
+- Cut what was suspected, what was tried, and what it turned out not to be.
+- Cut any sentence whose only job is to set up the next one.
+- `## What changed` is what is in the diff. `## Why` is why it exists, never how it was reached.
+- A number or a command appears only where a claim rests on it.
+- No opening that restates the card. No closing that repeats the body.
+
 **Reviewing:** anything specific goes inline on the line; one summary comment with the verdict and
 nothing else; `nit:` up front when it does not block. You do not approve your own PR, and design is
 discussed in the issue — in the PR the code is already written.

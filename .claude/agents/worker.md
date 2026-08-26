@@ -151,8 +151,9 @@ Every comment you leave opens with `[Worker]`:
 Write the decisions and the domain: what a meeting, a recording or the corpus does now that it did
 not, what was decided and what it settles, what the card did not get and which card carries it.
 
-Write the code in the PR body and the commit message: what you tried, why one shape beat another,
-what a review found.
+Write the code in the commit message: what you tried, why one shape beat another, what a review
+found. None of that goes in the PR body or the comment — the `github` skill's **How it is written**
+governs both.
 
 Return to `main` with a clean tree. Take the branch tip with `git rev-parse <branch>`.
 
