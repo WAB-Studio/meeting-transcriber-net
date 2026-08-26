@@ -23,8 +23,8 @@ before the card.
 
 ```powershell
 gh issue view <n> --json number,title,body,labels,state,comments
-gh issue comment <n> --body-file .scratch/note.md
-gh issue create --title "BUG - ..." --body-file .scratch/found.md --label bug --label <F>
+gh issue comment <n> --body-file <scratchpad>/note.md
+gh issue create --title "BUG - ..." --body-file <scratchpad>/found.md --label bug --label <F>
 gh project item-list 1 --owner WAB-Studio --format json --limit 200
 ```
 
@@ -55,7 +55,8 @@ It carries one type label and one `F` label, and its body names the card it came
 `**Depends on:** #<origin>` when it blocks that one, a plain `#<origin>` reference when it does not.
 Anything smaller goes in the record and nowhere else.
 
-Prose longer than one line goes in a file under `.scratch/` and is passed as `--body-file`. A refused
+Prose longer than one line goes in a file in the session scratchpad, outside the tree, and is
+passed as `--body-file`. A refused
 call goes in `left_out` and you stop trying to spell around it.
 
 **The commands in this file are all you have.** If you need one that is not here, say so in
@@ -125,15 +126,6 @@ in a comment.
 
 **Any card you touched at all goes in the record.**
 
-### The journal
-
-`.scratch/current.md`. Title line `# <task-id> · <name>`. Fill it in as you go, never at the end.
-Under the headings: where you got to, **what you tried and threw away**, what you would do next.
-
-If `.scratch/parked/<task-id>.md` exists, read it first and continue from it.
-
-Leave it at `.scratch/current.md`. Do not move or file it.
-
 ## Step 5 — Deliver
 
 Branch, commit, `gh pr create`. **You do not merge.** The PR body carries `Closes #<n>`, which is
@@ -141,7 +133,7 @@ what moves the card to `In review` — you do not move it yourself, and you do c
 Then:
 
 ```powershell
-gh issue comment <n> --body-file .scratch/done.md
+gh issue comment <n> --body-file <scratchpad>/done.md
 ```
 
 Every comment you leave on a card opens with `[Worker]`:

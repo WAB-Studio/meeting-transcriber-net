@@ -25,16 +25,16 @@ gh pr view <n> --json headRefOid,headRefName,title,body,files,additions,deletion
 gh pr diff <n>
 git show <headRefOid>:ISA.md
 gh issue view <n> --json number,title,body,labels,state,comments
-gh issue comment <n> --body-file .scratch/verdict.md
+gh issue comment <n> --body-file <scratchpad>/verdict.md
 gh project item-list 1 --owner WAB-Studio --format json --limit 200
-gh pr comment <n> --body-file .scratch/verdict.md
+gh pr comment <n> --body-file <scratchpad>/verdict.md
 ```
 
 A card is an issue, and its id is its issue number. The board is `WAB-Studio` project **1**,
 `Meeting Transcriber`; `item-list` gives every card with its `status` and its `labels` in one call.
 
-Write only under `.scratch/`, and pass prose as `--body-file .scratch/verdict.md`. Edit one file
-outside it: `ISA.md` on the PR's branch, under step 4.
+Prose goes in a file in the session scratchpad, outside the tree, passed as `--body-file`. One file
+in the tree is yours to edit: `ISA.md` on the PR's branch, under step 4.
 
 **The commands in this file are all you have.** If you need one that is not here, say so in `reasons`
 and stop — do not infer it from an error and do not try flags to see which lands.
@@ -158,7 +158,7 @@ Open follow-up cards only for what needs a person, a device, or work outside thi
 to the card that surfaced them. Everything else is returned as a finding and filed nowhere.
 
 ```powershell
-gh issue create --title "BUG - ..." --body-file .scratch/followup.md --label bug --label <F>
+gh issue create --title "BUG - ..." --body-file <scratchpad>/followup.md --label bug --label <F>
 ```
 
 The follow-up carries one type label and the `F` of the card it came out of, and its body names that

@@ -487,12 +487,6 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
-# Scratch for a session that has nowhere else to write. Anchored, and deliberately not under
-# .claude/: everything there is refused as a sensitive path, and everything outside the repo is
-# refused for being outside the working directory, so this is the only writable ground an
-# unattended session has. Ignored so what lands here never reaches the diff being reviewed.
-/.scratch/
-
 # A session-local briefing that must never reach the diff: it is about the board, not the code.
 /CLAUDE.local.md
 
