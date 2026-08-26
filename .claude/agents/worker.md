@@ -25,7 +25,6 @@ before the card.
 gh issue view <n> --json number,title,body,labels,state,comments
 gh pr comment <pr> --body-file <scratchpad>/note.md
 gh issue comment <n> --body-file <scratchpad>/note.md   # only when no PR of yours carries it
-gh issue create --title "BUG - ..." --body-file <scratchpad>/found.md --label bug --label <F>
 gh project item-list 1 --owner WAB-Studio --format json --limit 200
 ```
 
@@ -51,16 +50,8 @@ gh project item-edit --id $item --project-id PVT_kwDOCo2sl84BhFA- `
 You move a card to `In progress` and nowhere else. `In review` moves itself off `Closes #N`, and no
 worker ever writes `Done`.
 
-`gh issue create` is for the one thing CLAUDE.md says becomes a card: a fix too big to land inline.
-It carries one type label and one `F` label, and its body names the card it came out of —
-`**Depends on:** #<origin>` when it blocks that one, a plain `#<origin>` reference when it does not.
-Anything smaller goes in the record and nowhere else.
-
-**Before the card is opened, say which existing card it is not.** There are ninety-odd open, so the
-question is not whether one is close but which one, and the answer goes in the record. Failing to
-find one is not evidence there is none; it means the board was not read. A card nobody can tell from
-another is worse than the finding staying in the record, because it looks like coverage and it waits
-behind everything else.
+**You do not open cards.** A fix too big to land inline goes in `left_out`, with what it is and why
+it cannot ride in this PR. The day opens it or does not.
 
 Prose longer than one line goes in a file in the session scratchpad, outside the tree, and is
 passed as `--body-file`. A refused
