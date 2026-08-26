@@ -168,7 +168,12 @@ free prose.
   learned / criterion-now. A partial entry does not get written. This is not a changelog; `git
   log -- ISA.md` is that.
 - **Verification** — one line per closed claim. The proof lives in git and CI; the ISA points at
-  it. An entry that grows into a paragraph gets collapsed back.
+  it. An entry that grows into a paragraph gets collapsed back, and since 2026-08-26 the gate test
+  does the collapsing for you by going red: 575 characters of prose outside the backticked
+  pointers. Test names and commands do not count against it, so name every probe precisely and put
+  nothing else there. Before appending, read a neighbour or two — the section is append-only, and
+  what it was full of until that date was three-thousand-character retellings each written to the
+  precedent of the last.
 
 **A decision does not go in this file at all**, and the section that held them was removed on
 2026-08-13. A rejected alternative goes as a comment in the file where somebody would try it

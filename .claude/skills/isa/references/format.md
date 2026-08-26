@@ -125,7 +125,9 @@ and CI:
 ```
 
 Name the test class or the command precisely enough that the next reader can re-run it. A test
-class alone is enough when the whole class is the probe; name the method when one method is.
+class alone is enough when the whole class is the probe; name the method when one method is. Naming
+them costs nothing: gate 11 measures the prose left when the backticked spans come out, so four
+method names are free and the sentence explaining them is not.
 
 **A `dotnet test` probe names its project.** `dotnet test --filter "FullyQualifiedName~X"` is
 silently ignored by the Microsoft.Testing.Platform runner that xunit.v3 uses — it runs
@@ -158,6 +160,21 @@ Mechanical, enforced by `IsaStructureTests`, and hard failures:
 8. Every non-blank line under `## Verification` parses as a stub.
 9. `## Learning` is whole entries of four labels in order, and nothing else.
 10. No number is missing between the first ID and the last, at the root and under every parent.
+11. No `## Verification` stub carries more than 575 characters of prose outside its pointers.
+
+Check 11 was advisory until 2026-08-26, on the argument that a pointer cannot be told from a
+paragraph by counting characters. That is true of the line, which in this repo is mostly test
+names — seven of them is 668 characters saying nothing but where to look. It is not true of what
+is left once the backticked spans come out. Measured over the 127 stubs of that day, the file was
+bimodal on that number: 91 stubs at 541 or below, 36 at 606 or above, nothing in between. The
+limit is the middle of the gap. The exception the advisory existed to protect survives it — a
+claim closed on a hand run carries numbers CI will never produce again, and the two stubs that do
+sit at 229 and 320, nowhere near it.
+
+What made this worth a gate rather than a note is where the rule lived. The section is
+append-only, and whoever appends to it greps their own ISC and never opens the file: they see a
+three-thousand-character neighbour and write to that precedent, having never read the line here
+that says not to. A rule about a file's shape has to fail the build or it only describes the past.
 
 Check 10 is the other hand of check 4. A duplicate ID is a number issued twice; a hole is a claim
 deleted instead of tombstoned, or a run of them shifted down to close one — which silently
@@ -180,7 +197,3 @@ manufactured:
 - at least one `Anti:` claim exists;
 - no claim bundles two verifiable things;
 - nothing shipped that no claim asked for;
-- a stub reads as a pointer rather than a paragraph. Advisory and not a character count, because
-  the one honest exception has no test to point at: a claim closed on a hand run carries the run's
-  numbers, since nothing else holds them and CI will never produce them again. A stub naming a
-  test class has no such excuse — the class is the evidence, and the narrative belongs in the PR.

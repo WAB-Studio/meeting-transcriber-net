@@ -27,7 +27,7 @@ internal sealed partial class IsaDocument
         Features = ReadFeatures(lines);
         Claims = [.. Features.SelectMany(feature => feature.Claims)];
         StrayFeatureBullets = [.. Features.SelectMany(feature => feature.StrayBullets)];
-        VerificationStubs = ReadVerificationStubs(lines);
+        Stubs = ReadStubs(lines);
         StrayVerificationLines = [.. ReadSectionBody(lines, VerificationSection)
             .Where(line => !StubLine().IsMatch(line))];
         LearningLabels = ReadLearningLabels(lines);
@@ -49,7 +49,11 @@ internal sealed partial class IsaDocument
     /// </summary>
     public IReadOnlyList<string> StrayFeatureBullets { get; }
 
-    public IReadOnlyList<string> VerificationStubs { get; }
+    /// <summary>
+    /// The provenance stubs under `## Verification`, one per closed claim, each split into the
+    /// claim it closes and the prose left over once its pointers are taken out.
+    /// </summary>
+    public IReadOnlyList<Stub> Stubs { get; }
 
     /// <summary>Non-blank lines under `## Verification` that are not provenance stubs.</summary>
     public IReadOnlyList<string> StrayVerificationLines { get; }
@@ -155,13 +159,26 @@ internal sealed partial class IsaDocument
     /// Read from the section rather than from the whole file: a stub is evidence, and a line that
     /// happens to carry the shape somewhere else is not evidence of anything.
     /// </summary>
-    private static List<string> ReadVerificationStubs(string[] lines) =>
-    [
-        .. ReadSectionBody(lines, VerificationSection)
-            .Select(line => StubLine().Match(line))
-            .Where(match => match.Success)
-            .Select(match => match.Groups["id"].Value),
-    ];
+    private static List<Stub> ReadStubs(string[] lines)
+    {
+        var stubs = new List<Stub>();
+
+        foreach (var line in ReadSectionBody(lines, VerificationSection))
+        {
+            var match = StubLine().Match(line);
+            if (match.Success)
+            {
+                // What is left after the `- ISC-N — ` prefix and the backticked spans come out is
+                // the prose. A stub is one physical line — a wrapped one would fail the stray-line
+                // check above it — so the whole stub is here and nothing has to be joined first.
+                stubs.Add(new Stub(
+                    match.Groups["id"].Value,
+                    Pointer().Replace(line[match.Length..], string.Empty)));
+            }
+        }
+
+        return stubs;
+    }
 
     private static List<string> ReadLearningLabels(string[] lines) =>
     [
@@ -192,7 +209,18 @@ internal sealed partial class IsaDocument
     [GeneratedRegex(@"^- \*\*(?<label>[a-z-]+)\*\* — ")]
     private static partial Regex LearningLabel();
 
+    /// <summary>A backticked span: a test name, a command, a path — the pointer part of a stub.</summary>
+    [GeneratedRegex("`[^`]*`")]
+    private static partial Regex Pointer();
+
     internal sealed record Claim(string Id, bool Closed, string Text, string Feature);
+
+    /// <summary>
+    /// A provenance stub, as the claim it closes and the prose it carries beyond its pointers.
+    /// The split is the whole point: naming four test methods precisely is what the format asks
+    /// for and costs nothing, while the sentences around them are what the size gate is over.
+    /// </summary>
+    internal sealed record Stub(string Id, string Prose);
 
     internal sealed class Feature(string id, string name)
     {

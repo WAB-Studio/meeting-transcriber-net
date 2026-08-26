@@ -15,6 +15,28 @@ namespace MeetingTranscriber.Isa.Tests;
 public class IsaStructureTests
 {
     /// <summary>
+    /// The most prose a `## Verification` stub may carry once its pointers are taken out.
+    /// </summary>
+    /// <remarks>
+    /// Measured over all 127 stubs on `main` at 3551c12 on 2026-08-26, and it is prose rather
+    /// than line length because the two disagree about the honest cases. ISC-50 is a 668-character
+    /// line of almost nothing but fully-qualified test names — seven of them, and this repo names
+    /// a test in a whole sentence — which is exactly what the format spec asks a stub to be. A
+    /// limit over the line would have to fail it to catch anything, while still passing a tighter
+    /// essay. With the backticked spans out ISC-50 is 133, and the file turns out bimodal: 91
+    /// stubs at 541 or below, the other 36 at 606 or above, and nothing in between. Those 65
+    /// characters are the widest gap anywhere below 1000, and this number is the middle of it, so
+    /// the limit is not a line anything currently sits close to on either side.
+    ///
+    /// The headroom answers the one exception the format spec named when it argued this could not
+    /// be a character count: a claim closed on a hand run carries numbers CI will never produce
+    /// again, and nothing else holds them. Those are ISC-58 at 229 and ISC-67 at 320 — well
+    /// inside, because what carries a stub past this limit is never the numbers. It is the
+    /// retelling around them, and the retelling is what has somewhere else to be.
+    /// </remarks>
+    private const int LongestStubProse = 575;
+
+    /// <summary>
     /// The eight lists of the MeetingTranscriber space, plus the em dash F0 carries because
     /// cross-cutting work belongs to no single list.
     /// </summary>
@@ -119,7 +141,7 @@ public class IsaStructureTests
     [Fact]
     public void Every_closed_claim_points_at_what_closed_it()
     {
-        var stubs = isa.VerificationStubs.ToHashSet(StringComparer.Ordinal);
+        var stubs = isa.Stubs.Select(stub => stub.Id).ToHashSet(StringComparer.Ordinal);
 
         foreach (var claim in isa.Claims.Where(claim => claim.Closed))
         {
@@ -134,9 +156,33 @@ public class IsaStructureTests
         var open = isa.Claims.Where(claim => !claim.Closed).Select(claim => claim.Id)
             .ToHashSet(StringComparer.Ordinal);
 
-        isa.VerificationStubs.Where(open.Contains).ShouldBeEmpty(
+        isa.Stubs.Select(stub => stub.Id).Where(open.Contains).ShouldBeEmpty(
             "a stub under an open claim is evidence for something the file says did not happen; "
             + "one of the two is wrong.");
+    }
+
+    /// <summary>
+    /// `## Verification` is append-only, and until this check nothing bounded what got appended.
+    /// The rule that a stub is a pointer lived only in the format spec and the skill, which is
+    /// the one place whoever is appending a single line never opens — so each writer read the
+    /// neighbours instead, and the neighbours only ever got longer. On 2026-08-26 the eight
+    /// largest lines ran from 2355 to 3333 characters against a spec whose example is 40.
+    /// </summary>
+    [Fact]
+    public void A_stub_points_at_its_evidence_instead_of_retelling_it()
+    {
+        var overlong = isa.Stubs
+            .Where(stub => stub.Prose.Length > LongestStubProse)
+            .Select(stub => $"{stub.Id} ({stub.Prose.Length})")
+            .ToArray();
+
+        overlong.ShouldBeEmpty(
+            $"a Verification stub points at the evidence; past {LongestStubProse} characters of "
+            + "prose it is retelling it. Test names, commands and paths are free here, so name "
+            + "every probe precisely — it is the sentences around them that have somewhere "
+            + "better to be. What explains one file is a comment in that file, what argues the "
+            + "design is `arquitectura.md`, and how this session got there is the commit message "
+            + "and the PR, which is where anybody following the merge back is already standing.");
     }
 
     /// <summary>
