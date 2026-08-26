@@ -39,16 +39,31 @@ public partial class ScreenTextsTests
     /// setter built out of it, so a property added here is caught in both places or in neither —
     /// which is what the second, hand-written copy of these names could not promise.
     /// <para>
-    /// A screen reader says <c>FullDescription</c> and <c>ItemStatus</c> out loud, so they are words
-    /// a person reads and belong here beside <c>Name</c> and <c>HelpText</c>. They are not
-    /// <c>AutomationId</c>, which nobody hears and which has no business being translated.
+    /// The attached ones are every automation property that carries a string, because a screen
+    /// reader says every one of them out loud — which is this class's whole definition of a word a
+    /// person reads. The rule is that and not a shorter list on purpose: deriving the setter half
+    /// from this set replaced a pattern that had matched <c>AutomationProperties.Set</c> and any
+    /// name after it, so anything a shorter list left out would have gone from caught to caught by
+    /// neither half, silently, in an application that sets none of them today.
+    /// </para>
+    /// <para>
+    /// <c>AutomationId</c> is the one string deliberately absent. Nobody hears it; it is how a test
+    /// or a tool finds the element again, so it has to stay the same in every language, and holding
+    /// it to the catalogue would have asked for a translation of <c>recordButton</c>. The automation
+    /// properties that are not here carry no words at all — a live setting, a landmark type, a
+    /// position in a set — and there is nothing in them to say twice.
     /// </para>
     /// </remarks>
     private static readonly HashSet<string> Reads =
     [
+        "AutomationProperties.AcceleratorKey",
+        "AutomationProperties.AccessKey",
         "AutomationProperties.FullDescription",
         "AutomationProperties.HelpText",
         "AutomationProperties.ItemStatus",
+        "AutomationProperties.ItemType",
+        "AutomationProperties.LocalizedControlType",
+        "AutomationProperties.LocalizedLandmarkType",
         "AutomationProperties.Name",
         "CloseButtonText",
         "Content",
@@ -192,6 +207,11 @@ public partial class ScreenTextsTests
         @"AutomationProperties.SetHelpText(box, ""hola"");",
         @"AutomationProperties.SetFullDescription(box, ""hola"");",
         @"AutomationProperties.SetItemStatus(list, ""hola"");",
+        @"AutomationProperties.SetItemType(row, ""hola"");",
+        @"AutomationProperties.SetLocalizedControlType(box, ""hola"");",
+        @"AutomationProperties.SetLocalizedLandmarkType(panel, ""hola"");",
+        @"AutomationProperties.SetAcceleratorKey(button, ""Control+G"");",
+        @"AutomationProperties.SetAccessKey(button, ""G"");",
         @"ToolTipService.SetToolTip((UIElement)child, ""hola"");",
     ];
 
