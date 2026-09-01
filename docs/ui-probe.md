@@ -10,16 +10,21 @@ Run it by hand. It needs an interactive desktop, so it is never part of a build 
 ## Once per machine
 
 If anybody else is driving the app from another checkout, give this one a package of its own. Write
-`PackageIdentity.props` at the top of the checkout, putting a name of your own in it — `-slot-3`,
-`-mine`. **Thirteen characters at most, including the dash**, and different from every other
-checkout on this machine. Windows caps a package name at fifty and this one already spends
-thirty-six on a GUID; over that, `Add-AppxPackage` refuses the manifest and does not say why. It is
-in `.gitignore`, and every build here picks it up from then on:
+`PackageIdentity.props` at the top of the checkout with a suffix nothing else on this machine is
+using. **Fourteen characters at most, including the dash** — Windows caps a package name at fifty
+and this one already spends thirty-six on a GUID. The build refuses a longer one and says by how
+much; left to `Add-AppxPackage`, it refuses the manifest and says nothing at all. The file is in
+`.gitignore`, and every build here picks it up from then on:
 
 ```powershell
-"<Project><PropertyGroup><PackageIdentitySuffix>-slot-3</PackageIdentitySuffix></PropertyGroup></Project>" |
+"<Project><PropertyGroup><PackageIdentitySuffix>-$(Get-Random -Maximum 99999)</PackageIdentitySuffix></PropertyGroup></Project>" |
   Set-Content PackageIdentity.props
 ```
+
+That picks a number rather than a name because it will be pasted more often than it is read, and two
+checkouts landing on the same suffix is the whole failure it exists to prevent. Put a word of your
+own there if you prefer — the listing below names every registration against its folder, so the
+suffix never has to be the memorable part.
 
 Alone on the machine, skip that file.
 
