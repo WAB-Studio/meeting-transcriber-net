@@ -85,8 +85,8 @@ and this file's line budget. Warnings fail the build in CI only. `dotnet format`
 
 **One pass per push, never one per change** — at the end, over the finished diff, before the PR
 opens and before every update to it. It proves the whole diff, unasked fixes included, and it is
-green or nothing is pushed. Before it, a build runs only when its answer decides something; after
-it, nobody waits on CI or chases it — that run is read at merge, and a red one is fine to leave.
+green or nothing is pushed. Before it, build only when the answer decides something; after it, never
+wait on CI — that run is read at merge, and a red PR is fine to leave.
 
 ## How work starts and ends
 
@@ -103,8 +103,8 @@ skill. **A claim closes on a probe that ran, never on a task moving.**
 2. A task names them, and the pointer only ever goes that way.
 3. Closing is running the probe and marking the claim closed; `IsaStructureTests` fails if the
    count disagrees.
-4. A diff over 50 lines that are not comments runs `/adversarial-review` once, over the whole diff,
-   and before that pass, so what the verdict confirms is fixed inside what the four then prove.
+4. A diff over 50 lines that are not comments runs `/adversarial-review` once, before that pass, so
+   what the verdict confirms is fixed inside what the four prove.
 5. A session ends on the PR opened and never merged, standing on a clean `main`. A red command or
    an unfixed finding stops the PR, and the session's last words say so, and why.
 

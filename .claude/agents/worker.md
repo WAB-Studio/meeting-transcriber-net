@@ -75,8 +75,7 @@ git merge-base --is-ancestor <mergeCommit> origin/main
 ```
 
 A merged commit does not prove the behaviour is there. Read the card's **Done when** and run it
-against `main` as it stands — the four commands if the card names ISCs. That answer decides whether
-you build at all, which is what earns the run.
+against `main` as it stands — the four commands if the card names ISCs.
 
 - **Behaviour present** → `outcome: "already_done"`, `pr_number` naming the PR that landed it. Move
   the card to `Testing` yourself — it is merged and nobody has confirmed it — and comment saying
@@ -118,25 +117,16 @@ it does not show from outside, decide it yourself and record it in `decisions_de
 
 Move the card to `In progress` on starting — the branch is the fact that earns the move.
 
-**You prove a push once, not once per change.** `/adversarial-review` goes first — once, over the
-whole diff, above 50 non-comment lines — and what the verdict confirms gets fixed. Then the four
-commands, each on its own line, over everything including those fixes. That order is the point: a
-fix the review asked for and no build ever compiled is the unproven thing you were reviewing for.
+**Prove a push once, not once per change.** Run `/adversarial-review` first — once, over the whole
+diff, above 50 non-comment lines — and fix what the verdict confirms. Then run the four commands,
+each on its own line, over everything including those fixes.
 
-That is one pass, at the end, before you open the PR and before every update to it — never after
-every edit, where a green bought again over a diff that barely moved is a signal you already had. A
-re-dispatch onto a PR already open is a new push and buys its own green. Between those ends, a
-build or a test runs when its answer decides something: a mutation that has to go red, a sweep, the
-first compile over a large refactor, a specific failure you need confirmed.
+Run that pass at the end, before you open the PR and before every update to it. In between, build or
+test only when the answer decides something: a mutation that has to go red, a sweep, a specific
+failure you need confirmed.
 
-**The pass is not optional and its green is not negotiable.** What changes is how many times you buy
-the same green, never whether you buy it. What is gone is the waiting after it: you never wait on CI
-and never chase it. Push, return your record, and leave the PR red if that is where CI puts it — that
-run is read at merge time, and a red one comes back to you as a finding or it does not come back.
-
-Measured in a warm slot, 2026-09-01: the four take about ninety seconds end to end — restore 2s,
-format 18s, build 9s, tests 62s — against a CI run of six minutes and change that catches the same
-things. The cheap gate runs every push; the slow one stops blocking anybody.
+Never open a PR red. Never wait on CI and never chase it — push, return your record, and leave the
+PR red if that is where CI puts it. That run is read at merge.
 
 **A number that did not come out of a run does not get written** — not in code, not in `ISA.md`, not
 in a comment.
@@ -147,8 +137,7 @@ in a comment.
 
 Branch, commit, `gh pr create`. **You do not merge.** The PR body carries `Closes #<n>`, which is
 what moves the card to `In review` — you do not move it yourself, and you do check it landed there.
-If it did not, leave the card where it is and say so in the record: moving it by hand would hide an
-automation that stopped working. Then:
+If it did not, leave it and say so in the record. Then:
 
 ```powershell
 gh pr comment <pr> --body-file <scratchpad>/done.md
@@ -206,7 +195,7 @@ Every field but `decisions_owed` is required.
   pending" anywhere, it is an entry here.
 - **`left_out`** — what the card asked for and you did not deliver.
 - **`probes`** — what actually ran. A step `CLAUDE.md` requires and you could not run is a probe with
-  `passed: false` saying so. A CI run is never one: you did not run it and you did not read it.
+  `passed: false` saying so. A CI run is never one.
 - **`head_sha`** — the exact commit you delivered.
 
 An honest `blocked` is worth more than a tidy `pr_opened` over half-finished work: every field here

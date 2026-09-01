@@ -11,10 +11,8 @@ description: >-
 Spawn one reviewer per lens to challenge work. Reviewers attack from distinct lenses grounded in
 the principles under `references/`. The deliverable is a synthesized verdict — do NOT make changes.
 
-`CLAUDE.md` says when it runs here, and that is the trigger: once, over the whole diff, above 50
-non-comment lines, before the four commands that then have to prove what the verdict confirmed.
-Not once a phase and not once an audit round — the size table below sizes a review, it never
-triggers one.
+`CLAUDE.md` says when it runs: once, over the whole diff, above 50 non-comment lines, before the
+four commands. The size table below sizes a review; it never triggers one.
 
 ## Step 1 — Load Principles
 
