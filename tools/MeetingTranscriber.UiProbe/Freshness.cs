@@ -70,7 +70,7 @@ internal sealed class Freshness
         var compiled = Path.ChangeExtension(runningFrom, ".dll");
 
         return new Freshness(
-            ProjectsBehind(Path.GetDirectoryName(repository.Manifest)!),
+            ProjectsBehind(repository.AppFolder),
             runningFrom,
             File.GetLastWriteTimeUtc(File.Exists(compiled) ? compiled : runningFrom));
     }

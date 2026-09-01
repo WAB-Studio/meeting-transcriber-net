@@ -101,10 +101,8 @@ internal sealed class LaunchedApp : IDisposable
     /// </remarks>
     internal string RunningFrom { get; }
 
-    internal static LaunchedApp Start(string manifestPath)
+    internal static LaunchedApp Start(string aumid)
     {
-        var aumid = Aumid.OfTheApplicationIn(manifestPath);
-
         var manager = (Native.IApplicationActivationManager)Activator.CreateInstance(
             typeof(Native.ApplicationActivationManager))!;
 
@@ -113,9 +111,10 @@ internal sealed class LaunchedApp : IDisposable
         if (outcome != 0)
         {
             throw new ProbeFailed(
-                $"Windows would not start {aumid} (0x{outcome:X8}). Either the package is not "
-                + "registered from the build output — see docs/ui-probe.md — or the manifest this "
-                + "id was derived from is not the manifest the registered package was built with.");
+                $"Windows would not start {aumid} (0x{outcome:X8}), which is the identity in this "
+                + "checkout's build output. Either nothing is registered under it, or what is "
+                + "registered under it is a layout that has since been deleted. Register this "
+                + "checkout's build output — see docs/ui-probe.md.");
         }
 
         var process = Of(id, aumid);

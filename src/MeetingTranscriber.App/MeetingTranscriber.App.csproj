@@ -73,4 +73,162 @@
     <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
   </PropertyGroup>
+
+  <!--
+    `PackageIdentitySuffix` appends to <Identity Name>, so one checkout can register a package of
+    its own instead of taking the machine's one registration off whoever had it. Who sets it and
+    what it buys them is docs/ui-probe.md: it is an agent driving the app's windows from a worktree
+    beside other agents doing the same. Empty is the default and the whole build is then what it
+    always was.
+
+    It comes out of a file at the top of the checkout, untracked and named in .gitignore, and never
+    off a command line. A worker cannot type it on every build: `dotnet build` over the solution is
+    a step this repo requires on every pass, and one of those without the argument would poke the
+    shared identity back into the manifest, leave the suffixed registration pointing at it, and put
+    the checkout straight back into the collision this exists to end. A fact about a folder has to
+    live in the folder. It is not in Package.appxmanifest for the mirror-image reason: that file is
+    versioned, so a suffix there is an uncommitted edit sitting in every worktree, and a dirty tree
+    stops the next worker's preflight.
+
+    Debug only, and that is a boundary rather than a convenience. The file is untracked, so a
+    machine that once had a probe session on it would otherwise carry the suffix into every Release
+    and every MSIX from then on, with nothing in the tree to show for it: a shipped package under a
+    name nobody chose, with a family name and therefore a per-package data folder of its own. The
+    product's identity is Package.appxmanifest's. This is a development-machine affordance for the
+    one configuration the probe is registered from.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\PackageIdentity.props"
+          Condition="'$(Configuration)' == 'Debug' And Exists('$(MSBuildThisFileDirectory)..\..\PackageIdentity.props')" />
+
+  <PropertyGroup>
+    <_PackageIdentityQuery>/p:Package/p:Identity/@Name</_PackageIdentityQuery>
+    <_PackageManifestNamespace>&lt;Namespace Prefix="p" Uri="http://schemas.microsoft.com/appx/manifest/foundation/windows10" /&gt;</_PackageManifestNamespace>
+    <_MostCharactersInAPackageName>50</_MostCharactersInAPackageName>
+  </PropertyGroup>
+
+  <!--
+    The identity is settled before anything derives from it, and that is why this is two targets
+    and not one. The manifest is not the only thing carrying the name: the SDK indexes resources.pri
+    under it too, defaulting ProjectPriIndexName to the source identity in
+    Microsoft.Windows.SDK.BuildTools.MSIX.Pri.targets, and makepri runs long before the manifest is
+    generated. Suffixing only the manifest left a layout whose two halves disagreed — measured, not
+    assumed: a build under `-s3probe` wrote `...-cb4-s3probe` into AppxManifest.xml while
+    resources.pri still held `...-cb4` and had not been re-indexed at all. Windows 11 registered
+    and ran that layout anyway, and the SDK's own comment says the two had to match before build
+    19041, so it worked here by grace of the version rather than by design. A layout with one name
+    in it costs nothing more than a layout with two.
+
+    `_ValidatePresenceOfAppxManifestItems` is the hook because the PRI target depends on it: this
+    runs inside that chain, so ProjectPriIndexName is already set when the SDK goes looking for it,
+    and every guard below fires before makepri and before the manifest is written rather than after
+    both of them.
+  -->
+  <Target Name="DecideThePackageIdentity" AfterTargets="_ValidatePresenceOfAppxManifestItems">
+    <!-- A transform and not %(AppxManifest.FullPath): batching over an empty item list skips the
+         task without a word, and the identity read out of nothing is the empty string. XmlPeek with
+         no input fails on its own before the Error below is reached; the Error is for a manifest
+         that is there and has no name in it. -->
+    <XmlPeek XmlInputPath="@(AppxManifest->'%(FullPath)')"
+             Namespaces="$(_PackageManifestNamespace)"
+             Query="$(_PackageIdentityQuery)">
+      <Output TaskParameter="Result" PropertyName="_PackageIdentityInTheSource" />
+    </XmlPeek>
+
+    <Error Condition="'$(_PackageIdentityInTheSource)' == ''"
+           Text="@(AppxManifest) has no &lt;Identity Name&gt;, so there is no name for the package identity to be built out of." />
+
+    <PropertyGroup>
+      <_PackageIdentityWanted>$(_PackageIdentityInTheSource)$(PackageIdentitySuffix)</_PackageIdentityWanted>
+    </PropertyGroup>
+
+    <!-- Both halves of ST_PackageName, because both fail the same way. Fifty is its maxLength, and
+         `Add-AppxPackage -Register` refuses a longer name without naming the reason: the checkout
+         keeps whatever registration it had, and every refusal after that is a true sentence about
+         the wrong folder. The character set is the half somebody reaches first — the doc invites a
+         word of their own, and the schema excludes underscore and space from a name that otherwise
+         looks fine. An underscore is worse than refused: it is the AUMID's own separator between
+         the name and the publisher hash. \A and \z rather than ^ and $, because MSBuild does not
+         trim property text — a props file somebody pretty-printed puts newlines inside the name,
+         and $ would match before a trailing one. How much room the suffix has is subtracted from
+         the source name rather than written down, because renaming the identity moves it. -->
+    <Error Condition="$(_PackageIdentityWanted.Length) &gt; $(_MostCharactersInAPackageName)"
+           Text="PackageIdentitySuffix '$(PackageIdentitySuffix)' would make the package identity $(_PackageIdentityWanted), which is $(_PackageIdentityWanted.Length) characters. Windows caps a package name at $(_MostCharactersInAPackageName) and Add-AppxPackage refuses a longer one without saying why. $(_PackageIdentityInTheSource) leaves $([MSBuild]::Subtract($(_MostCharactersInAPackageName), $(_PackageIdentityInTheSource.Length))) characters for the suffix - see docs/ui-probe.md." />
+
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch($(_PackageIdentityWanted), '\A[-.A-Za-z0-9]+\z'))"
+           Text="PackageIdentitySuffix '$(PackageIdentitySuffix)' would make the package identity '$(_PackageIdentityWanted)', which a package name may not be. Windows allows letters, digits, a dash and a dot, and nothing else - no underscore, no space, no accent, no line break - and Add-AppxPackage refuses one without saying why. Keep the suffix to those characters and on one line - see docs/ui-probe.md." />
+
+    <!-- Only when there is a suffix: with none this is the value the SDK picks anyway, and setting
+         it would make the ordinary build differ from the build everybody already has. -->
+    <PropertyGroup Condition="'$(PackageIdentitySuffix)' != ''">
+      <ProjectPriIndexName>$(_PackageIdentityWanted)</ProjectPriIndexName>
+    </PropertyGroup>
+
+    <!-- Said out loud, because the alternative to saying it is a silent wrong answer. The suffix
+         arrives through a hand-written file with a hand-typed element name, and the build's reply
+         to `<PackageIdentitySuffx>` would otherwise be to succeed, write the shared identity, and
+         let whoever is reading register over another agent's package. -->
+    <Message Importance="high" Condition="'$(PackageIdentitySuffix)' != ''"
+             Text="Package identity for this checkout: $(_PackageIdentityWanted). Register this build output before driving it - see docs/ui-probe.md." />
+
+    <Warning Condition="'$(Configuration)' == 'Debug' And '$(PackageIdentitySuffix)' == '' And Exists('$(MSBuildThisFileDirectory)..\..\PackageIdentity.props')"
+             Text="PackageIdentity.props is there and sets no PackageIdentitySuffix, so this build carries the identity every other checkout carries. Check the element name - see docs/ui-probe.md." />
+  </Target>
+
+  <!--
+    makepri does not re-run when the only thing that changed is the name it indexes under: nothing
+    it takes as an input is newer than what it wrote. Adding or editing PackageIdentity.props gets
+    away with that, because the file is itself a project input and the whole build re-evaluates —
+    and deleting it does not, because deleting a file makes nothing newer. Measured: after removing
+    the file, the manifest went back to the plain identity and resources.pri stayed on the suffixed
+    one. So the name the PRI was last built under is kept beside it, and a disagreement takes the
+    PRI out of the way for the SDK to write again. That is what makes deleting the file put the
+    checkout back exactly where writing it found it, rather than most of the way back.
+  -->
+  <Target Name="ReindexThePriWhenTheIdentityChanged"
+          AfterTargets="CalculateAppxGenerateProjectPriEnabled"
+          Condition="'$(AppxGeneratePriEnabled)' == 'true'">
+    <PropertyGroup>
+      <_PriIndexNameStamp>$(IntermediateOutputPath)PriIndexName.stamp</_PriIndexNameStamp>
+    </PropertyGroup>
+
+    <ReadLinesFromFile File="$(_PriIndexNameStamp)" Condition="Exists('$(_PriIndexNameStamp)')">
+      <Output TaskParameter="Lines" ItemName="_PriIndexNameLastBuilt" />
+    </ReadLinesFromFile>
+
+    <Delete Files="$(ProjectPriFullPath)"
+            Condition="'@(_PriIndexNameLastBuilt)' != '$(ProjectPriIndexName)' And Exists('$(ProjectPriFullPath)')" />
+
+    <WriteLinesToFile File="$(_PriIndexNameStamp)"
+                      Lines="$(ProjectPriIndexName)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+
+    <ItemGroup>
+      <FileWrites Include="$(_PriIndexNameStamp)" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    `AfterGenerateAppxManifest` is the Windows App SDK's own hook, and the manifest cannot be
+    written any earlier than the moment it exists. The name is the one settled above rather than
+    read a second time here, so the manifest and the PRI cannot come out under different names. It
+    writes only when the file disagrees with the answer: deleting PackageIdentity.props puts the
+    identity back where writing it found it, and a build with no file writes nothing at all.
+  -->
+  <Target Name="SuffixThePackageIdentity" AfterTargets="AfterGenerateAppxManifest">
+    <Error Condition="'$(_PackageIdentityWanted)' == ''"
+           Text="DecideThePackageIdentity did not run, so there is no settled identity to write into $(FinalAppxManifestName). It hangs off _ValidatePresenceOfAppxManifestItems, which is the Windows App SDK's - a version that no longer runs it needs this pair of targets re-hung." />
+
+    <XmlPeek XmlInputPath="$(FinalAppxManifestName)"
+             Namespaces="$(_PackageManifestNamespace)"
+             Query="$(_PackageIdentityQuery)">
+      <Output TaskParameter="Result" PropertyName="_PackageIdentityAsGenerated" />
+    </XmlPeek>
+
+    <XmlPoke Condition="'$(_PackageIdentityAsGenerated)' != '$(_PackageIdentityWanted)'"
+             XmlInputPath="$(FinalAppxManifestName)"
+             Namespaces="$(_PackageManifestNamespace)"
+             Query="$(_PackageIdentityQuery)"
+             Value="$(_PackageIdentityWanted)" />
+  </Target>
 </Project>

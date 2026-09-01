@@ -9,22 +9,59 @@ Run it by hand. It needs an interactive desktop, so it is never part of a build 
 
 ## Once per machine
 
-Point the package registration at the build output. Check what it is now:
+If anybody else is driving the app from another checkout, give this one a package of its own. Write
+`PackageIdentity.props` at the top of the checkout with a suffix nothing else on this machine is
+using. Keep it short and keep it to letters, digits, a dash and a dot: Windows caps a package name
+and most of the cap is already spent on a GUID, and a name that is too long or holds anything else
+— an underscore, a space, an accent — is refused by `Add-AppxPackage` without a word about why. The
+build refuses it first instead, and says how much room there is. The file is in `.gitignore`, and
+every build here picks it up from then on:
 
 ```powershell
-Get-AppxPackage -Name 7feb8c95-4553-46f0-a036-6574f4cd7cb4 | Select-Object InstallLocation
+"<Project><PropertyGroup><PackageIdentitySuffix>-$(Get-Random -Maximum 99999)</PackageIdentitySuffix></PropertyGroup></Project>" |
+  Set-Content PackageIdentity.props
 ```
 
-If that does not end in `\win-x64`, replace it. Remove it first — registering over an existing
-registration keeps the old location:
+That picks a number rather than a name because it will be pasted more often than it is read, and two
+checkouts landing on the same suffix is the whole failure it exists to prevent. Put a word of your
+own there if you prefer — the listing below names every registration against its folder, so the
+suffix never has to be the memorable part. A build with a suffix prints the identity it settled on,
+and a file setting none warns — the element is `PackageIdentitySuffix`, and a typo in it would
+otherwise be indistinguishable from having no file at all.
+
+Alone on the machine, skip that file.
+
+Point the package registration at the build output. Check what is registered now:
+
+```powershell
+Get-AppxPackage -Name 7feb8c95-4553-46f0-a036-6574f4cd7cb4* | Select-Object Name, InstallLocation
+```
+
+If this checkout is not in that list against a path ending in `\win-x64`, register it. Remove
+whatever it has first — registering over an existing registration keeps the old location. The remove
+below is scoped to this folder, so if the name you want is in that list against **somebody else's**
+folder, it removes nothing and the register then quietly leaves the name where it was: that is two
+checkouts on one suffix, and the way out is a different suffix, not a second attempt.
 
 ```powershell
 dotnet build src/MeetingTranscriber.App/MeetingTranscriber.App.csproj -p:Platform=x64
-Get-AppxPackage -Name 7feb8c95-4553-46f0-a036-6574f4cd7cb4 | Remove-AppxPackage
+Get-AppxPackage -Name 7feb8c95-4553-46f0-a036-6574f4cd7cb4* |
+  Where-Object InstallLocation -Like "$(Get-Location)\*" | Remove-AppxPackage
 Add-AppxPackage -Register (Resolve-Path src/MeetingTranscriber.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/AppxManifest.xml)
 ```
 
-Do it again whenever that path changes — another configuration, another target framework.
+Do it again whenever that path changes — another target framework — or whenever
+`PackageIdentity.props` changes. Debug is the only configuration the suffix reaches: the product's
+identity is `Package.appxmanifest`'s, and an untracked file on one machine does not get to decide
+what a Release build is called.
+
+A registration is machine-wide and outlives the folder it points at. Run those two middle lines
+from the checkout before deleting it, or the machine keeps a package aimed at nothing.
+
+A checkout with a package of its own gets its own redirected `LOCALAPPDATA`, so it opens in whatever
+Windows says rather than in the language somebody last picked: the examples below are in Spanish and
+a package with no preference yet opens in English here. `choose LanguagePicker` on it once and it
+sticks. The corpus is not in there — every checkout shares one.
 
 Then put the server where the checkout can reach it. `.mcp.json` at the repository root names it
 already, spelled the same in every clone, so nothing is registered by hand and no path in it is
@@ -48,8 +85,10 @@ server. `claude mcp get ui-probe` then says `Scope: Project config` and `✔ Con
 go — `claude mcp remove ui-probe -s user`, with the `-s user`, because without a scope it removes
 whichever it finds first and that is now the repository's.
 
-A worktree is its own checkout and gets its own copy, published the same way. It still drives the
-one build Windows has registered, so from anywhere else it refuses and says which checkout that is.
+A worktree is its own checkout and gets its own copy, published the same way. It drives the build
+that checkout wrote, under the name that checkout registered — which is what `PackageIdentity.props`
+above is for. Two checkouts left on the same name are still one registration between them, and the
+one that did not register last is refused at `start`, naming the folder that holds it.
 
 ## Every run
 
@@ -158,7 +197,9 @@ to `wait` for something on the screen you meant. It is never whichever window is
 - **`press` is `Invoke` only, and `type` is `SetValue` only.** Either one fails naming what the
   control offers instead, which is how you find out it wanted another verb.
 - **It will not bring a window forward.** A window behind another still photographs correctly.
-- **It uses the real corpus and the real preference file.** That is deliberate: it drives the real
-  application. Put a setting back if you changed one, and do not press Record — it writes a meeting.
+- **It uses the real corpus, and the preference file of whichever package this checkout registered.**
+  That is deliberate: it drives the real application. The corpus is one folder for every checkout, so
+  do not press Record — it writes a meeting. The preferences are the package's own, so a checkout
+  with a package of its own has its own.
 - **It drives only the application it started**, and closes only that one — including when it is
   killed rather than asked, once the application is running.

@@ -1,20 +1,22 @@
+using System.IO;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Text;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace MeetingTranscriber.UiProbe;
 
 /// <summary>
-/// The name Windows knows this application by, worked out from the manifest in the repository
-/// rather than written down here.
+/// The name Windows knows an application by, worked out from a package manifest rather than
+/// written down here.
 /// </summary>
 /// <remarks>
 /// An application user model id is <c>&lt;package family name&gt;!&lt;application id&gt;</c>, and
-/// the family name is the identity's name and a hash of its publisher. Both halves are in
-/// <c>Package.appxmanifest</c>, so deriving it means the day somebody changes the publisher or
-/// splits out a second application, this tool follows instead of launching something that is no
-/// longer there.
+/// the family name is the identity's name and a hash of its publisher. Both halves are in the
+/// manifest, so deriving it means the day somebody changes the publisher, splits out a second
+/// application, or gives one checkout a package of its own, this tool follows instead of launching
+/// something that is no longer there. Which manifest is <see cref="Repository"/>'s to say.
 /// </remarks>
 internal static class Aumid
 {
@@ -29,7 +31,7 @@ internal static class Aumid
 
     internal static string OfTheApplicationIn(string manifestPath)
     {
-        var manifest = XDocument.Load(manifestPath).Root
+        var manifest = Opened(manifestPath).Root
             ?? throw new ProbeFailed($"{manifestPath} is empty.");
 
         var identity = manifest.Element(Foundation + "Identity")
@@ -46,6 +48,27 @@ internal static class Aumid
         var id = Required(application, "Id", manifestPath);
 
         return $"{name}_{PublisherHash(publisher)}!{id}";
+    }
+
+    /// <summary>
+    /// The manifest read as a manifest is this tool's business; the file being unreadable is not.
+    /// It is a build output now, so the two ordinary ways this fails are a build writing it in the
+    /// same moment and a build that stopped half way through it — neither of which is news about a
+    /// screen, and both of which would otherwise come back as a stack trace.
+    /// </summary>
+    private static XDocument Opened(string manifestPath)
+    {
+        try
+        {
+            return XDocument.Load(manifestPath);
+        }
+        catch (Exception unreadable) when (unreadable is IOException or XmlException)
+        {
+            throw new ProbeFailed(
+                $"{manifestPath} could not be read: {unreadable.Message} A build writing it right "
+                + "now is the usual reason, and that one only needs letting finish. A build that "
+                + "stopped part way through it is the other, and that one needs building again.");
+        }
     }
 
     private static string Required(XElement element, string attribute, string manifestPath) =>

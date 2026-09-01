@@ -77,7 +77,7 @@ internal sealed class Session : IDisposable
     internal static Session Open()
     {
         var repository = Repository.Around();
-        var app = LaunchedApp.Start(repository.Manifest);
+        var app = LaunchedApp.Start(repository.AppUserModelId);
 
         try
         {
