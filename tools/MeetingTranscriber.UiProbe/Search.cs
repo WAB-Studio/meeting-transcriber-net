@@ -36,7 +36,7 @@ internal static class Search
         AutomationElement root,
         string target,
         AutomationPattern? mustSupport = null) =>
-        In(Everything(root, mustSupport), target);
+        Among(Everything(root, mustSupport), target);
 
     /// <summary>
     /// The single element <paramref name="target"/> names, or a failure saying what was on the
@@ -49,7 +49,7 @@ internal static class Search
         AutomationPattern? mustSupport = null)
     {
         var considered = Everything(root, mustSupport);
-        var matches = In(considered, target);
+        var matches = Among(considered, target);
 
         if (matches.Count == 1)
         {
@@ -75,7 +75,15 @@ internal static class Search
             + $"What is there:{Environment.NewLine}  {some}{rest}");
     }
 
-    private static List<AutomationElement> In(List<AutomationElement> considered, string target)
+    /// <summary>
+    /// The three tiers applied to a set somebody else gathered. Handed the set rather than a root
+    /// because one caller cannot get its own by walking: the items of a virtualised list are not
+    /// in the tree until they are scrolled to, and <c>choose</c> asks the list itself for them.
+    /// The rule stays here either way — a second caller with a second rule is how
+    /// <c>press RecordButton</c> and <c>choose SourcePicker Record</c> would come to mean
+    /// different things.
+    /// </summary>
+    internal static List<AutomationElement> Among(List<AutomationElement> considered, string target)
     {
         var byId = considered
             .Where(element => ElementWords.Id(element).Equals(target, StringComparison.Ordinal))

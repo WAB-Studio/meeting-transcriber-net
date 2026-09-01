@@ -16,8 +16,8 @@ namespace MeetingTranscriber.Audio;
 /// alike, which refuses one caller on another's wedge. Neither shows up as a failure anywhere.
 /// </para>
 /// <para>
-/// Two, because two is what this application asks on nobody else's behalf. A third is one more
-/// static here and needs nothing else: what makes a question the same question is being this
+/// Three, because three is what this application asks on nobody else's behalf. A fourth is one
+/// more static here and needs nothing else: what makes a question the same question is being this
 /// object, so there is no rule at a call site to get wrong and none to write down.
 /// </para>
 /// </remarks>
@@ -31,6 +31,15 @@ public sealed class DeviceQuestion
     /// <summary>Which endpoint Windows is playing through.</summary>
     public static DeviceQuestion PlaybackDevice { get; } =
         new("the device this machine plays through");
+
+    /// <summary>
+    /// Being told when this machine's devices change. Asked once in a session, and bounded like
+    /// the other two for the same reason: it is <c>CoCreateInstance</c> on the audio service,
+    /// which a screen makes while somebody is looking at it. Being told to stop is not this
+    /// question and is not bounded at all — <see cref="DeviceChanges.Dispose"/> says why.
+    /// </summary>
+    public static DeviceQuestion DeviceChanges { get; } =
+        new("being told when this machine's devices change");
 
     /// <summary>
     /// What is being asked about, said the way a person would hear it and read as the end of a

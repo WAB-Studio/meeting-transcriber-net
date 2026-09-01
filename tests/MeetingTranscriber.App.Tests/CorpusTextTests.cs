@@ -11,7 +11,7 @@ namespace MeetingTranscriber.App.Tests;
 public class CorpusTextTests
 {
     private static EnumTable Table() => EnumTable.Read(
-        Path.Combine("MeetingTranscriber.App", "RecordingWindow.xaml.cs"),
+        Path.Combine("MeetingTranscriber.App", "MainWindow.xaml.cs"),
         "_corpus.Refusal",
         "CorpusRefusal",
         Path.Combine("MeetingTranscriber.Infrastructure", "Storage", "CorpusLocation.cs"));
@@ -23,7 +23,7 @@ public class CorpusTextTests
         var unnamed = table.Declared.Except(table.Named).ToArray();
 
         unnamed.ShouldBeEmpty(
-            "RecordingWindow.SayWhereTheCorpusIs has no text for these refusals, so somebody "
+            "MainWindow.SayWhereTheCorpusIs has no text for these refusals, so somebody "
             + "meeting one would be told the wrong reason or nothing at all: "
             + string.Join("; ", unnamed));
     }
@@ -39,7 +39,7 @@ public class CorpusTextTests
         var stale = table.Named.Except(table.Declared).ToArray();
 
         stale.ShouldBeEmpty(
-            "RecordingWindow.SayWhereTheCorpusIs answers for refusals CorpusRefusal does not "
+            "MainWindow.SayWhereTheCorpusIs answers for refusals CorpusRefusal does not "
             + "have: " + string.Join("; ", stale));
     }
 

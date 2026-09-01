@@ -38,6 +38,20 @@ public static class UiTexts
         "Windows no dijo qué programas están sonando.",
         "Windows did not say which programs are playing.");
 
+    // What is lost is only that the list stops keeping up on its own, so it says exactly that and
+    // does not read as a machine with no microphone: everything already on screen still records.
+    public static UiText WindowsWillNotSayWhenTheDevicesChange { get; } = new(
+        "Windows no avisa cuando cambian los dispositivos: la lista de micrófonos queda como "
+        + "está hasta que se vuelva a abrir la aplicación.",
+        "Windows will not say when the devices change: the list of microphones stays as it is "
+        + "until the application is opened again.");
+
+    // Said out loud because the picker emptying itself is the sort of change somebody notices
+    // afterwards. The recording is not startable until another one is picked, which is the point.
+    public static UiText TheMicrophoneChosenIsNoLongerThere { get; } = new(
+        "El micrófono elegido ya no está en esta máquina.",
+        "The microphone that was chosen is no longer on this machine.");
+
     public static UiText TheWholeMachineCouldNotBeRecorded { get; } = new(
         "No se pudo pasar a grabar toda la máquina.",
         "Recording the whole machine could not be taken up.");
@@ -49,7 +63,11 @@ public static class UiTexts
         "Todo lo que suena en esta máquina",
         "Everything this machine plays");
 
-    public static UiText RefreshThePrograms { get; } =
+    // One press, both pickers. The microphones keep up on their own, so this is what a session
+    // where Windows refused to say when devices change has instead — and it is the only thing that
+    // ever re-reads the programs, since nothing tells an application that a meeting was just
+    // started in a browser tab.
+    public static UiText RefreshTheList { get; } =
         new("Actualizar la lista", "Refresh the list");
 
     // Its own question, and the caption is not decoration: this screen has two language pickers on
@@ -257,10 +275,6 @@ public static class UiTexts
 
     public static UiText Meetings { get; } = new("Reuniones", "Meetings");
 
-    public static UiText OneCardPerMeeting { get; } = new(
-        "Una ficha por reunión: la etapa en la que está y lo que falta hacerle.",
-        "One card per meeting: the stage it is at and what is left to do to it.");
-
     public static UiText NoMeetingsHereYet { get; } = new(
         "Todavía no hay ninguna reunión en este corpus.",
         "There is no meeting in this corpus yet.");
@@ -269,10 +283,18 @@ public static class UiTexts
         "{0} esperan una respuesta.",
         "{0} are waiting to be told.");
 
-    public static UiText AMeetingWithoutATitle { get; } =
-        new("Reunión sin título", "Untitled meeting");
+    // ISC-165.1. Two words and no more, because there is nothing here to say: the application has
+    // not thought of a name and is not pretending to. What it must never read as is a name — a
+    // date, a folder, the first thing said in the meeting — since a person scanning this list
+    // cannot tell a title they wrote from one that was made up for them.
+    public static UiText AMeetingNobodyHasNamed { get; } = new("Sin nombre", "Unnamed");
 
-    public static UiText ReadTheMeetingsAgain { get; } = new("Actualizar", "Refresh");
+    // The drawer's one press, which always offers the position it is not in.
+    public static UiText OpenTheMeetingsWhole { get; } =
+        new("Abrir la lista entera", "Open the whole list");
+
+    public static UiText BringTheMeetingsBackDown { get; } =
+        new("Volver a bajar la lista", "Bring the list back down");
 
     // The rendered files are the one thing that will never be a press, so the screen says why
     // rather than leaving their absence looking like a button somebody lost.
