@@ -109,11 +109,28 @@ public sealed partial class MeetingsDrawer : UserControl
     /// <summary>
     /// Whether the list may take the whole window, which is not its own to decide: what would go
     /// with the recorder above is stop and every line a narrator is told about, so the recorder
-    /// answers it and this reads the answer onto the one control that acts on it.
+    /// answers it and this acts on the answer.
     /// </summary>
+    /// <remarks>
+    /// An offer withdrawn from a drawer that already has the window puts it back down, and that is
+    /// the half that matters. Leaving it up and merely refusing the next press would hold the rule
+    /// at the door only: the recorder above says no from the moment a meeting starts, and a list
+    /// still covering the window at that moment is the failure the rule is about rather than a
+    /// press away from it. Today nothing can reach that — record is inside the half a raised
+    /// drawer collapses, so a meeting cannot begin from up here — and a rule that holds because of
+    /// where a button happens to sit is one screen change from not holding.
+    /// </remarks>
     public void OfferTheWholeWindow(bool offered)
     {
         _mayTakeTheWholeWindow = offered;
+
+        if (!offered && HasTheWholeWindow)
+        {
+            HasTheWholeWindow = false;
+            ShowWhichPositionItIsIn();
+            OpennessChanged?.Invoke(this, EventArgs.Empty);
+        }
+
         OpennessButton.IsEnabled = offered || HasTheWholeWindow;
     }
 
@@ -284,9 +301,14 @@ public sealed partial class MeetingsDrawer : UserControl
     /// </summary>
     private void Render()
     {
-        CountText.Text = _meetings.Count == 0
-            ? In(UiTexts.NoMeetingsHereYet)
-            : UiTexts.SomeAreWaitingToBeTold.In(_language, _meetings.Count(entry => entry.Owed.IsOwed));
+        // Nothing about how many there are when the corpus would not open or would not be read:
+        // an empty list is not the same fact as no meetings, and "there is none here yet" over a
+        // corpus nobody reached is the lie Read refuses to tell one line further up.
+        CountText.Text = _status is not null
+            ? string.Empty
+            : _meetings.Count == 0
+                ? In(UiTexts.NoMeetingsHereYet)
+                : UiTexts.SomeAreWaitingToBeTold.In(_language, _meetings.Count(entry => entry.Owed.IsOwed));
 
         MeetingsStatusText.Text = _status?.In(_language) ?? string.Empty;
 

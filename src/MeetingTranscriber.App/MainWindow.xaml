@@ -20,7 +20,7 @@
          The whole screen in two halves: what the next meeting will record, above, and the meetings
          already recorded, below. One window and not two, because the second is what somebody comes
          back to the application for and a list behind a button is a list nobody opens. The drawer
-         raises itself to the whole window, at which point the half above goes — said here as a
+         raises itself to the whole window, at which point the half above goes â€” said here as a
          Visibility and answered in the code-behind, which is where the drawer says it moved. -->
 
     <Window.SystemBackdrop>
@@ -36,14 +36,7 @@
         </Grid.RowDefinitions>
 
         <StackPanel x:Name="RecordingCard" Grid.Row="0" Spacing="16">
-            <StackPanel Spacing="4">
-                <TextBlock Text="{x:Bind In(loc:UiTexts.RecordAMeeting)}" Style="{StaticResource TitleTextBlockStyle}" />
-                <TextBlock
-                    x:Name="CorpusText"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    TextWrapping="Wrap"
-                    Opacity="0.7" />
-            </StackPanel>
+            <TextBlock Text="{x:Bind In(loc:UiTexts.RecordAMeeting)}" Style="{StaticResource TitleTextBlockStyle}" />
 
             <!-- What the next meeting will record. Everything here is dead the moment one starts:
                  changing the microphone half way through is not a thing the engine can do, so it is
@@ -58,7 +51,23 @@
                     x:Name="SourcePicker"
                     MinWidth="280"
                     Header="{x:Bind In(loc:UiTexts.WhatToRecordFromThisMachine)}"
-                    SelectionChanged="OnSourceChosen" />
+                    SelectionChanged="OnSourceChosen">
+                    <!-- The one picker that says which panel holds it, and the only one long
+                         enough for it to matter: this list is every program on the machine, and a
+                         ComboBox's own CarouselPanel decides where a list too long to fit opens.
+                         With nothing chosen it opened part way down the alphabet, so the answer
+                         that is always available and always right about what it records â€” the
+                         whole machine, put first by SourcesNow for exactly that reason â€” was not
+                         on screen when the list was, and the first thing somebody saw was a
+                         service they have never heard of. A linear panel opens at the top, and
+                         still draws only what fits. What should change is the list being this
+                         long at all, which is not this card's. -->
+                    <ComboBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <VirtualizingStackPanel />
+                        </ItemsPanelTemplate>
+                    </ComboBox.ItemsPanel>
+                </ComboBox>
                 <Button
                     x:Name="RefreshTheMachineButton"
                     VerticalAlignment="Bottom"
@@ -118,7 +127,7 @@
 
             <!-- What is arriving, while it is arriving. There is no meeting to meter until one is
                  being recorded, so none of this is on screen before that and none of it is left
-                 standing after — a meter showing its last reading is a screen saying a recording is
+                 standing after â€” a meter showing its last reading is a screen saying a recording is
                  still going. Which is not decided here: RecordingMeters answers it, in a project a
                  build agent can run, and this reads the answer onto controls.
 
@@ -143,7 +152,7 @@
                         <TextBlock x:Name="OthersLevel" MinWidth="72" Opacity="0.7" />
                     </StackPanel>
                     <!-- A live region, because a device dying is an event and not something to find by
-                         looking — and its words are deliberately not here. A line bound in the XAML is
+                         looking â€” and its words are deliberately not here. A line bound in the XAML is
                          set once while this panel is collapsed and never changes again, which is a
                          live region that announces nothing: MainWindow.Tell is what says these
                          and why, and LiveRegionTests fails if one is bound here or never told. -->
@@ -212,12 +221,27 @@
              saying nothing at the moment it had something to say. Bounded because the meetings own
              the room that is left, and a report that grew into it would push the list off the
              screen a line at a time. -->
-        <ScrollViewer Grid.Row="1" MaxHeight="180">
+        <StackPanel Grid.Row="1" Spacing="8">
+            <!-- Where the meetings go, and which folder was refused when there is nowhere. Outside
+                 the half above for the reason the report below it is: the drawer may take the
+                 window while there is no corpus â€” nothing is being recorded then and nothing can
+                 be â€” and this is the only line in the application that says which refusal it was.
+                 The drawer's own line says the corpus could not be opened and sends somebody here
+                 for why, so a screen that let this go with the recorder would be answering that
+                 with an empty window. -->
             <TextBlock
-                x:Name="OutputText"
-                IsTextSelectionEnabled="True"
-                TextWrapping="Wrap" />
-        </ScrollViewer>
+                x:Name="CorpusText"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                TextWrapping="Wrap"
+                Opacity="0.7" />
+
+            <ScrollViewer MaxHeight="180">
+                <TextBlock
+                    x:Name="OutputText"
+                    IsTextSelectionEnabled="True"
+                    TextWrapping="Wrap" />
+            </ScrollViewer>
+        </StackPanel>
 
         <local:MeetingsDrawer x:Name="Meetings" Grid.Row="2" />
 

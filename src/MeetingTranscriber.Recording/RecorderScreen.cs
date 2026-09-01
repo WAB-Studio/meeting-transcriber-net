@@ -1,4 +1,4 @@
-using MeetingTranscriber.Audio;
+﻿using MeetingTranscriber.Audio;
 
 namespace MeetingTranscriber.Recording;
 
@@ -8,7 +8,7 @@ namespace MeetingTranscriber.Recording;
 /// <remarks>
 /// A type rather than the nullable process the engine takes, because a screen has three answers
 /// where the engine has two. <c>null</c> means the whole machine to <c>MeetingRecording.Start</c>,
-/// and it means nobody has said yet to a screen — and a screen that spelled both of them the same
+/// and it means nobody has said yet to a screen â€” and a screen that spelled both of them the same
 /// way would start a recording of every notification on the machine for somebody who had not
 /// answered the question at all.
 /// </remarks>
@@ -59,7 +59,7 @@ public sealed record RecorderChoices
 
     /// <summary>
     /// What the meeting is expected to be spoken in, as the tag it is stored under. Never the
-    /// language the application is being read in — see the remarks on this type.
+    /// language the application is being read in â€” see the remarks on this type.
     /// </summary>
     public string? Spoken { get; init; }
 
@@ -84,8 +84,8 @@ public sealed record RecorderChoices
     /// <para>
     /// Here it is the id and nothing else, and the answer is the new description rather than what
     /// was chosen. What Windows says about an endpoint changes under a screen without the endpoint
-    /// going anywhere — the default moves the moment a headset is plugged in, and the name beside
-    /// it moves with it — so the device that is still there is taken again as the machine now
+    /// going anywhere â€” the default moves the moment a headset is plugged in, and the name beside
+    /// it moves with it â€” so the device that is still there is taken again as the machine now
     /// describes it. Keeping the old one would leave a picker offering a list where one entry says
     /// something the machine has stopped saying.
     /// </para>
@@ -163,7 +163,7 @@ public sealed record RecorderScreen
     public required RecorderChoices Chosen { get; init; }
 
     /// <summary>
-    /// Whether the recording has offered the whole machine's audio — which it does when channel 0
+    /// Whether the recording has offered the whole machine's audio â€” which it does when channel 0
     /// has heard nothing at all from the program it is following, for long enough that the program
     /// is the wrong one.
     /// </summary>
@@ -181,11 +181,25 @@ public sealed record RecorderScreen
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Only while nothing is being recorded, and that is not a layout preference. What goes with
-    /// the recorder is stop, both meters and every line a narrator is told about the moment a
-    /// device dies — and a hidden element is not in the automation tree at all, so those lines
-    /// announce nothing while it is gone. A list that could swallow a running meeting is one press
-    /// between somebody and stopping it, and silence on the one fault they needed to hear about.
+    /// Only while no meeting is under way, and that is not a layout preference. What goes with the
+    /// recorder is stop, both meters and every line a narrator is told about the moment a device
+    /// dies â€” and a hidden element is not in the automation tree at all, so those lines announce
+    /// nothing while it is gone. A list that could swallow a running meeting is one press between
+    /// somebody and stopping it, and silence on the one fault they needed to hear about. Starting
+    /// and finishing are the same answer for the same reason: a press is running, what it comes
+    /// back with lands on the half above, and hiding that half is hiding the outcome of something
+    /// somebody just did.
+    /// </para>
+    /// <para>
+    /// Without a corpus it is a yes. The recorder half is dead controls over a folder that was
+    /// refused, and there is nothing on it to lose sight of — the line saying which folder and
+    /// why is outside the half that goes, put there because of this answer. What the state does
+    /// not say on its own is that no meeting is under way: <see cref="RecorderStates.Of"/> asks
+    /// the corpus before it asks anything else, so a screen that could lose its corpus mid
+    /// meeting would land here with one running and this would answer yes over it. Nothing
+    /// reaches that today — where the corpus is is settled once as the window opens and never
+    /// asked again — and the day something does ask again, this is the first thing that has to
+    /// be answered.
     /// </para>
     /// <para>
     /// Not one of <see cref="RecorderPress"/>, though it is a press on the same screen. That set is
@@ -195,7 +209,8 @@ public sealed record RecorderScreen
     /// about the screen rather than about the meeting, and it is answered on its own.
     /// </para>
     /// </remarks>
-    public bool TheMeetingsMayTakeTheWholeWindow => State == RecorderState.Choosing;
+    public bool TheMeetingsMayTakeTheWholeWindow =>
+        State is RecorderState.Choosing or RecorderState.WithoutACorpus;
 
     /// <summary>
     /// What can be pressed now: what the state reaches, less what has not been answered yet.

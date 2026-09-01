@@ -53,7 +53,9 @@ and the build fails on them. A build alone does not lift the refusal; only start
 - `see` — the tree of the screen, and a picture of the window. Changes nothing.
 - `press <element>` — invoke it. Fails if it is disabled or cannot be invoked.
 - `type <element> <text>` — set a field's value. Fails if it is disabled, read only, or takes none.
-- `choose <list> <item>` — open the list, pick the item by name, shut it again.
+- `choose <list> <item>` — open the list, pick the item by name, shut it again. A list too long
+  to draw whole is asked what it holds rather than walked, so an item below the fold is named the
+  same way as one on screen.
 - `wait <element>` — block until it is on a window, and make that window the screen from then on.
 
 Put a `wait` after any `press`, `type` or `choose` whose effect you are about to look at. It is the

@@ -297,24 +297,28 @@ public class RecorderScreenTests
     }
 
     /// <summary>
-    /// The list under the recorder may have the whole window only while nothing is being recorded.
+    /// The list under the recorder may have the whole window only while no meeting is under way.
     /// What goes with the recorder is stop, both meters and every line a narrator is told about
     /// the moment a device dies, so a list that could swallow a running meeting is one press
-    /// between somebody and stopping it.
+    /// between somebody and stopping it — and starting and finishing go with it, because a press
+    /// is running in each and what it comes back with lands on the half that would be hidden.
+    /// Without a corpus it is a yes: the recorder half is dead controls over a folder that was
+    /// refused, and the line saying which folder and why is not on it. That state does not say on
+    /// its own that no meeting is under way, and where that is settled is on the property.
     /// </summary>
     /// <remarks>
-    /// Over every state rather than the two that matter, because the failure is a state added later
-    /// and not thought about: the question is asked of the screen, and a new state answers it one
-    /// way or the other whether or not anybody chose.
+    /// Over every state rather than the ones somebody had in mind, because the failure is a state
+    /// added later and not thought about: the question is asked of the screen, and a new state
+    /// answers it one way or the other whether or not anybody chose.
     /// </remarks>
     [Theory]
     [InlineData(RecorderState.Choosing, true)]
+    [InlineData(RecorderState.WithoutACorpus, true)]
     [InlineData(RecorderState.Recording, false)]
     [InlineData(RecorderState.Paused, false)]
     [InlineData(RecorderState.Starting, false)]
     [InlineData(RecorderState.Finishing, false)]
-    [InlineData(RecorderState.WithoutACorpus, false)]
-    public void The_meetings_take_the_whole_window_only_while_nothing_is_being_recorded(
+    public void The_meetings_take_the_whole_window_only_while_no_meeting_is_under_way(
         RecorderState state,
         bool may)
     {
