@@ -11,8 +11,10 @@ description: >-
 Spawn one reviewer per lens to challenge work. Reviewers attack from distinct lenses grounded in
 the principles under `references/`. The deliverable is a synthesized verdict — do NOT make changes.
 
-Worth running after a session that produced a large diff (200+ lines), after finishing a phase of
-an implementation plan, or after a planning session.
+`CLAUDE.md` says when it runs here, and that is the trigger: once, over the whole diff, above 50
+non-comment lines, before the four commands that then have to prove what the verdict confirmed.
+Not once a phase and not once an audit round — the size table below sizes a review, it never
+triggers one.
 
 ## Step 1 — Load Principles
 
@@ -96,4 +98,5 @@ Vendored from [poteto/noodle](https://github.com/poteto/noodle)
 `.agents/skills/adversarial-review/`. Changes from upstream: the `brain/principles.md` dependency
 is vendored into `references/principles/`, the scratch directory moved from `/tmp` to the session
 scratchpad, the `schedule:` frontmatter key became prose, the size thresholds count only
-non-comment lines, and reviewers are agents rather than a second model's CLI.
+non-comment lines and no longer trigger the review themselves, and reviewers are agents rather than
+a second model's CLI.

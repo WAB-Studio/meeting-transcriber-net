@@ -18,7 +18,7 @@ nothing either way that was not asked for.
 Shipping code and tracking work are separate. They meet only when an issue already existed.
 
 ```
-ship:   branch  →  commits  →  the four commands, once  →  PR  →  CI  →  review  →  merge commit
+ship:   branch  →  commits  →  the four, once a push  →  PR  →  CI  →  review  →  merge commit
 track:  issue   →  ...  →  closed when the thing it describes stopped being true
 ```
 
@@ -27,15 +27,15 @@ track:  issue   →  ...  →  closed when the thing it describes stopped being 
    being done right now goes straight to a branch.
 2. **Branch from `main`**: `feat/`, `fix/`, `chore/` or `docs/` + a short slug —
    `feat/live-transcription-socket`, `fix/spool-export-partial`.
-3. **The four commands green before the PR, once** — `dotnet restore`, `dotnet format
+3. **The four commands green before the PR, once a push** — `dotnet restore`, `dotnet format
    --verify-no-changes`, `dotnet build --no-restore -warnaserror`, `dotnet test --no-build`, each on
-   its own line. They are exactly what CI runs. One pass, at the end, over the whole diff, before
-   the PR is opened or pushed to — not after every edit; the same green bought twice proves nothing
-   the first one did not. Between those ends, a build or a test runs when its answer decides
-   something. `/adversarial-review` has the same shape: once, over the whole diff, at the end, above
-   50 non-comment lines. A PR is still never opened red — that pass is where the green comes from,
-   and CI is the gate before merge, so being unsure is a reason to push and read `gh pr checks`
-   rather than to run the four again.
+   its own line. CI runs the same four, beside `CLAUDE.md`'s line budget. One pass, at the end, over
+   the whole diff, before the PR is opened and before every update to it — not after every edit; the
+   same green bought twice proves nothing the first one did not. Between those ends, a build or a
+   test runs when its answer decides something. `/adversarial-review` comes before that pass and has
+   the same shape: once, over the whole diff, above 50 non-comment lines, with what the verdict
+   confirms fixed while the four still have to prove it. A PR is never opened red. Nobody waits on
+   CI afterwards or chases it: that run is read at merge, never before the work is handed back.
 4. **One PR, one issue.** If it would close two, either the issue was split wrong or the PR was.
 5. **Merge commit**, always, and the branch goes with it — `--delete-branch`, because the repo does
    not delete it on its own. `main` is the only long-lived branch. There is no `develop`.

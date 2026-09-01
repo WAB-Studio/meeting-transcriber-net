@@ -80,13 +80,13 @@ which a tool reads and never migrates. `docs/migrations.md` says when this stops
 ## Build and test
 
 `dotnet restore`, then `dotnet format --verify-no-changes`, `dotnet build --no-restore -warnaserror`
-and `dotnet test --no-build`, each on its own line so a failure stops the pass — exactly what CI
-runs on `windows-latest`. Warnings fail the build in CI only. `dotnet format` has to pass clean.
+and `dotnet test --no-build`, each on its own line so a failure stops the pass. CI runs those four
+and this file's line budget. Warnings fail the build in CI only. `dotnet format` has to pass clean.
 
-**The four run once per PR, at the end, before it opens or updates** — not after every edit, which
-buys the same green over and over for one signal. One pass proves the whole diff, unasked fixes
-included, and it is green or the PR does not open. Before that, a build or test runs only when its
-answer decides something. CI is the gate before merge: unsure means push and read the run.
+**One pass per push, never one per change** — at the end, over the finished diff, before the PR
+opens and before every update to it. It proves the whole diff, unasked fixes included, and it is
+green or nothing is pushed. Before it, a build runs only when its answer decides something; after
+it, nobody waits on CI or chases it — that run is read at merge, and a red one is fine to leave.
 
 ## How work starts and ends
 
@@ -104,7 +104,7 @@ skill. **A claim closes on a probe that ran, never on a task moving.**
 3. Closing is running the probe and marking the claim closed; `IsaStructureTests` fails if the
    count disagrees.
 4. A diff over 50 lines that are not comments runs `/adversarial-review` once, over the whole diff,
-   at the end, and what the verdict confirms gets fixed before the PR opens.
+   and before that pass, so what the verdict confirms is fixed inside what the four then prove.
 5. A session ends on the PR opened and never merged, standing on a clean `main`. A red command or
    an unfixed finding stops the PR, and the session's last words say so, and why.
 
