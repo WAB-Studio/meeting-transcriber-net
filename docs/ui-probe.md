@@ -26,23 +26,38 @@ Add-AppxPackage -Register (Resolve-Path src/MeetingTranscriber.App/bin/x64/Debug
 
 Do it again whenever that path changes — another configuration, another target framework.
 
-Then register the MCP server. It is registered machine-wide because an agent may be working from a
-worktree, but it drives the checkout whose package is registered above — from anywhere else it
-refuses and says which one that is.
+Then put the server where the checkout can reach it. `.mcp.json` at the repository root names it
+already, spelled the same in every clone, so nothing is registered by hand and no path in it is
+anybody's machine. What it needs is the copy it points at.
 
 ```powershell
-dotnet build tools/MeetingTranscriber.UiProbe/MeetingTranscriber.UiProbe.csproj
-claude mcp add ui-probe --scope user -- (Resolve-Path tools/MeetingTranscriber.UiProbe/bin/Debug/net10.0-windows/MeetingTranscriber.UiProbe.exe) --mcp
+dotnet publish tools/MeetingTranscriber.UiProbe -c Debug -o tools/MeetingTranscriber.UiProbe/bin/mcp
 claude mcp get ui-probe
 ```
 
-The last line must say `✔ Connected`. Register the exe and not `dotnet run`: a build writes to
+**`bin/mcp` and not `bin/Debug`, and that is the whole reason the copy exists.** The tool is in the
+solution, so `dotnet build --no-restore -warnaserror` writes the exe under `bin/Debug` — and a
+connected server holding that file open failed the build for everything else in the solution.
+`dotnet build` never writes `bin/mcp`, so the four commands are green while the probe is connected
+and nothing has to be closed for them. Publish the exe and not `dotnet run`: a build writes to
 stdout, and stdout is the protocol.
+
+The first session after this asks you to approve `ui-probe` once, because it is a project-scoped
+server. `claude mcp get ui-probe` then says `Scope: Project config` and `✔ Connected`; if it says
+`Scope: User config` instead, a leftover machine-wide registration is shadowing this one and has to
+go — `claude mcp remove ui-probe -s user`, with the `-s user`, because without a scope it removes
+whichever it finds first and that is now the repository's.
+
+A worktree is its own checkout and gets its own copy, published the same way. It still drives the
+one build Windows has registered, so from anywhere else it refuses and says which checkout that is.
 
 ## Every run
 
-Build the application first. Build the tool too if you changed it — MCP starts the exe, not the
-source.
+Build the application first. Changing the tool costs one more step and it only runs one way: end
+the session, publish, open a new one. A connected server holds `bin/mcp` open, so a publish under
+a live session fails on the same kind of lock this setup took out of the build — and a new session
+is what reads `.mcp.json` anyway. `close` and `start` are verbs about the application, not about
+the server.
 
 Anything is refused once the application is older than the code on disk. To pick up a change:
 close, build, start — in that order, because a running application holds its own assemblies open
@@ -64,8 +79,8 @@ only thing here that synchronises.
 ## Over MCP, a turn at a time
 
 `start` first — nothing else works until an application is open — and `close` when you are done,
-because it stays open between calls. `close`, build, `start` is how you pick up a change. A refused
-`start` leaves the session you had alone.
+because it stays open between calls. `close`, build the application, `start` is how you pick up a
+change to it. A refused `start` leaves the session you had alone.
 
 Every verb answers with the tree of the screen it became, so you choose the next step from the last
 answer instead of writing the whole walk in advance. `see` also returns the picture, inline.
