@@ -53,9 +53,11 @@ one build Windows has registered, so from anywhere else it refuses and says whic
 
 ## Every run
 
-Build the application first. Publish the tool again if you changed it, and start a new session —
-`.mcp.json` is read when a session opens, and `close` and `start` are verbs about the application,
-not about the server.
+Build the application first. Changing the tool costs one more step and it only runs one way: end
+the session, publish, open a new one. A connected server holds `bin/mcp` open, so a publish under
+a live session fails on the same kind of lock this setup took out of the build — and a new session
+is what reads `.mcp.json` anyway. `close` and `start` are verbs about the application, not about
+the server.
 
 Anything is refused once the application is older than the code on disk. To pick up a change:
 close, build, start — in that order, because a running application holds its own assemblies open
