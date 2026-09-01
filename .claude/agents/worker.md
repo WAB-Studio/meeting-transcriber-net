@@ -125,8 +125,8 @@ Run that pass at the end, before you open the PR and before every update to it. 
 test only when the answer decides something: a mutation that has to go red, a sweep, a specific
 failure you need confirmed.
 
-Never open a PR red. Never wait on CI and never chase it — push, return your record, and leave the
-PR red if that is where CI puts it. That run is read at merge.
+Never push red: the four are green or nothing goes. CI is not yours — do not wait for it, do not
+read it, do not report it. Whoever merges reads it.
 
 **A number that did not come out of a run does not get written** — not in code, not in `ISA.md`, not
 in a comment.

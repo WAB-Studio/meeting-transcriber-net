@@ -85,8 +85,8 @@ and this file's line budget. Warnings fail the build in CI only. `dotnet format`
 
 **One pass per push, never one per change** — at the end, over the finished diff, before the PR
 opens and before every update to it. It proves the whole diff, unasked fixes included, and it is
-green or nothing is pushed. Before it, build only when the answer decides something; after it, never
-wait on CI — that run is read at merge, and a red PR is fine to leave.
+green or nothing is pushed. Before it, build only when the answer decides something. CI belongs to
+whoever merges and never to the worker, who neither waits on it nor reads it.
 
 ## How work starts and ends
 
