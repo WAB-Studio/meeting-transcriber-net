@@ -168,6 +168,38 @@ public sealed class MeetingRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// ISC-165.1. A meeting somebody recorded and never named comes out of the whole path with no
+    /// name at all, so what a screen has to show is that nobody named it.
+    /// </summary>
+    /// <remarks>
+    /// Asserted after stopping and not only after starting, because stopping is where a name would
+    /// be invented if it were going to be: the audio has a file, the folder has a path and the run
+    /// has two device names on it, and every one of those is a plausible thing to fill a blank
+    /// title from. The one true answer is that there is no name, and the screen says so in words a
+    /// person can tell from a title — <c>UiTexts.AMeetingNobodyHasNamed</c>.
+    /// <para>
+    /// Nothing here reaches the two doors that do carry a title, and neither is a counter-example:
+    /// bringing audio in and filing a transcribed meeting both take one from whoever typed it,
+    /// which is somebody naming a meeting rather than the application inventing one.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_meeting_nobody_named_comes_out_of_recording_with_no_name()
+    {
+        using var context = corpus.OpenMigrated();
+        var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
+
+        var card = Fabricated.CardFor(prepared.MeetingId, now);
+        SpoolManifest.Write(prepared.Spool, card);
+        MeetingRecordings.Began(context, card);
+        MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(2));
+
+        using var reopened = corpus.Open();
+        reopened.Meetings.Single().Title.ShouldBeNull();
+    }
+
+    /// <summary>
     /// ISC-157. Stopping is the end of the recording and the start of nothing: transcribing spends
     /// the user's own credit, so it waits for somebody to ask for it.
     /// </summary>

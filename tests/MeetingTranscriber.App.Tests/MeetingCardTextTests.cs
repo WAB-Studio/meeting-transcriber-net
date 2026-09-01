@@ -17,7 +17,7 @@ namespace MeetingTranscriber.App.Tests;
 /// </remarks>
 public class MeetingCardTextTests
 {
-    private static readonly string Screen = Path.Combine("MeetingTranscriber.App", "MeetingsWindow.xaml.cs");
+    private static readonly string Screen = Path.Combine("MeetingTranscriber.App", "MeetingsDrawer.xaml.cs");
 
     private static readonly string StagesDeclaredIn =
         Path.Combine("MeetingTranscriber.Domain", "Meetings", "MeetingStage.cs");
@@ -58,7 +58,7 @@ public class MeetingCardTextTests
         var unnamed = table.Declared.Except(table.Named).ToArray();
 
         unnamed.ShouldBeEmpty(
-            $"MeetingsWindow has no text for these members of {enumeration}, so a meeting at one "
+            $"MeetingsDrawer has no text for these members of {enumeration}, so a meeting at one "
             + "of them says the wrong thing about itself or nothing at all: "
             + string.Join("; ", unnamed));
     }
@@ -73,7 +73,7 @@ public class MeetingCardTextTests
         var stale = table.Named.Except(table.Declared).ToArray();
 
         stale.ShouldBeEmpty(
-            $"MeetingsWindow answers for members {enumeration} does not have: " + string.Join("; ", stale));
+            $"MeetingsDrawer answers for members {enumeration} does not have: " + string.Join("; ", stale));
     }
 
     [Theory]
@@ -84,7 +84,7 @@ public class MeetingCardTextTests
 
         table.Fallthrough.ShouldBe(
             "throw",
-            customMessage: $"MeetingsWindow's table over {enumeration} answers an unknown member "
+            customMessage: $"MeetingsDrawer's table over {enumeration} answers an unknown member "
             + "with a text instead of throwing, so a member added later is shown to somebody as a "
             + "different one.");
     }

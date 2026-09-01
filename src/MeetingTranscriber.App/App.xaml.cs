@@ -27,9 +27,8 @@ public partial class App : Application
 {
     private readonly LanguageChoice _choice = LanguageChoice.OfThisUser();
 
-    private RecordingWindow? _recorder;
-    private MainWindow? _checks;
-    private MeetingsWindow? _meetings;
+    private MainWindow? _main;
+    private PackagingChecksWindow? _checks;
 
     /// <summary>
     /// What the application is being read in now. Held here rather than read back off the
@@ -64,14 +63,13 @@ public partial class App : Application
         _language = UiLanguages.Resolve(_choice.Read(), WindowsLanguages());
         _corpus = CorpusLocation.OfThisUser().Resolve();
 
-        var window = new RecordingWindow(_language, _corpus);
+        var window = new MainWindow(_language, _corpus);
         window.LanguageChosen += OnLanguageChosen;
         window.PackagingChecksAsked += OnPackagingChecksAsked;
-        window.MeetingsAsked += OnMeetingsAsked;
-        window.Closed += (_, _) => _recorder = null;
+        window.Closed += (_, _) => _main = null;
 
-        _recorder = window;
-        _recorder.Activate();
+        _main = window;
+        _main.Activate();
     }
 
     /// <summary>
@@ -94,37 +92,12 @@ public partial class App : Application
             return;
         }
 
-        var window = new MainWindow(_language);
+        var window = new PackagingChecksWindow(_language);
         window.LanguageChosen += OnLanguageChosen;
         window.Closed += (_, _) => _checks = null;
 
         _checks = window;
         _checks.Activate();
-    }
-
-    /// <summary>
-    /// The meetings already recorded and what the application still owes each one. A window of
-    /// its own rather than a panel on the recorder: what is on it is about meetings that are over,
-    /// and one of them can be pressed while another is being recorded.
-    /// </summary>
-    private void OnMeetingsAsked(object? sender, EventArgs e)
-    {
-        if (_meetings is not null)
-        {
-            _meetings.Activate();
-            return;
-        }
-
-        if (_corpus is not { } corpus)
-        {
-            return;
-        }
-
-        var window = new MeetingsWindow(_language, corpus);
-        window.Closed += (_, _) => _meetings = null;
-
-        _meetings = window;
-        _meetings.Activate();
     }
 
     private void OnLanguageChosen(object? sender, UiLanguage language)
@@ -134,9 +107,8 @@ public partial class App : Application
         // Every window open reads in it first. What somebody just asked for is not held back by a
         // preference file, and a file that cannot be written is a language that does not survive
         // the session rather than a session that ends here.
-        _recorder?.ReadIn(language);
+        _main?.ReadIn(language);
         _checks?.ReadIn(language);
-        _meetings?.ReadIn(language);
 
         try
         {
@@ -146,9 +118,8 @@ public partial class App : Application
         {
             // Said rather than swallowed: the application looks exactly as it would have if the
             // choice had stuck, so the only way anybody learns it did not is the next launch.
-            _recorder?.Report(UiTexts.LanguageNotRemembered);
+            _main?.Report(UiTexts.LanguageNotRemembered);
             _checks?.Report(UiTexts.LanguageNotRemembered);
-            _meetings?.Report(UiTexts.LanguageNotRemembered);
         }
     }
 }
