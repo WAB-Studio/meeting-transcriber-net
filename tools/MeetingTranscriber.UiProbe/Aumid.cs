@@ -66,7 +66,8 @@ internal static class Aumid
         {
             throw new ProbeFailed(
                 $"{manifestPath} could not be read: {unreadable.Message} A build writing it right "
-                + "now is the usual reason. Let the build finish and run again.");
+                + "now is the usual reason, and that one only needs letting finish. A build that "
+                + "stopped part way through it is the other, and that one needs building again.");
         }
     }
 

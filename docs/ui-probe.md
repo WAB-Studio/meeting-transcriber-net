@@ -11,10 +11,11 @@ Run it by hand. It needs an interactive desktop, so it is never part of a build 
 
 If anybody else is driving the app from another checkout, give this one a package of its own. Write
 `PackageIdentity.props` at the top of the checkout with a suffix nothing else on this machine is
-using. **Fourteen characters at most, including the dash** — Windows caps a package name at fifty
-and this one already spends thirty-six on a GUID. The build refuses a longer one and says by how
-much; left to `Add-AppxPackage`, it refuses the manifest and says nothing at all. The file is in
-`.gitignore`, and every build here picks it up from then on:
+using. Keep it short and keep it to letters, digits, a dash and a dot: Windows caps a package name
+and most of the cap is already spent on a GUID, and a name that is too long or holds anything else
+— an underscore, a space, an accent — is refused by `Add-AppxPackage` without a word about why. The
+build refuses it first instead, and says how much room there is. The file is in `.gitignore`, and
+every build here picks it up from then on:
 
 ```powershell
 "<Project><PropertyGroup><PackageIdentitySuffix>-$(Get-Random -Maximum 99999)</PackageIdentitySuffix></PropertyGroup></Project>" |
@@ -24,7 +25,9 @@ much; left to `Add-AppxPackage`, it refuses the manifest and says nothing at all
 That picks a number rather than a name because it will be pasted more often than it is read, and two
 checkouts landing on the same suffix is the whole failure it exists to prevent. Put a word of your
 own there if you prefer — the listing below names every registration against its folder, so the
-suffix never has to be the memorable part.
+suffix never has to be the memorable part. A build with a suffix prints the identity it settled on,
+and a file setting none warns — the element is `PackageIdentitySuffix`, and a typo in it would
+otherwise be indistinguishable from having no file at all.
 
 Alone on the machine, skip that file.
 
@@ -35,7 +38,10 @@ Get-AppxPackage -Name 7feb8c95-4553-46f0-a036-6574f4cd7cb4* | Select-Object Name
 ```
 
 If this checkout is not in that list against a path ending in `\win-x64`, register it. Remove
-whatever it has first — registering over an existing registration keeps the old location:
+whatever it has first — registering over an existing registration keeps the old location. The remove
+below is scoped to this folder, so if the name you want is in that list against **somebody else's**
+folder, it removes nothing and the register then quietly leaves the name where it was: that is two
+checkouts on one suffix, and the way out is a different suffix, not a second attempt.
 
 ```powershell
 dotnet build src/MeetingTranscriber.App/MeetingTranscriber.App.csproj -p:Platform=x64
@@ -44,8 +50,10 @@ Get-AppxPackage -Name 7feb8c95-4553-46f0-a036-6574f4cd7cb4* |
 Add-AppxPackage -Register (Resolve-Path src/MeetingTranscriber.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/AppxManifest.xml)
 ```
 
-Do it again whenever that path changes — another configuration, another target framework — or
-whenever `PackageIdentity.props` changes.
+Do it again whenever that path changes — another target framework — or whenever
+`PackageIdentity.props` changes. Debug is the only configuration the suffix reaches: the product's
+identity is `Package.appxmanifest`'s, and an untracked file on one machine does not get to decide
+what a Release build is called.
 
 A registration is machine-wide and outlives the folder it points at. Run those two middle lines
 from the checkout before deleting it, or the machine keeps a package aimed at nothing.
