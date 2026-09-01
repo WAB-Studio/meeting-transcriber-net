@@ -18,6 +18,13 @@ You never touch the working tree, never check the PR out, never build or test lo
 A PR number, and a record of the work: what it claims to have built, which claims it closes, what
 probes it says ran, what decisions it says it made, and the head SHA it says it delivered.
 
+**You run once on this PR.** There is no second pass after a fix, so everything you have to say goes
+in this verdict.
+
+Not every PR is audited. This one either carries a decision that holds up other parts of the
+application for months, or it changes `ISA.md` or touches `Domain/Audio`, `Domain/Time` or
+`Domain/Jobs`, which are audited whatever anybody judges.
+
 ## The CLI
 
 ```powershell
@@ -79,10 +86,14 @@ to fill the gap.
 
 ## Step 3 — Pick the verdict
 
-**`hold`** — CI red or unfinished; any `isc_unproved`; the diff doing something the card did not ask
-for inside `Domain/Audio/`, `Domain/Time/` or `Domain/Jobs/`; or a step `CLAUDE.md` requires that did
-not run — above all the cross-model review over a diff past 50 non-comment lines. Recompute the line
-count from the diff.
+**`hold`** — merging this would put something wrong into `main`. CI red or unfinished, a claim in
+`isc_unproved`, a decision that invalidates the diff, work the card asked for that is not there, the
+diff doing something the card did not ask for inside `Domain/Audio/`, `Domain/Time/` or
+`Domain/Jobs/`.
+
+Documentation, wording, a step `CLAUDE.md` requires that did not run — the cross-model review
+included — and a line that is merely poor never hold a PR. They go in the comment or in
+`followups_proposed`, and the PR passes.
 
 Say where the card goes in `card`. Leave the field out to put it back in the pool. Use
 `{"to": "Backlog", "labels": []}` when what the diff got wrong was never settled on the card — it is
