@@ -40,6 +40,14 @@ public class IsaStructureTests
     /// CI will never produce again. Those two stubs are ISC-73.1 at 385 and ISC-118 at 353 — the
     /// only two in the file with no backticked span at all, which is what that exception looks
     /// like from here, and both well inside.
+    ///
+    /// Every number above is 3551c12's file and not this one. The pass that brought the 36 under
+    /// the limit filled the gap it was derived from in: the file is now continuous from the low
+    /// 300s to 541, because a stub collapsed to fit lands nearer the ceiling than one that was
+    /// never over it. So the derivation reproduces only against that commit, and the number
+    /// cannot be re-derived from the file it now runs over — which is an argument for leaving it
+    /// where it is rather than for moving it, since re-deriving would ratchet it upward off the
+    /// stubs the ratchet produced.
     /// </remarks>
     private const int LongestStubProse = 575;
 
@@ -157,15 +165,23 @@ public class IsaStructureTests
         }
     }
 
+    /// <summary>
+    /// Stated as what a stub's ID must be rather than as what it must not be. The negative form
+    /// this replaces — no stub sits on an open claim — read the same on every real file and let
+    /// through the one that matters: an ID belonging to no claim at all is in neither the open set
+    /// nor the closed one, so `- ISC-149.9 — …` parked beside ISC-149's own stub was evidence for
+    /// nothing, and it reads to anybody skimming as a sub-claim that exists.
+    /// </summary>
     [Fact]
-    public void Nothing_is_verified_that_is_not_closed()
+    public void Every_stub_names_a_claim_that_is_closed()
     {
-        var open = isa.Claims.Where(claim => !claim.Closed).Select(claim => claim.Id)
+        var closed = isa.Claims.Where(claim => claim.Closed).Select(claim => claim.Id)
             .ToHashSet(StringComparer.Ordinal);
 
-        isa.Stubs.Select(stub => stub.Id).Where(open.Contains).ShouldBeEmpty(
-            "a stub under an open claim is evidence for something the file says did not happen; "
-            + "one of the two is wrong.");
+        isa.Stubs.Select(stub => stub.Id).Where(id => !closed.Contains(id)).ShouldBeEmpty(
+            "a Verification stub is what closed a claim, so its ID is a claim above and that "
+            + "claim is marked closed. An ID no claim carries is evidence for nothing; an ID on "
+            + "an open claim is evidence for something the file says did not happen.");
     }
 
     [Fact]
@@ -174,7 +190,8 @@ public class IsaStructureTests
         // The dodge the size gate below creates, and the reason it is written down the moment the
         // gate is: a stub too long for check 11 passes it by being cut in half under the same ID,
         // and every other check here is happy — the claim still has its evidence, and both halves
-        // still parse. A claim closes on one line or the retelling has just moved.
+        // still parse. A claim closes on one line or the retelling has just moved. Cutting it in
+        // half under two IDs instead is the check above: the second half has to name a claim.
         isa.Stubs.Select(stub => stub.Id).ShouldBeUnique();
     }
 

@@ -129,6 +129,14 @@ class alone is enough when the whole class is the probe; name the method when on
 them costs nothing: gate 11 measures the prose left when the backticked spans come out, so four
 method names are free and the sentence explaining them is not.
 
+**Say what the evidence does not reach.** A claim marked `[x]` reads as fully probed, and most are
+not: a hand run covers one machine, a unit test cannot open a device, half a claim is argued off
+the code rather than measured. That sentence is provenance and its only home is the stub — the
+design argument belongs in the file it explains, but which half of a closure nobody ran belongs
+where the closure is recorded. It is also the first thing a collapse deletes, because it is pure
+prose where a test name is free, so gate 11 prices it at exactly the cost of the retelling it
+exists to stop. Cut a sentence that argues before one that bounds.
+
 **A `dotnet test` probe names its project.** `dotnet test --filter "FullyQualifiedName~X"` is
 silently ignored by the Microsoft.Testing.Platform runner that xunit.v3 uses — it runs
 everything and exits 0, which is a pass that proved nothing. The form that works is
@@ -154,27 +162,31 @@ Mechanical, enforced by `IsaStructureTests`, and hard failures:
 2. `phase: complete` requires `M == N` and an empty `## Not yet specified`.
 3. Every `### F<n>` block has a `Why:` and a `Board:` line naming a known list.
 4. No ISC ID appears twice.
-5. Every closed claim has a `## Verification` stub, and no open claim has one.
+5. Every closed claim has a `## Verification` stub.
 6. The sections that are present appear in the fixed order.
 7. Every bullet inside a feature block parses as a claim line.
 8. Every non-blank line under `## Verification` parses as a stub.
 9. `## Learning` is whole entries of four labels in order, and nothing else.
 10. No number is missing between the first ID and the last, at the root and under every parent.
-11. No `## Verification` stub carries more than 575 characters of prose outside its pointers.
-12. No ISC ID carries two `## Verification` stubs.
+11. No `## Verification` stub carries more prose outside its pointers than `LongestStubProse`.
+12. A stub's backticks close, and no backticked span runs past `LongestPointer` for free.
+13. Every `## Verification` stub names a claim above, and that claim is marked closed.
+14. No ISC ID carries two `## Verification` stubs.
 
 Check 11 was advisory until 2026-08-26, on the argument that a pointer cannot be told from a
 paragraph by counting characters. That holds for the line, which here is mostly test names — seven
 of them is 668 characters saying nothing but where to look — and not for what is left once the
-backticked spans come out. On that measure the 127 stubs of that day were bimodal, 91 at 541 or
-below and 36 at 606 or above with nothing between, and the limit is the middle of the gap. It
-clears the case the advisory existed to protect: a claim closed on a hand run has no test to name
-and carries numbers CI will never produce again, and the two such stubs, ISC-73.1 and ISC-118, cost
-385 and 353.
+backticked spans come out, which on the file of that day separated cleanly into stubs nobody had
+flagged and stubs that were essays. Both numbers live on `LongestStubProse` and `LongestPointer` in
+`IsaStructureTests` and `IsaDocument`, with the measurement they came off; changing either means
+editing the constant there, and this line is deliberately not a second copy of it.
 
 The reason it is a gate and not a note is where the rule lived. Whoever appends to an append-only
 section greps their own ISC and never opens the file, so they take the neighbour as the model and
-never read this line at all.
+never read this line at all. Check 12 is there because the measure can be read as exact and is
+not: ticks are what makes a span free, so unclosed ones swallow the prose between two of them and
+an unbounded one launders a paragraph as a pointer. It bounds both rather than claiming to shut
+them — `IsaDocument` says which case each still lets through.
 
 Check 10 is the other hand of check 4. A duplicate ID is a number issued twice; a hole is a claim
 deleted instead of tombstoned, or a run of them shifted down to close one — which silently
@@ -196,4 +208,4 @@ manufactured:
 
 - at least one `Anti:` claim exists;
 - no claim bundles two verifiable things;
-- nothing shipped that no claim asked for;
+- nothing shipped that no claim asked for.

@@ -175,7 +175,7 @@ internal sealed partial class IsaDocument
                 stubs.Add(new Stub(
                     match.Groups["id"].Value,
                     evidence,
-                    Pointer().Replace(evidence, string.Empty)));
+                    Pointer().Replace(evidence, WhatIsNotAPointer)));
             }
         }
 
@@ -215,6 +215,34 @@ internal sealed partial class IsaDocument
     [GeneratedRegex("`[^`]*`")]
     private static partial Regex Pointer();
 
+    /// <summary>
+    /// The longest a backticked span is free for. Past it the span is priced as prose, one
+    /// character for one character.
+    /// </summary>
+    /// <remarks>
+    /// Measured over the 434 spans in the section on 2026-09-01: the longest is 133, ISC-158.1's
+    /// UI probe walk, then ISC-171's at 119 and a fully-qualified test name at 113. Nothing else
+    /// reaches 110. So 150 is above every pointer anybody has written, with room for a longer
+    /// walk than any that exists.
+    /// </remarks>
+    private const int LongestPointer = 150;
+
+    /// <summary>
+    /// What a backticked span costs the size gate: nothing up to <see cref="LongestPointer"/>,
+    /// and everything after that.
+    /// </summary>
+    /// <remarks>
+    /// Ticks around a span are what makes it free, and until this the freedom was unbounded —
+    /// so the whole of a stub's prose passed the gate by being wrapped in one pair of them, and
+    /// the parity check below claimed to cover the only way the measure failed open while that
+    /// stayed wide. It is not treated as a dodge somebody plots. The section already backticks
+    /// English sentences as evidence, so a writer following the neighbours arrives at it by the
+    /// same route they arrive at everything else this gate exists to stop, and pricing the excess
+    /// rather than failing the line keeps an honestly long walk from going red for being long.
+    /// </remarks>
+    private static string WhatIsNotAPointer(Match span) =>
+        span.Length <= LongestPointer ? string.Empty : span.Value[LongestPointer..];
+
     internal sealed record Claim(string Id, bool Closed, string Text, string Feature);
 
     /// <summary>
@@ -228,11 +256,20 @@ internal sealed partial class IsaDocument
     internal sealed record Stub(string Id, string Evidence, string Prose)
     {
         /// <summary>
-        /// Whether the backticks close. They always have, and the gate is over the one way this
-        /// measure fails open rather than shut: <c>Pointer()</c> pairs ticks, so a single dropped
-        /// tick makes one span out of everything between two unrelated ones, and several hundred
-        /// characters of prose stop being counted at all.
+        /// Whether the backticks close. They always have, and the gate is over one of the two
+        /// ways this measure fails open rather than shut: <c>Pointer()</c> pairs ticks, so a
+        /// single dropped tick makes one span out of everything between two unrelated ones, and
+        /// several hundred characters of prose stop being counted at all.
         /// </summary>
+        /// <remarks>
+        /// The other way is a span that pairs correctly and is a paragraph, which is
+        /// <see cref="LongestPointer"/>'s. Neither is shut, and saying which is left open is the
+        /// point of writing them down: an even number of ticks in the wrong places still welds
+        /// two spans together, and a ticked paragraph is still discounted 150 characters, so 800
+        /// of it now fails where it used to pass and 600 of it passes at 450. What the two buy
+        /// together is a bound — no stub can be arbitrarily long and measure short — and not the
+        /// exactness the size gate on its own reads as having.
+        /// </remarks>
         public bool PointersClose => Evidence.Count(character => character == '`') % 2 == 0;
     }
 
