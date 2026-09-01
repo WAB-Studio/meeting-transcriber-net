@@ -18,7 +18,7 @@ nothing either way that was not asked for.
 Shipping code and tracking work are separate. They meet only when an issue already existed.
 
 ```
-ship:   branch  →  commits  →  the four commands  →  PR  →  review  →  merge commit
+ship:   branch  →  commits  →  the four, once a push  →  PR  →  CI  →  review  →  merge commit
 track:  issue   →  ...  →  closed when the thing it describes stopped being true
 ```
 
@@ -27,9 +27,11 @@ track:  issue   →  ...  →  closed when the thing it describes stopped being 
    being done right now goes straight to a branch.
 2. **Branch from `main`**: `feat/`, `fix/`, `chore/` or `docs/` + a short slug —
    `feat/live-transcription-socket`, `fix/spool-export-partial`.
-3. **The four commands green before the PR** — `dotnet restore`, `dotnet format
+3. **The four commands green before the PR, once a push** — `dotnet restore`, `dotnet format
    --verify-no-changes`, `dotnet build --no-restore -warnaserror`, `dotnet test --no-build`, each on
-   its own line. They are exactly what CI runs. A PR is never opened red.
+   its own line. One pass at the end, over the whole diff, before the PR opens and before every
+   update to it. `/adversarial-review` comes before that pass, same shape. A PR is never opened red.
+   Nobody waits on CI or chases it — that run is read at merge.
 4. **One PR, one issue.** If it would close two, either the issue was split wrong or the PR was.
 5. **Merge commit**, always, and the branch goes with it — `--delete-branch`, because the repo does
    not delete it on its own. `main` is the only long-lived branch. There is no `develop`.

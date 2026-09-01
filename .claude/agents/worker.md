@@ -75,7 +75,7 @@ git merge-base --is-ancestor <mergeCommit> origin/main
 ```
 
 A merged commit does not prove the behaviour is there. Read the card's **Done when** and run it
-against `main` as it stands; run the four commands if the card names ISCs.
+against `main` as it stands — the four commands if the card names ISCs.
 
 - **Behaviour present** → `outcome: "already_done"`, `pr_number` naming the PR that landed it. Move
   the card to `Testing` yourself — it is merged and nobody has confirmed it — and comment saying
@@ -113,11 +113,20 @@ it does not show from outside, decide it yourself and record it in `decisions_de
 
 ## Step 4 — Work
 
-`CLAUDE.md` is in charge. The claims in `ISA.md` exist before you build. The four commands each on
-its own line. `/adversarial-review` over any diff past 50 non-comment lines, and what the verdict
-confirms gets fixed in the same pass.
+`CLAUDE.md` is in charge. The claims in `ISA.md` exist before you build.
 
 Move the card to `In progress` on starting — the branch is the fact that earns the move.
+
+**Prove a push once, not once per change.** Run `/adversarial-review` first — once, over the whole
+diff, above 50 non-comment lines — and fix what the verdict confirms. Then run the four commands,
+each on its own line, over everything including those fixes.
+
+Run that pass at the end, before you open the PR and before every update to it. In between, build or
+test only when the answer decides something: a mutation that has to go red, a sweep, a specific
+failure you need confirmed.
+
+Never push red: the four are green or nothing goes. CI is not yours — do not wait for it, do not
+read it, do not report it. Whoever merges reads it.
 
 **A number that did not come out of a run does not get written** — not in code, not in `ISA.md`, not
 in a comment.
@@ -128,7 +137,7 @@ in a comment.
 
 Branch, commit, `gh pr create`. **You do not merge.** The PR body carries `Closes #<n>`, which is
 what moves the card to `In review` — you do not move it yourself, and you do check it landed there.
-Then:
+If it did not, leave it and say so in the record. Then:
 
 ```powershell
 gh pr comment <pr> --body-file <scratchpad>/done.md
@@ -186,7 +195,7 @@ Every field but `decisions_owed` is required.
   pending" anywhere, it is an entry here.
 - **`left_out`** — what the card asked for and you did not deliver.
 - **`probes`** — what actually ran. A step `CLAUDE.md` requires and you could not run is a probe with
-  `passed: false` saying so.
+  `passed: false` saying so. A CI run is never one.
 - **`head_sha`** — the exact commit you delivered.
 
 An honest `blocked` is worth more than a tidy `pr_opened` over half-finished work: every field here
