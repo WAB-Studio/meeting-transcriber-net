@@ -27,9 +27,9 @@ public partial class App : Application
 {
     private readonly LanguageChoice _choice = LanguageChoice.OfThisUser();
 
-    private RecordingWindow? _recorder;
-    private MainWindow? _checks;
-    private MeetingsWindow? _meetings;
+    private MainWindow? _recorder;
+    private PackagingChecksWindow? _checks;
+    private MeetingsDrawer? _meetings;
 
     /// <summary>
     /// What the application is being read in now. Held here rather than read back off the
@@ -64,7 +64,7 @@ public partial class App : Application
         _language = UiLanguages.Resolve(_choice.Read(), WindowsLanguages());
         _corpus = CorpusLocation.OfThisUser().Resolve();
 
-        var window = new RecordingWindow(_language, _corpus);
+        var window = new MainWindow(_language, _corpus);
         window.LanguageChosen += OnLanguageChosen;
         window.PackagingChecksAsked += OnPackagingChecksAsked;
         window.MeetingsAsked += OnMeetingsAsked;
@@ -94,7 +94,7 @@ public partial class App : Application
             return;
         }
 
-        var window = new MainWindow(_language);
+        var window = new PackagingChecksWindow(_language);
         window.LanguageChosen += OnLanguageChosen;
         window.Closed += (_, _) => _checks = null;
 
@@ -120,7 +120,7 @@ public partial class App : Application
             return;
         }
 
-        var window = new MeetingsWindow(_language, corpus);
+        var window = new MeetingsDrawer(_language, corpus);
         window.Closed += (_, _) => _meetings = null;
 
         _meetings = window;

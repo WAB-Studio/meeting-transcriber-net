@@ -31,7 +31,7 @@ namespace MeetingTranscriber.App;
 /// remembers loading — which is the same reason nothing here caches a stage.
 /// </para>
 /// </remarks>
-public sealed partial class MeetingsWindow : Window
+public sealed partial class MeetingsDrawer : Window
 {
     private readonly CorpusFolder _corpus;
     private readonly List<MeetingAndWork> _meetings = [];
@@ -39,7 +39,7 @@ public sealed partial class MeetingsWindow : Window
     private UiLanguage _language;
     private TextLine? _status;
 
-    public MeetingsWindow(UiLanguage language, CorpusFolder corpus)
+    public MeetingsDrawer(UiLanguage language, CorpusFolder corpus)
     {
         ArgumentNullException.ThrowIfNull(corpus);
 
@@ -88,7 +88,7 @@ public sealed partial class MeetingsWindow : Window
     /// </summary>
     /// <remarks>
     /// The last arm stops rather than substituting, for the reason
-    /// <c>RecordingWindow.SayWhereTheCorpusIs</c> gives about a refusal it has no text for: a
+    /// <c>MainWindow.SayWhereTheCorpusIs</c> gives about a refusal it has no text for: a
     /// stage added to <see cref="MeetingStage"/> and not given a text here would otherwise be
     /// shown to somebody as one of the others — a meeting with no audio reading as one ready to be
     /// paid for. <c>MeetingCardTextTests</c> is what catches it before it can be thrown.
