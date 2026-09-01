@@ -52,21 +52,34 @@ the card in progress or the PR open, and §4 gets its context back.
      moves a card and then dies has taken it out of the pool with nothing saying why.
 2. **Work.** Spawn `worker` with the card id, and the PR number if the pick found one. If the card
    was `In progress` or its PR is open, spawn `recoverer` first and pass the worker its briefing. §4.
-3. **Audit.** The record says `pr_opened` → spawn `auditor` with the PR number and that record. Any
-   other outcome closed the card itself and there is nothing to audit.
-4. **Act on the verdict.** This part is yours and there is no subagent for it:
-   - `pass` or `pass_with_followup` → every finding this card owns goes back to `worker` first,
-     however small, and then audit again. Only once the verdict names none, merge the PR.
+3. **Audit, or don't.** Only a record of `pr_opened` reaches here; any other outcome closed the card
+   itself. You decide which PRs are audited, on whether the work carries a decision that holds up
+   other parts of the application for months — a contract, a convention, a name that reaches disk,
+   what proves a piece of work done. Which folder the diff touched is not the test.
+   - **Two floors override your judgement**, read off the PR and never off the record
+     (`gh pr view <n> --json files`): it changes `ISA.md`, or it touches `Domain/Audio`,
+     `Domain/Time` or `Domain/Jobs`.
+   - Say which way you went, and why, in one line on the PR before you spawn anything or merge.
+   - **One audit per PR.** It does not run again after a fix. A run that came back with nothing is
+     not a run — that is §4.
+   - Audited → spawn `auditor` with the PR number and that record.
+4. **Act.** This part is yours and there is no subagent for it:
+   - **Merge only green, and only what is finished.** `gh pr checks <n> --watch` red or unfinished
+     is a `hold`, and so is a record declaring `blocks_the_pr` or a `left_out` the card asked for.
+   - **Not audited**, `pass` or `pass_with_followup` → merge.
      `gh pr merge <n> --merge --delete-branch`. The card stays in `In review`; closing it is the
      user's.
-   - `hold` → the PR stays open. Spawn `worker` again on the same card, passing the verdict as its
-     briefing, and audit again.
+   - `hold` → the PR stays open. **One line to fix it is yours**, on the PR's branch in that card's
+     worktree: make it, commit, push, say so on the PR, merge on green. More than one line → spawn
+     `worker` once with the verdict as its briefing, then read the hold's own reason against the
+     diff or the run before you merge. Still there → send the card where the verdict says, with the
+     verdict's own body as a comment, and take the next card.
+   - A `hold` over documentation, wording, a step that did not run or a merely poor line is not one.
+     Merge, and leave it as a comment or a card.
    - **A verdict's `followups_proposed` is a proposal and you are what decides.** Most of them are
      not cards: a finding the worker can take goes back to the worker. Before you open one, say
      which existing card it is not — there are ninety-odd open, and two follow-ups over one piece of
      work, each naming the other, is how that work ends up owned by nobody.
-   - Three rounds of work and audit on one card is the ceiling. Still holding, send the card where
-     the verdict says with the verdict's own body as a comment, and take the next card.
    - `ask` → a decision nobody here may make. Write it on the card, label it `question`, send it
      back to `Backlog`, and take the next card. §5.
 
@@ -94,7 +107,7 @@ Conflicting lines at merge are expected and are not the thing being avoided.
 **Tell each worker which folders its card owns and which it may not enter.** Say other cards are
 running; never say which.
 
-**Merge one at a time**, and audit against what is already merged.
+**Merge one at a time**, and check CI against what is already merged.
 
 The ceiling is what this machine builds and tests at once, not how many cards look independent.
 
@@ -148,7 +161,7 @@ and when the day ends. Somebody who asked to be left alone for the day does not 
 mid-day the day stops where it stood. What survives is on the board and on GitHub, which is the
 whole point, and the next day picks it up from there.
 
-Every comment you leave on a card opens with `[Day]`.
+Every comment you leave on a card or a PR opens with `[Day]`.
 
 ## 8 · Do not touch the repo yourself
 
@@ -156,6 +169,7 @@ The worker owns the checkout. You do not edit files, do not commit and do not sw
 between cycles — a dirty tree stops the next worker in its preflight, including over a fix you
 found. Write it on a card and let a later day take it.
 
-The one exception is the merge in §2, which touches GitHub rather than the checkout. The worktrees
-of §3 are not a second exception: they sit outside the checkout, and the reason they sit outside it
-is that a worktree inside one is a dirty tree under another name.
+Two exceptions, both in §2: the merge, which touches GitHub rather than the checkout, and the
+one-line fix, which you make on the PR's branch in that card's worktree. The worktrees of §3 are not
+a third exception: they sit outside the checkout, and the reason they sit outside it is that a
+worktree inside one is a dirty tree under another name.
