@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Window
+<UserControl
     x:Class="MeetingTranscriber.App.MeetingsDrawer"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -20,13 +20,14 @@
 
          What each card says and which of its buttons are live is not decided here either. Every
          one of them comes off an OwedWork, which is the one thing that answers that question and
-         the one thing a build agent can run. -->
+         the one thing a build agent can run.
 
-    <Window.SystemBackdrop>
-        <MicaBackdrop />
-    </Window.SystemBackdrop>
+         A control and not a window: the meetings are the bottom half of the one screen the
+         application opens on, and what is on them is read while a meeting is being recorded above.
+         The header is the only thing here that is not about a meeting — it is what raises the list
+         to the whole window and lowers it again, and it is in the same place either way. -->
 
-    <Grid x:Name="Root" Padding="24" RowSpacing="16">
+    <Grid x:Name="Root" RowSpacing="8">
         <Grid.Resources>
             <Style x:Key="MeetingCard" TargetType="Border">
                 <Setter Property="Padding" Value="16" />
@@ -37,6 +38,13 @@
             </Style>
 
             <Style x:Key="MeetingName" TargetType="TextBlock" BasedOn="{StaticResource SubtitleTextBlockStyle}" />
+
+            <!-- A meeting nobody has named. It reads as the sentence it is rather than as a name,
+                 which is the whole of ISC-165.1 on a row: the application has not thought of one
+                 and is not pretending to. -->
+            <Style x:Key="MeetingUnnamed" TargetType="TextBlock" BasedOn="{StaticResource SubtitleTextBlockStyle}">
+                <Setter Property="Opacity" Value="0.6" />
+            </Style>
 
             <Style x:Key="MeetingWhen" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
                 <Setter Property="Opacity" Value="0.6" />
@@ -60,38 +68,46 @@
 
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Spacing="4">
-            <TextBlock Text="{x:Bind In(loc:UiTexts.Meetings)}" Style="{StaticResource TitleTextBlockStyle}" />
-            <TextBlock
-                Text="{x:Bind In(loc:UiTexts.OneCardPerMeeting)}"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                TextWrapping="Wrap"
-                MaxWidth="640"
-                Opacity="0.7" />
-        </StackPanel>
+        <!-- The header, which is the drawer's own control and sits in the same place whether the
+             list is docked under the recording card or has the whole window. -->
+        <Grid Grid.Row="0" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12">
-            <Button
-                x:Name="RefreshButton"
-                Click="OnRefresh"
-                Content="{x:Bind In(loc:UiTexts.ReadTheMeetingsAgain)}" />
+            <TextBlock
+                Grid.Column="0"
+                VerticalAlignment="Center"
+                Text="{x:Bind In(loc:UiTexts.Meetings)}"
+                Style="{StaticResource SubtitleTextBlockStyle}" />
+
+            <!-- How many there are: a count, so it reads the same in either language. -->
             <TextBlock
                 x:Name="CountText"
+                Grid.Column="1"
                 VerticalAlignment="Center"
                 Style="{StaticResource CaptionTextBlockStyle}"
-                Opacity="0.7" />
-        </StackPanel>
+                Opacity="0.6" />
 
-        <ScrollViewer Grid.Row="2">
+            <!-- Its words are set in the code-behind and not bound here, because they are the one
+                 thing on this screen that says which of the two positions the drawer is in. -->
+            <Button
+                x:Name="OpennessButton"
+                Grid.Column="2"
+                Click="OnToggleOpenness" />
+        </Grid>
+
+        <ScrollViewer Grid.Row="1">
             <StackPanel x:Name="Cards" Spacing="12" />
         </ScrollViewer>
 
-        <StackPanel Grid.Row="3" Spacing="4">
+        <StackPanel Grid.Row="2" Spacing="4" HorizontalAlignment="Left">
             <!-- Said rather than left to be noticed. The rendered files are the one thing here
                  that will never be a press, so their not being a button is the screen's to explain
                  instead of looking like a control somebody lost. What it does not say is when they
@@ -105,10 +121,10 @@
                 MaxWidth="640"
                 Opacity="0.6" />
             <TextBlock
-                x:Name="StatusText"
+                x:Name="MeetingsStatusText"
                 Style="{StaticResource CaptionTextBlockStyle}"
                 TextWrapping="Wrap"
                 Opacity="0.7" />
         </StackPanel>
     </Grid>
-</Window>
+</UserControl>

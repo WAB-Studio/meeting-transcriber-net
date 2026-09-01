@@ -68,6 +68,73 @@ public sealed record RecorderChoices
     /// </summary>
     public bool Settled =>
         Microphone is not null && Source is not null && !string.IsNullOrWhiteSpace(Spoken);
+
+    /// <summary>
+    /// These choices against the microphones this machine has now: the chosen one as the machine
+    /// describes it today, or nothing chosen at all when the machine no longer offers it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What this and <see cref="AsTheSourcesAreNow"/> have in common is the outcome and not the
+    /// rule: a choice the machine stopped offering is dropped rather than carried into a recording.
+    /// Unplugged, the device opens as a refusal thrown out of a button; still selected, it is a
+    /// screen saying a recording can start when it cannot. What counts as the same offer differs
+    /// between them, and each says its own.
+    /// </para>
+    /// <para>
+    /// Here it is the id and nothing else, and the answer is the new description rather than what
+    /// was chosen. What Windows says about an endpoint changes under a screen without the endpoint
+    /// going anywhere — the default moves the moment a headset is plugged in, and the name beside
+    /// it moves with it — so the device that is still there is taken again as the machine now
+    /// describes it. Keeping the old one would leave a picker offering a list where one entry says
+    /// something the machine has stopped saying.
+    /// </para>
+    /// </remarks>
+    /// <param name="microphones">What this machine offers now.</param>
+    public RecorderChoices AsTheMicrophonesAreNow(IReadOnlyList<AudioDevice> microphones)
+    {
+        ArgumentNullException.ThrowIfNull(microphones);
+
+        if (Microphone is not { } chosen)
+        {
+            return this;
+        }
+
+        var still = microphones.FirstOrDefault(
+            offered => offered.Id.Equals(chosen.Id, StringComparison.OrdinalIgnoreCase));
+
+        return still == chosen ? this : this with { Microphone = still };
+    }
+
+    /// <summary>
+    /// These choices against what this machine is playing now: what was chosen when it is still
+    /// one of them, and nothing chosen at all when it is not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Whole equality and not a process id, which is the other half of the pair
+    /// <see cref="AsTheMicrophonesAreNow"/> describes. Windows hands a number that was one
+    /// program's to whatever starts next, so a match on the id alone would put another
+    /// application's audio on channel 0 with nothing on screen looking wrong: what says this is
+    /// still the program somebody picked is everything the machine said about it. The whole machine
+    /// is in every such list, so choosing it survives every re-reading.
+    /// </para>
+    /// <para>
+    /// The reason it is here and not inside a handler is that both moments it matters are the same
+    /// question: the list being read again while somebody is choosing, and the list being read once
+    /// more at the moment record is pressed. A screen that answered it twice would be two rules for
+    /// one refusal, and the one that costs a meeting is the one at the press.
+    /// </para>
+    /// </remarks>
+    /// <param name="sources">What channel 0 could follow now.</param>
+    public RecorderChoices AsTheSourcesAreNow(IReadOnlyList<RecorderSource> sources)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+
+        return Source is { } chosen && !sources.Contains(chosen)
+            ? this with { Source = null }
+            : this;
+    }
 }
 
 /// <summary>
@@ -108,6 +175,27 @@ public sealed record RecorderScreen
 
     /// <summary>Whether it has already been taken, which happens at most once in a meeting.</summary>
     public bool WholeMachineTaken { get; init; }
+
+    /// <summary>
+    /// Whether the meetings under the recorder may take the whole window, hiding it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only while nothing is being recorded, and that is not a layout preference. What goes with
+    /// the recorder is stop, both meters and every line a narrator is told about the moment a
+    /// device dies — and a hidden element is not in the automation tree at all, so those lines
+    /// announce nothing while it is gone. A list that could swallow a running meeting is one press
+    /// between somebody and stopping it, and silence on the one fault they needed to hear about.
+    /// </para>
+    /// <para>
+    /// Not one of <see cref="RecorderPress"/>, though it is a press on the same screen. That set is
+    /// what a recording offers, and <c>Available</c> being empty is how a screen with nothing said
+    /// on it is asserted; folding a control that is live before anything has been chosen into it
+    /// would make that assertion say something else. This is the one thing on this screen that is
+    /// about the screen rather than about the meeting, and it is answered on its own.
+    /// </para>
+    /// </remarks>
+    public bool TheMeetingsMayTakeTheWholeWindow => State == RecorderState.Choosing;
 
     /// <summary>
     /// What can be pressed now: what the state reaches, less what has not been answered yet.

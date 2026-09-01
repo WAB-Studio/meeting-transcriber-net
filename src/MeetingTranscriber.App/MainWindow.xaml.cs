@@ -9,6 +9,7 @@ using MeetingTranscriber.Recording;
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
@@ -21,15 +22,22 @@ using Duration = MeetingTranscriber.Domain.Time.Duration;
 namespace MeetingTranscriber.App;
 
 /// <summary>
-/// Where a meeting is recorded: what it will record, and record, pause, carry on and stop. The
-/// first screen of this application that is the application rather than a way of testing it.
+/// The screen the application opens on. The next meeting above — what it will record, and record,
+/// pause, carry on and stop — and the meetings already recorded below.
 /// </summary>
 /// <remarks>
 /// <para>
-/// It holds no rule of its own about what can be pressed. <see cref="RecorderScreen"/> answers
-/// that, in a project a build agent can run, and every handler here asks it before doing anything
-/// — including the handlers of controls it has just disabled, because a click already in flight
-/// arrives after that.
+/// One screen and not two, which is what this class is for. The meetings were a window behind a
+/// button, and a list behind a button is a list nobody opens: what somebody comes back to this
+/// application for is the meetings, and what they came to do once is record one. The half below is
+/// <see cref="MeetingsDrawer"/>, which owns the list and which of its two positions it is in; what
+/// this window owns about it is the half of the screen that goes when it takes the whole window.
+/// </para>
+/// <para>
+/// It holds no rule of its own about what can be pressed — including whether the list may take the
+/// window. <see cref="RecorderScreen"/> answers all of it, in a project a build agent can run, and
+/// every handler here asks it before doing anything — including the handlers of controls it has
+/// just disabled, because a click already in flight arrives after that.
 /// </para>
 /// <para>
 /// Two calls do not happen on this thread and it is not a preference in either case. Starting
@@ -92,11 +100,43 @@ public sealed partial class MainWindow : Window
     private bool _filling;
 
     /// <summary>
-    /// What this machine has, read once when the window opens. A microphone appearing mid-session
-    /// is a device change, which is its own claim and its own card; a program appearing is not,
-    /// which is why only the list below is re-read on a press.
+    /// Windows saying this machine's devices are not what they were, or nothing when it would not
+    /// be asked. Held for the whole session and let go of when the window closes.
     /// </summary>
-    private readonly AudioDevice[] _microphones;
+    private readonly DeviceChanges? _devices;
+
+    /// <summary>
+    /// The queue this window's work goes on, taken while there is still a thread that may read it
+    /// off a window. A device change arrives on the audio service's thread, and reading a XAML
+    /// object's property from there is the wrong apartment — so the queue is taken here, once,
+    /// rather than asked for inside the handler that needs it.
+    /// </summary>
+    private readonly DispatcherQueue _drawnOn;
+
+    /// <summary>
+    /// What this machine has, as of the last time it said. Read when the window opens and again
+    /// every time Windows says a device arrived, went or stopped being the default — which is the
+    /// whole of ISC-158.6 on this screen: a microphone plugged in while somebody is looking at
+    /// this list is in it, without the application being closed and opened again.
+    /// </summary>
+    private AudioDevice[] _microphones;
+
+    /// <summary>
+    /// One when a look is already queued and has not started. Windows fires several notifications
+    /// for one headset going in — the endpoint arrives, its state changes, the default moves — and
+    /// each of them means the same thing here: ask again. Collapsing them is not a timer wearing
+    /// another hat; the ask still happens on what Windows said and never on a clock, and what it
+    /// stops is three bounded questions where one answers all three.
+    /// </summary>
+    /// <remarks>
+    /// Raised on the audio service's thread before the work is queued, and lowered by the work
+    /// itself before it asks anything. Raised inside the queued work instead it would collapse
+    /// nothing at all: the dispatcher runs what it is given one item after another, so every one of
+    /// the three would find the flag down and put the same question to the machine again — three
+    /// deadlines on the thread the window draws on, for one headset. A notification arriving while
+    /// the ask is running does queue another look, which is right: the machine changed again.
+    /// </remarks>
+    private int _lookQueued;
 
     private RecorderSource[] _sources;
 
@@ -124,8 +164,10 @@ public sealed partial class MainWindow : Window
     private IReadOnlyList<ChannelReading> _channels = [];
 
     /// <summary>
-    /// The endpoint the machine is playing through, as of the last second. Kept only so that a
-    /// moment when the machine will not answer leaves the line where it was rather than flickering.
+    /// The endpoint the machine is playing through, as of the last time it moved. Asked when a
+    /// meeting starts and again when Windows says the default changed, which is the only thing
+    /// that moves it — so a machine that will not answer leaves the line where it was rather than
+    /// flickering, and a machine that answers is not asked sixty times a minute for one answer.
     /// </summary>
     private AudioDevice? _playback;
 
@@ -142,7 +184,15 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
 
         _watch.Tick += OnWatch;
+        _drawnOn = DispatcherQueue;
         Closed += OnClosed;
+
+        Meetings.Open(corpus);
+        Meetings.OpennessChanged += OnMeetingsMoved;
+
+        // Read off the drawer once here as well as on every move, so which position the screen
+        // opens in is the drawer's answer rather than two defaults that happen to agree.
+        OnMeetingsMoved(Meetings, EventArgs.Empty);
 
         var microphones = Ask(AudioDevices.Microphones, UiTexts.WindowsDidNotSayWhatMicrophonesThereAre);
         _microphones = [.. microphones ?? []];
@@ -163,6 +213,18 @@ public sealed partial class MainWindow : Window
         }
 
         ReadIn(language);
+
+        // Last, and that is the whole of why it is here rather than beside the first list: what it
+        // takes is a registration Windows holds until somebody gives it back, and a constructor
+        // that threw after taking one would leave the audio service calling into a window that
+        // never opened and whose Closed will never fire. Everything above may throw — reading the
+        // meetings opens a database — and none of it can leave that behind.
+        _devices = Ask(DeviceChanges.Listening, UiTexts.WindowsWillNotSayWhenTheDevicesChange);
+
+        if (_devices is not null)
+        {
+            _devices.Changed += OnTheDevicesChanged;
+        }
     }
 
     /// <summary>
@@ -174,16 +236,9 @@ public sealed partial class MainWindow : Window
     public event EventHandler? PackagingChecksAsked;
 
     /// <summary>
-    /// Somebody asked what the application owes the meetings already recorded, which is a window
-    /// of its own. It is reached from here because this is where a meeting comes from: stopping
-    /// starts nothing, so the press that decides what happens to a meeting is made from the
-    /// meeting rather than from the recording that made it.
-    /// </summary>
-    public event EventHandler? MeetingsAsked;
-
-    /// <summary>
     /// Reads the whole window in this language: what the XAML bound, the title, the pickers, what
-    /// has happened so far and the status line. Nothing on screen is left in the one before.
+    /// has happened so far, the status line and the meetings under it. Nothing on screen is left
+    /// in the one before.
     /// </summary>
     public void ReadIn(UiLanguage language)
     {
@@ -194,6 +249,11 @@ public sealed partial class MainWindow : Window
         FillThePickers();
         Render();
         Refresh();
+
+        // The drawer is half of this screen and not a window of its own, so it is read in the same
+        // pass rather than told separately by whatever decides the language.
+        Meetings.ReadIn(language);
+        ShowWhereTheDrawerIs();
     }
 
     /// <summary>
@@ -251,15 +311,20 @@ public sealed partial class MainWindow : Window
         MicrophonePicker.IsEnabled = choosing;
         SourcePicker.IsEnabled = choosing;
         SpokenPicker.IsEnabled = choosing;
-        RefreshProgramsButton.IsEnabled = choosing;
+        RefreshTheMachineButton.IsEnabled = choosing;
+
+        // The list below may hide this half of the screen only while there is nothing here that
+        // has to be seen. It is RecorderScreen's answer and not this window's, for the same reason
+        // every button above is.
+        Meetings.OfferTheWholeWindow(screen.TheMeetingsMayTakeTheWholeWindow);
 
         ShowTheMeters(screen.State);
         Announce(screen.State);
     }
 
     /// <summary>
-    /// Asks the devices what they are hearing and what the machine is playing through, which is
-    /// the once-a-second half of the meters and the only thing that may do it.
+    /// Asks the devices what they are hearing, which is the once-a-second half of the meters and
+    /// the only thing that may do it.
     /// </summary>
     /// <remarks>
     /// Reading a level empties it — that is what makes a meter the stretch since somebody last
@@ -276,35 +341,34 @@ public sealed partial class MainWindow : Window
         }
 
         _channels = ChannelReading.ReadFrom(recording);
-        _playback = PlayingThrough();
     }
 
     /// <summary>
-    /// The endpoint the machine is playing through now, or what it last said when it will not
-    /// answer.
+    /// Asks which endpoint the machine is playing through, which is what says whether the room is
+    /// hearing the other side of the meeting a second time.
     /// </summary>
     /// <remarks>
-    /// Asked again every second rather than kept from when the devices opened, because it is the
-    /// answer that changes under a running meeting: Windows moves what it plays through the moment
-    /// somebody plugs a headset in, and a warning settled at the start would tell that person the
-    /// room could hear them for the rest of the hour.
+    /// Asked when a meeting starts and when Windows says the default moved, and at no other
+    /// moment. It used to be asked once a second beside the meters, on the argument that the
+    /// answer changes under a running meeting — which is true, and what changes it is exactly the
+    /// event this window is now told about. Sixty questions a minute to notice one of them was the
+    /// application not being told; being told is the same warning, sooner, for one question per
+    /// headset.
     /// <para>
-    /// A refusal answers with what it last said, and writes nothing. This runs once a second, so a
-    /// machine whose audio stack is momentarily busy would otherwise put the same sentence in the
-    /// report sixty times a minute — and the thing being reported is a line beside a meter. A
-    /// machine that has stopped answering altogether reads the same way here and costs the deadline
-    /// once rather than once a second, which is the asking's own rule and not this screen's.
+    /// A refusal leaves the answer where it was and writes nothing. What is being decided is a
+    /// line beside a meter, and a machine that would not say is not worth a sentence in the report
+    /// about a warning that did not appear.
     /// </para>
     /// </remarks>
-    private AudioDevice? PlayingThrough()
+    private void ReadWhatTheMachinePlaysThrough()
     {
         try
         {
-            return AudioDevices.Playback();
+            _playback = AudioDevices.Playback();
         }
         catch (AudioCaptureException)
         {
-            return _playback;
+            // Left as it was, deliberately.
         }
     }
 
@@ -573,7 +637,8 @@ public sealed partial class MainWindow : Window
             MicrophonePicker.ItemsSource = _microphones.Select(device => device.ToString()).ToArray();
             MicrophonePicker.SelectedIndex = _chosen.Microphone is null
                 ? -1
-                : Array.FindIndex(_microphones, device => device.Id == _chosen.Microphone.Id);
+                : Array.FindIndex(_microphones, device =>
+                    device.Id.Equals(_chosen.Microphone.Id, StringComparison.OrdinalIgnoreCase));
 
             SourcePicker.ItemsSource = _sources.Select(NameOf).ToArray();
             SourcePicker.SelectedIndex = _chosen.Source is null ? -1 : Array.IndexOf(_sources, _chosen.Source);
@@ -619,16 +684,17 @@ public sealed partial class MainWindow : Window
     /// <param name="machine">The question, which is asked once.</param>
     /// <param name="unanswered">
     /// What to say when it will not answer, in this reader's language. Handed in rather than picked
-    /// here, because this method funnels more than one question — the microphones and the programs
-    /// that are playing — and a sentence about one over an answer about the other is a report
-    /// saying something that did not happen.
+    /// here, because this method funnels more than one question — the microphones, the programs
+    /// that are playing, and being told when either changes — and a sentence about one over an
+    /// answer about another is a report saying something that did not happen.
     /// </param>
     /// <returns>
     /// What the machine said, or nothing at all when it would not say — which is not the same
     /// answer as an empty list and is not shown as one. What happened is in the report either way,
     /// as a sentence from the catalogue with the machine's own words under it.
     /// </returns>
-    private IReadOnlyList<T>? Ask<T>(Func<IReadOnlyList<T>> machine, UiText unanswered)
+    private T? Ask<T>(Func<T> machine, UiText unanswered)
+        where T : class
     {
         try
         {
@@ -680,22 +746,139 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Programs come and go while somebody is deciding, and the meeting they are about to record
-    /// is usually one they started after opening this. A choice that is no longer running is
-    /// dropped rather than carried into a recording that would follow a process id nothing owns.
+    /// Everything this machine offers, asked again. A choice it no longer offers is dropped rather
+    /// than carried into a recording that would open a device that has gone or follow a process id
+    /// nothing owns.
     /// </summary>
-    private void OnRefreshPrograms(object sender, RoutedEventArgs e)
+    /// <remarks>
+    /// Both pickers and not only the programs, which is what it used to be. The microphones keep up
+    /// on their own now, and a press that refreshed one of the two would be a control that looks
+    /// broken beside the one it does not touch — but the reason it asks about them is the session
+    /// where Windows refused to say when devices change at all. There the machine answers perfectly
+    /// well and nothing ever asks it again, and one press turns that from a dead session into a
+    /// degraded one. Programs have no notification of their own: nothing tells an application that
+    /// a meeting was just started in a browser tab.
+    /// </remarks>
+    private void OnRefreshTheMachine(object sender, RoutedEventArgs e)
     {
-        _sources = SourcesNow();
+        LookAtTheMicrophonesAgain();
 
-        if (_chosen.Source is { } chosen && !_sources.Contains(chosen))
-        {
-            _chosen = _chosen with { Source = null };
-        }
+        _sources = SourcesNow();
+        _chosen = _chosen.AsTheSourcesAreNow(_sources);
 
         FillThePickers();
         Refresh();
     }
+
+    /// <summary>
+    /// Windows says this machine's devices are not what they were, so the pickers are asked again.
+    /// </summary>
+    /// <remarks>
+    /// It arrives on whatever thread the audio service uses, so the whole of the work is put on
+    /// the dispatcher: what follows touches every control on this screen. On the queue taken in
+    /// the constructor and not on <c>this.DispatcherQueue</c>, which is a property of a XAML object
+    /// and so is itself a call across the apartment this handler is already on the wrong side of.
+    /// <c>TryEnqueue</c> and not a throw, because it answers false exactly when the window is going
+    /// away, which is a notification arriving during a close and not a fault.
+    /// </remarks>
+    private void OnTheDevicesChanged(object? sender, EventArgs e)
+    {
+        if (Interlocked.Exchange(ref _lookQueued, 1) == 0)
+        {
+            _drawnOn.TryEnqueue(LookAtTheDevicesAgain);
+        }
+    }
+
+    /// <summary>
+    /// The machine asked again, on the thread the screen is drawn on. Everything Windows said since
+    /// this was queued is one answer, however many ways it said it.
+    /// </summary>
+    /// <remarks>
+    /// The microphones are asked for only while nothing is being recorded, and that is not an
+    /// optimisation. <see cref="DeviceEnquiry"/> remembers a question given up on against the
+    /// question and not against whoever asked it, and while a meeting runs the one asking this one
+    /// is the capture session, every two seconds, following channel 1 onto whatever replaced a
+    /// device that went. A screen asking the same thing on the same event — the unplug is what
+    /// fires both — could wedge first and leave the recovery refused for the rest of the meeting,
+    /// which is the coupling that file's scoping exists to prevent. Nothing is lost by waiting:
+    /// what the next meeting records is chosen when this screen is choosing, and stopping asks
+    /// again.
+    /// <para>
+    /// What the machine plays through is this screen's own question and nobody else's, so it is
+    /// asked whenever there is a meeting for the answer to be a warning about.
+    /// </para>
+    /// </remarks>
+    private void LookAtTheDevicesAgain()
+    {
+        Interlocked.Exchange(ref _lookQueued, 0);
+
+        if (_closed)
+        {
+            return;
+        }
+
+        if (Screen().State == RecorderState.Choosing)
+        {
+            LookAtTheMicrophonesAgain();
+            FillThePickers();
+            Refresh();
+            return;
+        }
+
+        if (_recording is not null)
+        {
+            ReadWhatTheMachinePlaysThrough();
+            ShowTheMeters(Screen().State);
+        }
+    }
+
+    /// <summary>
+    /// What this machine offers to record from now, and what that leaves chosen. Called only where
+    /// nothing else is asking that question — see <see cref="LookAtTheDevicesAgain"/>.
+    /// </summary>
+    /// <remarks>
+    /// It writes the fields and leaves the controls alone, because every caller has other fields to
+    /// write first and would otherwise draw the screen twice.
+    /// </remarks>
+    private void LookAtTheMicrophonesAgain()
+    {
+        var microphones = Ask(AudioDevices.Microphones, UiTexts.WindowsDidNotSayWhatMicrophonesThereAre);
+
+        // A machine that would not say leaves the list where it was. An empty picker written from
+        // a refusal is the failure ISC-163 is about wearing a different hat: it reads as a machine
+        // with no microphone, and the recording it stops is one that would have run.
+        if (microphones is null)
+        {
+            return;
+        }
+
+        _microphones = [.. microphones];
+
+        var chosen = _chosen.AsTheMicrophonesAreNow(_microphones);
+        var gone = _chosen.Microphone is not null && chosen.Microphone is null;
+        _chosen = chosen;
+
+        if (gone)
+        {
+            Say(UiTexts.TheMicrophoneChosenIsNoLongerThere);
+        }
+    }
+
+    /// <summary>
+    /// The meetings took the whole window, or gave it back. The recorder above goes with it: the
+    /// list is the same screen rather than another one, and a card left showing over a full-height
+    /// list would be the two of them arguing about the room.
+    /// </summary>
+    private void OnMeetingsMoved(object? sender, EventArgs e) => ShowWhereTheDrawerIs();
+
+    /// <summary>
+    /// The recorder half, shown or not according to where the drawer is. One writer and one
+    /// reading, called from the constructor, from a language change and from the drawer saying it
+    /// moved — so which position the screen is in is the drawer's answer everywhere rather than two
+    /// defaults in two files that happen to agree.
+    /// </summary>
+    private void ShowWhereTheDrawerIs() =>
+        RecordingCard.Visibility = Meetings.HasTheWholeWindow ? Visibility.Collapsed : Visibility.Visible;
 
     private void OnLanguageChosen(object sender, SelectionChangedEventArgs e)
     {
@@ -720,9 +903,6 @@ public sealed partial class MainWindow : Window
     private void OnOpenPackagingChecks(object sender, RoutedEventArgs e) =>
         PackagingChecksAsked?.Invoke(this, EventArgs.Empty);
 
-    private void OnOpenMeetings(object sender, RoutedEventArgs e) =>
-        MeetingsAsked?.Invoke(this, EventArgs.Empty);
-
     private async void OnRecord(object sender, RoutedEventArgs e)
     {
         if (!Screen().Allows(RecorderPress.Start) || _corpus.Folder is not { } folder)
@@ -734,15 +914,22 @@ public sealed partial class MainWindow : Window
         // the list being read and record being pressed the chosen program can have exited and
         // Windows can have handed its number to something else, which would put another
         // application's audio on channel 0 with nothing on screen looking wrong. So the answer is
-        // taken again here rather than trusted, and a program that has gone is said and unchosen.
-        if (_chosen.Source is { IsTheWholeMachine: false } following && !StillRunning(following))
+        // taken again here rather than trusted, through the same rule that drops a choice anywhere
+        // else — a machine that would not say answers with the whole machine and nothing more,
+        // which reads as the program having gone, and that is the answer to give when this is what
+        // stands between somebody and a recording of the wrong process.
+        if (_chosen.Source is { IsTheWholeMachine: false })
         {
-            _chosen = _chosen with { Source = null };
             _sources = SourcesNow();
-            FillThePickers();
-            Say(UiTexts.ThatProgramIsNoLongerRunning);
-            Refresh();
-            return;
+
+            if (_chosen.AsTheSourcesAreNow(_sources) is var still && still != _chosen)
+            {
+                _chosen = still;
+                FillThePickers();
+                Say(UiTexts.ThatProgramIsNoLongerRunning);
+                Refresh();
+                return;
+            }
         }
 
         var chosen = _chosen;
@@ -798,8 +985,10 @@ public sealed partial class MainWindow : Window
             _watch.Start();
 
             // Once here, so the meters and the line about the room are up with the meeting rather
-            // than a second into it. Everything after this is the tick's.
+            // than a second into it. The meters are the tick's from here on; what the machine plays
+            // through is nobody's until Windows says it moved.
             ReadTheDevices();
+            ReadWhatTheMachinePlaysThrough();
         }
         catch (Exception refused) when (Reportable(refused))
         {
@@ -816,22 +1005,6 @@ public sealed partial class MainWindow : Window
             }
         }
     }
-
-    /// <summary>Whether the program somebody chose is one of the ones running now.</summary>
-    /// <remarks>
-    /// By name as well as by number. A process id on its own says nothing — Windows reuses them —
-    /// and the pair is what says this is still the program that was picked rather than whatever
-    /// inherited its number.
-    /// <para>
-    /// A machine that would not say reads the same as one that says the program is gone, which is
-    /// the answer to give when this is what stands between somebody and a recording of the wrong
-    /// process: it is not still running until something says it is.
-    /// </para>
-    /// </remarks>
-    private bool StillRunning(RecorderSource following) =>
-        (Ask(AudioProcesses.Running, UiTexts.WindowsDidNotSayWhatIsPlaying) ?? []).Any(program =>
-            program.Id == following.Follow!.Id
-            && string.Equals(program.Name, following.Follow.Name, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Whether this is something to say on screen rather than something to end the application
@@ -942,8 +1115,18 @@ public sealed partial class MainWindow : Window
 
             if (!_closed)
             {
+                // The one moment the microphones are asked about outside a device change: nothing
+                // asked while the meeting ran, because the capture session was asking the same
+                // question of the same machine, so anything that arrived or went in the last hour
+                // is learned here.
+                LookAtTheMicrophonesAgain();
                 FillThePickers();
                 Refresh();
+
+                // The one thing that puts a row in the list below without anybody pressing
+                // anything. Read here rather than left to the next press, because the meeting that
+                // has just been made is the one somebody is about to decide about.
+                Meetings.Read();
             }
         }
     }
@@ -1050,6 +1233,11 @@ public sealed partial class MainWindow : Window
     {
         _closed = true;
         _watch.Stop();
+
+        // Before the guard below, and it is the one thing here that is: what it stops is Windows
+        // calling into a closed window about a device, which has nothing to do with whichever
+        // press is still holding a recording.
+        _devices?.Dispose();
 
         if (_step != RecorderStep.Nothing)
         {

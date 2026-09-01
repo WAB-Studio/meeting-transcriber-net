@@ -236,6 +236,91 @@ public class RecorderScreenTests
         Should.Throw<RecordingException>(() => ((RecorderState)99).Reaches());
     }
 
+    /// <summary>
+    /// ISC-158.6's rule half: the machine is asked again while the window is open, and what it
+    /// answers is what the screen offers. A microphone that was not there when the window opened
+    /// is recordable with, and one that has gone stops being an answer to the question.
+    /// </summary>
+    /// <remarks>
+    /// What no probe here reaches is Windows saying so. That needs a device to arrive, which no
+    /// build agent has and nothing here can fabricate; it is run by hand on a machine with a
+    /// microphone to unplug. What is held is everything downstream of the machine's answer, which
+    /// is where the meeting is lost: a picker still offering an endpoint that has gone is a record
+    /// button that throws.
+    /// </remarks>
+    [Fact]
+    public void A_microphone_that_has_gone_stops_being_chosen()
+    {
+        var left = Everything.AsTheMicrophonesAreNow([]);
+
+        left.Microphone.ShouldBeNull();
+        Screen(RecorderState.Choosing, left).Allows(RecorderPress.Start).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The same device as the machine describes it now, which is the case a match on the id alone
+    /// would pass while showing the wrong thing: nothing arrived or went, and what moved is which
+    /// endpoint Windows calls the default — the one word the picker puts beside a name.
+    /// </summary>
+    [Fact]
+    public void A_microphone_that_is_still_there_is_taken_as_the_machine_now_describes_it()
+    {
+        var noLongerDefault = AMicrophone with { IsDefault = false };
+
+        Everything.AsTheMicrophonesAreNow([noLongerDefault]).Microphone.ShouldBe(noLongerDefault);
+    }
+
+    [Fact]
+    public void Nothing_chosen_stays_nothing_chosen_however_the_machine_changes()
+    {
+        RecorderChoices.Nothing.AsTheMicrophonesAreNow([AMicrophone]).Microphone.ShouldBeNull();
+    }
+
+    /// <summary>
+    /// The other half of the same rule, over the programs. A program somebody chose and then
+    /// closed is not one channel 0 can follow, and carrying the choice would follow a process id
+    /// that now belongs to whatever Windows handed it to.
+    /// </summary>
+    [Fact]
+    public void A_program_that_has_stopped_playing_stops_being_chosen()
+    {
+        var left = Everything.AsTheSourcesAreNow([RecorderSource.TheWholeMachine]);
+
+        left.Source.ShouldBeNull();
+        Screen(RecorderState.Choosing, left).Allows(RecorderPress.Start).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void A_program_still_playing_stays_chosen()
+    {
+        Everything.AsTheSourcesAreNow([RecorderSource.TheWholeMachine, AProgram]).ShouldBe(Everything);
+    }
+
+    /// <summary>
+    /// The list under the recorder may have the whole window only while nothing is being recorded.
+    /// What goes with the recorder is stop, both meters and every line a narrator is told about
+    /// the moment a device dies, so a list that could swallow a running meeting is one press
+    /// between somebody and stopping it.
+    /// </summary>
+    /// <remarks>
+    /// Over every state rather than the two that matter, because the failure is a state added later
+    /// and not thought about: the question is asked of the screen, and a new state answers it one
+    /// way or the other whether or not anybody chose.
+    /// </remarks>
+    [Theory]
+    [InlineData(RecorderState.Choosing, true)]
+    [InlineData(RecorderState.Recording, false)]
+    [InlineData(RecorderState.Paused, false)]
+    [InlineData(RecorderState.Starting, false)]
+    [InlineData(RecorderState.Finishing, false)]
+    [InlineData(RecorderState.WithoutACorpus, false)]
+    public void The_meetings_take_the_whole_window_only_while_nothing_is_being_recorded(
+        RecorderState state,
+        bool may)
+    {
+        Screen(state, Everything).TheMeetingsMayTakeTheWholeWindow.ShouldBe(may);
+    }
+
     private static RecorderScreen Screen(RecorderState state, RecorderChoices chosen) =>
         new() { State = state, Chosen = chosen };
 }

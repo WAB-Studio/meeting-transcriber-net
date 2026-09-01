@@ -71,11 +71,12 @@ answer instead of writing the whole walk in advance. `see` also returns the pict
 ```text
 start                          → 7feb8c95-...!App is process 12216, from C:\...\win-x64\...exe
                                  window "Grabar una reunión" ... (the whole tree)
-press MeetingsButton           → pressed MeetingsButton
-                                 The application has 2 windows open — "Reuniones", "Grabar una
-                                 reunión" — and the script has not said which one it is on.
-wait RefreshButton             → on "Reuniones"
-                                 window "Reuniones" ... (the whole tree)
+press PackagingChecksButton    → pressed PackagingChecksButton
+                                 The application has 2 windows open — "Comprobaciones de
+                                 empaquetado", "Grabar una reunión" — and the script has not said
+                                 which one it is on.
+wait EnvironmentButton         → on "Comprobaciones de empaquetado"
+                                 window "Comprobaciones de empaquetado" ... (the whole tree)
 see                            → the tree, then the PNG
 close                          → Closed.
 ```
@@ -92,18 +93,18 @@ else. The application is closed on the way out either way.
 
 ```powershell
 dotnet run --project tools/MeetingTranscriber.UiProbe -- --out $env:TEMP\ui-probe `
-  see recorder press MeetingsButton wait RefreshButton see meetings
+  see docked press OpennessButton wait OpennessButton see whole
 ```
 
 ```text
 7feb8c95-4553-46f0-a036-6574f4cd7cb4_savbypjtf9g9c!App is process 38684, from C:\...\win-x64\MeetingTranscriber.App.exe
-  see recorder
-    recorder.tree.txt and recorder.png (1920x1023)
-  press MeetingsButton
-  wait RefreshButton
-    on "Reuniones"
-  see meetings
-    meetings.tree.txt and meetings.png (1920x1023)
+  see docked
+    docked.tree.txt and docked.png (1920x1023)
+  press OpennessButton
+  wait OpennessButton
+    on "Grabar una reunión"
+  see whole
+    whole.tree.txt and whole.png (1920x1023)
 done, in C:\Users\pc\AppData\Local\Temp\ui-probe
 ```
 
@@ -118,7 +119,7 @@ A line is `Type #x:Name "what it says"`, indented by depth, with `value=`, `help
 ```text
       ComboBox #MicrophonePicker "Micrófono"
       Button #RecordButton "Grabar"  disabled
-      Button #MeetingsButton "Reuniones"
+      Button #OpennessButton "Abrir la lista entera"
 ```
 
 ## Naming an element
