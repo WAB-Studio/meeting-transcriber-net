@@ -118,7 +118,21 @@
     </XmlPeek>
 
     <Error Condition="'$(_PackageIdentityInTheSource)' == ''"
-           Text="@(AppxManifest) has no &lt;Identity Name&gt;, so there is no name for the package identity to be built out of. Nothing was written to $(FinalAppxManifestName)." />
+           Text="@(AppxManifest) has no &lt;Identity Name&gt;, so there is no name for the package identity to be built out of. The identity in $(FinalAppxManifestName) is left as the build wrote it." />
+
+    <!-- Fifty is the maxLength the appx foundation schema puts on <Identity Name>, and a name over
+         it is the one failure in this whole mechanism that says nothing: `Add-AppxPackage -Register`
+         refuses the manifest without naming the reason, so the checkout stays registered to whatever
+         it had before and every refusal after that is about the wrong folder. Catching it here is
+         what turns that into a sentence. How much room the suffix has is asked of the source name
+         rather than written down, because renaming the identity moves it. -->
+    <PropertyGroup>
+      <_MostCharactersInAPackageName>50</_MostCharactersInAPackageName>
+      <_PackageIdentityWanted>$(_PackageIdentityInTheSource)$(PackageIdentitySuffix)</_PackageIdentityWanted>
+    </PropertyGroup>
+
+    <Error Condition="$(_PackageIdentityWanted.Length) &gt; $(_MostCharactersInAPackageName)"
+           Text="PackageIdentitySuffix '$(PackageIdentitySuffix)' would make the package identity $(_PackageIdentityWanted), which is $(_PackageIdentityWanted.Length) characters. Windows caps a package name at $(_MostCharactersInAPackageName) and Add-AppxPackage refuses a longer one without saying why. $(_PackageIdentityInTheSource) leaves $([MSBuild]::Subtract($(_MostCharactersInAPackageName), $(_PackageIdentityInTheSource.Length))) characters for the suffix. The identity in $(FinalAppxManifestName) is left as the build wrote it - see docs/ui-probe.md." />
 
     <XmlPeek XmlInputPath="$(FinalAppxManifestName)"
              Namespaces="$(_PackageManifestNamespace)"
@@ -126,10 +140,10 @@
       <Output TaskParameter="Result" PropertyName="_PackageIdentityAsGenerated" />
     </XmlPeek>
 
-    <XmlPoke Condition="'$(_PackageIdentityAsGenerated)' != '$(_PackageIdentityInTheSource)$(PackageIdentitySuffix)'"
+    <XmlPoke Condition="'$(_PackageIdentityAsGenerated)' != '$(_PackageIdentityWanted)'"
              XmlInputPath="$(FinalAppxManifestName)"
              Namespaces="$(_PackageManifestNamespace)"
              Query="$(_PackageIdentityQuery)"
-             Value="$(_PackageIdentityInTheSource)$(PackageIdentitySuffix)" />
+             Value="$(_PackageIdentityWanted)" />
   </Target>
 </Project>
