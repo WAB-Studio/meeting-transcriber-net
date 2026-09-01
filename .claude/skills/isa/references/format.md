@@ -127,7 +127,9 @@ and CI:
 Name the test class or the command precisely enough that the next reader can re-run it. A test
 class alone is enough when the whole class is the probe; name the method when one method is. Naming
 them costs nothing: gate 11 measures the prose left when the backticked spans come out, so four
-method names are free and the sentence explaining them is not.
+method names are free and the sentence explaining them is not. Free has a ceiling on it:
+gate 12 bounds the whole stub, so a probe walk long enough to reach it is one to shorten
+rather than one to tick.
 
 **Say what the evidence does not reach.** A claim marked `[x]` reads as fully probed, and most are
 not: a hand run covers one machine, a unit test cannot open a device, half a claim is argued off
@@ -169,7 +171,8 @@ Mechanical, enforced by `IsaStructureTests`, and hard failures:
 9. `## Learning` is whole entries of four labels in order, and nothing else.
 10. No number is missing between the first ID and the last, at the root and under every parent.
 11. No `## Verification` stub carries more prose outside its pointers than `LongestStubProse`.
-12. A stub's backticks close, and no backticked span runs past `LongestPointer` for free.
+12. A stub's backticks close, no backticked span runs past `LongestPointer` for free, and its
+    evidence runs no longer than `LongestStubProse` and `MostFreePointers` together.
 13. Every `## Verification` stub names a claim above, and that claim is marked closed.
 14. No ISC ID carries two `## Verification` stubs.
 
@@ -177,16 +180,22 @@ Check 11 was advisory until 2026-08-26, on the argument that a pointer cannot be
 paragraph by counting characters. That holds for the line, which here is mostly test names — seven
 of them is 668 characters saying nothing but where to look — and not for what is left once the
 backticked spans come out, which on the file of that day separated cleanly into stubs nobody had
-flagged and stubs that were essays. Both numbers live on `LongestStubProse` and `LongestPointer` in
-`IsaStructureTests` and `IsaDocument`, with the measurement they came off; changing either means
-editing the constant there, and this line is deliberately not a second copy of it.
+flagged and stubs that were essays. The three numbers live on `LongestStubProse` and
+`MostFreePointers` in `IsaStructureTests` and on `LongestPointer` in `IsaDocument`, each with the
+measurement it came off; changing one means editing the constant there, and this line is
+deliberately not a second copy of it.
 
 The reason it is a gate and not a note is where the rule lived. Whoever appends to an append-only
 section greps their own ISC and never opens the file, so they take the neighbour as the model and
 never read this line at all. Check 12 is there because the measure can be read as exact and is
-not: ticks are what makes a span free, so unclosed ones swallow the prose between two of them and
-an unbounded one launders a paragraph as a pointer. It bounds both rather than claiming to shut
-them — `IsaDocument` says which case each still lets through.
+not: ticks are what makes a span free, so unclosed ones swallow the prose between two of them,
+an unbounded one launders a paragraph as a pointer, and an unbounded number of bounded ones
+launders the same paragraph in fourteen pieces. Pricing a span cannot reach the third, so what
+closes it is the second half of check 12, which measures the whole stub and not the prose left in
+it. That is a bound and not an exactness: `IsaDocument` and `IsaStructureTests` say which case
+each still lets through, and one of them is a person's to see rather than the gate's — a stub over
+budget can buy a second budget by becoming two claims, and nothing mechanical tells that from a
+claim that was always two.
 
 Check 10 is the other hand of check 4. A duplicate ID is a number issued twice; a hole is a claim
 deleted instead of tombstoned, or a run of them shifted down to close one — which silently

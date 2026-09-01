@@ -79,6 +79,13 @@ internal sealed partial class IsaDocument
 
     public static IsaDocument Read() => new(File.ReadAllLines(Path().FullName));
 
+    /// <summary>
+    /// Read from lines instead of from the file, so a stub written to break a gate can be measured
+    /// without editing the corpus the gates run over. Every number the gates compare against came
+    /// off that corpus, and a mutation of it is a hand run nothing re-runs.
+    /// </summary>
+    internal static IsaDocument Of(params string[] lines) => new(lines);
+
     private static Dictionary<string, string> ReadFrontmatter(string[] lines)
     {
         var fields = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -220,10 +227,11 @@ internal sealed partial class IsaDocument
     /// character for one character.
     /// </summary>
     /// <remarks>
-    /// Measured over the 434 spans in the section on 2026-09-01: the longest is 133, ISC-158.1's
-    /// UI probe walk, then ISC-171's at 119 and a fully-qualified test name at 113. Nothing else
-    /// reaches 110. So 150 is above every pointer anybody has written, with room for a longer
-    /// walk than any that exists.
+    /// Measured over the 437 spans in the section on 2026-09-01, and every length here is
+    /// <c>Match.Length</c> — the span with its two backticks, which is what the comparison below
+    /// gets. The longest is 135, ISC-158.1's UI probe walk, then ISC-171's at 121 and ISC-126's
+    /// fully-qualified test name at 115. One more reaches 110 and nothing else does. So 150 is
+    /// above every pointer anybody has written, with room for a longer walk than any that exists.
     /// </remarks>
     private const int LongestPointer = 150;
 
@@ -250,25 +258,34 @@ internal sealed partial class IsaDocument
     /// same evidence with its pointers taken out. The split is the whole point — naming four test
     /// methods precisely is what the format asks for and costs nothing, while the sentences around
     /// them are what the size gate is over. <paramref name="Evidence"/> is kept beside the prose
-    /// because a measure that only ever sees its own output cannot be checked for having read the
-    /// line correctly, which is what the backtick-parity gate does with it.
+    /// because a stub that spends its whole budget inside backticks measures nothing at all in
+    /// <paramref name="Prose"/>, so the gate reads both: what a stub says in the open, and what it
+    /// carries in total. Their difference is what the pointers were let off for being pointers.
     /// </summary>
     internal sealed record Stub(string Id, string Evidence, string Prose)
     {
         /// <summary>
-        /// Whether the backticks close. They always have, and the gate is over one of the two
-        /// ways this measure fails open rather than shut: <c>Pointer()</c> pairs ticks, so a
-        /// single dropped tick makes one span out of everything between two unrelated ones, and
-        /// several hundred characters of prose stop being counted at all.
+        /// Whether the backticks close. They always have, and it is one of the three ways the
+        /// prose measure fails open rather than shut: <c>Pointer()</c> pairs ticks, so a single
+        /// dropped tick makes one span out of everything between two unrelated ones, and several
+        /// hundred characters of prose stop being counted at all.
         /// </summary>
         /// <remarks>
-        /// The other way is a span that pairs correctly and is a paragraph, which is
-        /// <see cref="LongestPointer"/>'s. Neither is shut, and saying which is left open is the
-        /// point of writing them down: an even number of ticks in the wrong places still welds
-        /// two spans together, and a ticked paragraph is still discounted 150 characters, so 800
-        /// of it now fails where it used to pass and 600 of it passes at 450. What the two buy
-        /// together is a bound — no stub can be arbitrarily long and measure short — and not the
-        /// exactness the size gate on its own reads as having.
+        /// The second is a span that pairs correctly and is a paragraph, which
+        /// <see cref="LongestPointer"/> prices at everything past 150 — a 600-character span is
+        /// charged 450, which is a price and not a refusal, so whether that stub goes red depends
+        /// on what else it says. The third is that paragraph cut into spans that are each short,
+        /// which no per-span price reaches at all: fourteen ticked spans of 140 discount 1960
+        /// between them.
+        ///
+        /// None of the three is shut, and saying what each still lets through is the point of
+        /// writing them down. What shuts the question they share is not here but in
+        /// <c>IsaStructureTests</c>, which reads <paramref name="Evidence"/> as well as
+        /// <paramref name="Prose"/>: however a stub arranges its ticks, everything it carries past
+        /// the two budgets together is charged, so no stub can be arbitrarily long and measure
+        /// short. What it can still do is spend the whole of both on pointers, which is the prose
+        /// ceiling more than it is a defect — a stub of nothing but test names is what the format
+        /// asks for.
         /// </remarks>
         public bool PointersClose => Evidence.Count(character => character == '`') % 2 == 0;
     }

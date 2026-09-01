@@ -52,6 +52,34 @@ public class IsaStructureTests
     private const int LongestStubProse = 575;
 
     /// <summary>
+    /// What a stub's pointers may come to on top of <see cref="LongestStubProse"/>. The two added
+    /// together are the longest evidence a stub may carry, whatever it does with its backticks.
+    /// </summary>
+    /// <remarks>
+    /// The prose measure prices a backticked span at everything past `LongestPointer`, so it
+    /// bounds one span and never the number of them: fourteen ticked spans of 140 discount 1960
+    /// between them and leave 13 characters to measure. That is not a dodge somebody plots — the
+    /// section already backticks whole sentences as evidence — but a check that can be walked past
+    /// by pressing Enter is not a check, and the alternative on offer was to write the walk down
+    /// and leave it open.
+    ///
+    /// It is not derived from a gap the way <see cref="LongestStubProse"/> was, because there is
+    /// no population of flagged stubs to sit above: nobody has ever been told they named too many
+    /// probes, and the format spec says naming them costs nothing. Measured over the 131 stubs on
+    /// 2026-09-01, what a stub's pointers come to runs to a median of 115 and a top of ISC-110.1
+    /// at 751 across 13 spans, then ISC-126 at 684 and ISC-34 at 545. So this sits above the
+    /// highest with room for two more fully-qualified test names — 115 apiece with their ticks —
+    /// on the densest stub in the file.
+    ///
+    /// What the sum bounds is the whole stub and not the pointers on their own, and that is
+    /// deliberate: a stub of nothing but test names is exactly what the format asks for, so a
+    /// stub spending its prose budget on pointers too is inside the rule rather than around it.
+    /// The evidence ceiling it comes to is 316 characters above the longest evidence in the
+    /// section, which is ISC-110.1's at 1259.
+    /// </remarks>
+    private const int MostFreePointers = 1000;
+
+    /// <summary>
     /// The eight lists of the MeetingTranscriber space, plus the em dash F0 carries because
     /// cross-cutting work belongs to no single list.
     /// </summary>
@@ -190,8 +218,15 @@ public class IsaStructureTests
         // The dodge the size gate below creates, and the reason it is written down the moment the
         // gate is: a stub too long for check 11 passes it by being cut in half under the same ID,
         // and every other check here is happy — the claim still has its evidence, and both halves
-        // still parse. A claim closes on one line or the retelling has just moved. Cutting it in
-        // half under two IDs instead is the check above: the second half has to name a claim.
+        // still parse. A claim closes on one line or the retelling has just moved.
+        //
+        // Cutting it in half under an ID no claim carries is the check above. What neither check
+        // reaches, and what is written down rather than built against: the splitter can write the
+        // claim. Adding `- [x] ISC-N.1` beside ISC-N, hanging the second half off it and bumping
+        // `progress:` leaves every gate here green, and buys a whole second budget for three lines
+        // — proved by running it, not argued. Nothing mechanical tells a claim that was always two
+        // claims from one bought to carry an overrun, because the difference is what the sentences
+        // say. That one is a reviewer's to see, and it is here so they know to look.
         isa.Stubs.Select(stub => stub.Id).ShouldBeUnique();
     }
 
@@ -205,26 +240,81 @@ public class IsaStructureTests
     [Fact]
     public void A_stub_points_at_its_evidence_instead_of_retelling_it()
     {
-        // Checked first because the gate below is measured through it: the one way that measure
-        // fails open is a dropped backtick welding two pointers into a single span and taking the
-        // prose between them out of the count.
-        isa.Stubs.Where(stub => !stub.PointersClose).Select(stub => stub.Id).ShouldBeEmpty(
-            "a stub with an odd number of backticks does not measure what it looks like it "
-            + "measures, so the size gate reads it as shorter than it is.");
-
         var overlong = isa.Stubs
-            .Where(stub => stub.Prose.Length > LongestStubProse)
-            .Select(stub => $"{stub.Id} ({stub.Prose.Length})")
+            .Where(Retells)
+            .Select(stub => $"{stub.Id} (prose {stub.Prose.Length}, evidence {stub.Evidence.Length})")
             .ToArray();
 
         overlong.ShouldBeEmpty(
             $"a Verification stub points at the evidence; past {LongestStubProse} characters of "
-            + "prose it is retelling it. Test names, commands and paths are free here, so name "
-            + "every probe precisely — it is the sentences around them that have somewhere "
-            + "better to be. What explains one file is a comment in that file, what argues the "
-            + "design is `arquitectura.md`, and how this session got there is the commit message "
-            + "and the PR, which is where anybody following the merge back is already standing.");
+            + "prose it is retelling it, and past that plus another "
+            + $"{MostFreePointers} of pointers it is retelling it inside backticks. Which number "
+            + "the stub is over says which to cut: test names, commands and paths are free "
+            + "against the first and not against the second. What explains one file is a comment "
+            + "in that file, what argues the design is `arquitectura.md`, and how this session "
+            + "got there is the commit message and the PR, which is where anybody following the "
+            + "merge back is already standing.");
     }
+
+    /// <summary>
+    /// Its own fact rather than the size gate's preamble. The evidence half of that gate holds
+    /// whether the ticks pair the way they look or not, so nothing has to be checked before
+    /// anything — and while the two shared a fact, a stub that dropped a tick *and* ran a
+    /// thousand characters over reported only the tick, sending its author back for a second run
+    /// to find out the rest.
+    /// </summary>
+    [Fact]
+    public void A_stub_that_drops_a_backtick_is_not_measured_as_shorter_than_it_is()
+    {
+        isa.Stubs.Where(stub => !stub.PointersClose).Select(stub => stub.Id).ShouldBeEmpty(
+            "a stub with an odd number of backticks does not measure what it looks like it "
+            + "measures, so the prose half of the size gate reads it as shorter than it is.");
+    }
+
+    /// <summary>
+    /// The size gate over stubs written to break it, because over `ISA.md` it has nothing to bite
+    /// on: the longest span there is 135 against a `LongestPointer` of 150 and the heaviest
+    /// pointers come to 751 against a `MostFreePointers` of 1000, so both prices are dead in CI
+    /// and every proof they work has been a hand run over a temporarily edited file. That is how
+    /// the per-span price shipped with the split form open — the arithmetic was argued in a
+    /// comment and never run.
+    /// </summary>
+    [Fact]
+    public void A_paragraph_is_a_paragraph_however_its_backticks_fall()
+    {
+        var name = new string('n', 113);
+        var sevenNames = string.Concat(Enumerable.Repeat($"`{name}`", 7));
+        var ceiling = new string('x', LongestStubProse);
+
+        Retells(OneStub(new string('x', 600))).ShouldBeTrue("600 characters of plain prose.");
+        Retells(OneStub($"`{new string('x', 798)}`")).ShouldBeTrue(
+            "the same paragraph inside one pair of backticks, which the per-span price catches.");
+        Retells(OneStub(string.Join(" ", Enumerable.Repeat($"`{new string('x', 138)}`", 14))))
+            .ShouldBeTrue(
+                "the same paragraph in fourteen ticked spans of 140, which the per-span price "
+                + "does not catch — it discounts all 1960 of them and leaves 13 to measure.");
+
+        Retells(OneStub(sevenNames)).ShouldBeFalse(
+            "seven fully-qualified test names and nothing else is the stub the format asks for.");
+        Retells(OneStub(ceiling + sevenNames)).ShouldBeFalse(
+            "prose at its ceiling with 805 characters of pointers under it is inside both.");
+        Retells(OneStub(ceiling + sevenNames + string.Concat(Enumerable.Repeat($"`{name}`", 2))))
+            .ShouldBeTrue(
+                "two more names take the pointers to 1035 over prose already at its ceiling, so "
+                + "the evidence bound is the only one that moved.");
+    }
+
+    /// <summary>
+    /// The size gate, so the fact over `ISA.md` and the fact over stubs written to break it read
+    /// one rule. Two numbers rather than one: what a stub says in the open, and what it carries in
+    /// total however it arranges its backticks.
+    /// </summary>
+    private static bool Retells(IsaDocument.Stub stub) =>
+        stub.Prose.Length > LongestStubProse
+        || stub.Evidence.Length > LongestStubProse + MostFreePointers;
+
+    private static IsaDocument.Stub OneStub(string evidence) =>
+        IsaDocument.Of("## Verification", $"- ISC-1 — {evidence}").Stubs.Single();
 
     /// <summary>
     /// The three checks below all answer one question: did every line of a section survive being
