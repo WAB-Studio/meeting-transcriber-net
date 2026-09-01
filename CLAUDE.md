@@ -43,9 +43,6 @@ turns out to be one of those gets said so, not quietly built anyway.
 - **A fix too big to land inline becomes a task on the board**, linked to the one that surfaced it,
   and the task being worked on says what was left out. Size decides that, not risk appetite.
 
-An unasked fix carries the same proof as any other change: `dotnet format`, the build and the tests
-clean over it, in the same pass.
-
 ## What belongs in this file
 
 Everything here is read on every task, so a fact needed once costs something every time and helps
@@ -83,9 +80,13 @@ which a tool reads and never migrates. `docs/migrations.md` says when this stops
 ## Build and test
 
 `dotnet restore`, then `dotnet format --verify-no-changes`, `dotnet build --no-restore -warnaserror`
-and `dotnet test --no-build`, each on its own line so a failure stops the pass. Those four are
-exactly what CI runs on `windows-latest`. Warnings fail the build in CI only; locally they show up
-and do not block. `dotnet format` has to pass clean.
+and `dotnet test --no-build`, each on its own line so a failure stops the pass — exactly what CI
+runs on `windows-latest`. Warnings fail the build in CI only. `dotnet format` has to pass clean.
+
+**The four run once per PR, at the end, before it opens or updates** — not after every edit, which
+buys the same green over and over for one signal. One pass proves the whole diff, unasked fixes
+included, and it is green or the PR does not open. Before that, a build or test runs only when its
+answer decides something. CI is the gate before merge: unsure means push and read the run.
 
 ## How work starts and ends
 
@@ -102,8 +103,8 @@ skill. **A claim closes on a probe that ran, never on a task moving.**
 2. A task names them, and the pointer only ever goes that way.
 3. Closing is running the probe and marking the claim closed; `IsaStructureTests` fails if the
    count disagrees.
-4. A diff over 50 lines that are not comments runs `/adversarial-review` first, and what the
-   verdict confirms gets fixed in the same pass.
+4. A diff over 50 lines that are not comments runs `/adversarial-review` once, over the whole diff,
+   at the end, and what the verdict confirms gets fixed before the PR opens.
 5. A session ends on the PR opened and never merged, standing on a clean `main`. A red command or
    an unfixed finding stops the PR, and the session's last words say so, and why.
 

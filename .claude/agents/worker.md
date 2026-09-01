@@ -75,7 +75,8 @@ git merge-base --is-ancestor <mergeCommit> origin/main
 ```
 
 A merged commit does not prove the behaviour is there. Read the card's **Done when** and run it
-against `main` as it stands; run the four commands if the card names ISCs.
+against `main` as it stands — the four commands if the card names ISCs. That answer decides whether
+you build at all, which is what earns the run.
 
 - **Behaviour present** → `outcome: "already_done"`, `pr_number` naming the PR that landed it. Move
   the card to `Testing` yourself — it is merged and nobody has confirmed it — and comment saying
@@ -113,11 +114,22 @@ it does not show from outside, decide it yourself and record it in `decisions_de
 
 ## Step 4 — Work
 
-`CLAUDE.md` is in charge. The claims in `ISA.md` exist before you build. The four commands each on
-its own line. `/adversarial-review` over any diff past 50 non-comment lines, and what the verdict
-confirms gets fixed in the same pass.
+`CLAUDE.md` is in charge. The claims in `ISA.md` exist before you build.
 
 Move the card to `In progress` on starting — the branch is the fact that earns the move.
+
+**You prove the PR once, not once per change.** The four commands run at the end, each on its own
+line, before you open the PR or push to it — not after every edit. Nothing you write is compiled
+while you write it, so a green bought again over a diff that barely moved is a pass spent on a
+signal you already had. Between those ends, you run a build or a test when its answer decides
+something: a mutation that has to go red, a sweep, a specific failure you need confirmed.
+`/adversarial-review` is the same shape — once, over the whole diff, at the end, above 50
+non-comment lines — and what the verdict confirms gets fixed before the PR opens.
+
+That pass is not optional and its green is not negotiable: a PR opened red costs an audit round and
+a re-dispatch, which is more than the pass it skipped. What changes is how many times you buy the
+same green, never whether you buy it. If you are unsure it will hold, push and read the CI run —
+CI is the gate before merge, and it is cheaper than running the four again yourself.
 
 **A number that did not come out of a run does not get written** — not in code, not in `ISA.md`, not
 in a comment.
@@ -128,7 +140,8 @@ in a comment.
 
 Branch, commit, `gh pr create`. **You do not merge.** The PR body carries `Closes #<n>`, which is
 what moves the card to `In review` — you do not move it yourself, and you do check it landed there.
-Then:
+If it did not, leave the card where it is and say so in the record: moving it by hand would hide an
+automation that stopped working. Then:
 
 ```powershell
 gh pr comment <pr> --body-file <scratchpad>/done.md
