@@ -39,6 +39,15 @@ internal sealed class Session : IDisposable
 
     private static readonly TimeSpan ForAList = TimeSpan.FromSeconds(5);
 
+    /// <summary>Enough of a list to say what was there instead, rather than every entry of it.</summary>
+    private const int EnoughOfAList = 24;
+
+    /// <summary>
+    /// How far one list is asked before the answer is taken for a provider that will not end.
+    /// Every list this drives is a picker somebody reads down.
+    /// </summary>
+    private const int MostItems = 2000;
+
     private static readonly TimeSpan ForAScreen = TimeSpan.FromSeconds(15);
 
     private readonly LaunchedApp _app;
@@ -206,7 +215,7 @@ internal sealed class Session : IDisposable
         opens?.Expand();
 
         var chosen = Patience.Until(ForAList, () =>
-            Search.Matching(list, item, SelectionItemPattern.Pattern) is [var only] ? only : null);
+            Search.Among(Offered(list), item) is [var only] ? only : null);
 
         if (chosen is null)
         {
@@ -215,17 +224,22 @@ internal sealed class Session : IDisposable
             // is what it did until it was run against a list that really did not have the item —
             // named the list and then listed nothing, on the one failure whose whole job is to say
             // what the caller should have asked for instead.
+            var all = Offered(list);
             var offered = string.Join(
                 Environment.NewLine + "  ",
-                Search.Everything(list, SelectionItemPattern.Pattern).Select(ElementWords.Line));
+                all.Take(EnoughOfAList).Select(ElementWords.Line));
+            var rest = all.Count > EnoughOfAList
+                ? $"{Environment.NewLine}  ... and {all.Count - EnoughOfAList} more"
+                : string.Empty;
 
             opens?.Collapse();
 
             throw new ProbeFailed(
                 $"\"{item}\" is not one thing in {ElementWords.Line(list)}. What is in it:"
-                + Environment.NewLine + "  " + offered);
+                + Environment.NewLine + "  " + offered + rest);
         }
 
+        Realise(chosen);
         ((SelectionItemPattern)chosen.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
 
         if (opens is not null
@@ -235,6 +249,63 @@ internal sealed class Session : IDisposable
         }
 
         Thread.Sleep(HedgeAfterAPress);
+    }
+
+    /// <summary>
+    /// Everything the open list offers, drawn or not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A list long enough to need scrolling draws a window of itself and no more, and what is not
+    /// drawn is not in the automation tree — so a walk finds whatever the list happens to be
+    /// scrolled to and calls the rest absent. That is this tool's answer being decided by a scroll
+    /// position, and it is why a screen was once asked to stop virtualising a picker so that this
+    /// could read it: the wrong half paying for a hole in the half that is only looking.
+    /// </para>
+    /// <para>
+    /// <see cref="ItemContainerPattern"/> is what a list implements to be asked about items it has
+    /// not drawn, and what it hands back carries the name whether or not it is on screen. A list
+    /// that does not implement it is walked exactly as before, which is what every short picker on
+    /// every screen here goes on doing.
+    /// </para>
+    /// </remarks>
+    private static List<AutomationElement> Offered(AutomationElement list)
+    {
+        if (!Search.Supports(list, ItemContainerPattern.Pattern))
+        {
+            return Search.Everything(list, SelectionItemPattern.Pattern);
+        }
+
+        var container = (ItemContainerPattern)list.GetCurrentPattern(ItemContainerPattern.Pattern);
+        var offered = new List<AutomationElement>();
+
+        // A ceiling and not a trust: this walks as far as the application says it goes, and a
+        // provider answering its own last item with itself would otherwise never come back.
+        for (AutomationElement? found = null; offered.Count < MostItems;)
+        {
+            var previous = found;
+            found = Reading.Of(() => container.FindItemByProperty(previous, null, null));
+            if (found is null)
+            {
+                break;
+            }
+
+            offered.Add(found);
+        }
+
+        return offered;
+    }
+
+    /// <summary>
+    /// Draws the one item that was chosen, which is what makes it selectable — an item a list
+    /// never drew supports nothing else. Before the pattern that acts on it, never after.
+    /// </summary>
+    private static void Realise(AutomationElement item)
+    {
+        if (Search.Supports(item, VirtualizedItemPattern.Pattern))
+        {
+            ((VirtualizedItemPattern)item.GetCurrentPattern(VirtualizedItemPattern.Pattern)).Realize();
+        }
     }
 
     /// <summary>

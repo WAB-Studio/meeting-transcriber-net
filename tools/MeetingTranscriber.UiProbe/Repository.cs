@@ -11,8 +11,11 @@ namespace MeetingTranscriber.UiProbe;
 /// Two starting points and not one, because the two hosts are started differently. A command line
 /// is typed at the repository, so the working directory is inside it. A server is started by
 /// whatever registered it, from a working directory nobody here chose — so the fallback is this
-/// assembly, which is built inside the repository and will be for as long as the tool lives under
-/// <c>tools/</c>. The working directory is tried first on purpose: it is what somebody meant, and
+/// assembly, which is inside the repository and will be for as long as the tool lives under
+/// <c>tools/</c>. The copy under <c>bin/mcp</c> that the server actually runs — published there
+/// so that holding it open cannot fail the build of everything else — does not weaken that: it is
+/// in the same checkout, so both starting points still land on it. The working directory is tried
+/// first on purpose: it is what somebody meant, and
 /// when it disagrees with the assembly <see cref="MustBeWhatWindowsStarted"/> is what turns the
 /// disagreement into a sentence instead of a wrong answer.
 /// </para>

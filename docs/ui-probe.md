@@ -50,23 +50,40 @@ Windows says rather than in the language somebody last picked: the examples belo
 a package with no preference yet opens in English here. `choose LanguagePicker` on it once and it
 sticks. The corpus is not in there — every checkout shares one.
 
-Then register the MCP server. It is registered machine-wide because an agent may be working from a
-worktree: it drives whichever checkout it is started from, and the package that checkout was built
-with — with nothing registered under that package it refuses and says so.
+Then put the server where the checkout can reach it. `.mcp.json` at the repository root names it
+already, spelled the same in every clone, so nothing is registered by hand and no path in it is
+anybody's machine. What it needs is the copy it points at.
 
 ```powershell
-dotnet build tools/MeetingTranscriber.UiProbe/MeetingTranscriber.UiProbe.csproj
-claude mcp add ui-probe --scope user -- (Resolve-Path tools/MeetingTranscriber.UiProbe/bin/Debug/net10.0-windows/MeetingTranscriber.UiProbe.exe) --mcp
+dotnet publish tools/MeetingTranscriber.UiProbe -c Debug -o tools/MeetingTranscriber.UiProbe/bin/mcp
 claude mcp get ui-probe
 ```
 
-The last line must say `✔ Connected`. Register the exe and not `dotnet run`: a build writes to
+**`bin/mcp` and not `bin/Debug`, and that is the whole reason the copy exists.** The tool is in the
+solution, so `dotnet build --no-restore -warnaserror` writes the exe under `bin/Debug` — and a
+connected server holding that file open failed the build for everything else in the solution.
+`dotnet build` never writes `bin/mcp`, so the four commands are green while the probe is connected
+and nothing has to be closed for them. Publish the exe and not `dotnet run`: a build writes to
 stdout, and stdout is the protocol.
+
+The first session after this asks you to approve `ui-probe` once, because it is a project-scoped
+server. `claude mcp get ui-probe` then says `Scope: Project config` and `✔ Connected`; if it says
+`Scope: User config` instead, a leftover machine-wide registration is shadowing this one and has to
+go — `claude mcp remove ui-probe -s user`, with the `-s user`, because without a scope it removes
+whichever it finds first and that is now the repository's.
+
+A worktree is its own checkout and gets its own copy, published the same way. It drives the build
+that checkout wrote, under the name that checkout registered — which is what `PackageIdentity.props`
+above is for. Two checkouts left on the same name are still one registration between them, and the
+one that did not register last is refused at `start`, naming the folder that holds it.
 
 ## Every run
 
-Build the application first. Build the tool too if you changed it — MCP starts the exe, not the
-source.
+Build the application first. Changing the tool costs one more step and it only runs one way: end
+the session, publish, open a new one. A connected server holds `bin/mcp` open, so a publish under
+a live session fails on the same kind of lock this setup took out of the build — and a new session
+is what reads `.mcp.json` anyway. `close` and `start` are verbs about the application, not about
+the server.
 
 Anything is refused once the application is older than the code on disk. To pick up a change:
 close, build, start — in that order, because a running application holds its own assemblies open
@@ -77,7 +94,9 @@ and the build fails on them. A build alone does not lift the refusal; only start
 - `see` — the tree of the screen, and a picture of the window. Changes nothing.
 - `press <element>` — invoke it. Fails if it is disabled or cannot be invoked.
 - `type <element> <text>` — set a field's value. Fails if it is disabled, read only, or takes none.
-- `choose <list> <item>` — open the list, pick the item by name, shut it again.
+- `choose <list> <item>` — open the list, pick the item by name, shut it again. A list too long
+  to draw whole is asked what it holds rather than walked, so an item below the fold is named the
+  same way as one on screen.
 - `wait <element>` — block until it is on a window, and make that window the screen from then on.
 
 Put a `wait` after any `press`, `type` or `choose` whose effect you are about to look at. It is the
@@ -86,8 +105,8 @@ only thing here that synchronises.
 ## Over MCP, a turn at a time
 
 `start` first — nothing else works until an application is open — and `close` when you are done,
-because it stays open between calls. `close`, build, `start` is how you pick up a change. A refused
-`start` leaves the session you had alone.
+because it stays open between calls. `close`, build the application, `start` is how you pick up a
+change to it. A refused `start` leaves the session you had alone.
 
 Every verb answers with the tree of the screen it became, so you choose the next step from the last
 answer instead of writing the whole walk in advance. `see` also returns the picture, inline.
@@ -95,11 +114,12 @@ answer instead of writing the whole walk in advance. `see` also returns the pict
 ```text
 start                          → 7feb8c95-...!App is process 12216, from C:\...\win-x64\...exe
                                  window "Grabar una reunión" ... (the whole tree)
-press MeetingsButton           → pressed MeetingsButton
-                                 The application has 2 windows open — "Reuniones", "Grabar una
-                                 reunión" — and the script has not said which one it is on.
-wait RefreshButton             → on "Reuniones"
-                                 window "Reuniones" ... (the whole tree)
+press PackagingChecksButton    → pressed PackagingChecksButton
+                                 The application has 2 windows open — "Comprobaciones de
+                                 empaquetado", "Grabar una reunión" — and the script has not said
+                                 which one it is on.
+wait EnvironmentButton         → on "Comprobaciones de empaquetado"
+                                 window "Comprobaciones de empaquetado" ... (the whole tree)
 see                            → the tree, then the PNG
 close                          → Closed.
 ```
@@ -116,18 +136,18 @@ else. The application is closed on the way out either way.
 
 ```powershell
 dotnet run --project tools/MeetingTranscriber.UiProbe -- --out $env:TEMP\ui-probe `
-  see recorder press MeetingsButton wait RefreshButton see meetings
+  see docked press OpennessButton wait OpennessButton see whole
 ```
 
 ```text
 7feb8c95-4553-46f0-a036-6574f4cd7cb4_savbypjtf9g9c!App is process 38684, from C:\...\win-x64\MeetingTranscriber.App.exe
-  see recorder
-    recorder.tree.txt and recorder.png (1920x1023)
-  press MeetingsButton
-  wait RefreshButton
-    on "Reuniones"
-  see meetings
-    meetings.tree.txt and meetings.png (1920x1023)
+  see docked
+    docked.tree.txt and docked.png (1920x1023)
+  press OpennessButton
+  wait OpennessButton
+    on "Grabar una reunión"
+  see whole
+    whole.tree.txt and whole.png (1920x1023)
 done, in C:\Users\pc\AppData\Local\Temp\ui-probe
 ```
 
@@ -142,7 +162,7 @@ A line is `Type #x:Name "what it says"`, indented by depth, with `value=`, `help
 ```text
       ComboBox #MicrophonePicker "Micrófono"
       Button #RecordButton "Grabar"  disabled
-      Button #MeetingsButton "Reuniones"
+      Button #OpennessButton "Abrir la lista entera"
 ```
 
 ## Naming an element
