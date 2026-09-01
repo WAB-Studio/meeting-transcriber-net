@@ -27,7 +27,7 @@ internal sealed partial class IsaDocument
         Features = ReadFeatures(lines);
         Claims = [.. Features.SelectMany(feature => feature.Claims)];
         StrayFeatureBullets = [.. Features.SelectMany(feature => feature.StrayBullets)];
-        VerificationStubs = ReadVerificationStubs(lines);
+        Stubs = ReadStubs(lines);
         StrayVerificationLines = [.. ReadSectionBody(lines, VerificationSection)
             .Where(line => !StubLine().IsMatch(line))];
         LearningLabels = ReadLearningLabels(lines);
@@ -49,7 +49,11 @@ internal sealed partial class IsaDocument
     /// </summary>
     public IReadOnlyList<string> StrayFeatureBullets { get; }
 
-    public IReadOnlyList<string> VerificationStubs { get; }
+    /// <summary>
+    /// The provenance stubs under `## Verification`, one per closed claim, each split into the
+    /// claim it closes and the prose left over once its pointers are taken out.
+    /// </summary>
+    public IReadOnlyList<Stub> Stubs { get; }
 
     /// <summary>Non-blank lines under `## Verification` that are not provenance stubs.</summary>
     public IReadOnlyList<string> StrayVerificationLines { get; }
@@ -74,6 +78,13 @@ internal sealed partial class IsaDocument
             System.IO.Path.Combine(System.IO.Path.GetDirectoryName(thisFile)!, "..", "..", "ISA.md")));
 
     public static IsaDocument Read() => new(File.ReadAllLines(Path().FullName));
+
+    /// <summary>
+    /// Read from lines instead of from the file, so a stub written to break a gate can be measured
+    /// without editing the corpus the gates run over. Every number the gates compare against came
+    /// off that corpus, and a mutation of it is a hand run nothing re-runs.
+    /// </summary>
+    internal static IsaDocument Of(params string[] lines) => new(lines);
 
     private static Dictionary<string, string> ReadFrontmatter(string[] lines)
     {
@@ -155,13 +166,28 @@ internal sealed partial class IsaDocument
     /// Read from the section rather than from the whole file: a stub is evidence, and a line that
     /// happens to carry the shape somewhere else is not evidence of anything.
     /// </summary>
-    private static List<string> ReadVerificationStubs(string[] lines) =>
-    [
-        .. ReadSectionBody(lines, VerificationSection)
-            .Select(line => StubLine().Match(line))
-            .Where(match => match.Success)
-            .Select(match => match.Groups["id"].Value),
-    ];
+    private static List<Stub> ReadStubs(string[] lines)
+    {
+        var stubs = new List<Stub>();
+
+        foreach (var line in ReadSectionBody(lines, VerificationSection))
+        {
+            var match = StubLine().Match(line);
+            if (match.Success)
+            {
+                // What is left after the `- ISC-N — ` prefix and the backticked spans come out is
+                // the prose. A stub is one physical line — a wrapped one would fail the stray-line
+                // check above it — so the whole stub is here and nothing has to be joined first.
+                var evidence = line[match.Length..];
+                stubs.Add(new Stub(
+                    match.Groups["id"].Value,
+                    evidence,
+                    Pointer().Replace(evidence, WhatIsNotAPointer)));
+            }
+        }
+
+        return stubs;
+    }
 
     private static List<string> ReadLearningLabels(string[] lines) =>
     [
@@ -192,7 +218,77 @@ internal sealed partial class IsaDocument
     [GeneratedRegex(@"^- \*\*(?<label>[a-z-]+)\*\* — ")]
     private static partial Regex LearningLabel();
 
+    /// <summary>A backticked span: a test name, a command, a path — the pointer part of a stub.</summary>
+    [GeneratedRegex("`[^`]*`")]
+    private static partial Regex Pointer();
+
+    /// <summary>
+    /// The longest a backticked span is free for. Past it the span is priced as prose, one
+    /// character for one character.
+    /// </summary>
+    /// <remarks>
+    /// Measured over the 437 spans in the section on 2026-09-01, and every length here is
+    /// <c>Match.Length</c> — the span with its two backticks, which is what the comparison below
+    /// gets. The longest is 135, ISC-158.1's UI probe walk, then ISC-171's at 121 and ISC-126's
+    /// fully-qualified test name at 115. One more reaches 110 and nothing else does. So 150 is
+    /// above every pointer anybody has written, with room for a longer walk than any that exists.
+    /// </remarks>
+    private const int LongestPointer = 150;
+
+    /// <summary>
+    /// What a backticked span costs the size gate: nothing up to <see cref="LongestPointer"/>,
+    /// and everything after that.
+    /// </summary>
+    /// <remarks>
+    /// Ticks around a span are what makes it free, and until this the freedom was unbounded —
+    /// so the whole of a stub's prose passed the gate by being wrapped in one pair of them, and
+    /// the parity check below claimed to cover the only way the measure failed open while that
+    /// stayed wide. It is not treated as a dodge somebody plots. The section already backticks
+    /// English sentences as evidence, so a writer following the neighbours arrives at it by the
+    /// same route they arrive at everything else this gate exists to stop, and pricing the excess
+    /// rather than failing the line keeps an honestly long walk from going red for being long.
+    /// </remarks>
+    private static string WhatIsNotAPointer(Match span) =>
+        span.Length <= LongestPointer ? string.Empty : span.Value[LongestPointer..];
+
     internal sealed record Claim(string Id, bool Closed, string Text, string Feature);
+
+    /// <summary>
+    /// A provenance stub: the claim it closes, everything after the `- ISC-N — ` prefix, and that
+    /// same evidence with its pointers taken out. The split is the whole point — naming four test
+    /// methods precisely is what the format asks for and costs nothing, while the sentences around
+    /// them are what the size gate is over. <paramref name="Evidence"/> is kept beside the prose
+    /// because a stub that spends its whole budget inside backticks measures nothing at all in
+    /// <paramref name="Prose"/>, so the gate reads both: what a stub says in the open, and what it
+    /// carries in total. Their difference is what the pointers were let off for being pointers.
+    /// </summary>
+    internal sealed record Stub(string Id, string Evidence, string Prose)
+    {
+        /// <summary>
+        /// Whether the backticks close. They always have, and it is one of the three ways the
+        /// prose measure fails open rather than shut: <c>Pointer()</c> pairs ticks, so a single
+        /// dropped tick makes one span out of everything between two unrelated ones, and several
+        /// hundred characters of prose stop being counted at all.
+        /// </summary>
+        /// <remarks>
+        /// The second is a span that pairs correctly and is a paragraph, which
+        /// <see cref="LongestPointer"/> prices at everything past 150 — a 600-character span is
+        /// charged 450, which is a price and not a refusal, so whether that stub goes red depends
+        /// on what else it says. The third is that paragraph cut into spans that are each short,
+        /// which no per-span price reaches at all: fourteen ticked spans of 140 discount 1960
+        /// between them.
+        ///
+        /// None of the three is shut, and saying what each still lets through is the point of
+        /// writing them down. What shuts the question they share is not here but in
+        /// <c>IsaStructureTests</c>, which reads <paramref name="Evidence"/> as well as
+        /// <paramref name="Prose"/>: however a stub arranges its ticks, everything it carries past
+        /// the two budgets together is charged, so no stub can be arbitrarily long and measure
+        /// short. What it can still do is spend the whole of both on pointers, which is the prose
+        /// ceiling more than it is a defect — a stub of nothing but test names is what the format
+        /// asks for.
+        /// </remarks>
+        public bool PointersClose => Evidence.Count(character => character == '`') % 2 == 0;
+    }
 
     internal sealed class Feature(string id, string name)
     {

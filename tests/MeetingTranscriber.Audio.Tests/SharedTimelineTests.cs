@@ -242,6 +242,11 @@ public class SharedTimelineTests
     /// because sending a source backwards at the changeover is the one thing the counter was given
     /// up to avoid.
     /// </summary>
+    /// <remarks>
+    /// Written red, and the numbers are what it was written against: a source that dropped a second
+    /// and ran 2000 ppm fast was placed at frame 287808 after its last packet had already reached
+    /// 288000 — 192 frames backwards, into the very reversal the counter was given up to avoid.
+    /// </remarks>
     [Fact]
     public void A_source_that_lost_a_stretch_before_giving_its_counter_up_still_records_the_meeting()
     {
