@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
@@ -113,7 +113,11 @@ public class DurableWriteTests
         var path = CorpusFiles.PathFor(meeting, "transcript.md");
 
         var staged = StagedArtifact.Stage(
-            context, meeting, path, stream => stream.Write(Encoding.UTF8.GetBytes("a whole transcript")));
+            context,
+            meeting,
+            ArtifactKind.Transcript,
+            path,
+            stream => stream.Write(Encoding.UTF8.GetBytes("a whole transcript")));
 
         staged.IsPending.ShouldBeTrue();
         CorpusFiles.Locate(corpus.Root, path).Exists.ShouldBeFalse();
@@ -143,9 +147,13 @@ public class DurableWriteTests
         var path = CorpusFiles.PathFor(unrecorded, "deepgram.json");
 
         using var staged = StagedArtifact.Stage(
-            context, unrecorded, path, stream => stream.Write(Encoding.UTF8.GetBytes("{}")));
+            context,
+            unrecorded,
+            ArtifactKind.DeepgramResponse,
+            path,
+            stream => stream.Write(Encoding.UTF8.GetBytes("{}")));
 
-        Should.Throw<DbUpdateException>(() => staged.Commit(ArtifactKind.DeepgramResponse, When));
+        Should.Throw<DbUpdateException>(() => staged.Commit(When));
 
         CorpusFiles.Locate(corpus.Root, path).Exists.ShouldBeTrue();
         staged.IsPending.ShouldBeFalse();
@@ -313,6 +321,200 @@ public class DurableWriteTests
     }
 
     /// <summary>
+    /// A set whose second file cannot even be written leaves the first one where it was, because
+    /// steps one to four happen for every file before step five happens for any of them.
+    /// </summary>
+    /// <remarks>
+    /// This is the half of the window that is the whole of it in practice. Putting a file in place
+    /// is one rename; producing the next one is rendering it, writing it, flushing it to the disk,
+    /// hashing it and reading it back — which is where a full disk, an I/O error or a caller that
+    /// throws halfway actually lands. Written one whole write after the next, all of that happened
+    /// with the first file already replaced and its row already saved.
+    /// </remarks>
+    [Fact]
+    public void A_set_whose_second_file_cannot_be_written_leaves_the_first_one_alone()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var transcript = CorpusFiles.PathFor(meeting, "transcript.md");
+        var utterances = CorpusFiles.PathFor(meeting, "utterances.jsonl");
+
+        DurableArtifact.WriteAllText(
+            context,
+            meeting,
+            When,
+            (ArtifactKind.Transcript, transcript, "the first rendering"),
+            (ArtifactKind.Utterances, utterances, "{\"turn\":0}"));
+        var recorded = Derived(context);
+
+        // The second file addressed at another meeting's folder, which is refused where a file is
+        // written rather than where one is put in place. Any refusal from steps one to four does
+        // this; this one is the only one a test can ask for.
+        Should.Throw<ArgumentException>(() => DurableArtifact.WriteAllText(
+            context,
+            meeting,
+            When,
+            (ArtifactKind.Transcript, transcript, "the second rendering"),
+            (ArtifactKind.Utterances, CorpusFiles.PathFor(Guid.NewGuid(), "utterances.jsonl"), "{\"turn\":1}")));
+
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, transcript).FullName).ShouldBe("the first rendering");
+        Derived(context).ShouldBe(recorded);
+        Files(corpus).ShouldBe([$"meetings/{meeting}/transcript.md", $"meetings/{meeting}/utterances.jsonl"]);
+        EveryRowReReads(context);
+    }
+
+    /// <summary>
+    /// A set whose second destination cannot be taken leaves the first one where it was, and the
+    /// row still describing it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The other half of the sequence, and the one the set exists for. The test above stops in
+    /// staging, before anything could have moved; this one gets past staging with both files
+    /// written and checked, and is refused at the replace — where, one whole write after another,
+    /// the first file was already in place and its row already saved.
+    /// </para>
+    /// <para>
+    /// A program holding the file open is what a sync client, an editor or a backup does to it, and
+    /// it is the condition the set is emptied against: the destinations are renamed out of the way
+    /// first, so the one that cannot be renamed refuses while the one that could is put back.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_set_whose_second_destination_cannot_be_taken_leaves_the_first_one_where_it_was()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var transcript = CorpusFiles.PathFor(meeting, "transcript.md");
+        var utterances = CorpusFiles.PathFor(meeting, "utterances.jsonl");
+
+        DurableArtifact.WriteAllText(
+            context,
+            meeting,
+            When,
+            (ArtifactKind.Transcript, transcript, "the first rendering"),
+            (ArtifactKind.Utterances, utterances, "{\"turn\":0}"));
+        var recorded = Derived(context);
+
+        using (new FileStream(
+            CorpusFiles.Locate(corpus.Root, utterances).FullName,
+            FileMode.Open,
+            FileAccess.ReadWrite,
+            FileShare.None))
+        {
+            Should.Throw<IOException>(() => DurableArtifact.WriteAllText(
+                context,
+                meeting,
+                When,
+                (ArtifactKind.Transcript, transcript, "the second rendering"),
+                (ArtifactKind.Utterances, utterances, "{\"turn\":1}")));
+        }
+
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, transcript).FullName).ShouldBe("the first rendering");
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, utterances).FullName).ShouldBe("{\"turn\":0}");
+        Derived(context).ShouldBe(recorded);
+        Files(corpus).ShouldBe([$"meetings/{meeting}/transcript.md", $"meetings/{meeting}/utterances.jsonl"]);
+        EveryRowReReads(context);
+    }
+
+    /// <summary>
+    /// A destination somebody may delete and not write is still replaced, because what asks is the
+    /// rename the replace itself performs and not a look at whether the file could be written.
+    /// </summary>
+    /// <remarks>
+    /// The two questions come apart, and a corpus restored from a backup or living under a policy
+    /// is where they do. Asked as "can this be opened for writing", a deny-write rule refuses every
+    /// derived file of every meeting and a rebuild reports the disk as the problem; asked as the
+    /// rename, it does not come up, because deleting is what a replace needs and deleting is
+    /// allowed. Standing in for the rule here is a read-only file, which Windows refuses a write
+    /// handle on and renames without complaint.
+    /// </remarks>
+    [Fact]
+    public void A_destination_that_cannot_be_opened_for_writing_is_still_replaced()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var transcript = CorpusFiles.PathFor(meeting, "transcript.md");
+        var utterances = CorpusFiles.PathFor(meeting, "utterances.jsonl");
+
+        DurableArtifact.WriteAllText(
+            context,
+            meeting,
+            When,
+            (ArtifactKind.Transcript, transcript, "the first rendering"),
+            (ArtifactKind.Utterances, utterances, "{\"turn\":0}"));
+
+        var standing = CorpusFiles.Locate(corpus.Root, utterances);
+        File.SetAttributes(standing.FullName, FileAttributes.ReadOnly);
+        Should.Throw<UnauthorizedAccessException>(
+            () => new FileStream(standing.FullName, FileMode.Open, FileAccess.ReadWrite, FileShare.None));
+
+        DurableArtifact.WriteAllText(
+            context,
+            meeting,
+            When,
+            (ArtifactKind.Transcript, transcript, "the second rendering"),
+            (ArtifactKind.Utterances, utterances, "{\"turn\":1}"));
+
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, transcript).FullName).ShouldBe("the second rendering");
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, utterances).FullName).ShouldBe("{\"turn\":1}");
+        EveryRowReReads(context);
+    }
+
+    /// <summary>
+    /// One path named twice in a set is refused before anything moves, because the save that would
+    /// have caught it comes after both files are already in place.
+    /// </summary>
+    [Fact]
+    public void One_path_named_twice_in_a_set_is_refused_before_anything_moves()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var transcript = CorpusFiles.PathFor(meeting, "transcript.md");
+
+        var refused = Should.Throw<ArtifactWriteException>(() => DurableArtifact.WriteAllText(
+            context,
+            meeting,
+            When,
+            (ArtifactKind.Transcript, transcript, "one rendering"),
+            (ArtifactKind.Transcript, transcript, "another rendering")));
+
+        refused.Message.ShouldContain("twice");
+        Files(corpus).ShouldBeEmpty();
+        context.Artifacts.ShouldBeEmpty();
+        EveryRowReReads(context);
+    }
+
+    /// <summary>
+    /// A set that goes in whole is one save, so the rows of a meeting's derived files arrive
+    /// together in whatever unit of work the caller has and not one after the other.
+    /// </summary>
+    [Fact]
+    public void A_set_put_in_place_records_every_row_it_wrote()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+
+        var written = DurableArtifact.WriteAllText(
+            context,
+            meeting,
+            When,
+            (ArtifactKind.Transcript, CorpusFiles.PathFor(meeting, "transcript.md"), "# Reunión\n"),
+            (ArtifactKind.Utterances, CorpusFiles.PathFor(meeting, "utterances.jsonl"), "{\"turn\":0}\n"));
+
+        written.Select(artifact => artifact.Kind).ShouldBe([ArtifactKind.Transcript, ArtifactKind.Utterances]);
+        written.ShouldAllBe(artifact => artifact.Origin == ArtifactOrigin.Derived);
+        context.Artifacts.Count().ShouldBe(2);
+        ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
+        EveryRowReReads(context);
+    }
+
+    /// <summary>
     /// The stored path is what a backup walks and what the reconciler scans, and both start from
     /// the meeting's folder. A file written anywhere else has a row nothing will ever look at.
     /// </summary>
@@ -331,7 +533,7 @@ public class DurableWriteTests
         var path = string.Format(System.Globalization.CultureInfo.InvariantCulture, shape, meeting);
 
         Should.Throw<ArgumentException>(() => StagedArtifact.Stage(
-            context, meeting, path, stream => stream.WriteByte(0)));
+            context, meeting, ArtifactKind.Transcript, path, stream => stream.WriteByte(0)));
         Files(corpus).ShouldBeEmpty();
     }
 
@@ -345,6 +547,7 @@ public class DurableWriteTests
         Should.Throw<ArgumentException>(() => StagedArtifact.Stage(
             context,
             meeting,
+            ArtifactKind.Transcript,
             CorpusFiles.PathFor(Guid.NewGuid(), "transcript.md"),
             stream => stream.WriteByte(0)));
     }
@@ -364,6 +567,16 @@ public class DurableWriteTests
             CorpusFiles.Sha256Of(file).ShouldBe(artifact.Sha256, $"{artifact.RelativePath} is not what its row says");
         }
     }
+
+    /// <summary>Every derived row, by what it says about the file it names.</summary>
+    private static List<string> Derived(CorpusDbContext context) =>
+    [
+        .. context.Artifacts.AsNoTracking()
+            .Where(artifact => artifact.Origin == ArtifactOrigin.Derived)
+            .OrderBy(artifact => artifact.RelativePath)
+            .AsEnumerable()
+            .Select(artifact => $"{artifact.RelativePath}|{artifact.ByteSize}|{artifact.Sha256}"),
+    ];
 
     /// <summary>Everything under the corpus root, as stored paths, in a stable order.</summary>
     private static List<string> Files(TemporaryCorpus corpus) =>

@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 133/207
+progress: 134/207
 updated: 2026-09-02
 ---
 
@@ -108,7 +108,7 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-55: Anti: a speaker somebody resolved is never overwritten by what the recording settled.
 - [x] ISC-127: Anti: nothing one extraction produced shares a position with another of its kind, so what somebody pinned to a decision, an action or an open question cannot come to mean another one.
 - [ ] ISC-174: Anti: a meeting whose turns the corpus refuses partway through producing them again is left holding the ones it already had, never none at all.
-- [ ] ISC-175: Anti: a meeting's derived files are never left describing two different renders of it.
+- [x] ISC-175: Anti: a meeting's derived files are never left describing two different renders of it.
 
 ### F3 · Audio engine
 Why: two sources become one timeline a person can trust. This is the largest technical risk in
@@ -690,3 +690,4 @@ Board: 7 · Distribución y backup
 - ISC-171 — the UI probe on the packaged build 2026-09-01, the application in English: `see docked press OpennessButton wait OpennessButton see whole press OpennessButton wait OpennessButton see docked-again`. Raised, the recorder half is out of the tree rather than scrolled off it — the pickers, record, pause, carry on and stop gone — while the corpus line, the report, the status line and the packaging button stay, for the reason `MainWindow.xaml` gives, which is why the claim is the recorder's room and not the window. The control that raised it is the same element in the same place, reading `Bring the list back down` where it read `Open the whole list`, and the third tree is the first line for line apart from when it was read
 - ISC-158.3 — `SavingTheMeetingTests.What_is_filed_is_the_same_whether_or_not_anybody_is_watching` (`tests/MeetingTranscriber.Recording.Tests`) and `SavingCardTests.The_application_and_the_prompt_stop_a_meeting_through_the_same_call` (`tests/MeetingTranscriber.App.Tests`) green 2026-09-01: two meetings out of identical spools finished at the same instant, one save watched and one not, equal on the audio's hash and size, the length, the run's end and every stored fact but their ids — and both entry points stopping through the recording's own call, with neither filing any part of a meeting itself. Red 2026-09-01 twice: with the window's `recording.Stop(` replaced, and with `MeetingRecordings.Finish` written into its stop handler. What no probe reaches is a window really recording one, which needs two devices and a meeting somebody sat through
 - ISC-176 — `IsaStructureTests` (`tests/MeetingTranscriber.Isa.Tests`) green 2026-09-02 over checks 15 and 16. Red 2026-09-02 with `ISC-176` itself ticked and reworded in the tree: `.No_claim_is_closed_in_words_the_file_did_not_already_carry` named it while `.No_claim_is_written_into_the_file_already_closed` stayed green over that same edit — check 15's blind spot, measured. Check 16 reaches a claim the trunk had open, so outside it are the three closed claims this repo reworded across the 29 commits that touched the file, and a stub left standing over a moved sentence. Not closed here: words landing ahead of the branch that ticks them can still have been worded to fit, and no gate reaches that — `.claude/agents/auditor.md` is where it is asked.
+- ISC-175 — `CorpusRebuildTests.A_meeting_whose_second_derived_file_cannot_be_written_keeps_both_of_the_ones_it_had` and `MeetingRendererTests.A_render_that_cannot_write_the_second_file_leaves_both_of_them_as_they_were` (`tests/MeetingTranscriber.Processing.Tests`), `DurableWriteTests.A_set_whose_second_file_cannot_be_written_leaves_the_first_one_alone` and `.A_set_whose_second_destination_cannot_be_taken_leaves_the_first_one_where_it_was` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-09-02, each red that day against a render that put one file in place before it began the next. Two things none of them reaches: a machine dying inside the run of renames, which no filesystem makes one act, and the stored turns, which are replaced before either file and can be a generation ahead of both

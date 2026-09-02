@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Security.Cryptography;
 
 using MeetingTranscriber.Domain.Artifacts;
@@ -420,9 +420,9 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
 
         Named(legacy, report, () =>
         {
-            // Its own transaction, which MeetingRenderer would not have opened around the whole of
-            // this: it opens one around the two files, and the turns it projects are saved before
-            // that. Without this, a meeting whose files could not be written keeps the turns of a
+            // Its own transaction, which MeetingRenderer opens none of: it writes its two files
+            // as one act and their rows in one save, and the turns it projects are saved before
+            // either. Without this, a meeting whose files could not be written keeps the turns of a
             // render that did not happen — turns nothing counted, under a meeting the report has
             // just said it could not finish. Rolling them back is right here and wrong in a
             // rebuild: this meeting has never been rendered, so there is no artifact row to revert
