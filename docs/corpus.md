@@ -54,10 +54,10 @@ recover from.
 
 Filing a meeting writes its card, and so does a rebuild — every meeting, every time. That second
 one is what makes this a promise about a folder rather than about a moment: intake only ever
-reaches the meeting being filed, so a meeting that predates the card, or one whose title somebody
-changed since, gets its card from `rebuild` and from nothing else. Writing it where a title is
-edited is the piece still missing, and until it lands a renamed meeting's card is one `rebuild`
-behind.
+reaches the meeting being filed, so a meeting that predates the card gets its card from `rebuild`
+and from nothing else. A title somebody changed is no longer one of those: the screen a meeting is
+read from is the only thing in the application that renames one, and it writes the card in the same
+transaction it writes the row — which is what ISC-52 asks of every change that has to reach both.
 
 It is also the one source that may be written over, which is the distinction the rest of this
 section turns on: *source* decides what a backup carries and what a deletion spares, and it is a

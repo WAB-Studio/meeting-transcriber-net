@@ -5,7 +5,7 @@ map you open when you need to know where something lives.
 
 ```text
 src/MeetingTranscriber.App/               WinUI 3, packaged as MSIX
-src/MeetingTranscriber.Audio/             WASAPI: the devices and streams, the spool, the timeline they meet on, and the recording that comes off it
+src/MeetingTranscriber.Audio/             WASAPI: the devices and streams, the spool, the timeline they meet on, the recording that comes off it, and playing one back
 src/MeetingTranscriber.Cli/               diagnosis, import, rebuild, recovery and capture from a prompt
 src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
@@ -81,6 +81,16 @@ the half a person presses. `MeetingTranscriber.App` references this project for 
 `Audio`, `Infrastructure` and `Domain` arrive through it, which is the same composition the command
 line goes through.
 
+The same split, in the same two places, is what the screen a meeting is read from is made of, and
+the halves land in different projects because the two questions are different. What that screen
+shows and offers — whether the player is there at all, what act is on the right, whether the name
+may be typed — is `MeetingScreen` in `Domain`, over the corpus side `MeetingReading` in
+`Infrastructure`. Playing the file is `Playback` in `Audio`, beside capture: an endpoint, a format
+and a stream are the same kind of thing whichever way the bytes are going, and this repository does
+not get a second place that knows what WASAPI is. `Presentation` was never the alternative for
+either half — it holds every word a person reads and nothing else, it is plain `net10.0`, and a
+WASAPI call in it would not compile.
+
 `Processing` references `Infrastructure`, and only that way round: rendering reads the paid
 response out of the corpus and puts the derivatives back, so it sits above storage. The opposite
 edge would make SQLite depend on how a Deepgram response is parsed.
@@ -121,7 +131,7 @@ project: it reads `ISA.md` at the repo root. The claims surface is a repo docume
 layer, so its gate does not belong under any one of them.
 
 What a screen looks like lives in `docs/design.md` — the tokens, the type ramp, the radii, the
-meter's anatomy and the rules the design imposes — with the thirteen artboards it was written from
+meter's anatomy and the rules the design imposes — with the eighteen artboards it was written from
 beside it in `docs/design/`. Nothing under `src/` reads that folder and nothing builds it: they are
 pictures a person opens. A screen is built from the prose, and the artboards are what the prose is
 checked against.

@@ -1,0 +1,88 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: transparent; }
+    a { color: #4F7561; } a:hover { color: #3C5B4A; }
+  </style>
+</helmet>
+
+<div style="width: 1120px; height: 720px; box-sizing: border-box; padding: 30px 40px; display: flex; flex-direction: column; gap: 18px; overflow: hidden; background: #FCFCFB; color: #1C1B19; font-family: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 20px;">
+
+  <div style="flex: none; display: flex; align-items: center; gap: 12px; padding: 0 6px;">
+    <div style="width: 34px; height: 34px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: #F4F3EF;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1C1B19" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"></path></svg>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0;">
+      <div style="align-self: flex-start; display: inline-flex; align-items: center; height: 34px; padding: 0 12px; border-radius: 4px; box-shadow: inset 0 0 0 1px #DEDBD4; cursor: text;">
+        <span style="font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -.02em;">Comité de producto</span>
+      </div>
+      <div style="padding: 0 12px; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #9B9891;">21 ago 10:00 · 48:12 · dos canales</div>
+    </div>
+    <div style="margin-left: auto; width: 34px; height: 34px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 4px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="#6E6C66"><circle cx="5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="19" cy="12" r="1.7"></circle></svg>
+    </div>
+  </div>
+
+  <div style="flex: 1; min-height: 0; display: flex; gap: 18px;">
+
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; overflow: hidden;"></div>
+
+    <div style="width: 300px; flex: none; display: flex; flex-direction: column; gap: 12px;">
+
+      <div style="padding: 18px 20px; background: #F4F3EF; border-radius: 8px; display: flex; flex-direction: column; gap: 12px;">
+        <div style="font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -.015em;">Quiénes hablaron</div>
+
+        <div style="display: flex; align-items: center; gap: 9px;">
+          <span style="width: 7px; height: 7px; flex: none; border-radius: 50%; background: #4F7561;"></span>
+          <span style="font-size: 14px; line-height: 20px;">Nicolás Nieto</span>
+          <span style="font-size: 11px; line-height: 18px; padding: 0 8px; border-radius: 8px; background: #FCFCFB; color: #6E6C66;">yo</span>
+          <span style="margin-left: auto; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #9B9891;">44%</span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 9px;">
+          <span style="width: 7px; height: 7px; flex: none; border-radius: 50%; background: #C3BFB6;"></span>
+          <span style="font-size: 14px; line-height: 20px; color: #6E6C66;">Sin nombre</span>
+          <span style="margin-left: auto; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #9B9891;">56%</span>
+        </div>
+
+        <button style="align-self: flex-end; margin-top: 2px; height: 42px; padding: 0 18px; background: #FCFCFB; border: none; border-radius: 4px; box-shadow: inset 0 0 0 1px #E6E4DE; color: #1C1B19; font-family: inherit; font-size: 14px; line-height: 20px; cursor: pointer;">Decir quién es quién</button>
+      </div>
+
+      <div style="padding: 18px 20px; background: #F4F3EF; border-radius: 8px; display: flex; flex-direction: column; gap: 10px;">
+        <div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #9B9891;">esto lo escribió</div>
+        <div style="font-size: 14px; line-height: 20px; color: #6E6C66;">La transcribió <span style="color: #1C1B19; font-weight: 500;">Deepgram nova-3</span> hace 20 minutos. Todavía no hay resumen.</div>
+        <button style="align-self: flex-end; height: 42px; padding: 0 18px; background: #FCFCFB; border: none; border-radius: 4px; box-shadow: inset 0 0 0 1px #E6E4DE; color: #1C1B19; font-family: inherit; font-size: 14px; line-height: 20px; cursor: pointer;">Resumir</button>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="flex: none; display: flex; align-items: center; gap: 16px; padding: 0 20px; height: 60px; background: #F4F3EF; border-radius: 8px;">
+    <div style="width: 34px; height: 34px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: #1C1B19;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="#FCFCFB"><path d="M7 4.5l12 7.5-12 7.5z"></path></svg>
+    </div>
+    <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #1C1B19;">00:00</span>
+    <div style="flex: 1; position: relative; height: 5px; border-radius: 4px; background: #E1DED7;">
+      <div style="position: absolute; left: 0; top: -5px; width: 3px; height: 15px; border-radius: 4px; background: #4F7561;"></div>
+    </div>
+    <span style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #9B9891;">48:12</span>
+    <span style="display: flex; align-items: center; height: 30px; padding: 0 11px; border-radius: 4px; background: #FCFCFB; font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px;">1×</span>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

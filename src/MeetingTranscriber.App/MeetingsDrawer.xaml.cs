@@ -12,6 +12,7 @@ using MeetingTranscriber.Recording;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 
 // WinUI has a Duration of its own — an animation's, in ticks — and both meanings are in scope
@@ -163,6 +164,16 @@ public sealed partial class MeetingsDrawer : UserControl
     /// <summary>The drawer moved between its two positions.</summary>
     public event EventHandler? OpennessChanged;
 
+    /// <summary>
+    /// Somebody asked to open one of the meetings on this list.
+    /// </summary>
+    /// <remarks>
+    /// Said and not done. Which room a meeting is read in, and what happens to the recorder above
+    /// while it is, is the window's — this list knows only that a meeting was chosen, which is the
+    /// same shape <see cref="OpennessChanged"/> takes for the same reason.
+    /// </remarks>
+    public event EventHandler<Guid>? MeetingChosen;
+
     /// <summary>Whether the list has the whole window rather than the half under the recorder.</summary>
     public bool HasTheWholeWindow { get; private set; }
 
@@ -266,79 +277,17 @@ public sealed partial class MeetingsDrawer : UserControl
     }
 
     /// <summary>
-    /// What a card says about the stage a meeting has got to.
-    /// </summary>
-    /// <remarks>
-    /// The last arm stops rather than substituting, for the reason
-    /// <c>MainWindow.SayWhereTheCorpusIs</c> gives about a refusal it has no text for: a
-    /// stage added to <see cref="MeetingStage"/> and not given a text here would otherwise be
-    /// shown to somebody as one of the others — a meeting with no audio reading as one ready to be
-    /// paid for. <c>MeetingCardTextTests</c> is what catches it before it can be thrown.
-    /// </remarks>
-    private static UiText Reached(MeetingStage stage) => stage switch
-    {
-        MeetingStage.Recording => UiTexts.NoAudioYet,
-        MeetingStage.Recorded => UiTexts.Recorded,
-        MeetingStage.Transcribed => UiTexts.Transcribed,
-        MeetingStage.Summarised => UiTexts.Summarised,
-        _ => throw new InvalidOperationException($"This screen has no text for meeting stage '{stage}'."),
-    };
-
-    /// <summary>
-    /// What a card says about where that stage stands, or nothing when the stage has no action for
-    /// anything to be standing over.
-    /// </summary>
-    /// <remarks>The last arm stops for the reason <see cref="Reached"/> gives.</remarks>
-    private static UiText? Standing(StageStanding standing) => standing switch
-    {
-        StageStanding.Offered => UiTexts.WaitingToBeTold,
-        StageStanding.Underway => UiTexts.AlreadyInTheQueue,
-        StageStanding.StoppedOnAPerson => UiTexts.StoppedWaitingForAPerson,
-        StageStanding.Declined => UiTexts.IgnoredForNow,
-        StageStanding.NothingToDo => null,
-        _ => throw new InvalidOperationException($"This screen has no text for stage standing '{standing}'."),
-    };
-
-    /// <summary>
-    /// What the button offering a stage's action says.
-    /// </summary>
-    /// <remarks>
-    /// Only the kinds a stage can offer are here, and the throw is what keeps it that way. The one
-    /// this must never grow is <see cref="JobKind.Render"/>: the rendered files cost nothing and
-    /// can be made again, so they are never a press, and a screen that had a word for the button
-    /// would be one edit from showing it.
-    /// </remarks>
-    private static UiText Action(JobKind kind) => kind switch
-    {
-        JobKind.Transcribe => UiTexts.Transcribe,
-        JobKind.Extract => UiTexts.Summarise,
-        _ => throw new InvalidOperationException($"This screen offers nothing for job kind '{kind}'."),
-    };
-
-    /// <summary>
-    /// What this screen says rather than throws over. Deliberately not
-    /// <see cref="InvalidOperationException"/>, which is caught on its own where it means
-    /// something: everywhere else it is a defect, and a screen that swallowed it would leave one
-    /// looking like a corpus somebody could not read.
-    /// </summary>
-    private static bool Reportable(Exception thrown) => thrown
-        is IOException
-        or UnauthorizedAccessException
-        or SqliteException
-        or DbUpdateException
-        or AudioCaptureException
-        or RecordingException;
-
-    /// <summary>
     /// What a row says about a recording nobody got to stop, and which of the three surfaces it
     /// says it on.
     /// </summary>
     /// <remarks>
     /// One table and not two, because the two answers are one statement: the tint is what says a
     /// row is waiting on the person, and a sentence that said so over a surface that did not would
-    /// be the screen contradicting itself. The last arm stops rather than substituting, for the
-    /// reason <see cref="Reached"/> gives; <c>MeetingCardTextTests</c> is what catches a standing
-    /// with no answer here before it can be thrown.
+    /// be the screen contradicting itself. It stays here rather than moving to
+    /// <see cref="MeetingWords"/> with the stage tables, because the surface it names is one of
+    /// this screen's own styles and no other screen declares them. The last arm stops rather than
+    /// substituting, for the reason that class gives; <c>MeetingCardTextTests</c> is what catches
+    /// a standing with no answer here before it can be thrown.
     /// </remarks>
     private static (UiText Says, string Surface) Reads(WaitingStanding waiting) => waiting switch
     {
@@ -386,7 +335,7 @@ public sealed partial class MeetingsDrawer : UserControl
                 _waiting = WaitingRows.Of(
                     WaitingRecordings.In(context), _beingSaved, _wouldNotRead);
             }
-            catch (Exception unreadable) when (Reportable(unreadable))
+            catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
             {
                 _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
             }
@@ -654,18 +603,18 @@ public sealed partial class MeetingsDrawer : UserControl
 
         if ((row.Recording.Meeting?.StartedAt ?? row.Recording.Spooled.Card?.StartedAt) is { } began)
         {
-            line.Add(At(began));
+            line.Add(ScreenNumbers.At(began));
         }
 
         if (_survived.GetValueOrDefault(row.Recording.Folder.FullName) is { } survived)
         {
-            line.Add(Long(survived.Length));
+            line.Add(ScreenNumbers.Long(survived.Length));
         }
 
         line.Add(string.Create(
             CultureInfo.InvariantCulture, $"{row.Recording.Bytes / 1024d / 1024d:0.0} MB"));
 
-        return string.Join(" · ", line);
+        return ScreenNumbers.Beside([.. line]);
     }
 
     /// <summary>
@@ -772,11 +721,40 @@ public sealed partial class MeetingsDrawer : UserControl
         // the only thing allowed to fill it in without being asked is the summary when it arrives.
         var named = !string.IsNullOrWhiteSpace(entry.Meeting.Title);
 
-        lines.Children.Add(new TextBlock
+        // The name, and the press that opens the meeting. It is the same control because the row
+        // is what you press: `docs/design.md` puts two answers on a row and nothing else, so an
+        // open button would have to take the place of one of the two that cost money. What it says
+        // is the meeting's own name — or, for one nobody has named, the catalogue's two words,
+        // which is ISC-165.1 unchanged: this screen has nothing to invent a name from and is not
+        // pretending to.
+        var open = new Button
         {
-            Text = named ? entry.Meeting.Title : In(UiTexts.AMeetingNobodyHasNamed),
-            Style = Chrome(named ? "MeetingName" : "MeetingUnnamed"),
-        });
+            Content = new TextBlock
+            {
+                Text = named ? entry.Meeting.Title : In(UiTexts.AMeetingNobodyHasNamed),
+                Style = Chrome(named ? "MeetingName" : "MeetingUnnamed"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            },
+            Style = Chrome("MeetingOpen"),
+        };
+
+        // Named rather than left to whatever a button derives from a TextBlock in its content.
+        // What is on it is the meeting's own name, and that is what a narrator reads out — which
+        // is not something a control template promises.
+        AutomationProperties.SetName(
+            open,
+            named ? entry.Meeting.Title : In(UiTexts.AMeetingNobodyHasNamed));
+
+        // And an id beside it, which is a different question with a different answer. The name is
+        // read aloud and is a person's, so it is in their language and half this list has none —
+        // every meeting nobody has named reads the same two words, and nothing on the screen can
+        // then be told from anything else. The id says which meeting, in every language and for
+        // as long as the meeting exists, which is what a tool driving this window needs to press
+        // one of twelve rows.
+        AutomationProperties.SetAutomationId(open, entry.Meeting.Id.ToString());
+
+        open.Click += (_, _) => MeetingChosen?.Invoke(this, entry.Meeting.Id);
+        lines.Children.Add(open);
 
         // Data and not a sentence, so it reads the same in either language. Written to the minute
         // and never to the second: what tells two meetings apart on a list is which one it was,
@@ -784,7 +762,7 @@ public sealed partial class MeetingsDrawer : UserControl
         // meeting still being recorded, and one whose recording never finished, have none.
         lines.Children.Add(new TextBlock
         {
-            Text = When(entry.Meeting),
+            Text = ScreenNumbers.When(entry.Meeting),
             Style = Chrome("MeetingWhen"),
         });
 
@@ -803,11 +781,11 @@ public sealed partial class MeetingsDrawer : UserControl
         {
             Text = In(entry.Meeting.Id == _beingSaved
                 ? UiTexts.ThisOneIsBeingSaved
-                : Reached(entry.Owed.Stage)),
+                : MeetingWords.Reached(entry.Owed.Stage)),
             Style = Chrome("MeetingLine"),
         });
 
-        if (Standing(entry.Owed.Standing) is { } standing)
+        if (MeetingWords.Standing(entry.Owed.Standing) is { } standing)
         {
             lines.Children.Add(new TextBlock
             {
@@ -823,25 +801,6 @@ public sealed partial class MeetingsDrawer : UserControl
 
         return new Border { Style = Chrome("MeetingCard"), Child = lines };
     }
-
-    /// <summary>
-    /// When the meeting was and how long it ran, as one line of data: it is the machine's own
-    /// numbers and reads the same in either language.
-    /// </summary>
-    private static string When(Meeting meeting) => meeting.Duration is { } length
-        ? $"{At(meeting.StartedAt)} · {Long(length)}"
-        : At(meeting.StartedAt);
-
-    /// <summary>
-    /// When something was, to the minute and never to the second: what tells two meetings apart on
-    /// a list is which one it was, not how far into a minute it started.
-    /// </summary>
-    private static string At(UtcTimestamp started) => started.Value.ToLocalTime()
-        .ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
-
-    /// <summary>How long something ran, as somebody reads a length off a screen.</summary>
-    private static string Long(Duration length) =>
-        length.ToTimeSpan().ToString(@"h\:mm\:ss", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// One of the styles this screen declares. What a card looks like stays in the XAML, where a
@@ -879,7 +838,7 @@ public sealed partial class MeetingsDrawer : UserControl
 
         if (owed.MayBeTaken)
         {
-            var take = new Button { Content = In(Action(next)), Style = Chrome("TakeTheStage") };
+            var take = new Button { Content = In(MeetingWords.Action(next)), Style = Chrome("TakeTheStage") };
             take.Click += (_, _) => Answer(meeting, decline: false);
             row.Children.Add(take);
         }
@@ -928,7 +887,7 @@ public sealed partial class MeetingsDrawer : UserControl
             // list underneath it is read again.
             said = TextLine.Says(UiTexts.ThatIsNoLongerHowItWas);
         }
-        catch (Exception refused) when (Reportable(refused))
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
             said = TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
         }
@@ -1006,7 +965,7 @@ public sealed partial class MeetingsDrawer : UserControl
                 said = TextLine.Says(
                     again is null ? UiTexts.ThatIsNoLongerHowItWas : UiTexts.TheRecordingIsGone);
             }
-            catch (Exception refused) when (Reportable(refused))
+            catch (Exception refused) when (ScreenFailures.Reportable(refused))
             {
                 said = TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
             }
@@ -1056,7 +1015,7 @@ public sealed partial class MeetingsDrawer : UserControl
 
             said = TextLine.Says(kept ? UiTexts.ItIsAMeetingNow : UiTexts.ThatIsNoLongerHowItWas);
         }
-        catch (Exception refused) when (Reportable(refused))
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
             said = TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
         }

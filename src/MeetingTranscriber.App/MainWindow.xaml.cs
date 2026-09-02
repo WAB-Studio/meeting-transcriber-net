@@ -215,6 +215,10 @@ public sealed partial class MainWindow : Window
 
         Meetings.Open(corpus);
         Meetings.OpennessChanged += OnMeetingsMoved;
+        Meetings.MeetingChosen += OnMeetingChosen;
+
+        Reading.Open(corpus);
+        Reading.Left += OnLeftTheMeeting;
 
         // Read off the drawer once here as well as on every move, so which position the screen
         // opens in is the drawer's answer rather than two defaults that happen to agree.
@@ -284,7 +288,8 @@ public sealed partial class MainWindow : Window
         // The drawer is half of this screen and not a window of its own, so it is read in the same
         // pass rather than told separately by whatever decides the language.
         Meetings.ReadIn(language);
-        ShowWhereTheDrawerIs();
+        Reading.ReadIn(language);
+        ShowWhatTheRoomIsShowing();
     }
 
     /// <summary>
@@ -357,6 +362,13 @@ public sealed partial class MainWindow : Window
         // has to be seen. It is RecorderScreen's answer and not this window's, for the same reason
         // every button above is.
         Meetings.OfferTheWholeWindow(screen.TheMeetingsMayTakeTheWholeWindow);
+
+        // And the same answer over the meeting somebody may be reading. It is here rather than
+        // only where a meeting is opened because the answer changes under a screen that is
+        // already up: a recording started somewhere else in this window brings the recorder half
+        // back over a meeting being read, rather than leaving stop off the screen until somebody
+        // presses back.
+        ShowWhatTheRoomIsShowing();
 
         ShowTheClock(screen.State);
         ShowTheMeters(screen.State);
@@ -1181,16 +1193,61 @@ public sealed partial class MainWindow : Window
     /// list is the same screen rather than another one, and a card left showing over a full-height
     /// list would be the two of them arguing about the room.
     /// </summary>
-    private void OnMeetingsMoved(object? sender, EventArgs e) => ShowWhereTheDrawerIs();
+    private void OnMeetingsMoved(object? sender, EventArgs e) => ShowWhatTheRoomIsShowing();
 
     /// <summary>
-    /// The recorder half, shown or not according to where the drawer is. One writer and one
-    /// reading, called from the constructor, from a language change and from the drawer saying it
-    /// moved — so which position the screen is in is the drawer's answer everywhere rather than two
-    /// defaults in two files that happen to agree.
+    /// Which of the two the room below is showing, and whether the recorder half is above it. One
+    /// writer and one reading, called from the constructor, from a language change, from every
+    /// refresh, from the drawer saying it moved and from a meeting being opened or left — so which
+    /// position the screen is in is one answer everywhere rather than several in several files
+    /// that happen to agree.
     /// </summary>
-    private void ShowWhereTheDrawerIs() =>
-        RecordingCard.Visibility = Meetings.HasTheWholeWindow ? Visibility.Collapsed : Visibility.Visible;
+    /// <remarks>
+    /// A meeting takes the whole window under exactly the condition the raised list does, and
+    /// asks <see cref="RecorderScreen.TheMeetingsMayTakeTheWholeWindow"/> for it rather than
+    /// deciding a second time. That rule is not about room: what goes with the recorder half is
+    /// stop, both meters and every line a narrator is told about the moment a device dies, and a
+    /// hidden element is not in the automation tree at all. A meeting opened while one is being
+    /// recorded therefore sits in the room the list was using, with the recorder still above it —
+    /// which is the same shape the docked list has, for the same reason.
+    /// </remarks>
+    private void ShowWhatTheRoomIsShowing()
+    {
+        var reading = Reading.IsShowingAMeeting;
+
+        Reading.Visibility = reading ? Visibility.Visible : Visibility.Collapsed;
+        Meetings.Visibility = reading ? Visibility.Collapsed : Visibility.Visible;
+        RecordingCard.Visibility =
+            Meetings.HasTheWholeWindow || (reading && Screen().TheMeetingsMayTakeTheWholeWindow)
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Somebody opened one of the meetings on the list.
+    /// </summary>
+    /// <remarks>
+    /// The meeting is shown before the room is rearranged, because showing one is what makes
+    /// <see cref="ReadingAMeeting.IsShowingAMeeting"/> true and that is what
+    /// <see cref="ShowWhatTheRoomIsShowing"/> reads. The other way round leaves a window that hid the
+    /// list to show an empty screen.
+    /// </remarks>
+    private void OnMeetingChosen(object? sender, Guid meeting)
+    {
+        Reading.Show(meeting);
+        ShowWhatTheRoomIsShowing();
+    }
+
+    /// <summary>
+    /// Somebody came back from a meeting. The list is read again rather than shown as it was: what
+    /// they did on that screen — named it, bought a transcription for it, ignored one — is exactly
+    /// what its row on the list says.
+    /// </summary>
+    private void OnLeftTheMeeting(object? sender, EventArgs e)
+    {
+        Meetings.Read();
+        ShowWhatTheRoomIsShowing();
+    }
 
     private void OnWhoIsUsingThisTyped(object sender, TextChangedEventArgs e) => ShowWhoIsUsingThis();
 
@@ -1667,6 +1724,11 @@ public sealed partial class MainWindow : Window
         // keeping a recording is the same minutes of work stopping is — and it is told for the
         // same reason this window keeps `_closed`: what it must not do afterwards is draw.
         Meetings.Closing();
+
+        // The meeting screen holds a file and an audio endpoint for as long as somebody is
+        // listening, and a window that closed over one would leave both to whenever a finaliser
+        // got round to them — with the recording still coming out of the machine until it did.
+        Reading.Close();
 
         // Before the guard below, and it is the one thing here that is: what it stops is Windows
         // calling into a closed window about a device, which has nothing to do with whichever

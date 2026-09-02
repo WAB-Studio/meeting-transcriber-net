@@ -331,6 +331,13 @@
 
         <local:MeetingsDrawer x:Name="Meetings" Grid.Row="2" />
 
+        <!-- One meeting, read in the room the list was using. The same screen and not another
+             window: a meeting is reached from the list and returns to it, and a second window
+             would be one more thing to find again — which is the same argument that keeps the list
+             itself out of one. Which of the two is on screen is answered in the code-behind, where
+             the drawer already says which position it is in. -->
+        <local:ReadingAMeeting x:Name="Reading" Grid.Row="2" Visibility="Collapsed" />
+
         <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
             <TextBlock
                 x:Name="StatusText"

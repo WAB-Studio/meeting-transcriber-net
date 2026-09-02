@@ -22,6 +22,12 @@ public class MeetingCardTextTests
 {
     private static readonly string Screen = Path.Combine("MeetingTranscriber.App", "MeetingsDrawer.xaml.cs");
 
+    /// <summary>
+    /// Where the three tables both screens share are written. The list and the screen one meeting
+    /// is read from ask the same question, so the answer is in one place and this reads it there.
+    /// </summary>
+    private static readonly string Words = Path.Combine("MeetingTranscriber.App", "MeetingWords.cs");
+
     private static readonly string StagesDeclaredIn =
         Path.Combine("MeetingTranscriber.Domain", "Meetings", "MeetingStage.cs");
 
@@ -68,7 +74,7 @@ public class MeetingCardTextTests
     [Theory]
     [MemberData(nameof(Tables))]
     public void Every_stage_and_every_standing_has_a_word_on_the_card(string enumeration) =>
-        Held[enumeration]().ShouldNameItsWholeEnum("MeetingsDrawer", enumeration);
+        Held[enumeration]().ShouldNameItsWholeEnum("MeetingWords", enumeration);
 
     [Fact]
     public void The_button_is_only_ever_offered_for_work_that_spends_something()
@@ -121,10 +127,10 @@ public class MeetingCardTextTests
             + "throws where it is drawn.");
     }
 
-    private static EnumTable Stages() => EnumTable.Read(Screen, "stage", "MeetingStage", StagesDeclaredIn);
+    private static EnumTable Stages() => EnumTable.Read(Words, "stage", "MeetingStage", StagesDeclaredIn);
 
     private static EnumTable Standings() =>
-        EnumTable.Read(Screen, "standing", "StageStanding", StagesDeclaredIn);
+        EnumTable.Read(Words, "standing", "StageStanding", StagesDeclaredIn);
 
     /// <summary>
     /// The waiting recordings' table. It answers two things at once — the sentence and the
@@ -139,5 +145,5 @@ public class MeetingCardTextTests
         Path.Combine("MeetingTranscriber.Recording", "WaitingRows.cs"));
 
     private static EnumTable Actions() => EnumTable.Read(
-        Screen, "kind", "JobKind", Path.Combine("MeetingTranscriber.Domain", "Jobs", "JobKind.cs"));
+        Words, "kind", "JobKind", Path.Combine("MeetingTranscriber.Domain", "Jobs", "JobKind.cs"));
 }

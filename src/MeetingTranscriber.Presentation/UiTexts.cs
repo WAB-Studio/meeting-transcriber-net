@@ -525,6 +525,89 @@ public static class UiTexts
         "The corpus could not be opened, so this list says nothing. The recording screen says "
         + "why: {0}");
 
+    // ── The screen one meeting is read from ────────────────────────────────────────────────────
+
+    // The way back, and it says where back is rather than "back": this screen is reached from one
+    // place and returns to it, so naming the place costs a word and saves somebody wondering.
+    public static UiText BackToTheMeetings { get; } =
+        new("Volver a las reuniones", "Back to the meetings");
+
+    // The name field. A meeting's name is the person's to set at any time after it was recorded,
+    // and this is the one place the application offers to set it — so the field says what it is
+    // for rather than sitting there as an unlabelled box holding a title.
+    public static UiText TheMeetingsName { get; } = new("Nombre de la reunión", "The meeting's name");
+
+    // The three sections, which are fixed and are the tables the corpus already has. The AI does
+    // not choose them, or the corpus stops being able to answer "every decision in August".
+    public static UiText WhatWasDecided { get; } = new("Qué se decidió", "What was decided");
+
+    public static UiText WhatIsLeftToDo { get; } = new("Qué queda por hacer", "What is left to do");
+
+    public static UiText WhatWasLeftUnresolved { get; } =
+        new("Qué quedó sin resolver", "What was left unresolved");
+
+    // Who wrote this. Said and not left to be worked out from which buttons are on screen: a
+    // summary is a machine's words under a meeting's own name, and whose words they are belongs
+    // beside them.
+    public static UiText TranscribedBy { get; } = new(
+        "La transcribió {0}, el {1}.",
+        "{0} transcribed it, on {1}.");
+
+    public static UiText SummarisedBy { get; } = new(
+        "El resumen lo armó {0}, el {1}.",
+        "{0} put the summary together, on {1}.");
+
+    public static UiText NobodyHasTranscribedThisYet { get; } = new(
+        "Todavía no la transcribió nadie.",
+        "Nobody has transcribed it yet.");
+
+    public static UiText NobodyHasSummarisedThisYet { get; } = new(
+        "Todavía no hay resumen.",
+        "There is no summary yet.");
+
+    // A meeting that arrived here already transcribed or already summarised carries what was made
+    // and no record of what made it. Said out loud rather than read as nobody having done it,
+    // which under a heading that says it was done is the screen contradicting itself.
+    public static UiText TheCorpusDoesNotSayWhoTranscribedIt { get; } = new(
+        "El corpus no dice quién la transcribió.",
+        "The corpus does not say what transcribed it.");
+
+    public static UiText TheCorpusDoesNotSayWhoSummarisedIt { get; } = new(
+        "El corpus no dice quién armó el resumen.",
+        "The corpus does not say what put the summary together.");
+
+    // The player. Hearing what a meeting recorded never costs anything and never waits on a
+    // transcription, so none of these words says anything about either.
+    public static UiText Play { get; } = new("Reproducir", "Play");
+
+    // How far into the meeting the playback has got. It labels the track rather than sitting
+    // beside it: a slider hands its value back through a pattern of its own, and this is the name
+    // that value is read under.
+    public static UiText HowFarIntoTheMeeting { get; } =
+        new("Por dónde va la reunión", "How far into the meeting");
+
+    // The press on each thing the AI left. It carries the minute it was said at as its words, and
+    // this is what says what pressing it does — the same act wherever a citation appears.
+    public static UiText WhereThisWasSaid { get; } = new("Dónde se dijo esto", "Where this was said");
+
+    // The two absences a screen with no player has to tell apart. The audio is a source: it was
+    // never produced from anything and cannot be produced again, so a meeting the corpus has a row
+    // for and no file under is something to look at rather than something still to come.
+    public static UiText ThereIsNoRecordingUnderThisMeetingYet { get; } = new(
+        "Todavía no hay una grabación bajo esta reunión.",
+        "There is no recording under this meeting yet.");
+
+    public static UiText TheRecordingIsNotWhereTheCorpusSaysItIs { get; } = new(
+        "El corpus dice que esta reunión tiene audio, y el archivo no está donde debería.",
+        "The corpus says this meeting has audio, and the file is not where it should be.");
+
+    // Said where the player would be. A machine with nothing to play through, or a recording whose
+    // file has gone, is not something this screen can do anything about — so it says what happened
+    // and leaves the rest of the meeting readable.
+    public static UiText ThisMeetingWillNotPlay { get; } = new(
+        "No se pudo reproducir esta reunión: {0}",
+        "This meeting would not play: {0}");
+
     // ── The packaging checks scaffold ──────────────────────────────────────────────────────────
 
     public static UiText PackagingChecks { get; } =

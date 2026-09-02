@@ -1,6 +1,6 @@
 # The Olivo artboards
 
-Seventeen screens as pictures. **`../design.md` is the authority** — this folder is what it was
+Eighteen screens as pictures. **`../design.md` is the authority** — this folder is what it was
 written from, and where the two disagree that document says so and wins.
 
 ## Opening one
@@ -23,7 +23,7 @@ Nothing under `src/` reads these files. They are read by people.
 
 ## What is here
 
-`canvas.json` is the index: it names the seventeen, lays them out on two pages — *Flujo* and
+`canvas.json` is the index: it names the eighteen, lays them out on two pages — *Flujo* and
 *Sistema* — and carries the note written against each screen. Those notes are the shortest statement
 of why a screen is shaped the way it is, and they are mined into `../design.md`.
 
@@ -39,6 +39,7 @@ of why a screen is shaped the way it is, and they are mined into `../design.md`.
 | Flujo | It ended or broke | `Configuracion.dc.html` | Settings |
 | Flujo | Afterwards | `Reunion.dc.html` | The meeting |
 | Flujo | Afterwards | `ReunionCruda.dc.html` | The meeting, recorded and nothing else |
+| Flujo | Afterwards | `ReunionTranscrita.dc.html` | The meeting, transcribed and not yet summarised |
 | Flujo | Afterwards | `Clasificar.dc.html` | What it was about |
 | Flujo | Afterwards | `QuienEsQuien.dc.html` | Who is who |
 | Flujo | Afterwards | `Correcciones.dc.html` | Words that come out wrong |
@@ -48,7 +49,8 @@ of why a screen is shaped the way it is, and they are mined into `../design.md`.
 | Sistema | — | `Sistema.dc.html` | Olivo — the system sheet |
 
 Every artboard is 1120 wide; the flow is 720 tall except `Reunion` (860), `Correcciones` (820) and
-`Configuracion` (760), and the system sheet is 3920.
+`Configuracion` (760), and the system sheet is 3920. The *Afterwards* row reads left to right in
+the order a meeting gains things: recorded, transcribed, summarised.
 
 ## The names and the copy
 
