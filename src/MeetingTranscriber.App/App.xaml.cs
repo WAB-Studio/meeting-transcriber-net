@@ -1,5 +1,6 @@
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
+using MeetingTranscriber.Processing.Rendering;
 
 using Microsoft.UI.Xaml;
 
@@ -70,6 +71,44 @@ public partial class App : Application
 
         _main = window;
         _main.Activate();
+
+        CatchUpOnTheRenders(_corpus);
+    }
+
+    /// <summary>
+    /// Produces the files of every meeting whose transcription has arrived and whose transcript
+    /// and jsonl have not, in the corpus this session opened.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Here, and not on the meetings screen opening. The response arriving is what puts a meeting
+    /// in this state, and launch is where the application learns of one that arrived while it was
+    /// closed — today it is the only place it can learn of one at all, because nothing in this
+    /// application runs a transcription: taking a stage queues a job and starts nothing, so there
+    /// is no completion to hang this off yet. Hanging it on the screen instead would tie the work
+    /// to how often somebody looks at a list, which is not what decides the files.
+    /// </para>
+    /// <para>
+    /// Off the thread the window draws on, after the window is up, and nothing waits for it: it
+    /// writes to the corpus and holds a write transaction while it does, which is not something a
+    /// window should be inside. Nothing on screen is waiting on it either — a rendered file says
+    /// nothing about the stage a meeting is at, so no card changes when one lands.
+    /// </para>
+    /// <para>
+    /// Nobody is told how it went, and that is the decision: the files cost nothing and can be
+    /// produced again, so a render that failed is one the next launch tries again and there is
+    /// nothing in it for a person to answer. The discarded task is the price of that — a defect
+    /// inside the render, as against a corpus that would not answer, lands in a task nobody
+    /// observes and the runtime drops it. Saying it out loud instead would need a line on the
+    /// window and words in the catalogue, which is a screen decision and not this one's.
+    /// </para>
+    /// </remarks>
+    private static void CatchUpOnTheRenders(CorpusFolder corpus)
+    {
+        if (corpus.Folder is { } folder)
+        {
+            _ = Task.Run(() => OwedRenders.CatchUpOn(folder, TimeProvider.System));
+        }
     }
 
     /// <summary>

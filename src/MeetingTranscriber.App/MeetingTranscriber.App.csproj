@@ -38,10 +38,18 @@
   </ItemGroup>
 
   <!-- Recording a meeting: the audio engine composed with the corpus. It brings Audio,
-       Infrastructure and Domain along with it, and it is the only edge this application needs —
-       everything a screen decides lives on that side, where a build agent can run it. -->
+       Infrastructure and Domain along with it, and everything a screen decides lives on that side,
+       where a build agent can run it. -->
   <ItemGroup>
     <ProjectReference Include="..\MeetingTranscriber.Recording\MeetingTranscriber.Recording.csproj" />
+  </ItemGroup>
+
+  <!-- Producing what a meeting's transcription is read from, which nobody is ever asked about and
+       so has to happen from inside the application. It is the second edge and it is a narrow one:
+       App calls Processing to catch up on the renders a corpus is owed and nothing else, and the
+       rule for which meetings those are lives over there, where a build agent runs it. -->
+  <ItemGroup>
+    <ProjectReference Include="..\MeetingTranscriber.Processing\MeetingTranscriber.Processing.csproj" />
   </ItemGroup>
 
   <!--
