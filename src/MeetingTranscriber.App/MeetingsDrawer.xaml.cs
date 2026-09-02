@@ -311,11 +311,12 @@ public sealed partial class MeetingsDrawer : UserControl
     /// application. The last arm stops rather than substituting, and <c>MeetingCardTextTests</c> is
     /// what catches a reason with no words here before it can be thrown.
     /// <para>
-    /// What no probe reaches is that each entry asks for as many values as its reason carries. A
-    /// text wanting more than it is given throws where the card is drawn, which is a red nothing
-    /// here can produce: this file has no <c>ProjectReference</c> to it and the switch is read as
-    /// source. The five pairs are three-with-none, one-with-one and one-with-two, and they are
-    /// checked by reading them.
+    /// The other half of each pair is arity: an entry asking for one more value than its reason
+    /// takes throws where the card is drawn, on a list nothing but a running window builds. How
+    /// many each reason takes is <c>NotAMeeting.Values</c>' to say and no screen has an opinion
+    /// about it, so what <c>MeetingCardTextTests</c> does is read this switch and hold the entry
+    /// each arm names to that count. An arm pointed at a text reading for a different number of
+    /// values is a red before it is a draw, and no number is written down here to go stale.
     /// </para>
     /// </remarks>
     private static UiText Words(WhyNotAMeeting why) => why switch

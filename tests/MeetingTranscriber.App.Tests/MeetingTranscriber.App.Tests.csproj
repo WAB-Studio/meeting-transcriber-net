@@ -7,15 +7,26 @@
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 
-  <!-- No ProjectReference, and not by preference: the Windows App SDK compiles a module
-       initializer into MeetingTranscriber.App that bootstraps the Windows App Runtime the moment
-       any type from it is touched, and outside a packaged host that throws before the first
-       assertion. So what a test can hold the app to is its source — which is enough for the one
-       thing that has to be held here: that no screen carries words of its own. -->
+  <!-- No reference to MeetingTranscriber.App, and not by preference: the Windows App SDK compiles
+       a module initializer into it that bootstraps the Windows App Runtime the moment any type
+       from it is touched, and outside a packaged host that throws before the first assertion. So
+       what a test can hold the application to is its source — which is enough for the thing that
+       has to be held here: that no screen carries words of its own.
+
+       The catalogue is a different matter and is referenced. MeetingTranscriber.Presentation is
+       plain net10.0 with no references and says in its own project file that it was shaped that
+       way so a test could load it, so the words a screen reaches for are real objects here rather
+       than a pattern over a file of 157 declarations — which is what a screen's table can be held
+       to asking each of them for the right number of values. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MeetingTranscriber.Presentation\MeetingTranscriber.Presentation.csproj" />
+  </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
     <Using Include="Shouldly" />
+    <Using Include="MeetingTranscriber.Presentation" />
   </ItemGroup>
 
   <ItemGroup>

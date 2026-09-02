@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Reflection;
 using System.Text.RegularExpressions;
 
 namespace MeetingTranscriber.App.Tests;
@@ -31,6 +33,13 @@ public class MeetingCardTextTests
 
     private static readonly string StagesDeclaredIn =
         Path.Combine("MeetingTranscriber.Domain", "Meetings", "MeetingStage.cs");
+
+    /// <summary>
+    /// Where a recording's reason for not being a meeting is declared, and where the count of
+    /// values each one takes is declared beside it.
+    /// </summary>
+    private static readonly string ReasonsDeclaredIn =
+        Path.Combine("MeetingTranscriber.Recording", "WaitingRecordings.cs");
 
     /// <summary>
     /// The tables held to naming their whole enum, by the enum's name.
@@ -128,6 +137,72 @@ public class MeetingCardTextTests
             + "throws where it is drawn.");
     }
 
+    /// <summary>
+    /// Every reason a recording gives for not being a meeting is read out of a text that leaves
+    /// room for exactly the values that reason says it takes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The half of that pairing nothing else reaches. <see cref="EnumTable"/> holds a table to
+    /// naming its whole enum and <see cref="ScreenTextsTests"/> holds every arm to reaching the
+    /// catalogue; neither looks at how many values the entry it reached asks for. A text wanting
+    /// one more than it is handed makes <c>string.Format</c> throw where the card is drawn, on a
+    /// list nothing but a running window builds — so the first person to see it is somebody who
+    /// has just lost a meeting.
+    /// </para>
+    /// <para>
+    /// Two ends and one number between them, and the number belongs to neither: <c>NotAMeeting</c>
+    /// declares it and refuses a reason built with any other count, so what is left to hold is that
+    /// the words agree. This is the only project that can see both. The catalogue is referenced and
+    /// its texts are the real objects, so their side is <c>UiText.Values</c> and not a reading;
+    /// what is read is the two switches, because the screen is a project nothing may load and
+    /// <c>MeetingTranscriber.Recording</c> is built for Windows while this is not.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void The_words_for_a_reason_leave_room_for_exactly_the_values_it_takes()
+    {
+        var reads = Reasons();
+        var takes = EnumTable.Read(ReasonsDeclaredIn, "why", "WhyNotAMeeting", ReasonsDeclaredIn);
+
+        // The counts are a table over the enum like any other, and this is the one place that reads
+        // it — a reason missing from it would otherwise be a reason this check silently skips.
+        takes.ShouldNameItsWholeEnum("WhyNotAMeeting");
+
+        var texts = typeof(UiTexts)
+            .GetProperties(BindingFlags.Public | BindingFlags.Static)
+            .Where(property => property.PropertyType == typeof(UiText))
+            .ToDictionary(property => property.Name, property => (UiText)property.GetValue(null)!, StringComparer.Ordinal);
+
+        texts.ShouldNotBeEmpty("UiTexts holds no text, so this check reads nothing.");
+
+        foreach (var why in takes.Declared)
+        {
+            reads.Answers.ShouldContainKey(
+                why, $"{reads.Screen} has no arm reading '{why}' out of the catalogue.");
+
+            var named = Regex.Match(reads.Answers[why], @"^UiTexts\.(?<text>\w+),$");
+            named.Success.ShouldBeTrue(
+                $"{reads.Screen}'s arm for '{why}' answers `{reads.Answers[why]}`, which is not one "
+                + "catalogued text, so what a person reads for this reason is built on the screen.");
+
+            texts.ShouldContainKey(
+                named.Groups["text"].Value,
+                $"the card reads '{why}' out of UiTexts.{named.Groups["text"].Value}, and the "
+                + "catalogue has no text by that name.");
+
+            int.TryParse(takes.Answers[why].TrimEnd(','), CultureInfo.InvariantCulture, out var carried)
+                .ShouldBeTrue($"NotAMeeting.Values answers `{takes.Answers[why]}` for '{why}', which is not a count.");
+
+            texts[named.Groups["text"].Value].Values.ShouldBe(
+                carried,
+                $"a recording that is not a meeting because '{why}' is drawn out of "
+                + $"UiTexts.{named.Groups["text"].Value}, which leaves room for "
+                + $"{texts[named.Groups["text"].Value].Values} values while the reason takes "
+                + $"{carried}. The card throws where it is drawn.");
+        }
+    }
+
     private static EnumTable Stages() => EnumTable.Read(Words, "stage", "MeetingStage", StagesDeclaredIn);
 
     private static EnumTable Standings() =>
@@ -153,11 +228,8 @@ public class MeetingCardTextTests
     /// that: <see cref="ScreenTextsTests"/> reads the application's own source, where the words were
     /// not, and this class read only the enum beside them. A reason with no words is a red here now.
     /// </summary>
-    private static EnumTable Reasons() => EnumTable.Read(
-        Screen,
-        "why",
-        "WhyNotAMeeting",
-        Path.Combine("MeetingTranscriber.Recording", "WaitingRecordings.cs"));
+    private static EnumTable Reasons() =>
+        EnumTable.Read(Screen, "why", "WhyNotAMeeting", ReasonsDeclaredIn);
 
     private static EnumTable Actions() => EnumTable.Read(
         Words, "kind", "JobKind", Path.Combine("MeetingTranscriber.Domain", "Jobs", "JobKind.cs"));

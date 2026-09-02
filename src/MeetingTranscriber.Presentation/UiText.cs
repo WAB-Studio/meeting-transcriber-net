@@ -26,7 +26,7 @@ public sealed partial record UiText
         {
             throw new ArgumentException(
                 $"The two versions of this text take different values: Spanish uses "
-                + $"{Values(inSpanish)} and English uses {Values(inEnglish)}.",
+                + $"{Spelled(inSpanish)} and English uses {Spelled(inEnglish)}.",
                 nameof(english));
         }
 
@@ -41,6 +41,7 @@ public sealed partial record UiText
 
         Spanish = spanish;
         English = english;
+        Values = Room(inSpanish);
     }
 
     /// <summary>What it says in Spanish.</summary>
@@ -48,6 +49,20 @@ public sealed partial record UiText
 
     /// <summary>What it says in English.</summary>
     public string English { get; }
+
+    /// <summary>
+    /// How many values it has to be handed, which is one past the highest placeholder rather than
+    /// the count of them: `{0}` twice is one value, and a text using only `{1}` still takes two.
+    /// </summary>
+    /// <remarks>
+    /// Counted over one version because the constructor above has already refused a pair whose two
+    /// versions ask for different values, and read off the same number <see cref="Readable"/> feeds
+    /// the formatter — so this is what the text was proved readable with, not a second reading of
+    /// it. What it is for is the caller that has to say how many values it will have: a screen
+    /// pairing a text with a source of values can be held to the two agreeing before somebody
+    /// reaches the screen, instead of `string.Format` throwing inside a draw.
+    /// </remarks>
+    public int Values { get; }
 
     /// <summary>What it says in the language being read in.</summary>
     public string In(UiLanguage language) => language switch
@@ -69,7 +84,7 @@ public sealed partial record UiText
     /// </summary>
     private static void Readable(string text, HashSet<int> placeholders, string parameter)
     {
-        var values = new object?[placeholders.Count == 0 ? 0 : placeholders.Max() + 1];
+        var values = new object?[Room(placeholders)];
 
         try
         {
@@ -84,7 +99,11 @@ public sealed partial record UiText
         }
     }
 
-    private static string Values(HashSet<int> placeholders) => placeholders.Count == 0
+    /// <summary>How many values a set of placeholder indices asks the formatter for.</summary>
+    private static int Room(HashSet<int> placeholders) =>
+        placeholders.Count == 0 ? 0 : placeholders.Max() + 1;
+
+    private static string Spelled(HashSet<int> placeholders) => placeholders.Count == 0
         ? "none"
         : string.Join(", ", placeholders.Order().Select(index => $"{{{index}}}"));
 

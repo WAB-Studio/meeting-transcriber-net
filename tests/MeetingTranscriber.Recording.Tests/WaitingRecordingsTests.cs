@@ -327,11 +327,12 @@ public sealed class WaitingRecordingsTests : IDisposable
     /// which meeting it is of, because those two disagreeing is the whole of what is wrong with it.
     /// </summary>
     /// <remarks>
-    /// The one reason that carries two values, and the reason this test exists rather than the
-    /// arm's coverage being taken as enough: a screen builds one sentence out of both, and two
-    /// values in the wrong order reads as a recording sitting in a folder named after the meeting
-    /// it is already named after. Nothing downstream can tell that from the right answer, so the
-    /// order is pinned where the values are chosen.
+    /// One of the two reasons that carry two values — the other is
+    /// <see cref="WhyNotAMeeting.NotAllOfItsSourcesAreHere"/>, pinned below — and the reason this
+    /// test exists rather than the arm's coverage being taken as enough: a screen builds one
+    /// sentence out of both, and two values in the wrong order reads as a recording sitting in a
+    /// folder named after the meeting it is already named after. Nothing downstream can tell that
+    /// from the right answer, so the order is pinned where the values are chosen.
     /// </remarks>
     [Fact]
     public void A_recording_under_another_name_says_the_folder_it_is_in_and_the_meeting_it_is_of()
@@ -356,6 +357,69 @@ public sealed class WaitingRecordingsTests : IDisposable
 
         Should.Throw<RecordingException>(
             () => WaitingRecordings.Recover(context, waiting, openedAgainAt));
+    }
+
+    /// <summary>
+    /// A recording that has lost one of its two spools says how many are here and how many a
+    /// meeting takes, because a meeting is both channels and half of one is not one.
+    /// </summary>
+    /// <remarks>
+    /// The other reason carrying two values, and the one where getting them the wrong way round
+    /// typechecks: both are <c>int</c>, so a transposed pair compiles, and every arm, every table
+    /// and every screen stays green while the row reads "only 2 of its 1 sources is here". The
+    /// order is pinned here, where the values are chosen, for the reason the folder-name test above
+    /// gives.
+    /// </remarks>
+    [Fact]
+    public void A_recording_missing_a_source_says_how_many_are_here_and_how_many_it_takes()
+    {
+        using var context = corpus.OpenMigrated();
+        var recorded = Killed(context, seconds: 2).MeetingId;
+
+        // One source's blocks are gone while everything else about the folder is right: a spool
+        // copied off a disk that gave up part way, or a folder restored file by file. What is left
+        // is a whole recording of one side of the meeting.
+        BlockSpool.FileFor(CorpusFiles.SpoolFolderFor(corpus.Root, recorded), AudioChannel.Microphone)
+            .Delete();
+
+        var waiting = WaitingRecordings.In(context).Single();
+
+        waiting.MeetingId.ShouldBe(recorded);
+
+        var reason = waiting.Unrecoverable.ShouldNotBeNull();
+        reason.Why.ShouldBe(WhyNotAMeeting.NotAllOfItsSourcesAreHere);
+        reason.Says.ShouldBe(
+            [1, CapturedAudio.ChannelCount],
+            "how many are here first and how many a meeting is made of second, which is the order "
+            + "the sentence naming them takes. Both are counts and both are `int`, so the wrong "
+            + "way round is a row telling somebody one of their sources is missing out of two "
+            + "that are here.");
+
+        Should.Throw<RecordingException>(
+            () => WaitingRecordings.Recover(context, waiting, openedAgainAt));
+    }
+
+    /// <summary>
+    /// A reason handed a different number of values than its sentence leaves room for is refused
+    /// where it is built.
+    /// </summary>
+    /// <remarks>
+    /// The count is <c>NotAMeeting.Values</c>' and every branch above is held to it, which is what
+    /// keeps a screen from being the place a mismatch turns up: a text handed one value fewer than
+    /// it asks for throws inside a draw, on the list of recordings somebody has just lost. The
+    /// order of two values is a separate question with a separate answer — a count cannot see a
+    /// transposition — and it is the two tests above.
+    /// </remarks>
+    [Fact]
+    public void A_reason_handed_the_wrong_number_of_values_is_refused_where_it_is_built()
+    {
+        Should.Throw<ArgumentException>(
+                () => new NotAMeeting(WhyNotAMeeting.ThisCorpusHasNoSuchMeeting, []))
+            .Message.ShouldContain("leaves room for 1");
+
+        Should.Throw<ArgumentException>(
+                () => new NotAMeeting(WhyNotAMeeting.NothingSaysWhichMeetingItIs, [Guid.NewGuid()]))
+            .Message.ShouldContain("leaves room for 0");
     }
 
     /// <summary>

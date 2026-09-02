@@ -228,8 +228,8 @@ internal sealed partial class IsaDocument
     /// <c>ch1:speaker_0</c> are all things somebody could go and look up, and none of them says
     /// where. It is one whitespace-free token, which drops the recorded command lines —
     /// <c>git grep -l "class TemporaryCorpus" -- tests/</c> is a run and not a pointer, and so is
-    /// <c>mklink /J</c>. It holds no wildcard or angle bracket, which drops the one glob and the
-    /// one shape: <c>tests/**/*.cs</c> names a set and <c>meetings/&lt;id&gt;/manifest.json</c>
+    /// <c>mklink /J</c>. It holds none of <see cref="NotInAPath"/>, which drops the one glob and
+    /// the one shape: <c>tests/**/*.cs</c> names a set and <c>meetings/&lt;id&gt;/manifest.json</c>
     /// names a corpus folder nobody's checkout has. And its first segment names a directory at the
     /// root, which is what makes it a path in <em>this</em> repository rather than a relative one
     /// whose base is a sentence — <c>MeetingTranscriber.Testing/DeepgramFixtures.cs</c> is what a
@@ -248,6 +248,12 @@ internal sealed partial class IsaDocument
     /// </remarks>
     private static List<string> ReadPaths(string[] lines)
     {
+        // Without regard to case, one line above a deliberate `Ordinal`, and the difference is the
+        // point of both. A root matched exactly would make `TESTS/…` stop being a path and so never
+        // be answered at all; matched without case it stays a path, and whether it is spelled the
+        // way the tree spells it is the resolving half's question — `IsaStructureTests.Resolves`.
+        // The `Ordinal` below keeps two spellings of one directory as two pointers, because each is
+        // cited somewhere and each has to be answered.
         var roots = Root().EnumerateDirectories()
             .Select(directory => directory.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -303,13 +309,23 @@ internal sealed partial class IsaDocument
     private static partial Regex Pointer();
 
     /// <summary>
-    /// What a path in this repository cannot hold: a wildcard, which makes the span a set, and an
-    /// angle bracket, which makes it a shape. Both are answered by a different question than the
-    /// one <see cref="Paths"/> is asked. Nothing else is here — a quote and a pipe are illegal in a
-    /// Windows path too, and every span in the file that carries one already carries whitespace, so
-    /// listing them would be two conditions nothing has ever reached.
+    /// Characters no path in this repository holds, each of which makes the span a different kind
+    /// of thing. A wildcard or a bracket makes it a set of names, an angle bracket makes it a
+    /// shape, and a colon or a hash makes it a place inside a file — <c>tests/X.Tests/Foo.cs:120</c>
+    /// and <c>docs/layout.md#a-heading</c> point at a line and at a heading, not at the file. Every
+    /// one is answered by a different question than the one <see cref="Paths"/> is asked.
     /// </summary>
-    private static readonly char[] NotInAPath = ['*', '?', '<', '>'];
+    /// <remarks>
+    /// The first four are spans the file holds; the last four are spans it does not, and are here
+    /// anyway. That is not a fallback for input nothing produces — a refusal rule has no input but
+    /// what somebody writes next, and this gate has never repaired anything, so the only thing that
+    /// can put it behind where the file started is a red on a citation that was fine. A stub citing
+    /// a line or a heading is an ordinary thing to write. Letting such a span through unread costs
+    /// nothing this file does not already pay: two of its citations are already read as prose
+    /// rather than as pointers, on the root condition above. A quote and a pipe stay off the list,
+    /// because every span carrying one carries whitespace as well.
+    /// </remarks>
+    private static readonly char[] NotInAPath = ['*', '?', '<', '>', ':', '#', '[', ']'];
 
     /// <summary>
     /// The longest a backticked span is free for. Past it the span is priced as prose, one

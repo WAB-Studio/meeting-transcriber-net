@@ -59,12 +59,58 @@ public enum WhyNotAMeeting
 /// <param name="Says">The values that reason's sentence leaves room for, in the order it takes them.</param>
 public sealed record NotAMeeting(WhyNotAMeeting Why, IReadOnlyList<object?> Says)
 {
+    /// <summary>The values that reason's sentence leaves room for, in the order it takes them.</summary>
+    public IReadOnlyList<object?> Says { get; } = AsMany(Why, Says);
+
+    /// <summary>
+    /// How many values a reason's sentence leaves room for.
+    /// </summary>
+    /// <remarks>
+    /// Declared here and asked everywhere, because otherwise the number is written down three times
+    /// and agreed on nowhere: once by the branch that builds the reason, once by the Spanish text
+    /// and once by the English one. A screen reads the words with as many values as it was handed,
+    /// so an entry wanting one more than its reason carries throws inside a draw, on a list nothing
+    /// but a running window builds — the last place to find out. This is what the two ends are held
+    /// to: the branch by the constructor below, the words by <c>MeetingCardTextTests</c>, which is
+    /// the only project that can see both.
+    /// <para>
+    /// It says nothing about which value is which. Both of the reasons carrying two carry values of
+    /// one type — a folder name beside a meeting id reads as a string either way round, and two
+    /// counts are both <c>int</c> — so a count is the one thing about them a compiler could never
+    /// have caught, and the order is pinned in <c>WaitingRecordingsTests</c> instead.
+    /// </para>
+    /// </remarks>
+    public static int Values(WhyNotAMeeting why) => why switch
+    {
+        WhyNotAMeeting.NothingSaysWhichMeetingItIs => 0,
+        WhyNotAMeeting.WhatItSaysAboutItselfCannotBeRead => 0,
+        WhyNotAMeeting.ItIsInAnotherMeetingsFolder => 2,
+        WhyNotAMeeting.ThisCorpusHasNoSuchMeeting => 1,
+        WhyNotAMeeting.NotAllOfItsSourcesAreHere => 2,
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(why), why, "There is no count of values for this reason."),
+    };
+
     /// <summary>
     /// The reason named, with the facts behind it — machine words, for an exception message and for
     /// the developer listing the CLI prints. Never a sentence somebody reads on a screen.
     /// </summary>
     public override string ToString() =>
         Says.Count == 0 ? Why.ToString() : $"{Why}: {string.Join(", ", Says)}";
+
+    /// <summary>Throws unless the reason was handed the values its sentence leaves room for.</summary>
+    private static IReadOnlyList<object?> AsMany(WhyNotAMeeting why, IReadOnlyList<object?> says)
+    {
+        ArgumentNullException.ThrowIfNull(says);
+
+        var wanted = Values(why);
+
+        return says.Count == wanted
+            ? says
+            : throw new ArgumentException(
+                $"'{why}' leaves room for {wanted} values and was given {says.Count}.",
+                nameof(says));
+    }
 }
 
 /// <summary>
