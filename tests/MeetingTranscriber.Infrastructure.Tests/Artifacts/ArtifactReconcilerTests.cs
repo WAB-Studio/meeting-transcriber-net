@@ -27,7 +27,7 @@ public class ArtifactReconcilerTests
         Written(context, corpus, meeting, "transcript.md", ArtifactKind.Transcript, "a rendering");
 
         ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
-        ArtifactReconciler.Sweep(context).ShouldBeEmpty();
+        ArtifactReconciler.Sweep(context).Removed.ShouldBeEmpty();
     }
 
     [Fact]
@@ -42,8 +42,71 @@ public class ArtifactReconcilerTests
         finding.State.ShouldBe(ArtifactState.Unfinished);
         finding.RelativePath.ShouldBe(leftover);
 
-        ArtifactReconciler.Sweep(context).ShouldBe([leftover]);
+        ArtifactReconciler.Sweep(context).Removed.ShouldBe([leftover]);
         ArtifactReconciler.Check(context).ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The other file a replace can leave beside a destination, and the one the sweep may not have.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A set of derived files is replaced by emptying every destination first, and what comes out
+    /// of one is an artifact's bytes rather than a write's. Still there after the replace is over,
+    /// it means the machine stopped inside the run of renames or the tidy-up was refused — and in
+    /// the case the emptying exists for, a replace refused partway that puts the copies back, this
+    /// is the file the put-back is about to move. A sweep taking it there is not a lost write; it
+    /// is a derived file that stopped existing and said nothing.
+    /// </para>
+    /// <para>
+    /// So it is named superseded and not unfinished, and the two claims are opposite: unfinished
+    /// says these bytes were never an artifact, which is the whole of the sweep's licence to delete
+    /// one on sight.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void The_copy_a_replace_set_aside_is_reported_and_survives_the_sweep()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var aside = Drop(
+            corpus,
+            $"meetings/{meeting}/transcript.md.f00d{CorpusFiles.SupersededSuffix}",
+            "the rendering before this one");
+
+        var finding = ArtifactReconciler.Check(context).ShouldHaveSingleItem();
+        finding.State.ShouldBe(ArtifactState.Superseded);
+        finding.RelativePath.ShouldBe(aside);
+
+        ArtifactReconciler.Sweep(context).Removed.ShouldBeEmpty();
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, aside).FullName)
+            .ShouldBe("the rendering before this one");
+    }
+
+    /// <summary>
+    /// Two spellings of one path name one file here, so a row and the file a scan finds under it
+    /// are one artifact rather than a row and a stray.
+    /// </summary>
+    /// <remarks>
+    /// The reconciler asks the same question the write's guard asks — which destination is this —
+    /// and has to get the same answer. Asked exactly it gets a different one in one direction only:
+    /// the row is fine, because looking the file up goes through the filesystem and the filesystem
+    /// does not care about the case, and the same file is then reported as one nothing recorded and
+    /// may be the only copy of. One intact file, named as a problem.
+    /// </remarks>
+    [Fact]
+    public void A_recorded_file_spelled_another_way_is_still_the_file_its_row_names()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var artifact = Written(context, corpus, meeting, "transcript.md", ArtifactKind.Transcript, "a rendering");
+
+        var stored = CorpusFiles.Locate(corpus.Root, artifact.RelativePath);
+        File.Move(stored.FullName, Path.Combine(stored.Directory!.FullName, "Transcript.md"));
+
+        ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
     }
 
     /// <summary>
@@ -63,7 +126,7 @@ public class ArtifactReconcilerTests
         finding.State.ShouldBe(ArtifactState.Unrecorded);
         finding.RelativePath.ShouldBe(orphan);
 
-        ArtifactReconciler.Sweep(context).ShouldBeEmpty();
+        ArtifactReconciler.Sweep(context).Removed.ShouldBeEmpty();
         File.ReadAllText(CorpusFiles.Locate(corpus.Root, orphan).FullName).ShouldBe("{\"paid\":true}");
     }
 
@@ -136,7 +199,7 @@ public class ArtifactReconcilerTests
         finding.State.ShouldBe(ArtifactState.Spooled);
         finding.RelativePath.ShouldBe(block);
 
-        ArtifactReconciler.Sweep(context).ShouldBeEmpty();
+        ArtifactReconciler.Sweep(context).Removed.ShouldBeEmpty();
         CorpusFiles.Locate(corpus.Root, block).Exists.ShouldBeTrue();
     }
 

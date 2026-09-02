@@ -173,6 +173,59 @@ one that says more is a corpus that lies when it is read. `ArtifactReconciler` i
 unfinished writes, which it may delete because they were never artifacts, and files with no row,
 which it never touches because one of them may be the only copy of something that was paid for.
 
+## The two files that live beside a destination
+
+A write in flight and a replace in flight each leave a file next to where the artifact goes, and
+they are opposite things in the same shape. Which one a file is is its suffix, and `sweep` is the
+command that acts on the difference.
+
+| Suffix | What it holds | What a sweep does |
+| --- | --- | --- |
+| `.partial` | bytes on their way in, which were never an artifact | deletes it |
+| `.superseded` | the old copy of a derived file, moved aside so a set of them could be replaced together | leaves it, and `check` reports it |
+
+`.partial` is deleted on sight — no age, no second thought — and that licence rests entirely on the
+middle column: nothing is lost, because nothing was ever there. So the copy a replace sets aside
+must not wear it. That copy *was* an artifact, and between the emptying and the moves it is the only
+copy of one; a sweep taking it turns a replace that refused and put everything back into a derived
+file that quietly stopped existing.
+
+The other half of the same licence is a write somebody is still making, which is spelled `.partial`
+because that is exactly what it is. `sweep` is run from a terminal, so it runs beside a working
+application as a matter of course. What separates the two is a handle: a staged artifact holds its
+temporary open from the moment it is created until the line before the rename, so the delete is
+refused, the file is left and the command says which ones it left. A temporary nothing holds is a
+dead write; one something holds is a live one. That is the liveness test, and there is no clock in
+it — but it is the artifact write's own, and the `.partial` files the audio engine writes beside a
+recording it is materialising are held only while something is reading or writing them.
+
+A `.superseded` file on disk means the machine stopped inside a replace, or the tidy-up at the end
+of one was refused. Nothing removes it, and `check` keeps reporting it, exactly as with a file that
+has no row: this module reports and does not repair anything that was ever an artifact, because it
+cannot tell the copy nobody needs from the copy that is the last one. So `check` stays red until a
+person looks. What to do is two steps and both are somebody's: if the derived file it is a copy of
+is missing, `rebuild` produces it again from the sources; then delete the copy, which costs nothing
+once the file is back.
+
+## Two spellings of one path
+
+The corpus is a folder on a Windows filesystem, so `transcript.md` and `Transcript.md` are one file
+— while the unique index on `artifacts.relative_path` is SQLite's default binary collation and sees
+two values. Two writes spelled differently would move to one destination and both be recorded: two
+rows over one file's bytes, which is the state the whole write sequence exists to make unreachable.
+
+`CorpusFiles.PathComparer` is the answer for everything that asks the question **in memory** — today
+the guard refusing a set that names one destination twice, and the reconciler matching what it
+scanned against what the rows say. Comparing the stored strings is enough because
+`CorpusFiles.EnsureBelongsTo` has already refused every other way two spellings could differ: a
+backslash, a `.` or a `..`, a rooted path.
+
+What it does not reach is a lookup that asks the database, which is how a write finds the row
+already at its path. That one is still binary, so two spellings across two separate writes would
+still make two rows over one file. Closing it means a collation on the column, which is a migration,
+and nothing has needed it: every stored path is composed from a meeting id and a constant, so no
+caller produces a second spelling. The day one does, that is the change.
+
 ## Putting a lost file back
 
 The reconciler reports a row whose file is gone and stops there. `ArtifactRestore` is what a person

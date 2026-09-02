@@ -1,4 +1,4 @@
-﻿using MeetingTranscriber.Domain.Artifacts;
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;

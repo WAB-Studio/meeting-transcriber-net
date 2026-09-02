@@ -36,6 +36,15 @@ public enum ArtifactState
     /// make.
     /// </summary>
     Spooled = 5,
+
+    /// <summary>
+    /// The copy of a derived file a replace moved out of the way, still there after the replace was
+    /// over. Either the machine stopped inside the run of renames or the tidy-up at the end of it
+    /// was refused. Until somebody looks it is the only copy of what that file used to hold, which
+    /// is why nothing removes it on its own — and it is a derivative, so a rebuild is the answer
+    /// and removing it by hand costs nothing.
+    /// </summary>
+    Superseded = 6,
 }
 
 /// <summary>One thing the corpus and the disk disagree about.</summary>
@@ -47,6 +56,20 @@ public sealed record ArtifactFinding(ArtifactState State, string RelativePath, s
 {
     public override string ToString() => $"{State}: {RelativePath}: {Detail}";
 }
+
+/// <summary>What a sweep took, and what it found and did not take.</summary>
+/// <param name="Removed">The unfinished writes it deleted, as stored paths, in a stable order.</param>
+/// <param name="Left">
+/// The unfinished writes something else had open, which is a write still being made.
+/// </param>
+/// <remarks>
+/// The second list is not a consolation for the first. A write is held for as long as it exists,
+/// so leaving one is what a sweep run beside a working application is supposed to do — and a run
+/// that says only how many it removed answers "none" to a corpus full of live writes and to an
+/// empty one alike, leaving somebody who has just read a report of unfinished writes with no way
+/// to tell a healthy sweep from a broken one.
+/// </remarks>
+public sealed record SweptWrites(IReadOnlyList<string> Removed, IReadOnlyList<string> Left);
 
 /// <summary>
 /// What start-up does about the fact that the filesystem and SQLite cannot be written together.
@@ -63,6 +86,15 @@ public sealed record ArtifactFinding(ArtifactState State, string RelativePath, s
 /// So <see cref="Sweep"/> removes unfinished writes and nothing else. Adopting an unrecorded file
 /// back into the corpus is a recovery decision with a person in it, not a thing that happens
 /// silently while the app starts.
+/// </para>
+/// <para>
+/// <b>Nothing else</b> is load-bearing in two directions the name does not say. A copy a replace
+/// moved out of the way is bytes that were an artifact, so it carries its own suffix and is
+/// reported rather than removed. And an artifact write still being made holds its temporary open,
+/// so the sweep is refused it, leaves it and says which ones it left — that, and nothing about
+/// time, is how a <c>sweep</c> run from a terminal beside a working application is safe. It is the
+/// artifact write that guarantees it: a <c>.partial</c> the audio engine wrote beside a recording
+/// it is materialising is held only while something is reading or writing it.
 /// </para>
 /// </remarks>
 public static class ArtifactReconciler
@@ -94,7 +126,10 @@ public static class ArtifactReconciler
             })
             .ToList();
 
-        var known = new HashSet<string>(StringComparer.Ordinal);
+        // The scan finds a file under whatever case the disk spells it, and the row holds whatever
+        // case the write recorded. On this filesystem those are one file, so telling them apart
+        // exactly would report a meeting's transcript as both recorded and unaccounted for.
+        var known = new HashSet<string>(CorpusFiles.PathComparer);
 
         foreach (var artifact in recorded.OrderBy(artifact => artifact.RelativePath, StringComparer.Ordinal))
         {
@@ -134,37 +169,46 @@ public static class ArtifactReconciler
     }
 
     /// <summary>
-    /// Removes the unfinished writes and answers with what it removed. The only thing start-up
-    /// gets to do without asking, and it is safe because one of these was never an artifact.
+    /// Removes the unfinished writes and answers with what it took and what it left. The only
+    /// thing the corpus removes without being asked, and it is safe because one of these was
+    /// never an artifact.
     /// </summary>
     /// <remarks>
     /// It takes the corpus and not a folder even though it never reads a row: this deletes, and
     /// what it deletes from has to be the folder of a corpus rather than a directory somebody
     /// named that happens to have files ending the same way.
     /// </remarks>
-    public static IReadOnlyList<string> Sweep(CorpusDbContext context)
+    public static SweptWrites Sweep(CorpusDbContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
 
         var root = context.Root;
-        var swept = new List<string>();
+        var removed = new List<string>();
+        var left = new List<string>();
         foreach (var file in Walk(root).Where(file => CorpusFiles.IsUnfinished(file.Name)))
         {
             var relativePath = CorpusFiles.RelativePathOf(root, file);
             try
             {
                 file.Delete();
-                swept.Add(relativePath);
+                removed.Add(relativePath);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                // Something else has it open, which on a single user machine means a write that is
-                // still running. Leaving it is what the next start-up is for.
+                // Something else has it open, which means a write that is still being made: a
+                // staged artifact holds its temporary from the moment it is created until the
+                // moment it is put in place, so this is the liveness test and not a consolation
+                // for one. It is carried out rather than swallowed, because a sweep beside a
+                // working application leaves files as a matter of course and somebody who just
+                // read a report of unfinished writes has to be able to tell that from a sweep
+                // that is not working.
+                left.Add(relativePath);
             }
         }
 
-        swept.Sort(StringComparer.Ordinal);
-        return swept;
+        removed.Sort(StringComparer.Ordinal);
+        left.Sort(StringComparer.Ordinal);
+        return new SweptWrites(removed, left);
     }
 
     /// <summary>
@@ -182,6 +226,16 @@ public static class ArtifactReconciler
                     ArtifactState.Unfinished,
                     relativePath,
                     "a write that never finished; it is not an artifact and can be removed");
+                continue;
+            }
+
+            if (CorpusFiles.IsSuperseded(file.Name))
+            {
+                yield return new ArtifactFinding(
+                    ArtifactState.Superseded,
+                    relativePath,
+                    "the copy a replace moved aside and did not get to remove; it is the last one "
+                    + "of what that derived file held, and a rebuild produces it again");
                 continue;
             }
 
