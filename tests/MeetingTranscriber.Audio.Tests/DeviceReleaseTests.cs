@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace MeetingTranscriber.Audio.Tests;
@@ -10,9 +9,6 @@ namespace MeetingTranscriber.Audio.Tests;
 /// </summary>
 public class DeviceReleaseTests
 {
-    /// <summary>How long a release that does answer is given before the test itself is the failure.</summary>
-    private static readonly TimeSpan Promptly = TimeSpan.FromSeconds(1);
-
     /// <summary>
     /// ISC-136. The release never comes back, which is a driver that drained fine and then wedged
     /// on being let go of — the failure one line below the one ISC-128 bounded. Waiting for it ends
@@ -40,7 +36,7 @@ public class DeviceReleaseTests
 
         try
         {
-            var waited = Time(release.Dispose);
+            var waited = Deadlines.Time(release.Dispose);
 
             waited.ShouldHaveWaitedTheDeadline();
             release.Abandoned.ShouldBeTrue();
@@ -50,7 +46,7 @@ public class DeviceReleaseTests
 
             // And the second attempt at letting go — a source is asked by the path that failed and
             // by the path that finished — waits none of it again.
-            Time(release.Dispose).ShouldBeLessThan(Promptly);
+            Deadlines.Time(release.Dispose).ShouldNotHaveSpentTheDeadline();
             release.Abandoned.ShouldBeTrue();
         }
         finally
@@ -71,11 +67,11 @@ public class DeviceReleaseTests
         var released = 0;
         var release = DeviceRelease.Of("lets go", () => Interlocked.Increment(ref released));
 
-        Time(release.Dispose).ShouldBeLessThan(Promptly);
+        Deadlines.Time(release.Dispose).ShouldNotHaveSpentTheDeadline();
         release.Abandoned.ShouldBeFalse();
         released.ShouldBe(1);
 
-        Time(release.Dispose).ShouldBeLessThan(Promptly);
+        Deadlines.Time(release.Dispose).ShouldNotHaveSpentTheDeadline();
         release.Abandoned.ShouldBeFalse();
         released.ShouldBe(1);
     }
@@ -116,18 +112,11 @@ public class DeviceReleaseTests
             };
         });
 
-        Time(release.Dispose).ShouldBeLessThan(Promptly);
+        Deadlines.Time(release.Dispose).ShouldNotHaveSpentTheDeadline();
 
         // Over rather than wedged: a handle that refused is a handle that answered, so nothing is
         // held and the next holder is free to carry on.
         release.Abandoned.ShouldBeFalse();
         reached.ShouldBeTrue();
-    }
-
-    private static TimeSpan Time(Action step)
-    {
-        var clock = Stopwatch.StartNew();
-        step();
-        return clock.Elapsed;
     }
 }

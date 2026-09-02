@@ -49,6 +49,14 @@ public static class MeetingAudio
         SampleEncoding.Pcm);
 
     /// <summary>What a recording is called while it is being written and has not been checked.</summary>
+    /// <remarks>
+    /// It has to stay equal to <c>CorpusFiles.UnfinishedSuffix</c>, which is this same string in
+    /// the infrastructure project and is what the reconciler's sweep deletes on sight. A recording
+    /// is materialised into a folder that sweep walks, so the two are one rule; this project sits
+    /// under that one and cannot see it, so they are spelled twice and nothing checks that they
+    /// agree. Change one and the sweep either stops recognising what is written here or starts
+    /// deleting what it should not.
+    /// </remarks>
     private const string Unfinished = ".partial";
 
     /// <summary>Where a folder's recording is, once there is one.</summary>

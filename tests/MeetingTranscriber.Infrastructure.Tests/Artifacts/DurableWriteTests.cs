@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
@@ -104,6 +104,15 @@ public class DurableWriteTests
     /// Cut at steps two, three or four: the temporary is written and the machine stops. Nothing
     /// disposes anything, which is what makes this a crash and not a handled failure.
     /// </summary>
+    /// <remarks>
+    /// What a sweep then does with it is not asked here, and cannot be: a crash leaves the temporary
+    /// with nothing holding it, and this process is holding it for as long as the write is stopped
+    /// rather than over. That half is
+    /// <see cref="ArtifactReconcilerTests.An_unfinished_write_is_named_for_what_it_is_and_swept"/>,
+    /// over a file on disk and no writer at all — which is what a process that died leaves. The
+    /// disposal at the end is not part of the cut: everything asserted has already been asserted,
+    /// and without it the handle outlives the corpus folder somebody has to delete.
+    /// </remarks>
     [Fact]
     public void A_write_cut_before_it_is_put_in_place_is_an_unfinished_write_and_no_more()
     {
@@ -126,8 +135,57 @@ public class DurableWriteTests
 
         var findings = ArtifactReconciler.Check(context);
         findings.Select(finding => finding.State).ShouldBe([ArtifactState.Unfinished]);
-        ArtifactReconciler.Sweep(context).Count.ShouldBe(1);
-        Files(corpus).ShouldBeEmpty();
+        Files(corpus).ShouldHaveSingleItem().ShouldEndWith(CorpusFiles.UnfinishedSuffix);
+
+        staged.Dispose();
+    }
+
+    /// <summary>
+    /// A sweep running beside a write that is still being made leaves it alone, and the write it
+    /// arrived in the middle of still lands.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Not a hypothetical: <c>sweep</c> is a command somebody runs in a terminal, and the
+    /// application it runs beside is rendering meetings. A sweep deletes a <c>.partial</c> on sight
+    /// with no age and no second thought, and the temporary of a write in flight is spelled exactly
+    /// that. What separates the two is the handle — a staged artifact holds its temporary from the
+    /// moment it exists until the moment it is renamed — so the sweep is refused it and leaves it.
+    /// </para>
+    /// <para>
+    /// Taken, it would be worse than a lost render: inside a set the moves run after every
+    /// destination has been emptied, and nothing puts a destination back from there.
+    /// </para>
+    /// <para>
+    /// It says which ones it left rather than only how many it took, because this is the ordinary
+    /// outcome of running the command beside a working application: reported as a count of nothing
+    /// removed, a corpus whose every write is live and a corpus with nothing in it read the same.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_sweep_running_beside_a_write_leaves_the_write_alone()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var path = CorpusFiles.PathFor(meeting, "transcript.md");
+
+        using var staged = StagedArtifact.Stage(
+            context,
+            meeting,
+            ArtifactKind.Transcript,
+            path,
+            stream => stream.Write(Encoding.UTF8.GetBytes("a whole transcript")));
+
+        var swept = ArtifactReconciler.Sweep(context);
+        swept.Removed.ShouldBeEmpty();
+        swept.Left.ShouldHaveSingleItem().ShouldEndWith(CorpusFiles.UnfinishedSuffix);
+
+        staged.Commit(When);
+
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, path).FullName).ShouldBe("a whole transcript");
+        Files(corpus).ShouldBe([path]);
+        EveryRowReReads(context);
     }
 
     /// <summary>
@@ -420,6 +478,66 @@ public class DurableWriteTests
     }
 
     /// <summary>
+    /// A replace stopped in the middle of its moves leaves the copy it emptied out of the way, and
+    /// that copy survives a sweep.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The state the naming exists for, reached rather than described. Standing in for the machine
+    /// dying inside the run of renames is a folder where the second file goes: a directory is not a
+    /// file, so nothing vacates it and the move meets it and is refused — after the first file has
+    /// been emptied and moved, and before the tidy-up at the end that removes what was emptied.
+    /// </para>
+    /// <para>
+    /// So a copy of the first file's old rendering is on disk, and it is the last one: the row
+    /// still names the destination the emptying took the old file out of. Named as an unfinished
+    /// write, a sweep takes it on sight and there is nothing left to look at. Named as what it is,
+    /// the sweep passes over it and `check` says where it is and what it is.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_replace_that_stopped_partway_leaves_the_copy_it_set_aside()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var transcript = CorpusFiles.PathFor(meeting, "transcript.md");
+        var utterances = CorpusFiles.PathFor(meeting, "utterances.jsonl");
+
+        DurableArtifact.WriteAllText(
+            context,
+            meeting,
+            When,
+            (ArtifactKind.Transcript, transcript, "the first rendering"),
+            (ArtifactKind.Utterances, utterances, "{\"turn\":0}"));
+
+        CorpusFiles.Locate(corpus.Root, utterances).Delete();
+        Directory.CreateDirectory(CorpusFiles.Locate(corpus.Root, utterances).FullName);
+
+        Should.Throw<UnauthorizedAccessException>(() => DurableArtifact.WriteAllText(
+            context,
+            meeting,
+            When,
+            (ArtifactKind.Transcript, transcript, "the second rendering"),
+            (ArtifactKind.Utterances, utterances, "{\"turn\":1}")));
+
+        // The first file was emptied and moved before the second was refused, so its new rendering
+        // is in place and the copy of the old one is beside it.
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, transcript).FullName).ShouldBe("the second rendering");
+        var aside = Files(corpus).Where(CorpusFiles.IsSuperseded).ShouldHaveSingleItem();
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, aside).FullName).ShouldBe("the first rendering");
+
+        var swept = ArtifactReconciler.Sweep(context);
+        swept.Removed.ShouldBeEmpty();
+        swept.Left.ShouldBeEmpty();
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, aside).FullName).ShouldBe("the first rendering");
+
+        ArtifactReconciler.Check(context)
+            .ShouldContain(finding =>
+                finding.State == ArtifactState.Superseded && finding.RelativePath == aside);
+    }
+
+    /// <summary>
     /// A destination somebody may delete and not write is still replaced, because what asks is the
     /// rename the replace itself performs and not a look at whether the file could be written.
     /// </summary>
@@ -483,7 +601,38 @@ public class DurableWriteTests
             (ArtifactKind.Transcript, transcript, "one rendering"),
             (ArtifactKind.Transcript, transcript, "another rendering")));
 
-        refused.Message.ShouldContain("twice");
+        refused.Message.ShouldContain("destination");
+        Files(corpus).ShouldBeEmpty();
+        context.Artifacts.ShouldBeEmpty();
+        EveryRowReReads(context);
+    }
+
+    /// <summary>
+    /// Two spellings of one path are one destination, so the same refusal reaches them: the guard
+    /// asks which file a path resolves to and not which string it is.
+    /// </summary>
+    /// <remarks>
+    /// The corpus is a folder on a Windows filesystem, where these two are one file. Compared
+    /// exactly they are two, so both writes would go to one destination — the second over the first
+    /// — and then both rows would reach a unique index that compares them the same exact way and
+    /// takes them both. That is a corpus with two artifacts recorded over one file's bytes, which
+    /// is the ordering the guard exists to make unreachable, arrived at through it.
+    /// </remarks>
+    [Fact]
+    public void Two_spellings_of_one_destination_are_refused_the_same_way()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+
+        var refused = Should.Throw<ArtifactWriteException>(() => DurableArtifact.WriteAllText(
+            context,
+            meeting,
+            When,
+            (ArtifactKind.Transcript, CorpusFiles.PathFor(meeting, "transcript.md"), "one rendering"),
+            (ArtifactKind.Transcript, CorpusFiles.PathFor(meeting, "Transcript.md"), "another rendering")));
+
+        refused.Message.ShouldContain("destination");
         Files(corpus).ShouldBeEmpty();
         context.Artifacts.ShouldBeEmpty();
         EveryRowReReads(context);
@@ -525,6 +674,7 @@ public class DurableWriteTests
     [InlineData("meetings/{0}/../../elsewhere.md")]
     [InlineData("meetings\\{0}\\transcript.md")]
     [InlineData("meetings/{0}/transcript.md.partial")]
+    [InlineData("meetings/{0}/transcript.md.superseded")]
     public void A_path_that_is_not_this_meetings_is_refused(string shape)
     {
         using var corpus = new TemporaryCorpus();

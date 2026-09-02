@@ -148,12 +148,29 @@ public static class DiagnosticCommands
         _ = corpus.Pending(context);
 
         var swept = ArtifactReconciler.Sweep(context);
-        foreach (var write in swept)
+        foreach (var write in swept.Removed)
         {
             output.WriteLine(write);
         }
 
-        output.WriteLine($"{swept.Count} unfinished write(s) removed.");
+        output.WriteLine($"{swept.Removed.Count} unfinished write(s) removed.");
+
+        // Said out loud, because leaving one is the ordinary outcome of running this beside a
+        // working application rather than a failure: an unfinished write is held open for as long
+        // as somebody is making it. Without this line, a corpus whose writes are all live and one
+        // with nothing in it both report the same nothing.
+        if (swept.Left.Count > 0)
+        {
+            foreach (var write in swept.Left)
+            {
+                output.WriteLine(write);
+            }
+
+            output.WriteLine(
+                $"{swept.Left.Count} left alone: something has them open, which is a write still "
+                + "being made. Running this again once it has finished takes whatever it left.");
+        }
+
         return Cli.Ok;
     }
 

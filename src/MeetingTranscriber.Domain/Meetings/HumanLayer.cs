@@ -8,6 +8,13 @@ public enum SpeakerAssignmentSource
     /// with a single speaker, so there was nobody else it could be. <c>Speakers.Resolve</c> is the
     /// only thing that hands this out.
     /// </summary>
+    /// <remarks>
+    /// One row writes it — <c>HumanLayer.SettleTheMicrophone</c> — and it is called from where a
+    /// meeting's turns are derived rather than from the door that asked for them, so filing a
+    /// response, rendering one at a prompt, rebuilding the corpus and the sweep the application
+    /// runs at launch cannot disagree about who spoke. A door that produces turns some other way
+    /// would have to settle for itself, and nothing mechanical would say so.
+    /// </remarks>
     Channel = 1,
 
     /// <summary>Somebody resolved a diarized label, which outranks any guess.</summary>

@@ -172,6 +172,35 @@ public class MeetingIntakeTests
         refused.Message.ShouldContain(missing.FullName);
     }
 
+    /// <summary>
+    /// Filing a paid response, whole, into a corpus where somebody has said who is using the
+    /// application: the meeting comes out of the one command with their own turns under their
+    /// name, and nobody named a voice for that to happen.
+    /// </summary>
+    /// <remarks>
+    /// What this adds over <c>MeetingRendererTests</c>, which is where the rule lives, is that
+    /// filing reaches it at all — a response arrives and the file on disk already reads the name,
+    /// rather than reading labels until something renders it a second time.
+    /// </remarks>
+    [Fact]
+    public void A_filed_response_already_names_whoever_said_they_are_using_this()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var ada = new HumanLayer(context, When).ThisIsMe("Ada");
+
+        var received = Receive(
+            context,
+            corpus.Root,
+            new FileInfo(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelOneVoiceMe)),
+            DeepgramFixtures.ProfileOf(DeepgramFixtures.TwoChannelOneVoiceMe));
+
+        context.SpeakerAssignments.Single().PersonId.ShouldBe(ada.Id);
+
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, received.Transcript.RelativePath).FullName)
+            .ShouldContain("## Ada — ");
+    }
+
     private static ReceivedMeeting Receive(
         CorpusDbContext context,
         DirectoryInfo root,

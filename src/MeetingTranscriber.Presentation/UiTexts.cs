@@ -276,9 +276,16 @@ public static class UiTexts
     /// entries would be choosing the punctuation between them, which is a word of its own in a
     /// language it picked.
     /// </summary>
-    public static UiText TheFirstRecordingMakesTheCorpusAt { get; } = new(
-        "Las reuniones se guardan en {0}. Todavía no hay un corpus ahí: la primera grabación lo crea.",
-        "Meetings are kept at {0}. There is no corpus there yet: the first recording makes one.");
+    /// <remarks>
+    /// It said the first recording until 2026-09-02, and stopped being true the day saying who is
+    /// using the application became something the corpus keeps: that answer is asked before the
+    /// first meeting and makes the corpus if it is the first thing kept. Named after what happens
+    /// rather than after which press does it, so a third thing worth keeping before a recording
+    /// does not make it wrong again.
+    /// </remarks>
+    public static UiText TheFirstThingKeptMakesTheCorpusAt { get; } = new(
+        "Las reuniones se guardan en {0}. Todavía no hay un corpus ahí: lo crea lo primero que se guarde.",
+        "Meetings are kept at {0}. There is no corpus there yet: the first thing kept makes one.");
 
     public static UiText TheSettingSaysNothingUsable { get; } = new(
         "El archivo que dice dónde está el corpus no dice nada que se pueda usar: {0}. No se graba "
@@ -306,6 +313,59 @@ public static class UiTexts
     public static UiText ChoosingAnotherFolderIsNotHereYet { get; } = new(
         "Elegir otra carpeta todavía no se hace desde esta pantalla.",
         "Choosing another folder is not done from this screen yet.");
+
+    // ── Who is using the application ──────────────────────────────────────────────────────────
+
+    public static UiText WhoIsUsingTheApplication { get; } =
+        new("Quién usa la aplicación", "Who is using the application");
+
+    /// <summary>
+    /// Why the field is worth filling in, shown only while nobody has. It is the whole of the
+    /// asking: the row is on the screen the application opens on either way, and this is what
+    /// tells the first person who sees it that it is a question and not a label.
+    /// </summary>
+    /// <remarks>
+    /// It says what the answer does rather than pleading for one. Nothing is blocked by leaving it
+    /// blank — a meeting still records and still transcribes — so a sentence that made it sound
+    /// required would be false, and the true reason is better anyway: this name is what the
+    /// microphone's own voice reads as afterwards, and no meeting recorded before it is answered
+    /// gets it back.
+    /// </remarks>
+    public static UiText NobodyHasSaidWhoIsUsingThis { get; } = new(
+        "Nadie lo dijo todavía. Es el nombre con el que se leerá tu propia voz en las reuniones "
+        + "que se graben de acá en adelante: el micrófono es tuyo, así que cuando capta una sola "
+        + "voz es la tuya y no hay a quién más preguntarle.",
+        "Nobody has said yet. It is the name your own voice reads under in the meetings recorded "
+        + "from here on: the microphone is yours, so when it catches a single voice it is yours "
+        + "and there is nobody else to ask.");
+
+    /// <summary>
+    /// Not <c>Keep</c>, which is what a recording nobody stopped is offered. The two are one word
+    /// in English and two in Spanish — conservar is rescuing something that would otherwise go,
+    /// guardar is writing an answer down — and sharing the entry would have made the recovery
+    /// list's own button read as this one the day either sentence moved.
+    /// </summary>
+    public static UiText Save { get; } = new("Guardar", "Save");
+
+    public static UiText WhoIsUsingThisIsKept { get; } = new(
+        "Listo: de acá en adelante tu voz en el micrófono se lee «{0}».",
+        "Done: from here on your voice on the microphone reads ‘{0}’.");
+
+    public static UiText WhoIsUsingThisWasNotKept { get; } = new(
+        "No se pudo guardar quién usa la aplicación.",
+        "Who is using the application could not be kept.");
+
+    /// <summary>
+    /// Said when the corpus would not open. It matters that it is a different sentence from the
+    /// one above: an empty field reads as nobody having answered, so somebody would answer again
+    /// and the answer would fail on the same corpus — and this is the line that sends them to the
+    /// refusal about the folder instead.
+    /// </summary>
+    public static UiText WhoIsUsingThisCouldNotBeRead { get; } = new(
+        "No se pudo leer quién usa la aplicación: el campo está vacío porque el corpus no abrió, "
+        + "no porque nadie lo haya dicho.",
+        "Who is using the application could not be read: the field is empty because the corpus "
+        + "would not open, not because nobody has said.");
 
     // ── What the application owes each meeting ────────────────────────────────────────────────
 

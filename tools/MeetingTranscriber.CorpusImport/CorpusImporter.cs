@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.Security.Cryptography;
 
 using MeetingTranscriber.Domain.Artifacts;

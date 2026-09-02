@@ -1,4 +1,4 @@
-﻿using System.Text.RegularExpressions;
+using System.Text.RegularExpressions;
 
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
@@ -367,6 +367,113 @@ public class MeetingRendererTests
 
         File.WriteAllText(
             path, CorruptedResponses.WithConfidenceOffTheScale(File.ReadAllText(path)));
+    }
+
+    /// <summary>
+    /// The one assignment a render makes without being asked: the microphone caught one voice, and
+    /// somebody has said whose microphone it is.
+    /// </summary>
+    /// <remarks>
+    /// The three on the loopback are the control. They come through the same render and stay as
+    /// the labels the provider wrote, because which of them is who is exactly what the recording
+    /// cannot know.
+    /// </remarks>
+    [Fact]
+    public void The_microphones_own_voice_reads_as_whoever_said_they_are_using_this()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+        var ada = new HumanLayer(context, When).ThisIsMe("Ada");
+
+        var rendered = MeetingRenderer.Render(context, meeting, When);
+
+        var settled = context.SpeakerAssignments.Single();
+        settled.SpeakerLabel.ShouldBe("ch1:speaker_0");
+        settled.PersonId.ShouldBe(ada.Id);
+        settled.AssignedBy.ShouldBe(SpeakerAssignmentSource.Channel);
+
+        var transcript = File.ReadAllText(
+            CorpusFiles.Locate(corpus.Root, rendered.Transcript.RelativePath).FullName);
+
+        transcript.ShouldContain("## Ada — ");
+        transcript.ShouldNotContain("ch1:speaker_0");
+        transcript.ShouldContain("## ch0:speaker_0 — ");
+    }
+
+    /// <summary>
+    /// The same meeting in a corpus nobody has answered in. There is nobody to settle a voice
+    /// onto, so every speaker reads as its label — which is the state the question on the opening
+    /// screen exists to end.
+    /// </summary>
+    [Fact]
+    public void A_meeting_rendered_before_anybody_said_who_is_using_this_names_nobody()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+
+        var rendered = MeetingRenderer.Render(context, meeting, When);
+
+        context.SpeakerAssignments.ShouldBeEmpty();
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, rendered.Transcript.RelativePath).FullName)
+            .ShouldContain("## ch1:speaker_0 — ");
+    }
+
+    /// <summary>
+    /// The answer arriving after the meeting did. Every door that derives a meeting's turns comes
+    /// through here — filing a response, rendering one at a prompt, rebuilding, and the sweep the
+    /// application runs at launch — so which of them somebody happens to run next cannot decide
+    /// whether their own voice reads as a name.
+    /// </summary>
+    /// <remarks>
+    /// Three contexts, closed between: the corpus is what carries this from one to the next, and a
+    /// single warm one would let the change tracker answer where two commands on two days will not.
+    /// </remarks>
+    [Fact]
+    public void Rendering_again_after_the_answer_arrives_names_a_meeting_that_had_nobody()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid meeting;
+
+        using (var filing = corpus.OpenMigrated())
+        {
+            meeting = Recorded(filing, corpus.Root);
+            MeetingRenderer.Render(filing, meeting, When);
+            filing.SpeakerAssignments.ShouldBeEmpty();
+        }
+
+        using (var answering = corpus.OpenMigrated())
+        {
+            new HumanLayer(answering, When).ThisIsMe("Ada");
+        }
+
+        using var rendering = corpus.OpenMigrated();
+        var rendered = MeetingRenderer.Render(rendering, meeting, When);
+
+        rendering.SpeakerAssignments.Single().SpeakerLabel.ShouldBe("ch1:speaker_0");
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, rendered.Transcript.RelativePath).FullName)
+            .ShouldContain("## Ada — ");
+    }
+
+    /// <summary>
+    /// A render derives what the response says and never overrules what somebody said. The label
+    /// the microphone would have settled is already somebody else's answer, so it stays theirs.
+    /// </summary>
+    [Fact]
+    public void What_the_microphone_would_settle_never_overrules_what_a_person_resolved()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+        new HumanLayer(context, When).ThisIsMe("Ada");
+        Resolved(context, meeting, "ch1:speaker_0", "Jo");
+
+        var rendered = MeetingRenderer.Render(context, meeting, When);
+
+        context.SpeakerAssignments.Single().AssignedBy.ShouldBe(SpeakerAssignmentSource.Person);
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, rendered.Transcript.RelativePath).FullName)
+            .ShouldContain("## Jo — ");
     }
 
     /// <summary>Somebody saying who a speaker label is, which reaches the transcript and no row.</summary>

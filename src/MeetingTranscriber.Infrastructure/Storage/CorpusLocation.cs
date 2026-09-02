@@ -88,6 +88,14 @@ public sealed record CorpusFolder
     /// somebody ends up looking at an empty list with nothing wrong on screen. Whoever opens this
     /// folder says so first and makes one because they were told, never because nothing objected.
     /// </summary>
+    /// <remarks>
+    /// As of when this answer was resolved, and a screen that outlives one has to say which it
+    /// means. The corpus comes into existence under the screen — the first thing kept makes one —
+    /// so a window drawing a line from what it opened with would keep saying there is no corpus
+    /// under the press that just made one. What does not go stale is the refusal beside it, so the
+    /// shape is: read the refusal off this, and ask <see cref="CorpusDatabase.HoldsACorpus"/> about
+    /// the folder each time it matters.
+    /// </remarks>
     public bool HoldsACorpus { get; }
 
     /// <summary>The folder, which only an answer nothing stopped has.</summary>

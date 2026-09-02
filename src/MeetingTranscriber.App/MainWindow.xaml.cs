@@ -78,7 +78,14 @@ public sealed partial class MainWindow : Window
         (UiTexts.EnglishName, "en"),
     ];
 
-    /// <summary>Where this application's corpus is, or what stopped it being found.</summary>
+    /// <summary>
+    /// Where this application's corpus is, or what stopped it being found.
+    /// </summary>
+    /// <remarks>
+    /// The refusal on it is settled for as long as this window is open and nothing here can lift
+    /// one. Whether the folder holds a corpus is not settled: <see cref="ThereIsACorpus"/> asks
+    /// that each time, because two of this screen's presses make one.
+    /// </remarks>
     private readonly CorpusFolder _corpus;
 
     /// <summary>
@@ -96,6 +103,13 @@ public sealed partial class MainWindow : Window
 
     private UiLanguage _language;
     private TextLine? _status;
+
+    /// <summary>
+    /// What the row about who is using the application knows that the field itself does not: what
+    /// the last read of the corpus found, and whether a press is in flight. What is typed is read
+    /// off the field at the moment it is asked, which is why that half is not kept here.
+    /// </summary>
+    private WhoIsUsingThisRow _whoIsUsingThis = WhoIsUsingThisRow.Unread;
 
     /// <summary>True while the pickers are being filled, so refilling them is not a choice.</summary>
     private bool _filling;
@@ -228,6 +242,10 @@ public sealed partial class MainWindow : Window
             Say(UiTexts.NoMicrophoneOnThisMachine);
         }
 
+        // Before ReadIn, which is what draws the row: whether it is asking or showing is read off
+        // the corpus here, and ReadIn only puts it on screen in this reader's language.
+        ReadWhoIsUsingThis();
+
         ReadIn(language);
 
         // Last, and that is the whole of why it is here rather than beside the first list: what it
@@ -263,6 +281,7 @@ public sealed partial class MainWindow : Window
         Title = UiTexts.RecordAMeeting.In(language);
 
         FillThePickers();
+        ShowWhoIsUsingThis();
         Render();
         Refresh();
 
@@ -831,9 +850,9 @@ public sealed partial class MainWindow : Window
     {
         var text = _corpus.Refusal switch
         {
-            null => _corpus.HoldsACorpus
+            null => ThereIsACorpus()
                 ? UiTexts.MeetingsAreKeptAt
-                : UiTexts.TheFirstRecordingMakesTheCorpusAt,
+                : UiTexts.TheFirstThingKeptMakesTheCorpusAt,
             CorpusRefusal.SettingSaysNothingUsable => UiTexts.TheSettingSaysNothingUsable,
             CorpusRefusal.FolderDoesNotAnswer => UiTexts.TheCorpusFolderDidNotAnswer,
             CorpusRefusal.NoCorpusInTheFolder => UiTexts.ThereIsNoCorpusInThatFolder,
@@ -845,6 +864,92 @@ public sealed partial class MainWindow : Window
         // One entry, read once. Every arm above takes the path and nothing else, so there is no
         // second case here and no punctuation for this window to choose between two of them.
         CorpusText.Text = text.In(_language, _corpus.Path);
+    }
+
+    /// <summary>
+    /// Whether there is a corpus in that folder as of now, rather than as of when this window
+    /// opened.
+    /// </summary>
+    /// <remarks>
+    /// Asked and not kept, which is what <see cref="MeetingsDrawer"/> already does on every read
+    /// and for the same reason: the corpus comes into existence under this screen — keeping who is
+    /// using the application makes one, and so does the first recording — so an answer read once
+    /// would go on saying there is none under the press that just made one. What is kept is the
+    /// refusal beside it, because nothing on this screen can lift one.
+    /// </remarks>
+    private bool ThereIsACorpus() =>
+        _corpus.Folder is { } folder && CorpusDatabase.HoldsACorpus(folder);
+
+    /// <summary>
+    /// Reads who is using this application out of the corpus and puts it in the field.
+    /// </summary>
+    /// <remarks>
+    /// Not part of <see cref="ReadIn"/>, which runs whenever the language changes: what is in that
+    /// field may be half typed, and re-reading it there would take a name out from under somebody
+    /// mid-answer because they switched language to read the question. The words around it are the
+    /// XAML's own binding and do follow the language.
+    /// </remarks>
+    private void ReadWhoIsUsingThis()
+    {
+        var name = string.Empty;
+
+        // No corpus yet is not a failure and is not read as one: nobody has answered, which is
+        // what an empty field with the question under it already says. Keeping an answer is what
+        // makes the corpus, the same way the first recording does.
+        if (_corpus.Folder is { } folder && ThereIsACorpus())
+        {
+            try
+            {
+                using var context = CorpusDatabase.Open(folder);
+                name = new HumanLayer(context, TimeProvider.System).Me()?.DisplayName ?? string.Empty;
+            }
+            catch (Exception wouldNotRead) when (Reportable(wouldNotRead))
+            {
+                // Said rather than left blank. A corpus that will not open reads exactly like one
+                // nobody has answered in, and the difference is somebody's own name: shown the
+                // empty field alone, they would answer again believing nobody had.
+                //
+                // The row stays live through it, which is the other half. The press opens the
+                // corpus the way this read did not — bringing the schema up — so a corpus one
+                // migration behind is repaired by being answered; and answering cannot make a
+                // second person however this read failed, because the write renames whoever
+                // carries the flag rather than adding to them.
+                Say(UiTexts.WhoIsUsingThisCouldNotBeRead);
+                Dump(wouldNotRead.Message);
+            }
+        }
+
+        // The facts before the field, because setting the field is a change and the change is
+        // handled: OnWhoIsUsingThisTyped draws the row before the next line would have run.
+        _whoIsUsingThis = _whoIsUsingThis with
+        {
+            CorpusIsReachable = _corpus.Folder is not null,
+            SomebodyHasSaid = name.Length > 0,
+        };
+
+        WhoIsUsingThisBox.Text = name;
+    }
+
+    /// <summary>
+    /// The row as the facts that decide what it does, built fresh rather than kept, so what is on
+    /// screen cannot come to disagree with what is in the field.
+    /// </summary>
+    private WhoIsUsingThisRow WhoIsUsingThis() =>
+        _whoIsUsingThis with { Typed = WhoIsUsingThisBox.Text };
+
+    /// <summary>
+    /// Sets the row's three controls from the one answer, the way <see cref="Refresh"/> sets the
+    /// recorder's. Nothing here decides anything.
+    /// </summary>
+    private void ShowWhoIsUsingThis()
+    {
+        var row = WhoIsUsingThis();
+
+        // Visibility and not merely a greyer line: an explanation that stayed would keep asking a
+        // question this install has an answer to.
+        NobodyHasSaidYet.Visibility = row.IsAsking ? Visibility.Visible : Visibility.Collapsed;
+        WhoIsUsingThisBox.IsEnabled = row.FieldIsLive;
+        WhoIsUsingThisButton.IsEnabled = row.MayBeKept;
     }
 
     private void FillThePickers()
@@ -1144,6 +1249,93 @@ public sealed partial class MainWindow : Window
         ShowWhatTheRoomIsShowing();
     }
 
+    private void OnWhoIsUsingThisTyped(object sender, TextChangedEventArgs e) => ShowWhoIsUsingThis();
+
+    /// <summary>
+    /// Keeps who is using this application, which is the same press whether it is the first answer
+    /// or a correction of it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Off this thread, and for the reason starting a recording is: the corpus may have every
+    /// migration to run before the first row, which on a machine that has never recorded is the
+    /// whole schema. It is the same two lines the recorder uses — make the folder, open migrated —
+    /// so an install where this is answered before anything is recorded lays the corpus out the
+    /// same way the first recording would have.
+    /// </para>
+    /// <para>
+    /// A blank answer is not one, and it is refused by the press being dead rather than by a
+    /// sentence: there is nothing to say about it that the empty field does not already say.
+    /// </para>
+    /// <para>
+    /// The row is dead for as long as the press is in flight, and that is not tidiness. Disabling
+    /// the button alone left the field live, and a keystroke into it drew the row again and armed
+    /// the button back — so a second press ran beside the first, both found that nobody had
+    /// answered, and both wrote a person who had. The recorder's own presses are held the same
+    /// way and by the same kind of state, which is why this one is in
+    /// <see cref="WhoIsUsingThisRow"/> rather than beside the handler.
+    /// </para>
+    /// </remarks>
+    private async void OnKeepWhoIsUsingThis(object sender, RoutedEventArgs e)
+    {
+        // Asked again inside the handler, because a click already in flight arrives after the row
+        // was drawn dead.
+        if (!WhoIsUsingThis().MayBeKept || _corpus.Folder is not { } folder)
+        {
+            return;
+        }
+
+        var name = WhoIsUsingThis().Name;
+        _whoIsUsingThis = _whoIsUsingThis with { BeingKept = true };
+        ShowWhoIsUsingThis();
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                folder.Create();
+                using var context = CorpusDatabase.OpenMigrated(folder);
+                new HumanLayer(context, TimeProvider.System).ThisIsMe(name);
+            });
+        }
+        catch (Exception refused) when (Reportable(refused))
+        {
+            if (!_closed)
+            {
+                Say(UiTexts.WhoIsUsingThisWasNotKept);
+                Dump(refused.Message);
+            }
+
+            return;
+        }
+        finally
+        {
+            _whoIsUsingThis = _whoIsUsingThis with { BeingKept = false };
+
+            if (!_closed)
+            {
+                ShowWhoIsUsingThis();
+            }
+        }
+
+        if (_closed)
+        {
+            return;
+        }
+
+        // What the write said, rather than the corpus asked again. The write either threw or put
+        // this name on the one row that carries the flag, so a read back could only disagree by
+        // failing — and a "could not be read" printed under a "done" is a screen contradicting
+        // itself about an act that worked.
+        _whoIsUsingThis = _whoIsUsingThis with { SomebodyHasSaid = true };
+        WhoIsUsingThisBox.Text = name;
+
+        // The corpus may not have existed a moment ago, and the line under this row would still be
+        // saying so.
+        SayWhereTheCorpusIs();
+        Say(UiTexts.WhoIsUsingThisIsKept, name);
+    }
+
     private void OnLanguageChosen(object sender, SelectionChangedEventArgs e)
     {
         if (_filling || LanguagePicker.SelectedIndex < 0)
@@ -1247,6 +1439,11 @@ public sealed partial class MainWindow : Window
             _context = started.Context;
             _recording = started.Recording;
             _watch.Start();
+
+            // The other press that makes a corpus where there was none, said again for the same
+            // reason keeping an answer says it: the line under the recorder would otherwise go on
+            // offering to make one while a meeting records into the one it just made.
+            SayWhereTheCorpusIs();
 
             // Once here, so the meters and the line about the room are up with the meeting rather
             // than a second into it. The meters are the tick's from here on; what the machine plays

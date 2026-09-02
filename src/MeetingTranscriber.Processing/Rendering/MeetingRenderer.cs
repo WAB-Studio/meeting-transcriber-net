@@ -1,4 +1,4 @@
-﻿using MeetingTranscriber.Domain.Artifacts;
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
@@ -46,7 +46,7 @@ public static class MeetingRenderer
 
         var meeting = context.Meetings.FirstOrDefault(row => row.Id == meetingId)
             ?? throw new RenderException($"There is no meeting {meetingId} to render.");
-        var turns = Project(context, meeting);
+        var turns = Project(context, meeting, now);
         var header = Header(context, meeting);
         var rendered = TranscriptRenderer.Render(header, turns);
 
@@ -93,13 +93,23 @@ public static class MeetingRenderer
         written.Single(artifact => artifact.Kind == kind);
 
     /// <summary>
-    /// Reads the response and puts the meeting's turns back, all of them or none of them.
+    /// Reads the response and puts the meeting's turns back, all of them or none of them, and
+    /// settles the one speaker the recording settles by itself.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The rows and nothing else. The two files are written after this returns and are outside what
     /// it promises — <see cref="Render"/> says what a meeting refused at that point is left holding.
+    /// </para>
+    /// <para>
+    /// The assignment is here and not on the door that files a response, and that is the whole of
+    /// why every door agrees about it. Filing one, rendering it at a prompt, rebuilding the corpus
+    /// and the sweep the application runs at launch all arrive here, so a meeting cannot come out
+    /// of one of them reading a name and out of another reading a label. It is derived from the
+    /// response exactly like the turns beside it, which is what makes it safe to do again.
+    /// </para>
     /// </remarks>
-    private static IReadOnlyList<Turn> Project(CorpusDbContext context, Meeting meeting)
+    private static IReadOnlyList<Turn> Project(CorpusDbContext context, Meeting meeting, UtcTimestamp now)
     {
         var response = context.Artifacts.FirstOrDefault(
                 artifact => artifact.MeetingId == meeting.Id && artifact.Kind == ArtifactKind.DeepgramResponse)
@@ -116,6 +126,13 @@ public static class MeetingRenderer
         var transcript = DeepgramTranscriptParser.ParseFile(file.FullName, meeting.SourceProfile);
         var turns = Turns.Group(transcript.Segments);
         Replace(context, meeting.Id, turns);
+
+        // The profile is the meeting's own and not a caller's, which is what keeps the label this
+        // writes and the label the turns carry the same one: both come off the row this render is
+        // of. It never overrules a person — `Assign` refuses that in its own right — and it settles
+        // nothing at all until somebody has said who is using this install.
+        new HumanLayer(context, now).SettleTheMicrophone(meeting.Id, meeting.SourceProfile, transcript.Segments);
+
         return turns;
     }
 
