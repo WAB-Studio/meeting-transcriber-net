@@ -173,86 +173,33 @@ public class MeetingIntakeTests
     }
 
     /// <summary>
-    /// Filing a response whose microphone caught one voice, into a corpus where somebody has said
-    /// who is using the application: their own turns come out under their name, and nobody named a
-    /// voice for that to happen.
+    /// Filing a paid response, whole, into a corpus where somebody has said who is using the
+    /// application: the meeting comes out of the one command with their own turns under their
+    /// name, and nobody named a voice for that to happen.
     /// </summary>
     /// <remarks>
-    /// The three on the loopback are the control. They are the same meeting through the same
-    /// filing and they stay as the labels the provider wrote, because which of them is who is
-    /// exactly what the recording cannot know — so a filing that named all four would be one
-    /// guessing rather than one settling.
+    /// What this adds over <c>MeetingRendererTests</c>, which is where the rule lives, is that
+    /// filing reaches it at all — a response arrives and the file on disk already reads the name,
+    /// rather than reading labels until something renders it a second time.
     /// </remarks>
     [Fact]
-    public void The_microphones_own_voice_reads_as_whoever_said_they_are_using_this()
+    public void A_filed_response_already_names_whoever_said_they_are_using_this()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var ada = new HumanLayer(context, When).ThisIsMe("Ada");
 
-        var received = Receive(context, corpus.Root, OneVoiceOnTheMicrophone, OneVoiceProfile);
+        var received = Receive(
+            context,
+            corpus.Root,
+            new FileInfo(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelOneVoiceMe)),
+            DeepgramFixtures.ProfileOf(DeepgramFixtures.TwoChannelOneVoiceMe));
 
-        var settled = context.SpeakerAssignments.Single();
-        settled.SpeakerLabel.ShouldBe("ch1:speaker_0");
-        settled.PersonId.ShouldBe(ada.Id);
-        settled.AssignedBy.ShouldBe(SpeakerAssignmentSource.Channel);
-
-        var transcript = File.ReadAllText(
-            CorpusFiles.Locate(corpus.Root, received.Transcript.RelativePath).FullName);
-
-        transcript.ShouldContain("## Ada — ");
-        transcript.ShouldNotContain("ch1:speaker_0");
-        transcript.ShouldContain("## ch0:speaker_0 — ");
-    }
-
-    /// <summary>
-    /// The same response into a corpus nobody has answered in. There is no row to settle a voice
-    /// onto, so every speaker in the meeting reads as its label — which is what the whole card is
-    /// for, and what the screen that asks is worth.
-    /// </summary>
-    [Fact]
-    public void A_meeting_filed_before_anybody_said_who_is_using_this_names_nobody()
-    {
-        using var corpus = new TemporaryCorpus();
-        using var context = corpus.OpenMigrated();
-
-        var received = Receive(context, corpus.Root, OneVoiceOnTheMicrophone, OneVoiceProfile);
-
-        context.SpeakerAssignments.ShouldBeEmpty();
-
-        File.ReadAllText(CorpusFiles.Locate(corpus.Root, received.Transcript.RelativePath).FullName)
-            .ShouldContain("## ch1:speaker_0 — ");
-    }
-
-    /// <summary>
-    /// Answering afterwards and handing the same paid bytes over again. Re-filing is what
-    /// re-deriving everything a response can say means everywhere else here, and who is behind the
-    /// microphone is the one thing it could not say the first time.
-    /// </summary>
-    [Fact]
-    public void Filing_a_response_again_after_answering_settles_what_it_could_not_before()
-    {
-        using var corpus = new TemporaryCorpus();
-        using var context = corpus.OpenMigrated();
-
-        Receive(context, corpus.Root, OneVoiceOnTheMicrophone, OneVoiceProfile);
-        context.SpeakerAssignments.ShouldBeEmpty();
-
-        var ada = new HumanLayer(context, When).ThisIsMe("Ada");
-        var again = Receive(context, corpus.Root, OneVoiceOnTheMicrophone, OneVoiceProfile);
-
-        again.WasAlreadyThere.ShouldBeTrue();
         context.SpeakerAssignments.Single().PersonId.ShouldBe(ada.Id);
 
-        File.ReadAllText(CorpusFiles.Locate(corpus.Root, again.Transcript.RelativePath).FullName)
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, received.Transcript.RelativePath).FullName)
             .ShouldContain("## Ada — ");
     }
-
-    private static FileInfo OneVoiceOnTheMicrophone =>
-        new(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelOneVoiceMe));
-
-    private static SourceProfile OneVoiceProfile =>
-        DeepgramFixtures.ProfileOf(DeepgramFixtures.TwoChannelOneVoiceMe);
 
     private static ReceivedMeeting Receive(
         CorpusDbContext context,

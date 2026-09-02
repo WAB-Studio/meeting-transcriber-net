@@ -135,18 +135,6 @@ public static class MeetingIntake
         // puts it right.
         var manifest = MeetingManifest.Write(context, meetingId, now);
 
-        // Before the render, so the transcript this filing writes already reads the name rather
-        // than the label. A meeting whose first rendering says `ch1:speaker_0` about the person
-        // who recorded it, and says otherwise only once something happens to render it again, is
-        // a corpus answering one question two ways.
-        //
-        // On every filing rather than only the first, which is what re-filing a response means
-        // everywhere else here: the same bytes handed over again re-derive everything they can. So
-        // a response filed before anybody said who is using this install picks the name up when it
-        // is filed again, and one filed after does not need to be. What it never does is overrule
-        // a person — `Assign` refuses that in its own right.
-        new HumanLayer(context, now).SettleTheMicrophone(meetingId, details.Profile, transcript.Segments);
-
         // Outside the filing above, and deliberately. The file and the database cannot be written
         // together, so a response that has landed on disk is recorded the moment it can be; a
         // render that then fails leaves a meeting whose paid source is in the corpus and whose

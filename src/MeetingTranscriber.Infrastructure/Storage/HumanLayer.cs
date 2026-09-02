@@ -46,10 +46,10 @@ namespace MeetingTranscriber.Infrastructure.Storage;
 public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
 {
     /// <summary>
-    /// For a caller holding the instant rather than a clock, which is every edit made as part of
-    /// filing a meeting: the response arrives once, and everything written about it is written at
-    /// the one instant that filing is. Without this the only way in from there is a clock invented
-    /// beside the instant, and the two then disagree by however long the filing took.
+    /// One instant that never advances, for a caller holding the instant rather than a clock: a
+    /// render, where everything written about one pass carries the instant that pass is. For one
+    /// act and never for a session — held across one, every row it wrote would be dated to when it
+    /// started.
     /// </summary>
     public HumanLayer(CorpusDbContext context, UtcTimestamp at)
         : this(context, new Frozen(at))
@@ -167,34 +167,69 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
     /// and what leaves the microphone's own voice unresolved until somebody answers.
     /// </summary>
     /// <remarks>
-    /// <see cref="Enumerable.SingleOrDefault{T}(IEnumerable{T})"/> and not a first: two people
-    /// carrying the flag is the invariant <see cref="ThisIsMe(Person)"/> exists to hold, and a
-    /// corpus that broke it would otherwise put one person's name on the other's words with
-    /// nothing failing. Whichever row a query returned first is exactly the wrong answer to give.
+    /// Two rows carrying the flag read as nobody, and that is the third answer this deliberately
+    /// does not have. Reading whichever the query returned first would put one person's name on
+    /// the other's words; throwing would take the application down out of the window that asks the
+    /// question, over a row. Nobody already means "there is nothing here to settle a voice onto",
+    /// which is exactly true of a corpus that cannot say which of two people is using it — and it
+    /// is the answer that repairs itself, because the screen goes back to asking and
+    /// <see cref="ThisIsMe(string)"/> leaves exactly one row flagged whatever it walked in on.
     /// </remarks>
-    public Person? Me() => context.People.SingleOrDefault(person => person.IsMe);
+    public Person? Me()
+    {
+        var flagged = context.People.Where(person => person.IsMe).Take(2).ToArray();
+        return flagged.Length == 1 ? flagged[0] : null;
+    }
 
     /// <summary>
-    /// Answers who is using this install. Asked once because the answer is kept: the first answer
-    /// names them, and every one after it corrects that same person's name rather than naming a
-    /// second person.
+    /// Answers who is using this install, and leaves exactly one person carrying that. Asked once
+    /// because the answer is kept: the first answer names them, and every one after it corrects
+    /// that same person's name rather than naming a second person.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A correction and not a new person, and the difference reaches every meeting already
     /// recorded. Turns carry the label the provider wrote and never a name, so the name a citation
     /// reads is this row's — which means fixing a typo here fixes it in every meeting, and is what
     /// somebody editing this expects. Handing the flag to a second row instead would leave the
     /// first standing on the meetings that cite it, so a corpus with one user would grow a person
     /// per correction and old citations would keep the misspelling.
+    /// </para>
+    /// <para>
+    /// It reads every flagged row rather than the one it expects, and clears the rest in the same
+    /// save, which is the other half of <see cref="ThisIsMe(Person)"/>'s invariant rather than a
+    /// second place holding it: this cannot raise the number of rows carrying the flag, only lower
+    /// it to one. A corpus that ever grew two — nothing in this application can produce one, and
+    /// SQLite cannot refuse it, for the reason that method gives — is therefore repaired by being
+    /// answered rather than left as one <see cref="Me"/> reads as nobody for good.
+    /// </para>
+    /// <para>
+    /// The name is trimmed here and not at the screen. It is rendered into the heading of every
+    /// turn this person spoke, so the one place that cannot be skipped by a second caller is the
+    /// one that writes it.
+    /// </para>
     /// </remarks>
     public Person ThisIsMe(string displayName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
 
+        var name = displayName.Trim();
         var now = Now;
-        if (Me() is { } me)
+        var flagged = context.People
+            .Where(person => person.IsMe)
+            .OrderBy(person => person.CreatedAt)
+            .ThenBy(person => person.Id)
+            .ToArray();
+
+        foreach (var other in flagged.Skip(1))
         {
-            me.DisplayName = displayName;
+            other.IsMe = false;
+            other.UpdatedAt = now;
+        }
+
+        if (flagged.FirstOrDefault() is { } me)
+        {
+            me.DisplayName = name;
             me.UpdatedAt = now;
             context.SaveChanges();
             return me;
@@ -205,7 +240,7 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
         var person = new Person
         {
             Id = Guid.NewGuid(),
-            DisplayName = displayName,
+            DisplayName = name,
             IsMe = true,
             CreatedAt = now,
             UpdatedAt = now,
@@ -229,10 +264,12 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
     /// every other speaker in the meeting does until a person says who they are.
     /// </para>
     /// <para>
-    /// It is where a transcript first becomes turns, once per meeting, so a meeting filed before
-    /// anybody answered keeps its labels rather than gaining a name later. That is the claim's own
-    /// wording — from then on — and it is also the safe direction: a name arriving on meetings
-    /// recorded before this install had a user would be asserting something nobody said.
+    /// Called wherever a meeting's turns are derived, and safe to call again for the same reason
+    /// they are: it reads the response and the corpus and writes what those two say, so running it
+    /// twice writes the same row twice. A meeting rendered before anybody answered therefore reads
+    /// as labels until something renders it again, and gains the name then — which is the honest
+    /// reading of "from then on" when the name is a row a render looks up rather than a word
+    /// written into the turns.
     /// </para>
     /// </remarks>
     public SpeakerAssignment? SettleTheMicrophone(

@@ -492,63 +492,6 @@ public class CorpusLocationTests
     }
 
     /// <summary>
-    /// The screen that made the corpus asking again, rather than starting the application over to
-    /// find out. Saying who is using the application makes one where there was none, and a line
-    /// still reading "there is no corpus there yet" under the press that just made one is a screen
-    /// answering its own last act with a stale fact.
-    /// </summary>
-    /// <remarks>
-    /// A refused answer comes back as itself and is deliberately not re-asked: what refused it is
-    /// the setting, the folder and the AppData rules, none of which this holds — so a quieter
-    /// version of the same refusal is exactly what must not come out of here.
-    /// </remarks>
-    [Fact]
-    public void An_answer_that_said_there_was_no_corpus_can_be_asked_again_once_there_is_one()
-    {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
-        var location = At(elsewhere);
-
-        var firstRun = location.Resolve();
-        firstRun.HoldsACorpus.ShouldBeFalse();
-        firstRun.AsItIsNow().HoldsACorpus.ShouldBeFalse();
-
-        location.Fallback.Create();
-        using (CorpusDatabase.OpenMigrated(location.Fallback))
-        {
-        }
-
-        try
-        {
-            var made = firstRun.AsItIsNow();
-            made.HoldsACorpus.ShouldBeTrue();
-            made.Refusal.ShouldBeNull();
-            made.Path.ShouldBe(firstRun.Path);
-        }
-        finally
-        {
-            CorpusDatabase.ClearPoolsFor(location.Fallback);
-        }
-    }
-
-    /// <summary>
-    /// A refusal is not something a corpus appearing can lift, so it comes back whole. The folder
-    /// here is one that does not answer, which is the refusal a corpus could most plausibly be
-    /// argued into: it is the one that would go away if somebody plugged the disk back in — and
-    /// what says so is resolution, which holds the setting and the rules, not this.
-    /// </summary>
-    [Fact]
-    public void A_refused_answer_asked_again_is_the_same_refusal()
-    {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
-        var gone = Path.Combine(elsewhere.Folder.FullName, "on-a-disk-nobody-plugged-in");
-
-        var refused = Naming(elsewhere, gone).Resolve();
-        refused.Refusal.ShouldBe(CorpusRefusal.FolderDoesNotAnswer);
-
-        refused.AsItIsNow().ShouldBe(refused);
-    }
-
-    /// <summary>
     /// A corpus somebody moved through the application is a folder that answers and holds one, and
     /// it says so — the other half of the signal above, which no caller should have to infer from
     /// the absence of a refusal.

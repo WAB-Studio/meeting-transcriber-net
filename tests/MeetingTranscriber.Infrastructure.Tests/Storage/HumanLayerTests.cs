@@ -221,6 +221,72 @@ public class HumanLayerTests
     }
 
     /// <summary>
+    /// It is rendered into the heading of every turn this person spoke, so the trim is the
+    /// writer's rather than a screen's — a second caller would otherwise put the spaces back.
+    /// </summary>
+    [Fact]
+    public void The_answer_is_kept_without_the_spaces_around_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
+
+        human.ThisIsMe("  Ada Lovelace  ").DisplayName.ShouldBe("Ada Lovelace");
+    }
+
+    /// <summary>
+    /// Two rows carrying the flag is a corpus that cannot say who is using it, and the honest
+    /// answer to that is the one this already has for a corpus nobody has answered in. Reading
+    /// either row would put one person's name on the other's words; throwing would take the window
+    /// that asks the question down over a row, on every start, with no way back.
+    /// </summary>
+    [Fact]
+    public void A_corpus_naming_two_users_names_nobody()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
+
+        Both(context, human);
+
+        human.Me().ShouldBeNull();
+    }
+
+    /// <summary>
+    /// And it repairs itself by being answered. That is what makes the answer above safe to give:
+    /// the screen goes back to asking, and the next answer leaves exactly one row flagged whatever
+    /// it walked in on.
+    /// </summary>
+    [Fact]
+    public void Answering_a_corpus_that_names_two_users_leaves_one()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
+
+        Both(context, human);
+        human.ThisIsMe("Ada Lovelace");
+
+        context.People.Count(person => person.IsMe).ShouldBe(1);
+        human.Me()!.DisplayName.ShouldBe("Ada Lovelace");
+    }
+
+    /// <summary>
+    /// A corpus in the state nothing in this application produces. It is written straight onto the
+    /// rows rather than through <c>ThisIsMe</c>, which is what refuses it — the schema cannot,
+    /// for the reason that method gives.
+    /// </summary>
+    private static void Both(CorpusDbContext context, HumanLayer human)
+    {
+        foreach (var person in new[] { human.Add("Ada"), human.Add("Jo") })
+        {
+            person.IsMe = true;
+        }
+
+        context.SaveChanges();
+    }
+
+    /// <summary>
     /// The whole of what makes the answer editable. A second row would leave the first standing on
     /// every meeting that already cites it, so a corpus with one user would grow a person per
     /// correction and the old citations would keep the misspelling.

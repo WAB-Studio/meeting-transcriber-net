@@ -9,11 +9,11 @@ public enum SpeakerAssignmentSource
     /// only thing that hands this out.
     /// </summary>
     /// <remarks>
-    /// One row writes it — <c>HumanLayer.SettleTheMicrophone</c> — and today one door calls that:
-    /// <c>MeetingIntake.Receive</c>, where a paid response becomes turns. A second door that turns
-    /// a response into turns, which is what a transcription job brings back, calls it too or the
-    /// meetings that arrive through it read as labels while the ones filed by hand read as a name.
-    /// Nothing mechanical says so, because the two doors have nothing in common to check.
+    /// One row writes it — <c>HumanLayer.SettleTheMicrophone</c> — and it is called from where a
+    /// meeting's turns are derived rather than from the door that asked for them, so filing a
+    /// response, rendering one at a prompt, rebuilding the corpus and the sweep the application
+    /// runs at launch cannot disagree about who spoke. A door that produces turns some other way
+    /// would have to settle for itself, and nothing mechanical would say so.
     /// </remarks>
     Channel = 1,
 

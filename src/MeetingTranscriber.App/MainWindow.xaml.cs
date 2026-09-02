@@ -82,11 +82,11 @@ public sealed partial class MainWindow : Window
     /// Where this application's corpus is, or what stopped it being found.
     /// </summary>
     /// <remarks>
-    /// Not readonly, and the one thing that moves it is a corpus coming into existence where this
-    /// said there was none. Keeping who is using the application makes one, and a line that went on
-    /// saying there is no corpus there yet would be answering the press that just made one.
+    /// The refusal on it is settled for as long as this window is open and nothing here can lift
+    /// one. Whether the folder holds a corpus is not settled: <see cref="ThereIsACorpus"/> asks
+    /// that each time, because two of this screen's presses make one.
     /// </remarks>
-    private CorpusFolder _corpus;
+    private readonly CorpusFolder _corpus;
 
     /// <summary>
     /// What has happened, as the lines it is made of rather than as the string it currently reads
@@ -105,17 +105,11 @@ public sealed partial class MainWindow : Window
     private TextLine? _status;
 
     /// <summary>
-    /// Whether the corpus this answer is kept in can be reached at all. False leaves the row dead
-    /// rather than offering a press that would fail: there is a refusal on screen saying which
-    /// folder and why, and that is where somebody has to go first.
+    /// What the row about who is using the application knows that the field itself does not: what
+    /// the last read of the corpus found, and whether a press is in flight. What is typed is read
+    /// off the field at the moment it is asked, which is why that half is not kept here.
     /// </summary>
-    private bool _whoIsUsingThisIsReachable;
-
-    /// <summary>
-    /// Whether anybody has answered, as of the last read of the corpus. It is the whole difference
-    /// between the row asking and the row showing.
-    /// </summary>
-    private bool _somebodySaidWhoIsUsingThis;
+    private WhoIsUsingThisRow _whoIsUsingThis = WhoIsUsingThisRow.Unread;
 
     /// <summary>True while the pickers are being filled, so refilling them is not a choice.</summary>
     private bool _filling;
@@ -844,7 +838,7 @@ public sealed partial class MainWindow : Window
     {
         var text = _corpus.Refusal switch
         {
-            null => _corpus.HoldsACorpus
+            null => ThereIsACorpus()
                 ? UiTexts.MeetingsAreKeptAt
                 : UiTexts.TheFirstThingKeptMakesTheCorpusAt,
             CorpusRefusal.SettingSaysNothingUsable => UiTexts.TheSettingSaysNothingUsable,
@@ -861,6 +855,20 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Whether there is a corpus in that folder as of now, rather than as of when this window
+    /// opened.
+    /// </summary>
+    /// <remarks>
+    /// Asked and not kept, which is what <see cref="MeetingsDrawer"/> already does on every read
+    /// and for the same reason: the corpus comes into existence under this screen — keeping who is
+    /// using the application makes one, and so does the first recording — so an answer read once
+    /// would go on saying there is none under the press that just made one. What is kept is the
+    /// refusal beside it, because nothing on this screen can lift one.
+    /// </remarks>
+    private bool ThereIsACorpus() =>
+        _corpus.Folder is { } folder && CorpusDatabase.HoldsACorpus(folder);
+
+    /// <summary>
     /// Reads who is using this application out of the corpus and puts it in the field.
     /// </summary>
     /// <remarks>
@@ -871,13 +879,12 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private void ReadWhoIsUsingThis()
     {
-        _whoIsUsingThisIsReachable = _corpus.Folder is not null;
         var name = string.Empty;
 
         // No corpus yet is not a failure and is not read as one: nobody has answered, which is
         // what an empty field with the question under it already says. Keeping an answer is what
         // makes the corpus, the same way the first recording does.
-        if (_corpus.Folder is { } folder && _corpus.HoldsACorpus)
+        if (_corpus.Folder is { } folder && ThereIsACorpus())
         {
             try
             {
@@ -888,34 +895,49 @@ public sealed partial class MainWindow : Window
             {
                 // Said rather than left blank. A corpus that will not open reads exactly like one
                 // nobody has answered in, and the difference is somebody's own name: shown the
-                // empty field they would answer again, and the answer would fail on the same
-                // corpus for the same reason with the field looking like it had never been asked.
-                _whoIsUsingThisIsReachable = false;
+                // empty field alone, they would answer again believing nobody had.
+                //
+                // The row stays live through it, which is the other half. The press opens the
+                // corpus the way this read did not — bringing the schema up — so a corpus one
+                // migration behind is repaired by being answered; and answering cannot make a
+                // second person however this read failed, because the write renames whoever
+                // carries the flag rather than adding to them.
                 Say(UiTexts.WhoIsUsingThisCouldNotBeRead);
                 Dump(wouldNotRead.Message);
             }
         }
 
+        // The facts before the field, because setting the field is a change and the change is
+        // handled: OnWhoIsUsingThisTyped draws the row before the next line would have run.
+        _whoIsUsingThis = _whoIsUsingThis with
+        {
+            CorpusIsReachable = _corpus.Folder is not null,
+            SomebodyHasSaid = name.Length > 0,
+        };
+
         WhoIsUsingThisBox.Text = name;
-        _somebodySaidWhoIsUsingThis = name.Length > 0;
     }
 
     /// <summary>
-    /// Sets the row from the last read of it: whether the question is still being asked, and
-    /// whether there is anything to keep.
+    /// The row as the facts that decide what it does, built fresh rather than kept, so what is on
+    /// screen cannot come to disagree with what is in the field.
+    /// </summary>
+    private WhoIsUsingThisRow WhoIsUsingThis() =>
+        _whoIsUsingThis with { Typed = WhoIsUsingThisBox.Text };
+
+    /// <summary>
+    /// Sets the row's three controls from the one answer, the way <see cref="Refresh"/> sets the
+    /// recorder's. Nothing here decides anything.
     /// </summary>
     private void ShowWhoIsUsingThis()
     {
-        // The sentence under the field is the whole of the asking, and it goes when it is
-        // answered. Visibility and not merely a greyer line: an explanation that stayed would
-        // keep asking a question this install has an answer to.
-        NobodyHasSaidYet.Visibility = _whoIsUsingThisIsReachable && !_somebodySaidWhoIsUsingThis
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        var row = WhoIsUsingThis();
 
-        WhoIsUsingThisBox.IsEnabled = _whoIsUsingThisIsReachable;
-        WhoIsUsingThisButton.IsEnabled =
-            _whoIsUsingThisIsReachable && WhoIsUsingThisBox.Text.Trim().Length > 0;
+        // Visibility and not merely a greyer line: an explanation that stayed would keep asking a
+        // question this install has an answer to.
+        NobodyHasSaidYet.Visibility = row.IsAsking ? Visibility.Visible : Visibility.Collapsed;
+        WhoIsUsingThisBox.IsEnabled = row.FieldIsLive;
+        WhoIsUsingThisButton.IsEnabled = row.MayBeKept;
     }
 
     private void FillThePickers()
@@ -1185,20 +1207,30 @@ public sealed partial class MainWindow : Window
     /// same way the first recording would have.
     /// </para>
     /// <para>
-    /// A blank answer is not one, and it is refused by the button being dead rather than by a
+    /// A blank answer is not one, and it is refused by the press being dead rather than by a
     /// sentence: there is nothing to say about it that the empty field does not already say.
+    /// </para>
+    /// <para>
+    /// The row is dead for as long as the press is in flight, and that is not tidiness. Disabling
+    /// the button alone left the field live, and a keystroke into it drew the row again and armed
+    /// the button back — so a second press ran beside the first, both found that nobody had
+    /// answered, and both wrote a person who had. The recorder's own presses are held the same
+    /// way and by the same kind of state, which is why this one is in
+    /// <see cref="WhoIsUsingThisRow"/> rather than beside the handler.
     /// </para>
     /// </remarks>
     private async void OnKeepWhoIsUsingThis(object sender, RoutedEventArgs e)
     {
-        if (!_whoIsUsingThisIsReachable
-            || _corpus.Folder is not { } folder
-            || WhoIsUsingThisBox.Text.Trim() is not { Length: > 0 } name)
+        // Asked again inside the handler, because a click already in flight arrives after the row
+        // was drawn dead.
+        if (!WhoIsUsingThis().MayBeKept || _corpus.Folder is not { } folder)
         {
             return;
         }
 
-        WhoIsUsingThisButton.IsEnabled = false;
+        var name = WhoIsUsingThis().Name;
+        _whoIsUsingThis = _whoIsUsingThis with { BeingKept = true };
+        ShowWhoIsUsingThis();
 
         try
         {
@@ -1211,10 +1243,22 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception refused) when (Reportable(refused))
         {
-            Say(UiTexts.WhoIsUsingThisWasNotKept);
-            Dump(refused.Message);
-            ShowWhoIsUsingThis();
+            if (!_closed)
+            {
+                Say(UiTexts.WhoIsUsingThisWasNotKept);
+                Dump(refused.Message);
+            }
+
             return;
+        }
+        finally
+        {
+            _whoIsUsingThis = _whoIsUsingThis with { BeingKept = false };
+
+            if (!_closed)
+            {
+                ShowWhoIsUsingThis();
+            }
         }
 
         if (_closed)
@@ -1222,16 +1266,16 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // The corpus may not have existed a moment ago, and the line under this row would still be
-        // saying so. Asked again rather than assumed made, because the answer is on disk either
-        // way and a folder that was refused is still refused.
-        _corpus = _corpus.AsItIsNow();
-        SayWhereTheCorpusIs();
+        // What the write said, rather than the corpus asked again. The write either threw or put
+        // this name on the one row that carries the flag, so a read back could only disagree by
+        // failing — and a "could not be read" printed under a "done" is a screen contradicting
+        // itself about an act that worked.
+        _whoIsUsingThis = _whoIsUsingThis with { SomebodyHasSaid = true };
+        WhoIsUsingThisBox.Text = name;
 
-        // Read back rather than believed: what is on screen from here on is what the corpus holds,
-        // so a name that did not land reads as one that did not land.
-        ReadWhoIsUsingThis();
-        ShowWhoIsUsingThis();
+        // The corpus may not have existed a moment ago, and the line under this row would still be
+        // saying so.
+        SayWhereTheCorpusIs();
         Say(UiTexts.WhoIsUsingThisIsKept, name);
     }
 
@@ -1338,6 +1382,11 @@ public sealed partial class MainWindow : Window
             _context = started.Context;
             _recording = started.Recording;
             _watch.Start();
+
+            // The other press that makes a corpus where there was none, said again for the same
+            // reason keeping an answer says it: the line under the recorder would otherwise go on
+            // offering to make one while a meeting records into the one it just made.
+            SayWhereTheCorpusIs();
 
             // Once here, so the meters and the line about the room are up with the meeting rather
             // than a second into it. The meters are the tick's from here on; what the machine plays
