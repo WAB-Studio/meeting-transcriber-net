@@ -200,9 +200,16 @@ public sealed class MeetingRecordingsTests : IDisposable
     }
 
     /// <summary>
-    /// ISC-157. Stopping is the end of the recording and the start of nothing: transcribing spends
-    /// the user's own credit, so it waits for somebody to ask for it.
+    /// ISC-157. Stopping starts no work nobody asked for beforehand: transcribing spends the user's
+    /// own credit, so it waits for somebody to ask for it.
     /// </summary>
+    /// <remarks>
+    /// What is asserted is stronger than the claim, and can be while nothing lets anybody ask
+    /// beforehand: <see cref="WhatStoppingStarts"/> answers the same empty list for every meeting,
+    /// and the preference that will make it answer otherwise is ISC-157.1, open. So nobody asked
+    /// and nothing was queued is the whole of the sentence today. The case to write beside this one
+    /// is a meeting somebody did ask about, and it arrives with the preference and not before.
+    /// </remarks>
     [Fact]
     public void Stopping_a_recording_queues_no_work_on_the_meeting()
     {

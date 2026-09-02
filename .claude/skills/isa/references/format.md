@@ -183,25 +183,46 @@ Mechanical, enforced by `IsaStructureTests`, and hard failures:
     not carry at all is a claim born ticked.
 16. No claim is closed in words the change also wrote — a claim marked `[x]` saying something other
     than what `origin/main` had it saying while it was open is a claim reworded into its closure.
+17. No closed claim is reworded and left on the evidence for its old words — a claim `origin/main`
+    already had `[x]`, saying something else here, whose `## Verification` stub has not moved.
 
-These two are one rule in two shapes: **a closure is scored against what `main` was already
-carrying, under that id and in those words.** They are the only checks that read history, because
-this is the only rule the file cannot state about itself — a claim marked `[x]` reads the same
-whether it stood open for a week or was written that way in the diff that closes it. They compare
-the working tree against the fork point from `origin/main`, so they answer before the change is
-committed, and CI owes them `fetch-depth: 0` at the checkout. They speak on a pull request; on a
-push to `main` the fork point is HEAD.
+The first two are one rule in two shapes: **a closure is scored against what `main` was already
+carrying, under that id and in those words.** The third is the rule after it: **a claim that moves
+takes its evidence with it.** All three read history, because these are the rules the file cannot
+state about itself — a claim marked `[x]` reads the same whether it stood open for a week or was
+written that way in the diff that closes it, and a stub reads the same whether it was written for
+the sentence above it or for one since rewritten.
+
+What they compare the working tree against is the trunk before this change, so they answer before
+the change is committed, and CI owes them `fetch-depth: 0` at the checkout. On a branch that is the
+fork point from `origin/main`. Standing on `main` it is HEAD, so the pass before a direct push is a
+real comparison and refuses one — but once the commit exists there is nothing left to compare, which
+is why **the push event says where it began and CI on `main` reads the gates against that.** Nothing
+infers the route: an inference from HEAD sitting on the trunk is equally true of a branch nobody has
+committed on, and would judge that branch against the trunk minus its own tip.
+
+That backstop is an alarm and not a refusal — the push has happened by the time it speaks. What it
+buys is that a direct push nobody ran the pass over is named on `main` rather than never, and that
+holds for a merge too: a branch merged after `main` reworded a claim it ticks goes red on the trunk
+though its own run was green, because that is the state ISC-176 forbids and the merge is what made
+it true. The answer is a commit that re-runs the probe under the words `main` now carries or puts
+them back, and either is a push.
 
 Check 16 reaches a claim `main` had **open**, and nothing else. A claim already closed there is not
 being closed by this change whatever happens to its words, and the repo has twice moved one
 correctly: `ISC-121` in PR #58 and `ISC-120` in PR #74 each followed a product that had changed
 under a standing closure, and each rewrote its `## Verification` stub in the same commit to say so.
-What that leaves uncovered is a stub standing over a sentence it was not written against, which is
-a rule about evidence and not about closure, and no gate holds it yet.
+Check 17 is that habit made mechanical, and it runs one way: a stub is rewritten whenever a probe is
+re-run, and a claim that has not moved has nothing to say about that. Replayed on 2026-09-02 over
+every first-parent commit that had touched `ISA.md`, it names one — `ISC-157`, widened on 2026-08-25
+and left standing over a run against the narrower sentence — and no other, which is the whole of its
+false-positive measurement. A re-run **replaces** a stub rather than accumulating under it: checks 11
+and 12 bound what one may say, so the newest probe is what a stub carries and the ones before it are
+in `git log -- ISA.md`.
 
-Ids and words are all they compare, so reordering the file and moving a claim between blocks stay
-invisible, and renumbering a closed claim reads as one appearing — which is right, since check 10
-refuses renumbering anyway.
+Ids, words and evidence are all they compare, so reordering the file and moving a claim between
+blocks stay invisible, and renumbering a closed claim reads as one appearing — which is right, since
+check 10 refuses renumbering anyway.
 
 **What is left for a reviewer.** The gates only push the reword out of the diff that ticks it. They
 cannot see whether it was written ahead of the work or worded to fit it, wherever it landed — a
@@ -209,6 +230,13 @@ direct push to `main`, an `ISA.md`-only pull request, or the branch that built t
 the claim open for a later one to tick. That residue is one question, *did this claim say this
 before anybody knew what would be built?*, and it is asked in `.claude/agents/auditor.md`,
 `.claude/skills/github/SKILL.md` and the Skeptic lens, which are where a PR is read.
+
+Check 17 leaves two of its own there. It sees that a stub's bytes moved and never that a probe was
+run, so a date bumped over a run nobody made passes it; and it reaches a claim whose *words* moved,
+never one the world moved under — `ISC-157` will read stale again the day `ISC-157.1` lands and
+somebody can ask for work beforehand, with its sentence untouched and every gate quiet. Both are the
+same question in the end, *was this evidence produced against this sentence?*, and it is asked
+wherever the one above is.
 
 There is no exception for a split, and narrowing is not a way round one. Splitting a closed claim
 into new ids marked closed is a second closure however it reads, so check 15 refuses it; narrowing

@@ -13,12 +13,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # ISA.md's checks 15 and 16 refuse a claim written, or reworded, into its own closure,
-          # and the only way to see either is to read the file as `origin/main` had it. The default
+          # ISA.md's checks 15, 16 and 17 refuse a claim written or reworded into its own closure
+          # and a reworded claim left on the evidence for its old words, and the only way to see
+          # any of the three is to read the file as the trunk had it before this change. The default
           # fetch-depth of 1 leaves no `origin/main` and no history behind it; 0 fetches every
-          # branch whole. Undo this and both go red saying so rather than passing on a comparison
-          # they never made. `IsaHistory` is what reads it, and says why check 16 can answer
-          # differently here than on the branch: this checkout stands on the merge commit.
+          # branch whole, and it is what makes the commit the Test step names readable too. Undo
+          # this and all three go red saying so rather than passing on a comparison they never
+          # made. `IsaHistory` is what reads it, and says why check 16 can answer differently here
+          # than on the branch: this checkout stands on the merge commit.
           fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
@@ -50,4 +52,15 @@ jobs:
         run: dotnet build --no-restore -warnaserror
 
       - name: Test
+        env:
+          # On a branch the ISA history gates take the fork point and work it out themselves. A push
+          # to `main` has no fork point — it is the trunk — so the commit it started from has to be
+          # said, and this event is the only thing that knows it: a push carries as many commits as
+          # somebody had made, and opening a claim in one and ticking it in the next would go by
+          # unread against anything narrower. `github.event.before` is not a push's alone — a pull
+          # request carries one too, naming the branch's own previous head — so the event is named
+          # here rather than trusted to be absent, because judging a branch against itself is the
+          # silence these gates exist to remove. Empty means the fork point; `IsaHistory` refuses
+          # anything else that is not a commit HEAD stands after.
+          ISA_TRUNK_BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: dotnet test --no-build
