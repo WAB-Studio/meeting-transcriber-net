@@ -484,6 +484,72 @@ public class IsaStructureTests
     }
 
     /// <summary>
+    /// The gate on a stub left standing over a sentence it was not written against: a claim already
+    /// closed, reworded, and its `## Verification` line untouched. Nothing is being closed, so
+    /// check 16 does not reach it — the tick is old and honest — but what it now reads as covering
+    /// is a claim no probe was ever run against.
+    /// </summary>
+    /// <remarks>
+    /// Rewording a standing closure is a thing the repo does and should keep doing, because the
+    /// product moves under claims that stay true; `IsaHistory.RewordedIntoClosure` names the two
+    /// times it was done right. This is that habit made mechanical, and the only act it refuses is
+    /// doing half of it. What it cannot see is whether the probe was run again — a bumped date over
+    /// a run nobody made passes it, which is `references/format.md`'s residue and not this gate's.
+    /// </remarks>
+    [Fact]
+    public void No_closed_claim_is_reworded_and_left_on_the_evidence_for_the_old_words()
+    {
+        IsaHistory.StubLeftBehind(IsaHistory.Baseline(), isa).ShouldBeEmpty(
+            "a claim marked `[x]` whose words moved while its `## Verification` stub stayed where "
+            + "it was reads as probed against a sentence nobody ran anything against. Re-run the "
+            + "probe against what the claim says now and write down what came back, or put the "
+            + "words back to the ones the evidence covers. Moving a closed claim is allowed — "
+            + "leaving its evidence behind is what this refuses.");
+    }
+
+    /// <summary>
+    /// The rule over documents written to break it, and over the shapes that look like it: a stub
+    /// that moved with its claim, a re-run under a claim that did not move, a closure this change is
+    /// making rather than carrying, a claim reopened, and a closed claim with no stub at all.
+    /// </summary>
+    /// <remarks>
+    /// A space is a rewording here, and deliberately: what a claim says is compared as bytes by
+    /// every one of these gates, so a claim edited only in punctuation owes its stub a line saying
+    /// the probe still holds. That is the cheapest red this gate produces and the one most likely to
+    /// be answered with a bumped date, which is why the case is written down rather than left to be
+    /// met for the first time in anger.
+    /// </remarks>
+    [Fact]
+    public void Evidence_moves_with_the_claim_it_was_written_against()
+    {
+        const string Recorded = "- [x] ISC-1: A meeting is recorded.";
+        const string SatThrough = "- [x] ISC-1: A meeting somebody sat through is recorded.";
+        const string Green = "- ISC-1 — `RecordingTests` green 2026-09-02";
+        const string GreenAgain = "- ISC-1 — `RecordingTests` green 2026-09-03";
+
+        var closed = Closing([Recorded], Green);
+
+        IsaHistory.StubLeftBehind(closed, Closing([SatThrough], Green)).ShouldBe(
+            ["ISC-1"], "the words moved and the evidence under them did not, which is the defect.");
+        IsaHistory.StubLeftBehind(closed, Closing(["- [x] ISC-1: A meeting is recorded"], Green))
+            .ShouldBe(["ISC-1"], "a full stop is a rewording; the gates read a claim as bytes.");
+        IsaHistory.StubLeftBehind(closed, Closing([SatThrough], GreenAgain)).ShouldBeEmpty(
+            "the probe was re-run against the new words and the stub says so.");
+        IsaHistory.StubLeftBehind(closed, Closing([Recorded], GreenAgain)).ShouldBeEmpty(
+            "a stub is rewritten whenever the probe is re-run, and a claim that has not moved has "
+            + "nothing to say about that. The rule runs one way.");
+        IsaHistory.StubLeftBehind(
+            Closing(["- [ ] ISC-1: A meeting is recorded."]), Closing([SatThrough], Green))
+            .ShouldBeEmpty("a claim the trunk had open is being closed here, which is check 16's.");
+        IsaHistory.StubLeftBehind(
+            closed, Closing(["- [ ] ISC-1: [DROPPED 2026-09-02: nobody asked.]"]))
+            .ShouldBeEmpty("a claim withdrawn is closing nothing, so it has no evidence to leave.");
+        IsaHistory.StubLeftBehind(Closing([Recorded]), Closing([SatThrough], Green)).ShouldBeEmpty(
+            "nothing is left standing when there was no stub to leave — a closed claim carrying no "
+            + "evidence at all is check 5's, and is named there.");
+    }
+
+    /// <summary>
     /// The seam, over a merge that really did it. Without this the fact above proves the rule and
     /// nothing proves the reading — that git is asked at all, that a commit which is not the
     /// working tree comes back, and that what comes back parses as claims.
@@ -505,10 +571,12 @@ public class IsaStructureTests
     /// written that day naming tests written that day. A split into new closed ids is a second
     /// closure however it reads, so it goes red and the person says why.
     ///
-    /// Check 16 gets no pinned merge of its own, because nothing in this repo's history is one:
-    /// replaying it over every first-parent commit that touched `ISA.md` names no claim. Pinning a
-    /// pair that returns nothing would prove the seam a third time and the rule not at all, and each
-    /// pinned commit is another old blob a clone has to hold — which is `ISC-134` and `ISC-135`.
+    /// Checks 16 and 17 get no pinned pair of their own. Nothing in this repo's history breaks check
+    /// 16, and the one commit that breaks check 17 — `eb2a692b`, which widened `ISC-157` and left
+    /// its stub naming a run against the narrower sentence — is a pair this test already covers the
+    /// reading of. Pinning it would prove the seam a second time and the rule not at all, since
+    /// `Evidence_moves_with_the_claim_it_was_written_against` proves that over seven shapes, and
+    /// each pinned commit is another old blob a clone has to hold — `ISC-134` and `ISC-135`.
     /// </remarks>
     [Fact]
     public void The_gate_reads_history_and_not_the_tree_it_is_standing_on()
@@ -525,8 +593,50 @@ public class IsaStructureTests
     }
 
     /// <summary>
+    /// Which two documents the three rules above are handed, which is the one part of the gates that
+    /// decides every verdict without being a rule itself.
+    /// </summary>
+    /// <remarks>
+    /// The value comes in as an argument rather than off the environment so this can ask, and
+    /// because a test that set a process-wide variable would be deciding the answer for whatever
+    /// else was running beside it. `Baseline()` is the one line that reads the environment.
+    ///
+    /// What no assertion here reaches is that `Trunk` names the trunk. Point it at `HEAD` and the
+    /// baseline becomes the working tree, the gates say yes to everything, and every assertion in
+    /// this file stays green — because the two only differ over a tree that changed `ISA.md`, which
+    /// no test can conjure without editing the file the gates run over. A constant cannot be checked
+    /// from inside the suite that reads it; what stands there instead is that it is one line, named,
+    /// with this paragraph under it.
+    /// </remarks>
+    [Fact]
+    public void What_a_change_is_judged_against_is_said_and_never_guessed()
+    {
+        const string AClaimWasIssued = "aa070b6964e1d291248340cd9fceb0756bcc6127";
+        var fork = IsaHistory.TrunkBefore(null);
+
+        IsaHistory.TrunkBefore(AClaimWasIssued).ShouldBe(
+            AClaimWasIssued, "a push says where it began, and that is what it is judged against.");
+        IsaHistory.TrunkBefore($"  {AClaimWasIssued}  ").ShouldBe(
+            AClaimWasIssued, "an environment variable arrives with whatever whitespace it arrives.");
+        IsaHistory.TrunkBefore(string.Empty).ShouldBe(
+            fork, "nothing said means every route but the push, which wants the fork point.");
+        Should.Throw<InvalidOperationException>(() => IsaHistory.TrunkBefore("HEAD"))
+            .Message.ShouldContain(
+                "HEAD",
+                customMessage: "a name resolves and is an ancestor of itself, so it would turn all "
+                + "three gates off from a shell. Only a full commit id is taken.");
+        Should.Throw<InvalidOperationException>(
+            () => IsaHistory.TrunkBefore("0123456789012345678901234567890123456789"))
+            .Message.ShouldContain(
+                "clone",
+                customMessage: "a commit this clone cannot reach, or one HEAD does not descend "
+                + "from, is a push nothing can be judged against — red, and never the fork point, "
+                + "which on the trunk is HEAD and would be the silence this exists to remove.");
+    }
+
+    /// <summary>
     /// A document holding nothing but claims, in one feature block so they parse as claims. The
-    /// gate above reads claim lines and nothing else, so a case is claim lines and nothing else.
+    /// gates above read claim lines and nothing else, so a case is claim lines and nothing else.
     /// </summary>
     private static IsaDocument Claims(params string[] claims) => IsaDocument.Of(
     [
@@ -535,5 +645,20 @@ public class IsaStructureTests
         "Why: it is where the lines below have to sit to be read as claims.",
         "Board: —",
         .. claims,
+    ]);
+
+    /// <summary>
+    /// The same, with a `## Verification` section under it: check 17 is the one gate that reads a
+    /// claim and its stub together, so a case for it is both.
+    /// </summary>
+    private static IsaDocument Closing(string[] claims, params string[] stubs) => IsaDocument.Of(
+    [
+        "## Features",
+        "### F1 · Recording",
+        "Why: it is where the lines below have to sit to be read as claims.",
+        "Board: —",
+        .. claims,
+        "## Verification",
+        .. stubs,
     ]);
 }
