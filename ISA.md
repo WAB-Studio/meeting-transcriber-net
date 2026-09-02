@@ -1,7 +1,7 @@
 ﻿---
 phase: climbing
-progress: 132/204
-updated: 2026-09-01
+progress: 132/205
+updated: 2026-09-02
 ---
 
 # ISA — meeting-transcriber-net
@@ -106,6 +106,7 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-54: Exactly one person is the user of this install.
 - [x] ISC-55: Anti: a speaker somebody resolved is never overwritten by what the recording settled.
 - [x] ISC-127: Anti: nothing one extraction produced shares a position with another of its kind, so what somebody pinned to a decision, an action or an open question cannot come to mean another one.
+- [ ] ISC-174: Anti: a meeting whose turns the corpus refuses partway through producing them again is left holding the ones it already had, never none at all.
 
 ### F3 · Audio engine
 Why: two sources become one timeline a person can trust. This is the largest technical risk in
@@ -594,8 +595,8 @@ Board: 7 · Distribución y backup
 - ISC-34 — `CliWalkthroughTests.The_same_response_imported_twice_is_one_meeting`, `CorpusImporterTests.Importing_the_same_corpus_twice_imports_it_once` and `.Importing_again_does_not_duplicate_or_rewrite_the_derivatives` green 2026-08-07; the folder-name half, `CorpusImporterTests.A_meeting_whose_folder_was_renamed_is_still_the_same_meeting` (`tests/MeetingTranscriber.CorpusImport.Tests`) green 2026-08-26; the audio door too, `AudioIntakeTests.The_same_audio_brought_in_twice_is_one_meeting` (both a single track and a pair, compared after the mix down because that is what would land) and `ImportAudioCommandTests.Bringing_the_same_audio_in_twice_is_one_meeting` (`tests/MeetingTranscriber.Recording.Tests`, `tests/MeetingTranscriber.Cli.Tests`) green 2026-08-20
 - ISC-35 — `CorpusRebuildTests.Deleting_every_derived_row_and_projecting_again_leaves_every_other_table_as_it_was` green 2026-08-07, which holds the classifications and the speaker assignments a person edited as well as the rows nothing touched
 - ISC-36 — `CorpusRebuildTests.Rebuilding_produces_the_same_projections_and_the_same_files` and `MeetingRendererTests.Rendering_again_leaves_the_sources_alone_and_produces_the_same_files` green 2026-08-07
-- ISC-37 — `CorpusRebuildTests.A_claim_cannot_cite_a_turn_the_meeting_never_had` green 2026-08-07
-- ISC-38 — `CorpusRebuildTests.A_claim_still_points_at_the_turn_it_came_from` green 2026-08-07
+- ISC-37 — `CorpusRebuildTests.A_claim_cannot_cite_a_turn_the_meeting_never_had` green 2026-08-07. That half only: the deleted-out-from-under-it half held for a rebuild that finishes and not for one refused partway, where the turns went and the claims stayed. `.A_meeting_refused_with_cited_turns_costs_that_meeting_and_not_the_run` (`tests/MeetingTranscriber.Processing.Tests`) green 2026-09-02 is what reaches it, red that day against the projection deleting before it knew the new turns would save
+- ISC-38 — `CorpusRebuildTests.A_claim_still_points_at_the_turn_it_came_from` green 2026-08-07, over a rebuild that reproduces every position a claim cites. `.A_response_that_no_longer_reaches_a_cited_turn_costs_that_meeting_and_not_the_run` (`tests/MeetingTranscriber.Processing.Tests`) green 2026-09-02 is the half where it cannot, a response swapped for a shorter one: red that day at the corpus-wide commit, which took the whole run and the report naming the meeting rather than costing that meeting
 - ISC-39 — `DurableWriteTests.A_source_is_never_written_over` green 2026-08-07
 - ISC-40 — `DurableWriteTests.A_derivative_is_replaced_and_stays_one_row` green 2026-08-07, and `ArtifactsTests.Which_kinds_a_second_write_may_replace` for which kinds those are
 - ISC-41 — `DurableWriteTests.A_write_cut_while_its_content_is_produced_leaves_nothing_at_all` green 2026-08-07

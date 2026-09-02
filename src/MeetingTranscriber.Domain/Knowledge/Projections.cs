@@ -36,6 +36,15 @@ public interface IExtractionPosition
 }
 
 /// <summary>One speaker turn, ordered on the meeting timeline.</summary>
+/// <remarks>
+/// A projection with one writer: <c>MeetingRenderer</c> replaces a meeting's turns, and nothing else
+/// creates, edits or deletes one — a correction reaches the rendered files and never this row. That
+/// is load-bearing rather than incidental. Because no row here is ever <c>Modified</c> or
+/// <c>Deleted</c> in a change tracker, the renderer may drop every tracked turn of a meeting
+/// whatever state it is in, where the rebuild's own discard has to bound itself to <c>Added</c> so
+/// it cannot abandon an artifact row under a file already moved into place. A second writer breaks
+/// that argument, and <c>MeetingRenderer.Forget</c> is what it breaks.
+/// </remarks>
 public class Utterance
 {
     public Guid Id { get; set; }
