@@ -155,11 +155,17 @@ public partial class ScreenTextsTests
     /// one was a bare literal somebody could pick out by eye.
     /// </summary>
     /// <remarks>
-    /// Three shapes, because a screen sets a property three ways. The attribute is the obvious one;
-    /// a <c>Setter</c> inside the screen's own <c>Resources</c> is the same property set through a
-    /// style, and there are fifteen of them across these screens today; and a <c>Setter</c> spells
-    /// its value either as an attribute or as a property element. <c>OlivoTests.Values</c> reads the
-    /// first two for the same reason over the colours and corners it holds.
+    /// Two shapes, because a screen sets a property two ways. The attribute is the obvious one; a
+    /// <c>Setter</c> inside the screen's own <c>Resources</c> is the same property set through a
+    /// style, and there are fifteen of them across these screens today. <c>OlivoTests.Values</c>
+    /// reads both for the same reason over the colours and corners it holds.
+    /// <para>
+    /// A <c>Setter</c> spelling its value as <c>&lt;Setter.Value&gt;Sin nombre&lt;/Setter.Value&gt;</c>
+    /// is not a third: that is words between tags, and
+    /// <see cref="No_screen_writes_words_between_its_tags"/> is what reads them — for every element
+    /// and not only a <c>Setter</c>. Rows for it are that check's, in
+    /// <see cref="WordsBetweenTags"/>.
+    /// </para>
     /// </remarks>
     private static string[] NotNamingTheCatalogueIn(XDocument screen) =>
     [
@@ -172,9 +178,9 @@ public partial class ScreenTextsTests
 
     /// <summary>
     /// Where <paramref name="element"/> puts words a person reads: one of <see cref="Reads"/> as an
-    /// attribute, and the <c>Setter</c> that says the same thing through a style, in either of the
-    /// two ways a <c>Setter</c> spells its value. The element comes back with each, because what the
-    /// prefix in a binding resolves to is decided where the binding stands.
+    /// attribute, and the <c>Setter</c> that says the same thing through a style. The element comes
+    /// back with each, because what the prefix in a binding resolves to is decided where the
+    /// binding stands.
     /// </summary>
     private static IEnumerable<(XElement On, string Property, string Value)> SetsAWordAPersonReads(XElement element)
     {
@@ -183,40 +189,14 @@ public partial class ScreenTextsTests
             yield return (element, attribute.Name.LocalName, attribute.Value);
         }
 
-        if (element.Name.LocalName != "Setter"
-            || (string?)element.Attribute("Property") is not { } property
-            || !Reads.Contains(property))
-        {
-            yield break;
-        }
-
-        if ((string?)element.Attribute("Value") is { } value)
+        if (element.Name.LocalName == "Setter"
+            && (string?)element.Attribute("Property") is { } property
+            && Reads.Contains(property)
+            && (string?)element.Attribute("Value") is { } value)
         {
             yield return (element, property, value);
         }
-
-        if (ValueWrittenAsAnElement(element) is { } written)
-        {
-            yield return (element, property, written);
-        }
     }
-
-    /// <summary>
-    /// The value of <paramref name="setter"/> written as <c>&lt;Setter.Value&gt;</c> rather than as
-    /// an attribute — the other legal spelling of the same thing, which this walked past while
-    /// reading the attribute one.
-    /// </summary>
-    /// <remarks>
-    /// Only when the property element holds words itself. Wrapping a control —
-    /// <c>&lt;Setter.Value&gt;&lt;TextBlock … /&gt;&lt;/Setter.Value&gt;</c> — is what the syntax
-    /// exists for, and such a wrapper says nothing of its own: the control inside it is walked as an
-    /// element like any other, so reading the wrapper would report the empty string as a value that
-    /// names no entry of the catalogue.
-    /// </remarks>
-    private static string? ValueWrittenAsAnElement(XElement setter) =>
-        setter.Element(setter.Name.Namespace.GetName("Setter.Value")) is { HasElements: false } written
-            ? written.Value
-            : null;
 
     /// <summary>The line <paramref name="element"/> stands on, which is why the screen is loaded
     /// with <see cref="LoadOptions.SetLineInfo"/>.</summary>
@@ -300,13 +280,6 @@ public partial class ScreenTextsTests
     /// <remarks>
     /// The second row declares the prefix on an ancestor, which is where all four screens declare
     /// it and so the only resolution the application actually exercises.
-    /// <para>
-    /// The last row is the <c>Setter</c> spelling its value as a property element, which is here so
-    /// that reading that shape is reading it through the catalogue check and not reporting it
-    /// whatever it says. A screen writing it would still meet
-    /// <see cref="No_screen_writes_words_between_its_tags"/>, which takes no words between tags at
-    /// all; what this row says is that this check is not the one that would stop it.
-    /// </para>
     /// </remarks>
     public static TheoryData<string> NamesAnEntry() =>
     [
@@ -316,26 +289,18 @@ public partial class ScreenTextsTests
         @"<TextBlock xmlns:texts=""using:MeetingTranscriber.Presentation"" Text=""{x:Bind In(texts:UiTexts.Record)}"" />",
         @"<TextBlock xmlns:loc=""using:MeetingTranscriber.Presentation"" Text=""{x:Bind In(loc:UiTexts.Record) }"" />",
         @"<Setter xmlns:loc=""using:MeetingTranscriber.Presentation"" Property=""Text"" Value=""{x:Bind In(loc:UiTexts.Record)}"" />",
-        @"<Setter xmlns:loc=""using:MeetingTranscriber.Presentation"" Property=""Text""><Setter.Value>{x:Bind In(loc:UiTexts.Record)}</Setter.Value></Setter>",
     ];
 
     /// <summary>
     /// Screens carrying nothing anybody reads, which this must not report. Its own set and not a
-    /// row among the ones above, because each passes without ever naming an entry — the first two by
-    /// the <see cref="Reads"/> filter never reaching them, the third by there being no words on it
-    /// to read — so none can go red for an edit to the form, and a row that cannot go red for the
-    /// thing around it is coverage in appearance only.
+    /// row among the ones above, because it passes by the <see cref="Reads"/> filter never reaching
+    /// it rather than by naming an entry — so it cannot go red for any edit to the form, and a row
+    /// that cannot go red for the thing around it is coverage in appearance only.
     /// </summary>
-    /// <remarks>
-    /// The third is a property element wrapping a control, which is what property-element syntax
-    /// exists for. Reading it as words would report the empty string, so a legitimate screen would
-    /// go red for saying nothing.
-    /// </remarks>
     public static TheoryData<string> CarriesNoWords() =>
     [
         @"<Button Style=""{StaticResource NormalButtonOnPaper}"" Grid.Row=""0"" />",
         @"<Setter Property=""CornerRadius"" Value=""4"" />",
-        @"<Setter Property=""Content""><Setter.Value><Border Grid.Row=""0"" /></Setter.Value></Setter>",
     ];
 
     /// <summary>
@@ -348,9 +313,8 @@ public partial class ScreenTextsTests
     /// with a brace, so the second row is a literal that reads as the good form for its first two
     /// characters. The seventh points a well-spelt prefix at another namespace and the eighth
     /// shadows a good outer declaration with a bad inner one, which are the two shapes resolving
-    /// the prefix exists to tell apart. The last two are a <c>Setter</c>, which reaches a screen
-    /// through a style rather than through an attribute, spelling its value each of the two ways a
-    /// <c>Setter</c> can.
+    /// the prefix exists to tell apart. The last is a <c>Setter</c>, which reaches a screen through
+    /// a style rather than through an attribute.
     /// </remarks>
     public static TheoryData<string> SaysSomethingElse() =>
     [
@@ -366,7 +330,6 @@ public partial class ScreenTextsTests
         @"<TextBlock Text=""{x:Bind In(loc:UiTexts.Record)}"" />",
         @"<TextBlock xmlns:loc=""using:MeetingTranscriber.Presentation"" Text=""{x:Bind In(loc:UiTexts.Record), Mode=OneWay}"" />",
         @"<Setter xmlns:loc=""using:MeetingTranscriber.Presentation"" Property=""Text"" Value=""Sin nombre"" />",
-        @"<Setter Property=""Text""><Setter.Value>Sin nombre</Setter.Value></Setter>",
     ];
 
     [Theory]
@@ -397,20 +360,72 @@ public partial class ScreenTextsTests
     [MemberData(nameof(Screens))]
     public void No_screen_writes_words_between_its_tags(string path)
     {
-        // The same literal as above wearing the other syntax: `<TextBlock>Listo</TextBlock>` sets
-        // the very property the attribute would have, and no attribute check can see it.
-        var written = XDocument
-            .Load(path)
-            .Descendants()
-            .SelectMany(element => element.Nodes().OfType<XText>().Select(text => (element, text)))
-            .Where(pair => !string.IsNullOrWhiteSpace(pair.text.Value))
-            .Select(pair => $"<{pair.element.Name.LocalName}>{pair.text.Value.Trim()}")
-            .ToArray();
+        var written = WordsBetweenTagsIn(XDocument.Load(path));
 
         written.ShouldBeEmpty(
             $"{Path.GetFileName(path)} writes words between its tags instead of binding an entry "
             + "of UiTexts: " + string.Join("; ", written));
     }
+
+    /// <summary>
+    /// The words <paramref name="screen"/> writes between its own tags. The same literal as the
+    /// attribute check's wearing the other syntax: <c>&lt;TextBlock&gt;Listo&lt;/TextBlock&gt;</c>
+    /// sets the very property the attribute would have, and no attribute check can see it.
+    /// </summary>
+    private static string[] WordsBetweenTagsIn(XDocument screen) =>
+    [
+        .. screen
+            .Descendants()
+            .SelectMany(element => element.Nodes().OfType<XText>().Select(text => (element, text)))
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.text.Value))
+            .Select(pair => $"<{pair.element.Name.LocalName}>{pair.text.Value.Trim()}"),
+    ];
+
+    /// <summary>
+    /// Screens writing words between their tags, which this must find. Rows and not only the real
+    /// screens, for the reason <see cref="WordsAPersonWouldRead"/> gives: no screen has ever written
+    /// one, so until now this check had no subject at all and read exactly like a check that works.
+    /// </summary>
+    /// <remarks>
+    /// The last two are a <c>Setter</c> spelling its value as a property element, which is legal
+    /// XAML and is a word a person reads. That shape is here and not in
+    /// <see cref="SaysSomethingElse"/> because this is the check that stops it: reading a
+    /// <c>Setter</c>'s <c>Value</c> attribute a second time as an element would be a second owner
+    /// for the same rule, and this one already holds it for every element rather than for a
+    /// <c>Setter</c> alone. <c>&lt;x:String&gt;</c> is the idiomatic way to put a string in a
+    /// property element and is caught by the same text node.
+    /// </remarks>
+    public static TheoryData<string> WordsBetweenTags() =>
+    [
+        @"<TextBlock>Listo</TextBlock>",
+        @"<Grid><TextBlock>Listo</TextBlock></Grid>",
+        @"<Setter Property=""Text""><Setter.Value>Sin nombre</Setter.Value></Setter>",
+        @"<Setter Property=""Text""><Setter.Value><x:String xmlns:x=""http://schemas.microsoft.com/winfx/2006/xaml"">Sin nombre</x:String></Setter.Value></Setter>",
+    ];
+
+    /// <summary>
+    /// Screens with nothing between their tags, which this must leave alone — every screen in the
+    /// application is this shape. The words in the first are in an attribute, which is the sibling
+    /// check's to refuse and not this one's; the second is a property element wrapping a control,
+    /// which is what property-element syntax exists for and says nothing of its own.
+    /// </summary>
+    public static TheoryData<string> NothingBetweenTags() =>
+    [
+        @"<TextBlock Text=""Grabar una reunión"" />",
+        @"<Setter Property=""Content""><Setter.Value><Border Grid.Row=""0"" /></Setter.Value></Setter>",
+    ];
+
+    [Theory]
+    [MemberData(nameof(WordsBetweenTags))]
+    public void Words_between_a_screen_s_tags_are_found(string screen) =>
+        WordsBetweenTagsIn(Parse(screen)).ShouldNotBeEmpty(
+            "this puts words on a screen between its tags and nothing found it: " + screen);
+
+    [Theory]
+    [MemberData(nameof(NothingBetweenTags))]
+    public void A_screen_with_nothing_between_its_tags_is_left_alone(string screen) =>
+        WordsBetweenTagsIn(Parse(screen)).ShouldBeEmpty(
+            "there are no words between these tags and it was reported anyway: " + screen);
 
     [Theory]
     [MemberData(nameof(CodeBehind))]
@@ -452,18 +467,15 @@ public partial class ScreenTextsTests
     /// </summary>
     /// <remarks>
     /// One row per property of <see cref="Reads"/> at least, which is what
-    /// <see cref="Every_property_a_person_reads_is_named_by_a_row"/> holds this to. Seven of the
-    /// nine plain properties had none, and the pattern is built out of that same set, so taking
-    /// <c>Title</c> or <c>Content</c> out of it stopped both halves seeing them and reddened
-    /// nothing. The rest of the rows are the shapes an assignment wears, which is a second axis over
-    /// the same list and why there are more rows than properties.
+    /// <see cref="Every_property_a_person_reads_is_caught_by_a_literal_row"/> holds this to. Most of
+    /// them had none, and the pattern is built out of that same set, so taking <c>Title</c> or
+    /// <c>Content</c> out of it stopped both halves seeing them and reddened nothing. The rest of
+    /// the rows are the shapes an assignment wears, which is a second axis over the same list and
+    /// why there are more rows than properties.
     /// </remarks>
     public static TheoryData<string> WordsAPersonWouldRead() => [.. WordsOnScreen];
 
-    /// <summary>
-    /// The rows of <see cref="WordsAPersonWouldRead"/>, as a list rather than only as theory data so
-    /// that <see cref="Every_property_a_person_reads_is_named_by_a_row"/> can ask what they cover.
-    /// </summary>
+    /// <summary>These as a list, so that the <c>Fact</c> below can ask what they catch.</summary>
     private static readonly string[] WordsOnScreen =
     [
         @"StatusText.Text = ""hola"";",
@@ -581,9 +593,21 @@ public partial class ScreenTextsTests
     /// <remarks>
     /// Kept apart from <see cref="WordsAPersonWouldRead"/> rather than folded into it. That set is
     /// one row per property and per shape of assignment; how the literal itself is spelt is a third
-    /// axis, and crossing the three would be sixty rows saying what these seven do. The prefix is
-    /// what this pins hardest — <c>[$@]*</c> narrowed to <c>\$?</c> reddened not one row in that
-    /// set, because every literal in it is plain.
+    /// axis, and crossing the three would be a hundred rows saying what these eleven do. It is also
+    /// the stricter of the two assertions — a row here has to be quoted back with its words, where a
+    /// row there only has to be found — which is deliberate: what a spelling can go wrong in is
+    /// being read partly.
+    /// <para>
+    /// Every alternative and every quantifier in <see cref="Literal"/> has a row that narrowing it
+    /// reddens, which is what stops this being a set that grew a spelling and pinned none of it.
+    /// The verbatim row with an escaped quote in it is what tells the verbatim alternative from the
+    /// plain one, which stopped at that quote and quoted back <c>@"dijo "</c>. The raw row with a
+    /// four-quote delimiter over content holding <c>"""</c> is the only thing that tells
+    /// <c>{3,}</c> from <c>{3}</c> — a longer delimiter over content that does not need one reads
+    /// the same either way. The raw row over several lines is the only thing that tells
+    /// <c>[\s\S]</c> from <c>.</c>, and several lines is what raw strings are for. And
+    /// <c>$$""" """</c> is the only thing between <c>\$*</c> and <c>\$?</c>.
+    /// </para>
     /// </remarks>
     public static TheoryData<string, string> EverySpellingOfALiteral() => new()
     {
@@ -591,7 +615,11 @@ public partial class ScreenTextsTests
         { @"StatusText.Text = @""hola"";", "hola" },
         { @"StatusText.Text = $""hola {count}"";", "hola {count}" },
         { @"StatusText.Text = $@""hola {count}"";", "hola {count}" },
+        { @"StatusText.Text = @""dijo """"hola"""""";", @"dijo """"hola""""" },
         { """"StatusText.Text = """hola""";"""", "hola" },
+        { """""StatusText.Text = """"cierra con """ dentro"""";""""", """"cierra con """ dentro"""" },
+        { """"StatusText.Text = $$"""hola {{count}}""";"""", "hola" },
+        { "StatusText.Text = \"\"\"\n            hola\n            \"\"\";", "hola" },
         { """"StatusText.Text = $"""hola {count}""";"""", "hola {count}" },
         { """"AutomationProperties.SetName(box, """hola""");"""", "hola" },
     };
@@ -607,24 +635,35 @@ public partial class ScreenTextsTests
                 "the check found this and could not say what it found: " + written);
 
     /// <summary>
-    /// Every property in <see cref="Reads"/> is named by a row above. Without this the coverage is a
-    /// list somebody keeps in step by hand, and it was not in step: a property added to the set gets
-    /// read by both halves of the pattern and pinned by neither, so narrowing the set back out again
-    /// leaves the suite green.
+    /// Every property in <see cref="Reads"/> is caught by a row above. Without this the coverage is
+    /// a list somebody keeps in step by hand, and it was not in step: a property added to the set is
+    /// read by <see cref="LiteralOnScreen"/> and pinned by nothing, so narrowing the set back out
+    /// again leaves the suite green.
     /// </summary>
     /// <remarks>
-    /// It asks whether a row's <em>finding</em> names the property, and not whether the row's text
-    /// does, so a row mentioning a property the check does not actually see in it counts for
-    /// nothing. The property is looked for the way code-behind spells it, bounded on both sides so
-    /// that <c>PlaceholderText</c> does not stand in for <c>Text</c>.
+    /// A match and not the row it came from, and where the match <em>begins</em> and not what is
+    /// anywhere inside it. Both halves of <see cref="LiteralOnScreen"/> open on the property name
+    /// behind a zero-width lookbehind, so a match always starts with the property it is about, and
+    /// asking that is asking the real question: <c>Foo.Header = bar.Text == null ? "a" : "b";</c>
+    /// spans a whole ternary and has <c>Text</c> inside it while pinning only <c>Header</c>. It also
+    /// tells <c>Text</c> from <c>PlaceholderText</c> for free.
+    /// <para>
+    /// <see cref="LiteralOnScreen"/> and not <see cref="WhatATypeSaysAboutItself"/>, which is built
+    /// out of the same set and is unpinned the same way — five of nineteen properties have a row in
+    /// <see cref="WhatATypeSaysForItself"/>. That is the same defect over the other pattern and is
+    /// this card's <c>left_out</c>; what stops it being hidden is this name saying which pattern it
+    /// holds.
+    /// </para>
     /// </remarks>
     [Fact]
-    public void Every_property_a_person_reads_is_named_by_a_row()
+    public void Every_property_a_person_reads_is_caught_by_a_literal_row()
     {
-        var found = WordsOnScreen.SelectMany(LiteralsIn).ToArray();
+        var caught = WordsOnScreen
+            .SelectMany(row => LiteralOnScreen.Matches(row).Select(match => match.Value))
+            .ToArray();
 
         var unpinned = Reads
-            .Where(name => !found.Any(finding => NamesTheProperty(SpeltInCode(name)).IsMatch(finding)))
+            .Where(name => !caught.Any(match => match.StartsWith(SpeltInCode(name), StringComparison.Ordinal)))
             .Order(StringComparer.Ordinal)
             .ToArray();
 
@@ -632,11 +671,6 @@ public partial class ScreenTextsTests
             "these are properties the check reads and no row would catch, so taking one back out "
             + "of the pattern leaves this suite green: " + string.Join("; ", unpinned));
     }
-
-    /// <summary>A finding that is about <paramref name="spelt"/> and not about a longer name ending
-    /// in it.</summary>
-    private static Regex NamesTheProperty(string spelt) =>
-        new(@"(?<!\w)" + Regex.Escape(spelt) + @"(?!\w)", RegexOptions.None, TimeSpan.FromSeconds(2));
 
     /// <summary>
     /// A word a screen never typed and shows anyway: what a type says about itself. The three
@@ -928,7 +962,7 @@ public partial class ScreenTextsTests
     /// </remarks>
     private static string Assignment() =>
         @"(?<!\w)(?:" + Named(Plain) + @")"
-        + @"\s*(?:\+|\?\?)?=(?![=>])\s*(?:" + WithinOneAssignment + @"[?:+]\s*)?" + Literal("assigned");
+        + @"\s*(?:\+|\?\?)?=(?![=>])\s*(?:" + WithinOneAssignment + @"[?:+]\s*)?" + Literal;
 
     /// <summary>
     /// How far the value of one assignment reaches: not past a <c>;</c> or a brace, which end the
@@ -970,26 +1004,39 @@ public partial class ScreenTextsTests
 
     /// <summary>An attached property, which has no assignment to be found by — only its setter.</summary>
     private static string AttachedSetter() =>
-        @"(?<!\w)(?:" + Named(Attached) + @")\(" + InsideOneCall + Literal("passed");
+        @"(?<!\w)(?:" + Named(Attached) + @")\(" + InsideOneCall + Literal;
 
     /// <summary>
-    /// A literal and the words in it, in every spelling C# has for one: plain, verbatim,
-    /// interpolated, and raw. Whatever prefixes it takes, and then either a run of three or more
-    /// quotes closed by as many again, or one pair.
+    /// A literal and the words in it — one alternative per spelling C# has for one, in the order
+    /// C# tells them apart by: raw, then verbatim, then plain. Interpolation is a <c>$</c> on the
+    /// front of any of the three.
     /// </summary>
     /// <remarks>
-    /// The raw alternative stands first and has to. A raw string opens on three quotes, of which the
-    /// first two are a complete empty pair, so the one-pair alternative matches it and reports a
-    /// word a person reads as <c>Text = ""</c> — the check seeing something and unable to say what.
+    /// One alternative each and not one pattern loose enough for all three, because the spellings
+    /// disagree about what a run of quotes means and the loose reading of one is a defect in
+    /// another. A raw string opens on three quotes or more, of which the first two are a complete
+    /// empty pair, so without the raw alternative first the plain one matches its head and reports a
+    /// word a person reads with an empty value — the check seeing something and unable to say what.
+    /// The other way round, <c>@""""</c> is a verbatim string holding one escaped quote and not a
+    /// raw string at all, so the raw alternative takes no <c>@</c>: reading it as a three-quote
+    /// opener sends it hunting for a closing run and one finding swallows three statements, which is
+    /// the failure <see cref="InsideOneCall"/> already says was paid for once.
     /// <para>
-    /// The group is named by the caller because this is used twice in one pattern, and two groups of
-    /// the same name in one pattern are one group holding whichever alternative last captured. That
-    /// is legal and, in an alternation, correct; a name each is one fewer thing to have to know.
+    /// The verbatim alternative is the one that pays for itself twice. It reports
+    /// <c>@"dijo ""hola"""</c> whole, where the plain alternative stopped at the first escaped quote
+    /// and quoted back <c>@"dijo "</c>.
+    /// </para>
+    /// <para>
+    /// The two uses of this in one pattern share the group name <c>opened</c>. Two groups of one
+    /// name in .NET are one group, holding whatever last captured, and a capture is undone when the
+    /// alternative that made it fails — so inside an alternation the backreference is the one the
+    /// alternative being tried just made.
     /// </para>
     /// </remarks>
-    private static string Literal(string opened) =>
-        @"(?:[$@]*(?<" + opened + @">""{3,})(?:(?!\k<" + opened + @">)[\s\S])*?\k<" + opened + @">"
-        + @"|[$@]*""[^""]*"")";
+    private const string Literal =
+        @"(?:\$*(?<opened>""{3,})(?:(?!\k<opened>)[\s\S])*?\k<opened>"
+        + @"|[$@]*@[$@]*""(?:[^""]|"""")*"""
+        + @"|\$*""[^""]*"")";
 
     /// <summary>An entry of <see cref="Reads"/> that is a property of the element itself.</summary>
     private static bool Plain(string name) => !name.Contains('.');
@@ -1004,9 +1051,9 @@ public partial class ScreenTextsTests
     /// </summary>
     /// <remarks>
     /// One function and not a lambda at each of the four call sites, because
-    /// <see cref="Every_property_a_person_reads_is_named_by_a_row"/> asks the same question of a
-    /// finding: a second spelling of this would be a check that agreed with itself about a name the
-    /// pattern spells some other way.
+    /// <see cref="Every_property_a_person_reads_is_caught_by_a_literal_row"/> asks the same question
+    /// of a match: a second spelling of this would be a check that agreed with itself about a name
+    /// the pattern spells some other way.
     /// </remarks>
     private static string SpeltInCode(string name) =>
         Plain(name) ? name : name.Replace(".", ".Set", StringComparison.Ordinal);
