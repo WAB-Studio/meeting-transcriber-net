@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 140/207
+progress: 140/208
 updated: 2026-09-02
 ---
 
@@ -109,6 +109,7 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-127: Anti: nothing one extraction produced shares a position with another of its kind, so what somebody pinned to a decision, an action or an open question cannot come to mean another one.
 - [ ] ISC-174: Anti: a meeting whose turns the corpus refuses partway through producing them again is left holding the ones it already had, never none at all.
 - [x] ISC-175: Anti: a meeting's derived files are never left describing two different renders of it.
+- [ ] ISC-177: Anti: the only thing a corpus removes without being asked is an abandoned write — never a copy of a file it holds, and never a write in progress.
 
 ### F3 · Audio engine
 Why: two sources become one timeline a person can trust. This is the largest technical risk in
