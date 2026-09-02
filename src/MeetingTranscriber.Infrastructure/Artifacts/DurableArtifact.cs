@@ -402,10 +402,10 @@ public sealed class StagedArtifact : IDisposable
 
         // Every file of the set is in place, so whatever was standing there is superseded whether
         // or not the rows below are accepted — which is what an ordinary replace does to it too.
-        // Left behind by a crash, or by a delete the disk refuses, these are what the reconciler
-        // reports as superseded: it does not remove them, because up to the line above one of them
-        // was the last copy of a derived file, and nothing on disk says which side of that line the
-        // machine stopped on.
+        // A crash here, or a delete the disk refuses, leaves one of these on disk, and a sweep is
+        // free to finish the job: the loop above is the line that decides, and a destination
+        // standing where a copy came out of is what says the machine got past it. Below the line
+        // the copy is the last one of a derived file, and there the sweep leaves it alone.
         foreach (var old in superseded)
         {
             Delete(old);
@@ -456,11 +456,21 @@ public sealed class StagedArtifact : IDisposable
 
     /// <summary>Empties every destination of the set, or leaves every one of them as it was.</summary>
     /// <remarks>
+    /// <para>
     /// The undo is what makes this safe to do before anything is replaced, and it is not the undo
     /// the corpus refuses elsewhere: no row has been written, and every name it moves a file back
     /// into is one this emptied moments ago rather than one somebody else may have taken. A
     /// put-back that fails anyway says nothing worth carrying — <see cref="PutBack"/> gives the
     /// argument — and the refusal that caused it is the sentence the caller needs.
+    /// </para>
+    /// <para>
+    /// <b>The undo ends here, and the return type is what says so.</b> What goes back to the caller
+    /// is the copies alone and not the pairs, so nothing past this method holds what a put-back
+    /// would need — and a sweep is entitled to take a copy the moment its destination is back
+    /// precisely because no put-back is reachable once a move has run. Making the move loop roll
+    /// back would mean handing the pairs on, so the edit that would break that reaches this line
+    /// first.
+    /// </para>
     /// </remarks>
     private static IReadOnlyList<FileInfo> VacateAll(StagedArtifact[] staged)
     {
@@ -508,6 +518,14 @@ public sealed class StagedArtifact : IDisposable
     /// artifact and is the one name a sweep deletes on sight. Under that name the copy a refused
     /// vacate is about to put back sits on the sweep list, and a sweep arriving between the two
     /// turns <see cref="PutBack"/>'s deliberate silence into a file that is simply gone.
+    /// </para>
+    /// <para>
+    /// The line below is also what makes the copy findable again, and the pairing runs one way:
+    /// a sweep reads the destination back out of the name it goes to and takes the copy only where
+    /// that destination is on disk. This is why the window is exactly the put-back's: the
+    /// destination stands empty from this rename until either <see cref="PutBack"/> refills it or
+    /// <see cref="Move"/> puts the new file there, and after the second nothing is ever coming back
+    /// for the copy.
     /// </para>
     /// </remarks>
     private (FileInfo Aside, FileInfo Destination)? Vacate()
@@ -696,14 +714,19 @@ public sealed class StagedArtifact : IDisposable
             file.Refresh();
             if (file.Exists)
             {
+                // A copy set aside carries whatever the destination wore, and a derivative off a
+                // backup medium or under a policy wears the read-only bit — which the rename above
+                // does not care about and this delete does. Taking it off is the same stance the
+                // vacate takes: what the corpus can produce again, the corpus removes.
+                file.IsReadOnly = false;
                 file.Delete();
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // The write already failed, and failing to tidy up after it is not the failure worth
-            // reporting. What is left is an unfinished write, which is the one thing on disk the
-            // reconciler is allowed to remove on its own.
+            // reporting. What is left on disk is a file the reconciler names and the sweep can
+            // take: an unfinished write, or a copy whose destination is back.
         }
     }
 

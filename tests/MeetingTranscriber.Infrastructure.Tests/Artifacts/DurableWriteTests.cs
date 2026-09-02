@@ -479,7 +479,7 @@ public class DurableWriteTests
 
     /// <summary>
     /// A replace stopped in the middle of its moves leaves the copy it emptied out of the way, and
-    /// that copy survives a sweep.
+    /// a sweep finishes the tidy-up the replace did not reach.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -489,14 +489,20 @@ public class DurableWriteTests
     /// been emptied and moved, and before the tidy-up at the end that removes what was emptied.
     /// </para>
     /// <para>
-    /// So a copy of the first file's old rendering is on disk, and it is the last one: the row
-    /// still names the destination the emptying took the old file out of. Named as an unfinished
-    /// write, a sweep takes it on sight and there is nothing left to look at. Named as what it is,
-    /// the sweep passes over it and `check` says where it is and what it is.
+    /// So a copy of the first file's old rendering is on disk under a name a sweep does not take on
+    /// sight, which is the whole point of the naming: at no moment between the emptying and the
+    /// move was it safe to take. What makes it safe now is on disk beside it — the destination it
+    /// came out of, holding the second rendering — and nothing is ever coming back for the copy,
+    /// because the only thing that would have is the put-back, which gives up before a move.
+    /// </para>
+    /// <para>
+    /// The row is a generation behind both, since the save never ran, and that is the half of this
+    /// state a sweep is not for: `check --verify-contents` is what reports it, and a rebuild is
+    /// what settles it.
     /// </para>
     /// </remarks>
     [Fact]
-    public void A_replace_that_stopped_partway_leaves_the_copy_it_set_aside()
+    public void A_replace_that_stopped_partway_leaves_a_copy_the_sweep_finishes_with()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
@@ -526,15 +532,18 @@ public class DurableWriteTests
         File.ReadAllText(CorpusFiles.Locate(corpus.Root, transcript).FullName).ShouldBe("the second rendering");
         var aside = Files(corpus).Where(CorpusFiles.IsSuperseded).ShouldHaveSingleItem();
         File.ReadAllText(CorpusFiles.Locate(corpus.Root, aside).FullName).ShouldBe("the first rendering");
-
-        var swept = ArtifactReconciler.Sweep(context);
-        swept.Removed.ShouldBeEmpty();
-        swept.Left.ShouldBeEmpty();
-        File.ReadAllText(CorpusFiles.Locate(corpus.Root, aside).FullName).ShouldBe("the first rendering");
-
         ArtifactReconciler.Check(context)
             .ShouldContain(finding =>
                 finding.State == ArtifactState.Superseded && finding.RelativePath == aside);
+
+        var swept = ArtifactReconciler.Sweep(context);
+        swept.Removed.ShouldBe([aside]);
+        swept.Left.ShouldBeEmpty();
+        File.Exists(CorpusFiles.Locate(corpus.Root, aside).FullName).ShouldBeFalse();
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, transcript).FullName).ShouldBe("the second rendering");
+
+        ArtifactReconciler.Check(context)
+            .ShouldNotContain(finding => finding.State == ArtifactState.Superseded);
     }
 
     /// <summary>

@@ -182,13 +182,13 @@ command that acts on the difference.
 | Suffix | What it holds | What a sweep does |
 | --- | --- | --- |
 | `.partial` | bytes on their way in, which were never an artifact | deletes it |
-| `.superseded` | the old copy of a derived file, moved aside so a set of them could be replaced together | leaves it, and `check` reports it |
+| `.superseded` | the old copy of a derived file, moved aside so a set of them could be replaced together | deletes it once the file that replaced it is back; until then, leaves it and `check` reports it |
 
 `.partial` is deleted on sight — no age, no second thought — and that licence rests entirely on the
 middle column: nothing is lost, because nothing was ever there. So the copy a replace sets aside
 must not wear it. That copy *was* an artifact, and between the emptying and the moves it is the only
-copy of one; a sweep taking it turns a replace that refused and put everything back into a derived
-file that quietly stopped existing.
+copy of one; a sweep taking it there turns a replace that refused and put everything back into a
+derived file that quietly stopped existing.
 
 The other half of the same licence is a write somebody is still making, which is spelled `.partial`
 because that is exactly what it is. `sweep` is run from a terminal, so it runs beside a working
@@ -200,12 +200,20 @@ it — but it is the artifact write's own, and the `.partial` files the audio en
 recording it is materialising are held only while something is reading or writing them.
 
 A `.superseded` file on disk means the machine stopped inside a replace, or the tidy-up at the end
-of one was refused. Nothing removes it, and `check` keeps reporting it, exactly as with a file that
-has no row: this module reports and does not repair anything that was ever an artifact, because it
-cannot tell the copy nobody needs from the copy that is the last one. So `check` stays red until a
-person looks. What to do is two steps and both are somebody's: if the derived file it is a copy of
-is missing, `rebuild` produces it again from the sources; then delete the copy, which costs nothing
-once the file is back.
+of one was refused. Which of those it is is not a guess: the copy is named for the destination it
+came out of, so ask whether that destination is on disk. It is back → the moves ran, the file that
+replaced it is the one anybody wants, and the copy is what a finished replace did not get to remove.
+It is missing → the copy is the last one of that derived file, and it may be the file a put-back is
+on its way to putting back.
+
+`sweep` takes the first and never the second, which is the only thing separating a corpus that comes
+back from a crashed render on its own from one where `check` exits non-zero until somebody deletes a
+file by hand. There is no clock in the question and no age: a copy is put back only into a
+destination the same run of vacates emptied, and that run gives up before anything is moved in, so
+a destination standing where a copy came out of means nothing is ever coming back for it.
+
+What is left for a person is the second case, and it is one step: `rebuild` produces the derived
+file again from the sources, and the next `sweep` clears the copy.
 
 ## Two spellings of one path
 
