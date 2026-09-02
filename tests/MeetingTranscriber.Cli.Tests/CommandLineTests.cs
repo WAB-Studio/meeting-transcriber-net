@@ -211,6 +211,39 @@ public class CommandLineTests
     }
 
     /// <summary>
+    /// A write somebody is still making is left where it is, and the command says so rather than
+    /// reporting the nothing it removed.
+    /// </summary>
+    /// <remarks>
+    /// The ordinary way this command is run: at a prompt, beside an application that is rendering
+    /// meetings. An unfinished write is held open for as long as it is being made, so the sweep is
+    /// refused it — and told only how many it took, somebody who has just read a report of
+    /// unfinished writes cannot tell that from a sweep that is not working.
+    /// </remarks>
+    [Fact]
+    public void A_write_still_being_made_is_left_where_it_is_and_named()
+    {
+        using var corpus = new TemporaryCorpus();
+        var root = corpus.Root.FullName;
+        CommandLine.Of("migrate", "--corpus", root);
+        var imported = Import(root);
+
+        var unfinished = Path.Combine(root, imported.Value("transcript") + CorpusFiles.UnfinishedSuffix);
+        using var held = new FileStream(
+            unfinished, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+        held.Write("half a file"u8);
+        held.Flush();
+
+        var run = CommandLine.Of("sweep", "--corpus", root);
+
+        run.Code.ShouldBe(Cli.Ok, run.Error);
+        run.Output.ShouldContain("0 unfinished write(s) removed.");
+        run.Output.ShouldContain("1 left alone");
+        run.Output.ShouldContain(imported.Value("transcript") + CorpusFiles.UnfinishedSuffix);
+        File.Exists(unfinished).ShouldBeTrue();
+    }
+
+    /// <summary>
     /// The repair the check reports and cannot make, run end to end: the paid file the corpus
     /// claims is gone, somebody still has the original, and one command puts it back where the row
     /// says it is. Nothing tells the command which meeting or which path — the bytes do, because
