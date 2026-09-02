@@ -409,21 +409,72 @@ public sealed class CorpusImporter(CorpusDbContext context, TimeProvider clock)
     {
         // Before the render, and it is the one of the two that has to survive the other failing:
         // a meeting whose derivatives could not be produced is still a meeting somebody has to be
-        // able to recognise in a folder, and the card is what says which one it is.
-        MeetingManifest.Write(context, meeting.Id, now);
-        report.Imported(ImportCounter.Manifest);
-
-        try
+        // able to recognise in a folder, and the card is what says which one it is. It is named on
+        // its own for the same reason it is written first — it reaches the artifact writer and the
+        // disk, so a card the folder refuses used to end the run as surely as a render did.
+        Named(legacy, report, () =>
         {
+            MeetingManifest.Write(context, meeting.Id, now);
+            report.Imported(ImportCounter.Manifest);
+        });
+
+        Named(legacy, report, () =>
+        {
+            // Its own transaction, which MeetingRenderer would not have opened around the whole of
+            // this: it opens one around the two files, and the turns it projects are saved before
+            // that. Without this, a meeting whose files could not be written keeps the turns of a
+            // render that did not happen — turns nothing counted, under a meeting the report has
+            // just said it could not finish. Rolling them back is right here and wrong in a
+            // rebuild: this meeting has never been rendered, so there is no artifact row to revert
+            // to and what a rollback leaves behind is a file nothing has recorded.
+            using var write = context.Database.BeginTransaction();
             var rendered = MeetingRenderer.Render(context, meeting.Id, now);
+            write.Commit();
+
             report.Imported(ImportCounter.Rendered);
             report.Imported(ImportCounter.Turn, rendered.Turns);
+        });
+    }
+
+    /// <summary>
+    /// One thing this meeting is owed, and the line naming it when the corpus or the disk refuses
+    /// instead. Whether it worked is not returned because nothing downstream asks: the card and the
+    /// derivatives are written into the same folder and neither is the other's precondition.
+    /// </summary>
+    private static void Named(LegacyMeeting legacy, ImportReport report, Action write)
+    {
+        try
+        {
+            write();
         }
-        catch (RenderException problem)
+        catch (Exception problem) when (Absorbable(problem))
         {
             report.CouldNotImport($"{legacy.Id}: {problem.Message}");
         }
     }
+
+    /// <summary>
+    /// What a render failing costs: a line in the report, and never the run. Everything except a
+    /// closed list of one, stated as the negative because the list that can be closed is the one
+    /// being excluded.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the rule the importer already lives by, applied to the one call that was escaping
+    /// it. Naming what a render may throw cannot be done from here — it walks the response parser,
+    /// the domain's audio and time contracts, the artifact writer, the filesystem and SQLite — and
+    /// this is the path where being wrong about it is not hypothetical: a <c>deepgram.json</c> is
+    /// filed on its sha256 without ever being parsed, so a legacy response the .NET parser rejects
+    /// is ordinary input here, and one of them used to end the import on an unhandled exception
+    /// with the report that lists what a run left behind never printed.
+    /// </para>
+    /// <para>
+    /// Out of memory is what is left out, and today it is all of it: it says nothing about the
+    /// meeting it was thrown on and would be thrown again on the next two hundred. The exception
+    /// handed over is what is read, not the chain under it.
+    /// </para>
+    /// </remarks>
+    private static bool Absorbable(Exception thrown) => thrown is not OutOfMemoryException;
 
     /// <summary>
     /// The run that produced this meeting's <c>extraction.json</c>. Without it the file is an
