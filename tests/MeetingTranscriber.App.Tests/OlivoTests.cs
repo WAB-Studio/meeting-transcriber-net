@@ -301,16 +301,20 @@ public partial class OlivoTests
     }
 
     /// <summary>
-    /// The three shapes the check above has to tell apart, kept as rows rather than as a sentence
-    /// about them: narrowing it from "no TextBlock at all" to "no TextBlock that says something" is
+    /// Every shape the check above has to tell apart, kept as rows rather than as a sentence about
+    /// them: narrowing it from "no TextBlock at all" to "no TextBlock that says something" is
     /// exactly the edit that could let a word through, and a green run over a dictionary that
-    /// happens to hold none would not notice.
+    /// happens to hold none would not notice. The inline pair is why there are five and not three
+    /// — a `Run` carries most of what a `TextBlock` says and neither of its two shapes is an
+    /// attribute or a text node on the element the filter stopped at.
     /// </summary>
     public static TheoryData<string, bool> WordsOrValues() => new()
     {
         { """<TextBlock Text="Elegí un idioma" />""", true },
         { """<TextBlock>Elegí un idioma</TextBlock>""", true },
+        { """<TextBlock><Run Text="Elegí un idioma" /></TextBlock>""", true },
         { """<TextBlock Text="{TemplateBinding PlaceholderText}" />""", false },
+        { """<TextBlock><Run Text="{TemplateBinding PlaceholderText}" /></TextBlock>""", false },
     };
 
     [Theory]
@@ -406,10 +410,20 @@ public partial class OlivoTests
     /// <c>{TemplateBinding PlaceholderText}</c> settles nothing: the words are whatever the screen
     /// put on the control, which <see cref="ScreenTextsTests"/> holds to the catalogue at the other
     /// end. Anything not in braces is this file saying it.
+    /// <para>
+    /// It reads what is under the element and not only the element, because a <c>TextBlock</c> says
+    /// most of what it says through inlines: <c>&lt;TextBlock&gt;&lt;Run Text="Hola" /&gt;&lt;/TextBlock&gt;</c>
+    /// has no text node of its own and no <c>Text</c> attribute of its own, and is a sentence on a
+    /// screen. The element filter above already stops at a <c>TextBlock</c>, so this is what decides
+    /// whether that <c>TextBlock</c> is holding words.
+    /// </para>
     /// </remarks>
     private static bool Says(XElement element) =>
-        element.Nodes().OfType<XText>().Any(text => !string.IsNullOrWhiteSpace(text.Value))
-        || (string?)element.Attribute("Text") is { } said && !said.TrimStart().StartsWith('{');
+        element.DescendantNodesAndSelf().OfType<XText>().Any(text => !string.IsNullOrWhiteSpace(text.Value))
+        || element.DescendantsAndSelf()
+            .Select(inline => (string?)inline.Attribute("Text"))
+            .OfType<string>()
+            .Any(said => !said.TrimStart().StartsWith('{'));
 
     /// <summary>Every key a dictionary or a screen's own resources define.</summary>
     private static HashSet<string> Keys(XDocument document) =>
