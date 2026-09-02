@@ -31,6 +31,7 @@ application for months, or it changes `ISA.md` or touches `Domain/Audio`, `Domai
 gh pr view <n> --json headRefOid,headRefName,title,body,files,additions,deletions
 gh pr diff <n>
 git show <headRefOid>:ISA.md
+git log -L '/^- \[.\] ISC-N: /,+1:ISA.md' origin/main   # what a claim used to say, and when
 gh issue view <n> --json number,title,body,labels,state,comments
 gh project item-list 1 --owner WAB-Studio --format json --limit 200
 gh pr comment <n> --body-file <scratchpad>/verdict.md
@@ -126,6 +127,12 @@ what happens to the PR.
 
 Judge what `git diff main...<head> -- ISA.md` introduces, and nothing else. A claim `main` already
 holds is a person's to tombstone.
+
+**One thing outside that diff is yours: the words of every claim this PR ticks.** Checks 15 and 16
+only prove the words did not move inside the diff; a narrowing pushed ahead of the branch is behind
+the base and appears in no diff you can see. Read the claim's own history — a claim that got smaller
+until it fit is a bet written to score the work against itself, and the probe under it proves
+nothing. That is `hold`, and the claim is what you name.
 
 Delete a claim born `[x]`, one repeating a truth already claimed, and one nothing on the card
 decided. Reword one saying what makes it true instead of what has to be true. Move one filed under

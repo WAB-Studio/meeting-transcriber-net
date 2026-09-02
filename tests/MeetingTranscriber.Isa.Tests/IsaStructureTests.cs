@@ -429,7 +429,58 @@ public class IsaStructureTests
                 "a tombstone is written open, so one arriving whole in a single change is fine — "
                 + "which is how ISC-160 and ISC-161 both landed. Reordering is nothing either.");
         IsaHistory.BornTicked(closed, Claims("- [x] ISC-1: A meeting somebody sat through is kept."))
-            .ShouldBeEmpty("ids are what it compares, so a rewrite in place is invisible to it.");
+            .ShouldBeEmpty("ids are what it compares; what a claim says is check 16's.");
+    }
+
+    /// <summary>
+    /// The gate on a claim reworded into its own closure: an open claim rewritten to describe what
+    /// the change just built, then ticked. The id carried a bet, and the bet it carried is not the
+    /// one being scored — which reads as an ordinary closure to the gate above and to anybody who
+    /// does not go and look up what the claim used to say.
+    /// </summary>
+    /// <remarks>
+    /// It reaches a claim the trunk had open and nothing else. Rewording a claim already closed
+    /// closes nothing, and the two times this repo did it — `ISC-121` in PR #58 and `ISC-120` in
+    /// PR #74 — the product had moved under a standing closure and the `## Verification` stub was
+    /// rewritten in the same commit to say so. Refusing those would have sent the honest act down
+    /// a route with no reviewer on it, to buy a rule ISC-176 does not make.
+    /// </remarks>
+    [Fact]
+    public void No_claim_is_closed_in_words_the_file_did_not_already_carry()
+    {
+        IsaHistory.RewordedIntoClosure(IsaHistory.Baseline(), isa).ShouldBeEmpty(
+            "a claim marked `[x]` whose words are not the words it stood open in on the trunk was "
+            + "rewritten by the very change that closes it, so the bet it is scored against was "
+            + "written to fit. A narrowing goes in a change that does not tick it. If the words do "
+            + "match, the fork point is behind: `git fetch`, then merge `main` in.");
+    }
+
+    /// <summary>
+    /// The rule over documents written to break it, and over the shapes that look like it and are
+    /// not: a claim left open, a withdrawal, and a rewrite of a claim this change does not close.
+    /// </summary>
+    [Fact]
+    public void A_claim_closes_in_the_words_it_stood_open_in()
+    {
+        var open = Claims("- [ ] ISC-1: A meeting is recorded.");
+        var closed = Claims("- [x] ISC-1: A meeting is recorded.");
+        var narrowed = Claims("- [x] ISC-1: A meeting somebody sat through is recorded.");
+
+        IsaHistory.RewordedIntoClosure(open, narrowed).ShouldBe(
+            ["ISC-1"], "reworded to fit what was built, then ticked, is the defect this closes.");
+        IsaHistory.RewordedIntoClosure(open, closed).ShouldBeEmpty(
+            "the words it stood open in are the words it closes in.");
+        IsaHistory.RewordedIntoClosure(
+            open, Claims("- [ ] ISC-1: A meeting somebody sat through is recorded."))
+            .ShouldBeEmpty("a claim this change does not close is free to be sharpened.");
+        IsaHistory.RewordedIntoClosure(closed, narrowed).ShouldBeEmpty(
+            "a claim the trunk already closed is not being closed here, whatever happens to its "
+            + "words — that is a stub standing over a sentence, and a different rule.");
+        IsaHistory.RewordedIntoClosure(
+            closed, Claims("- [ ] ISC-1: [DROPPED 2026-09-02: nobody asked.]"))
+            .ShouldBeEmpty("a tombstone is written open, and rewrites the line by definition.");
+        IsaHistory.RewordedIntoClosure(Claims(), closed).ShouldBeEmpty(
+            "a claim the trunk does not carry at all is check 15's, and is named once.");
     }
 
     /// <summary>
@@ -451,10 +502,13 @@ public class IsaStructureTests
     /// `ISC-158` with nine children and ticked two of them the day they were written. The gate
     /// names all four, and that a split of a closed claim is among them is the rule and not an
     /// oversight: `ISC-139.2` is about a screen that same pull request built, closed on a stub
-    /// written that day naming tests written that day. A narrowing that hands an already-standing
-    /// closure down has a form nothing here refuses — the claim's own text is rewritten in place,
-    /// which keeps the id that carried the bet — and a split into new closed ids is a second
+    /// written that day naming tests written that day. A split into new closed ids is a second
     /// closure however it reads, so it goes red and the person says why.
+    ///
+    /// Check 16 gets no pinned merge of its own, because nothing in this repo's history is one:
+    /// replaying it over every first-parent commit that touched `ISA.md` names no claim. Pinning a
+    /// pair that returns nothing would prove the seam a third time and the rule not at all, and each
+    /// pinned commit is another old blob a clone has to hold — which is `ISC-134` and `ISC-135`.
     /// </remarks>
     [Fact]
     public void The_gate_reads_history_and_not_the_tree_it_is_standing_on()
