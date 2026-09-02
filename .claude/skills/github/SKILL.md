@@ -222,6 +222,13 @@ The body and every comment on it.
 nothing else; `nit:` up front when it does not block. You do not approve your own PR, and design is
 discussed in the issue — in the PR the code is already written.
 
+**On a PR that ticks a claim, read the claim's own history, not the PR's.** The ISA gates only prove
+the words did not move inside this diff — they say nothing about a narrowing pushed ahead of the
+branch, which is behind the base and so is in no diff the PR shows. `git log -L '/^- \[.\] ISC-N:
+/,+1:ISA.md' origin/main` prints the line's successive versions with their commits. The shape to
+look for is a claim that got smaller until it fit, and the question is one: *did this claim say this
+before anybody knew what would be built?*
+
 ## Commands
 
 ```bash

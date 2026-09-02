@@ -94,9 +94,10 @@ Board: 3 · Grabador WinUI
   name in a claim — a claim outlives the design under it, and the evidence stub is where the test
   is named. A claim a rename would falsify was never about the product.
 - `- [x]` closed, `- [ ]` open. A claim closes on evidence, never on a task's status.
-- **A claim is written open, and reaches `main` before the work that closes it starts.** Writing it
-  already ticked beside the work it judges scores that work against a bet it never had to clear.
-  Check 15 refuses it.
+- **A claim is written open, and reaches `main` in its final words before the work that closes it
+  starts.** Writing it already ticked beside the work it judges scores that work against a bet it
+  never had to clear, and rewording it there scores the work against a bet rewritten to fit. Checks
+  15 and 16 refuse both, so sharpening a claim the branch will close is its own change on `main`.
 - `Anti:` prefixes a claim about what must *not* happen. At least one is required overall — a
   goal with no failure mode worth naming is under-specified.
 - Nested IDs (`ISC-7.1`) organise a split; the atomicity rule applies at the leaves.
@@ -180,24 +181,41 @@ Mechanical, enforced by `IsaStructureTests`, and hard failures:
 14. No ISC ID carries two `## Verification` stubs.
 15. No claim is closed by the change that wrote it — a claim marked `[x]` that `origin/main` does
     not carry at all is a claim born ticked.
+16. No claim is closed in words the change also wrote — a claim marked `[x]` saying something other
+    than what `origin/main` had it saying while it was open is a claim reworded into its closure.
 
-Check 15 is the only one that reads history, because it is the only rule the file cannot state
-about itself: a claim marked `[x]` reads the same whether it stood open for a week or was written
-that way in the diff that closes it. It compares the working tree against the fork point from
-`origin/main`, so it answers before the change is committed, and CI owes it `fetch-depth: 0` at
-the checkout. It speaks on a pull request; on a push to `main` the fork point is HEAD.
+These two are one rule in two shapes: **a closure is scored against what `main` was already
+carrying, under that id and in those words.** They are the only checks that read history, because
+this is the only rule the file cannot state about itself — a claim marked `[x]` reads the same
+whether it stood open for a week or was written that way in the diff that closes it. They compare
+the working tree against the fork point from `origin/main`, so they answer before the change is
+committed, and CI owes them `fetch-depth: 0` at the checkout. They speak on a pull request; on a
+push to `main` the fork point is HEAD.
 
-Ids are all it compares, and three consequences follow. Reordering, rewording and moving a claim
-between blocks are invisible to it. Renumbering a closed claim reads as one appearing, which is
-right, since check 10 refuses renumbering anyway. And rewriting an open claim to describe what the
-same diff just built, then ticking it, is the same defect with one extra keystroke and no gate
-reaches it — that one is a reviewer's to see, and it is written here so they know to look.
+Check 16 reaches a claim `main` had **open**, and nothing else. A claim already closed there is not
+being closed by this change whatever happens to its words, and the repo has twice moved one
+correctly: `ISC-121` in PR #58 and `ISC-120` in PR #74 each followed a product that had changed
+under a standing closure, and each rewrote its `## Verification` stub in the same commit to say so.
+What that leaves uncovered is a stub standing over a sentence it was not written against, which is
+a rule about evidence and not about closure, and no gate holds it yet.
 
-There is no exception for a split. Narrowing a closed claim by rewriting its own text keeps the id
-that carried the bet and passes; splitting it into new ids marked closed is a second closure
-however it reads, so it goes red and the person says why in the pull request. The one time the
-repo did that — `ISC-139` in PR #63 — the new leaf was about a screen that same pull request
-built, which is the defect and not the exception.
+Ids and words are all they compare, so reordering the file and moving a claim between blocks stay
+invisible, and renumbering a closed claim reads as one appearing — which is right, since check 10
+refuses renumbering anyway.
+
+**What is left for a reviewer.** The gates only push the reword out of the diff that ticks it. They
+cannot see whether it was written ahead of the work or worded to fit it, wherever it landed — a
+direct push to `main`, an `ISA.md`-only pull request, or the branch that built the thing and left
+the claim open for a later one to tick. That residue is one question, *did this claim say this
+before anybody knew what would be built?*, and it is asked in `.claude/agents/auditor.md`,
+`.claude/skills/github/SKILL.md` and the Skeptic lens, which are where a PR is read.
+
+There is no exception for a split, and narrowing is not a way round one. Splitting a closed claim
+into new ids marked closed is a second closure however it reads, so check 15 refuses it; narrowing
+an open claim's text under the same tick is check 16's. **A narrowing goes in a change that does not
+tick it** — on `main` or in a pull request, either is fine — and the branch that closes it ticks a
+line it did not write. The one time the repo split a closed claim — `ISC-139` in PR #63 — the new
+leaf was about a screen that same pull request built, which is the defect and not the exception.
 
 Check 11 was advisory until 2026-08-26, on the argument that a pointer cannot be told from a
 paragraph by counting characters. That holds for the line, which here is mostly test names — seven

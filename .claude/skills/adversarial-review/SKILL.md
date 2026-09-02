@@ -96,5 +96,5 @@ Vendored from [poteto/noodle](https://github.com/poteto/noodle)
 `.agents/skills/adversarial-review/`. Changes from upstream: the `brain/principles.md` dependency
 is vendored into `references/principles/`, the scratch directory moved from `/tmp` to the session
 scratchpad, the `schedule:` frontmatter key became prose, the size thresholds count only
-non-comment lines and no longer trigger the review themselves, and reviewers are agents rather than
-a second model's CLI.
+non-comment lines and no longer trigger the review themselves, reviewers are agents rather than a
+second model's CLI, and the Skeptic lens carries one repo-specific question, about `ISA.md`.
