@@ -144,6 +144,26 @@ public static class RecorderStates
     public static bool IsRecording(this RecorderState state) =>
         state is RecorderState.Recording or RecorderState.Paused;
 
+    /// <summary>
+    /// Whether there is a meeting on this screen at all — one being opened, one being recorded or
+    /// one being made — which is what says there is something to lose sight of.
+    /// </summary>
+    /// <remarks>
+    /// The wider of the two, and the difference is what each is asked for. <see cref="IsRecording"/>
+    /// is asked when the question is whether there is anything to <em>meter</em>: a device to read a
+    /// level off, a clock to run. This is asked when the question is whether anything on this screen
+    /// is about a meeting somebody is in the middle of, and the answer has to include the two states
+    /// that have neither a level nor a clock — a start that is opening two devices, and a save that
+    /// is minutes of work on a long meeting. Both of those are what the application is doing to a
+    /// meeting, and a screen that let them go out of sight would be hiding the outcome of a press
+    /// somebody just made.
+    /// </remarks>
+    public static bool IsInAMeeting(this RecorderState state) =>
+        state is RecorderState.Starting
+            or RecorderState.Recording
+            or RecorderState.Paused
+            or RecorderState.Finishing;
+
     /// <summary>What a screen in this state reaches.</summary>
     public static IReadOnlySet<RecorderPress> Reaches(this RecorderState state) =>
         Presses.TryGetValue(state, out var presses)

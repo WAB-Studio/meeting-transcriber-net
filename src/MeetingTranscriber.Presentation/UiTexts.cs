@@ -150,6 +150,24 @@ public static class UiTexts
         "Canal 0: todo lo que suena en esta máquina.",
         "Channel 0: everything this machine plays.");
 
+    // The four words the strip says while the meetings have the window, one per state a meeting
+    // can be under way in, which `MainAbierto` draws as the one loud thing on it. They are the
+    // state and not a sentence about it: the strip is read at a glance by somebody who came to the
+    // list for something else, and the status line at the foot is where the same states are said
+    // in full, in a quieter ink, for somebody who has stopped to read.
+    //
+    // Four and not two. Paused is here because a paused meeting is still being recorded and the
+    // one thing somebody who just pressed pause is looking for is whether it took; saving is here
+    // because stop is on the strip and a strip that went away on its own press would answer that
+    // press with nothing; and opening is here because the two devices take as long as they take.
+    public static UiText TheDevicesAreOpening { get; } = new("Abriendo", "Opening");
+
+    public static UiText TheMeetingIsBeingRecorded { get; } = new("Grabando", "Recording");
+
+    public static UiText TheMeetingIsPaused { get; } = new("En pausa", "Paused");
+
+    public static UiText TheMeetingIsBeingSaved { get; } = new("Guardando", "Saving");
+
     public static UiText ReadyToRecord { get; } = new(
         "Elegí el micrófono, qué grabar de esta máquina y en qué idioma se va a hablar.",
         "Choose the microphone, what to record from this machine, and what will be spoken.");

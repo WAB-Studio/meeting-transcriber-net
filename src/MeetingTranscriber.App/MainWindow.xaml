@@ -29,7 +29,13 @@
          raises itself to the whole window, at which point the half above travels out of the way
          rather than vanishing — 300 ms, accelerating out, and nothing at all on a machine that
          asked Windows for no animation. How long that is worth is Movement's, in a project a build
-         agent runs against both answers; what moves is ScreenMotion's. -->
+         agent runs against both answers; what moves is ScreenMotion's.
+
+         The raise is never refused, a meeting being recorded included, and it costs nothing
+         because the strip below the card travels the other way as the half leaves. What a meeting
+         under way is doing, and the press that stops it, are on screen whichever of the two
+         arrangements the window is in. What is not on the strip is what nobody watches from the
+         list: the two meters, and pause. -->
 
     <!-- Papel, and opaque. `docs/design.md` §And five things this application is not: never mica or
          acrylic, because a translucent window is one where nothing weighs anything. What was here
@@ -186,123 +192,43 @@
                      you. This is never a list. Everything in it is dead the moment a recording
                      starts — changing the microphone half way through is not a thing the engine can
                      do, so it is not a thing this screen offers. -->
-                <Grid ColumnSpacing="20" RowSpacing="6">
+                <Grid ColumnSpacing="20">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
 
                     <local:ChannelStrip
                         x:Name="TheOthers"
-                        Grid.Row="0"
                         Grid.Column="0"
                         Chose="OnSourceChosen" />
 
                     <Border
-                        Grid.Row="0"
-                        Grid.RowSpan="2"
                         Grid.Column="1"
                         Width="1"
                         Background="{StaticResource LineBrush}" />
 
                     <local:ChannelStrip
                         x:Name="Mine"
-                        Grid.Row="0"
                         Grid.Column="2"
                         Chose="OnMicrophoneChosen" />
-
-                    <!-- Each channel's own lines under its own meter, which is where the evidence
-                         for them is. They are live regions, so their words are set in the
-                         code-behind and never bound here: a line bound in the XAML is set once
-                         while it is collapsed and never changes again, which is a live region that
-                         announces nothing. MainWindow.Tell is what says these and why, and
-                         LiveRegionTests fails if one is bound here or never told. -->
-                    <StackPanel Grid.Row="1" Grid.Column="0" Spacing="6">
-                        <!-- A device dying is an event and not something to find by looking. -->
-                        <TextBlock
-                            x:Name="OthersStopped"
-                            Style="{StaticResource BodyText}"
-                            Foreground="{StaticResource PeakBrush}"
-                            AutomationProperties.LiveSetting="Assertive"
-                            TextWrapping="Wrap"
-                            Visibility="Collapsed" />
-                        <!-- A channel that changed what it is on mid meeting, which is an event for
-                             the same reason: the picker above it goes on saying what was chosen,
-                             and what the recording holds from here on is another source. This is
-                             the one thing that says so, which is why the meter under it no longer
-                             repeats what it is capturing in grey. -->
-                        <TextBlock
-                            x:Name="OthersMoved"
-                            Style="{StaticResource BodyText}"
-                            Foreground="{StaticResource PeakBrush}"
-                            AutomationProperties.LiveSetting="Assertive"
-                            TextWrapping="Wrap"
-                            Visibility="Collapsed" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Row="1" Grid.Column="2" Spacing="6">
-                        <!-- Told, not bound, for the reason channel 0's line says. -->
-                        <TextBlock
-                            x:Name="MineStopped"
-                            Style="{StaticResource BodyText}"
-                            Foreground="{StaticResource PeakBrush}"
-                            AutomationProperties.LiveSetting="Assertive"
-                            TextWrapping="Wrap"
-                            Visibility="Collapsed" />
-                        <!-- Told, not bound, for the reason channel 0's line says. -->
-                        <TextBlock
-                            x:Name="MineMoved"
-                            Style="{StaticResource BodyText}"
-                            Foreground="{StaticResource PeakBrush}"
-                            AutomationProperties.LiveSetting="Assertive"
-                            TextWrapping="Wrap"
-                            Visibility="Collapsed" />
-                    </StackPanel>
                 </Grid>
 
-                <!-- True of both channels at once, so it sits under both rather than in either
-                     column. Told, not bound, for the reason the four above are. -->
-                <TextBlock
-                    x:Name="HeardTwice"
-                    Style="{StaticResource BodyText}"
-                    Foreground="{StaticResource PeakBrush}"
-                    AutomationProperties.LiveSetting="Polite"
-                    TextWrapping="Wrap"
-                    Visibility="Collapsed" />
+                <!-- The five lines a narrator is told about used to be here, each under the meter
+                     whose channel it is about. They are not any more, and #204 is why: this half
+                     travels out of the way when the meetings take the window, a collapsed element
+                     is not in the automation tree at all, and a fault line that goes with it
+                     announces nothing at the moment it has something to say. They are below the
+                     card now, in the row that is on screen in both arrangements — where each says
+                     which channel it is about in its own words, which is what the column under a
+                     meter was saying and the sentence was already saying too. -->
 
-                <!-- The offer, and it is not on screen until the recording has made it. That is the
-                     whole of the consent here: there is nothing to press early, so nothing pressed
-                     early can be spent on it.
-
-                     Not pico, and `docs/design.md`'s `NadaLlego` says why in as many words: taking
-                     the whole machine costs nothing and loses nothing. It is the act on a
-                     notice, and an act on a notice takes the normal rank. A notice's act sits on
-                     the right of it, which is the grammar every row on every screen keeps. -->
-                <Grid x:Name="WholeMachineOffer" ColumnSpacing="16" Visibility="Collapsed">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <TextBlock
-                        Grid.Column="0"
-                        VerticalAlignment="Center"
-                        Text="{x:Bind In(loc:UiTexts.NothingCameFromThatProgram)}"
-                        Style="{StaticResource BodyText}"
-                        TextWrapping="Wrap" />
-                    <Button
-                        x:Name="WholeMachineButton"
-                        Grid.Column="1"
-                        VerticalAlignment="Center"
-                        Style="{StaticResource NormalButtonOnCard}"
-                        Click="OnRecordTheWholeMachine"
-                        Content="{x:Bind In(loc:UiTexts.RecordTheWholeMachine)}" />
-                </Grid>
+                <!-- The whole-machine offer used to be here and is now below the card, for the
+                     reason the five fault lines are: it appears while a meeting is running, which
+                     is exactly when this half may have travelled out of the way, and an offer
+                     nobody can see or reach is a recording of an hour of silence the application
+                     did notice. -->
 
                 <!-- The foot: the neutral answers on the left, the act on the right. -->
                 <Grid ColumnSpacing="16">
@@ -440,12 +366,169 @@
         </Border>
 
         <!-- Outside the half above, and bounded rather than left to take what is going. Outside
-             because a line saying the chosen microphone has gone is written while the drawer may
-             have the whole window, and a report that went with the recorder would be a screen
-             saying nothing at the moment it had something to say. Bounded because the meetings own
-             the room that is left, and a report that grew into it would push the list off the
-             screen a line at a time. -->
+             because everything in it is written while the room below may have the whole window,
+             and something that went with the recorder would be a screen saying nothing at the
+             moment it had something to say. Bounded because the meetings own the room that is
+             left, and a report that grew into it would push the list off the screen a line at a
+             time.
+
+             That was already the reason the identity row, the corpus line and the report are here,
+             and it is #204's reason for everything above them: the strip, the five lines a
+             narrator is told about, and the offer to record the whole machine. One row and not a
+             second one beside it — a row that is empty in the state this window opens in still
+             costs the grid its spacing on both sides. -->
         <StackPanel Grid.Row="2" Spacing="8" Margin="6,0,6,0">
+            <!-- The strip, which is what says what a meeting under way is doing while the room
+                 below has the window. `docs/design/MainAbierto` draws it: the state word in olivo,
+                 then how long the meeting has been running, what channel 0 is following and which
+                 microphone is on it, as one line of data.
+
+                 It is the recorder half's stand-in and never a second opinion beside it. The two
+                 are never both on screen and neither reads the recording for itself: which one is
+                 up, what it says and whether stop is live are all RecorderScreen's, in a project a
+                 build agent runs, and the number on it is the same RecordingClock the stopwatch
+                 above is drawn from. Two places asking a recording how long it had been going was
+                 the drift this card was written not to create.
+
+                 Tarjeta, like the card it stands in for, and the same corner. Its two texts are
+                 set in the code-behind rather than bound here for the reason the drawer's own
+                 button is: the state word changes without the language changing, and the line
+                 beside it is data — a length, a program and a device, which read the same in every
+                 language.
+
+                 Stop and not the three. It is the one press ISC-172 is about and the one that
+                 cannot wait for somebody to lower the list; pausing can. `MainAbierto` draws the
+                 strip with no press on it at all — this screen and that drawing disagree there,
+                 because a strip somebody cannot stop a meeting from is what the claim forbids. The
+                 drawing stands as drawn and the disagreement is on the PR; nothing here corrects
+                 it. -->
+            <!-- The word it says is the meeting's own state and is deliberately not disabled with
+                 the press beside it: the press goes dead the moment stop is pressed and the word
+                 keeps saying what the save is doing, which is the whole of why it is there. -->
+            <Border x:Name="TheStrip" Style="{StaticResource Card}" Visibility="Collapsed">
+                <Grid ColumnSpacing="14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock
+                        x:Name="StripSays"
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource SectionText}"
+                        Foreground="{StaticResource OliveBrush}" />
+
+                    <TextBlock
+                        x:Name="StripLine"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource DataText}" />
+
+                    <Button
+                        x:Name="StripStopButton"
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource NormalButtonOnCard}"
+                        Click="OnStop"
+                        Content="{x:Bind In(loc:UiTexts.Stop)}" />
+                </Grid>
+            </Border>
+
+            <!-- The five lines a narrator is told about the moment something goes wrong with a
+                 device. They are here rather than under the meters they are about because this row
+                 does not travel and the recorder half does: a collapsed element is not in the
+                 automation tree at all, so a fault line that went with the recorder would announce
+                 nothing at exactly the moment it had something to say. Each already names the
+                 channel it is about in its own words, so standing under a meter was saying a
+                 second time what the sentence says.
+
+                 Their words are set in the code-behind and never bound here: a line bound in the
+                 XAML is set once while it is collapsed and never changes again, which is a live
+                 region that announces nothing. MainWindow.Tell is what says these and why, and
+                 LiveRegionTests fails if one is bound here or never told. -->
+            <!-- A device dying is an event and not something to find by looking. -->
+            <TextBlock
+                x:Name="OthersStopped"
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource PeakBrush}"
+                AutomationProperties.LiveSetting="Assertive"
+                TextWrapping="Wrap"
+                Visibility="Collapsed" />
+            <!-- A channel that changed what it is on mid meeting, which is an event for the same
+                 reason: the picker on the card goes on saying what was chosen, and what the
+                 recording holds from here on is another source. This is the one thing that says
+                 so, which is why the meter no longer repeats what it is capturing in grey. -->
+            <TextBlock
+                x:Name="OthersMoved"
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource PeakBrush}"
+                AutomationProperties.LiveSetting="Assertive"
+                TextWrapping="Wrap"
+                Visibility="Collapsed" />
+            <!-- Told, not bound, for the reason channel 0's line says. -->
+            <TextBlock
+                x:Name="MineStopped"
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource PeakBrush}"
+                AutomationProperties.LiveSetting="Assertive"
+                TextWrapping="Wrap"
+                Visibility="Collapsed" />
+            <!-- Told, not bound, for the reason channel 0's line says. -->
+            <TextBlock
+                x:Name="MineMoved"
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource PeakBrush}"
+                AutomationProperties.LiveSetting="Assertive"
+                TextWrapping="Wrap"
+                Visibility="Collapsed" />
+            <!-- True of both channels at once, so it sits under both rather than beside either.
+                 Told, not bound, for the reason the four above are. -->
+            <TextBlock
+                x:Name="HeardTwice"
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource PeakBrush}"
+                AutomationProperties.LiveSetting="Polite"
+                TextWrapping="Wrap"
+                Visibility="Collapsed" />
+
+            <!-- The offer, and it is not on screen until the recording has made it. That is the
+                 whole of the consent here: there is nothing to press early, so nothing pressed
+                 early can be spent on it.
+
+                 Here rather than on the card for the reason the five lines above are, and it is
+                 the one of the six that is a press: it appears while a meeting is running, which
+                 is exactly when the card may have travelled out of the way, and an offer nobody
+                 can see or reach is the recording of an hour of silence the application did
+                 notice. It is not on the strip either — the strip is the one thing that stands in
+                 for the card, and a notice with an act on it is not a line on a strip.
+
+                 Not pico, and `docs/design.md`'s `NadaLlego` says why in as many words: taking
+                 the whole machine costs nothing and loses nothing. It is the act on a
+                 notice, and an act on a notice takes the normal rank. A notice's act sits on
+                 the right of it, which is the grammar every row on every screen keeps. -->
+            <Grid x:Name="WholeMachineOffer" ColumnSpacing="16" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock
+                    Grid.Column="0"
+                    VerticalAlignment="Center"
+                    Text="{x:Bind In(loc:UiTexts.NothingCameFromThatProgram)}"
+                    Style="{StaticResource BodyText}"
+                    TextWrapping="Wrap" />
+                <Button
+                    x:Name="WholeMachineButton"
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource NormalButtonOnPaper}"
+                    Click="OnRecordTheWholeMachine"
+                    Content="{x:Bind In(loc:UiTexts.RecordTheWholeMachine)}" />
+            </Grid>
+
             <!-- Who is using the application, beside where their meetings are kept: both are
                  answers about this install rather than about the next meeting, which is why they
                  are here and not up on the card. It is one field and one press whether it is

@@ -36,10 +36,10 @@ namespace MeetingTranscriber.App;
 /// this window owns about it is the half of the screen that goes when it takes the whole window.
 /// </para>
 /// <para>
-/// It holds no rule of its own about what can be pressed — including whether the list may take the
-/// window. <see cref="RecorderScreen"/> answers all of it, in a project a build agent can run, and
-/// every handler here asks it before doing anything — including the handlers of controls it has
-/// just disabled, because a click already in flight arrives after that.
+/// It holds no rule of its own about what can be pressed, nor about which of the two arrangements
+/// it is in. <see cref="RecorderScreen"/> answers all of it, in a project a build agent can run,
+/// and every handler here asks it before doing anything — including the handlers of controls it
+/// has just disabled, because a click already in flight arrives after that.
 /// </para>
 /// <para>
 /// Two calls do not happen on this thread and it is not a preference in either case. Starting
@@ -293,10 +293,12 @@ public sealed partial class MainWindow : Window
         Refresh();
 
         // The drawer is half of this screen and not a window of its own, so it is read in the same
-        // pass rather than told separately by whatever decides the language.
+        // pass rather than told separately by whatever decides the language. Then the whole screen
+        // again, because the words on the strip are the catalogue's and the pass above set them in
+        // the language before.
         Meetings.ReadIn(language);
         Reading.ReadIn(language);
-        ShowWhatTheRoomIsShowing();
+        Refresh();
     }
 
     /// <summary>
@@ -326,6 +328,12 @@ public sealed partial class MainWindow : Window
         Chosen = _chosen,
         WholeMachineOffered = _offered,
         WholeMachineTaken = _taken,
+
+        // The two ways the room below takes the window are one fact to everything above it: the
+        // list raised into it, and a meeting being read in it. Read off the two controls rather
+        // than kept, for the reason every other field here is — a copy of it updated by whichever
+        // handler remembered to is how a screen comes to disagree with the arrangement it is in.
+        TheRoomBelowHasTheWindow = Meetings.HasTheWholeWindow || Reading.IsShowingAMeeting,
     };
 
     /// <summary>
@@ -365,20 +373,26 @@ public sealed partial class MainWindow : Window
         SpokenPicker.IsEnabled = choosing;
         RefreshTheMachineButton.IsEnabled = choosing;
 
-        // The list below may hide this half of the screen only while there is nothing here that
-        // has to be seen. It is RecorderScreen's answer and not this window's, for the same reason
-        // every button above is.
-        Meetings.OfferTheWholeWindow(screen.TheMeetingsMayTakeTheWholeWindow);
+        // Once, and read twice. The stopwatch on the card and the length on the strip are the same
+        // meeting's clock said two ways, and #204's second decision is that nothing on this screen
+        // asks a recording how long it has been going for itself.
+        var clock = RecordingClock.Of(screen.State, _recording?.Card.StartedAt, Now());
 
-        // And the same answer over the meeting somebody may be reading. It is here rather than
-        // only where a meeting is opened because the answer changes under a screen that is
-        // already up: a recording started somewhere else in this window brings the recorder half
-        // back over a meeting being read, rather than leaving stop off the screen until somebody
-        // presses back.
-        ShowWhatTheRoomIsShowing();
-
-        ShowTheClock(screen.State);
+        // What each half says before either of them moves, and that order is the whole of it. A
+        // half is made visible at the start of its travel and its height is measured a frame later,
+        // so one filled in afterwards arrives empty for the 300 ms of the move and animates to the
+        // height of an empty card. The strip is the one this bites, because what it says is
+        // cleared by the arrangement rather than by the meeting.
+        ShowTheClock(clock);
+        ShowTheStrip(screen, clock);
         ShowTheMeters(screen.State);
+
+        // Then which of the two arrangements the window is in. Here rather than only where the
+        // drawer moves, because the answer changes under a screen that is already up: a meeting
+        // that starts or stops while the list has the window is the strip arriving or leaving with
+        // nobody having pressed the header.
+        ShowWhatTheRoomIsShowing(screen);
+
         Announce(screen.State);
     }
 
@@ -390,18 +404,124 @@ public sealed partial class MainWindow : Window
     /// from outside and the answer is <see cref="RecordingClock"/>'s, in a project a build agent
     /// can run. Unlike a meter, asking costs nothing and takes nothing away, so there is no
     /// reading to cache and no moment at which a cached one would have to be refreshed.
+    /// <para>
+    /// The clock arrives rather than being read here, which is what makes it one clock. The strip
+    /// says the same length while the meetings have the window, and the caller builds the answer
+    /// once and hands it to both — a second <c>RecordingClock.Of</c> a line apart would be two
+    /// readings of the machine's clock and two numbers on one screen.
+    /// </para>
     /// </remarks>
-    private void ShowTheClock(RecorderState state)
+    private void ShowTheClock(RecordingClock clock)
     {
-        var clock = RecordingClock.Of(state, _recording?.Card.StartedAt, Now());
-
         TheClock.Visibility = clock.Showing ? Visibility.Visible : Visibility.Collapsed;
 
         // Cleared and not left standing, for the reason a meter row is: the next meeting's first
         // frame is drawn from this control, and the last one's length under a new one is a screen
         // saying a meeting is an hour old the moment it starts.
-        TheClock.Text = clock.Showing ? Length(clock.Ran) : string.Empty;
+        TheClock.Text = clock.Showing ? ScreenNumbers.Long(clock.Ran) : string.Empty;
     }
+
+    /// <summary>
+    /// Sets the strip: what the meeting is doing, how long it has been running, what channel 0 is
+    /// following and which microphone is on it — and whether stop is live on it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nothing here decides anything either. Whether the strip is on screen at all is
+    /// <see cref="RecorderScreen.TheStripIsOnScreen"/>'s and is acted on one step later; the
+    /// length is the clock the caller already built; what channel 0 follows and which microphone
+    /// is on it are the choices the recording was started from, which is what the pickers on the
+    /// card say too. So the strip and the recorder half are two readings of one answer rather than
+    /// two answers.
+    /// </para>
+    /// <para>
+    /// Nothing is cleared on the way out, which is the opposite of what the clock and the meters
+    /// do and is right for the opposite reason. Those are cleared because the next meeting's first
+    /// frame is drawn from them; the strip's first frame is never the one left standing, because
+    /// this runs before it travels and every arrangement change comes through
+    /// <see cref="Refresh"/>. Clearing it here is what put a blank card on screen for the 300 ms of
+    /// every raise, and it also measured the travel against a layout nobody was going to see.
+    /// </para>
+    /// <para>
+    /// What was chosen and not what the channel is capturing now. A channel that moved is a line
+    /// of its own in this row, in pico, naming what it moved from and to — so the strip going on
+    /// saying what somebody picked is what that line is measured against, and a strip that
+    /// followed the device silently would leave nothing on screen saying it had. Neither can be
+    /// missing while this runs: both are answered before record can be pressed, and the only
+    /// things that unsay them run in <see cref="RecorderState.Choosing"/>.
+    /// </para>
+    /// </remarks>
+    private void ShowTheStrip(RecorderScreen screen, RecordingClock clock)
+    {
+        StripStopButton.IsEnabled = screen.Allows(RecorderPress.Stop);
+
+        if (!screen.TheStripIsOnScreen)
+        {
+            return;
+        }
+
+        StripSays.Text = In(WhatTheMeetingIsDoing(screen.State));
+
+        // The length only where there is one. Opening the devices and making the meeting have no
+        // clock — RecordingClock says why — and a strip that showed the last reading through
+        // either would be a screen saying a meeting is still being recorded.
+        var line = clock.Showing
+            ? ScreenNumbers.Beside(ScreenNumbers.Long(clock.Ran), Following(screen.Chosen))
+            : Following(screen.Chosen);
+
+        StripLine.Text = line;
+    }
+
+    /// <summary>
+    /// What channel 0 is following and which microphone is on it, as the one line of data the
+    /// strip carries.
+    /// </summary>
+    /// <remarks>
+    /// The program's name and not what the picker shows, which is <see cref="NameOf"/> and puts
+    /// the process id after it. That number is there to tell three programs called Teams apart
+    /// while somebody is choosing between them; on a strip about the one already chosen it is a
+    /// number answering a question nobody is asking, and `MainAbierto` draws the name alone. The
+    /// microphone is the maker's name for the same reason — <c>DeviceLines</c> adds
+    /// *(predeterminado)*, which says what Windows would have used had nobody said.
+    /// <para>
+    /// The whole machine goes through <see cref="Capturing"/>, which is the one place that turns
+    /// "no name this machine gave" into the catalogue's sentence for it.
+    /// </para>
+    /// <para>
+    /// Both are taken outright, the same way <see cref="OnRecord"/> takes them, and for the same
+    /// reason: nothing starts a recording until every one of the three has been answered, and the
+    /// only things that unsay one run in <see cref="RecorderState.Choosing"/> — the pickers, which
+    /// are dead while a meeting is under way, and the end of a save. A screen that guarded them
+    /// here would be drawing a strip with no source on it, which is a case this application does
+    /// not have.
+    /// </para>
+    /// </remarks>
+    private string Following(RecorderChoices chosen) =>
+        ScreenNumbers.Beside(Capturing(chosen.Source!.Follow?.Name), chosen.Microphone!.Name);
+
+    /// <summary>
+    /// What the strip says a meeting under way is doing, in the word a glance takes.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The screen is in a state this window has no word for.
+    /// </exception>
+    /// <remarks>
+    /// The four <see cref="RecorderStates.IsInAMeeting"/> names, which is exactly the set the
+    /// caller has already established — so the two states with no meeting in them are not arms
+    /// here, and the last arm is unreachable for every state that exists today. It stops for the
+    /// reason <see cref="Announce"/> stops, and it can never be the first to do so: a state added
+    /// to the enum and given no line there stops the window from opening, on the refresh that
+    /// opens it and long before anything can raise the list.
+    /// </remarks>
+    private static UiText WhatTheMeetingIsDoing(RecorderState state) => state switch
+    {
+        RecorderState.Starting => UiTexts.TheDevicesAreOpening,
+        RecorderState.Recording => UiTexts.TheMeetingIsBeingRecorded,
+        RecorderState.Paused => UiTexts.TheMeetingIsPaused,
+        RecorderState.Finishing => UiTexts.TheMeetingIsBeingSaved,
+        _ => throw new InvalidOperationException(
+            $"The strip has no word for recorder state '{state}'."),
+    };
 
     /// <summary>
     /// Asks the devices what they are hearing, which is the once-a-second half of the meters and
@@ -1264,48 +1384,64 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The meetings took the whole window, or gave it back. The recorder above goes with it: the
-    /// list is the same screen rather than another one, and a card left showing over a full-height
-    /// list would be the two of them arguing about the room.
-    /// </summary>
-    private void OnMeetingsMoved(object? sender, EventArgs e) => ShowWhatTheRoomIsShowing();
-
-    /// <summary>
-    /// Which of the two the room below is showing, and whether the recorder half is above it. One
-    /// writer and one reading, called from the constructor, from a language change, from every
-    /// refresh, from the drawer saying it moved and from a meeting being opened or left — so which
-    /// position the screen is in is one answer everywhere rather than several in several files
-    /// that happen to agree.
+    /// The meetings took the whole window, or gave it back. The recorder above goes with it and
+    /// the strip comes the other way: the list is the same screen rather than another one, and a
+    /// card left showing over a full-height list would be the two of them arguing about the room.
     /// </summary>
     /// <remarks>
-    /// A meeting takes the whole window under exactly the condition the raised list does, and
-    /// asks <see cref="RecorderScreen.TheMeetingsMayTakeTheWholeWindow"/> for it rather than
-    /// deciding a second time. That rule is not about room: what goes with the recorder half is
-    /// stop, both meters and every line a narrator is told about the moment a device dies, and a
-    /// hidden element is not in the automation tree at all. A meeting opened while one is being
-    /// recorded therefore sits in the room the list was using, with the recorder still above it —
-    /// which is the same shape the docked list has, for the same reason.
+    /// The whole screen and not the arrangement alone, which is the one thing this handler must
+    /// not shortcut. What the strip says is written by the refresh, so a press that rearranged the
+    /// window without one would raise the list over a meeting and travel in a strip with no state
+    /// word, no clock and no microphone on it, until the next tick a second later — the failure
+    /// ISC-172 names, at the moment of the gesture that is supposed to answer it.
     /// </remarks>
-    private void ShowWhatTheRoomIsShowing()
+    private void OnMeetingsMoved(object? sender, EventArgs e) => Refresh();
+
+    /// <summary>
+    /// Which of the two the room below is showing, and which of the recorder half and the strip is
+    /// above it — the last step of a refresh and never a step on its own, so what a half says is
+    /// always written before it moves.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A meeting being read takes the window on exactly the terms the raised list does, and both
+    /// are one fact to <see cref="RecorderScreen"/>: the recorder half is on screen when neither
+    /// has it. Nothing is refused either way, and what makes that safe is the strip — it carries
+    /// the clock, what is being recorded and the press that stops it, so what a hidden recorder
+    /// half would have taken off the automation tree is on screen instead of it rather than gone.
+    /// </para>
+    /// <para>
+    /// The two travel as one gesture. The half leaves, the strip arrives, and the room below takes
+    /// what is given up, which is ISC-173.2: the drawer rising is what says this is the same screen
+    /// and not another one. `docs/design.md` §Movement gives the drawer 300 ms, decelerating in and
+    /// accelerating out — and none of it on a machine that asked Windows for no animation, where
+    /// each is simply already where it was going.
+    /// </para>
+    /// </remarks>
+    private void ShowWhatTheRoomIsShowing(RecorderScreen screen)
     {
         var reading = Reading.IsShowingAMeeting;
 
         Reading.Visibility = reading ? Visibility.Visible : Visibility.Collapsed;
         Meetings.Visibility = reading ? Visibility.Collapsed : Visibility.Visible;
 
-        // The recorder half travels and the room below simply takes what it gives up. That is the
-        // arrangement moving rather than snapping, and it is ISC-173.2: the drawer rising is what
-        // says this is the same screen and not another one. `docs/design.md` §Movement gives the
-        // drawer 300 ms, decelerating in and accelerating out — and none of it on a machine that
-        // asked Windows for no animation, where the half is simply already gone.
-        var above =
-            !Meetings.HasTheWholeWindow && !(reading && Screen().TheMeetingsMayTakeTheWholeWindow);
-
-        // Where it is heading and not where it is: a half on its way out is still visible for the
-        // whole of the move, so reading its visibility here would drop the press that reversed it.
-        if (above != ScreenMotion.IsShowing(RecordingCard))
+        // Where each is heading and not where it is: something on its way out is still visible for
+        // the whole of the move, so reading its visibility here would drop the press that reversed
+        // it.
+        //
+        // Written out twice rather than through a helper taking the element, and that is not an
+        // oversight. What travels off this screen is what a live region must never be inside, and
+        // LiveRegionTests holds that by reading these calls — so the name of each half has to be
+        // at the call rather than inside a local function, where the only name the source carries
+        // is the parameter's. That is the same trade `Tell` already makes for the same check.
+        if (screen.TheRecorderIsOnScreen != ScreenMotion.IsShowing(RecordingCard))
         {
-            ScreenMotion.ArriveOrLeave(RecordingCard, above, Move.Travelling);
+            ScreenMotion.ArriveOrLeave(RecordingCard, screen.TheRecorderIsOnScreen, Move.Travelling);
+        }
+
+        if (screen.TheStripIsOnScreen != ScreenMotion.IsShowing(TheStrip))
+        {
+            ScreenMotion.ArriveOrLeave(TheStrip, screen.TheStripIsOnScreen, Move.Travelling);
         }
     }
 
@@ -1314,14 +1450,18 @@ public sealed partial class MainWindow : Window
     /// </summary>
     /// <remarks>
     /// The meeting is shown before the room is rearranged, because showing one is what makes
-    /// <see cref="ReadingAMeeting.IsShowingAMeeting"/> true and that is what
-    /// <see cref="ShowWhatTheRoomIsShowing"/> reads. The other way round leaves a window that hid the
-    /// list to show an empty screen.
+    /// <see cref="ReadingAMeeting.IsShowingAMeeting"/> true and that is what <see cref="Screen"/>
+    /// reads. The other way round leaves a window that hid the list to show an empty screen.
+    /// <para>
+    /// A refresh and not the arrangement alone, for the reason <see cref="OnMeetingsMoved"/> gives:
+    /// a meeting opened while one is being recorded takes the recorder half away and puts the strip
+    /// up, and what the strip says has to be written before it moves.
+    /// </para>
     /// </remarks>
     private void OnMeetingChosen(object? sender, Guid meeting)
     {
         Reading.Show(meeting);
-        ShowWhatTheRoomIsShowing();
+        Refresh();
     }
 
     /// <summary>
@@ -1332,7 +1472,7 @@ public sealed partial class MainWindow : Window
     private void OnLeftTheMeeting(object? sender, EventArgs e)
     {
         Meetings.Read();
-        ShowWhatTheRoomIsShowing();
+        Refresh();
     }
 
     private void OnWhoIsUsingThisTyped(object sender, TextChangedEventArgs e) => ShowWhoIsUsingThis();
@@ -1652,7 +1792,7 @@ public sealed partial class MainWindow : Window
             Say(
                 UiTexts.TheMeetingIsRecorded,
                 finished.MeetingId,
-                Length(finished.Length),
+                ScreenNumbers.Long(finished.Length),
                 finished.Audio.RelativePath);
 
             // Said out loud, every time, because it is the promise and not an omission.
@@ -1777,11 +1917,12 @@ public sealed partial class MainWindow : Window
 
         ReadTheDevices();
 
-        // The whole screen only when the offer has just appeared, and the clock and the meters
-        // otherwise. What the rest of it says does not change with a second passing — the buttons,
-        // the pickers and the status line all answer to a press — so redrawing them once a second
-        // would be a second's worth of work to say what it already said, and it would take a
-        // selection out of the report every time it ran.
+        // The whole screen only when the offer has just appeared, and the clock, the strip and the
+        // meters otherwise — the three things a second changes, and the strip because the length
+        // on it is the same clock. What the rest of it says does not change with a second passing
+        // — the buttons, the pickers and the status line all answer to a press — so redrawing them
+        // once a second would be a second's worth of work to say what it already said, and it
+        // would take a selection out of the report every time it ran.
         if (!_offered && !recording.IsPaused && recording.HeardNothingFromTheProgram())
         {
             _offered = true;
@@ -1789,10 +1930,12 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        var state = Screen().State;
+        var screen = Screen();
+        var clock = RecordingClock.Of(screen.State, _recording?.Card.StartedAt, Now());
 
-        ShowTheClock(state);
-        ShowTheMeters(state);
+        ShowTheClock(clock);
+        ShowTheStrip(screen, clock);
+        ShowTheMeters(screen.State);
     }
 
     /// <summary>
@@ -1846,10 +1989,6 @@ public sealed partial class MainWindow : Window
     /// artifact be dated to whenever they liked.
     /// </summary>
     private static UtcTimestamp Now() => UtcTimestamp.From(TimeProvider.System.GetUtcNow());
-
-    /// <summary>How long the meeting was, as somebody reads a length off a screen.</summary>
-    private static string Length(Duration length) =>
-        length.ToTimeSpan().ToString(@"h\:mm\:ss", CultureInfo.InvariantCulture);
 
     private void Say(UiText text, params object?[] values)
     {

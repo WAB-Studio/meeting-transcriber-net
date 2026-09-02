@@ -107,13 +107,6 @@ public sealed partial class MeetingsDrawer : UserControl
     private TextLine? _status;
 
     /// <summary>
-    /// Whether the recorder above is in a state that lets this take the whole window. Held rather
-    /// than asked, because the answer is the recorder's and this control knows nothing about a
-    /// meeting; it opens as no, which is what a drawer that has not been told yet must be.
-    /// </summary>
-    private bool _mayTakeTheWholeWindow;
-
-    /// <summary>
     /// The meeting the recorder above is saving right now, when it is saving one.
     /// </summary>
     /// <remarks>
@@ -211,34 +204,6 @@ public sealed partial class MeetingsDrawer : UserControl
         ShowWhichPositionItIsIn();
 
         Read();
-    }
-
-    /// <summary>
-    /// Whether the list may take the whole window, which is not its own to decide: what would go
-    /// with the recorder above is stop and every line a narrator is told about, so the recorder
-    /// answers it and this acts on the answer.
-    /// </summary>
-    /// <remarks>
-    /// An offer withdrawn from a drawer that already has the window puts it back down, and that is
-    /// the half that matters. Leaving it up and merely refusing the next press would hold the rule
-    /// at the door only: the recorder above says no from the moment a meeting starts, and a list
-    /// still covering the window at that moment is the failure the rule is about rather than a
-    /// press away from it. Today nothing can reach that — record is inside the half a raised
-    /// drawer collapses, so a meeting cannot begin from up here — and a rule that holds because of
-    /// where a button happens to sit is one screen change from not holding.
-    /// </remarks>
-    public void OfferTheWholeWindow(bool offered)
-    {
-        _mayTakeTheWholeWindow = offered;
-
-        if (!offered && HasTheWholeWindow)
-        {
-            HasTheWholeWindow = false;
-            ShowWhichPositionItIsIn();
-            OpennessChanged?.Invoke(this, EventArgs.Empty);
-        }
-
-        OpennessButton.IsEnabled = offered || HasTheWholeWindow;
     }
 
     /// <summary>
@@ -496,23 +461,21 @@ public sealed partial class MeetingsDrawer : UserControl
     /// rather than as two screens.
     /// </summary>
     /// <remarks>
-    /// Asked again here even though the control it comes from was disabled, for the reason every
-    /// handler on the recorder above asks again: a click already in flight arrives after that.
-    /// Giving the window back is never refused — a drawer that could be raised and not lowered is
-    /// the same fault the refusal exists to prevent.
+    /// Neither direction is ever refused, and that is #204: the raise used to be withheld for the
+    /// whole of every meeting, because what went with the recorder half was stop, the clock and
+    /// every line a narrator is told about. What carries those now is the strip above this list,
+    /// so there is nothing left for a meeting in progress to cost — and this control has no
+    /// condition on it at all rather than one that is always true.
     /// <para>
     /// Raising is also the moment to read the list. It is the one gesture that says somebody is
     /// about to act on what is in it, and everything that changes a meeting's stage — the runner,
     /// the command line, this list's own two buttons — happens where nothing tells this control.
+    /// A meeting being recorded is in it too, as the row it has had since before its first sample,
+    /// which is why the raise is what puts it on screen without anything else being told.
     /// </para>
     /// </remarks>
     private void OnToggleOpenness(object sender, RoutedEventArgs e)
     {
-        if (!HasTheWholeWindow && !_mayTakeTheWholeWindow)
-        {
-            return;
-        }
-
         HasTheWholeWindow = !HasTheWholeWindow;
         ShowWhichPositionItIsIn();
 
