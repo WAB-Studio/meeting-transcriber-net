@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 131/192
+progress: 133/194
 updated: 2026-09-01
 ---
 
@@ -192,10 +192,12 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-158: A meeting is recorded from end to end with nothing typed at a command line.
 - [x] ISC-158.1: Which microphone a meeting records, and whether channel 0 follows one program or everything the machine plays, are chosen before it starts.
 - [ ] ISC-158.2: A meeting being recorded is paused, resumed and stopped without leaving the application.
-- [ ] ISC-158.3: A meeting recorded from the application arrives in the corpus as the same thing a meeting recorded at a prompt does.
+- [x] ISC-158.3: A meeting recorded from the application arrives in the corpus as the same thing a meeting recorded at a prompt does.
 - [x] ISC-158.4: What a meeting is expected to be spoken in is said for that meeting, and is never taken from the language the application is being read in.
 - [x] ISC-158.5: Anti: a recording cannot be started before the microphone, what channel 0 follows and what will be spoken have each been said.
 - [ ] ISC-158.6: A microphone connected while the application is open can be recorded with, without closing it.
+- [ ] ISC-158.7: The stretch between stop and the meeting being saved is a state of its own, and what saving it is doing is on screen for as long as it lasts.
+- [x] ISC-158.8: Anti: nothing on that screen names a step the save does not run.
 - [ ] ISC-165: A meeting's name is the person's to set, at any time after it was recorded.
 - [x] ISC-165.1: Anti: a meeting nobody has named never reads under a name the application invented for it.
 - [ ] ISC-166: Who is using the application is asked once and is what the microphone's own voice resolves to from then on.
@@ -673,3 +675,5 @@ Board: 7 · Distribución y backup
 - ISC-165.1 — `MeetingRecordingsTests.A_meeting_nobody_named_comes_out_of_recording_with_no_name` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-09-01, red that day with a title written at `MeetingRecordings.Open`, and the UI probe on the packaged build: a meeting recorded and never named reads `Unnamed` on the list, which is the catalogue's own two words rather than anything about that meeting. Why it is asserted after stopping, and why the two doors that do carry a title are not counter-examples, is on the test
 - ISC-170 — the UI probe on the packaged build 2026-09-01, the application in English: `see` as the first instruction after it was started and before anything was pressed. One window, and its tree carries both halves — the microphone and source pickers, what will be spoken and record above, and under them the meetings header, the count and a recorded meeting's row with the press its stage offers. A list arriving in a window of its own would have stopped that walk rather than passed it, for the reason `docs/ui-probe.md` gives under `Which window is the screen`
 - ISC-171 — the UI probe on the packaged build 2026-09-01, the application in English: `see docked press OpennessButton wait OpennessButton see whole press OpennessButton wait OpennessButton see docked-again`. Raised, the recorder half is out of the tree rather than scrolled off it — the pickers, record, pause, carry on and stop gone — while the corpus line, the report, the status line and the packaging button stay, for the reason `MainWindow.xaml` gives, which is why the claim is the recorder's room and not the window. The control that raised it is the same element in the same place, reading `Bring the list back down` where it read `Open the whole list`, and the third tree is the first line for line apart from when it was read
+- ISC-158.3 — `SavingTheMeetingTests.What_is_filed_is_the_same_whether_or_not_anybody_is_watching` (`tests/MeetingTranscriber.Recording.Tests`) and `SavingCardTests.The_application_and_the_prompt_stop_a_meeting_through_the_same_call` (`tests/MeetingTranscriber.App.Tests`) green 2026-09-01: two meetings out of identical spools finished at the same instant, one save watched and one not, equal on the audio's hash and size, the length, the run's end and every stored fact but their ids — and both entry points stopping through the recording's own call, with neither filing any part of a meeting itself. Red 2026-09-01 twice: with the window's `recording.Stop(` replaced, and with `MeetingRecordings.Finish` written into its stop handler. What no probe reaches is a window really recording one, which needs two devices and a meeting somebody sat through
+- ISC-158.8 — `SavingCardTests.The_screen_names_every_step_a_save_runs_and_no_others` and `.The_screen_marks_every_standing_a_step_can_be_in` (`tests/MeetingTranscriber.App.Tests`) with `SavingTheMeetingTests.A_save_runs_the_two_steps_there_are_in_the_order_it_runs_them` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-09-01: the steps a save runs are `SavingWork` itself, and the screen answers for the whole of it and for nothing else, so it cannot draw a step nothing runs. Red 2026-09-01 with a third member added to that enum and no words given to it, 1 of 3 failing and naming the member. `MeetingRecordingsTests.Stopping_a_recording_queues_no_work_on_the_meeting` is why two is all there is

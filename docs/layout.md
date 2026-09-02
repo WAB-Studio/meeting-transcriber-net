@@ -99,6 +99,11 @@ that would never run there. It runs somewhere: `tools/MeetingTranscriber.UiProbe
 packaged application on a desktop somebody is logged into and reads the tree itself, by hand and
 never in a build. `docs/ui-probe.md` is when to reach for it.
 
+It reads one file outside the application, and the widening is deliberate rather than a habit:
+what the window does on stop has to be the same thing the prompt's own command does, and holding
+that means reading both. A check reaching a third project is one that has stopped being about a
+screen and belongs where it can reference what it is about.
+
 `tests/MeetingTranscriber.Isa.Tests/` is the exception to that pattern and references no `src/`
 project: it reads `ISA.md` at the repo root. The claims surface is a repo document rather than a
 layer, so its gate does not belong under any one of them.

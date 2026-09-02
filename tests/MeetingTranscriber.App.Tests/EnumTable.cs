@@ -50,6 +50,45 @@ internal sealed partial class EnumTable
     public string? Fallthrough { get; }
 
     /// <summary>
+    /// The three things every one of these tables has to be true of, in one call.
+    /// </summary>
+    /// <remarks>
+    /// Here for the reason the reading below is: one mechanism and not one per screen. The
+    /// assertions were three theories on a class, and a second screen wanting them copied the
+    /// class rather than the mechanism — the harness, the wording and a verbatim comment. What
+    /// each table is over stays with the screen that declares it; what has to be true of all of
+    /// them is this.
+    /// <para>
+    /// The three are one call and not three because they fail together and mean one thing: a table
+    /// that has fallen behind the enum it is over. Split, the second and third are read as
+    /// separate faults and one of them gets waved through as a consequence of the first.
+    /// </para>
+    /// </remarks>
+    /// <param name="screen">The screen holding the table, for the message a failure carries.</param>
+    /// <param name="over">What the table is a table of, said the way somebody would say it.</param>
+    public void ShouldNameItsWholeEnum(string screen, string over)
+    {
+        Declared.ShouldNotBeEmpty(
+            $"nothing was found declaring {over}, so this check is reading nothing.");
+        Named.ShouldNotBeEmpty(
+            $"{screen} was found holding no table over {over}, so this check is reading nothing.");
+
+        Declared.Except(Named).ShouldBeEmpty(
+            $"{screen} has no answer for these members of {over}, so one of them is shown to "
+            + "somebody as another or as nothing at all.");
+
+        Named.Except(Declared).ShouldBeEmpty(
+            $"{screen} answers for members {over} does not have, so an arm left behind by a rename "
+            + "is reading as a table that is complete.");
+
+        Fallthrough.ShouldBe(
+            "throw",
+            customMessage: $"{screen}'s table over {over} answers an unknown member with something "
+            + "rather than throwing, so a member added later is shown to somebody as a different "
+            + "one.");
+    }
+
+    /// <summary>
     /// Reads one table and the enum it is over.
     /// </summary>
     /// <param name="screen">The source file holding the switch, relative to <c>src/</c>.</param>

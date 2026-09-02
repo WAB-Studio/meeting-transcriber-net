@@ -170,7 +170,15 @@ public sealed class MeetingRecording : IDisposable
     /// which is why the flag goes up before the work rather than after it.
     /// </para>
     /// </remarks>
-    public FinishedRecording Stop(UtcTimestamp now)
+    /// <param name="now">When stop was pressed.</param>
+    /// <param name="told">
+    /// Whoever is watching the save, when anybody is. The first report goes out before the devices
+    /// are touched, because letting them go is the first step of the save and a screen that only
+    /// heard once they were gone would have nothing to show for the one stretch that can wait on a
+    /// device. It reads nothing and opens nothing, so a stop nobody is watching and a stop somebody
+    /// is do the same work in the same order — including when a device refuses to close.
+    /// </param>
+    public FinishedRecording Stop(UtcTimestamp now, IProgress<SavingWork>? told = null)
     {
         if (stopped)
         {
@@ -178,6 +186,8 @@ public sealed class MeetingRecording : IDisposable
                 $"Meeting {MeetingId} has already been stopped. Finishing it again is "
                 + "MeetingRecordings.Finish, which reads the blocks and needs no device.");
         }
+
+        told?.Report(SavingWork.LettingTheSourcesGo);
 
         session.Stop();
 
@@ -187,7 +197,7 @@ public sealed class MeetingRecording : IDisposable
         session.Dispose();
         stopped = true;
 
-        return MeetingRecordings.Finish(corpus, MeetingId, now);
+        return MeetingRecordings.Finish(corpus, MeetingId, now, told);
     }
 
     /// <summary>

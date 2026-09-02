@@ -38,5 +38,17 @@ internal static class AppSources
             .ToArray();
     }
 
+    /// <summary>
+    /// One source file of any project, named from <c>src/</c> — the application's own included.
+    /// </summary>
+    /// <remarks>
+    /// Here and not in whichever test wanted it, for the reason the root above is found this way:
+    /// one probe holds the application and the prompt's own commands to stopping a meeting through
+    /// the same call, so it has to reach outside the application, and a second copy of how this
+    /// repo is laid out is a second thing to forget when the layout moves.
+    /// </remarks>
+    public static FileInfo At(string relative) =>
+        new(Path.GetFullPath(Path.Combine(App.FullName, "..", relative)));
+
     private static string Here([CallerFilePath] string file = "") => file;
 }

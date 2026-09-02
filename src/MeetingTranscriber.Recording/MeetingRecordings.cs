@@ -175,10 +175,37 @@ public static class MeetingRecordings
     /// recording of the meeting that exists independently of this write, and deciding what happens
     /// to a spool is somebody's, never a side effect of stopping.
     /// </para>
+    /// <para>
+    /// <paramref name="told"/> is somebody watching it happen and is never anything else. It is
+    /// the first statement and reads nothing, so what is filed cannot depend on whether anybody is
+    /// watching — which is what makes a meeting stopped on a screen and one stopped at a prompt the
+    /// same meeting. Nothing catches what a report throws: a caller whose watcher runs on this
+    /// thread and fails has stopped the finish, and swallowing that would be this hiding a defect
+    /// in the caller's own screen while the meeting quietly does not get made.
+    /// </para>
+    /// <para>
+    /// It says the sources are behind it, and that is true of both callers rather than only of
+    /// stopping: nothing may read a spool that is still being written, so by the time this may run
+    /// the devices have been let go — by <see cref="MeetingRecording.Stop"/>, or by the process
+    /// that held them dying, which is what recovery finds.
+    /// </para>
     /// </remarks>
-    public static FinishedRecording Finish(CorpusDbContext corpus, Guid meetingId, UtcTimestamp now)
+    /// <param name="corpus">The corpus the meeting is being recorded into.</param>
+    /// <param name="meetingId">The meeting being finished.</param>
+    /// <param name="now">When stop was pressed.</param>
+    /// <param name="told">Whoever is watching the save, when anybody is.</param>
+    public static FinishedRecording Finish(
+        CorpusDbContext corpus,
+        Guid meetingId,
+        UtcTimestamp now,
+        IProgress<SavingWork>? told = null)
     {
         ArgumentNullException.ThrowIfNull(corpus);
+
+        // Before the work and not after it, which is the half that reaches a screen: this is the
+        // step somebody watches for the minutes it takes, and a report that arrived once the
+        // meeting was written down would be an account of what had already happened.
+        told?.Report(SavingWork.WritingTheMeetingDown);
 
         var meeting = corpus.Meetings.FirstOrDefault(row => row.Id == meetingId)
             ?? throw new RecordingException(

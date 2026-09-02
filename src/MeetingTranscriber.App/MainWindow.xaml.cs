@@ -11,6 +11,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 
@@ -145,6 +146,17 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Whichever press is still running, which is the only thing that owns it.</summary>
     private RecorderStep _step = RecorderStep.Nothing;
+
+    /// <summary>
+    /// Which step the save going on now is on, and nothing when no meeting is being saved.
+    /// </summary>
+    /// <remarks>
+    /// Held rather than derived, because it is the one thing on this screen that no state of the
+    /// recording can be read off: what a save is doing is known to the save and to nothing else.
+    /// It arrives from the thread doing the work and is put down on the thread the screen is
+    /// drawn on, which is what <c>OnStop</c> hands over an <see cref="IProgress{T}"/> for.
+    /// </remarks>
+    private SavingWork? _saving;
 
     /// <summary>
     /// Whether the window has been closed. Read by whichever press was in flight when it was, so
@@ -304,6 +316,15 @@ public sealed partial class MainWindow : Window
         WholeMachineOffer.Visibility = screen.Allows(RecorderPress.RecordTheWholeMachine)
             ? Visibility.Visible
             : Visibility.Collapsed;
+
+        // The recorder half and the save are the same room, one at a time. Visibility and not
+        // merely disabled, for the reason the offer above is: a picker nothing can be chosen in,
+        // under a heading about recording a meeting, is a screen that reads as having lost the
+        // meeting somebody just stopped rather than as one saving it.
+        var saving = screen.State == RecorderState.Finishing;
+        TheNextMeeting.Visibility = saving ? Visibility.Collapsed : Visibility.Visible;
+        SavingCard.Visibility = saving ? Visibility.Visible : Visibility.Collapsed;
+        ShowTheSteps();
 
         // What the next meeting records cannot be changed once one is running: the devices are
         // open, and the engine has no way to swap one out under a recording.
@@ -578,6 +599,163 @@ public sealed partial class MainWindow : Window
                     $"This screen has no line for recorder state '{state}'.");
         }
     }
+
+    /// <summary>
+    /// The save saying which step it is on now.
+    /// </summary>
+    /// <remarks>
+    /// A report can outlive the save it belongs to: it crosses to the thread the screen is drawn
+    /// on, and what is already queued there can include the end of the stop that raised it. So
+    /// what decides whether it still says anything is the state the screen is in — a report that
+    /// lands after the save is over, or after the window closed, is put down rather than left
+    /// standing as a step nothing is doing.
+    /// </remarks>
+    private void ShowTheSave(SavingWork underway)
+    {
+        if (_closed || _step != RecorderStep.Finishing)
+        {
+            return;
+        }
+
+        _saving = underway;
+        ShowTheSteps();
+    }
+
+    /// <summary>
+    /// The steps of the save going on now, each with the mark saying where it stands — and nothing
+    /// at all when no meeting is being saved.
+    /// </summary>
+    /// <remarks>
+    /// Built here rather than templated in the XAML, and thrown away and made again on every
+    /// refresh, which is what the meeting cards below do and for the same two reasons: which steps
+    /// exist is an answer <see cref="SavingTheMeeting"/> gives rather than a layout, and a line
+    /// made again out of the catalogue cannot be left standing in the language it was born in.
+    /// That second one is a path a person takes and not only one a test reaches: the language
+    /// picker is live while a meeting is being saved.
+    /// </remarks>
+    private void ShowTheSteps()
+    {
+        SavingSteps.Children.Clear();
+
+        if (_saving is not { } underway)
+        {
+            return;
+        }
+
+        foreach (var step in SavingTheMeeting.Steps)
+        {
+            var standing = SavingTheMeeting.StandingOf(step, underway);
+            var line = Step(step, standing);
+
+            SavingSteps.Children.Add(line);
+
+            // The one under way is announced as it is added, so a narrator hears the save move
+            // instead of finding out by walking the window for it — which is what this state is
+            // for when nobody is looking at the screen. Said from here and never bound in the
+            // XAML, for the reason LiveRegionTests carries: words a screen writes down are set
+            // once, while the panel is collapsed, and never change again.
+            if (standing == StepStanding.Underway)
+            {
+                Saying(line, In(Words(step)));
+            }
+        }
+    }
+
+    /// <summary>One step of the save, as its mark and its words.</summary>
+    private UIElement Step(SavingWork step, StepStanding standing)
+    {
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+
+        line.Children.Add(Mark(standing));
+        line.Children.Add(new TextBlock
+        {
+            Text = In(Words(step)),
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+
+            // The one under way is the sentence somebody is reading; the rest are where it has
+            // been and where it is going.
+            Opacity = standing == StepStanding.Underway ? 1 : 0.65,
+        });
+
+        return line;
+    }
+
+    /// <summary>
+    /// Makes one line of the save a live region and announces it, which is the only way a step
+    /// changing reaches somebody who is not looking at the screen.
+    /// </summary>
+    /// <remarks>
+    /// The whole line and not the words inside it, so what is read out is the step and its mark
+    /// together. It is set on an element this window just built rather than on one the XAML
+    /// declares, which is why <c>LiveRegionTests</c> does not reach it: what that check exists
+    /// against is a region whose words are bound in markup, and there is no markup here to bind
+    /// them in. What no probe reaches either way is a narrator reading it, which needs a packaged
+    /// host and Narrator.
+    /// </remarks>
+    private static void Saying(UIElement line, string words)
+    {
+        AutomationProperties.SetLiveSetting(line, AutomationLiveSetting.Polite);
+        AutomationProperties.SetName(line, words);
+
+        FrameworkElementAutomationPeer
+            .FromElement(line)?
+            .RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+    }
+
+    /// <summary>
+    /// What a step's mark is, and what a narrator is told it means: a tick behind, a ring on the
+    /// one running, and room for one ahead.
+    /// </summary>
+    /// <remarks>
+    /// One table and not two, because the mark and its words are one answer about one standing.
+    /// Held apart they were two switches over the same enum told from each other by nothing but
+    /// their parameter names, and a standing added to one and not the other would draw a tick
+    /// while saying "under way". A step still to come carries no words at all: there is nothing
+    /// yet to report about it, and a narrator told something would hear one more thing having
+    /// happened. The room is still taken, so the words below stay under the words above.
+    /// </remarks>
+    private FrameworkElement Mark(StepStanding standing)
+    {
+        var (mark, said) = standing switch
+        {
+            // Segoe Fluent's tick. A glyph is a code point and not a word, so it says the same
+            // thing in either language and names no entry of the catalogue.
+            StepStanding.Done => ((FrameworkElement)new FontIcon { Glyph = "", FontSize = 14 },
+                (UiText?)UiTexts.ThisStepIsDone),
+            StepStanding.Underway => (new ProgressRing { IsActive = true }, UiTexts.ThisStepIsUnderWay),
+            StepStanding.NotYet => (new Border(), null),
+            _ => throw new InvalidOperationException(
+                $"This screen has no mark for step standing '{standing}'."),
+        };
+
+        mark.Width = 16;
+        mark.Height = 16;
+        mark.VerticalAlignment = VerticalAlignment.Center;
+
+        if (said is not null)
+        {
+            AutomationProperties.SetName(mark, In(said));
+        }
+
+        return mark;
+    }
+
+    /// <summary>What a step of the save says it is doing.</summary>
+    /// <remarks>
+    /// Every step a save runs is here, and the throw is for one that is not — which is a fault of
+    /// the code rather than anything a person can reach, since the steps a save runs are
+    /// <see cref="SavingWork"/> itself. A member added there and not here is caught by
+    /// <c>SavingCardTests</c> before it can be shown to anybody, which is the arrangement the
+    /// meeting cards below are already under.
+    /// </remarks>
+    private static UiText Words(SavingWork step) => step switch
+    {
+        SavingWork.LettingTheSourcesGo => UiTexts.LettingBothSourcesGo,
+        SavingWork.WritingTheMeetingDown => UiTexts.SavingTheAudioOfBothChannels,
+        _ => throw new InvalidOperationException(
+            $"This screen has no words for saving step '{step}'."),
+    };
 
     /// <summary>The meeting being recorded, which only a state that has one may ask for.</summary>
     /// <remarks>
@@ -1058,6 +1236,19 @@ public sealed partial class MainWindow : Window
 
         _watch.Stop();
         _step = RecorderStep.Finishing;
+
+        // How long the recording ran, off what the recording wrote down when its devices opened.
+        // Not the length the save will work out — that is read from the blocks and is most of what
+        // saving does — so it is a clock and not an answer, and it is read here because the
+        // session it comes off is let go of a moment from now.
+        SavedMeetingLength.Text = Length(Now() - recording.Card.StartedAt);
+
+        // The meeting is in the corpus from the moment record was pressed, so the list below can
+        // show it while it is being saved rather than after. Told which one first, because the row
+        // it reads says a meeting with no audio and this is the one thing that knows better.
+        Meetings.BeingSavedNow(recording.MeetingId);
+        Meetings.Read();
+
         Refresh();
 
         try
@@ -1066,11 +1257,20 @@ public sealed partial class MainWindow : Window
             // timeline, the file is read back and hashed, and for a long meeting that is minutes.
             // The devices are already let go of before any of it, so nothing is being recorded
             // while it runs.
+            //
+            // What the save is doing comes back through the report below, one step at a time, on
+            // the thread the screen is drawn on — which is the same rule every other answer
+            // arriving from off this thread follows. Not a `Progress<T>`: that would put the
+            // report on whichever context happened to be current when it was made and then this
+            // window would move it again, which is two queues for one answer and an order between
+            // them nothing states.
+            var told = new Watching(_drawnOn, ShowTheSave);
+
             var finished = await Task.Run(() =>
             {
                 try
                 {
-                    return recording.Stop(Now());
+                    return recording.Stop(Now(), told);
                 }
                 finally
                 {
@@ -1105,6 +1305,13 @@ public sealed partial class MainWindow : Window
             _context = null;
             _recording = null;
             _step = RecorderStep.Nothing;
+
+            // The save is over however it went, so nothing is being saved, no row below is, and
+            // the length beside the heading is nobody's. None of the three draws anything: what
+            // redraws is the refresh below, which happens only while the window is open.
+            _saving = null;
+            SavedMeetingLength.Text = string.Empty;
+            Meetings.BeingSavedNow(null);
 
             // Every meeting is asked its own questions again. What channel 0 followed is a process
             // id that has just outlived its meeting, and what was spoken in the last one is not an
@@ -1297,5 +1504,22 @@ public sealed partial class MainWindow : Window
     {
         OutputText.Text = string.Join(Environment.NewLine, _report.Select(line => line.In(_language)));
         StatusText.Text = _status?.In(_language) ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Somebody watching a save from the thread the screen is drawn on, whichever thread the save
+    /// is running on.
+    /// </summary>
+    /// <remarks>
+    /// Nine lines rather than a <see cref="Progress{T}"/>, and the difference is which queue the
+    /// report lands in. <c>Progress</c> captures whatever synchronisation context happened to be
+    /// current where it was made, which is a fact about the call site rather than about this
+    /// window; this names the queue outright, so a report raised from a pool thread and one raised
+    /// from the screen's own thread arrive the same way and in the order they were raised.
+    /// </remarks>
+    private sealed class Watching(DispatcherQueue drawnOn, Action<SavingWork> show)
+        : IProgress<SavingWork>
+    {
+        public void Report(SavingWork value) => drawnOn.TryEnqueue(() => show(value));
     }
 }
