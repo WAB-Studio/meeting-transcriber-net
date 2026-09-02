@@ -42,6 +42,120 @@ jobs:
           }
           Write-Host "CLAUDE.md: $lines/$limit lines"
 
+      # The floor is the set of paths a review is mandatory over. It is derived from CLAUDE.md's
+      # contract and stated in one file, because it used to be stated in two that drifted apart and
+      # a change to an invariant only one of them named merged unaudited. Four ways that can happen
+      # again, and this step is all four: the contract grows and the floor does not; an entry is
+      # deleted; a named file moves; a reader restates the list or drops the reference. None fails
+      # a build by itself — they fail months later, as a PR nobody looked at, which is why the
+      # counts are asserted here rather than trusted to whoever next edits the contract.
+      #
+      # What it deliberately does not do is prove an entry still carries its invariant. Extract a
+      # type into a new file and the old path goes on resolving. That is a tripwire's limit, it is
+      # said in the floor file too, and reading the diff stays somebody's job.
+      - name: The audit floor resolves and is stated once
+        shell: pwsh
+        run: |
+          $floor = '.claude/audit-floor.md'
+          $lines = Get-Content $floor
+          $text = $lines -join "`n"
+          $failed = $false
+
+          # The bullets under one heading, each opening with a backticked span. Two sections are
+          # read this way — the floor itself and the documents that read it — so that neither is
+          # a list this file states and something else has to be kept in step with by hand.
+          function Get-Bullets($heading) {
+            $inside = $false
+            @(foreach ($line in $lines) {
+              if ($line -match '^## ') { $inside = $line.Trim() -eq $heading; continue }
+              if ($inside -and $line -match '^- `([^`]+)`') { $Matches[1] }
+            })
+          }
+          $entries = Get-Bullets '## The floor'
+          $readers = Get-Bullets '## Read by'
+          foreach ($section in @{ '## The floor' = $entries; '## Read by' = $readers }.GetEnumerator()) {
+            if ($section.Value.Count -eq 0) {
+              Write-Host "::error file=$floor::no bullets under '$($section.Key)'. That heading is how this step finds them, so renaming it empties the list silently."
+              exit 1
+            }
+          }
+
+          # The counts the floor declares about itself and about its source. This is the check with
+          # history behind it: the contract gaining a bullet while the floor gains nothing is
+          # exactly how a file carrying an invariant ended up outside the floor.
+          $declared = @{}
+          foreach ($line in $lines | Select-Object -Skip 1) {
+            if ($line -eq '---') { break }
+            if ($line -match '^([\w-]+):\s*(\d+)$') { $declared[$Matches[1]] = [int]$Matches[2] }
+          }
+          $inContract = $false
+          $bullets = @(foreach ($line in Get-Content CLAUDE.md) {
+            if ($line -match '^## ') { $inContract = $line.Trim() -eq '## The contract'; continue }
+            if ($inContract -and $line -match '^- ') { $line }
+          })
+          if ($declared['contract-bullets'] -ne $bullets.Count) {
+            Write-Host "::error file=$floor::CLAUDE.md's contract states $($bullets.Count) invariants, this file declares contract-bullets: $($declared['contract-bullets']). Put every invariant on the floor or say why it is not there, then update the count."
+            $failed = $true
+          }
+          if ($declared['entries'] -ne $entries.Count) {
+            Write-Host "::error file=$floor::'## The floor' has $($entries.Count) entries, the frontmatter declares entries: $($declared['entries']). An entry leaving the floor is a path that stops being audited, so it is declared and not merely deleted."
+            $failed = $true
+          }
+
+          # Every backticked span anywhere in the file that is unambiguously a path in this repo:
+          # it carries a `/`, or it is a bare file at the root like `ISA.md`. That drops the type
+          # names — `Turns.Group`, `JobStates` — which name something to look up, not where it is.
+          # Run over the whole file, exclusions included: a pointer that stopped resolving is the
+          # same defect wherever it sits, which is the rule `IsaDocument` already applies to ISA.md.
+          $paths = @([regex]::Matches($text, '`([^`]+)`') |
+            ForEach-Object { $_.Groups[1].Value } |
+            Where-Object { $_ -match '/' -or $_ -match '^[\w.-]+\.(md|yml|json)$' } |
+            Select-Object -Unique)
+          foreach ($path in $paths) {
+            if (-not (Test-Path -LiteralPath $path)) {
+              Write-Host "::error file=$floor::``$path`` does not exist. Repoint it, or take it off the floor on purpose."
+              $failed = $true
+            }
+          }
+
+          # Owned spellings: the `src/` entries, cut back to the part a document would actually
+          # write. `Domain/Knowledge/Turns.cs` catches the fully qualified form too, by substring.
+          # Only `src/` ones: `ISA.md` is named all over the auditor for unrelated reasons, and
+          # every reader has to name the floor file itself, so neither can be banned.
+          $owned = @($entries | Where-Object { $_ -like 'src/*' } |
+            ForEach-Object { ($_ -replace '^src/MeetingTranscriber\.', '').TrimEnd('/') })
+          # CLAUDE.md is in the walk because it is where a copy of this list just came out of, and
+          # `.claude/` because that is where the two that disagreed lived. Not the whole repo: prose
+          # elsewhere may name a path, and `docs/reference-behaviour.md` legitimately does. The
+          # vendored plugin under `.claude/skills/winui/` is somebody else's tree and is skipped, so
+          # re-syncing it can never fail this build.
+          $itself = (Resolve-Path $floor).ProviderPath
+          $vendored = [IO.Path]::Combine((Resolve-Path '.claude').ProviderPath, 'skills', 'winui')
+          $documents = @(Get-Item CLAUDE.md) + @(Get-ChildItem .claude -Recurse -Filter *.md -File)
+          foreach ($file in $documents) {
+            if ($file.FullName -eq $itself -or $file.FullName.StartsWith($vendored)) { continue }
+            $relative = ($file.FullName.Substring($PWD.Path.Length + 1) -replace '\\', '/')
+            $body = Get-Content $file.FullName -Raw
+            foreach ($entry in $owned) {
+              if ($body -and $body.Contains($entry)) {
+                Write-Host "::error file=$relative::names ``$entry``, which the audit floor owns. Point at ``$floor`` instead of restating it — two copies is the defect this file exists to stop."
+                $failed = $true
+              }
+            }
+          }
+
+          foreach ($reader in $readers) {
+            if (-not (Test-Path -LiteralPath $reader)) { continue }
+            if ((Get-Content $reader -Raw) -notmatch 'audit-floor\.md') {
+              Write-Host "::error file=$reader::does not point at ``$floor``. A document that decides audits and neither states the floor nor references it has silently dropped it."
+              $failed = $true
+            }
+          }
+
+          if ($failed) { exit 1 }
+          Write-Host "Audit floor: $($entries.Count) entries over $($bullets.Count) contract bullets, $($paths.Count) paths resolve, stated once, $($readers.Count) readers point at it."
+          exit 0
+
       - name: Restore
         run: dotnet restore
 
