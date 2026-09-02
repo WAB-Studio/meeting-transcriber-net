@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 139/205
+progress: 139/207
 updated: 2026-09-02
 ---
 
@@ -63,6 +63,7 @@ Board: —
 - [x] ISC-23: Anti: letting go of one corpus cannot break another that is open.
 - [ ] ISC-134: Anti: no test of this repo fails because of something changed outside it.
 - [ ] ISC-135: A clean clone is enough to build, test and know what this repo requires of a change, with no board behind it and no particular assistant installed.
+- [ ] ISC-176: Anti: nothing closes a claim in words `main` was not already carrying, so what a closure is scored against is never written by the change that closes it.
 
 ### F1 · Contracts and characterisation
 Why: what the Python system learned is specified in .NET before any of it is rebuilt, so the
@@ -107,6 +108,7 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-55: Anti: a speaker somebody resolved is never overwritten by what the recording settled.
 - [x] ISC-127: Anti: nothing one extraction produced shares a position with another of its kind, so what somebody pinned to a decision, an action or an open question cannot come to mean another one.
 - [ ] ISC-174: Anti: a meeting whose turns the corpus refuses partway through producing them again is left holding the ones it already had, never none at all.
+- [ ] ISC-175: Anti: a meeting's derived files are never left describing two different renders of it.
 
 ### F3 · Audio engine
 Why: two sources become one timeline a person can trust. This is the largest technical risk in
