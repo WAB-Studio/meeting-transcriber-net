@@ -205,6 +205,13 @@ public static class UiTexts
     public static UiText NothingIsArriving { get; } = new("nada", "nothing");
 
     /// <summary>
+    /// The loudest this source has reached since the recording started — the meter's only memory,
+    /// and the mark standing on the bar beside it. The number is data and comes in as a value;
+    /// what this carries is the one word saying which of the two numbers under the bar it is.
+    /// </summary>
+    public static UiText TheLoudestSoFar { get; } = new("pico {0}", "peak {0}");
+
+    /// <summary>
     /// ISC-150. What it says about itself matters as much as what it says: somebody who reads it
     /// as a measurement of their echo will go looking for one, and there is none — this is what
     /// kind of device Windows says the meeting is being played through, and nothing more.

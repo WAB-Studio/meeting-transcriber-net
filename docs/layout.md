@@ -109,6 +109,15 @@ exactly the case that went wrong. What a screen is about does not move. `Present
 answer either, and not for what it references: it is the catalogue and the rule that picks a
 language, so nothing in it is ever a subject a screen asks about. It is what a screen says.
 
+That paragraph is about a **record a window reads its controls off**, and one rule in `Presentation`
+is not one: `Movement`, which says how long each of the four things that move takes and whether
+Windows was asked for none. It has no subject in the corpus at all — it is not about a recording or
+a meeting, it is the one rule every screen obeys — so "the project its subject lives in" has no
+answer to give, and the rule that decides instead is the other half of what `Presentation` is for:
+it references nothing, so it is where a thing about the UI goes when it has to be provable without a
+window. A project of its own for three numbers would be a folder and a `.csproj` holding a lookup
+table.
+
 `Processing` references `Infrastructure`, and only that way round: rendering reads the paid
 response out of the corpus and puts the derivatives back, so it sits above storage. The opposite
 edge would make SQLite depend on how a Deepgram response is parsed.
@@ -153,6 +162,20 @@ meter's anatomy and the rules the design imposes — with the eighteen artboards
 beside it in `docs/design/`. Nothing under `src/` reads that folder and nothing builds it: they are
 pictures a person opens. A screen is built from the prose, and the artboards are what the prose is
 checked against.
+
+**That page reaches a screen through `src/MeetingTranscriber.App/Olivo.xaml`**, which is the one
+place a colour, a type rank, a corner, a height or a control rank is written down. `docs/design.md`
+says the resource key is its suggestion and the first screen to need one settles it; `MainWindow`
+was the first, so the keys are settled and every screen after it names them rather than proposing
+its own. `OlivoTests` is what holds both ends: no screen may carry a value of its own, and the
+dictionary's twelve brushes are checked against that page's own colour table rather than against
+themselves. The two fonts sit beside it in `Assets/Fonts/`, inside the package with the licence that
+permits it.
+
+The one thing about how a screen looks that is **not** in that dictionary is how long a move takes,
+and that is deliberate: a duration fixed when the application starts cannot be zero on a machine
+asked for no animation. `Movement` decides it, `ScreenMotion` applies it. `docs/design/README.md` is
+what to open before touching an artboard.
 
 `tools/` is run by hand and is not part of the product. Nothing under `src/` may reference it or
 know the Python system existed, so deleting the importer is deleting two folders rather than

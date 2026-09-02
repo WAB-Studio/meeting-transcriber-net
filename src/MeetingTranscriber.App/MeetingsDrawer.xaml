@@ -28,16 +28,16 @@
          to the whole window and lowers it again, and it is in the same place either way. -->
 
     <Grid x:Name="Root" RowSpacing="8">
+        <!-- Every style here is Olivo's, named from `docs/design.md` §Colour, §Type and §Controls.
+             None of them chooses a value. What changed when the front door was drawn from Olivo is
+             that these stopped being the platform's brushes standing in for a palette nothing had
+             reached yet — and OlivoTests now fails the build over a value typed in here. -->
         <Grid.Resources>
-            <Style x:Key="MeetingCard" TargetType="Border">
-                <Setter Property="Padding" Value="16" />
-                <Setter Property="CornerRadius" Value="8" />
-                <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
-                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-            </Style>
+            <Style x:Key="MeetingCard" TargetType="Border" BasedOn="{StaticResource Card}" />
 
-            <Style x:Key="MeetingName" TargetType="TextBlock" BasedOn="{StaticResource SubtitleTextBlockStyle}" />
+            <Style x:Key="MeetingName" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="FontWeight" Value="SemiBold" />
+            </Style>
 
             <!-- The row is the thing you press to open the meeting, and the name is where the row
                  is pressed. `docs/design.md` left that open against the alternative — a third
@@ -49,41 +49,42 @@
                  It is a button and not a tapped border, because a border that responds to a press
                  is nothing to a keyboard and nothing to a screen reader. This is one focusable
                  thing whose automation name is the meeting's own name, which is also how a probe
-                 reaches it. What it looks like is the name, which is what the two styles below
-                 leave it as. -->
-            <Style x:Key="MeetingOpen" TargetType="Button">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="Padding" Value="0" />
-                <Setter Property="HorizontalAlignment" Value="Stretch" />
-                <Setter Property="HorizontalContentAlignment" Value="Left" />
-            </Style>
+                 reaches it. What it looks like is the name, which is what the style leaves it as. -->
+            <Style x:Key="MeetingOpen" TargetType="Button" BasedOn="{StaticResource TheRowItself}" />
 
             <!-- A meeting nobody has named. It reads as the sentence it is rather than as a name,
                  which is the whole of ISC-165.1 on a row: the application has not thought of one
-                 and is not pretending to. -->
-            <Style x:Key="MeetingUnnamed" TargetType="TextBlock" BasedOn="{StaticResource SubtitleTextBlockStyle}">
-                <Setter Property="Opacity" Value="0.6" />
+                 and is not pretending to. Quieter by ink and not by opacity — `docs/design.md`
+                 gives three inks, and a faded one is a fourth grey nobody chose. -->
+            <Style x:Key="MeetingUnnamed" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
             </Style>
 
-            <Style x:Key="MeetingWhen" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
-                <Setter Property="Opacity" Value="0.6" />
-            </Style>
+            <!-- When it was, how long it ran, what it occupies. Data, so the data rank: numbers
+                 read against each other down the list rather than a sentence read once. -->
+            <Style x:Key="MeetingWhen" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
 
-            <Style x:Key="MeetingLine" TargetType="TextBlock">
+            <Style x:Key="MeetingLine" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="Opacity" Value="0.75" />
             </Style>
 
             <!-- The one standing with money or data riding on it does not read as one more grey
                  caption. It is the only thing on this screen that stops on a person, and the whole
-                 point of showing it is that somebody notices. -->
-            <Style x:Key="MeetingStoppedOnAPerson" TargetType="TextBlock">
+                 point of showing it is that somebody notices. It is louder by ink rather than by
+                 weight, which is `docs/design.md` §And five things this application is not: never
+                 hierarchy made only of bold. -->
+            <Style x:Key="MeetingStoppedOnAPerson" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
                 <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="FontWeight" Value="SemiBold" />
             </Style>
 
-            <Style x:Key="TakeTheStage" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}" />
+            <!-- The act on the right of a row, and the normal rank rather than pico. A button that
+                 opens the question is not the button that answers it: *Transcribir* and *Resumir*
+                 cost nothing to press — they open the dialogue where the charge is agreed to — and
+                 a list of twelve meetings with twelve orange buttons spends the colour that is
+                 supposed to mean *this one costs money*. A row is tarjeta, so its buttons are papel
+                 with a 1px rule. -->
+            <Style x:Key="TakeTheStage" TargetType="Button" BasedOn="{StaticResource RowButtonOnCard}" />
 
             <!-- The two tints `docs/design.md` fixes, and the only thing that tells a row waiting
                  on the person from one the application is merely working on. Something waiting on
@@ -92,26 +93,46 @@
                  surface with the meetings — `tarjeta`, in that document's own words: nothing about
                  it is waiting on anybody.
 
-                 The brushes are Windows' own rather than Olivo's `#EEF2EF` and `#F8EDE6`, because
-                 this application is not drawn from that palette yet — ISC-173 is what puts every
-                 screen on one visual system, and a hard-coded pair of hex values here would be two
-                 more things for that card to find. What is held to now is the distinction, not the
-                 colour: these are the two Windows uses for the same two meanings, and they follow
-                 the theme, which a literal would not. -->
-            <Style x:Key="WaitingOnADecision" TargetType="Border" BasedOn="{StaticResource MeetingCard}">
-                <Setter Property="Background" Value="{ThemeResource SystemFillColorAttentionBackgroundBrush}" />
-            </Style>
+                 These were `SystemFillColorAttentionBackgroundBrush` and
+                 `SystemFillColorCautionBackgroundBrush`, Windows' own two for the same two
+                 meanings, because this application was not drawn from that palette yet and a pair
+                 of hex values here would have been two more things for ISC-173 to find. ISC-173 is
+                 this change, and they are now the palette's own under the keys every screen after
+                 this one uses. -->
+            <Style x:Key="WaitingOnADecision" TargetType="Border" BasedOn="{StaticResource WaitingOnADecisionCard}" />
 
-            <Style x:Key="SomethingIsLost" TargetType="Border" BasedOn="{StaticResource MeetingCard}">
-                <Setter Property="Background" Value="{ThemeResource SystemFillColorCautionBackgroundBrush}" />
+            <Style x:Key="SomethingIsLost" TargetType="Border" BasedOn="{StaticResource SomethingIsLostCard}" />
+
+            <!-- The 18px warning triangle that goes on the attention tint, and only there.
+                 `docs/design.md` §Notices: something lost or about to be says what was observed
+                 before what it means, and this mark is the part of that a reader takes in before
+                 reading anything at all. The decision tint has none — something waiting on a
+                 person is not something that went wrong, and a triangle on it would spend the one
+                 mark that says something did.
+
+                 Drawn on the artboard's own 24-unit geometry and scaled to 18, so the stroke stays
+                 the weight that was drawn rather than the weight a re-typed path happened to give. -->
+            <Style x:Key="SomethingIsLostMark" TargetType="Path">
+                <Setter Property="Stroke" Value="{StaticResource PeakBrush}" />
+                <Setter Property="StrokeThickness" Value="1.9" />
+                <Setter Property="StrokeLineJoin" Value="Round" />
+                <Setter Property="StrokeStartLineCap" Value="Round" />
+                <Setter Property="StrokeEndLineCap" Value="Round" />
+                <Setter Property="Width" Value="18" />
+                <Setter Property="Height" Value="18" />
+                <Setter Property="Stretch" Value="Uniform" />
+                <Setter Property="VerticalAlignment" Value="Top" />
+                <Setter Property="Data" Value="M12 4.6L21.2 19.4H2.8z M12 10.2v3.9 M12 16.9v.1" />
             </Style>
 
             <!-- The one press on this screen that loses something. It sits to the left of the left
                  one, past a gap, so it cannot be pressed by reflex — the margin is the gap, and it
                  is the whole difference between this and every other neutral button here. -->
-            <Style x:Key="ItLosesSomething" TargetType="Button">
-                <Setter Property="Margin" Value="0,0,20,0" />
-            </Style>
+            <Style x:Key="ItLosesSomething" TargetType="Button" BasedOn="{StaticResource RowButtonThatLosesSomething}" />
+
+            <!-- The neutral one on the left: open it, see it, leave it as it was. Never filled,
+                 always secondary ink, the same button on every screen with only the word changing. -->
+            <Style x:Key="TheNeutralOne" TargetType="Button" BasedOn="{StaticResource RowButtonAtTheMargin}" />
         </Grid.Resources>
 
         <Grid.RowDefinitions>
@@ -133,21 +154,26 @@
                 Grid.Column="0"
                 VerticalAlignment="Center"
                 Text="{x:Bind In(loc:UiTexts.Meetings)}"
-                Style="{StaticResource SubtitleTextBlockStyle}" />
+                Style="{StaticResource SectionText}" />
 
-            <!-- How many there are: a count, so it reads the same in either language. -->
+            <!-- What the list is waiting on. The artboard puts a bare count here and the
+                 catalogue puts a sentence with a number in it, and the rank follows what the text
+                 actually is: `docs/design.md` §Type says text never goes in mono and a number that
+                 is part of a sentence is text. Whether this should be the artboard's bare count
+                 instead is a question about the words, which is #182's and #199's. -->
             <TextBlock
                 x:Name="CountText"
                 Grid.Column="1"
                 VerticalAlignment="Center"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Opacity="0.6" />
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource SecondaryTextBrush}" />
 
             <!-- Its words are set in the code-behind and not bound here, because they are the one
                  thing on this screen that says which of the two positions the drawer is in. -->
             <Button
                 x:Name="OpennessButton"
                 Grid.Column="2"
+                Style="{StaticResource NormalButtonOnPaper}"
                 Click="OnToggleOpenness" />
         </Grid>
 
@@ -172,15 +198,15 @@
                  thing that removes it. -->
             <TextBlock
                 Text="{x:Bind In(loc:UiTexts.TheRenderedFilesAreNeverAskedAbout)}"
-                Style="{StaticResource CaptionTextBlockStyle}"
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource SecondaryTextBrush}"
                 TextWrapping="Wrap"
-                MaxWidth="640"
-                Opacity="0.6" />
+                MaxWidth="640" />
             <TextBlock
                 x:Name="MeetingsStatusText"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                TextWrapping="Wrap"
-                Opacity="0.7" />
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource SecondaryTextBrush}"
+                TextWrapping="Wrap" />
         </StackPanel>
     </Grid>
 </UserControl>
