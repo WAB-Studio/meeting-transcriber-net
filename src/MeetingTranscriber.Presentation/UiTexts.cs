@@ -354,6 +354,49 @@ public static class UiTexts
         "Guardándose ahora.",
         "Being saved right now.");
 
+    // ── A recording the application never finished ────────────────────────────────────────────
+
+    // These stand in for the stage line above rather than sitting beside it. A recording still
+    // waiting in the corpus is exactly the meeting NoAudioYet is about, and the list can now say
+    // which of that line's two halves is true of it instead of offering somebody both.
+
+    public static UiText ItIsBeingRecordedRightNow { get; } = new(
+        "Se está grabando ahora.",
+        "It is being recorded right now.");
+
+    // What was observed before what it means, which is what anything on the attention tint owes
+    // the reader. The blocks are whole up to the packet the machine died in, and saying so is what
+    // keeps this from reading as a recording that broke.
+    public static UiText TheApplicationClosedInTheMiddleOfThisOne { get; } = new(
+        "La aplicación se cerró en el medio de esta grabación. El audio está entero hasta ahí.",
+        "The application closed in the middle of this recording. The audio is whole up to there.");
+
+    // The reason goes on the line as the machine's own words, for the reason ThatDidNotGoThrough
+    // gives: what comes back off the engine is English either way, and a sentence built around it
+    // would be half-translated for good.
+    public static UiText ThisCannotBecomeAMeeting { get; } = new(
+        "No puede volverse una reunión: {0}",
+        "This cannot become a meeting: {0}");
+
+    // The two answers, and there are two. Taking the audio out to a folder is a copy and not an
+    // answer — the recording is still waiting afterwards — so it is not a button on this row.
+    public static UiText Keep { get; } = new("Conservar", "Keep");
+
+    public static UiText Discard { get; } = new("Descartar", "Discard");
+
+    // Keeping a recording pours its blocks onto a timeline and hashes the result, which for a long
+    // meeting is minutes. Said while it runs, because a press that goes quiet for minutes is one
+    // somebody presses again.
+    public static UiText TheRecordingIsBeingKept { get; } = new(
+        "Conservando la grabación. Puede tardar unos minutos.",
+        "Keeping the recording. It can take a few minutes.");
+
+    public static UiText ItIsAMeetingNow { get; } =
+        new("Listo: quedó como reunión.", "Done: it is a meeting now.");
+
+    public static UiText TheRecordingIsGone { get; } =
+        new("Listo: la grabación se borró.", "Done: the recording is gone.");
+
     public static UiText Recorded { get; } = new("Grabada.", "Recorded.");
 
     public static UiText Transcribed { get; } = new("Transcrita.", "Transcribed.");

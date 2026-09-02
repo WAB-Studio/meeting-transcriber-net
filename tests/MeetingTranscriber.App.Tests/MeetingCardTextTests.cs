@@ -1,8 +1,11 @@
+using System.Text.RegularExpressions;
+
 namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
-/// ISC-82's half that lives on the screen: a meeting's card names every stage a meeting can be at
-/// and every standing that stage can be in, and substitutes for none of them.
+/// ISC-82's and ISC-79.1's half that lives on the screen: a meeting's card names every stage a
+/// meeting can be at, every standing that stage can be in and every standing a recording nobody
+/// got to stop can be in, and substitutes for none of them.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -23,17 +26,18 @@ public class MeetingCardTextTests
         Path.Combine("MeetingTranscriber.Domain", "Meetings", "MeetingStage.cs");
 
     /// <summary>
-    /// The two tables held to naming their whole enum, by the enum's name.
+    /// The tables held to naming their whole enum, by the enum's name.
     /// </summary>
     /// <remarks>
-    /// The lookup throws on a name it does not have rather than falling back, because a third
-    /// table added to the data and not to the map would otherwise check the second one twice and
-    /// report three green tests.
+    /// The lookup throws on a name it does not have rather than falling back, because a table
+    /// added to the data and not to the map would otherwise check another one twice and report a
+    /// green test for each.
     /// </remarks>
     private static readonly Dictionary<string, Func<EnumTable>> Held = new(StringComparer.Ordinal)
     {
         ["MeetingStage"] = Stages,
         ["StageStanding"] = Standings,
+        ["WaitingStanding"] = Waitings,
     };
 
     public static TheoryData<string> Tables() => [.. Held.Keys];
@@ -83,10 +87,56 @@ public class MeetingCardTextTests
         offered.Fallthrough.ShouldBe("throw");
     }
 
+    /// <summary>
+    /// Every surface the waiting table names is a style the screen actually declares.
+    /// </summary>
+    /// <remarks>
+    /// The other half of that table, and the half no enum check reaches: it answers a resource key
+    /// as a string, and the screen looks it up by name at the moment it draws a card. A key
+    /// renamed in the markup and not here is a lookup that throws out of a draw, on a list nothing
+    /// but a running window builds — so it is read out of the two files instead.
+    /// </remarks>
+    [Fact]
+    public void Every_surface_a_waiting_recording_sits_on_is_one_the_screen_declares()
+    {
+        var named = Regex.Matches(
+                File.ReadAllText(AppSources.At(Screen).FullName),
+                @"WaitingStanding\.\w+ => \([^)]*""(?<surface>\w+)""\)")
+            .Select(match => match.Groups["surface"].Value)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        var declared = Regex.Matches(
+                File.ReadAllText(AppSources.At(
+                    Path.Combine("MeetingTranscriber.App", "MeetingsDrawer.xaml")).FullName),
+                @"x:Key=""(?<key>\w+)""")
+            .Select(match => match.Groups["key"].Value)
+            .ToArray();
+
+        named.ShouldNotBeEmpty("MeetingsDrawer.xaml.cs names no surface, so this check reads nothing.");
+        declared.ShouldNotBeEmpty("MeetingsDrawer.xaml declares no style, so this check reads nothing.");
+
+        named.Except(declared, StringComparer.Ordinal).ShouldBeEmpty(
+            "MeetingsDrawer.xaml declares no style by these names, so a waiting recording's card "
+            + "throws where it is drawn.");
+    }
+
     private static EnumTable Stages() => EnumTable.Read(Screen, "stage", "MeetingStage", StagesDeclaredIn);
 
     private static EnumTable Standings() =>
         EnumTable.Read(Screen, "standing", "StageStanding", StagesDeclaredIn);
+
+    /// <summary>
+    /// ISC-79.1 on the screen. The table it reads answers two things at once — the sentence and
+    /// the surface it sits on — because a row saying it is waiting on somebody over a surface that
+    /// says it is not would be the screen contradicting itself. A standing added to the rule and
+    /// not here is a recording drawn as another one, which is the whole reason to read it.
+    /// </summary>
+    private static EnumTable Waitings() => EnumTable.Read(
+        Screen,
+        "waiting",
+        "WaitingStanding",
+        Path.Combine("MeetingTranscriber.Recording", "WaitingRows.cs"));
 
     private static EnumTable Actions() => EnumTable.Read(
         Screen, "kind", "JobKind", Path.Combine("MeetingTranscriber.Domain", "Jobs", "JobKind.cs"));
