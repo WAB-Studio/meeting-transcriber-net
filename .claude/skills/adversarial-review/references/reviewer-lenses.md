@@ -22,6 +22,10 @@ Challenge correctness and completeness. Ask:
 - What race conditions or ordering dependencies exist?
 - What does the author believe is true that isn't proven?
 - Where is "it works on my machine" masquerading as verification?
+- Where does the diff move the bar rather than clear it? An `ISA.md` claim this change ticks whose
+  words were narrowed to fit — in the diff, or ahead of the branch and so in no diff — proves
+  nothing, whatever its probe says. `git log -L '/^- \[.\] ISC-N: /,+1:ISA.md' origin/main` prints
+  what the claim used to say.
 
 Map findings to: prove-it-works, fix-root-causes, serialize-shared-state-mutations.
 
