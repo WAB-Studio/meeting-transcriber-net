@@ -1012,12 +1012,17 @@ public sealed partial class MainWindow : Window
     {
         NameTheChannels();
 
-        // A device's name is what its maker called it, so it is data and has no language. Each
-        // strip is told what it offers and what is chosen in one call, and the strip's own flag is
-        // the whole of what keeps that from being read as somebody choosing — the window's
-        // `_filling` covers the three pickers below and nothing here.
+        // A device's name is what its maker called it, so it is data and has no language. The row
+        // is not only the name, though, and what this application adds around it is words: which
+        // entry an endpoint gets is DeviceLines', and the entry carries the name inside it, so
+        // neither the word nor the bracket is picked on this line. The source picker beside it
+        // still is — AudioProcess.ToString says why, and it is not settled here.
+        //
+        // Each strip is told what it offers and what is chosen in one call, and the strip's own
+        // flag is the whole of what keeps that from being read as somebody choosing — the window's
+        // `_filling` covers the two pickers below and nothing here.
         Mine.Offer(
-            [.. _microphones.Select(device => device.ToString())],
+            [.. _microphones.Select(device => DeviceLines.Of(device.Name, device.IsDefault).In(_language))],
             _chosen.Microphone is null
                 ? -1
                 : Array.FindIndex(_microphones, device =>

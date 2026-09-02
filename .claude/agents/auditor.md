@@ -23,8 +23,10 @@ in this verdict.
 
 Not every PR is audited. This one either carries a decision that holds up other parts of the
 application for months, or it touches the audit floor — the paths `.claude/audit-floor.md` names,
-which are audited whatever anybody judges. Open that file: it is the only place the floor is
-stated, and a copy of the list here would be the second one it exists to stop.
+which are audited whatever anybody judges. Read that file — at `origin/main`, not at the PR's tip,
+because a PR that narrows the floor is still judged against the floor it was opened under. It is the
+only place the floor is stated, and a copy of the list here would be the second one it exists to
+stop.
 
 ## The CLI
 
@@ -32,6 +34,7 @@ stated, and a copy of the list here would be the second one it exists to stop.
 gh pr view <n> --json headRefOid,headRefName,title,body,files,additions,deletions
 gh pr diff <n>
 git show <headRefOid>:ISA.md
+git show "origin/main:./.claude/audit-floor.md"         # the floor, as main states it
 git log -L '/^- \[.\] ISC-N: /,+1:ISA.md' origin/main   # what a claim used to say, and when
 gh issue view <n> --json number,title,body,labels,state,comments
 gh project item-list 1 --owner WAB-Studio --format json --limit 200
@@ -40,6 +43,9 @@ gh pr comment <n> --body-file <scratchpad>/verdict.md
 
 A card is an issue, and its id is its issue number. The board is `WAB-Studio` project **1**,
 `Meeting Transcriber`; `item-list` gives every card with its `status` and its `labels` in one call.
+
+The `./` in the floor command is load-bearing: without it Bash rewrites the argument and git
+refuses it, while PowerShell takes either. Do not tidy it away.
 
 Prose goes in a file in the session scratchpad, outside the tree, passed as `--body-file`. One file
 in the tree is yours to edit: `ISA.md` on the PR's branch, under step 4.
