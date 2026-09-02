@@ -1,6 +1,7 @@
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
 using MeetingTranscriber.Processing.Rendering;
+using MeetingTranscriber.Recording;
 
 using Microsoft.UI.Xaml;
 
@@ -72,7 +73,44 @@ public partial class App : Application
         _main = window;
         _main.Activate();
 
+        SweepTheMeetingsNobodyRecorded(_corpus);
         CatchUpOnTheRenders(_corpus);
+    }
+
+    /// <summary>
+    /// Takes the meetings a press left behind off the corpus this session opened: a row and an
+    /// empty folder for a recording that never started.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// At launch, because a start is where the folders left by every press before this one are
+    /// sitting, and because hanging it on the meetings list would tie it to how often somebody
+    /// looks. It is not because a launch is quiet: the window is already up and somebody can press
+    /// record while this runs. What keeps that safe is the mark a capture holds over its folder,
+    /// which the sweep's delete runs into rather than asks about — <c>MeetingsNobodyRecorded</c>
+    /// says how, and it is the sweep's rule and not this one's.
+    /// </para>
+    /// <para>
+    /// Off the thread the window draws on, for the reason the renders are: it opens the corpus and
+    /// writes to it. It runs beside them rather than before them — two background tasks over one
+    /// corpus, held apart by touching disjoint meetings and by SQLite's own <c>busy_timeout</c> —
+    /// and nothing on screen waits for either. A drawer opened inside the second it takes reads one
+    /// phantom meeting that is gone by the next start, which is the list this fixes rather than a
+    /// new defect.
+    /// </para>
+    /// <para>
+    /// Nobody is told how it went, and unlike the renders that is not a decision left owed: what a
+    /// sweep declines to touch is a folder it was right to leave, and there is nothing in it for a
+    /// person to answer. <c>SweepIn</c> answers with what happened instead of throwing, so what is
+    /// dropped here is the report and never the sweep.
+    /// </para>
+    /// </remarks>
+    private static void SweepTheMeetingsNobodyRecorded(CorpusFolder corpus)
+    {
+        if (corpus.Folder is { } folder)
+        {
+            _ = Task.Run(() => MeetingsNobodyRecorded.SweepIn(folder));
+        }
     }
 
     /// <summary>

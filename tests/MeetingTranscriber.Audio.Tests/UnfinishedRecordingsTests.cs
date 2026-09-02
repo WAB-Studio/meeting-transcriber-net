@@ -429,6 +429,14 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     /// one recording. The rule is not held by the places that obey it today — it is held by a
     /// fifth one costing a red test on the day it is written.
     /// </summary>
+    /// <remarks>
+    /// Still one entry after the sweep of folders nothing was recorded into landed, and that is the
+    /// point of where it was put: both ways a folder under <c>spool/</c> goes are in this file, so
+    /// the rule stays one place rather than a list that grows. <c>Discard</c> takes away a recording
+    /// because somebody said to; <c>EraseWhereNothingWasRecorded</c> takes away a folder that never
+    /// held one, and refuses on anything that says otherwise. A second entry here is a folder
+    /// removal somebody has to argue for.
+    /// </remarks>
     [Fact]
     public void Nothing_but_a_decision_about_one_recording_removes_a_folder()
     {

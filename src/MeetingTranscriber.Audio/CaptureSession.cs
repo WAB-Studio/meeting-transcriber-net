@@ -71,15 +71,24 @@ public sealed class CaptureSession : IDisposable
     private bool followingCameBack;
     private bool over;
 
+    /// <summary>
+    /// What says this folder is being recorded into, for as long as the session lasts. Taken
+    /// before the first device is opened and let go of with them, so the one stretch a folder is
+    /// empty and claimed is covered — see <see cref="CaptureMark"/>, which is what that is for.
+    /// </summary>
+    private readonly CaptureMark capturing;
+
     private CaptureSession(
         CaptureSource[] sources,
         SpoolCard card,
         RecordingPause pause,
-        DirectoryInfo folder)
+        DirectoryInfo folder,
+        CaptureMark capturing)
     {
         this.sources = sources;
         this.pause = pause;
         this.folder = folder;
+        this.capturing = capturing;
         Card = card;
     }
 
@@ -126,6 +135,40 @@ public sealed class CaptureSession : IDisposable
         folder.Create();
         BlockSpool.EnsureNothingRecordedIn(folder);
 
+        // Before the first device and after the folder is there, which is the whole of what it is
+        // for: from here until the session is disposed, the folder says a recording is happening in
+        // it even while there is nothing in it to say so. Let go of on every way out of the opening
+        // below, because a capture that never started is exactly the folder the sweep is looking
+        // for and a mark left held would keep it.
+        var capturing = CaptureMark.Take(folder);
+
+        try
+        {
+            return Opening(folder, meetingId, microphone, follow, capturing);
+        }
+        catch
+        {
+            capturing.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Opening the two sources and writing the card, with the folder already claimed.
+    /// </summary>
+    /// <remarks>
+    /// A method rather than a block inside <see cref="Start"/> so that taking the claim and letting
+    /// it go on the way out are three lines beside each other instead of a hundred-line body
+    /// indented under a try. Nothing here needs the claim; it takes it as an argument only because
+    /// the session it builds owns it from that point on.
+    /// </remarks>
+    private static CaptureSession Opening(
+        DirectoryInfo folder,
+        Guid meetingId,
+        AudioDevice microphone,
+        AudioProcess? follow,
+        CaptureMark capturing)
+    {
         var opened = new List<CaptureSource>();
 
         // One for the recording, handed to both sources: pausing has to be a single write, or one
@@ -208,7 +251,7 @@ public sealed class CaptureSession : IDisposable
             throw;
         }
 
-        var session = new CaptureSession([.. opened], card, pause, folder);
+        var session = new CaptureSession([.. opened], card, pause, folder, capturing);
         session.Follow();
         return session;
     }
@@ -575,32 +618,46 @@ public sealed class CaptureSession : IDisposable
             over = true;
         }
 
-        Stopped();
-
-        // Asked first, all of them, for the same reason Stop asks before it waits — and here it
-        // matters more, because disposing is an exit path in its own right. A caller that never
-        // reached Stop, or whose Stop threw on the first source, arrives with both devices still
-        // recording; letting go of the first before the second has even been asked leaves the
-        // second recording for however long the first takes to be given up on.
-        foreach (var source in sources)
+        // In a finally, and it is the only thing here that is. Everything below lets go of a handle
+        // this process holds, and the mark is what says this process holds them — so it comes last,
+        // after every device is gone, and it comes however they went. Released early it would say
+        // nothing is recording here while a device still is, and to whatever asked in between —
+        // which for a folder still holding no block is the sweep, deciding it was never a
+        // recording. Not released at all it would strand the folder against a sweep it is the
+        // whole point of, in the one process that still knows better.
+        try
         {
-            source.AskToStop();
+            Stopped();
+
+            // Asked first, all of them, for the same reason Stop asks before it waits — and here it
+            // matters more, because disposing is an exit path in its own right. A caller that never
+            // reached Stop, or whose Stop threw on the first source, arrives with both devices still
+            // recording; letting go of the first before the second has even been asked leaves the
+            // second recording for however long the first takes to be given up on.
+            foreach (var source in sources)
+            {
+                source.AskToStop();
+            }
+
+            foreach (var source in sources)
+            {
+                // Every source, whatever the one before it did with its last block: this is where
+                // the handles are let go, and Stop is where a failure is reported.
+                source.LetGo();
+            }
+
+            // Last, and only for a thread that really came back. What it sleeps on is what would be
+            // let go of here, and a thread given up on is one that may still be about to read it —
+            // disposing it under that thread throws where nothing is catching, which is the process
+            // and the meeting rather than a handle held to the end of it.
+            if (followingCameBack)
+            {
+                stopping.Dispose();
+            }
         }
-
-        foreach (var source in sources)
+        finally
         {
-            // Every source, whatever the one before it did with its last block: this is where the
-            // handles are let go, and Stop is where a failure is reported.
-            source.LetGo();
-        }
-
-        // Last, and only for a thread that really came back. What it sleeps on is what would be
-        // let go of here, and a thread given up on is one that may still be about to read it —
-        // disposing it under that thread throws where nothing is catching, which is the process and
-        // the meeting rather than a handle held to the end of it.
-        if (followingCameBack)
-        {
-            stopping.Dispose();
+            capturing.Dispose();
         }
     }
 

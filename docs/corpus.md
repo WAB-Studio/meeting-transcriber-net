@@ -24,14 +24,21 @@ spool/<meeting_id>/
   manifest.json          source     what the recording said about itself when it started
   changes.jsonl          source     what somebody moved while it was recording, if anything
   <channel>.blocks       source     while the blocks are the only recoverable copy
+  capture.mark           neither    held while a capture is writing this folder, and empty
   saving.mark            neither    held while a finish is reading this folder, and empty
 ```
 
-`saving.mark` is neither, and that is not a mistake in the table: it holds no bytes and nothing ever
-reads whether it is there. What it means is carried by a process having it open, so a backup that
-restored it would restore a fact that stopped being true when that process ended, and one that
-dropped it loses nothing. Nothing clears the one a crashed save leaves, because a file nothing holds
-already reads as no save.
+**The two marks are neither, and that is not a mistake in the table.** Both hold no bytes and
+nothing ever reads whether one is there. What each means is carried by a process having it open, so
+a backup that restored one would restore a fact that stopped being true when that process ended, and
+one that dropped it loses nothing. Nothing clears the one a crashed save or a crashed capture
+leaves, because a file nothing holds already reads as no save and no capture.
+
+`capture.mark` is taken before the first device is opened and let go of with the last one, and it
+covers the one stretch a folder holding a recording is indistinguishable from a folder holding
+nothing: between the folder being made and the first spool file landing in it, there is nothing in
+it at all. After that the blocks say it themselves. It is what lets a start sweep away the meeting a
+press left behind when the recording never started, without ever sweeping one that is starting.
 
 `changes.jsonl` is a source for the reason the card beside it is, and it is the half the card
 cannot hold: the card is written once and says what each channel opened on, so a channel somebody
