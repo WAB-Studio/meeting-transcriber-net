@@ -1,4 +1,5 @@
 ﻿using System.Text.RegularExpressions;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace MeetingTranscriber.App.Tests;
@@ -26,6 +27,12 @@ namespace MeetingTranscriber.App.Tests;
 /// something in spent as long as the recorder window has existed described here and caught by
 /// nothing, which is exactly what a guard with no subject to find looks like from outside; a gap
 /// named in a test is a gap that tells somebody the day it closes.
+/// </para>
+/// <para>
+/// The markup half is held the same way, by <see cref="NamesAnEntry"/>,
+/// <see cref="CarriesNoWords"/> and <see cref="SaysSomethingElse"/>, and for the same reason: it ran
+/// green over a binding pointing anywhere it liked, because the four screens only ever pointed one
+/// at the catalogue and a check with nothing to find reads like a check that works.
 /// </para>
 /// </remarks>
 public partial class ScreenTextsTests
@@ -98,12 +105,18 @@ public partial class ScreenTextsTests
     /// reads, so over Olivo.xaml they would go red over <c>&lt;CornerRadius&gt;4&lt;/CornerRadius&gt;</c>.
     /// </summary>
     /// <remarks>
-    /// That is a narrowing and not a hole, because of what the first check below already refuses.
-    /// A word put in a dictionary can only reach somebody through a property a screen binds, and
-    /// that check takes <c>{x:Bind}</c> and nothing else — deliberately, so that
-    /// <c>{StaticResource Greeting}</c> is not a literal one indirection away. So there is no
-    /// route from a sentence in a dictionary to a screen. <c>OlivoTests</c> closes the other end
-    /// and refuses to let one be written there at all.
+    /// One route out of a dictionary is closed by the first check below, which takes one entry of
+    /// the catalogue and nothing else — so <c>{StaticResource Greeting}</c> is not a literal one
+    /// indirection away — and <c>OlivoTests</c> refuses to let a sentence be written in there as a
+    /// <c>String</c> or a <c>TextBlock</c> at all.
+    /// <para>
+    /// The route neither of them closes is a <c>Setter</c>: <c>&lt;Setter Property="Text"
+    /// Value="Sin nombre" /&gt;</c> inside a style in Olivo.xaml reaches every screen wearing that
+    /// style, and <c>OlivoTests</c> reads the <c>Setter</c> shape only for the colours, sizes and
+    /// corners of ISC-173.1. Closing it belongs to that class, which already has the shape to do it
+    /// with, and it is #182's <c>left_out</c>. What is closed here is the same shape in a screen's
+    /// own resources, which the check below does read.
+    /// </para>
     /// </remarks>
     public static TheoryData<string> Screens() =>
     [
@@ -127,23 +140,214 @@ public partial class ScreenTextsTests
     [MemberData(nameof(Screens))]
     public void No_screen_names_anything_but_an_entry_in_the_catalogue(string path)
     {
-        // `{x:Bind ...}` and nothing else, deliberately narrower than "some markup extension":
-        // `{StaticResource Greeting}` is a literal one indirection away, and a resource holding
-        // one language's words would sit behind a check that had waved it through. The day a
-        // second form is legitimate, this is one edit and the edit is somebody's decision.
-        var carried = XDocument
-            .Load(path)
-            .Descendants()
-            .SelectMany(element => element.Attributes())
-            .Where(attribute => Reads.Contains(attribute.Name.LocalName))
-            .Where(attribute => !attribute.Value.TrimStart().StartsWith("{x:Bind", StringComparison.Ordinal))
-            .Select(attribute => $"{attribute.Name.LocalName}=\"{attribute.Value}\"")
-            .ToArray();
+        var carried = NotNamingTheCatalogueIn(XDocument.Load(path, LoadOptions.SetLineInfo));
 
         carried.ShouldBeEmpty(
-            $"{Path.GetFileName(path)} says these itself instead of binding an entry of UiTexts, "
-            + "so they exist in one language: " + string.Join("; ", carried));
+            $"{Path.GetFileName(path)} gets these from somewhere other than UiTexts, so whatever "
+            + "they say is in one language: " + string.Join("; ", carried));
     }
+
+    /// <summary>
+    /// The words a person reads that <paramref name="screen"/> gets from anywhere but the
+    /// catalogue, each with the line it is on — the shape the code-behind halves answer in, for the
+    /// reason <see cref="LiteralsIn"/> gives: a screen is hundreds of lines long, and the finding
+    /// this now reports is a near-miss among twenty bindings spelt almost the same, where the old
+    /// one was a bare literal somebody could pick out by eye.
+    /// </summary>
+    /// <remarks>
+    /// Two shapes, because a screen sets a property two ways. The attribute is the obvious one; a
+    /// <c>Setter</c> inside the screen's own <c>Resources</c> is the same property set through a
+    /// style, and there are fifteen of them across these screens today. <c>OlivoTests.Values</c>
+    /// reads both for the same reason over the colours and corners it holds.
+    /// </remarks>
+    private static string[] NotNamingTheCatalogueIn(XDocument screen) =>
+    [
+        .. screen
+            .Descendants()
+            .SelectMany(SetsAWordAPersonReads)
+            .Where(set => !NamesAnEntryOfTheCatalogue(set.On, set.Value))
+            .Select(set => $"line {At(set.On)}: {set.Property}=\"{set.Value}\""),
+    ];
+
+    /// <summary>
+    /// Where <paramref name="element"/> puts words a person reads: one of <see cref="Reads"/> as an
+    /// attribute, and the <c>Setter</c> that says the same thing through a style. The element comes
+    /// back with each, because what the prefix in a binding resolves to is decided where the
+    /// binding stands.
+    /// </summary>
+    private static IEnumerable<(XElement On, string Property, string Value)> SetsAWordAPersonReads(XElement element)
+    {
+        foreach (var attribute in element.Attributes().Where(a => Reads.Contains(a.Name.LocalName)))
+        {
+            yield return (element, attribute.Name.LocalName, attribute.Value);
+        }
+
+        if (element.Name.LocalName == "Setter"
+            && (string?)element.Attribute("Property") is { } property
+            && Reads.Contains(property)
+            && (string?)element.Attribute("Value") is { } value)
+        {
+            yield return (element, property, value);
+        }
+    }
+
+    /// <summary>The line <paramref name="element"/> stands on, which is why the screen is loaded
+    /// with <see cref="LoadOptions.SetLineInfo"/>.</summary>
+    private static int At(XElement element) => ((IXmlLineInfo)element).LineNumber;
+
+    /// <summary>
+    /// Whether <paramref name="value"/>, standing on <paramref name="on"/>, is the one form a
+    /// screen may put words on a person's screen in: <c>{x:Bind In(loc:UiTexts.Something)}</c>,
+    /// whole.
+    /// </summary>
+    /// <remarks>
+    /// The whole form and not the <c>{x:Bind</c> it opens with. A binding is an indirection, and
+    /// what it points at is a member of whatever the binding resolves against; the sibling check
+    /// over the code-behind only reads the properties named in <see cref="Reads"/>, so a member
+    /// with any other name returning a literal was seen by neither half and a screen reader said
+    /// it in one language.
+    /// <para>
+    /// A binding may name nothing else — not a resource, not a property path, not a second clause.
+    /// A screen wanting one of those is a screen wanting to say something the catalogue does not
+    /// carry, which is the defect this exists for; the day one is legitimate, this is one edit and
+    /// the edit is somebody's decision. Two of those days are worth expecting. A <c>DataTemplate</c>
+    /// with an <c>x:DataType</c> resolves <c>x:Bind</c> against the data and not the page, so the
+    /// one form here is not expressible inside one and no screen has written one yet; and
+    /// <see cref="Reads"/> holds three names — <c>Content</c>, <c>Header</c>, <c>Description</c> —
+    /// that can carry a <c>UIElement</c> rather than words, which is why what this reports says the
+    /// words come from outside the catalogue rather than that the screen typed them.
+    /// </para>
+    /// <para>
+    /// Refusing a second clause is what keeps every catalogue binding <c>OneTime</c>, which is what
+    /// makes the <c>Bindings.Update()</c> each screen calls the one thing that repaints it when the
+    /// language changes.
+    /// </para>
+    /// <para>
+    /// The catalogue's prefix is resolved against the screen rather than spelt <c>loc</c> here,
+    /// because it is the namespace that says this is the catalogue: a screen is free to call the
+    /// prefix what it likes, and one that pointed <c>loc</c> at some other namespace would otherwise
+    /// read as naming a catalogue entry while naming a stranger's. <c>x</c> is spelt and not
+    /// resolved, which is the asymmetry worth stating: the prefix on the XAML language namespace is
+    /// arbitrary in principle, and in fact it is <c>x</c> in every XAML file these tools write. A
+    /// screen that renamed it would go red here rather than through, which is the direction a guard
+    /// should fail in, and resolving it would put a declaration in every row below that has nothing
+    /// to do with what the row is for.
+    /// </para>
+    /// </remarks>
+    private static bool NamesAnEntryOfTheCatalogue(XElement on, string value)
+    {
+        var named = TheCatalogueBindingForm().Match(value);
+
+        return named.Success
+            && on.GetNamespaceOfPrefix(named.Groups["catalogue"].Value)?.NamespaceName == Catalogue;
+    }
+
+    /// <summary>
+    /// Where the catalogue lives, spelt from the type itself so that moving it is the compiler's
+    /// failure and not four screens reading as monolingual. <c>using:</c> is how XAML spells a CLR
+    /// namespace and is the only spelling these screens use; a screen reaching for another would go
+    /// red here, which is the direction a guard should fail in.
+    /// </summary>
+    private static readonly string Catalogue = "using:" + typeof(UiTexts).Namespace;
+
+    /// <summary>
+    /// A binding naming one entry of the catalogue, and the whole of the value. Anchored with
+    /// <c>\A</c> and <c>\z</c> rather than <c>^</c> and <c>$</c>, which in .NET would also match
+    /// before a trailing newline, so that a second clause — another binding, <c>, Mode=OneWay</c>,
+    /// a word after the brace — is a different form and is refused as one.
+    /// </summary>
+    /// <remarks>
+    /// <c>UiTexts</c> comes from the type and not a spelling, so that renaming the catalogue is a
+    /// build failure here rather than four screens going red as if they had gone monolingual.
+    /// </remarks>
+    [GeneratedRegex(@"\A\s*\{\s*x:Bind\s+In\(\s*(?<catalogue>[A-Za-z_][\w.-]*):"
+        + nameof(UiTexts) + @"\.[A-Za-z_]\w*\s*\)\s*\}\s*\z")]
+    private static partial Regex TheCatalogueBindingForm();
+
+    /// <summary>
+    /// Screens that name an entry of the catalogue, which this must leave alone. Rows and not only
+    /// the four real screens, for the reason <see cref="WordsAPersonWouldRead"/> gives about the
+    /// code-behind half: a check held only to what the application happens to say today is a check
+    /// nobody notices has stopped being the one described here.
+    /// </summary>
+    /// <remarks>
+    /// The second row declares the prefix on an ancestor, which is where all four screens declare
+    /// it and so the only resolution the application actually exercises.
+    /// </remarks>
+    public static TheoryData<string> NamesAnEntry() =>
+    [
+        @"<TextBlock xmlns:loc=""using:MeetingTranscriber.Presentation"" Text=""{x:Bind In(loc:UiTexts.Record)}"" />",
+        @"<Grid xmlns:loc=""using:MeetingTranscriber.Presentation""><TextBlock Text=""{x:Bind In(loc:UiTexts.Record)}"" /></Grid>",
+        @"<Button xmlns:loc=""using:MeetingTranscriber.Presentation"" AutomationProperties.Name=""{x:Bind In(loc:UiTexts.Record)}"" />",
+        @"<TextBlock xmlns:texts=""using:MeetingTranscriber.Presentation"" Text=""{x:Bind In(texts:UiTexts.Record)}"" />",
+        @"<TextBlock xmlns:loc=""using:MeetingTranscriber.Presentation"" Text=""{x:Bind In(loc:UiTexts.Record) }"" />",
+        @"<Setter xmlns:loc=""using:MeetingTranscriber.Presentation"" Property=""Text"" Value=""{x:Bind In(loc:UiTexts.Record)}"" />",
+    ];
+
+    /// <summary>
+    /// Screens carrying nothing anybody reads, which this must not report. Its own set and not a
+    /// row among the ones above, because it passes by the <see cref="Reads"/> filter never reaching
+    /// it rather than by naming an entry — so it cannot go red for any edit to the form, and a row
+    /// that cannot go red for the thing around it is coverage in appearance only.
+    /// </summary>
+    public static TheoryData<string> CarriesNoWords() =>
+    [
+        @"<Button Style=""{StaticResource NormalButtonOnPaper}"" Grid.Row=""0"" />",
+        @"<Setter Property=""CornerRadius"" Value=""4"" />",
+    ];
+
+    /// <summary>
+    /// Screens that put words in front of somebody without naming an entry of the catalogue. The
+    /// fourth is what #182 planted on the recorder and watched stay green; the rest are the forms a
+    /// binding can wear while pointing somewhere the catalogue is not.
+    /// </summary>
+    /// <remarks>
+    /// Three earn their place over the others. <c>{}</c> is XAML's escape for a value that opens
+    /// with a brace, so the second row is a literal that reads as the good form for its first two
+    /// characters. The seventh points a well-spelt prefix at another namespace and the eighth
+    /// shadows a good outer declaration with a bad inner one, which are the two shapes resolving
+    /// the prefix exists to tell apart. The last is a <c>Setter</c>, which reaches a screen through
+    /// a style rather than through an attribute.
+    /// </remarks>
+    public static TheoryData<string> SaysSomethingElse() =>
+    [
+        @"<TextBlock Text=""Grabar una reunión"" />",
+        @"<TextBlock xmlns:loc=""using:MeetingTranscriber.Presentation"" Text=""{}{x:Bind In(loc:UiTexts.Record)}"" />",
+        @"<TextBlock Text=""{StaticResource Greeting}"" />",
+        @"<TextBlock Text=""{Binding Name}"" />",
+        @"<TextBlock xmlns:loc=""using:MeetingTranscriber.Presentation"" AutomationProperties.Name=""{x:Bind TheOtherSide}"" />",
+        @"<TextBlock Text=""{x:Bind In(TheOtherSide)}"" />",
+        @"<TextBlock xmlns:loc=""using:MeetingTranscriber.Presentation"" Text=""{x:Bind In(loc:Elsewhere.Record)}"" />",
+        @"<TextBlock xmlns:loc=""using:MeetingTranscriber.App"" Text=""{x:Bind In(loc:UiTexts.Record)}"" />",
+        @"<Grid xmlns:loc=""using:MeetingTranscriber.Presentation""><TextBlock xmlns:loc=""using:MeetingTranscriber.App"" Text=""{x:Bind In(loc:UiTexts.Record)}"" /></Grid>",
+        @"<TextBlock Text=""{x:Bind In(loc:UiTexts.Record)}"" />",
+        @"<TextBlock xmlns:loc=""using:MeetingTranscriber.Presentation"" Text=""{x:Bind In(loc:UiTexts.Record), Mode=OneWay}"" />",
+        @"<Setter xmlns:loc=""using:MeetingTranscriber.Presentation"" Property=""Text"" Value=""Sin nombre"" />",
+    ];
+
+    [Theory]
+    [MemberData(nameof(NamesAnEntry))]
+    public void A_screen_naming_an_entry_of_the_catalogue_is_left_alone(string screen) =>
+        NotNamingTheCatalogueIn(Parse(screen)).ShouldBeEmpty(
+            "this names an entry of the catalogue and was reported anyway: " + screen);
+
+    [Theory]
+    [MemberData(nameof(CarriesNoWords))]
+    public void A_screen_carrying_nothing_anybody_reads_is_left_alone(string screen) =>
+        NotNamingTheCatalogueIn(Parse(screen)).ShouldBeEmpty(
+            "nobody reads anything on this and it was reported anyway: " + screen);
+
+    [Theory]
+    [MemberData(nameof(SaysSomethingElse))]
+    public void A_screen_naming_anything_else_is_found(string screen) =>
+        NotNamingTheCatalogueIn(Parse(screen)).ShouldNotBeEmpty(
+            "this puts words on a screen from outside the catalogue and nothing found it: " + screen);
+
+    /// <summary>
+    /// A row as the check reads a screen — line info and all, so that a row exercises the same
+    /// load a real screen gets and not a second one that could drift from it.
+    /// </summary>
+    private static XDocument Parse(string screen) => XDocument.Parse(screen, LoadOptions.SetLineInfo);
 
     [Theory]
     [MemberData(nameof(Screens))]
@@ -262,14 +466,24 @@ public partial class ScreenTextsTests
     /// <remarks>
     /// The first three are one gap wearing three faces: a word inside a call is a word handed to a
     /// method, and telling <c>Show("Listo")</c> from <c>Path.Combine("Local", …)</c> is a question
-    /// about types that wants an analyser. A switch expression is the fourth, and a comment opened
+    /// about types that wants an analyser. A switch expression is the fifth, and a comment opened
     /// after code on the same line is the one false red left standing rather than a miss.
+    /// <para>
+    /// The fourth is the same gap as the one under it and is written down separately because of
+    /// what it is: <c>In</c> is now the one member every word on every screen passes through, so
+    /// where the shape above loses one string this one loses a whole screen. It is out of reach for
+    /// the reason an expression-bodied member always was — there is no assignment to find it by —
+    /// and it is what the markup half trusts once it has held a binding to naming a catalogue
+    /// entry. Nothing in the repo asserts the four screens spell it the same or return what it
+    /// says; that is #182's <c>left_out</c>.
+    /// </para>
     /// </remarks>
     public static TheoryData<string> OutOfReachOnPurpose() =>
     [
         @"Show(""Listo"");",
         @"StatusText.Text = Fmt(""Listo"");",
         @"StatusText.Text = ready ? Fmt($""{count}"") : ""nada"";",
+        @"public string In(UiText text) => ""Grabar una reunión"";",
         @"private string Ready => ""Listo"";",
         @"StatusText.Text = state switch { RecorderState.Ready => ""listo"", _ => ""nada"" };",
     ];
