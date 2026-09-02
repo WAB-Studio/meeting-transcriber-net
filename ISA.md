@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 134/209
+progress: 140/209
 updated: 2026-09-02
 ---
 
@@ -178,7 +178,7 @@ Board: 2 · Spike y motor de audio
 Why: the application replaces OBS. Recording, pausing, stopping and recovering happen in one
 native app with no Python, no WSL and no FFmpeg anywhere behind it.
 Board: 3 · Grabador WinUI
-- [ ] ISC-79: Opening the application after it was killed mid-recording ends in a meeting somebody can play.
+- [x] ISC-79: Opening the application after it was killed mid-recording ends in a meeting somebody can play.
 - [x] ISC-80: A source that is hearing nothing is shown as silent while the meeting is still running.
 - [x] ISC-81: A recording that was paused is one meeting as long as the clock says, carrying the paused stretch as the silence it was.
 - [x] ISC-82: A meeting says what stage it is at and what the application would do to it next.
@@ -199,20 +199,20 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-157.1: What happens to a meeting when its recording ends is what the person settled beforehand, and nothing else.
 - [ ] ISC-158: A meeting is recorded from end to end with nothing typed at a command line.
 - [x] ISC-158.1: Which microphone a meeting records, and whether channel 0 follows one program or everything the machine plays, are chosen before it starts.
-- [ ] ISC-158.2: A meeting being recorded is paused, resumed and stopped without leaving the application.
+- [x] ISC-158.2: A meeting being recorded is paused, resumed and stopped without leaving the application.
 - [x] ISC-158.3: A meeting recorded from the application arrives in the corpus as the same thing a meeting recorded at a prompt does.
 - [x] ISC-158.4: What a meeting is expected to be spoken in is said for that meeting, and is never taken from the language the application is being read in.
 - [x] ISC-158.5: Anti: a recording cannot be started before the microphone, what channel 0 follows and what will be spoken have each been said.
 - [ ] ISC-158.6: A microphone connected while the application is open can be recorded with, without closing it.
-- [ ] ISC-158.7: The stretch between stop and the meeting being saved is a state of its own, and what saving it is doing is on screen for as long as it lasts.
+- [x] ISC-158.7: The stretch between stop and the meeting being saved is a state of its own, and what saving it is doing is on screen for as long as it lasts.
 - [ ] ISC-158.8: [DROPPED 2026-09-01: written and marked closed in the same pass, so it never stood as a bet the work had to clear.]
-- [ ] ISC-158.9: How long the meeting has been running is on screen for as long as it is being recorded.
-- [ ] ISC-158.10: Anti: one meeting is never given two lengths — nothing says how long it was until the length it turned out to be is known.
+- [x] ISC-158.9: How long the meeting has been running is on screen for as long as it is being recorded.
+- [x] ISC-158.10: Anti: one meeting is never given two lengths — nothing says how long it was until the length it turned out to be is known.
 - [ ] ISC-165: A meeting's name is the person's to set, at any time after it was recorded.
 - [x] ISC-165.1: Anti: a meeting nobody has named never reads under a name the application invented for it.
 - [ ] ISC-166: Who is using the application is asked once and is what the microphone's own voice resolves to from then on.
 - [ ] ISC-167: Anti: playing back what a meeting recorded never requires a transcription to have been paid for.
-- [ ] ISC-168: A meeting whose transcription arrived has its readable files without anybody asking for them.
+- [x] ISC-168: A meeting whose transcription arrived has its readable files without anybody asking for them.
 - [x] ISC-170: The meetings already recorded are on the screen the application opens on, with nothing to press and no second window to reach them.
 - [ ] ISC-170.1: A meeting whose stage changed while the application was open reads its new stage without the application being started again.
 - [x] ISC-171: The list of meetings takes the room the recorder half was using and gives it back, by one control that is in the same place either way.
@@ -557,6 +557,23 @@ Board: 7 · Distribución y backup
   Channel 0 opens no playback stream and names no endpoint either way it is obtained, so what
   another application does with the speakers cannot cost a meeting a stretch of itself.
 
+- **conjecture** — Killing the application while a save runs is the probe for the claim that no
+  mark left behind holds a meeting out of reach: the process dies with whatever says the save is
+  under way, and the next start either offers that meeting or does not.
+- **refuted-by** — The walk offered it and Keep filed a meeting of `0:06:00`, and nothing had been
+  held. What says a save is running is an id the window hands the list and clears in a `finally`;
+  a crash takes it with the process, so there was never a mark for a next start to fail to lift.
+  The standing the run offered as its discriminator is reached only from a block a read refused,
+  and a pour reads blocks rather than writing them, so that branch was not live either.
+- **learned** — A probe that kills the process and finds the good outcome says nothing about a
+  claim whose whole bet is that the bad outcome cannot happen, while the mechanism that would
+  produce it does not exist. Both branches answer the same and the run cannot tell them apart.
+  What it did measure is worth keeping: Keep works after a save was interrupted, the meeting comes
+  back on the next start, and its audio is whole up to the kill.
+- **criterion-now** — A claim about a mark being lifted closes only against a build that writes
+  one, on a run where the crash strands a real mark and the next start clears it. Until then the
+  claim stays open however the walk comes out, and card #86, which owns the mark, owns both halves.
+
 ## Verification
 - ISC-163 — `DeviceEnquiryTests` and `.Both_questions_this_application_asks_about_devices_go_through_the_deadline` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-20. Red 2026-08-20 with the question run on the caller's thread instead: the six-test run was killed at 120 s with one of them still going at 1 m 57 s, where bounded they take 21 s. Red again with the memory ignored, where `AudioDevices.Microphones()` enumerated this machine's real endpoints and answered. That a third question added beside the two would be inside the ask, and why `AudioDevices.Open` and `AudioDevices.EngineFormat` are not, is read off `AudioDevices`
 - ISC-162 — `DeviceEnquiryTests.A_question_that_has_not_come_back_is_not_put_to_the_machine_again` and `.Two_lookers_that_arrive_together_pay_the_deadline_once_each_and_no_more` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-20. Red 2026-08-20 with the memory ignored: 4 of the 7 failed and the second look reached the machine and waited five seconds of its own. Narrowed on 2026-08-20 from every question about this machine's devices to the one asked; `git log -- ISA.md` holds what it used to say, and ISC-164 is the half that says why. What no probe reaches is two callers of one question at once, because the product has none
@@ -691,5 +708,11 @@ Board: 7 · Distribución y backup
 - ISC-170 — the UI probe on the packaged build 2026-09-01, the application in English: `see` as the first instruction after it was started and before anything was pressed. One window, and its tree carries both halves — the microphone and source pickers, what will be spoken and record above, and under them the meetings header, the count and a recorded meeting's row with the press its stage offers. A list arriving in a window of its own would have stopped that walk rather than passed it, for the reason `docs/ui-probe.md` gives under `Which window is the screen`
 - ISC-171 — the UI probe on the packaged build 2026-09-01, the application in English: `see docked press OpennessButton wait OpennessButton see whole press OpennessButton wait OpennessButton see docked-again`. Raised, the recorder half is out of the tree rather than scrolled off it — the pickers, record, pause, carry on and stop gone — while the corpus line, the report, the status line and the packaging button stay, for the reason `MainWindow.xaml` gives, which is why the claim is the recorder's room and not the window. The control that raised it is the same element in the same place, reading `Bring the list back down` where it read `Open the whole list`, and the third tree is the first line for line apart from when it was read
 - ISC-158.3 — `SavingTheMeetingTests.What_is_filed_is_the_same_whether_or_not_anybody_is_watching` (`tests/MeetingTranscriber.Recording.Tests`) and `SavingCardTests.The_application_and_the_prompt_stop_a_meeting_through_the_same_call` (`tests/MeetingTranscriber.App.Tests`) green 2026-09-01: two meetings out of identical spools finished at the same instant, one save watched and one not, equal on the audio's hash and size, the length, the run's end and every stored fact but their ids — and both entry points stopping through the recording's own call, with neither filing any part of a meeting itself. Red 2026-09-01 twice: with the window's `recording.Stop(` replaced, and with `MeetingRecordings.Finish` written into its stop handler. What no probe reaches is a window really recording one, which needs two devices and a meeting somebody sat through
+- ISC-158.2 — the UI probe's script host on the packaged build 2026-09-02, a real microphone and this machine's loopback into the real corpus: `choose MicrophonePicker fifine choose SourcePicker "Everything this machine plays" choose SpokenPicker Espa`, then `press RecordButton sleep 25 see a1-recording sleep 45 see a2-recording press PauseButton sleep 25 see a3-paused` and `press ResumeButton sleep 45 see a4-resumed sleep 60 see a5-recording press StopButton`. One window and no prompt; `0:03:21` in the corpus after. Pause live and Carry on `disabled` while recording, swapped while paused, Stop live on all four. The holds record a meeting rather than wait on a press. No run reaches a device changing under a pause
+- ISC-158.9 — the same walk. `TheClock` is absent before Record and reads `0:00:24`, `0:01:09`, `0:01:35`, `0:02:20`, `0:03:20` on the five trees across the meeting, the third while paused, against 25, 70, 96, 141 and 201 seconds of wall clock after the press; gone from the first tree after Stop and from every tree of the save. Five instants were observed. That it is there between them is read off `ShowTheClock` and `RecordingClock`, not sampled, and no run reaches a clock stepped back mid-meeting
+- ISC-158.10 — the same walk and ISC-158.7's. A meeting recording and one saving show a size on the list and never a length — `2026-09-02 02:13 · 265.5 MB` — and the saving card carries none; the first tree after reads `2026-09-02 02:13 · 0:06:00`, the figure the report gives. ISC-79's run is sharper: a crashed one read `0:00:50 · 37.0 MB` and became a meeting of `0:00:50`. The other two are `CommandLineTests.Status_says_what_the_corpus_holds_and_never_how_long_a_meeting_was` (`tests/MeetingTranscriber.Cli.Tests`) and `TranscriptRendererTests.The_rendered_files_never_say_how_long_the_meeting_was` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-02 over one meeting with a length and one without, red with a length added to each. `recovery` does say one off the blocks before a meeting row has it, which is the preview it exists for. Unreached: a save in flight, which `recovery` cannot tell from a crash — card #86
+- ISC-158.7 — the UI probe on the packaged build 2026-09-02, a six-minute meeting, 265 MB of spool: `press StopButton see e1 see e2 see e3 sleep 1 see e4 sleep 1 see e5 sleep 2 see e6 sleep 2 see e7 sleep 3 see e8 sleep 5 see e9 sleep 10 see e10`. The recorder card is out of the tree and `Saving the meeting` in it on the first five, 0.1 to 2.5 seconds after the press returned; the sixth, at 4.6 seconds, carries `recorded: 0:06:00`. Unreached: `Letting both sources go` was done on the first tree, so the card was never seen to change; the save ended somewhere in the 2.1 seconds nothing sampled; and it never took the minutes a long meeting does
+- ISC-79 — the UI probe on the packaged build 2026-09-02: `choose MicrophonePicker fifine`, then `press RecordButton sleep 50 see b1-recording kill`. Channel 1 read `-96.6 dBFS` there, a level and not the silent mark ISC-80 shows, so the microphone was open. The next start offers the recording at the top of the list — `The application closed in the middle of this recording. The audio is whole up to there.`, `0:00:50 · 37.0 MB`, Discard and Keep — and `press Keep` files a meeting of `0:00:50`. Its `audio.wav` is 16 kHz stereo, 803262 frames, 50.204 s, channel 0 at RMS 3210 of 32767. Nobody heard it: `SoundPlayer.PlaySync` returning after 50.4 s is Windows accepting the file
+- ISC-168 — a real paid response filed by `import-response` and killed the moment its `manifest.json` landed, which is what `MeetingIntake` says an unfinished render leaves: the folder held that and `deepgram.json`, nothing else. Started with `sleep 20 see d1-after-launch`, nothing pressed, the folder then held `transcript.md` and `utterances.jsonl`, `status` counting 637 more turns. Run again over a second response on a build carrying `main`'s `MeetingRenderer`: 136 more turns, two more derived rows. What was probed is the launch, which today is the only path — nothing brings a response back into a running application, and that is ISC-170.1's. The `sleep 20` is a bet and not a wait: nothing announces a finished render
 - ISC-176 — `IsaStructureTests` (`tests/MeetingTranscriber.Isa.Tests`) green 2026-09-02 over checks 15 and 16, on a branch against the fork point. Red 2026-09-02 twice: with `ISC-174` reworded and ticked in the tree, `.No_claim_is_closed_in_words_the_file_did_not_already_carry` named it and three of twenty-three failed; and with `ISA_TRUNK_BEFORE` set to a commit the trunk stood at in August, `.No_claim_is_written_into_the_file_already_closed` named what had closed since, where the push route had said nothing at all. `.What_a_change_is_judged_against_is_said_and_never_guessed` refuses a name there. Not closed here: words landing ahead of the branch that ticks them can still have been worded to fit — `.claude/agents/auditor.md` asks that.
 - ISC-175 — `CorpusRebuildTests.A_meeting_whose_second_derived_file_cannot_be_written_keeps_both_of_the_ones_it_had` and `MeetingRendererTests.A_render_that_cannot_write_the_second_file_leaves_both_of_them_as_they_were` (`tests/MeetingTranscriber.Processing.Tests`), `DurableWriteTests.A_set_whose_second_file_cannot_be_written_leaves_the_first_one_alone` and `.A_set_whose_second_destination_cannot_be_taken_leaves_the_first_one_where_it_was` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-09-02, each red that day against a render that put one file in place before it began the next. Two things none of them reaches: a machine dying inside the run of renames, which no filesystem makes one act, and the stored turns, which are replaced before either file and can be a generation ahead of both

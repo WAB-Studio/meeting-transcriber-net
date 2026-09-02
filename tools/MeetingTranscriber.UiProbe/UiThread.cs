@@ -32,6 +32,14 @@ namespace MeetingTranscriber.UiProbe;
 /// why <see cref="Patience"/> sleeping between polls rather than pumping is not the failure this
 /// paragraph is about — nothing is queued behind those sleeps.
 /// </para>
+/// <para>
+/// That was argued about a hundred milliseconds at a time, and a script's <c>sleep</c> may ask for
+/// twenty minutes. It is slept in slices for another reason — a crashed application is worth
+/// hearing about while it is still news — and the slices bound this as well, so the longest this
+/// thread goes without returning is one of them rather than the whole hold. What is not claimed is
+/// that anything is pumped between them: a broadcast arriving from another process waits on a
+/// slice exactly as it already waited on a poll, and no run has met one.
+/// </para>
 /// </remarks>
 internal sealed class UiThread : IDisposable
 {

@@ -119,6 +119,33 @@ public class TranscriptRendererTests
     }
 
     /// <summary>
+    /// ISC-158.10 at the surface these two files are. Neither says how long the meeting was, and
+    /// this is what keeps that true: the frontmatter is the only place either file states a fact
+    /// about the meeting rather than about a turn, so its keys are asserted whole. A duration
+    /// added there would be a second answer to how long a meeting is, told before the corpus is
+    /// asked and never corrected when it is. The jsonl needs no assertion of its own — it has no
+    /// meeting-level object at all, which the one-object-per-turn test above holds.
+    /// </summary>
+    [Fact]
+    public void The_rendered_files_never_say_how_long_the_meeting_was()
+    {
+        FrontmatterKeys(Render(Header()).Markdown)
+            .ShouldBe(["meeting", "started_at", "language", "turns"], ignoreOrder: true);
+
+        FrontmatterKeys(Render(Header() with { Title = "orchard", Context = "weekly" }).Markdown)
+            .ShouldBe(
+                ["meeting", "started_at", "language", "turns", "title", "context"],
+                ignoreOrder: true);
+    }
+
+    private static IReadOnlyList<string> FrontmatterKeys(string markdown) =>
+        markdown
+            .Split("---\n", StringSplitOptions.RemoveEmptyEntries)[0]
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line[..line.IndexOf(':', StringComparison.Ordinal)])
+            .ToList();
+
+    /// <summary>
     /// The property the whole task rests on: same turns, same human layer, same bytes. Without it
     /// a rerender is a write nobody can tell from a change.
     /// </summary>

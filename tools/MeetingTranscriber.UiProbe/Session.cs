@@ -122,20 +122,59 @@ internal sealed class Session : IDisposable
     internal bool HasGone => _app.HasGone;
 
     /// <summary>
-    /// Both artifacts come off one window in one moment, and neither of them disturbs it: the
-    /// picture is printed out of the window rather than copied off the desktop, so nothing is
-    /// raised, focused or moved by looking.
+    /// Both artifacts come off one window, and neither of them disturbs it: the picture is printed
+    /// out of the window rather than copied off the desktop, so nothing is raised, focused or moved
+    /// by looking.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The tree is read first, and the order is the whole of why: the two halves fail
+    /// independently — a window can print nothing but its frame while its tree reads whole, which
+    /// is what <see cref="ScreenWouldNotBePhotographed"/> was measured against — and taking the
+    /// picture first threw the readable half away on the way out.
+    /// </para>
+    /// <para>
+    /// So it is one window and not one moment, and on a screen that changes by the second they can
+    /// be a long way apart: the picture is retried inside <see cref="WindowPicture"/>'s draw
+    /// budget, which is ten seconds, and this change widened what that budget absorbs. The tree
+    /// carries its own instant in its header and the picture carries none, so what a pair is
+    /// evidence about is the tree's moment, with the picture at or after it. That is the right way
+    /// round for the walks these files come from, which read the tree and cite it — a clock on the
+    /// picture running ahead of the tree beside it is the gap and not a fault on the screen.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ScreenWouldNotBePhotographed">
+    /// The window would not be photographed. The tree is on it.
+    /// </exception>
     internal Screen See()
     {
         var window = _app.Windows.Active();
-        var picture = WindowPicture.Of(window);
+        var tree = UiTree.Render(window);
 
-        return new Screen(UiTree.Render(window), picture.Png, picture.Size);
+        try
+        {
+            var picture = WindowPicture.Of(window);
+
+            return new Screen(tree, picture.Png, picture.Size);
+        }
+        catch (ProbeFailed noPicture)
+        {
+            throw new ScreenWouldNotBePhotographed(tree, noPicture.Message);
+        }
     }
 
     /// <summary>The tree alone, which is what a screen that has just changed is asked for.</summary>
     internal string Tree() => UiTree.Render(_app.Windows.Active());
+
+    /// <summary>
+    /// Ends the application the way a crash does, with nothing asked and nothing let finish.
+    /// </summary>
+    /// <remarks>
+    /// The only verb here that answers with nothing about a screen. Why it is a verb at all, and
+    /// why the death is waited for, is <see cref="LaunchedApp.Kill"/>. Disposing this afterwards
+    /// is still correct and still what the host does: it finds an application already gone.
+    /// </remarks>
+    internal void Kill() => _app.Kill();
 
     /// <summary>
     /// Pressing is <c>Invoke</c> and nothing else. A control that offers something else instead —

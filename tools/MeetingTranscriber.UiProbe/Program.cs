@@ -1,8 +1,8 @@
 namespace MeetingTranscriber.UiProbe;
 
 /// <summary>
-/// Starts this application, does what it is told to its windows, says what they said, and closes
-/// it.
+/// Starts this application, does what it is told to its windows, says what they said, and ends it
+/// — by closing it, or by killing it when what is being probed is what a crash leaves.
 /// </summary>
 /// <remarks>
 /// <para>
