@@ -45,10 +45,10 @@ jobs:
       # The floor is the set of paths a review is mandatory over. It is derived from CLAUDE.md's
       # contract and stated in one file, because it used to be stated in two that drifted apart and
       # a change to an invariant only one of them named merged unaudited. Four ways that can happen
-      # again, and this step is all four: the contract grows and the floor does not; an entry is
-      # deleted; a named file moves; a reader restates the list or drops the reference. None fails
-      # a build by itself — they fail months later, as a PR nobody looked at, which is why the
-      # counts are asserted here rather than trusted to whoever next edits the contract.
+      # again, and this step is all four: the contract's words change and the floor does not; an
+      # entry is deleted; a named file moves; a reader restates the list or drops the reference.
+      # None fails a build by itself — they fail months later, as a PR nobody looked at, which is
+      # why they are asserted here rather than trusted to whoever next edits the contract.
       #
       # What it deliberately does not do is prove an entry still carries its invariant. Extract a
       # type into a new file and the old path goes on resolving. That is a tripwire's limit, it is
@@ -80,24 +80,51 @@ jobs:
             }
           }
 
-          # The counts the floor declares about itself and about its source. This is the check with
-          # history behind it: the contract gaining a bullet while the floor gains nothing is
-          # exactly how a file carrying an invariant ended up outside the floor.
+          # What the floor declares about itself and about its source. The contract is fingerprinted
+          # rather than counted, because counting is blind to the way its invariants have actually
+          # arrived: seven bullets since 2026-08-06, and both gained since — `Speakers.Resolve` into
+          # bullet 1, the human layer into bullet 5 — grew inside one, leaving a count untouched.
+          # Those are three of the entries on the floor today. Words, not layout: rewrapping a
+          # paragraph is free, changing one word is not, and re-declaring the value is the act of
+          # having derived the floor from the contract again.
+          #
+          # ReadAllText and not Get-Content, per docs/shell.md: Get-Content decodes as the ANSI
+          # codepage under Windows PowerShell and as UTF-8 under pwsh, and this section carries em
+          # dashes and a §, so the two shells hash the same file to different values. A gate whose
+          # answer depends on which shell recomputed it is the silent corruption it exists to stop.
           $declared = @{}
           foreach ($line in $lines | Select-Object -Skip 1) {
             if ($line -eq '---') { break }
-            if ($line -match '^([\w-]+):\s*(\d+)$') { $declared[$Matches[1]] = [int]$Matches[2] }
+            if ($line -match '^([\w-]+):\s*(\S+)$') { $declared[$Matches[1]] = $Matches[2] }
           }
+
           $inContract = $false
-          $bullets = @(foreach ($line in Get-Content CLAUDE.md) {
+          $claude = [IO.File]::ReadAllText((Resolve-Path 'CLAUDE.md').ProviderPath) -split '\r?\n'
+          $contract = @(foreach ($line in $claude) {
             if ($line -match '^## ') { $inContract = $line.Trim() -eq '## The contract'; continue }
-            if ($inContract -and $line -match '^- ') { $line }
+            if ($inContract) { $line }
           })
-          if ($declared['contract-bullets'] -ne $bullets.Count) {
-            Write-Host "::error file=$floor::CLAUDE.md's contract states $($bullets.Count) invariants, this file declares contract-bullets: $($declared['contract-bullets']). Put every invariant on the floor or say why it is not there, then update the count."
+          if ($contract.Count -eq 0) {
+            Write-Host "::error file=CLAUDE.md::no '## The contract' section. That heading is where the floor is derived from, so renaming it detaches this gate from its source."
+            exit 1
+          }
+          $words = (($contract -join ' ') -replace '\s+', ' ').Trim()
+          $sha256 = [Security.Cryptography.SHA256]::Create()
+          $actual = (([BitConverter]::ToString(
+            $sha256.ComputeHash([Text.Encoding]::UTF8.GetBytes($words))) -replace '-', '').ToLower()).Substring(0, 12)
+          # A deleted key would fail the comparisons below anyway, on an empty value. Named here so
+          # the error says which key is gone rather than printing a blank where it should be.
+          foreach ($key in 'contract-sha', 'entries') {
+            if (-not $declared.ContainsKey($key)) {
+              Write-Host "::error file=$floor::no $key in the frontmatter. That value is what this file asserts about itself; a key that is gone asserts nothing."
+              $failed = $true
+            }
+          }
+          if ($declared['contract-sha'] -ne $actual) {
+            Write-Host "::error file=$floor::CLAUDE.md's contract no longer reads as it did when this floor was derived from it: contract-sha says $($declared['contract-sha']), the contract now hashes to $actual. Read what changed. Put any invariant it added on the floor, or say under 'Deliberately not here' why it is not there, then declare $actual."
             $failed = $true
           }
-          if ($declared['entries'] -ne $entries.Count) {
+          if ($declared['entries'] -ne "$($entries.Count)") {
             Write-Host "::error file=$floor::'## The floor' has $($entries.Count) entries, the frontmatter declares entries: $($declared['entries']). An entry leaving the floor is a path that stops being audited, so it is declared and not merely deleted."
             $failed = $true
           }
@@ -153,7 +180,7 @@ jobs:
           }
 
           if ($failed) { exit 1 }
-          Write-Host "Audit floor: $($entries.Count) entries over $($bullets.Count) contract bullets, $($paths.Count) paths resolve, stated once, $($readers.Count) readers point at it."
+          Write-Host "Audit floor: $($entries.Count) entries, contract at $actual, $($paths.Count) paths resolve, stated once, $($readers.Count) readers point at it."
           exit 0
 
       - name: Restore
