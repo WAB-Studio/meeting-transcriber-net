@@ -700,9 +700,12 @@ public sealed partial class ReadingAMeeting : UserControl
     /// </summary>
     /// <remarks>
     /// Whether there is a player at all is <see cref="MeetingScreen.MayBePlayedBack"/>'s and turns
-    /// on the stage alone — no transcription, no job, no price. What can still go wrong after that
-    /// is the file or the machine, and both of those are said where the player would have been
-    /// rather than left as a play button that does nothing.
+    /// on the file alone — not the stage, and so no transcription, no job, no price. Why the stage
+    /// is the wrong thing to read that off is argued where the property is, and is deliberately not
+    /// restated here: this remark stated it backwards once, and re-deriving an argument another
+    /// type owns is how it got the chance to. What can still go wrong after that is the file or the
+    /// machine, and both of those are said where the player would have been rather than left as a
+    /// play button that does nothing.
     /// </remarks>
     private void OpenTheRecording(MeetingAsRead read)
     {

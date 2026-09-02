@@ -91,6 +91,24 @@ not get a second place that knows what WASAPI is. `Presentation` was never the a
 either half — it holds every word a person reads and nothing else, it is plain `net10.0`, and a
 WASAPI call in it would not compile.
 
+**Where a screen's rules go**, since there are now several sets of them and the two paragraphs
+above only say where two went. The record a window reads its controls off never lives beside the
+window, for the reason those paragraphs give; past that it goes in the project its **subject**
+already lives in — the thing the screen is asking about, which is not the same as the types the
+record is made of. Everything the recorder screen decides is about a recording, so `RecorderScreen`,
+`RecordingMeters`, `WaitingRows` and the states behind them are in `Recording`. What the screen a
+meeting is read from decides is about a meeting, so `MeetingScreen` is in `Domain/Meetings`. And
+`WhoIsUsingThisRow` is about the person the corpus flags as me, so it is in `Domain/Meetings` too,
+beside the `Person` its answer is written onto — not in `Presentation`, where it first landed for
+being made of four primitives and needing nothing.
+
+What a record is made of is the weakest reason available and is the one to distrust. It is a design
+choice rather than a fact about the screen, so it moves a screen's rules between projects on a
+changed parameter type, and it says nothing at all when every parameter is a primitive — which is
+exactly the case that went wrong. What a screen is about does not move. `Presentation` is never the
+answer either, and not for what it references: it is the catalogue and the rule that picks a
+language, so nothing in it is ever a subject a screen asks about. It is what a screen says.
+
 `Processing` references `Infrastructure`, and only that way round: rendering reads the paid
 response out of the corpus and puts the derivatives back, so it sits above storage. The opposite
 edge would make SQLite depend on how a Deepgram response is parsed.
