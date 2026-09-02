@@ -77,8 +77,9 @@ rewritten or closed.
 ## 4 · Reading before asking
 
 A question you could have answered by reading is a question you are charging them for. The card and
-its comments, the code it is about, `arquitectura.md`, `ISA.md`, and for anything with a screen,
-`docs/design/` and `docs/design.md`.
+its comments, the code it is about, `arquitectura.md`, `ISA.md`, and for anything with a screen, its
+artboard in `docs/design/` and what `docs/design.md` already says about it — §6 names which part of
+that page to read, and what happens when the sitting disagrees with it.
 
 Then one question at a time, with the options you actually see and what each costs.
 
@@ -123,6 +124,34 @@ Written short and readable:
 >   transcribing it is a separate press from the meeting itself.
 
 One line longer, and the only one of the two somebody can act on without going to find the card.
+
+**The design page, before the bullet.** `docs/design.md` is the authority on every screen, and a
+card contradicting it hands somebody work that gets rejected for disagreeing with the page it was
+built against. So before a `Decisions` bullet about anything a person sees is written, read what the
+page already says about it. Three places, and which one depends on what was settled:
+
+- **The screen** — `## The eighteen screens` names all eighteen, so finding it is one look. Read the
+  whole row it sits in and not only its bold entry: what the meetings list carries, what a recording
+  screen may name, are written between the entries. And find the screen **the decision is about**,
+  which is often not the one the card's `**Screen:**` line names — a meeting's name edited from a
+  list is `Main`'s entry whatever screen the card is for, and a card saying no artboard draws its
+  moment can still have an entry on that page.
+- **A word somebody presses** — `### One verb per act`, a closed table of thirteen. A decision saying
+  one of those acts in its own words is the thing that table exists to stop.
+- **A button, a notice, a dialogue** — `### Two places, and they mean the same thing everywhere`
+  fixes where an answer sits, and `## Notices` is a closed list of two.
+
+**No sitting ends with the card and the page disagreeing.** Two ways out and no third: either the
+page is right and the answer changes to match it, or the sitting decided the page is wrong — and
+then **the page changes in the same sitting**, the sentence replaced rather than added to, committed
+to `main` the way `ISA.md` is. Where an artboard draws what changed, the artboard is what gets
+corrected, and that is a card. Writing the decision and leaving the page saying the opposite is not
+a lesser version of the defect, it is the defect: the card is what a worker is handed and the page
+is what wins.
+
+Silence is not disagreement. Where the page says nothing about what was settled, the card carries it
+and the page stays as it is — a decision written in two places is one somebody reads the stale copy
+of, which is what this whole section is for.
 
 **The claims.** A decision saying what has to be true for somebody using the app belongs in the
 ISA — which is almost never a new number. **Settling N forks does not open N claims.** Most of what
