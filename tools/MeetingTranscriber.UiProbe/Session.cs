@@ -122,15 +122,26 @@ internal sealed class Session : IDisposable
     internal bool HasGone => _app.HasGone;
 
     /// <summary>
-    /// Both artifacts come off one window in one moment, and neither of them disturbs it: the
-    /// picture is printed out of the window rather than copied off the desktop, so nothing is
-    /// raised, focused or moved by looking.
+    /// Both artifacts come off one window, and neither of them disturbs it: the picture is printed
+    /// out of the window rather than copied off the desktop, so nothing is raised, focused or moved
+    /// by looking.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The tree is read first, and the order is the whole of why: the two halves fail
     /// independently — a window can print nothing but its frame while its tree reads whole, which
     /// is what <see cref="ScreenWouldNotBePhotographed"/> was measured against — and taking the
     /// picture first threw the readable half away on the way out.
+    /// </para>
+    /// <para>
+    /// So it is one window and not one moment, and on a screen that changes by the second they can
+    /// be a long way apart: the picture is retried inside <see cref="WindowPicture"/>'s draw
+    /// budget, which is ten seconds, and this change widened what that budget absorbs. The tree
+    /// carries its own instant in its header and the picture carries none, so what a pair is
+    /// evidence about is the tree's moment, with the picture at or after it. That is the right way
+    /// round for the walks these files come from, which read the tree and cite it — a clock on the
+    /// picture running ahead of the tree beside it is the gap and not a fault on the screen.
+    /// </para>
     /// </remarks>
     /// <exception cref="ScreenWouldNotBePhotographed">
     /// The window would not be photographed. The tree is on it.

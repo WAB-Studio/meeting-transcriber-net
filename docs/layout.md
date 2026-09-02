@@ -14,8 +14,9 @@ src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
 src/MeetingTranscriber.Recording/         a meeting recorded into a corpus: where the audio engine and the corpus meet
 tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
 tools/MeetingTranscriber.CorpusImport/    reads a Python corpus in, then gets deleted
-tools/MeetingTranscriber.UiProbe/         starts the application, reads its window and presses what is on it —
-                                          as a script, and as an MCP server an agent drives a turn at a time
+tools/MeetingTranscriber.UiProbe/         starts the application, reads its window, presses what is on it and
+                                          kills it — as a script, and as an MCP server an agent drives a turn
+                                          at a time. It drives the real corpus and records real meetings into it
 tests/MeetingTranscriber.Testing/         what a test opens: corpus, SQL, fixture inventory
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```

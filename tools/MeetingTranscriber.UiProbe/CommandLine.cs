@@ -21,13 +21,13 @@ namespace MeetingTranscriber.UiProbe;
 /// <para>
 /// Freshness is asked once, at <see cref="Session.Open"/>, and by no verb after it — where
 /// <see cref="McpHost"/> asks <see cref="Session.MustStillBeUsable"/> every turn. That is the
-/// difference between the two hosts and not an omission in this one. A script is a fixed list
-/// handed to one process and nothing in it edits code, so <see cref="Freshness"/>'s own rule
-/// applies whole: what a window can contain is settled when the process starts, and that is when
-/// the question has an answer. Re-asking would catch only somebody editing a source file while the
-/// script runs, and the refusal would end a walk that had already spent six minutes of real
-/// recording over an edit that changed nothing the window is showing. An agent over the server is
-/// itself the one editing, which is why that host pays for it every turn.
+/// difference between the two hosts and not an omission in this one. <see cref="Freshness"/> reads
+/// the build stamp once and re-walks the sources on every call, so the only thing re-asking can
+/// catch is a source file edited while the run is going — and a script is a fixed list handed to
+/// one process, which edits nothing. The refusal would end a walk that had already spent six
+/// minutes of real recording over an edit that changed nothing the window is showing, since what a
+/// window can contain was settled when the process started. An agent over the server is itself the
+/// one editing, which is why that host pays for it every turn.
 /// </para>
 /// <para>
 /// What a caller gives up: a long script running through somebody else's edit says nothing about
@@ -76,9 +76,15 @@ internal static class CommandLine
         sleep is for the one screen that is a function of elapsed real time — a meeting running —
         because wait is capped at fifteen seconds and returns on the first frame that matches.
         kill is for what a start finds after a crash: nothing works after it, so it is a script's
-        last instruction and the next run is what reads what it left behind.
+        last instruction and the next run is what reads what it left behind. Give that run an --out
+        of its own — a folder is emptied of trees and pictures when a run starts, so the second half
+        of a two-run walk would take the first half's with it.
 
-          --out probe press RecordButton sleep 60 see running kill
+          --out crash choose MicrophonePicker fifine choose SourcePicker "Everything this machine
+            plays" choose SpokenPicker English press RecordButton sleep 60 see running kill
+
+        Record is disabled until the microphone, what channel 0 follows and what will be spoken
+        have each been chosen, so a script that presses it says all three first.
 
         --mcp serves the same verbs to an agent over the Model Context Protocol instead, holding
         one application open across turns; there a turn is how time passes, so it has no sleep.
@@ -232,7 +238,7 @@ internal static class CommandLine
     {
         var spent = Stopwatch.StartNew();
 
-        while (spent.Elapsed < wanted)
+        while (true)
         {
             if (session.HasGone)
             {
@@ -242,6 +248,15 @@ internal static class CommandLine
             }
 
             var left = wanted - spent.Elapsed;
+            if (left <= TimeSpan.Zero)
+            {
+                // Asked once more after the last slice rather than only between them. Every hold
+                // written so far is a minute or less, which is one or two slices, so the tail was
+                // most of the window — and a hold whose last verb is `kill` has no next verb to
+                // notice for it.
+                return;
+            }
+
             Thread.Sleep(left < ASlice ? left : ASlice);
         }
     }
@@ -250,21 +265,19 @@ internal static class CommandLine
     /// Files both halves of a screen, or the half there was and the reason for the other.
     /// </summary>
     /// <remarks>
-    /// The name is held to being a file name before anything is asked of the window, because the
-    /// failing path writes a file too and a run that photographed a screen and then refused the
-    /// name it was to be filed under would have looked at the screen for nothing.
+    /// The name was held to being a file name by <see cref="Instruction.Named"/>, before anything
+    /// was started — so nothing here re-checks it, and a script that would have failed on one has
+    /// not recorded a meeting first.
     /// </remarks>
     private static void See(Session session, string folder, string name)
     {
-        var called = Named(name);
-
         try
         {
-            Keep(folder, called, session.See());
+            Keep(folder, name, session.See());
         }
         catch (ScreenWouldNotBePhotographed noPicture)
         {
-            var tree = Path.Combine(folder, $"{called}.tree.txt");
+            var tree = Path.Combine(folder, $"{name}.tree.txt");
             File.WriteAllText(tree, noPicture.Tree);
 
             throw new ProbeFailed(
@@ -275,29 +288,15 @@ internal static class CommandLine
 
     private static void Keep(string folder, string name, Screen screen)
     {
-        var called = Named(name);
-
-        var picture = Path.Combine(folder, $"{called}.png");
+        var picture = Path.Combine(folder, $"{name}.png");
         File.WriteAllBytes(picture, screen.Picture);
 
-        var tree = Path.Combine(folder, $"{called}.tree.txt");
+        var tree = Path.Combine(folder, $"{name}.tree.txt");
         File.WriteAllText(tree, screen.Tree);
 
         Console.WriteLine(
             $"    {Path.GetFileName(tree)} and {Path.GetFileName(picture)} ({screen.Size})");
     }
-
-    /// <summary>
-    /// A name off the command line becomes two file names, so it is held to being a file name and
-    /// nothing else — a name with a path in it would otherwise write outside the folder it was
-    /// given.
-    /// </summary>
-    private static string Named(string name) =>
-        name.Length > 0
-        && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0
-        && name is not ("." or "..")
-            ? name
-            : throw new ProbeFailed($"\"{name}\" is not a name a pair of files can be called.");
 
     private static string Next(string[] args, ref int at)
     {

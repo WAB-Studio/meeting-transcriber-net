@@ -184,6 +184,13 @@ internal sealed class LaunchedApp : IDisposable
     /// polite path over it, and let the application finish the very save this was meant to
     /// interrupt. That is a run that reports a crash and recorded a clean shutdown.
     /// </para>
+    /// <para>
+    /// What is waited for is the process Windows handed back and not the tree: <c>WaitForExit</c>
+    /// takes one process, and a descendant is signalled by the kill and never checked. The
+    /// application starts nothing that writes the corpus today, so the sentence a probe draws from
+    /// this holds — but it holds on that and not on the wait, and a child that wrote would need
+    /// waiting for by name.
+    /// </para>
     /// </remarks>
     internal void Kill()
     {

@@ -257,8 +257,11 @@ public static class MeetingRecordings
 
         corpus.SaveChanges();
 
-        // After the meeting is whole, because the card is what the corpus now says about it and
-        // its length is part of that.
+        // Last, after the save above, because this call saves too and everything it would carry
+        // into a second write is already down. Not because of the length: the card carries the
+        // meeting, when it started, the profile, the language and the title, and says nothing about
+        // how long it is — which is what the sentence here used to claim. Nothing about ordering is
+        // a rule for the other three writers, which each hold a transaction open across this call.
         MeetingManifest.Write(corpus, meeting.Id, now);
 
         var queued = WhatStoppingStarts.For(meeting);

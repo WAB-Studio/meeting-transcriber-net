@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace MeetingTranscriber.UiProbe;
 
 /// <summary>
@@ -102,12 +104,19 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
                     $"\"{words[at]}\" wants {takes} word(s) after it and the script ends there.");
             }
 
-            // Both checks are here rather than where the step runs, and for one reason: a script
+            // Every check is here rather than where the step runs, and for one reason: a script
             // with a mistake in it is refused before an application is started, rather than after
-            // minutes of real recording that then have to happen again.
+            // minutes of real recording that then have to happen again. The see name was the one
+            // left behind — it was held to being a file name inside the walk, so `see a/b` at the
+            // end of a six-minute script cost the six minutes to say so.
             if (verb is Verb.Sleep)
             {
                 _ = Seconds(words[at + 1]);
+            }
+
+            if (verb is Verb.See)
+            {
+                _ = Named(words[at + 1]);
             }
 
             if (verb is Verb.Kill && at + 1 < words.Count)
@@ -146,6 +155,18 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
             : throw new ProbeFailed(
                 $"\"{word}\" is not a number of seconds between 0 and "
                 + $"{LongestSleep.TotalSeconds:0} to hold a screen for.");
+
+    /// <summary>
+    /// What a <c>see</c> is called, off the word written after it — the same word twice over, since
+    /// a name becomes a <c>.tree.txt</c> and a <c>.png</c>. So it is held to being a file name and
+    /// nothing else: a name with a path in it would write outside the folder it was given.
+    /// </summary>
+    internal static string Named(string name) =>
+        name.Length > 0
+        && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0
+        && name is not ("." or "..")
+            ? name
+            : throw new ProbeFailed($"\"{name}\" is not a name a pair of files can be called.");
 
     private static Verb VerbIn(string word)
     {

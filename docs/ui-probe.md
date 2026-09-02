@@ -122,7 +122,9 @@ replaced that.** The corpus is one folder for every checkout and the package suf
 divide it: two runs recording at once are two writers on one SQLite file and one spool folder.
 Run them one at a time — and read the list before you start, because a killed run leaves a
 recording at the top of it waiting for Discard or Keep, and the next run's first `see` is a screen
-the last one dirtied.
+the last one dirtied. Nothing enforces any of that: issue #216 is the card that asks for a corpus
+of the probe's own, and it says in as many words that prose is not a guard. Until it lands, this
+paragraph is the guard, and an unattended run is the case it does not cover.
 
 **Nothing tells a meeting a probe made from a meeting somebody recorded**, and the corpus is built
 never to lose either: `docs/corpus.md` files `audio.wav` and the spool's blocks as sources, and
@@ -176,6 +178,10 @@ the middle of. Nothing works after it, so it is a script's last instruction and 
 what reads what it left behind. Everything else wants `close`, which is what lets the application
 finish whatever it was writing — `kill` on a meeting being saved loses that meeting's save, on
 purpose.
+
+**Give that second run an `--out` of its own.** A run empties its folder of trees and pictures
+before it starts anything, so pointing both halves of a two-run walk at one folder loses the first
+half — which is the half holding what the application looked like before it died.
 
 ## Over MCP, a turn at a time
 
