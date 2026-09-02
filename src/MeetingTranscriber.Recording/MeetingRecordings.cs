@@ -176,18 +176,28 @@ public static class MeetingRecordings
     /// to a spool is somebody's, never a side effect of stopping.
     /// </para>
     /// <para>
-    /// <paramref name="told"/> is somebody watching it happen and is never anything else. It is
-    /// the first statement and reads nothing, so what is filed cannot depend on whether anybody is
-    /// watching — which is what makes a meeting stopped on a screen and one stopped at a prompt the
-    /// same meeting. Nothing catches what a report throws: a caller whose watcher runs on this
-    /// thread and fails has stopped the finish, and swallowing that would be this hiding a defect
-    /// in the caller's own screen while the meeting quietly does not get made.
+    /// <paramref name="told"/> is somebody watching it happen and is never anything else. It comes
+    /// before every step of the save and reads nothing, so what is filed cannot depend on whether
+    /// anybody is watching — which is what makes a meeting stopped on a screen and one stopped at a
+    /// prompt the same meeting. What is in front of it is the two refusals that mean the save never
+    /// began. Nothing catches what a report throws: a caller whose watcher runs on this thread and
+    /// fails has stopped the finish, and swallowing that would be this hiding a defect in the
+    /// caller's own screen while the meeting quietly does not get made.
     /// </para>
     /// <para>
     /// It says the sources are behind it, and that is true of both callers rather than only of
     /// stopping: nothing may read a spool that is still being written, so by the time this may run
     /// the devices have been let go — by <see cref="MeetingRecording.Stop"/>, or by the process
     /// that held them dying, which is what recovery finds.
+    /// </para>
+    /// <para>
+    /// It holds the folder for as long as it runs, through <see cref="SavingMark"/>, and that is
+    /// the one thing about a save anything else can see. Between the devices being let go of and
+    /// the meeting's length landing there is nothing else to tell these blocks from a recording
+    /// nobody stopped, and this may take minutes; the mark is what keeps a second reader from
+    /// offering the three answers over them, and what keeps a second finish from starting. It is
+    /// let go however this ends, and a process that never got to let go of it leaves a file nothing
+    /// is holding, which every reader reads as no save at all.
     /// </para>
     /// </remarks>
     /// <param name="corpus">The corpus the meeting is being recorded into.</param>
@@ -202,21 +212,41 @@ public static class MeetingRecordings
     {
         ArgumentNullException.ThrowIfNull(corpus);
 
-        // Before the work and not after it, which is the half that reaches a screen: this is the
-        // step somebody watches for the minutes it takes, and a report that arrived once the
-        // meeting was written down would be an account of what had already happened.
-        told?.Report(SavingWork.WritingTheMeetingDown);
+        // The folder is worked out from the meeting rather than taken from the caller. A meeting id
+        // and a folder passed side by side are two facts that can disagree, and the disagreement is
+        // silent and unrecoverable: one meeting's conversation written down, hashed and filed as
+        // another's, with a card confidently naming the wrong one.
+        var spool = CorpusFiles.SpoolFolderFor(corpus.Root, meetingId);
+
+        // The first thing, before the corpus is even read. It is what says a save is running to
+        // everything else looking at this corpus — a second window, a prompt, the next start — none
+        // of which could otherwise tell these blocks from a recording the machine died in the
+        // middle of, and any of which would then be free to answer for the folder underneath this.
+        // Before the row because the row is a query, and a query against a corpus somebody else is
+        // writing waits out `busy_timeout`: what happens in that wait is the recording sitting
+        // there with its devices already let go of and nothing saying anybody has it.
+        //
+        // It also refuses a second finish over the same meeting, here, before a block is read.
+        //
+        // Claimed only where there is a folder to claim. A caller naming a meeting this corpus has
+        // never heard of has a folder that was never made, and what they are owed then is the
+        // sentence below — which says what is actually wrong — rather than one about a mark that
+        // could not be written. A folder that goes between this line and the next is the one case
+        // `SavingMark.Take` answers for itself.
+        spool.Refresh();
+        using var saving = spool.Exists ? SavingMark.Take(spool) : null;
 
         var meeting = corpus.Meetings.FirstOrDefault(row => row.Id == meetingId)
             ?? throw new RecordingException(
                 $"There is no meeting {meetingId} in this corpus, so there is nothing for a "
                 + "recording of it to be finished into.");
 
-        // The folder is worked out from the meeting rather than taken from the caller. A meeting id
-        // and a folder passed side by side are two facts that can disagree, and the disagreement is
-        // silent and unrecoverable: one meeting's conversation written down, hashed and filed as
-        // another's, with a card confidently naming the wrong one.
-        var spool = CorpusFiles.SpoolFolderFor(corpus.Root, meeting.Id);
+        // After the claim and before the work. The report is what a screen shows for the minutes
+        // this takes, so it comes before any of that — but a save refused for a folder somebody
+        // else has, or for a meeting this corpus does not hold, never started, and announcing it
+        // first would put a step on screen that was never under way.
+        told?.Report(SavingWork.WritingTheMeetingDown);
+
         var card = SpoolManifest.Find(spool);
 
         if (card is not null && card.MeetingId != meeting.Id)

@@ -54,10 +54,12 @@ public sealed record ExportedSource(AudioChannel Channel, FileInfo Wav, int Bloc
 /// takes both sources and this takes whatever is there.
 /// </para>
 /// <para>
-/// A recording that is still being written is one of these too, and it is marked rather than
-/// hidden — a meeting somebody is in the middle of is the last thing to leave off a list. What it
-/// is not is something to decide about: all three outcomes refuse it, because two of them read a
-/// file that is still growing and the third would throw away a meeting that is still happening.
+/// A recording that is still being written is one of these too, and so is one whose save is
+/// running; both are marked rather than hidden — a meeting somebody is in the middle of, or has
+/// just stopped, is the last thing to leave off a list. What neither is is something to decide
+/// about: all three outcomes refuse them, because two of them read a file that is still growing or
+/// already being read, and the third would throw away a meeting that is still happening or the
+/// blocks a finish is halfway through.
 /// <see cref="EnsureThereIsSomethingToDecide"/> is where all three refuse it and the only place
 /// that says so, so that a caller reaches the answer about the meeting rather than the answer
 /// about a block file that would not open. That covers the three outcomes and nothing wider:
@@ -74,6 +76,12 @@ public sealed record ExportedSource(AudioChannel Channel, FileInfo Wav, int Bloc
 /// others being offered would be the crash winning twice.
 /// </param>
 /// <param name="Running">Whether a capture still holds these files, which on this machine means a meeting in progress.</param>
+/// <param name="BeingSaved">
+/// Whether a save of this recording is running right now — a finish somewhere holding the mark in
+/// the folder. It is the one thing about a spool the files themselves cannot show: a finish reads
+/// the blocks the way any reader does, so nothing here is held the way a capture holds it, and the
+/// meeting has no length until the save's last write. See <see cref="SavingMark"/>.
+/// </param>
 /// <param name="Sources">What is on disk for each channel, in channel order.</param>
 /// <param name="Changed">
 /// What somebody moved while it was recording, in the order it happened, which is nothing for
@@ -86,6 +94,7 @@ public sealed record UnfinishedRecording(
     SpoolCard? Card,
     string? Unreadable,
     bool Running,
+    bool BeingSaved,
     IReadOnlyList<UnfinishedSource> Sources,
     IReadOnlyList<SourceChanged> Changed)
 {
@@ -93,12 +102,22 @@ public sealed record UnfinishedRecording(
     /// Why there is nothing to decide about this recording yet, or nothing when there is.
     /// </summary>
     /// <remarks>
-    /// A meeting a capture is still writing, which is the one case. It is here, beside the three
-    /// outcomes and the handle that answers it, because everything the rule is made of is here.
-    /// The reason on its own, in the middle of a sentence: whoever shows it says what it means for
-    /// them, and <see cref="EnsureThereIsSomethingToDecide"/> is the one that says it for a refusal.
+    /// Two cases and they are asked in this order: a meeting whose save is running, then one a
+    /// capture is still writing. The save first because it is the later half of the same meeting —
+    /// stopping lets the devices go and then reads what they wrote, so a folder that is both is one
+    /// the devices have not finished closing on, and what somebody stopped four seconds ago is
+    /// being saved rather than still being recorded.
+    /// <para>
+    /// It is here, beside the three outcomes and the two handles that answer it, because everything
+    /// the rule is made of is here. The reason on its own, in the middle of a sentence: whoever
+    /// shows it says what it means for them, and <see cref="EnsureThereIsSomethingToDecide"/> is
+    /// the one that says it for a refusal.
+    /// </para>
     /// </remarks>
-    public string? NothingToDecideYet => Running ? "it is still being recorded" : null;
+    public string? NothingToDecideYet =>
+        BeingSaved ? "its save is running"
+        : Running ? "it is still being recorded"
+        : null;
 
     /// <summary>
     /// Throws unless this recording is one somebody may decide about, which every one of the three
@@ -118,17 +137,31 @@ public sealed record UnfinishedRecording(
     /// tell apart — something else on the machine holding a spool open — reads as what was seen
     /// rather than as an assertion about a meeting nobody is in.
     /// </para>
+    /// <para>
+    /// A save gets its own sentence rather than the capture's, because it is a different thing to
+    /// have done and a different thing to wait for: nobody is speaking, the meeting is being
+    /// written down, and what ends the wait is the save finishing or the process running it going
+    /// away — not somebody stopping a meeting. It is also the case an answer typed at a second
+    /// prompt would otherwise land on, over blocks a finish is reading at that moment.
+    /// </para>
     /// </remarks>
     public void EnsureThereIsSomethingToDecide()
     {
-        if (NothingToDecideYet is { } yet)
+        if (NothingToDecideYet is null)
         {
-            throw new AudioCaptureException(
-                $"Something is holding the blocks in '{Folder.FullName}' open, which on this "
-                + $"machine is a capture writing them: {yet}, and a meeting that is still happening "
-                + "is not one to decide about yet. Once nothing is holding them, keeping it, "
-                + "taking it out and throwing it away are all open.");
+            return;
         }
+
+        // Which case it is was settled above, so this chooses the sentence and never the answer.
+        throw new AudioCaptureException(BeingSaved
+            ? $"A save of the recording in '{Folder.FullName}' is running, and it is reading these "
+                + "blocks into the meeting right now. A recording being written down is not one to "
+                + "decide about yet. Once the save is over — or once whatever is running it is "
+                + "gone — keeping it, taking it out and throwing it away are all open again."
+            : $"Something is holding the blocks in '{Folder.FullName}' open, which on this machine "
+                + $"is a capture writing them: {NothingToDecideYet}, and a meeting that is still "
+                + "happening is not one to decide about yet. Once nothing is holding them, keeping "
+                + "it, taking it out and throwing it away are all open.");
     }
 
     /// <summary>
@@ -215,10 +248,10 @@ public sealed record UnfinishedRecording(
     {
         // Both, and in this order. The first is what a person is told; the second is asked again
         // against the file system, because the first is an answer read a moment ago. Neither holds
-        // anything across the delete below — what stops it half way is that `SpoolWriter` opens
-        // without `FileShare.Delete`, so Windows refuses to unlink a block file a capture holds.
-        // This is the check that fails whole instead, before one source has gone and the other has
-        // not.
+        // anything across the delete below — what stops it half way is that `SpoolWriter` and
+        // `SavingMark` both open without `FileShare.Delete`, so Windows refuses to unlink a block
+        // file a capture holds or the mark a save holds. This is the check that fails whole
+        // instead, before one source has gone and the other has not.
         EnsureThereIsSomethingToDecide();
         UnfinishedRecordings.EnsureRemovable(this);
         Folder.Delete(recursive: true);
@@ -335,17 +368,38 @@ public static class UnfinishedRecordings
     }
 
     /// <summary>
-    /// Throws unless every one of this recording's files is a spool nobody is writing.
+    /// Throws unless every one of this recording's files is a spool nobody is writing and nothing
+    /// is saving it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This is what stands between <c>--discard</c> and a folder it should never have removed. It
     /// opens each source the way reading one does, so both of the ways a folder can fail to be
     /// what it looks like stop the delete before anything goes: a file named like a spool that is
     /// not one, and a spool a capture is still writing, which on this machine is a meeting still
     /// happening.
+    /// </para>
+    /// <para>
+    /// The save is asked here as well as on the recording, and asked again against the file system
+    /// rather than off what was listed: a folder is listed once and answered about seconds later,
+    /// and a save can start in between. It narrows that window rather than closing it, and saying
+    /// so is the point — every check here is asked before a delete that then runs file by file, so
+    /// a save starting after this line still ends in a folder emptied as far as the first thing
+    /// something is holding. Closing it properly is moving the folder aside and removing the copy,
+    /// which is a change to the one thing that removes a recording and not a check in front of it.
+    /// </para>
     /// </remarks>
     internal static void EnsureRemovable(UnfinishedRecording recording)
     {
+        if (SavingMark.IsHeldIn(recording.Folder))
+        {
+            throw new AudioCaptureException(
+                $"A save of the recording in '{recording.Folder.FullName}' is running, and the "
+                + "blocks it is reading are not something to throw away while it does. Once the "
+                + "save is over — or once the process running it is gone — throwing it away is "
+                + "open again.");
+        }
+
         foreach (var source in recording.Sources)
         {
             SpoolReader.Open(source.Blocks).Dispose();
@@ -388,6 +442,7 @@ public static class UnfinishedRecordings
             card,
             unreadable,
             Array.Exists(sources, source => BlockSpool.IsStillBeingWritten(source.Blocks)),
+            SavingMark.IsHeldIn(folder),
             sources,
             changed);
     }

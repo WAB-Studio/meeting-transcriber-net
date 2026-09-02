@@ -24,7 +24,14 @@ spool/<meeting_id>/
   manifest.json          source     what the recording said about itself when it started
   changes.jsonl          source     what somebody moved while it was recording, if anything
   <channel>.blocks       source     while the blocks are the only recoverable copy
+  saving.mark            neither    held while a finish is reading this folder, and empty
 ```
+
+`saving.mark` is neither, and that is not a mistake in the table: it holds no bytes and nothing ever
+reads whether it is there. What it means is carried by a process having it open, so a backup that
+restored it would restore a fact that stopped being true when that process ended, and one that
+dropped it loses nothing. Nothing clears the one a crashed save leaves, because a file nothing holds
+already reads as no save.
 
 `changes.jsonl` is a source for the reason the card beside it is, and it is the half the card
 cannot hold: the card is written once and says what each channel opened on, so a channel somebody
