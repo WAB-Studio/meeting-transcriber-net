@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text;
 
 using MeetingTranscriber.Domain.Artifacts;
@@ -16,9 +16,11 @@ public sealed class ArtifactWriteException(string message) : Exception(message);
 /// </summary>
 /// <remarks>
 /// <para>
-/// Six steps, in this order and never another: a temporary on the same volume, buffers emptied and
-/// the handle closed, size and SHA-256, the content read back to prove it is there, an atomic
-/// replace, and the confirmed artifact recorded in a SQLite transaction. The order is the whole
+/// Six steps, in this order and never another: a temporary on the same volume, the buffers emptied
+/// onto the disk, size and SHA-256, the content read back through a second handle to prove it is
+/// there, an atomic replace, and the confirmed artifact recorded in a SQLite transaction. The
+/// temporary's own handle is held across all of that and let go on the line before the replace, for
+/// the reason <see cref="StagedArtifact.Stage"/> gives. The order is the whole
 /// design. The filesystem and the database cannot be moved together, so one of them has to be
 /// wrong first when the power goes, and this is the direction where being wrong is recoverable: a
 /// file nothing has recorded is found by <see cref="ArtifactReconciler"/> and can be looked at,
@@ -163,6 +165,7 @@ public sealed class StagedArtifact : IDisposable
     private readonly CorpusDbContext _corpus;
     private readonly Guid _meetingId;
     private FileInfo? _temporary;
+    private FileStream? _held;
 
     private StagedArtifact(
         CorpusDbContext corpus,
@@ -170,12 +173,14 @@ public sealed class StagedArtifact : IDisposable
         ArtifactKind kind,
         string relativePath,
         FileInfo temporary,
+        FileStream held,
         long byteSize,
         string sha256)
     {
         _corpus = corpus;
         _meetingId = meetingId;
         _temporary = temporary;
+        _held = held;
         Kind = kind;
         RelativePath = relativePath;
         ByteSize = byteSize;
@@ -208,9 +213,31 @@ public sealed class StagedArtifact : IDisposable
     /// </para>
     /// <para>
     /// The content is hashed twice on purpose. Once through the stream the caller writes into,
-    /// which is the hash of what was meant, and once by reading the closed file off the disk. A
-    /// single pass over the file would agree with itself whatever the disk did with it, and would
-    /// record a hash for a corrupted artifact rather than refusing to.
+    /// which is the hash of what was meant, and once by opening the file again and reading it off
+    /// the disk. A single pass would agree with itself whatever the disk did with the bytes, and
+    /// would record a hash for a corrupted artifact rather than refusing to.
+    /// </para>
+    /// <para>
+    /// The handle is kept — not closed at the end of the write — and that is what makes an
+    /// unfinished write on disk mean what <see cref="ArtifactReconciler.Sweep"/> reads it as. A
+    /// sweep deletes a <c>.partial</c> on sight and is refused one somebody holds, so a temporary
+    /// nothing holds is a dead write and one that is held is a live one, with no clock in it. Left
+    /// unheld between the write and the replace, a <c>sweep</c> run from a terminal beside the
+    /// application would take a temporary a render was about to move — and inside a set, where the
+    /// moves happen after every destination is emptied, that would land as a refused move nothing
+    /// puts the destinations back from.
+    /// </para>
+    /// <para>
+    /// So the file is opened once and shared for reading only: the read-back needs to get in, and
+    /// deleting is exactly what must stay out. It is let go on the line before the rename, in
+    /// <see cref="Move"/>, which is the same breath the sequence always closed and moved in — one
+    /// statement wide rather than closed, because renaming a file needs the handle gone.
+    /// </para>
+    /// <para>
+    /// It reaches this type's temporaries and not every <c>.partial</c> in the corpus: the audio
+    /// engine writes its own beside a recording it is materialising, and those are held only by
+    /// whatever is reading or writing them at the time. A sweep racing one of those is a lost
+    /// materialisation, and it is not what this holds.
     /// </para>
     /// </remarks>
     public static StagedArtifact Stage(
@@ -227,18 +254,16 @@ public sealed class StagedArtifact : IDisposable
         var destination = CorpusFiles.Locate(corpus.Root, relativePath);
         destination.Directory!.Create();
 
-        var temporary = new FileInfo(
-            $"{destination.FullName}.{Guid.NewGuid():n}{CorpusFiles.UnfinishedSuffix}");
+        var temporary = CorpusFiles.UnfinishedBeside(destination);
+        FileStream? held = null;
 
-        string intended;
         try
         {
-            // The handle is closed before anything reads the file back, and the reading is the
-            // point: a check against a stream this method still holds open would be a check
-            // against its own buffers.
-            using var stream = new FileStream(
-                temporary.FullName, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-            using (var hashing = new HashingStream(stream))
+            held = new FileStream(
+                temporary.FullName, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+
+            string intended;
+            using (var hashing = new HashingStream(held))
             {
                 contents(hashing);
                 hashing.Flush();
@@ -248,18 +273,21 @@ public sealed class StagedArtifact : IDisposable
             // Step two, and the reason the whole sequence is worth anything: without this the
             // bytes are in a cache the operating system is free to lose, and every check below
             // would be checking that cache rather than the disk.
-            stream.Flush(flushToDisk: true);
-        }
-        catch
-        {
-            Delete(temporary);
-            throw;
-        }
+            held.Flush(flushToDisk: true);
 
-        try
-        {
+            // Step four, through a handle of its own, and what it reads is the file rather than
+            // anything this method is holding — the flush above is what put the file there. The
+            // two share modes have to admit each other: the handle above shares reading, and this
+            // one shares writing because that is the access the handle above still holds. Neither
+            // shares deletion, which is the point of holding it at all.
             temporary.Refresh();
-            var written = CorpusFiles.Sha256Of(temporary);
+            string written;
+            using (var readBack = new FileStream(
+                temporary.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                written = CorpusFiles.Sha256Of(readBack);
+            }
+
             if (!string.Equals(written, intended, StringComparison.Ordinal))
             {
                 throw new ArtifactWriteException(
@@ -268,10 +296,11 @@ public sealed class StagedArtifact : IDisposable
             }
 
             return new StagedArtifact(
-                corpus, meetingId, kind, relativePath, temporary, temporary.Length, written);
+                corpus, meetingId, kind, relativePath, temporary, held, temporary.Length, written);
         }
         catch
         {
+            held?.Dispose();
             Delete(temporary);
             throw;
         }
@@ -301,6 +330,15 @@ public sealed class StagedArtifact : IDisposable
     /// rule that reaches deletion. A vacate that is refused puts back the ones already done, into
     /// names it emptied moments earlier, and nothing has been replaced. What follows lands on paths
     /// that are not there, which is the one move that cannot be refused for any of those reasons.
+    /// </para>
+    /// <para>
+    /// That last sentence is a claim about the source of the move as well as its destination, and
+    /// it is why <see cref="Stage"/> holds the temporary open until the rename. A temporary nothing
+    /// held could be swept out from under this loop, and there is no undo here: the destinations
+    /// are already empty and the put-back belongs to the vacate that has finished. Held, the window
+    /// where that is possible is the one statement between letting the handle go and renaming, in
+    /// <see cref="Move"/> — not nothing, and not the length of another file's render, which is what
+    /// it was.
     /// </para>
     /// <para>
     /// Asking by doing rather than by looking, and that is the whole of why it is not the check the
@@ -364,8 +402,10 @@ public sealed class StagedArtifact : IDisposable
 
         // Every file of the set is in place, so whatever was standing there is superseded whether
         // or not the rows below are accepted — which is what an ordinary replace does to it too.
-        // Left behind by a crash these are unfinished writes, the one thing on disk the reconciler
-        // removes on its own.
+        // Left behind by a crash, or by a delete the disk refuses, these are what the reconciler
+        // reports as superseded: it does not remove them, because up to the line above one of them
+        // was the last copy of a derived file, and nothing on disk says which side of that line the
+        // machine stopped on.
         foreach (var old in superseded)
         {
             Delete(old);
@@ -381,25 +421,35 @@ public sealed class StagedArtifact : IDisposable
         return artifacts;
     }
 
-    /// <summary>Refuses a set naming one path twice, which is a caller's slip and not a corpus state.</summary>
+    /// <summary>
+    /// Refuses a set naming one destination twice, which is a caller's slip and not a corpus state.
+    /// </summary>
     /// <remarks>
+    /// <para>
     /// Both writes would go to the same destination, the second over the first, and both would
-    /// record a row — two rows for one file, which the unique index on the path refuses at the
-    /// save, after both files have moved. That is the one direction this whole type exists to
+    /// record a row — two rows for one file. That is the one direction this whole type exists to
     /// avoid, reached by two lines in a caller, so it is asked before anything happens rather than
     /// found afterwards.
+    /// </para>
+    /// <para>
+    /// It asks about the destination and not the string, which is <see cref="CorpusFiles.PathComparer"/>'s
+    /// job. Two spellings differing in case are one file on this filesystem and two values to the
+    /// unique index, so an exact comparison would pass the guard, move both files to one path and
+    /// then let both rows be saved — the exact ordering the guard is here to prevent, arrived at
+    /// through the guard rather than past it.
+    /// </para>
     /// </remarks>
     private static void RefuseTwoOfOnePath(StagedArtifact[] staged)
     {
-        var named = new HashSet<string>(StringComparer.Ordinal);
+        var named = new HashSet<string>(CorpusFiles.PathComparer);
         foreach (var one in staged)
         {
             if (!named.Add(one.RelativePath))
             {
                 throw new ArtifactWriteException(
-                    $"'{one.RelativePath}' is named twice in one set. A path holds one artifact, so "
-                    + "the second write would replace the first and leave the corpus with two rows "
-                    + "for one file.");
+                    $"'{one.RelativePath}' names a destination this set already holds. A path holds "
+                    + "one artifact, so the second write would replace the first and leave the "
+                    + "corpus with two rows for one file.");
             }
         }
     }
@@ -444,11 +494,21 @@ public sealed class StagedArtifact : IDisposable
     /// there was nothing there, and when the kind is one the corpus never replaces.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A source is never moved aside, not even for a moment. The move that would follow is refused
     /// for it anyway — <see cref="Refusals"/> has already asked whether it is there — so vacating
     /// one would relocate the only copy of something that was paid for in order to enable a write
     /// that is not going to happen. Everything this does move is a derivative the corpus can
     /// produce again, which is what <c>MayBeReplaced</c> means.
+    /// </para>
+    /// <para>
+    /// The name it goes to says superseded and not unfinished, and the difference is the whole of
+    /// whether this is safe. What moves here was an artifact a moment ago and is, until the replace
+    /// finishes, the last copy of one — while <c>.partial</c> means bytes that were never an
+    /// artifact and is the one name a sweep deletes on sight. Under that name the copy a refused
+    /// vacate is about to put back sits on the sweep list, and a sweep arriving between the two
+    /// turns <see cref="PutBack"/>'s deliberate silence into a file that is simply gone.
+    /// </para>
     /// </remarks>
     private (FileInfo Aside, FileInfo Destination)? Vacate()
     {
@@ -465,8 +525,7 @@ public sealed class StagedArtifact : IDisposable
             return null;
         }
 
-        var aside = new FileInfo(
-            $"{destination.FullName}.{Guid.NewGuid():n}{CorpusFiles.UnfinishedSuffix}");
+        var aside = CorpusFiles.SupersededBeside(destination);
         File.Move(destination.FullName, aside.FullName);
         return (aside, destination);
     }
@@ -476,9 +535,10 @@ public sealed class StagedArtifact : IDisposable
     /// The name it goes back into was emptied by this same run of vacates, so the ways this can
     /// fail are the ways the machine is already failing, and saying so would cost the sentence that
     /// matters — the refusal on its way out is what tells somebody which file could not be taken
-    /// and why. What it leaves when it does fail is the old file under an unfinished write's name
-    /// and a row naming a file that is not there, which the reconciler reports as missing: loud,
-    /// and a derivative, which a rebuild produces again.
+    /// and why. What it leaves when it does fail is the old file under a superseded copy's name and
+    /// a row naming a file that is not there: two findings, both loud, and the file is a
+    /// derivative, which a rebuild produces again. The silence is only worth having because that is
+    /// the state it leaves — under a name a sweep removed, it would be silence over a deletion.
     /// </remarks>
     private static void PutBack((FileInfo Aside, FileInfo Destination) moved)
     {
@@ -540,11 +600,19 @@ public sealed class StagedArtifact : IDisposable
     }
 
     /// <summary>Step five: the replace, which is the only irreversible thing here.</summary>
+    /// <remarks>
+    /// The handle goes on the line above the rename, and the two belong together: everything
+    /// between staging and here is a window in which the temporary would be a file nothing holds,
+    /// which is the one thing a sweep is allowed to delete.
+    /// </remarks>
     private void Move()
     {
         var temporary = _temporary!;
         var destination = CorpusFiles.Locate(_corpus.Root, RelativePath);
         var replaceable = Kind.MayBeReplaced();
+
+        _held?.Dispose();
+        _held = null;
 
         try
         {
@@ -604,6 +672,9 @@ public sealed class StagedArtifact : IDisposable
     /// </summary>
     public void Dispose()
     {
+        _held?.Dispose();
+        _held = null;
+
         if (_temporary is { } temporary)
         {
             _temporary = null;
