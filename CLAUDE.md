@@ -110,8 +110,8 @@ skill. **A claim closes on a probe that ran, never on a task moving.**
 
 ## The contract
 
-`Domain/Audio/`, `Domain/Time/` and `Domain/Jobs/` hold invariants the rest of the system assumes.
-Breaking one corrupts meetings already recorded and artifacts already paid for.
+These invariants are what the rest of the system assumes: breaking one corrupts meetings already
+recorded and artifacts already paid for. `.claude/audit-floor.md` derives the reviews they force.
 
 - Channel 0 is the loopback, channel 1 is the microphone. The number is the channel index Deepgram
   reports back, not an internal detail, so only `CapturedAudio` turns a channel into a position.
