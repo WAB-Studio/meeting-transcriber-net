@@ -4,6 +4,7 @@ using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
+using MeetingTranscriber.Recording;
 
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;

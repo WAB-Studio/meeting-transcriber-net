@@ -89,8 +89,8 @@ public sealed class MeetingsWatch : IDisposable
 
     /// <summary>
     /// What the corpus said the last time the list was known to be showing it, and <c>null</c> when
-    /// the list could not read it. Written only under <see cref="gate"/>, which is what makes it
-    /// visible to the next look on another thread.
+    /// nothing read it — the list failed, or the read this made on its own behalf did. Written only
+    /// under <see cref="gate"/>, which is what makes it visible to the next look on another thread.
     /// </summary>
     /// <remarks>
     /// <c>null</c> and not an empty string, which is what a corpus holding no meeting really says:
@@ -140,6 +140,14 @@ public sealed class MeetingsWatch : IDisposable
     /// Starts looking. Takes what the corpus says now without telling anybody, so the first thing
     /// anybody hears about is a change made after this returned.
     /// </summary>
+    /// <remarks>
+    /// A corpus that will not open does not stop this. It starts looking anyway, holding that it
+    /// has read nothing, and the first look that gets an answer tells — so a launch that began over
+    /// an unreadable corpus corrects itself inside one gap rather than for the session. That is
+    /// worth more here than anywhere else this reads: this is called from the constructor of the
+    /// application's first window, so an exception leaving it is a constructor that never returns
+    /// and an application that never opens. Nothing that reads a file off a disk gets to have that.
+    /// </remarks>
     /// <exception cref="InvalidOperationException">It was started twice.</exception>
     /// <exception cref="ObjectDisposedException">It was started after being let go of.</exception>
     public void Start()
@@ -153,7 +161,7 @@ public sealed class MeetingsWatch : IDisposable
 
         lock (gate)
         {
-            told = WhatTheCorpusSays();
+            told = WhatTheCorpusSaysIfItWill();
         }
 
         timer = clock.CreateTimer(_ => Look(), state: null, every, every);
@@ -183,13 +191,19 @@ public sealed class MeetingsWatch : IDisposable
     /// hold is what a look will find next. Taking the list's own answer would leave this claiming to
     /// have seen a state it never read.
     /// </para>
+    /// <para>
+    /// Which means there are two reads a press away from each other, and the second one can fail on
+    /// its own. When it does, this lands where being told the list's read failed lands — forgetting,
+    /// so the next look tells again — and nothing comes back out of here, because the thread saying
+    /// this is the thread the window draws on.
+    /// </para>
     /// </remarks>
     /// <param name="itWentThrough">Whether the list managed to read the corpus.</param>
     public void TheListHasRead(bool itWentThrough)
     {
         lock (gate)
         {
-            told = itWentThrough ? WhatTheCorpusSays() : null;
+            told = itWentThrough ? WhatTheCorpusSaysIfItWill() : null;
         }
     }
 
@@ -215,13 +229,23 @@ public sealed class MeetingsWatch : IDisposable
 
     /// <summary>One look, and the telling if there is anything to tell.</summary>
     /// <remarks>
-    /// Nothing escapes it, and that is not the usual rule. This runs on a timer's callback, where an
-    /// exception nobody observes ends the process — with whatever meeting was being recorded — and
-    /// there is no window on this thread to say anything in. The same read on the drawing thread
-    /// costs a sentence on a status line, so the loudness that would be right there is fatal here.
-    /// It is the same call <c>MeetingsDrawer.ReadWhatSurvived</c> makes for the same reason, and
-    /// what keeps a defect from being lost with it is that the list reads the corpus itself on every
-    /// telling: a corpus that really cannot be read is a sentence on screen rather than a silence.
+    /// <para>
+    /// Nothing escapes it, and that is wider than <see cref="ScreenFailures.Reportable"/> on
+    /// purpose. This runs on a timer's callback, where an exception nobody observes ends the process
+    /// — with whatever meeting was being recorded — and there is no window on this thread to say
+    /// anything in, so even the defect that ought to be loud is worth more absorbed here. It is the
+    /// same call <c>MeetingsDrawer.ReadWhatSurvived</c> makes for the same reason. What it costs is
+    /// real and is stated rather than argued away: a defect that makes a read throw for good leaves
+    /// this looking and never telling, and the list stops correcting itself for the session. This is
+    /// the only place in this class that swallows one, which is what keeps that cost to one place.
+    /// </para>
+    /// <para>
+    /// With the read behind <see cref="WhatTheCorpusSaysIfItWill"/>, what this catch is really left
+    /// holding is the telling — and a telling that failed has to leave this not knowing rather than
+    /// believing. A change marked told that nobody was told about is the one that never arrives:
+    /// the next look would find the corpus saying exactly what this already holds, stay quiet, and
+    /// the row would sit wrong until something else in the corpus moved.
+    /// </para>
     /// </remarks>
     private void Look()
     {
@@ -232,9 +256,13 @@ public sealed class MeetingsWatch : IDisposable
 
         try
         {
-            var says = WhatTheCorpusSays();
-            if (says == told)
+            var says = WhatTheCorpusSaysIfItWill();
+            if (says is null || says == told)
             {
+                // A read that would not answer is not a change. What was said last stands, so the
+                // next look asks again rather than reporting one nothing established — and the
+                // list, which is showing what it read for itself, is left alone over a single
+                // unlucky connection.
                 return;
             }
 
@@ -243,9 +271,11 @@ public sealed class MeetingsWatch : IDisposable
         }
         catch (Exception thrown) when (Absorbable(thrown))
         {
-            // What was said last stands, so the next look asks again rather than reporting a
-            // change nothing established.
             _ = thrown;
+
+            // Forgotten and not kept. This is reached with `told` already moved on, so keeping it
+            // would be this holding a change it never managed to pass on.
+            told = null;
         }
         finally
         {
@@ -260,6 +290,45 @@ public sealed class MeetingsWatch : IDisposable
     /// <see cref="MeetingsNobodyRecorded"/>.
     /// </summary>
     private static bool Absorbable(Exception thrown) => thrown is not OutOfMemoryException;
+
+    /// <summary>What the corpus says, or nothing at all when it would not be read.</summary>
+    /// <remarks>
+    /// <para>
+    /// A corpus that refuses never leaves this class, on any of the three threads that ask one for
+    /// an answer. A look runs on a timer's callback, where an escape ends the process with whatever
+    /// meeting was being recorded. <see cref="Start"/> runs inside the constructor of the
+    /// application's first window, where an escape is an application that never opens.
+    /// <see cref="TheListHasRead"/> runs on the thread that window draws on, in the middle of a
+    /// rebuild of the list. And all three are reading something that belongs to the machine rather
+    /// than to this program: a corpus another process has open, a spool folder somebody discarded
+    /// from a prompt while the walk was inside it, a volume that went away.
+    /// </para>
+    /// <para>
+    /// <see cref="ScreenFailures.Reportable"/> and not everything, which is the whole difference
+    /// between this and <see cref="Look"/>'s own catch below. Those are the failures that are
+    /// somebody's circumstance and that a screen already has a sentence for. A defect is this
+    /// program being wrong, and it goes straight through here: the same read the list makes for
+    /// itself is a moment away on every one of the three paths, on a thread that has a window, and
+    /// stopping there is worth more than two seconds' quiet and a list that is confidently wrong.
+    /// </para>
+    /// <para>
+    /// Nothing rather than an empty answer, which is what a corpus holding no meeting says: a read
+    /// that did not happen has to differ from every answer there is, or the one state the list would
+    /// never be told about again is the empty one.
+    /// </para>
+    /// </remarks>
+    private string? WhatTheCorpusSaysIfItWill()
+    {
+        try
+        {
+            return WhatTheCorpusSays();
+        }
+        catch (Exception thrown) when (ScreenFailures.Reportable(thrown))
+        {
+            _ = thrown;
+            return null;
+        }
+    }
 
     /// <summary>What the corpus says about the meetings on the list, and the recordings above them.</summary>
     /// <remarks>

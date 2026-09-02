@@ -210,6 +210,14 @@ public sealed partial class MeetingsDrawer : UserControl
     /// twice, where the other order would lose it for good.
     /// </para>
     /// <para>
+    /// A corpus that will not open does not reach out of here, and that is the watch's promise
+    /// rather than a catch of this control's — <see cref="MeetingsWatch.Start"/> says so. It has to
+    /// be somebody's, because this runs from the window's constructor: an exception leaving it is a
+    /// constructor that never returns, and an application that never opens over a corpus another
+    /// process happened to have open. What the person gets instead is <see cref="Read"/> a few
+    /// statements later, which reads the same corpus and has a status line to say it on.
+    /// </para>
+    /// <para>
     /// A folder nothing could be resolved to is not watched: there is no folder to look at, and
     /// what is on screen instead is the refusal, which stands for the session. A folder that
     /// resolved and holds no corpus <em>is</em> watched — that is every installation before its
@@ -406,7 +414,9 @@ public sealed partial class MeetingsDrawer : UserControl
     /// control about changes it is already showing — including the ones this application made
     /// itself. It is also the only way back from a read that failed: told so, the watch forgets,
     /// and the next look asks again rather than leaving the sentence on screen until something
-    /// else in the corpus moves.
+    /// else in the corpus moves. It is told last and it cannot throw — both, and for one reason:
+    /// this method owes a draw, and neither the cost of that second read nor its failing is allowed
+    /// to stand between the list being emptied and the list being on screen.
     /// </para>
     /// </remarks>
     public void Read()
@@ -457,10 +467,15 @@ public sealed partial class MeetingsDrawer : UserControl
             _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, folder.FullName);
         }
 
-        _watch?.TheListHasRead(answered);
-
         Render();
         ReadWhatSurvived();
+
+        // Last, and the order is the point rather than a tidy-up. Everything above this line has
+        // emptied the list and filled it again, so the draw is what this method owes and nothing
+        // fallible belongs in front of it. Telling the watch costs a second read of the corpus —
+        // over one that will not open, seconds of it — and paying that before the draw would show
+        // somebody the emptied list for the whole of it, or, if the read failed, for good.
+        _watch?.TheListHasRead(answered);
     }
 
     /// <summary>

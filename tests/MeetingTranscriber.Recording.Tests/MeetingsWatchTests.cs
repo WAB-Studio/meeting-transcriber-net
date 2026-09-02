@@ -7,6 +7,8 @@ using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 
+using Microsoft.Data.Sqlite;
+
 namespace MeetingTranscriber.Recording.Tests;
 
 /// <summary>
@@ -326,6 +328,195 @@ public sealed class MeetingsWatchTests : IDisposable
         }
 
         (await telling.Arrived()).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task A_corpus_that_will_not_open_never_reaches_the_launch()
+    {
+        // The launch path, which is where this costs most. `MeetingsDrawer.Open` starts a watch
+        // from `MainWindow`'s constructor, and `App.OnLaunched` calls that constructor before there
+        // is a window on screen — so a read throwing out of `Start` is an application that never
+        // opens, over a corpus somebody else is holding. Which is this card's own premise: the
+        // command line filing a paid response is exactly the change the watch exists to notice, and
+        // it is also the thing most likely to be holding the corpus when a launch reads it.
+        using (var context = corpus.OpenMigrated())
+        {
+            Record(context);
+        }
+
+        using var held = HeldByAnotherProcess();
+
+        // The control. Without it this case passes over a corpus that reads perfectly well, and
+        // the failure it names is the one `ScreenFailures.Reportable` already has a sentence for.
+        using (var refused = corpus.Open())
+        {
+            Should.Throw<SqliteException>(() => new MeetingWork(refused, TimeProvider.System).Listed());
+        }
+
+        using var watch = new MeetingsWatch(corpus.Root, TimeProvider.System, Often);
+        Should.NotThrow(watch.Start);
+
+        // And it is looking rather than merely quiet. A start that swallowed the read and gave up
+        // on the timer would leave the list never re-reading for the rest of the session, which
+        // passes every other case in this file.
+        var telling = new Telling(watch);
+        held.Dispose();
+
+        (await telling.Arrived()).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void A_second_read_that_will_not_answer_never_leaves_the_watch()
+    {
+        // The list says how its own read went, and being told it went through costs a second read
+        // of the corpus — same thread, a moment later, its own connection. That one can fail on its
+        // own, and it is the drawing thread it would fail on. What is claimed here is only that it
+        // does not come back out: what `MeetingsDrawer.Read` then does with the promise is the
+        // order of its own last three lines, and no probe on a build agent can open that window.
+        using (var context = corpus.OpenMigrated())
+        {
+            Record(context);
+        }
+
+        using var held = HeldByAnotherProcess();
+
+        using (var refused = corpus.Open())
+        {
+            Should.Throw<SqliteException>(() => new MeetingWork(refused, TimeProvider.System).Listed());
+        }
+
+        // Built and not started, which is the whole of what this case gives up. A watch that was
+        // looking would redden this over `Start`'s read as well — the case above owns that one and
+        // this one has to be able to fail on its own — and a look in flight would be holding the
+        // file the handle above wants exclusively, which is a case that fails one run in ten for
+        // something it never asserted.
+        using var watch = new MeetingsWatch(corpus.Root, TimeProvider.System, Often);
+
+        Should.NotThrow(() => watch.TheListHasRead(itWentThrough: true));
+    }
+
+    [Fact]
+    public async Task A_look_that_could_not_read_tells_nobody_and_asks_again()
+    {
+        // The list is showing a good read and one look cannot get one. That is not a change, and
+        // reporting it as one is expensive rather than merely wrong: a telling is answered by
+        // rebuilding every card on the thread the window draws on, which is the cost this whole
+        // class exists not to pay for nothing. What it does instead is ask again.
+        using (var context = corpus.OpenMigrated())
+        {
+            Record(context);
+        }
+
+        using var watch = Watching(Slowly);
+
+        // Long enough that a look has landed, so what is held is the corpus rather than what
+        // `Start` read. Without it this case would be about `Start` a second time.
+        await Task.Delay(Slowly + Slowly, TestContext.Current.CancellationToken);
+
+        using var held = HeldByAnotherProcess();
+        var telling = new Telling(watch);
+
+        (await telling.Arrived(SeveralLooks)).ShouldBeFalse();
+
+        // The control, and the other half of the claim: unable to read rather than deaf. Without
+        // it this passes on a watch that stopped looking for any reason at all.
+        var next = new Telling(watch);
+        held.Dispose();
+
+        using (var elsewhere = corpus.Open())
+        {
+            Record(elsewhere);
+        }
+
+        (await next.Arrived()).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task A_telling_that_did_not_get_through_is_told_again()
+    {
+        // A handler that threw is absorbed, because a look runs on a timer's callback and an
+        // exception nobody observes there ends the process. What must not be absorbed with it is
+        // the change: the watch would be holding a state the list was never shown, the next look
+        // would find nothing new in the corpus, and the row would sit wrong until something else
+        // in it moved — which is this claim failing quietly rather than loudly.
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+
+        using var watch = Watching();
+
+        var refused = true;
+        watch.Changed += (_, _) =>
+        {
+            if (refused)
+            {
+                refused = false;
+                throw new InvalidOperationException("The handler did not take this telling.");
+            }
+        };
+
+        // After the one above, so the first telling never reaches it. Both run under the watch's
+        // own lock, which is what makes the flag between them visible either way.
+        var telling = new Telling(watch);
+
+        using (var elsewhere = corpus.Open())
+        {
+            Add(elsewhere, NewArtifact(meeting, ArtifactKind.DeepgramResponse));
+        }
+
+        (await telling.Arrived()).ShouldBeTrue();
+        refused.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The corpus held the way another process holds it: exclusively, so every read of it comes
+    /// back as the failure a screen already knows to report, and it is the corpus it was again the
+    /// moment the handle is let go of.
+    /// </summary>
+    /// <remarks>
+    /// Which of the real causes this stands in for does not matter and is deliberately not claimed
+    /// — the command line past its <c>busy_timeout</c>, a volume that came back refusing, a folder
+    /// that moved. What is asserted is the failure the read produces, and each case checks that for
+    /// itself before it starts a watch. Taken before any watch exists, so nothing here is racing a
+    /// look for the file. The pools go first because this process's own connections hold it too,
+    /// and a corpus already open here is not one another process could take.
+    /// </remarks>
+    private FileStream HeldByAnotherProcess()
+    {
+        CorpusDatabase.ClearPoolsFor(corpus.Root);
+
+        var held = Exclusively(corpus.DatabasePath);
+
+        // The gate in front of every read this class makes, and it answers `false` over an
+        // `IOException` of its own — so on a machine where the handle above also hid the file's
+        // metadata, every case using this would go green over a watch that read nothing and threw
+        // nothing. Asserted here rather than in each case, because it is this helper's claim.
+        CorpusDatabase.HoldsACorpus(corpus.Root).ShouldBeTrue();
+
+        return held;
+    }
+
+    /// <summary>
+    /// The handle, waited for rather than demanded once. Two things this suite does not control can
+    /// have the file open for a moment — a look in flight in a case that takes the handle while a
+    /// watch is running, and whatever Windows itself is doing to a file written a moment ago — and
+    /// both let go. A case that failed over one of those would be failing for something it never
+    /// asserted.
+    /// </summary>
+    private static FileStream Exclusively(string database)
+    {
+        var giveUpAt = DateTime.UtcNow + LongEnough;
+
+        while (true)
+        {
+            try
+            {
+                return new FileInfo(database).Open(FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException) when (DateTime.UtcNow < giveUpAt)
+            {
+                Thread.Sleep(25);
+            }
+        }
     }
 
     private MeetingsWatch Watching(TimeSpan? every = null)

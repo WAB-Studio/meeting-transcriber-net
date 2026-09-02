@@ -68,7 +68,12 @@ whether a two-channel file is a meeting's two sources is decided from both — t
 and the recovery card beside it. The watch that tells a list of meetings it has stopped saying what
 the corpus says is here for that reason again, and it is the product's one background poller: what
 that list draws is the corpus's meetings *and* the spool folder's recordings, and this is the only
-project that can see both. `MeetingTranscriber.App` was not an option for any of it:
+project that can see both. The closed list of what a read of the corpus throws that a screen says
+rather than stops over is here for the same reason once more: the watch reads the corpus from the
+thread a window is being built on, so that list stopped being only the screens' — and every
+exception it names, the audio engine's and the recording's and the filesystem's two and SQLite's,
+is visible from exactly here and from nowhere lower. `MeetingTranscriber.App` was not an option
+for any of it:
 touching a type from that assembly fires the Windows App SDK module initializer and throws outside
 a packaged host, so anything living there would have no probe a build agent could run.
 
