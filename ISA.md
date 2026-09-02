@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 132/201
+progress: 132/204
 updated: 2026-09-01
 ---
 
@@ -200,6 +200,9 @@ Board: 3 · Grabador WinUI
 - [x] ISC-158.5: Anti: a recording cannot be started before the microphone, what channel 0 follows and what will be spoken have each been said.
 - [ ] ISC-158.6: A microphone connected while the application is open can be recorded with, without closing it.
 - [ ] ISC-158.7: The stretch between stop and the meeting being saved is a state of its own, and what saving it is doing is on screen for as long as it lasts.
+- [ ] ISC-158.8: [DROPPED 2026-09-01: written and marked closed in the same pass, so it never stood as a bet the work had to clear.]
+- [ ] ISC-158.9: How long the meeting has been running is on screen for as long as it is being recorded.
+- [ ] ISC-158.10: Anti: one meeting is never given two lengths — nothing says how long it was until the length it turned out to be is known.
 - [ ] ISC-165: A meeting's name is the person's to set, at any time after it was recorded.
 - [x] ISC-165.1: Anti: a meeting nobody has named never reads under a name the application invented for it.
 - [ ] ISC-166: Who is using the application is asked once and is what the microphone's own voice resolves to from then on.
