@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 
 namespace MeetingTranscriber.App.Tests;
@@ -127,8 +126,13 @@ internal sealed partial class EnumTable
         return [.. Member().Matches(body.Groups["body"].Value).Select(match => match.Groups["name"].Value)];
     }
 
-    private static string Source(string relative, [CallerFilePath] string thisFile = "") =>
-        Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", "..", "src", relative));
+    /// <summary>One file under <c>src/</c>, wherever this repo is checked out.</summary>
+    /// <remarks>
+    /// Asked of <see cref="AppSources"/> rather than worked out here. Two derivations of the same
+    /// path in one project are two things to correct when the layout moves, and only one of them
+    /// would be found.
+    /// </remarks>
+    private static string Source(string relative) => AppSources.At(relative).FullName;
 
     /// <summary>The arm for anything the table does not name, and what it answers with.</summary>
     /// <remarks>

@@ -630,8 +630,9 @@ public sealed partial class MainWindow : Window
     /// refresh, which is what the meeting cards below do and for the same two reasons: which steps
     /// exist is an answer <see cref="SavingTheMeeting"/> gives rather than a layout, and a line
     /// made again out of the catalogue cannot be left standing in the language it was born in.
-    /// That second one is a path a person takes and not only one a test reaches: the language
-    /// picker is live while a meeting is being saved.
+    /// The second one is the rule every line on this screen keeps and not a path anybody walks
+    /// during a save: the recorder's own language picker sits inside <c>TheNextMeeting</c>, which
+    /// this state collapses for the whole of it.
     /// </remarks>
     private void ShowTheSteps()
     {
@@ -698,8 +699,14 @@ public sealed partial class MainWindow : Window
         AutomationProperties.SetLiveSetting(line, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(line, words);
 
+        // Made and not looked up, which is where this parts from `Tell`. `FromElement` answers
+        // with a peer only where one was made already, and `Tell` may lean on that because the
+        // lines it announces are declared in the XAML and have been walked by then — no peer there
+        // really does mean nobody is listening. This line was built and added a moment ago in this
+        // same callback, so no peer exists for it whether or not anybody is listening, and asking
+        // would answer with nothing every single time.
         FrameworkElementAutomationPeer
-            .FromElement(line)?
+            .CreatePeerForElement(line)
             .RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
@@ -1241,7 +1248,17 @@ public sealed partial class MainWindow : Window
         // Not the length the save will work out — that is read from the blocks and is most of what
         // saving does — so it is a clock and not an answer, and it is read here because the
         // session it comes off is let go of a moment from now.
-        SavedMeetingLength.Text = Length(Now() - recording.Card.StartedAt);
+        //
+        // Asked which of the two instants is later rather than subtracted blind. A `Duration`
+        // refuses to be negative, and this is the only length on this screen off the wall clock
+        // rather than off the blocks — so a machine that stepped its clock back during the meeting,
+        // which is an NTP correction or a resume and not a fault, would throw here. That is before
+        // the try below and outside everything `Reportable` names, on an `async void` handler: it
+        // would take the application down with both devices open and the meeting never saved. A
+        // clock that ran backwards reads as no time instead.
+        var ran = Now();
+        SavedMeetingLength.Text = Length(
+            ran > recording.Card.StartedAt ? ran - recording.Card.StartedAt : Duration.Zero);
 
         // The meeting is in the corpus from the moment record was pressed, so the list below can
         // show it while it is being saved rather than after. Told which one first, because the row

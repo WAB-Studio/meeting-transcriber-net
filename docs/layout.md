@@ -99,10 +99,12 @@ that would never run there. It runs somewhere: `tools/MeetingTranscriber.UiProbe
 packaged application on a desktop somebody is logged into and reads the tree itself, by hand and
 never in a build. `docs/ui-probe.md` is when to reach for it.
 
-It reads one file outside the application, and the widening is deliberate rather than a habit:
-what the window does on stop has to be the same thing the prompt's own command does, and holding
-that means reading both. A check reaching a third project is one that has stopped being about a
-screen and belongs where it can reference what it is about.
+It reads source out of other `src/` projects as well as out of the application — the enum a
+screen's table is over, the prompt's own recording command — and that is not a widening of what it
+is about. A table falling behind its enum, or a window that files a meeting the prompt files
+through one call, are both facts about two files agreeing, and one of the two is the application's.
+`AppSources` resolves every path under `src/`, so how the repo is laid out is written down there
+once rather than once per check.
 
 `tests/MeetingTranscriber.Isa.Tests/` is the exception to that pattern and references no `src/`
 project: it reads `ISA.md` at the repo root. The claims surface is a repo document rather than a
