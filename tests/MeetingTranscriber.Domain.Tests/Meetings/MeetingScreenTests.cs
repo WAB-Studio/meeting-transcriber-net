@@ -22,14 +22,16 @@ public class MeetingScreenTests
     private static readonly UtcTimestamp Then =
         UtcTimestamp.From(new DateTimeOffset(2026, 8, 19, 9, 0, 0, TimeSpan.Zero));
 
-    public static TheoryData<MeetingStage, bool> EveryStageWithAudioAndWithout()
+    public static TheoryData<MeetingStage, RecordedAudio> EveryStageAgainstEveryRecording()
     {
-        var cross = new TheoryData<MeetingStage, bool>();
+        var cross = new TheoryData<MeetingStage, RecordedAudio>();
 
         foreach (var stage in Enum.GetValues<MeetingStage>())
         {
-            cross.Add(stage, true);
-            cross.Add(stage, false);
+            foreach (var recording in Enum.GetValues<RecordedAudio>())
+            {
+                cross.Add(stage, recording);
+            }
         }
 
         return cross;
@@ -38,14 +40,15 @@ public class MeetingScreenTests
     public static TheoryData<JobState> EveryJobState() => [.. Enum.GetValues<JobState>()];
 
     [Theory]
-    [MemberData(nameof(EveryStageWithAudioAndWithout))]
-    public void Whether_a_meeting_plays_is_whether_its_recording_is_there(MeetingStage stage, bool audio)
+    [MemberData(nameof(EveryStageAgainstEveryRecording))]
+    public void Whether_a_meeting_plays_is_whether_its_recording_is_there(
+        MeetingStage stage, RecordedAudio recording)
     {
-        var screen = Screen(new OwedWork(Meeting, stage, StageStanding.Offered), audio);
+        var screen = Screen(new OwedWork(Meeting, stage, StageStanding.Offered), recording);
 
         // The file and nothing else. Every stage answers the same way, so no stage of a meeting is
         // one where hearing what it recorded has to be bought first.
-        screen.MayBePlayedBack.ShouldBe(audio);
+        screen.MayBePlayedBack.ShouldBe(recording is RecordedAudio.Playable);
     }
 
     [Theory]
@@ -55,7 +58,7 @@ public class MeetingScreenTests
         var job = ProcessingJob.Queue(Guid.NewGuid(), Meeting, JobKind.Transcribe, "one", Then);
         Move(job, state);
 
-        var screen = Screen(OwedWork.Of(Meeting, [ArtifactKind.Audio], [job]), audio: true);
+        var screen = Screen(OwedWork.Of(Meeting, [ArtifactKind.Audio], [job]), RecordedAudio.Playable);
 
         // A transcription that came back moves the meeting up a rung and every other state leaves
         // it where it was. Both of those play, which is the point: the answer does not move.
@@ -69,14 +72,14 @@ public class MeetingScreenTests
     [Fact]
     public void A_meeting_nothing_was_ever_bought_for_plays_exactly_as_a_summarised_one_does()
     {
-        var recorded = Screen(OwedWork.Of(Meeting, [ArtifactKind.Audio], []), audio: true);
+        var recorded = Screen(OwedWork.Of(Meeting, [ArtifactKind.Audio], []), RecordedAudio.Playable);
 
         var summarised = Screen(
             OwedWork.Of(
                 Meeting,
                 [ArtifactKind.Audio, ArtifactKind.DeepgramResponse, ArtifactKind.Extraction],
                 []),
-            audio: true);
+            RecordedAudio.Playable);
 
         recorded.Stage.ShouldBe(MeetingStage.Recorded);
         summarised.Stage.ShouldBe(MeetingStage.Summarised);
@@ -94,16 +97,19 @@ public class MeetingScreenTests
         job.Start(Then);
         job.Succeed(Then);
 
-        var screen = Screen(OwedWork.Of(Meeting, [], [job]), audio: false);
+        var screen = Screen(
+            OwedWork.Of(Meeting, [], [job]), RecordedAudio.NotWhereTheCorpusSaysItIs);
 
         screen.Stage.ShouldBe(MeetingStage.Transcribed);
         screen.MayBePlayedBack.ShouldBeFalse();
+        screen.ThereIsATranscription.ShouldBeTrue();
+        screen.ThereIsASummary.ShouldBeFalse();
     }
 
     [Fact]
     public void A_meeting_with_no_audio_yet_is_neither_played_nor_named()
     {
-        var screen = Screen(OwedWork.Of(Meeting, [], []), audio: false);
+        var screen = Screen(OwedWork.Of(Meeting, [], []), RecordedAudio.NoneYet);
 
         screen.Stage.ShouldBe(MeetingStage.Recording);
         screen.MayBePlayedBack.ShouldBeFalse();
@@ -113,7 +119,7 @@ public class MeetingScreenTests
     [Fact]
     public void A_recorded_meeting_offers_the_transcription_and_the_name()
     {
-        var screen = Screen(OwedWork.Of(Meeting, [ArtifactKind.Audio], []), audio: true);
+        var screen = Screen(OwedWork.Of(Meeting, [ArtifactKind.Audio], []), RecordedAudio.Playable);
 
         screen.TheActOffered.ShouldBe(JobKind.Transcribe);
         screen.TheActMayBeLeft.ShouldBeTrue();
@@ -128,7 +134,7 @@ public class MeetingScreenTests
                 Meeting,
                 [ArtifactKind.Audio, ArtifactKind.DeepgramResponse, ArtifactKind.Extraction],
                 []),
-            audio: true);
+            RecordedAudio.Playable);
 
         screen.TheActOffered.ShouldBeNull();
         screen.TheActMayBeLeft.ShouldBeFalse();
@@ -143,7 +149,7 @@ public class MeetingScreenTests
         job.Start(Then);
         job.AwaitUser("a charge that may already have happened");
 
-        var screen = Screen(OwedWork.Of(Meeting, [ArtifactKind.Audio], [job]), audio: true);
+        var screen = Screen(OwedWork.Of(Meeting, [ArtifactKind.Audio], [job]), RecordedAudio.Playable);
 
         screen.TheActOffered.ShouldBeNull();
         screen.TheActMayBeLeft.ShouldBeFalse();
@@ -171,7 +177,7 @@ public class MeetingScreenTests
                 [ArtifactKind.Audio, ArtifactKind.DeepgramResponse, ArtifactKind.Extraction],
                 []),
             left,
-            AudioIsThere: true);
+            RecordedAudio.Playable);
 
         screen.MarkedAlongTheMeeting.Count.ShouldBe(3);
         screen.MarkedAlongTheMeeting.ShouldBe([
@@ -229,8 +235,8 @@ public class MeetingScreenTests
         WhatTheAiLeft.Nothing.Wrote.ShouldBe(WhoWroteThis.Nobody);
     }
 
-    private static MeetingScreen Screen(OwedWork owed, bool audio) =>
-        new(owed, WhatTheAiLeft.Nothing, audio);
+    private static MeetingScreen Screen(OwedWork owed, RecordedAudio recording) =>
+        new(owed, WhatTheAiLeft.Nothing, recording);
 
     private static LeftThing Thing(
         LeftKind kind, long at, int ordinal, string says = "what it said") =>

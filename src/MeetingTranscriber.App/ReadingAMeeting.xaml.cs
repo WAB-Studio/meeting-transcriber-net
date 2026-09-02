@@ -304,7 +304,7 @@ public sealed partial class ReadingAMeeting : UserControl
         WhenText.Text = ScreenNumbers.When(read.Meeting);
         StageText.Text = In(MeetingWords.Reached(read.Screen.Stage));
 
-        WhoWroteIt(read.Screen.Left.Wrote);
+        WhoWroteIt(read.Screen);
         WhatWasLeft(read.Screen.Left);
         TheActOnOffer(read.Screen);
 
@@ -320,17 +320,50 @@ public sealed partial class ReadingAMeeting : UserControl
         }
     }
 
-    /// <summary>Who transcribed this meeting and who summarised it, and when each of them did.</summary>
-    private void WhoWroteIt(WhoWroteThis wrote)
+    /// <summary>
+    /// Who transcribed this meeting and who summarised it, and when each of them did.
+    /// </summary>
+    /// <remarks>
+    /// Three answers each and not two. A meeting that arrived here already transcribed carries the
+    /// response and no run, so the corpus has nothing to name — and reading that as nobody having
+    /// transcribed it, under a line that says the meeting is transcribed, is the screen saying two
+    /// opposite things about the same meeting. Whether each half exists at all is
+    /// <see cref="MeetingScreen"/>'s, in a project a build agent runs.
+    /// </remarks>
+    private void WhoWroteIt(MeetingScreen screen)
     {
+        var wrote = screen.Left.Wrote;
+
         TranscribedText.Text = wrote is { Transcriber: { } who, TranscribedAt: { } when }
             ? UiTexts.TranscribedBy.In(_language, who, ScreenNumbers.At(when))
-            : In(UiTexts.NobodyHasTranscribedThisYet);
+            : In(screen.ThereIsATranscription
+                ? UiTexts.TheCorpusDoesNotSayWhoTranscribedIt
+                : UiTexts.NobodyHasTranscribedThisYet);
 
         SummarisedText.Text = wrote is { Summariser: { } model, SummarisedAt: { } then }
             ? UiTexts.SummarisedBy.In(_language, model, ScreenNumbers.At(then))
-            : In(UiTexts.NobodyHasSummarisedThisYet);
+            : In(screen.ThereIsASummary
+                ? UiTexts.TheCorpusDoesNotSayWhoSummarisedIt
+                : UiTexts.NobodyHasSummarisedThisYet);
     }
+
+    /// <summary>
+    /// What a screen with no player says instead, or nothing when there is one.
+    /// </summary>
+    /// <remarks>
+    /// The last arm stops rather than substituting, for the reason <see cref="MeetingWords"/>
+    /// gives about its own tables: a state added to <see cref="RecordedAudio"/> and not given a
+    /// sentence here would be shown to somebody as one of the others, and the two that are not
+    /// <see cref="RecordedAudio.Playable"/> are a meeting with nothing recorded yet and a meeting
+    /// whose recording is gone — which are not the same news.
+    /// </remarks>
+    private static UiText? WhyItWillNotPlay(RecordedAudio recording) => recording switch
+    {
+        RecordedAudio.NoneYet => UiTexts.ThereIsNoRecordingUnderThisMeetingYet,
+        RecordedAudio.NotWhereTheCorpusSaysItIs => UiTexts.TheRecordingIsNotWhereTheCorpusSaysItIs,
+        RecordedAudio.Playable => null,
+        _ => throw new InvalidOperationException($"This screen has no text for a recording that is '{recording}'."),
+    };
 
     /// <summary>
     /// The three sections, each one only where it has something in it.
@@ -675,12 +708,11 @@ public sealed partial class ReadingAMeeting : UserControl
     {
         if (!read.Screen.MayBePlayedBack || read.Audio is not { } recording)
         {
-            // Two absences and they are not the same sentence. A meeting still being recorded has
-            // no audio yet and nothing is wrong; a meeting the corpus says has audio, whose file
-            // is not there, has lost a source that cannot be produced again.
-            SayThePlayerWillNot(In(read.Screen.Stage is MeetingStage.Recording
-                ? UiTexts.NoAudioYet
-                : UiTexts.TheRecordingIsNotWhereTheCorpusSaysItIs));
+            // The second half is a disagreement the corpus side cannot produce — it decides both
+            // off the same two reads — so it falls to the sentence that would be true if it ever
+            // did: the corpus says there is a recording here and this screen has no file.
+            SayThePlayerWillNot(In(WhyItWillNotPlay(read.Screen.TheRecording)
+                ?? UiTexts.TheRecordingIsNotWhereTheCorpusSaysItIs));
 
             return;
         }

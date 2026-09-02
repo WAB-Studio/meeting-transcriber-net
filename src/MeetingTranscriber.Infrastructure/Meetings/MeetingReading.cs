@@ -62,12 +62,9 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
             ?? throw new MeetingStageException($"This corpus holds no meeting {meetingId}.");
 
         var owed = new MeetingWork(context, clock).On(meetingId);
-        var audio = Audio(meetingId);
+        var audio = Audio(meetingId, out var recorded);
 
-        return new MeetingAsRead(
-            meeting,
-            new MeetingScreen(owed, Left(meetingId), audio is not null),
-            audio);
+        return new MeetingAsRead(meeting, new MeetingScreen(owed, Left(meetingId), recorded), audio);
     }
 
     /// <summary>
@@ -146,8 +143,17 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
         new HumanLayer(context, clock).Describe(meeting, named, meeting.Context);
     }
 
-    /// <summary>The file this meeting plays from, when one is really there.</summary>
-    private FileInfo? Audio(Guid meetingId)
+    /// <summary>
+    /// The file this meeting plays from, when one is really there, and which of the three states
+    /// its recording is in either way.
+    /// </summary>
+    /// <remarks>
+    /// The row and the file are two reads and they answer two different questions. A meeting with
+    /// no row never had a recording — it arrived as a paid response, or its own is still being
+    /// written. A meeting with a row and no file had one and the disk has lost it, which is a
+    /// source gone and the one of the three somebody has to do something about.
+    /// </remarks>
+    private FileInfo? Audio(Guid meetingId, out RecordedAudio recorded)
     {
         var filed = context.Artifacts
             .AsNoTracking()
@@ -157,11 +163,20 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
 
         if (filed is null)
         {
+            recorded = RecordedAudio.NoneYet;
             return null;
         }
 
         var file = CorpusFiles.Locate(context.Root, filed);
-        return file.Exists ? file : null;
+
+        if (!file.Exists)
+        {
+            recorded = RecordedAudio.NotWhereTheCorpusSaysItIs;
+            return null;
+        }
+
+        recorded = RecordedAudio.Playable;
+        return file;
     }
 
     /// <summary>

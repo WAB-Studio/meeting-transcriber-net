@@ -739,11 +739,19 @@ public sealed partial class MeetingsDrawer : UserControl
         };
 
         // Named rather than left to whatever a button derives from a TextBlock in its content.
-        // What is on it is the meeting's own name, and that is what a narrator reads out and what
-        // the UI probe finds it by — neither of which is something a control template promises.
+        // What is on it is the meeting's own name, and that is what a narrator reads out — which
+        // is not something a control template promises.
         AutomationProperties.SetName(
             open,
             named ? entry.Meeting.Title : In(UiTexts.AMeetingNobodyHasNamed));
+
+        // And an id beside it, which is a different question with a different answer. The name is
+        // read aloud and is a person's, so it is in their language and half this list has none —
+        // every meeting nobody has named reads the same two words, and nothing on the screen can
+        // then be told from anything else. The id says which meeting, in every language and for
+        // as long as the meeting exists, which is what a tool driving this window needs to press
+        // one of twelve rows.
+        AutomationProperties.SetAutomationId(open, entry.Meeting.Id.ToString());
 
         open.Click += (_, _) => MeetingChosen?.Invoke(this, entry.Meeting.Id);
         lines.Children.Add(open);

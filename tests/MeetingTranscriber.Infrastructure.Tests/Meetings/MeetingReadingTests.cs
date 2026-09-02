@@ -38,6 +38,7 @@ public class MeetingReadingTests
 
         read.Screen.Stage.ShouldBe(MeetingStage.Recorded);
         read.Screen.MayBePlayedBack.ShouldBeTrue();
+        read.Screen.TheRecording.ShouldBe(RecordedAudio.Playable);
         read.Screen.TheActOffered.ShouldBe(JobKind.Transcribe);
         read.Audio.ShouldNotBeNull();
         read.Audio.Exists.ShouldBeTrue();
@@ -62,8 +63,10 @@ public class MeetingReadingTests
         // is no file — a play button over a path that is not there is one that does nothing.
         read.Screen.Stage.ShouldBe(MeetingStage.Recorded);
         // The player is the file's answer and not the stage's, so a row over a missing file is a
-        // meeting that reads as recorded and does not play.
+        // meeting that reads as recorded and does not play — and says which of the two absences it
+        // is, because a recording the corpus records and cannot find is a source gone.
         read.Screen.MayBePlayedBack.ShouldBeFalse();
+        read.Screen.TheRecording.ShouldBe(RecordedAudio.NotWhereTheCorpusSaysItIs);
         read.Audio.ShouldBeNull();
     }
 
@@ -131,6 +134,27 @@ public class MeetingReadingTests
 
         left.Abstract.ShouldBe("the second go");
         left.Things.Count.ShouldBe(3);
+    }
+
+    [Fact]
+    public void A_meeting_that_arrived_without_a_recording_says_so_rather_than_saying_it_is_lost()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Guid.NewGuid();
+
+        Add(context, NewMeeting(meeting));
+        Add(context, NewArtifact(meeting, ArtifactKind.DeepgramResponse));
+
+        var read = new MeetingReading(context, Clock).Of(meeting);
+
+        // A paid response and no audio: this meeting never had a recording, and the corpus records
+        // none. Not the same news as one whose file the disk has lost.
+        read.Screen.Stage.ShouldBe(MeetingStage.Transcribed);
+        read.Screen.TheRecording.ShouldBe(RecordedAudio.NoneYet);
+        read.Screen.MayBePlayedBack.ShouldBeFalse();
+        read.Screen.ThereIsATranscription.ShouldBeTrue();
+        read.Screen.ThereIsASummary.ShouldBeFalse();
     }
 
     [Fact]
@@ -448,7 +472,8 @@ public class MeetingReadingTests
         MeetingId = meeting,
         Kind = kind,
         Origin = kind.OriginOf(),
-        RelativePath = CorpusFiles.PathFor(meeting, "audio.wav"),
+        RelativePath = CorpusFiles.PathFor(
+            meeting, kind == ArtifactKind.Audio ? "audio.wav" : $"{kind}"),
         ByteSize = 4,
         Sha256 = new string('a', 64),
         ConfirmedAt = Recorded,

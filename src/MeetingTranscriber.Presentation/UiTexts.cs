@@ -565,6 +565,17 @@ public static class UiTexts
         "Todavía no hay resumen.",
         "There is no summary yet.");
 
+    // A meeting that arrived here already transcribed or already summarised carries what was made
+    // and no record of what made it. Said out loud rather than read as nobody having done it,
+    // which under a heading that says it was done is the screen contradicting itself.
+    public static UiText TheCorpusDoesNotSayWhoTranscribedIt { get; } = new(
+        "El corpus no dice quién la transcribió.",
+        "The corpus does not say what transcribed it.");
+
+    public static UiText TheCorpusDoesNotSayWhoSummarisedIt { get; } = new(
+        "El corpus no dice quién armó el resumen.",
+        "The corpus does not say what put the summary together.");
+
     // The player. Hearing what a meeting recorded never costs anything and never waits on a
     // transcription, so none of these words says anything about either.
     public static UiText Play { get; } = new("Reproducir", "Play");
@@ -579,9 +590,13 @@ public static class UiTexts
     // this is what says what pressing it does — the same act wherever a citation appears.
     public static UiText WhereThisWasSaid { get; } = new("Dónde se dijo esto", "Where this was said");
 
-    // The audio is a source: it was never produced from anything and cannot be produced again. So
-    // this says the file is missing rather than saying there is no audio — a meeting the corpus
-    // has a row for and no file under is something to look at, not something still to come.
+    // The two absences a screen with no player has to tell apart. The audio is a source: it was
+    // never produced from anything and cannot be produced again, so a meeting the corpus has a row
+    // for and no file under is something to look at rather than something still to come.
+    public static UiText ThereIsNoRecordingUnderThisMeetingYet { get; } = new(
+        "Todavía no hay una grabación bajo esta reunión.",
+        "There is no recording under this meeting yet.");
+
     public static UiText TheRecordingIsNotWhereTheCorpusSaysItIs { get; } = new(
         "El corpus dice que esta reunión tiene audio, y el archivo no está donde debería.",
         "The corpus says this meeting has audio, and the file is not where it should be.");

@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 142/212
+progress: 145/212
 updated: 2026-09-02
 ---
 
@@ -208,10 +208,10 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-158.8: [DROPPED 2026-09-01: written and marked closed in the same pass, so it never stood as a bet the work had to clear.]
 - [x] ISC-158.9: How long the meeting has been running is on screen for as long as it is being recorded.
 - [x] ISC-158.10: Anti: one meeting is never given two lengths — nothing says how long it was until the length it turned out to be is known.
-- [ ] ISC-165: A meeting's name is the person's to set, at any time after it was recorded.
+- [x] ISC-165: A meeting's name is the person's to set, at any time after it was recorded.
 - [x] ISC-165.1: Anti: a meeting nobody has named never reads under a name the application invented for it.
 - [x] ISC-166: Who is using the application is asked once and is what the microphone's own voice resolves to from then on.
-- [ ] ISC-167: Anti: playing back what a meeting recorded never requires a transcription to have been paid for.
+- [x] ISC-167: Anti: playing back what a meeting recorded never requires a transcription to have been paid for.
 - [x] ISC-168: A meeting whose transcription arrived has its readable files without anybody asking for them.
 - [x] ISC-170: The meetings already recorded are on the screen the application opens on, with nothing to press and no second window to reach them.
 - [ ] ISC-170.1: A meeting whose stage changed while the application was open reads its new stage without the application being started again.
@@ -221,7 +221,7 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-173.1: Every colour, text size and corner a screen uses is one of the system's named few, and never a value chosen on the screen itself.
 - [ ] ISC-173.2: A screen that rearranges itself moves between the two arrangements, so somebody can tell what arrived from what was already there.
 - [ ] ISC-173.3: Anti: with Windows asked for no animation, nothing on a screen moves, and nothing on it is lost for standing still.
-- [ ] ISC-179: Every stage a meeting can be at is read from the one screen that meeting opens on.
+- [x] ISC-179: Every stage a meeting can be at is read from the one screen that meeting opens on.
 - [ ] ISC-180: Every thing an extraction left of a meeting says where in that meeting it was said.
 - [ ] ISC-180.1: The transcript at that moment opens under the thing that cited it, without leaving the screen it is read on.
 
@@ -721,3 +721,6 @@ Board: 7 · Distribución y backup
 - ISC-175 — `CorpusRebuildTests.A_meeting_whose_second_derived_file_cannot_be_written_keeps_both_of_the_ones_it_had` and `MeetingRendererTests.A_render_that_cannot_write_the_second_file_leaves_both_of_them_as_they_were` (`tests/MeetingTranscriber.Processing.Tests`), `DurableWriteTests.A_set_whose_second_file_cannot_be_written_leaves_the_first_one_alone` and `.A_set_whose_second_destination_cannot_be_taken_leaves_the_first_one_where_it_was` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-09-02, each red that day against a render that put one file in place before it began the next. Two things none of them reaches: a machine dying inside the run of renames, which no filesystem makes one act, and the stored turns, which are replaced before either file and can be a generation ahead of both
 - ISC-177 — `DurableWriteTests.A_replace_that_stopped_partway_leaves_the_copy_it_set_aside` and `.A_sweep_running_beside_a_write_leaves_the_write_alone` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `CommandLineTests.A_write_still_being_made_is_left_where_it_is_and_named` green 2026-09-02, each red that day on one reverted line: the copy named `.partial` again, and the temporary's handle sharing deletion. Three things outside it: the tidy-up inside a write does remove a copy, which is a write somebody asked for; the audio engine writes `.partial` files nothing holds, and no probe races a sweep against one; and neither probe schedules a sweep and a replace at once.
 - ISC-166 — `WhoIsUsingThisRowTests` (`tests/MeetingTranscriber.Presentation.Tests`), `HumanLayerTests` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `MeetingRendererTests.The_microphones_own_voice_reads_as_whoever_said_they_are_using_this`, `.A_meeting_rendered_before_anybody_said_who_is_using_this_names_nobody`, `.Rendering_again_after_the_answer_arrives_names_a_meeting_that_had_nobody` green 2026-09-02 over `tests/fixtures/deepgram/two-channel-one-voice-me.json`, one voice on the microphone against three on the loopback: the transcript reads `## Ada` and leaves `ch0:speaker_0` alone. Red that day with the settle taken out, three failing. Asked and kept is the UI probe on the packaged build 2026-09-02, on a corpus with no `is_me` row: the field opens empty, `Save` dead, the question under it; typed and pressed, the name is in `people` and the question gone; the next start reads it back; typed again, that row is renamed and no second person appears. Unreached: a meeting recorded here and transcribed — card #111
+- ISC-165 — the UI probe on the packaged build 2026-09-02, the application in English: `press <the meeting> wait BackButton type NameBox Prueba104 press BackButton wait OpennessButton`, then a second run started from cold. The row read the typed name where it had read `Unnamed`, and `meetings/<id>/manifest.json` carried it too — the half no database read shows. `MeetingReadingTests.A_name_typed_here_reaches_the_row_and_the_recovery_card`, `.A_name_somebody_cleared_leaves_the_meeting_reading_as_one_nobody_named`, `.A_name_is_taken_as_typed_without_the_space_around_it` and `.Naming_a_meeting_what_it_is_already_called_writes_nothing` (`tests/MeetingTranscriber.Infrastructure.Tests`) green that day. Not reached: a meeting whose recording has not been filed, where the field is on screen and disabled
+- ISC-167 — the UI probe on the packaged build 2026-09-02, over a meeting recorded that morning and never transcribed: `press <the meeting> wait BackButton press PlayButton sleep 5 see`. The screen carried the player, `Transcribe` and `Ignore`, and nothing asking for a payment; after five seconds the position read `0:00:05` and the button read `Pause`, so the endpoint was really pulling the file. `MeetingScreenTests.Whether_a_meeting_plays_is_whether_its_recording_is_there`, `.What_a_transcription_is_doing_never_decides_whether_a_meeting_plays` over every job state, and `.A_stage_stopped_on_a_person_is_never_offered_again_from_this_screen` (`tests/MeetingTranscriber.Domain.Tests`) green that day, red with the rule read off the stage. Two things nothing here reaches: whether it is audible, which is an ear, and a machine with no endpoint
+- ISC-179 — the UI probe on the packaged build 2026-09-02, one run per stage, each `press <the meeting> wait BackButton see`. Four meetings of one corpus, one screen: no audio yet — no player, the name disabled; recorded — the player and `Transcribe`; transcribed — `Summarise`; summarised — nothing left to buy and the line naming what wrote the summary. `MeetingScreenTests.Whether_a_meeting_plays_is_whether_its_recording_is_there` crosses every stage against every state a recording can be in. What the walk did not do is press anything on the summarised one: it has nothing to press

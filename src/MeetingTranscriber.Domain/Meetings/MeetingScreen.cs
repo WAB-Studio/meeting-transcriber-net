@@ -25,12 +25,8 @@ namespace MeetingTranscriber.Domain.Meetings;
 /// </remarks>
 /// <param name="Owed">The stage the meeting is at and where that stands.</param>
 /// <param name="Left">What the AI has left of it, which is nothing until something has.</param>
-/// <param name="AudioIsThere">
-/// Whether the meeting's recording is really on the disk. A fact about a file and not about the
-/// stage: the stage passes a rung when a job says so as well as when a file does, so a meeting can
-/// read as transcribed with its audio gone.
-/// </param>
-public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, bool AudioIsThere)
+/// <param name="TheRecording">What this meeting has to play, if anything.</param>
+public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAudio TheRecording)
 {
     /// <summary>How far the meeting has got.</summary>
     public MeetingStage Stage => Owed.Stage;
@@ -49,12 +45,27 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, bool Audio
     /// <para>
     /// It is deliberately not read off <see cref="Stage"/>, which would have been the shorter
     /// sentence and the wrong one. A stage passes a rung when a <em>job</em> came back saying so as
-    /// well as when a file is there, so a meeting whose response landed and whose audio has since
-    /// gone reads as transcribed — and reading the player off that would put a play button over
-    /// nothing. The stage is about what has been bought; this is about what is on the disk.
+    /// well as when a file is there, and a meeting that arrived as a paid response has no audio at
+    /// all — so a stage above the bottom one says nothing about there being a file, and a player
+    /// read off it would be a play button over nothing. The stage is about what has been bought;
+    /// this is about what is on the disk.
     /// </para>
     /// </remarks>
-    public bool MayBePlayedBack => AudioIsThere;
+    public bool MayBePlayedBack => TheRecording is RecordedAudio.Playable;
+
+    /// <summary>Whether a transcription of this meeting exists at all.</summary>
+    /// <remarks>
+    /// Which is not the same question as who made it. A meeting that arrived here already
+    /// transcribed carries the response and no run, so nothing in the corpus can name a provider —
+    /// and a screen that read the absence of a name as nobody having transcribed it would be
+    /// saying that under a heading that says it was.
+    /// </remarks>
+    public bool ThereIsATranscription =>
+        Stage is MeetingStage.Transcribed or MeetingStage.Summarised;
+
+    /// <summary>Whether a summary of this meeting exists at all.</summary>
+    /// <remarks>Not the same question as who made it, for the reason above.</remarks>
+    public bool ThereIsASummary => Stage is MeetingStage.Summarised;
 
     /// <summary>
     /// What this screen offers to buy next, or nothing when there is nothing to offer or the
@@ -84,4 +95,27 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, bool Audio
 
     /// <summary>Where each thing the AI left sits along the meeting.</summary>
     public IReadOnlyList<Duration> MarkedAlongTheMeeting => Left.MarkedAlongTheMeeting;
+}
+
+/// <summary>
+/// What a meeting has to play, which is a fact about a file rather than about a stage.
+/// </summary>
+/// <remarks>
+/// Three and not a pair of yes-or-nos, so that no reading of it can hold two answers at once. The
+/// middle one is why it is not simply "is there a file": a meeting with no recording under it and
+/// one whose recording the corpus records and cannot find are the same absence on screen and two
+/// entirely different things to a person. The second is a source gone — audio is never produced
+/// from anything and cannot be produced again — and saying nothing about it would hide the one
+/// state of a meeting that somebody has to act on.
+/// </remarks>
+public enum RecordedAudio
+{
+    /// <summary>Nothing has been recorded under this meeting, and the corpus records nothing.</summary>
+    NoneYet = 1,
+
+    /// <summary>The corpus records a recording and the file is not where it says it is.</summary>
+    NotWhereTheCorpusSaysItIs = 2,
+
+    /// <summary>It is there, and it plays.</summary>
+    Playable = 3,
 }

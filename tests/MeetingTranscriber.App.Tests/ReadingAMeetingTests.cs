@@ -34,6 +34,23 @@ public class ReadingAMeetingTests
             .ShouldNameItsWholeEnum("ReadingAMeeting", "LeftKind");
 
     /// <summary>
+    /// Every state a meeting's recording can be in has a sentence where the player would be.
+    /// </summary>
+    /// <remarks>
+    /// The two that are not playable are a meeting with nothing recorded under it and a meeting
+    /// whose recording the corpus records and cannot find, and they are not the same news: the
+    /// second is a source gone, and a screen with no word for it would show it as the first.
+    /// </remarks>
+    [Fact]
+    public void Every_state_a_recording_can_be_in_has_a_sentence_on_this_screen() =>
+        EnumTable.Read(
+                Screen,
+                "recording",
+                "RecordedAudio",
+                Path.Combine("MeetingTranscriber.Domain", "Meetings", "MeetingScreen.cs"))
+            .ShouldNameItsWholeEnum("ReadingAMeeting", "RecordedAudio");
+
+    /// <summary>
     /// Every style this screen looks up by name is one it declares.
     /// </summary>
     /// <remarks>
