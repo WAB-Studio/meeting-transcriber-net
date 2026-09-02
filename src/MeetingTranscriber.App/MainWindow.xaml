@@ -273,6 +273,41 @@
              the room that is left, and a report that grew into it would push the list off the
              screen a line at a time. -->
         <StackPanel Grid.Row="1" Spacing="8">
+            <!-- Who is using the application, beside where their meetings are kept: both are
+                 answers about this install rather than about the next meeting, which is why they
+                 are here and not up with the pickers. It is one field and one press whether it is
+                 being answered for the first time or corrected afterwards â€” the asking is the
+                 sentence under it, which is on screen exactly while nobody has answered.
+
+                 It lives here until the settings screen exists, and then it moves there with the
+                 language and this line: #108 is the card, and the row it is built around is this
+                 one. The affiliation the design asks about is not here and is not missing â€”
+                 `docs/design.md` says the first screen of an application is not where somebody
+                 enumerates their jobs, and the `Persona` dialogue is where one is added. -->
+            <StackPanel Spacing="4">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox
+                        x:Name="WhoIsUsingThisBox"
+                        MinWidth="240"
+                        Header="{x:Bind In(loc:UiTexts.WhoIsUsingTheApplication)}"
+                        TextChanged="OnWhoIsUsingThisTyped" />
+                    <Button
+                        x:Name="WhoIsUsingThisButton"
+                        VerticalAlignment="Bottom"
+                        Click="OnKeepWhoIsUsingThis"
+                        Content="{x:Bind In(loc:UiTexts.Save)}" />
+                </StackPanel>
+
+                <TextBlock
+                    x:Name="NobodyHasSaidYet"
+                    Text="{x:Bind In(loc:UiTexts.NobodyHasSaidWhoIsUsingThis)}"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    TextWrapping="Wrap"
+                    MaxWidth="640"
+                    Opacity="0.7"
+                    Visibility="Collapsed" />
+            </StackPanel>
+
             <!-- Where the meetings go, and which folder was refused when there is nowhere. Outside
                  the half above for the reason the report below it is: the drawer may take the
                  window while there is no corpus â€” nothing is being recorded then and nothing can
