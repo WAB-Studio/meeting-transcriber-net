@@ -184,6 +184,13 @@ public sealed partial class MainWindow : Window
     private bool _taken;
 
     /// <summary>
+    /// Whether opening the microphone again has been asked for and has not come back. The same
+    /// thing <see cref="_taken"/> is and for the same reason: a press that opens a device is not
+    /// over when its handler returns, and what says the channel is dead is a reading a second old.
+    /// </summary>
+    private bool _openingTheMicrophoneAgain;
+
+    /// <summary>
     /// What each channel read the last time the devices were asked, which is once a second while a
     /// meeting runs. Kept rather than asked for again on every redraw: asking empties the meters,
     /// so a redraw that asked would show a channel somebody is talking into as hearing nothing.
@@ -318,23 +325,53 @@ public sealed partial class MainWindow : Window
     /// The screen as the facts that decide what can be pressed, built fresh every time rather than
     /// kept, so that it cannot come to disagree with the recording it describes.
     /// </summary>
-    private RecorderScreen Screen() => new()
+    private RecorderScreen Screen()
     {
-        State = RecorderStates.Of(
+        var state = RecorderStates.Of(
             corpus: _corpus.Refusal is null,
             started: _recording is not null,
             paused: _recording?.IsPaused ?? false,
-            step: _step),
-        Chosen = _chosen,
-        WholeMachineOffered = _offered,
-        WholeMachineTaken = _taken,
+            step: _step);
 
-        // The two ways the room below takes the window are one fact to everything above it: the
-        // list raised into it, and a meeting being read in it. Read off the two controls rather
-        // than kept, for the reason every other field here is — a copy of it updated by whichever
-        // handler remembered to is how a screen comes to disagree with the arrangement it is in.
-        TheRoomBelowHasTheWindow = Meetings.HasTheWholeWindow || Reading.IsShowingAMeeting,
-    };
+        return new RecorderScreen
+        {
+            State = state,
+            Chosen = _chosen,
+            WholeMachineOffered = _offered,
+            WholeMachineTaken = _taken,
+
+            // Read off the last reading rather than kept beside it, for the reason the arrangement
+            // below is: what says a source died is its stream having ended. Through the meters and
+            // not off the readings directly, because a state with no meeting in it has no channels
+            // at all — which is the same rule that empties the bars, asked once.
+            //
+            // It is up to a second old, because a reading is what the tick takes. What that costs
+            // is covered by the flag beside it and by the session, which answers the same question
+            // under its own lock and does nothing when the channel came back on its own.
+            TheMicrophoneDied = Meters(state).TheMicrophoneDied,
+            TheMicrophoneIsBeingOpenedAgain = _openingTheMicrophoneAgain,
+
+            // The two ways the room below takes the window are one fact to everything above it: the
+            // list raised into it, and a meeting being read in it. Read off the two controls rather
+            // than kept, for the reason every other field here is — a copy of it updated by whichever
+            // handler remembered to is how a screen comes to disagree with the arrangement it is in.
+            TheRoomBelowHasTheWindow = Meetings.HasTheWholeWindow || Reading.IsShowingAMeeting,
+        };
+    }
+
+    /// <summary>
+    /// What the meters read as for a screen in <paramref name="state"/>, off what the devices last
+    /// said.
+    /// </summary>
+    /// <remarks>
+    /// One method and two callers — what can be pressed asks it through <see cref="Screen"/>, and
+    /// what is drawn asks it again in <see cref="ShowTheMeters"/>. Two calls and one answer, because
+    /// it reads nothing and asks no device: it arranges <c>_channels</c>, which only
+    /// <see cref="ReadTheDevices"/> moves and only on the tick. A method rather than a value passed
+    /// down because <see cref="Screen"/> is built by nine handlers that have no meters in hand.
+    /// </remarks>
+    private RecordingMeters Meters(RecorderState state) =>
+        RecordingMeters.Of(state, _playback, _channels);
 
     /// <summary>
     /// Sets every control from the one answer. Nothing here decides anything: it is the reading of
@@ -365,8 +402,11 @@ public sealed partial class MainWindow : Window
         SavingCard.Visibility = saving ? Visibility.Visible : Visibility.Collapsed;
         ShowTheSteps();
 
-        // What the next meeting records cannot be changed once one is running: the devices are
-        // open, and the engine has no way to swap one out under a recording.
+        // What the next meeting records cannot be changed once one is running: the devices are open,
+        // and choosing in a picker under a running meeting would cut a live channel while another
+        // opens. A microphone that died is answered by the press beside its line rather than by
+        // this picker — what pointing channel 1 somewhere else would need is a list of what this
+        // machine has *now*, and that question is not asked while a meeting runs.
         var choosing = screen.State == RecorderState.Choosing;
         Mine.PickerIsLive = choosing;
         TheOthers.PickerIsLive = choosing;
@@ -385,7 +425,7 @@ public sealed partial class MainWindow : Window
         // cleared by the arrangement rather than by the meeting.
         ShowTheClock(clock);
         ShowTheStrip(screen, clock);
-        ShowTheMeters(screen.State);
+        ShowTheMeters(screen);
 
         // Then which of the two arrangements the window is in. Here rather than only where the
         // drawer moves, because the answer changes under a screen that is already up: a meeting
@@ -533,6 +573,13 @@ public sealed partial class MainWindow : Window
     /// from a redraw. A press that read the meters again would find the stretch since a moment
     /// ago, which is nothing, and print the muted-channel answer over a channel somebody is
     /// talking into.
+    /// <para>
+    /// So what every other press sees is up to a second old, and none of them closes that window
+    /// by reading again — a press that emptied both meters to refresh one fact would leave the
+    /// healthy channel reading quieter than it was. What covers it instead is that each press is
+    /// marked in flight while it runs, and that the engine answers the same question under its own
+    /// lock when the press arrives.
+    /// </para>
     /// </remarks>
     private void ReadTheDevices()
     {
@@ -583,9 +630,9 @@ public sealed partial class MainWindow : Window
     /// agent can run; this is the setting of controls from that one answer, the same split as
     /// <see cref="Refresh"/> and for the same reason.
     /// </remarks>
-    private void ShowTheMeters(RecorderState state)
+    private void ShowTheMeters(RecorderScreen screen)
     {
-        var meters = RecordingMeters.Of(state, _playback, _channels);
+        var meters = Meters(screen.State);
 
         // The bars stand on the screen whether or not anything is arriving, and that is the redraw
         // rather than a regression. `docs/design.md` §The four layers: the hot zone is **visible
@@ -608,8 +655,27 @@ public sealed partial class MainWindow : Window
         // it by name. Passing the control down through Show hid these two from that check, which is
         // how the check found them.
         Tell(HeardTwice, meters.TheOthersAreHeardTwice, UiTexts.TheOthersAreHeardTwice);
-        Tell(OthersStopped, others?.Stopped ?? false, UiTexts.TheOthersChannelStoppedOnItsOwn);
-        Tell(MineStopped, mine?.Stopped ?? false, UiTexts.TheMicrophoneChannelStoppedOnItsOwn);
+
+        // The two that name a device and a moment. `docs/design/Fallo` draws both: what stopped
+        // responding and at what time, then what that channel heard from then on being gone. The
+        // name is what this machine gave the device and the time is read off a clock, so both go in
+        // as values and neither is in the catalogue — the same rule the two lines below follow.
+        //
+        // The whole-machine case has no name, which is the one place `Capturing` earns its
+        // substitution here as well: a channel 0 following everything this machine plays is the
+        // ordinary shape of a recording, not a corner.
+        Tell(
+            OthersStopped,
+            others?.Stopped ?? false,
+            UiTexts.TheOthersChannelStoppedOnItsOwn,
+            Capturing(others?.Capturing),
+            CutAt(others));
+        Tell(
+            MineStopped,
+            mine?.Stopped ?? false,
+            UiTexts.TheMicrophoneChannelStoppedOnItsOwn,
+            Capturing(mine?.Capturing),
+            CutAt(mine));
 
         // What each channel moved from and to, as values rather than as words in the catalogue: a
         // device name is what this machine gave it and reads the same in every language. Where the
@@ -628,7 +694,33 @@ public sealed partial class MainWindow : Window
             UiTexts.TheChannelMovedToAnotherDevice,
             Capturing(mine?.WasCapturing),
             Capturing(mine?.Capturing));
+
+        // The act on the microphone's line. Here rather than in Refresh, and that is the whole
+        // reason this method takes the screen: a device dies on a tick, and a tick draws the meters
+        // without redrawing the buttons — so a press set from Refresh would arrive later than the
+        // sentence it answers, or not until somebody pressed something else.
+        //
+        // Visibility and not merely disabled, for the reason the whole-machine offer beneath is:
+        // an offer that has not been made is not a button waiting to become live, it is a thing
+        // there is no reason to have heard of yet.
+        MineTryAgainButton.Visibility = screen.Allows(RecorderPress.TryTheMicrophoneAgain)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
+
+    /// <summary>
+    /// When a channel was cut off, as the time of day a person reads it as, or nothing where it was
+    /// not.
+    /// </summary>
+    /// <remarks>
+    /// Through <see cref="ScreenNumbers"/> like every other moment this application writes, so the
+    /// hour a meeting says it was cut off at and the hour its row says it started at are the same
+    /// clock said the same way. Nothing rather than a dash for a channel that is fine, because the
+    /// sentence it would go in is not on the screen then — the value is only ever read when the
+    /// line above it is being shown.
+    /// </remarks>
+    private static string? CutAt(ChannelReading? reading) =>
+        reading?.StoppedAt is { } moment ? ScreenNumbers.TimeOfDay(moment) : null;
 
     /// <summary>What one channel's meter reads as: how loud it is, and the loudest it has been.</summary>
     /// <remarks>
@@ -660,6 +752,23 @@ public sealed partial class MainWindow : Window
             strip.LoudnessSaid = string.Empty;
             strip.LoudestSoFarSaid = string.Empty;
             strip.Show(null);
+            return;
+        }
+
+        // A source that died has no level, and what stands where the level was is when it was cut
+        // off — `docs/design.md` §The three states, where that is named as the fourth condition
+        // that is not a meter state. It is the whole difference between the two: no signal is a
+        // source still there hearing nothing, and *nada* is the right word for it; a dead source is
+        // not there, and *nada* under it would read as a microphone somebody had muted.
+        if (reading.Stopped)
+        {
+            strip.LoudnessSaid = UiTexts.ItWasCutOffAt.In(_language, CutAt(reading));
+
+            // No peak either. It is the meter's memory of a source that is gone, and a mark
+            // standing on a bar that is no longer measuring is the one thing a dead channel must
+            // not look like it still has — the bar drops it in the same breath.
+            strip.LoudestSoFarSaid = string.Empty;
+            strip.Show(reading);
             return;
         }
 
@@ -1347,7 +1456,7 @@ public sealed partial class MainWindow : Window
         if (_recording is not null)
         {
             ReadWhatTheMachinePlaysThrough();
-            ShowTheMeters(Screen().State);
+            ShowTheMeters(Screen());
         }
     }
 
@@ -1899,6 +2008,78 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Opens the microphone again, after its stream stopped responding. Nothing gets here without
+    /// the press having been on screen, because until then there is no button.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Marked in flight before the move rather than after it, which is what
+    /// <see cref="OnRecordTheWholeMachine"/> does and for the same reason: what says the channel is
+    /// dead is a reading up to a second old, so without it a second press lands on a channel the
+    /// first one already brought back. Put back however the move went, because the channel is
+    /// either recording — in which case the offer is gone anyway — or exactly where it was, and the
+    /// press is there to make again.
+    /// </para>
+    /// <para>
+    /// Off this thread, and the meeting is being recorded on channel 0 the whole time: what it does
+    /// is open one device and let another go, each with its own deadline for a driver that does not
+    /// answer.
+    /// </para>
+    /// <para>
+    /// A microphone Windows took away is followed onto a replacement by the recording itself within
+    /// two seconds, so this is the press for the case that thread cannot answer — no replacement
+    /// named, or the one it named brought nothing. Racing it costs nothing:
+    /// <c>CaptureSession.OpenTheMicrophoneAgain</c> does nothing at all for a channel that came
+    /// back, so the sentence below is true either way.
+    /// </para>
+    /// </remarks>
+    private async void OnTryTheMicrophoneAgain(object sender, RoutedEventArgs e)
+    {
+        if (_recording is not { } recording
+            || !Screen().Allows(RecorderPress.TryTheMicrophoneAgain))
+        {
+            return;
+        }
+
+        _openingTheMicrophoneAgain = true;
+        Refresh();
+
+        try
+        {
+            await Task.Run(recording.OpenTheMicrophoneAgain);
+
+            // Said, because nothing else on the screen would say it in words. The channel is on the
+            // same device it was on, so the line about a channel that moved stays off; what changes
+            // is the meter coming back to life, and somebody who reads this screen through a
+            // narrator sees none of that.
+            if (!_closed)
+            {
+                Say(UiTexts.TheMicrophoneIsRecordingAgain);
+            }
+        }
+        catch (Exception refused) when (Reportable(refused))
+        {
+            // Reported and not thrown, for the reason taking the whole machine is: the channel is
+            // exactly where it was, the meeting is still being recorded on channel 0, and the press
+            // is there to make again.
+            if (!_closed)
+            {
+                Say(UiTexts.TheMicrophoneCouldNotBeOpenedAgain);
+                Dump(refused.Message);
+            }
+        }
+        finally
+        {
+            _openingTheMicrophoneAgain = false;
+
+            if (!_closed)
+            {
+                Refresh();
+            }
+        }
+    }
+
+    /// <summary>
     /// The second. It reads what each channel is hearing onto the screen, and asks the recording
     /// whether the program channel 0 is following has brought back nothing at all.
     /// </summary>
@@ -1935,7 +2116,7 @@ public sealed partial class MainWindow : Window
 
         ShowTheClock(clock);
         ShowTheStrip(screen, clock);
-        ShowTheMeters(screen.State);
+        ShowTheMeters(screen);
     }
 
     /// <summary>

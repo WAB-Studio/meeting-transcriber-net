@@ -1,5 +1,6 @@
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Recording;
 
@@ -64,23 +65,37 @@ public sealed record ChannelReading
     public required LevelReading Level { get; init; }
 
     /// <summary>
-    /// Whether its stream is over. Read while the meeting is still running, which is what makes it
-    /// a device that stopped by itself rather than one somebody stopped — a source asked to stop is
-    /// over too, and what keeps the two apart is that nothing meters a meeting being stopped.
+    /// When its stream ended, or nothing while it is still going. Read while the meeting is still
+    /// running, which is what makes it a device that stopped by itself rather than one somebody
+    /// stopped — a source asked to stop is over too, and what keeps the two apart is that nothing
+    /// meters a meeting being stopped.
     /// </summary>
     /// <remarks>
-    /// That it stopped, and nothing about why. What the stream threw on its way out is whatever
-    /// came out of the drain loop — a <see cref="System.Runtime.InteropServices.COMException"/>,
-    /// the audio engine's own sentence, the filesystem's — and never a driver quoted, so carrying
-    /// it on a reading would put framework English on a screen ISC-152 holds to being in both
-    /// languages. It is in the sentence <see cref="CaptureSource.Finish"/> throws, which is what
-    /// somebody diagnosing a meeting reads; a reading is what somebody recording one reads, and
-    /// the words for that are the catalogue's.
+    /// <para>
+    /// An instant and not a flag beside one, so the two cannot come apart into a channel that
+    /// stopped at no time or one cut off while still recording. It is what the screen says the
+    /// moment at: <c>docs/design.md</c> §The three states puts the time of day where the level
+    /// stands, because a dead source has no level to put there and the one thing left worth saying
+    /// about it is when it went.
+    /// </para>
+    /// <para>
+    /// That it stopped and when, and nothing about why. What the stream threw on its way out is
+    /// whatever came out of the drain loop — a
+    /// <see cref="System.Runtime.InteropServices.COMException"/>, the audio engine's own sentence,
+    /// the filesystem's — and never a driver quoted, so carrying it on a reading would put
+    /// framework English on a screen ISC-152 holds to being in both languages. It is in the
+    /// sentence <see cref="CaptureSource.Finish"/> throws, which is what somebody diagnosing a
+    /// meeting reads; a reading is what somebody recording one reads, and the words for that are
+    /// the catalogue's.
+    /// </para>
     /// </remarks>
-    public required bool Stopped { get; init; }
+    public required UtcTimestamp? StoppedAt { get; init; }
 
     /// <summary>Whether nothing at all arrived on this channel in the stretch just read.</summary>
     public bool IsSilent => Level.IsSilent;
+
+    /// <summary>Whether its stream is over, which is <see cref="StoppedAt"/> read as the fact it is.</summary>
+    public bool Stopped => StoppedAt is not null;
 
     /// <summary>Whether this channel is no longer capturing what the recording started on.</summary>
     public bool Moved => WasCapturing is not null;
@@ -135,7 +150,7 @@ public sealed record ChannelReading
             .. recording.Sources
                 .OrderBy(source => CapturedAudio.IndexOf(source.Channel))
                 .Select(source => Of(
-                    source.Listening, source.Level(), stopped: source.HasEnded, source.OpenedOn)),
+                    source.Listening, source.Level(), source.EndedAt, source.OpenedOn)),
         ];
     }
 
@@ -146,11 +161,11 @@ public sealed record ChannelReading
     /// </summary>
     /// <param name="listening">What the channel has open, which also says which channel it is.</param>
     /// <param name="level">The loudest it has been since the look before.</param>
-    /// <param name="stopped">Whether its stream is over.</param>
+    /// <param name="stoppedAt">When its stream ended, or nothing while it is still going.</param>
     /// <param name="opened">What the channel opened on, which is <paramref name="listening"/>
     /// itself for a channel that never moved.</param>
     public static ChannelReading Of(
-        CaptureTarget listening, LevelReading level, bool stopped, CaptureTarget opened)
+        CaptureTarget listening, LevelReading level, UtcTimestamp? stoppedAt, CaptureTarget opened)
     {
         ArgumentNullException.ThrowIfNull(listening);
         ArgumentNullException.ThrowIfNull(opened);
@@ -166,7 +181,7 @@ public sealed record ChannelReading
 
             WasCapturing = Same(listening, opened) ? null : Named(opened),
             Level = level,
-            Stopped = stopped,
+            StoppedAt = stoppedAt,
         };
     }
 
@@ -242,6 +257,27 @@ public sealed record RecordingMeters
     /// </remarks>
     public ChannelReading? On(AudioChannel channel) =>
         Channels.FirstOrDefault(reading => reading.Channel == channel);
+
+    /// <summary>
+    /// Whether the microphone's stream ended by itself, which is what a screen offers to open
+    /// again.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One channel and not both, and it is the engine that decides that rather than the screen.
+    /// Both ways of obtaining channel 0 open through a loopback that carries a sequence on, and a
+    /// program refuses to be opened under one — <c>CaptureTarget.Program.Open</c> says so in its own
+    /// words — so a channel 0 that stopped cannot be opened again where it is. What it is offered
+    /// instead is the whole machine, which is a press of its own. A dead channel 0 still says it
+    /// died and still dims: what it has no answer to is *try that again*.
+    /// </para>
+    /// <para>
+    /// False for a screen with no meeting on it, because <see cref="Channels"/> is empty there —
+    /// which is the same rule that empties the bars, asked once. A channel that died belongs to a
+    /// recording whose devices are already let go of.
+    /// </para>
+    /// </remarks>
+    public bool TheMicrophoneDied => On(AudioChannel.Microphone)?.Stopped ?? false;
 
     /// <summary>
     /// The meters as they are for a screen in <paramref name="state"/>.

@@ -90,6 +90,13 @@ public sealed class CaptureSource : IDisposable
     /// </summary>
     private volatile bool discarded;
 
+    /// <summary>
+    /// Backs <see cref="EndedAt"/> — when the stream ended, in Unix milliseconds, and zero while it
+    /// is still going. It says there why it is a number behind a volatile read and not the moment
+    /// itself, and why it and not the gate is what a reader asks.
+    /// </summary>
+    private long endedAt;
+
     private CaptureSource(
         AudioChannel channel,
         CaptureTarget listening,
@@ -183,6 +190,42 @@ public sealed class CaptureSource : IDisposable
     /// <see cref="Stop"/> is what says why.
     /// </summary>
     public bool HasEnded => ended.IsSet;
+
+    /// <summary>
+    /// When the stream ended, or nothing while it is still going. The instant and not a length,
+    /// because what a screen says about a source that died is the time of day it was cut off at —
+    /// somebody who steps back into a meeting reads that against the clock on the wall rather than
+    /// against how long the recording has been running.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the answer, and the gate beside it is not.</b> A reader takes the moment and asks
+    /// nothing else: <see cref="HasEnded"/> is what stopping waits on, and the two are written on
+    /// different threads, so a reader that took one and then the other would be reading two answers
+    /// to one question. That is the same "a flag beside an instant" this record's
+    /// <c>ChannelReading.StoppedAt</c> exists to collapse, and it has to be collapsed here too or
+    /// the collapse upstairs is decoration.
+    /// </para>
+    /// <para>
+    /// Milliseconds behind a <see cref="Volatile"/> read rather than the nullable struct it hands
+    /// back, and that is not a micro-optimisation. <c>UtcTimestamp?</c> is a flag over a
+    /// <c>DateTimeOffset</c> — more than a word — so writing one is several stores and reading one
+    /// several loads, and a reader crossing a write sees a moment half of which is the one before
+    /// it. What that puts on screen is a channel cut off in year one. A <c>long</c> is written and
+    /// read whole, and zero is the value no meeting can be at, so it is the one that means still
+    /// going.
+    /// </para>
+    /// <para>
+    /// A wall clock and not the monotonic one <see cref="OpenFor"/> is measured on, which is the
+    /// opposite choice to the one made ten lines up and for the opposite reason. That one is a
+    /// length compared against a deadline, so a clock corrected mid meeting must not move it; this
+    /// is a time of day somebody reads off a screen, and the correction is exactly what they want
+    /// applied.
+    /// </para>
+    /// </remarks>
+    public UtcTimestamp? EndedAt => Volatile.Read(ref endedAt) is var moment && moment != 0
+        ? UtcTimestamp.FromUnixMilliseconds(moment)
+        : null;
 
     // What the stream threw on its way out is deliberately not offered here. It was, once, so that
     // a screen could print it while the meeting ran — and what a person got was a COMException, or
@@ -329,6 +372,12 @@ public sealed class CaptureSource : IDisposable
         // says it is fine is the failure this codebase is built against. What this clearing would
         // itself erase is `handover`'s, and is put back on top of it below.
         failure = null;
+
+        // Cleared with the gate, and it does not matter which of the two goes first: nothing reads
+        // the pair. What asks whether this source died reads the moment alone, and what waits for
+        // it to stop reads the gate alone — which is the whole reason the moment is not stored
+        // behind the gate. See EndedAt.
+        Volatile.Write(ref endedAt, 0);
         ended.Reset();
         Listening = destination;
 
@@ -733,6 +782,8 @@ public sealed class CaptureSource : IDisposable
     private void Ended(Exception? stopped)
     {
         failure = stopped;
+        Volatile.Write(
+            ref endedAt, TimeProvider.System.GetUtcNow().ToUnixTimeMilliseconds());
         ended.Set();
 
         // Only a source given up on and thrown away reaches the rest, and it reaches it once: a

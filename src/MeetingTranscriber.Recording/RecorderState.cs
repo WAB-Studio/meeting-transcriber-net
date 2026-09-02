@@ -80,6 +80,18 @@ public enum RecorderPress
     /// application into the file from the moment it is pressed.
     /// </summary>
     RecordTheWholeMachine,
+
+    /// <summary>
+    /// Open the microphone again, after its stream stopped responding. Offered by the meters and
+    /// never by the screen, the same way the press above is: what says a source died is its stream
+    /// having ended, which is a reading and not a layout.
+    /// </summary>
+    /// <remarks>
+    /// Channel 1 and not either channel, because opening a source again is only something channel 1
+    /// can do — <c>CaptureSession.OpenTheMicrophoneAgain</c> says why, and a channel 0 that stopped
+    /// is answered by <see cref="RecordTheWholeMachine"/> instead.
+    /// </remarks>
+    TryTheMicrophoneAgain,
 }
 
 /// <summary>
@@ -106,12 +118,23 @@ public static class RecorderStates
             // from channel 0 having heard nothing, and a paused meeting hears nothing by
             // definition, so a paused recording is exactly where that rule would say the wrong
             // thing.
+            //
+            // Opening the microphone again is here and on Paused both, which is the opposite of
+            // the rule above and is the same rule read properly: what makes the whole machine wrong
+            // while paused is that the offer comes from a level, and a paused channel hears nothing
+            // by definition. A stream that ended did not end because nobody spoke into it, so a
+            // pause says nothing about it either way — and a meeting somebody paused to go and
+            // plug the microphone back in is exactly when this gets pressed.
             [RecorderState.Recording] = Set(
-                RecorderPress.Pause, RecorderPress.Stop, RecorderPress.RecordTheWholeMachine),
+                RecorderPress.Pause,
+                RecorderPress.Stop,
+                RecorderPress.RecordTheWholeMachine,
+                RecorderPress.TryTheMicrophoneAgain),
 
             // Paused. Stopping from here is allowed and finishes the meeting with the pause in it
             // as the silence it was, rather than needing somebody to resume first.
-            [RecorderState.Paused] = Set(RecorderPress.Resume, RecorderPress.Stop),
+            [RecorderState.Paused] = Set(
+                RecorderPress.Resume, RecorderPress.Stop, RecorderPress.TryTheMicrophoneAgain),
 
             // Being started. Nothing, and least of all record again: the devices are opening and
             // a second press would open a second meeting over the top of the first.

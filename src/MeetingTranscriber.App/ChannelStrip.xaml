@@ -22,7 +22,10 @@
 
          No literal and no colour, size or corner of its own: every text is set by the window, and
          every brush and rank names an Olivo key. The four numbers here are spacings and widths,
-         which the system does not name and no screen is held to.
+         which the system does not name and no screen is held to; the one number that is this
+         control's own anatomy — how much of itself the card keeps once its source is gone — is in
+         ChannelStrip.xaml.cs beside the line that applies it, for the reason ChannelMeter's five
+         are beside theirs.
 
          What the channel is **actually** capturing is not restated under the bar. While nothing has
          moved it is what the picker says, and the moment it stops being that, the line the window
@@ -31,8 +34,11 @@
          loudest where nothing had happened.
 
          The artboard puts a fourth thing on this row — *se escucha*, right-aligned in olivo — and
-         it is not here: what a channel says about itself is #101's and #102's, and the room it
-         takes is why the pill stops short of the column's edge instead of running to it. -->
+         it is not here: what is left of it is #102's, and the room it takes is why the pill stops
+         short of the column's edge instead of running to it. The other half of that word arrived
+         with #101 and went under the bar rather than on this row — a source that died says *se
+         cortó a las 08:12* where its level was, because that is the place on the component the
+         level vacated. -->
 
     <Grid RowSpacing="10">
         <Grid.RowDefinitions>
@@ -69,10 +75,10 @@
                  34 — what it chooses is the two texts to its left. A screen reader has no label to
                  read off those, so the window gives it one by name. -->
             <!-- Left and not stretched, with a floor and no ceiling. The artboard runs the pill
-                 from the role to just short of the status word; that word is #101's and #102's, so
-                 what holds its room open until then is the pill stopping at its own content. No
-                 ceiling because a `ContentPresenter` cannot trim: a maximum width is a device name
-                 cut flat at the pill's edge, reading as a name that is still going. -->
+                 from the role to just short of the status word; that word is #102's, so what holds
+                 its room open until then is the pill stopping at its own content. No ceiling
+                 because a `ContentPresenter` cannot trim: a maximum width is a device name cut
+                 flat at the pill's edge, reading as a name that is still going. -->
             <ComboBox
                 x:Name="Picker"
                 Grid.Column="2"

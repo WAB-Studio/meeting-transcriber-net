@@ -1,5 +1,6 @@
-using MeetingTranscriber.Audio;
+﻿using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Recording.Tests;
 
@@ -27,6 +28,10 @@ public class RecordingMetersTests
 
     private static readonly AudioDevice AHeadset =
         new("{headset}", "A headset", IsDefault: true) { Kind = EndpointKind.Headset };
+
+    /// <summary>The moment a device stopped answering, in the readings that have one.</summary>
+    private static readonly UtcTimestamp WentQuiet =
+        UtcTimestamp.From(new DateTimeOffset(2026, 9, 2, 8, 12, 30, 500, TimeSpan.Zero));
 
     /// <summary>The states a meeting is really being recorded in.</summary>
     /// <remarks>
@@ -153,6 +158,88 @@ public class RecordingMetersTests
     }
 
     /// <summary>
+    /// And it says when. The screen puts that time where the level was — a dead source has no
+    /// level, and the one thing left worth saying about it is the moment it went, which somebody
+    /// stepping back into the meeting reads against the clock on the wall.
+    /// </summary>
+    [Fact]
+    public void A_channel_whose_device_stopped_says_when_it_was_cut_off()
+    {
+        var meters = Metered(
+            RecorderState.Recording, Speakers, others: Speech, mine: Nothing, mineStopped: true);
+
+        meters.On(AudioChannel.Microphone).ShouldNotBeNull().StoppedAt.ShouldBe(WentQuiet);
+        meters.On(AudioChannel.Loopback).ShouldNotBeNull().StoppedAt.ShouldBeNull();
+    }
+
+    /// <summary>
+    /// Anti: a channel that stopped at no time, or one cut off while still recording. The two are
+    /// one field rather than a flag beside an instant, so neither state is expressible — which is
+    /// what this holds, because a flag and a moment kept apart is exactly how a screen comes to say
+    /// a live channel was cut off minutes ago.
+    /// </summary>
+    [Fact]
+    public void Whether_a_channel_stopped_is_the_moment_it_stopped_and_never_a_second_answer()
+    {
+        Reading(AudioChannel.Microphone, Speech, WentQuiet).Stopped.ShouldBeTrue();
+        Reading(AudioChannel.Microphone, Speech).Stopped.ShouldBeFalse();
+
+        typeof(ChannelReading).GetProperties()
+            .Select(property => property.Name)
+            .ShouldNotContain(
+                "StoppedAtIsSet",
+                "a second answer beside the moment is how a screen comes to show a dead channel "
+                + "with no time in the sentence about it.");
+    }
+
+    /// <summary>
+    /// The microphone dying is what a screen offers to open again. It is the meters' answer rather
+    /// than the screen's, because what says a source died is a device's and not a layout's.
+    /// </summary>
+    [Fact]
+    public void The_microphone_dying_is_what_a_screen_offers_to_open_again()
+    {
+        Metered(RecorderState.Recording, Speakers, others: Speech, mine: Nothing, mineStopped: true)
+            .TheMicrophoneDied.ShouldBeTrue();
+
+        Metered(RecorderState.Recording, Speakers, others: Speech, mine: Speech)
+            .TheMicrophoneDied.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Anti: and channel 0 dying is not. Both ways of obtaining it open through a loopback that
+    /// carries a sequence on, and a program refuses to be opened under one, so there is nothing to
+    /// offer — what a channel 0 that stopped is offered instead is the whole machine. A button
+    /// there would be one that throws every time it is pressed.
+    /// </summary>
+    [Fact]
+    public void A_channel_zero_that_died_is_never_one_to_open_again()
+    {
+        var meters = RecordingMeters.Of(
+            RecorderState.Recording,
+            Speakers,
+            [
+                Reading(AudioChannel.Loopback, Nothing, WentQuiet),
+                Reading(AudioChannel.Microphone, Speech),
+            ]);
+
+        meters.On(AudioChannel.Loopback).ShouldNotBeNull().Stopped.ShouldBeTrue();
+        meters.TheMicrophoneDied.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Anti: and nothing at all when there is no meeting. A channel that died belongs to a
+    /// recording whose devices are already let go of, and offering to open one again would be a
+    /// press against nothing.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(WithNoMeetingRunning))]
+    public void Nothing_is_offered_to_be_opened_again_when_no_meeting_is_being_recorded(
+        RecorderState state) =>
+        Metered(state, Speakers, others: Speech, mine: Nothing, mineStopped: true)
+            .TheMicrophoneDied.ShouldBeFalse();
+
+    /// <summary>
     /// A source past full scale is full and never more than full. A reading that clipped is
     /// something to see rather than something to draw off the end of the meter, and a float format
     /// is free to report past one.
@@ -242,7 +329,7 @@ public class RecordingMetersTests
     {
         var realtek = new CaptureTarget.Endpoint(new AudioDevice("{0.0.1.0}.realtek", "Realtek Array", true));
 
-        var moved = ChannelReading.Of(realtek, Speech, stopped: false, new CaptureTarget.Endpoint(Jabra));
+        var moved = ChannelReading.Of(realtek, Speech, stoppedAt: null, new CaptureTarget.Endpoint(Jabra));
 
         moved.Moved.ShouldBeTrue();
         moved.WasCapturing.ShouldBe("Jabra Evolve 65");
@@ -264,7 +351,7 @@ public class RecordingMetersTests
         var still = ChannelReading.Of(
             new CaptureTarget.Endpoint(Jabra),
             Speech,
-            stopped: false,
+            stoppedAt: null,
             new CaptureTarget.Endpoint(Jabra with { IsDefault = true }));
 
         still.Moved.ShouldBeFalse();
@@ -283,7 +370,7 @@ public class RecordingMetersTests
         var moved = ChannelReading.Of(
             new CaptureTarget.TheWholeMachine(),
             Speech,
-            stopped: false,
+            stoppedAt: null,
             new CaptureTarget.Program(new AudioProcess(8124, "teams", StartedBy: 1084)));
 
         moved.Moved.ShouldBeTrue();
@@ -329,21 +416,21 @@ public class RecordingMetersTests
             playback,
             [
                 Reading(AudioChannel.Loopback, others),
-                Reading(AudioChannel.Microphone, mine, mineStopped),
+                Reading(AudioChannel.Microphone, mine, mineStopped ? WentQuiet : null),
             ]);
 
     /// <summary>A channel on what it opened with, which is every reading but a moved one's.</summary>
     private static ChannelReading Reading(CaptureTarget listening) =>
-        ChannelReading.Of(listening, Speech, stopped: false, listening);
+        ChannelReading.Of(listening, Speech, stoppedAt: null, listening);
 
     private static ChannelReading Reading(
-        AudioChannel channel, LevelReading level, bool stopped = false) =>
+        AudioChannel channel, LevelReading level, UtcTimestamp? stoppedAt = null) =>
         new()
         {
             Channel = channel,
             Capturing = channel == AudioChannel.Loopback ? "Desk speakers" : "A microphone",
             WasCapturing = null,
             Level = level,
-            Stopped = stopped,
+            StoppedAt = stoppedAt,
         };
 }
