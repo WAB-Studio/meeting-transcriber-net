@@ -39,6 +39,26 @@
 
             <Style x:Key="MeetingName" TargetType="TextBlock" BasedOn="{StaticResource SubtitleTextBlockStyle}" />
 
+            <!-- The row is the thing you press to open the meeting, and the name is where the row
+                 is pressed. `docs/design.md` left that open against the alternative — a third
+                 button on every row — and this is the answer the same document's own button
+                 grammar forces: a row lays its answers out in two places and holds nothing else,
+                 so an open button would have to displace one of the two answers that cost money.
+                 Making the name the press adds no control to the row at all.
+
+                 It is a button and not a tapped border, because a border that responds to a press
+                 is nothing to a keyboard and nothing to a screen reader. This is one focusable
+                 thing whose automation name is the meeting's own name, which is also how a probe
+                 reaches it. What it looks like is the name, which is what the two styles below
+                 leave it as. -->
+            <Style x:Key="MeetingOpen" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+            </Style>
+
             <!-- A meeting nobody has named. It reads as the sentence it is rather than as a name,
                  which is the whole of ISC-165.1 on a row: the application has not thought of one
                  and is not pretending to. -->

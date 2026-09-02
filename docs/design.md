@@ -11,7 +11,7 @@ was yesterday lives in `git log -- docs/design.md` and in the commit that change
 where somebody looking for it will know to go. A reason for a rule is welcome and is what makes a
 rule survive; a record of the rule it replaced is not.
 
-`docs/design/` holds the seventeen artboards — the screens as pictures, openable in a browser.
+`docs/design/` holds the eighteen artboards — the screens as pictures, openable in a browser.
 **They are reference and this document is the authority.** Where the two disagree, this page is what
 a screen is built from and the artboard is what gets corrected.
 
@@ -488,9 +488,9 @@ And what the code already required and still does:
 - **The application has no spare screens.** Recording and the meetings are one screen. The only
   thing that lives apart is the settings.
 
-## The seventeen screens
+## The eighteen screens
 
-`docs/design/` holds one file per screen. Sixteen are the flow and the seventeenth is the system
+`docs/design/` holds one file per screen. Seventeen are the flow and the eighteenth is the system
 sheet. `canvas.json` carries their layout and the note that was written against each.
 
 ### The flow — recording
@@ -598,6 +598,15 @@ left yet is simply not there, and *Transcribir* is the act on the right. The scr
 and that is honest: a meeting nobody has bought anything for has little in it. A screen drawn for
 the empty case would be a second blueprint for one screen, which is where a design starts
 disagreeing with itself.
+
+**`ReunionTranscrita`** · The meeting, transcribed and not yet summarised. The third of the three
+and the reason the other two are not two designs: it is the same screen again with more of it
+filled in. The left column is still empty because nothing has read the meeting yet, and the right
+one has gained what a transcription buys — who spoke and their share, and *Resumir* as the act.
+**The player has no marks on its track**, and that is the picture's whole point: the marks are the
+summary's citations, so a meeting with no summary has none, and the track is where a reader sees
+that the difference between these three is what has been bought rather than which screen they are
+looking at.
 
 **`Primera`** · The first time the application opens. **Three questions, and there are only three
 because everything else has a right answer already**: the language comes from Windows, the corpus

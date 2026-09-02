@@ -85,17 +85,26 @@
     {
       "file": "Reunion.dc.html",
       "title": "La reunión",
-      "x": 0,
+      "x": 2400,
       "y": 1680,
       "w": 1120,
       "h": 860,
       "page": "page-1"
     },
     {
+      "file": "ReunionTranscrita.dc.html",
+      "title": "La reunión, transcrita",
+      "x": 1200,
+      "y": 1680,
+      "w": 1120,
+      "h": 720,
+      "page": "page-1"
+    },
+    {
       "file": "ReunionCruda.dc.html",
       "title": "La reunión, sólo grabada",
       "page": "page-1",
-      "x": 1200,
+      "x": 0,
       "y": 1680,
       "w": 1120,
       "h": 720
@@ -103,7 +112,7 @@
     {
       "file": "Clasificar.dc.html",
       "title": "De qué fue",
-      "x": 2400,
+      "x": 3600,
       "y": 1680,
       "w": 1120,
       "h": 720,
@@ -112,7 +121,7 @@
     {
       "file": "QuienEsQuien.dc.html",
       "title": "Quién es quién",
-      "x": 3600,
+      "x": 4800,
       "y": 1680,
       "w": 1120,
       "h": 720,
@@ -121,7 +130,7 @@
     {
       "file": "Correcciones.dc.html",
       "title": "Palabras que salen mal",
-      "x": 4800,
+      "x": 6000,
       "y": 1680,
       "w": 1120,
       "h": 820,

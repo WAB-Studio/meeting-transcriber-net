@@ -157,8 +157,14 @@ public static class AudioFiles
     /// not RIFF at all, a chunk that does not read, and a file that stops before its header
     /// finishes — which is what an empty one is. All three mean the same thing to whoever typed
     /// the command, so they come back as one sentence naming the file.
+    /// <para>
+    /// Internal rather than private, because <see cref="Playback"/> hands the reader it gets back
+    /// straight to an endpoint instead of closing it. That is the one caller that keeps the stream,
+    /// and it goes through here so that a meeting whose audio will not open says the same sentence
+    /// whether somebody asked to read it or to hear it.
+    /// </para>
     /// </remarks>
-    private static WaveFileReader Open(FileInfo file)
+    internal static WaveFileReader Open(FileInfo file)
     {
         ArgumentNullException.ThrowIfNull(file);
 
