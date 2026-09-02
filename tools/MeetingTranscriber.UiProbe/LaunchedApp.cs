@@ -166,6 +166,30 @@ internal sealed class LaunchedApp : IDisposable
     internal void OpenAWindow() => Windows.WaitForAWindow(ToOpenAWindow);
 
     /// <summary>
+    /// Ends the application without asking it, which is the one ending it cannot prepare for.
+    /// </summary>
+    /// <remarks>
+    /// The opposite of <see cref="Dispose"/>, and deliberately not a variation on it: what that
+    /// method is careful to do first — send every window a close, wait for whatever was being
+    /// written to finish — is exactly what must not happen here. A meeting whose save is halfway
+    /// through and a recording nobody stopped are states the corpus only reaches after somebody's
+    /// machine died, so probing what a later start finds has to arrive at them the same way. The
+    /// process tree and not the process, because what Windows activated is the application and
+    /// anything it started is part of the same death.
+    /// </remarks>
+    internal void Kill()
+    {
+        if (HasGone)
+        {
+            throw new ProbeFailed(
+                "The application is not running any more, so there is nothing left to kill.");
+        }
+
+        _process.Kill(entireProcessTree: true);
+        _process.WaitForExit(ToShutDown);
+    }
+
+    /// <summary>
     /// Asks every window to close, the way pressing the cross does, and only then insists. The
     /// polite half is what lets the application finish whatever it was writing; the insistent half
     /// is what makes sure the next run starts an application rather than finding this one.

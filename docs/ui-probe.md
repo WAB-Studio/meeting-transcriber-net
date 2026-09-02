@@ -102,6 +102,22 @@ Anything is refused once the application is older than the code on disk. To pick
 close, build, start — in that order, because a running application holds its own assemblies open
 and the build fails on them. A build alone does not lift the refusal; only starting again does.
 
+## Record may be pressed
+
+**It may. This file said not to until 2026-09-02, and the repository's owner withdrew that in as
+many words: the corpus on this machine holds nothing sensitive and nothing worth rescuing.** So a
+probe records meetings into it, keeps and discards recordings on the list, and kills the
+application in the middle of both. What the rule was protecting was a corpus that had something to
+lose, and this one does not; a machine where it does gets the rule back, and this paragraph is
+where that goes.
+
+What that costs is worth knowing before a script asks for it. A meeting spools both channels at
+the rate the devices really run, which on this machine is about 44 MB a minute — six minutes is
+265 MB — and the spool folder stays after the meeting is made. Recording needs a microphone, what
+channel 0 follows, and what will be spoken, all three chosen before `RecordButton` is anything but
+disabled. Saving a six-minute meeting took under five seconds here, so a script meaning to catch
+the saving state on screen samples it with consecutive `see`s and not with a `sleep`.
+
 ## The verbs
 
 - `see` — the tree of the screen, and a picture of the window. Changes nothing.
@@ -111,15 +127,30 @@ and the build fails on them. A build alone does not lift the refusal; only start
   to draw whole is asked what it holds rather than walked, so an item below the fold is named the
   same way as one on screen.
 - `wait <element>` — block until it is on a window, and make that window the screen from then on.
+- `sleep <seconds>` — let that long pass, touching nothing. Script host only, capped at twenty
+  minutes.
+- `kill` — end the application the way a crash does, with nothing asked and nothing let finish.
 
 Put a `wait` after any `press`, `type` or `choose` whose effect you are about to look at. It is the
 only thing here that synchronises.
+
+`sleep` is for the one screen that is a function of elapsed real time — a meeting running — and
+nothing else here makes ninety seconds pass: `wait` is capped at fifteen seconds and returns on the
+first frame that matches, which is the opposite of holding a screen. It is the script host's own,
+because over MCP a turn is how time passes.
+
+`kill` is for what a *later* start finds: a recording nobody stopped, a save the process died in
+the middle of. Nothing works after it, so it is a script's last instruction and a second run is
+what reads what it left behind. Everything else wants `close`, which is what lets the application
+finish whatever it was writing — `kill` on a meeting being saved loses that meeting's save, on
+purpose.
 
 ## Over MCP, a turn at a time
 
 `start` first — nothing else works until an application is open — and `close` when you are done,
 because it stays open between calls. `close`, build the application, `start` is how you pick up a
-change to it. A refused `start` leaves the session you had alone.
+change to it. A refused `start` leaves the session you had alone. `kill` is here too and means what
+it means above; there is no `sleep`, because a turn is already how time passes.
 
 Every verb answers with the tree of the screen it became, so you choose the next step from the last
 answer instead of writing the whole walk in advance. `see` also returns the picture, inline.
@@ -198,8 +229,7 @@ to `wait` for something on the screen you meant. It is never whichever window is
   control offers instead, which is how you find out it wanted another verb.
 - **It will not bring a window forward.** A window behind another still photographs correctly.
 - **It uses the real corpus, and the preference file of whichever package this checkout registered.**
-  That is deliberate: it drives the real application. The corpus is one folder for every checkout, so
-  do not press Record — it writes a meeting. The preferences are the package's own, so a checkout
-  with a package of its own has its own.
+  That is deliberate: it drives the real application. The corpus is one folder for every checkout;
+  the preferences are the package's own, so a checkout with a package of its own has its own.
 - **It drives only the application it started**, and closes only that one — including when it is
   killed rather than asked, once the application is running.

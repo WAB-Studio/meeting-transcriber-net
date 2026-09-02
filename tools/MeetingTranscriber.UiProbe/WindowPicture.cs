@@ -51,14 +51,28 @@ internal static class WindowPicture
 
         var inside = Inside(handle, rect, window);
 
+        // A refusal to print is inside the budget and not above it. Both ways this can fail are
+        // the same fact — the window has not composed yet — and the retry loop was written for
+        // only one of them: a print that comes back blank was asked again, and a print Windows
+        // refused outright threw straight out of the wait that exists to absorb it. A screen busy
+        // enough to refuse one print refuses it for a frame or two, so what that cost was the
+        // whole verb, tree included, on a window that was about to be photographable.
+        var refused = false;
+
         var pixels = Patience.Until(ToDraw, () =>
         {
             var taken = Copy(handle, rect);
+            refused = taken is null;
 
-            return Drawn(taken, rect.Width, inside) ? taken : null;
+            return taken is not null && Drawn(taken, rect.Width, inside) ? taken : null;
         }) ?? throw new ProbeFailed(
-            $"The window \"{ElementWords.Name(window)}\" printed as a frame around one flat "
-            + $"colour for {ToDraw.TotalSeconds:0} seconds. It is minimised, or it never drew.");
+            $"The window \"{ElementWords.Name(window)}\" "
+            + (refused
+                ? $"refused to be printed for {ToDraw.TotalSeconds:0} seconds."
+                : $"printed as a frame around one flat colour for {ToDraw.TotalSeconds:0} seconds.")
+            + (Native.IsIconic(handle)
+                ? " It is minimised."
+                : " It is not minimised, so it never drew."));
 
         var picture = BitmapSource.Create(
             rect.Width,
@@ -132,7 +146,13 @@ internal static class WindowPicture
         return false;
     }
 
-    private static byte[] Copy(IntPtr handle, Native.Rect rect)
+    /// <summary>
+    /// The window's pixels, or null when Windows refused to print it — which is something to ask
+    /// again rather than something to report, and what tells the two apart is the budget above
+    /// running out. Everything else in here is the machine saying no to the probe itself and stays
+    /// a failure: no device context, no room for a bitmap, half the rows handed back.
+    /// </summary>
+    private static byte[]? Copy(IntPtr handle, Native.Rect rect)
     {
         var desktop = Native.GetDC(IntPtr.Zero);
         var memory = IntPtr.Zero;
@@ -158,7 +178,7 @@ internal static class WindowPicture
 
             if (!Native.PrintWindow(handle, memory, Native.PW_RENDERFULLCONTENT))
             {
-                throw new ProbeFailed("The window refused to be printed.");
+                return null;
             }
 
             // GDI will not read out a bitmap that is still selected into a device context.

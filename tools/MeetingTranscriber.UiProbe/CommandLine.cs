@@ -39,6 +39,8 @@ internal static class CommandLine
           choose <list> <item>  pick a named thing out of a list
           wait <element>      stop until it is on a screen, and make that screen the one the
                               rest of the script is about
+          sleep <seconds>     let that long pass, touching nothing
+          kill                end the application the way a crash does
 
         An element is named by the x:Name the XAML gave it, or by the words on it. A press whose
         effect is about to be photographed needs a wait after it — that is the only thing here
@@ -46,8 +48,16 @@ internal static class CommandLine
 
           --out probe see recorder press MeetingsButton wait RefreshButton see meetings
 
+        sleep is for the one screen that is a function of elapsed real time — a meeting running —
+        because wait is capped at fifteen seconds and returns on the first frame that matches.
+        kill is for what a start finds after a crash: nothing works after it, so it is a script's
+        last instruction and the next run is what reads what it left behind.
+
+          --out probe press RecordButton sleep 60 see running kill
+
         --mcp serves the same verbs to an agent over the Model Context Protocol instead, holding
-        one application open across turns. See docs/ui-probe.md.
+        one application open across turns; there a turn is how time passes, so it has no sleep.
+        See docs/ui-probe.md.
 
         Exit: 0 it ran, 1 the screen or the application failed it, 2 the script was wrong,
         3 the probe broke.
@@ -161,6 +171,16 @@ internal static class CommandLine
                 break;
             case Verb.Choose:
                 session.Choose(step.Subject, step.Detail);
+                break;
+            case Verb.Sleep:
+                // The only step here that touches neither the session nor the folder. It is the
+                // host's own and not the core's: an agent driving over the server lets time pass
+                // by taking a turn, and a core with a sleep in it would be a core with a verb only
+                // one of its two hosts could ever mean.
+                Thread.Sleep(step.Held);
+                break;
+            case Verb.Kill:
+                session.Kill();
                 break;
             case Verb.Wait:
                 Console.WriteLine($"    on \"{session.Wait(step.Subject)}\"");

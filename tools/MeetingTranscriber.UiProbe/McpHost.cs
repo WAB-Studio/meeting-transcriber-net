@@ -192,6 +192,25 @@ internal sealed class McpHost : IDisposable
                 Turn(session => $"on \"{session.Wait(element)}\"")),
 
         Tool(
+            "kill",
+            "Ends the application the way a crash does — nothing asked, nothing let finish. Use it "
+            + "to reach what a later `start` finds after a machine died mid-recording or "
+            + "mid-save; for everything else `close` is the verb, because it lets the application "
+            + "write out what it was writing.",
+            () => Answer(() =>
+            {
+                // Live() and not _open: an application already gone is a kill that says so rather
+                // than one that quietly reports success over nothing.
+                var session = Live();
+                session.Kill();
+
+                _open = null;
+                session.Dispose();
+
+                return Text("Killed.");
+            })),
+
+        Tool(
             "close",
             "Closes the application. Nothing but `start` works afterwards, and a build of the "
             + "application needs this first.",

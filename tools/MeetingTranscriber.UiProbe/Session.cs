@@ -138,6 +138,18 @@ internal sealed class Session : IDisposable
     internal string Tree() => UiTree.Render(_app.Windows.Active());
 
     /// <summary>
+    /// Ends the application the way a crash does, with nothing asked and nothing let finish.
+    /// </summary>
+    /// <remarks>
+    /// The only verb here that is not about a screen, and it earns its place on what it reaches:
+    /// a recording nobody stopped and a save the process died in the middle of are states the
+    /// corpus arrives at only that way, and what a later start finds in them is a question no
+    /// polite close can be asked. Disposing this afterwards is still correct and still what the
+    /// host does — it finds an application that has already gone and returns.
+    /// </remarks>
+    internal void Kill() => _app.Kill();
+
+    /// <summary>
     /// Pressing is <c>Invoke</c> and nothing else. A control that offers something else instead —
     /// a switch that toggles, a list that expands — is named along with what it does offer, so the
     /// screen that first needs one says which verb to add rather than this guessing on its behalf.
