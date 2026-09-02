@@ -1,6 +1,8 @@
 using System.Reflection;
 
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Meetings;
+using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
 
@@ -125,6 +127,63 @@ public class CommandLineTests
         status.Code.ShouldBe(Cli.Ok, status.Error);
         status.Value("schema").ShouldContain("behind this build");
     }
+
+    /// <summary>
+    /// ISC-158.10 at the surface that answers "what does this corpus hold". A meeting whose length
+    /// nobody knows yet and one whose length is settled are both in this corpus, and the report
+    /// tells them apart by nothing: it says how many meetings are active and never how long one
+    /// was. The labels are read whole rather than searched for a word, because what the claim
+    /// forbids is a length said early under any name — and this is the surface with the least to
+    /// stop it, since a tally is cheap to widen and no other test here reads what it prints.
+    /// </summary>
+    [Fact]
+    public void Status_says_what_the_corpus_holds_and_never_how_long_a_meeting_was()
+    {
+        using var corpus = new TemporaryCorpus();
+
+        using (var context = corpus.OpenMigrated())
+        {
+            context.Meetings.Add(Recorded(length: null));
+            context.Meetings.Add(Recorded(Duration.FromMilliseconds(360_000)));
+            context.SaveChanges();
+        }
+
+        var run = CommandLine.Of("status", "--corpus", corpus.Root.FullName);
+
+        run.Code.ShouldBe(Cli.Ok, run.Error);
+        run.Value("meetings").ShouldBe("2 active");
+        Labels(run.Output).ShouldBe(
+            ["corpus", "schema", "meetings", "turns", "artifacts", "jobs"],
+            ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// A meeting as <c>MeetingRecordings.Open</c> writes one, with the length it has once the save
+    /// knows it — or the null it carries from the press of record until then.
+    /// </summary>
+    private static Meeting Recorded(Duration? length)
+    {
+        var now = UtcTimestamp.From(new DateTimeOffset(2026, 9, 2, 2, 13, 0, TimeSpan.Zero));
+
+        return new Meeting
+        {
+            Id = Guid.NewGuid(),
+            StartedAt = now,
+            SourceProfile = CapturedAudio.Profile,
+            Language = "es",
+            LifecycleState = LifecycleState.Active,
+            Duration = length,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+    }
+
+    /// <summary>Every label the report wrote, in the order it wrote them.</summary>
+    private static IReadOnlyList<string> Labels(string report) =>
+    [
+        .. report.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.TrimEnd('\r').Split(' ')[0]),
+    ];
 
     /// <summary>
     /// A create that was cut off leaves a <c>corpus.db</c> with nothing in it, and SQLite will not

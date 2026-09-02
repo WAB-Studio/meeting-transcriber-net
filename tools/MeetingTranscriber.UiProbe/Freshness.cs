@@ -25,6 +25,13 @@ namespace MeetingTranscriber.UiProbe;
 /// something this knows, and it is not what the guarantee rests on.
 /// </para>
 /// <para>
+/// How often <see cref="MustNotPredateTheCode"/> is then asked is the host's and not this class's,
+/// and the two answer differently: <see cref="McpHost"/> asks every turn, <see cref="CommandLine"/>
+/// once at <see cref="Session.Open"/> and never again. The source side is the half that can move
+/// under a session, so re-asking catches an edit and nothing else; whether that is worth ending a
+/// walk over is argued where each host decides it.
+/// </para>
+/// <para>
 /// What it compares is deliberately narrow: the <c>.cs</c> and <c>.xaml</c> of the projects the
 /// application is actually built from, found by following <c>ProjectReference</c> out of its own
 /// project file. Both halves of that matter. Sweeping all of <c>src/</c> instead was the first
@@ -99,9 +106,9 @@ internal sealed class Freshness
     }
 
     /// <summary>
-    /// <c>bin</c> and <c>obj</c> are skipped on the way down rather than filtered afterwards. This
-    /// runs before every instruction now, so walking a build output that is an order of magnitude
-    /// larger than the sources and then throwing it away is work paid for on every press.
+    /// <c>bin</c> and <c>obj</c> are skipped on the way down rather than filtered afterwards. Over
+    /// MCP this runs before every instruction, so walking a build output that is an order of
+    /// magnitude larger than the sources and then throwing it away is work paid for on every press.
     /// </summary>
     private static IEnumerable<string> SourcesUnder(string folder)
     {
