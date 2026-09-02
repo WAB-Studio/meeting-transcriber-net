@@ -72,7 +72,7 @@ public class DeviceEnquiryTests
         object? listed = null;
 
         Deadlines.Time(() => listed = DeviceEnquiry.Answering(DeviceQuestion.Microphones, () => devices))
-            .ShouldHaveComeBackAtOnce();
+            .ShouldNotHaveSpentTheDeadline();
 
         listed.ShouldBeSameAs(devices);
     }
@@ -93,7 +93,7 @@ public class DeviceEnquiryTests
         var thrown = Should.Throw<COMException>(() =>
             DeviceEnquiry.Answering<object>(DeviceQuestion.Microphones, () => throw refusal));
 
-        clock.Elapsed.ShouldHaveComeBackAtOnce();
+        clock.Elapsed.ShouldNotHaveSpentTheDeadline();
         thrown.ShouldBeSameAs(refusal);
 
         // And it left nothing behind: a refusal is an answer, so the next question is asked.
@@ -130,7 +130,7 @@ public class DeviceEnquiryTests
                     return new object();
                 }));
 
-            clock.Elapsed.ShouldHaveComeBackAtOnce();
+            clock.Elapsed.ShouldNotHaveSpentTheDeadline();
             asked.ShouldBeFalse();
             refused.Message.ShouldContain(DeviceQuestion.Microphones.Asked);
         }
@@ -167,29 +167,28 @@ public class DeviceEnquiryTests
 
             Deadlines.Time(() =>
                     DeviceEnquiry.Answering(DeviceQuestion.Microphones, () => listed = true).ShouldBeTrue())
-                .ShouldHaveComeBackAtOnce();
+                .ShouldNotHaveSpentTheDeadline();
 
             // Not only that it came back, but that the machine was the one that answered: a refusal
             // handed back without asking would be this test's own default and would read the same
             // from the clock.
             listed.ShouldBeTrue();
 
-            // And across the seam the product actually uses, since a lambda handed in here proves
-            // the mechanism and not the call the watcher makes. What this machine answers with is
-            // its own business — a build agent has no microphone and may refuse outright — so what
-            // is asserted is that the refusal, if there is one, is not this memory's, and that no
-            // deadline was spent reaching it.
-            Deadlines.Time(() =>
-            {
-                try
-                {
-                    AudioDevices.Microphones();
-                }
-                catch (AudioCaptureException itsOwn)
-                {
-                    itsOwn.ShouldNotBeOfType<AudioDeviceWedgedException>();
-                }
-            }).ShouldHaveComeBackAtOnce();
+            // The seam the watcher really calls — AudioDevices.Microphones() with this question
+            // unwedged — is not asserted here, and asking it was this test's whole flakiness. On a
+            // build agent that call is a real endpoint enumeration under no deadline of ours: it
+            // took 1.26 s against a one-second bound, and on the run before that it took longer
+            // than the product's own five seconds, so the ask gave up and the assertion that the
+            // refusal was not this memory's failed on a refusal that was nobody's fault. Worse than
+            // one red — the given-up-on ask leaves a microphones entry behind that this test's
+            // `finally` does not heal, since it heals only the question it wedged, so every later
+            // test in the class asking that question fails with a wedge it never caused.
+            //
+            // Nothing is lost by not asking it, because two probes compose to the same statement
+            // without a real audio stack: the line above says a wedged playback device leaves
+            // `Answering(Microphones, …)` unrefused, and `Both_questions…` says
+            // `AudioDevices.Microphones()` is that call — it wedges the question first, so it is
+            // refused by the memory and never reaches Windows either.
 
             // And the wedged one is still wedged, so what is being measured is the scope of the
             // memory and not the memory having quietly emptied itself.
@@ -268,18 +267,18 @@ public class DeviceEnquiryTests
             var asked = false;
             Deadlines.Time(() => Should.Throw<AudioDeviceWedgedException>(() =>
                     DeviceEnquiry.Answering(DeviceQuestion.Microphones, () => asked = true)))
-                .ShouldHaveComeBackAtOnce();
+                .ShouldNotHaveSpentTheDeadline();
             asked.ShouldBeFalse();
 
             // The later of the two comes back and the earlier does not, which is one thread out of
             // the audio service and one still inside it.
             stuckSecond.Set();
-            secondCameBack.Wait(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken)
+            secondCameBack.Wait(Deadlines.Patience, TestContext.Current.CancellationToken)
                 .ShouldBeTrue();
 
             Deadlines.Time(() => Should.Throw<AudioDeviceWedgedException>(() =>
                     DeviceEnquiry.Answering(DeviceQuestion.Microphones, () => asked = true)))
-                .ShouldHaveComeBackAtOnce();
+                .ShouldNotHaveSpentTheDeadline();
             asked.ShouldBeFalse();
 
             // And the one that came back is asked again, so the entry was dropped rather than the
@@ -332,7 +331,7 @@ public class DeviceEnquiryTests
                 DeviceEnquiry.Answering(question, Wedging(stuck)));
 
             Deadlines.Time(() => Should.Throw<AudioDeviceWedgedException>(caller))
-                .ShouldHaveComeBackAtOnce();
+                .ShouldNotHaveSpentTheDeadline();
         }
         finally
         {
@@ -374,7 +373,7 @@ public class DeviceEnquiryTests
         stuck.Set();
 
         var clock = Stopwatch.StartNew();
-        while (clock.Elapsed < TimeSpan.FromSeconds(5))
+        while (clock.Elapsed < Deadlines.Patience)
         {
             try
             {

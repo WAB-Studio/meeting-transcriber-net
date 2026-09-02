@@ -11,9 +11,6 @@ namespace MeetingTranscriber.Audio.Tests;
 /// </summary>
 public class CaptureLoopTests
 {
-    /// <summary>How long a loop that does end is given before the test itself is the failure.</summary>
-    private static readonly TimeSpan Promptly = TimeSpan.FromSeconds(1);
-
     /// <summary>
     /// The ordinary way out, and the baseline the rest of this class is measured against: a body
     /// that reads what it was asked and returns, waited for and not given up on.
@@ -36,13 +33,13 @@ public class CaptureLoopTests
         // Waited for rather than assumed, and the wait is the assertion: a loop disposed before its
         // thread took a pass would end promptly whatever the body read, so the baseline would pass
         // over a loop that never looked at what it was asked.
-        draining.Wait(Promptly, TestContext.Current.CancellationToken).ShouldBeTrue();
+        draining.Wait(Deadlines.Patience, TestContext.Current.CancellationToken).ShouldBeTrue();
 
-        var waited = Time(loop.Dispose);
+        var waited = Deadlines.Time(loop.Dispose);
 
         loop.Abandoned.ShouldBeFalse();
         loop.Running.ShouldBeFalse();
-        waited.ShouldBeLessThan(Promptly);
+        waited.ShouldNotHaveSpentTheDeadline();
     }
 
     /// <summary>
@@ -83,7 +80,7 @@ public class CaptureLoopTests
 
         try
         {
-            var waited = Time(loop.Dispose);
+            var waited = Deadlines.Time(loop.Dispose);
 
             // It still fails the unbounded wait this replaced, which never came back at all.
             waited.ShouldHaveWaitedTheDeadline();
@@ -95,7 +92,7 @@ public class CaptureLoopTests
             // And nobody waits for it again. Three holders let go in sequence on the way out of a
             // recording, so a second deadline each would turn one wedged device into a shutdown
             // nobody sits through.
-            Time(loop.Dispose).ShouldBeLessThan(Promptly);
+            Deadlines.Time(loop.Dispose).ShouldNotHaveSpentTheDeadline();
             loop.Abandoned.ShouldBeTrue();
         }
         finally
@@ -141,7 +138,7 @@ public class CaptureLoopTests
             // Still in there, so nothing it holds became free because starting gave up on it. And
             // whoever lets go of it next does not spend the deadline over again.
             underway.ShouldBeFalse();
-            Time(loop.Dispose).ShouldBeLessThan(Promptly);
+            Deadlines.Time(loop.Dispose).ShouldNotHaveSpentTheDeadline();
             loop.Abandoned.ShouldBeTrue();
         }
         finally
@@ -206,7 +203,7 @@ public class CaptureLoopTests
 
             late.Set();
 
-            drained.Wait(Promptly, TestContext.Current.CancellationToken).ShouldBeTrue(
+            drained.Wait(Deadlines.Patience, TestContext.Current.CancellationToken).ShouldBeTrue(
                 "a device that answers after the deadline runs the rest of its loop, so nothing it "
                 + "touches was ever anybody else's to close");
         }
@@ -215,12 +212,5 @@ public class CaptureLoopTests
             late.Set();
             loop.Dispose();
         }
-    }
-
-    private static TimeSpan Time(Action step)
-    {
-        var clock = Stopwatch.StartNew();
-        step();
-        return clock.Elapsed;
     }
 }
