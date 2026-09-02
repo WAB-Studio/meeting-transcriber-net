@@ -339,8 +339,30 @@ public sealed partial class MainWindow : Window
         // every button above is.
         Meetings.OfferTheWholeWindow(screen.TheMeetingsMayTakeTheWholeWindow);
 
+        ShowTheClock(screen.State);
         ShowTheMeters(screen.State);
         Announce(screen.State);
+    }
+
+    /// <summary>
+    /// Sets the clock: how long the meeting has been going, and nothing at all when none is.
+    /// </summary>
+    /// <remarks>
+    /// Nothing here decides either half, and nothing is kept between draws — both instants come
+    /// from outside and the answer is <see cref="RecordingClock"/>'s, in a project a build agent
+    /// can run. Unlike a meter, asking costs nothing and takes nothing away, so there is no
+    /// reading to cache and no moment at which a cached one would have to be refreshed.
+    /// </remarks>
+    private void ShowTheClock(RecorderState state)
+    {
+        var clock = RecordingClock.Of(state, _recording?.Card.StartedAt, Now());
+
+        TheClock.Visibility = clock.Showing ? Visibility.Visible : Visibility.Collapsed;
+
+        // Cleared and not left standing, for the reason a meter row is: the next meeting's first
+        // frame is drawn from this control, and the last one's length under a new one is a screen
+        // saying a meeting is an hour old the moment it starts.
+        TheClock.Text = clock.Showing ? Length(clock.Ran) : string.Empty;
     }
 
     /// <summary>
@@ -1244,22 +1266,6 @@ public sealed partial class MainWindow : Window
         _watch.Stop();
         _step = RecorderStep.Finishing;
 
-        // How long the recording ran, off what the recording wrote down when its devices opened.
-        // Not the length the save will work out — that is read from the blocks and is most of what
-        // saving does — so it is a clock and not an answer, and it is read here because the
-        // session it comes off is let go of a moment from now.
-        //
-        // Asked which of the two instants is later rather than subtracted blind. A `Duration`
-        // refuses to be negative, and this is the only length on this screen off the wall clock
-        // rather than off the blocks — so a machine that stepped its clock back during the meeting,
-        // which is an NTP correction or a resume and not a fault, would throw here. That is before
-        // the try below and outside everything `Reportable` names, on an `async void` handler: it
-        // would take the application down with both devices open and the meeting never saved. A
-        // clock that ran backwards reads as no time instead.
-        var ran = Now();
-        SavedMeetingLength.Text = Length(
-            ran > recording.Card.StartedAt ? ran - recording.Card.StartedAt : Duration.Zero);
-
         // The meeting is in the corpus from the moment record was pressed, so the list below can
         // show it while it is being saved rather than after. Told which one first, because the row
         // it reads says a meeting with no audio and this is the one thing that knows better.
@@ -1323,11 +1329,10 @@ public sealed partial class MainWindow : Window
             _recording = null;
             _step = RecorderStep.Nothing;
 
-            // The save is over however it went, so nothing is being saved, no row below is, and
-            // the length beside the heading is nobody's. None of the three draws anything: what
-            // redraws is the refresh below, which happens only while the window is open.
+            // The save is over however it went, so nothing is being saved and no row below is.
+            // Neither of these draws anything: what redraws is the refresh below, which happens
+            // only while the window is open.
             _saving = null;
-            SavedMeetingLength.Text = string.Empty;
             Meetings.BeingSavedNow(null);
 
             // Every meeting is asked its own questions again. What channel 0 followed is a process
@@ -1424,11 +1429,11 @@ public sealed partial class MainWindow : Window
 
         ReadTheDevices();
 
-        // The whole screen only when the offer has just appeared, and the meters otherwise. What
-        // the rest of it says does not change with a second passing — the buttons, the pickers and
-        // the status line all answer to a press — so redrawing them once a second would be a
-        // second's worth of work to say what it already said, and it would take a selection out of
-        // the report every time it ran.
+        // The whole screen only when the offer has just appeared, and the clock and the meters
+        // otherwise. What the rest of it says does not change with a second passing — the buttons,
+        // the pickers and the status line all answer to a press — so redrawing them once a second
+        // would be a second's worth of work to say what it already said, and it would take a
+        // selection out of the report every time it ran.
         if (!_offered && !recording.IsPaused && recording.HeardNothingFromTheProgram())
         {
             _offered = true;
@@ -1436,7 +1441,10 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        ShowTheMeters(Screen().State);
+        var state = Screen().State;
+
+        ShowTheClock(state);
+        ShowTheMeters(state);
     }
 
     /// <summary>

@@ -175,6 +175,18 @@ public static class UiTexts
         "The recording ended, but the meeting could not be made. What was recorded is still in its "
         + "folder.");
 
+    // ── The clock, while a meeting is being recorded ─────────────────────────────
+
+    /// <summary>
+    /// What the biggest number on the screen is a number of. The digits themselves carry no entry
+    /// of this catalogue — a length reads the same in every language — so this is the whole of
+    /// what a narrator has to go on, and it says the measurement rather than the control: somebody
+    /// hearing "clock" would look for a time of day.
+    /// </summary>
+    public static UiText HowLongTheMeetingHasBeenRunning { get; } = new(
+        "Hace cuánto que se está grabando",
+        "How long the meeting has been running");
+
     // ── The meters, while a meeting is being recorded ────────────────────────────
 
     // The channel number is in the name a person reads, and not decoration. It is the number the

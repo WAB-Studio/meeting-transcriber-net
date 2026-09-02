@@ -139,22 +139,42 @@
 
                  The steps are built in the code-behind and not templated here, for the reason the
                  meeting cards are: which of them exist is an answer, not a layout. What decides it
-                 is SavingTheMeeting, in a project a build agent can run. -->
+                 is SavingTheMeeting, in a project a build agent can run.
+
+                 It says what the save is doing and never how long the meeting was. The length is
+                 not known here — it comes out of pouring the spools onto a timeline, which is most
+                 of what this state is waiting for — so a number beside this heading could only be
+                 a guess, standing seconds before the report states the answer. One meeting, one
+                 length, said once. -->
             <StackPanel x:Name="SavingCard" Spacing="12" Visibility="Collapsed">
-                <StackPanel Spacing="2">
-                    <TextBlock
-                        Text="{x:Bind In(loc:UiTexts.SavingTheMeeting)}"
-                        Style="{StaticResource TitleTextBlockStyle}" />
-                    <!-- How long the meeting ran, as the machine's own number: it reads the same
-                         in either language, so it carries no entry of the catalogue. -->
-                    <TextBlock
-                        x:Name="SavedMeetingLength"
-                        Style="{StaticResource CaptionTextBlockStyle}"
-                        Opacity="0.7" />
-                </StackPanel>
+                <TextBlock
+                    Text="{x:Bind In(loc:UiTexts.SavingTheMeeting)}"
+                    Style="{StaticResource TitleTextBlockStyle}" />
 
                 <StackPanel x:Name="SavingSteps" Spacing="8" MaxWidth="640" HorizontalAlignment="Left" />
             </StackPanel>
+
+            <!-- How long the meeting has been going, and the biggest thing on the screen while one
+                 is: it is what somebody glances up at to know where the meeting has got to. On
+                 screen for exactly as long as the meters are, paused included, and answered by
+                 RecordingClock in a project a build agent can run rather than decided here.
+
+                 Not a live region, and that is a decision rather than an omission. It changes
+                 every second, so announcing it would talk over every line beside it — including
+                 the ones about a device dying, which are the only things on this screen worth
+                 interrupting somebody for.
+
+                 HelpText and not Name, which on a TextBlock are not two ways of saying the same
+                 thing: a TextBlock's automation name is its own text, and setting Name replaces it
+                 rather than labelling it — so the biggest number on the screen would be read out
+                 as the words "how long the meeting has been running" and never as a length. The
+                 meters can label themselves that way because a ProgressBar hands its value back
+                 through a pattern of its own; this has nothing but its text. -->
+            <TextBlock
+                x:Name="TheClock"
+                Style="{StaticResource DisplayTextBlockStyle}"
+                Visibility="Collapsed"
+                AutomationProperties.HelpText="{x:Bind In(loc:UiTexts.HowLongTheMeetingHasBeenRunning)}" />
 
             <!-- What is arriving, while it is arriving. There is no meeting to meter until one is
                  being recorded, so none of this is on screen before that and none of it is left
