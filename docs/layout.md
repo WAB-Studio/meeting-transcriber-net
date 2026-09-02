@@ -65,7 +65,10 @@ device, plus one thin type that opens the devices in that order and is
 deliberately too small to hold a rule. Audio somebody brought in from outside is here for that same
 reason and not a second one: reading a WAV is the engine's and filing a meeting is the corpus's, and
 whether a two-channel file is a meeting's two sources is decided from both — the audio's own shape
-and the recovery card beside it. `MeetingTranscriber.App` was not an option for any of it:
+and the recovery card beside it. The watch that tells a list of meetings it has stopped saying what
+the corpus says is here for that reason again, and it is the product's one background poller: what
+that list draws is the corpus's meetings *and* the spool folder's recordings, and this is the only
+project that can see both. `MeetingTranscriber.App` was not an option for any of it:
 touching a type from that assembly fires the Windows App SDK module initializer and throws outside
 a packaged host, so anything living there would have no probe a build agent could run.
 

@@ -98,6 +98,14 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
             .Where(meeting => meeting.LifecycleState == LifecycleState.Active
                 || mightBeStopped.Contains(meeting.Id))
             .OrderByDescending(meeting => meeting.StartedAt)
+
+            // And the id under it, which settles nothing a person reads and everything about
+            // whether this is the same list twice. Two meetings that started in the same
+            // millisecond leave SQLite free to answer in either order, and what asks this question
+            // over and over is `MeetingsWatch`: an order that moved between two looks would read as
+            // the corpus having changed, and the list would rebuild every card of itself for as
+            // long as the window stayed open.
+            .ThenBy(meeting => meeting.Id)
             .ToList();
 
         var wanted = meetings.Select(meeting => meeting.Id).ToArray();
