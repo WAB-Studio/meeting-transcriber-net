@@ -622,7 +622,46 @@ public sealed partial class MeetingsDrawer : UserControl
             lines.Children.Add(answers);
         }
 
-        return new Border { Style = Chrome(surface), Child = lines };
+        return new Border { Style = Chrome(surface), Child = Marked(surface, lines) };
+    }
+
+    /// <summary>
+    /// Puts the 18px warning triangle beside a row on the attention tint, and nothing beside any
+    /// other row.
+    /// </summary>
+    /// <remarks>
+    /// <c>docs/design.md</c> §Notices gives the mark to one of the two tints and not to the other,
+    /// and the difference is the whole point of having two: the decision tint is something waiting
+    /// on the person, which is not something that went wrong. A triangle on both would spend the
+    /// one mark that says something did.
+    /// <para>
+    /// Read off the surface rather than taken as a second argument, so the mark and the tint cannot
+    /// come apart: <see cref="Reads"/> is the one table that says which surface a standing sits on,
+    /// and this asks that answer rather than deciding again from the standing.
+    /// </para>
+    /// </remarks>
+    private UIElement Marked(string surface, UIElement lines)
+    {
+        if (!string.Equals(surface, "SomethingIsLost", StringComparison.Ordinal))
+        {
+            return lines;
+        }
+
+        // A Grid and not a horizontal StackPanel, which is the difference between a row that wraps
+        // and one that does not: a horizontal stack offers its children all the width they ask for,
+        // so every wrapping line inside this row would stop wrapping and run off the card.
+        var withTheMark = new Grid { ColumnSpacing = 12 };
+        withTheMark.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        withTheMark.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var mark = new Microsoft.UI.Xaml.Shapes.Path { Style = Chrome("SomethingIsLostMark") };
+        Grid.SetColumn(mark, 0);
+        Grid.SetColumn((FrameworkElement)lines, 1);
+
+        withTheMark.Children.Add(mark);
+        withTheMark.Children.Add(lines);
+
+        return withTheMark;
     }
 
     /// <summary>
@@ -722,7 +761,7 @@ public sealed partial class MeetingsDrawer : UserControl
 
         if (kept)
         {
-            var keep = new Button { Content = In(UiTexts.Keep) };
+            var keep = new Button { Content = In(UiTexts.Keep), Style = Chrome("TakeTheStage") };
             keep.Click += (_, _) => Decide(row, WaitingAnswer.Keep);
             answers.Children.Add(keep);
         }
@@ -870,7 +909,7 @@ public sealed partial class MeetingsDrawer : UserControl
 
         if (owed.MayBeLeft)
         {
-            var leave = new Button { Content = In(UiTexts.Ignore) };
+            var leave = new Button { Content = In(UiTexts.Ignore), Style = Chrome("TheNeutralOne") };
             leave.Click += (_, _) => Answer(meeting, decline: true);
             row.Children.Add(leave);
         }

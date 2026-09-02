@@ -15,13 +15,6 @@ namespace MeetingTranscriber.Recording;
 /// </remarks>
 public sealed record ChannelReading
 {
-    /// <summary>
-    /// How far down a meter still draws something. Decibels, and not the peak itself: speech
-    /// arrives around a twentieth of full scale, so a bar drawn straight off the peak sits near
-    /// the floor for a meeting that is recording perfectly well and says nothing to anybody.
-    /// </summary>
-    private const float Quietest = -60f;
-
     /// <summary>Which of the two channels this is.</summary>
     public required AudioChannel Channel { get; init; }
 
@@ -104,13 +97,16 @@ public sealed record ChannelReading
     public string? Loudness => IsSilent ? null : Level.ToString();
 
     /// <summary>
-    /// How full the bar is, from nothing at <c>0</c> to full scale at <c>1</c>. Silence is
-    /// nothing, and a source past full scale is full rather than more than full — a reading that
-    /// clipped is something to see and not something to draw off the end of the meter.
+    /// How full the bar is, from nothing at <c>0</c> to full scale at <c>1</c>, on
+    /// <see cref="MeterScale"/> — the same scale the numbers under the bar are placed on, so the
+    /// level and the mark saying what it means cannot disagree about where −12 is.
     /// </summary>
-    public double Meter => IsSilent
-        ? 0
-        : Math.Clamp((Level.Decibels - Quietest) / -Quietest, 0, 1);
+    /// <remarks>
+    /// Silence is nothing rather than the left-hand end the scale would clamp it to, and that is
+    /// this record's decision rather than the scale's: a channel where no sample moved draws no
+    /// level at all, and a bar sitting at zero width is how that reads.
+    /// </remarks>
+    public double Meter => IsSilent ? 0 : MeterScale.Along(Level.Decibels);
 
     /// <summary>
     /// Asks each of <paramref name="recording"/>'s sources what it reads, in channel order.

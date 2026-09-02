@@ -3,14 +3,28 @@
     x:Class="MeetingTranscriber.App.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:MeetingTranscriber.App">
+    xmlns:local="using:MeetingTranscriber.App"
+    RequestedTheme="Light">
+    <!-- Light, and said rather than followed. Olivo is papel, tarjeta, three inks and two accents,
+         and there is no dark set of those values: `docs/design.md` names one palette. An
+         application that followed Windows into dark would keep Olivo's light brushes wherever a
+         screen named one and take the platform's dark ones everywhere a screen did not — which is
+         what it did, and what it looked like was a window whose every unstyled label was near-white
+         on paper. Following the system is right for a design that has both; here it is a promise
+         the design cannot keep. When somebody draws Olivo dark, this attribute goes and
+         Olivo.xaml grows a ThemeDictionaries. -->
+
+    <!-- Olivo is merged after the platform's own dictionary and never before it. Every control
+         style in it is `BasedOn` one of the platform's, so focus, the keyboard and the automation
+         peer stay the platform's and only what is drawn is Olivo's — and a merge in the other
+         order resolves those lookups against nothing. -->
+
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
-                <!-- Other merged dictionaries here -->
+                <ResourceDictionary Source="ms-appx:///Olivo.xaml" />
             </ResourceDictionary.MergedDictionaries>
-            <!-- Other app resources here -->
         </ResourceDictionary>
     </Application.Resources>
 </Application>

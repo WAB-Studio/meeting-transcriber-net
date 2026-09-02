@@ -51,9 +51,11 @@ public static class CorpusFiles
     /// </summary>
     /// <remarks>
     /// The opposite claim to <see cref="UnfinishedSuffix"/>: these bytes <i>were</i> an artifact,
-    /// and for as long as one of these is on disk it is the last copy of one. Nothing removes it on
-    /// its own — the reconciler reports it and a rebuild produces the file again — because a sweep
-    /// that took one would be taking exactly the copy a refused replace was about to put back.
+    /// and while the file they were moved out of the way of is not there this is the last copy of
+    /// one. So nothing may be concluded from the suffix alone — a sweep asks whether the
+    /// destination is back, which is <see cref="DestinationOfSuperseded"/>, and takes only the
+    /// copies where it is. Taking one where it is not would be taking exactly the copy a refused
+    /// replace is about to put back.
     /// </remarks>
     public const string SupersededSuffix = ".superseded";
 
@@ -171,6 +173,36 @@ public static class CorpusFiles
     /// </summary>
     internal static FileInfo SupersededBeside(FileInfo destination) =>
         Beside(destination, SupersededSuffix);
+
+    /// <summary>
+    /// The file a superseded copy was moved out of the way of, and null when the name does not
+    /// carry one.
+    /// </summary>
+    /// <remarks>
+    /// The inverse of <see cref="SupersededBeside"/>, and it holds only over names that one wrote:
+    /// a destination, a full stop, the token that makes the copy unique, and the suffix. So the
+    /// token is read back as the <see cref="Guid"/> it was written from rather than as whatever
+    /// stands between the last two full stops, and a name no replace of this corpus wrote answers
+    /// null. That answer is load-bearing on both sides: nothing is deleted on the strength of a
+    /// suffix somebody else's file happens to end in, and nothing is reported as the copy of a
+    /// derived file that never existed.
+    /// </remarks>
+    internal static FileInfo? DestinationOfSuperseded(FileInfo aside)
+    {
+        ArgumentNullException.ThrowIfNull(aside);
+
+        if (aside.Directory is not { } folder || !IsSuperseded(aside.Name))
+        {
+            return null;
+        }
+
+        var named = aside.Name[..^SupersededSuffix.Length];
+        var token = named.LastIndexOf('.');
+
+        return token > 0 && Guid.TryParseExact(named[(token + 1)..], "N", out _)
+            ? new FileInfo(Path.Combine(folder.FullName, named[..token]))
+            : null;
+    }
 
     /// <summary>
     /// Throws unless the path is one this meeting's files are allowed to be stored at.

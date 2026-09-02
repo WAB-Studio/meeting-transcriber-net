@@ -92,7 +92,25 @@ public partial class ScreenTextsTests
         "ToolTipService.ToolTip",
     ];
 
-    public static TheoryData<string> Screens() => [.. AppSources.With(".xaml").Select(file => file.FullName)];
+    /// <summary>
+    /// The screens. A <c>ResourceDictionary</c> is not one of them and is left out: it holds
+    /// values — a colour, a corner, a type rank — and the two checks below are about words a person
+    /// reads, so over Olivo.xaml they would go red over <c>&lt;CornerRadius&gt;4&lt;/CornerRadius&gt;</c>.
+    /// </summary>
+    /// <remarks>
+    /// That is a narrowing and not a hole, because of what the first check below already refuses.
+    /// A word put in a dictionary can only reach somebody through a property a screen binds, and
+    /// that check takes <c>{x:Bind}</c> and nothing else — deliberately, so that
+    /// <c>{StaticResource Greeting}</c> is not a literal one indirection away. So there is no
+    /// route from a sentence in a dictionary to a screen. <c>OlivoTests</c> closes the other end
+    /// and refuses to let one be written there at all.
+    /// </remarks>
+    public static TheoryData<string> Screens() =>
+    [
+        .. AppSources.With(".xaml")
+            .Where(file => XDocument.Load(file.FullName).Root?.Name.LocalName != "ResourceDictionary")
+            .Select(file => file.FullName),
+    ];
 
     public static TheoryData<string> CodeBehind() => [.. AppSources.With(".cs").Select(file => file.FullName)];
 
@@ -167,36 +185,14 @@ public partial class ScreenTextsTests
     [
         .. LiteralOnScreen
             .Matches(source)
-            .Where(match => !StandsInACommentedLine(source, match.Index))
-            .Select(match => $"line {LineOf(source, match.Index)}: "
+            .Where(match => !SourceLines.StandsInACommentedLine(source, match.Index))
+            .Select(match => $"line {SourceLines.LineOf(source, match.Index)}: "
                 + string.Join(' ', match.Value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))),
     ];
 
-    /// <summary>Whether what was found at <paramref name="at"/> is on a line that is all comment.</summary>
-    /// <remarks>
-    /// The house style here is a paragraph of prose per member, and the rule this class enforces is
-    /// one somebody will want to write down next to the code it governs — with the example that
-    /// makes it clear, which is a literal. A comment cannot put a word in front of anybody, so
-    /// breaking a build over one is noise, and noise is how a guard stops being believed.
-    /// <para>
-    /// What it reads is the line, not the language: a line that opens a comment, and not a comment
-    /// opened after code on the same line. Finding that second one means telling <c>//</c> from the
-    /// <c>//</c> inside <c>&quot;http://…&quot;</c>, which is a scanner and not a line test, and
-    /// getting it wrong would silently drop a real literal rather than merely report a false one.
-    /// So a trailing comment is still read as code, and that is the smaller mistake.
-    /// </para>
-    /// </remarks>
-    private static bool StandsInACommentedLine(string source, int at)
-    {
-        var opens = at == 0 ? 0 : source.LastIndexOf('\n', at - 1) + 1;
-        var before = source[opens..at].TrimStart();
-
-        return before.StartsWith("//", StringComparison.Ordinal)
-            || before.StartsWith("/*", StringComparison.Ordinal)
-            || before.StartsWith('*');
-    }
-
-    private static int LineOf(string source, int at) => source.AsSpan(0, at).Count('\n') + 1;
+    // Whether a finding stands on a line that is all comment, and which line it is on, are
+    // SourceLines' — the same two answers every guard in this project that greps the application's
+    // own source needs, and the reason they are one place is written there.
 
     /// <summary>
     /// The shapes a word a person reads is written in. Held here and not only against the screens,

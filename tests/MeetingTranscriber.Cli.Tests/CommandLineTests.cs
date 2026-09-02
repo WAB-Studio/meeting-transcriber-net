@@ -264,9 +264,50 @@ public class CommandLineTests
         var run = CommandLine.Of("sweep", "--corpus", root);
 
         run.Code.ShouldBe(Cli.Ok, run.Error);
-        run.Output.ShouldContain("1 unfinished write(s) removed.");
+        run.Output.ShouldContain("1 file(s) removed");
         File.Exists(unfinished).ShouldBeFalse();
         File.Exists(Path.Combine(root, imported.Value("transcript"))).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// A machine that died inside a render leaves a copy of a derived file, and the corpus reads
+    /// unsound until it is gone. One command clears it, and nothing about that command is a
+    /// decision somebody has to take.
+    /// </summary>
+    /// <remarks>
+    /// The whole of what this buys, end to end: before, `check` reported the copy, nothing removed
+    /// it and the command exited non-zero until a person went and deleted a file by hand — which is
+    /// a start-up check that stays red, and a check that stays red stops being read. The copy is
+    /// only takeable because the file it was moved out of the way of is back on disk; the same file
+    /// with its destination missing is the one thing here nobody may take, and
+    /// `ArtifactReconcilerTests` sweeps both in one corpus.
+    /// </remarks>
+    [Fact]
+    public void A_copy_a_finished_replace_left_behind_stops_the_corpus_reading_unsound()
+    {
+        using var corpus = new TemporaryCorpus();
+        var root = corpus.Root.FullName;
+        CommandLine.Of("migrate", "--corpus", root);
+        var imported = Import(root);
+
+        var aside = Path.Combine(
+            root,
+            $"{imported.Value("transcript")}.{Guid.NewGuid():n}{CorpusFiles.SupersededSuffix}");
+        File.WriteAllText(aside, "the rendering before this one");
+
+        var reported = CommandLine.Of("check", "--corpus", root);
+
+        reported.Code.ShouldBe(Cli.Refused);
+        reported.Output.ShouldContain($"{ArtifactState.Superseded}");
+
+        var run = CommandLine.Of("sweep", "--corpus", root);
+
+        run.Code.ShouldBe(Cli.Ok, run.Error);
+        run.Output.ShouldContain("1 file(s) removed");
+        File.Exists(aside).ShouldBeFalse();
+        File.Exists(Path.Combine(root, imported.Value("transcript"))).ShouldBeTrue();
+
+        CommandLine.Of("check", "--corpus", root).Code.ShouldBe(Cli.Ok);
     }
 
     /// <summary>
@@ -296,7 +337,7 @@ public class CommandLineTests
         var run = CommandLine.Of("sweep", "--corpus", root);
 
         run.Code.ShouldBe(Cli.Ok, run.Error);
-        run.Output.ShouldContain("0 unfinished write(s) removed.");
+        run.Output.ShouldContain("0 file(s) removed");
         run.Output.ShouldContain("1 left alone");
         run.Output.ShouldContain(imported.Value("transcript") + CorpusFiles.UnfinishedSuffix);
         File.Exists(unfinished).ShouldBeTrue();
