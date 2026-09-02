@@ -137,8 +137,17 @@ change, with nothing built on top of it. Checks 15 and 16 refuse a claim written
 and an open claim reworded and ticked together, so a card whose claim does not exist yet, or whose
 claim does not yet say what it needs to say, is two pieces of work and the first of them is this
 one. `main` takes direct pushes, so where that first piece is only `ISA.md` it costs a push and not
-a second pull request. What the gates cannot reach — whether the words were written ahead of the
-work or to fit it — is a reviewer's, and `references/format.md` says where it is asked.
+a second pull request. **Run the four commands before that push and not after** — standing on `main`
+the gates compare the tree against the trunk's tip, so they refuse a bad change while it is still
+yours to fix; once it has landed, CI names it on `main` and the only answer is another push. What
+they cannot reach — whether the words were written ahead of the work or to fit it — is a reviewer's,
+and `references/format.md` says where it is asked.
+
+**A closed claim that has to move takes its evidence with it.** The product changes under claims
+that stay true, and rewording one of those is honest and allowed — check 16 does not reach it. What
+check 17 refuses is the half of the act: the words moved and the `## Verification` stub left saying
+what was run against the old ones. Re-run the probe against what the claim says now and write that
+run down in place of the old one, in the same change.
 
 ### Interview — fill a thin section
 
