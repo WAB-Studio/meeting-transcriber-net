@@ -47,41 +47,120 @@ public class ArtifactReconcilerTests
     }
 
     /// <summary>
-    /// The other file a replace can leave beside a destination, and the one the sweep may not have.
+    /// The other file a replace can leave beside a destination, and the one observation that says
+    /// which of the two things it is.
     /// </summary>
     /// <remarks>
     /// <para>
     /// A set of derived files is replaced by emptying every destination first, and what comes out
-    /// of one is an artifact's bytes rather than a write's. Still there after the replace is over,
-    /// it means the machine stopped inside the run of renames or the tidy-up was refused — and in
-    /// the case the emptying exists for, a replace refused partway that puts the copies back, this
-    /// is the file the put-back is about to move. A sweep taking it there is not a lost write; it
-    /// is a derived file that stopped existing and said nothing.
+    /// of one is an artifact's bytes rather than a write's. Still there afterwards, it is either
+    /// the last copy of a derived file — the machine stopped between the emptying and the moves, or
+    /// a put-back was refused — or a copy the replace finished on top of and did not get to remove.
+    /// A sweep taking the first is a derived file that stopped existing and said nothing; leaving
+    /// the second is `check` standing red until somebody deletes a file by hand.
     /// </para>
     /// <para>
-    /// So it is named superseded and not unfinished, and the two claims are opposite: unfinished
-    /// says these bytes were never an artifact, which is the whole of the sweep's licence to delete
-    /// one on sight.
+    /// What tells them apart is whether the file the copy came out of is back, so the two are put
+    /// in one corpus and swept in one run: the suffix is identical, the meeting is the same, and
+    /// only the destination differs. A sweep reading the suffix alone takes both or neither, and
+    /// either way this goes red.
     /// </para>
     /// </remarks>
     [Fact]
-    public void The_copy_a_replace_set_aside_is_reported_and_survives_the_sweep()
+    public void A_copy_is_taken_only_where_the_file_that_replaced_it_is_back()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context);
-        var aside = Drop(
+        Written(context, corpus, meeting, "transcript.md", ArtifactKind.Transcript, "this rendering");
+        var replaced = Aside(corpus, meeting, "transcript.md", "the rendering before this one");
+        var missing = Aside(corpus, meeting, "utterances.jsonl", "the turns before these");
+
+        var reported = ArtifactReconciler.Check(context);
+
+        reported.Select(finding => finding.RelativePath).ShouldBe([replaced, missing]);
+        reported.ShouldAllBe(finding => finding.State == ArtifactState.Superseded);
+        reported[0].Detail.ShouldNotBe(
+            reported[1].Detail,
+            "one wants a rebuild and the other wants nothing, so the report says which");
+
+        var swept = ArtifactReconciler.Sweep(context);
+
+        swept.Removed.ShouldBe([replaced]);
+        swept.Left.ShouldBeEmpty();
+        File.Exists(CorpusFiles.Locate(corpus.Root, replaced).FullName).ShouldBeFalse();
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, missing).FullName)
+            .ShouldBe("the turns before these");
+
+        var left = ArtifactReconciler.Check(context).ShouldHaveSingleItem();
+        left.State.ShouldBe(ArtifactState.Superseded);
+        left.RelativePath.ShouldBe(missing);
+    }
+
+    /// <summary>
+    /// A file ending the same way that no replace of this corpus wrote is somebody else's file, and
+    /// is reported as one and left where it is.
+    /// </summary>
+    /// <remarks>
+    /// The sweep's licence to delete a copy is that the corpus itself set it aside and the file it
+    /// came out of is back, and the second half is only askable of a name the first half wrote —
+    /// destination, the token that makes the copy unique, suffix. Read as "whatever stands before
+    /// the last full stop", any name at all resolves to a destination, and this one resolves to a
+    /// file that is on disk, so a sweep would take somebody else's file on the strength of a
+    /// meeting having a transcript. Reported as a copy it would be no better: the advice under that
+    /// state is to rebuild the derived file it came out of, and there is no such file. What it is
+    /// is a file the corpus has no row for, which is the one state that says it may be the only one.
+    /// </remarks>
+    [Fact]
+    public void A_file_this_corpus_did_not_set_aside_is_not_a_copy_of_anything()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        Written(context, corpus, meeting, "transcript.md", ArtifactKind.Transcript, "this rendering");
+        var theirs = Drop(
             corpus,
             $"meetings/{meeting}/transcript.md.f00d{CorpusFiles.SupersededSuffix}",
-            "the rendering before this one");
+            "somebody else's idea of a backup");
 
         var finding = ArtifactReconciler.Check(context).ShouldHaveSingleItem();
-        finding.State.ShouldBe(ArtifactState.Superseded);
-        finding.RelativePath.ShouldBe(aside);
+        finding.State.ShouldBe(ArtifactState.Unrecorded);
+        finding.RelativePath.ShouldBe(theirs);
 
         ArtifactReconciler.Sweep(context).Removed.ShouldBeEmpty();
-        File.ReadAllText(CorpusFiles.Locate(corpus.Root, aside).FullName)
-            .ShouldBe("the rendering before this one");
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, theirs).FullName)
+            .ShouldBe("somebody else's idea of a backup");
+    }
+
+    /// <summary>
+    /// A copy wearing the read-only bit is still the corpus's to remove once the file that replaced
+    /// it is back.
+    /// </summary>
+    /// <remarks>
+    /// The bit is not somebody's answer about this file. It rides in on a backup medium or a policy,
+    /// the corpus replaces a derivative wearing it without asking — which is what
+    /// <c>DurableWriteTests.A_destination_that_cannot_be_opened_for_writing_is_still_replaced</c>
+    /// settles — and the rename that sets the copy aside carries it across. Left standing it refuses
+    /// the delete exactly the way a live handle does, and the sweep would report the copy as a write
+    /// somebody is still making and tell the person to run the command again. Nothing has it open,
+    /// running it again does the same thing, and `check` never goes green: the state this whole
+    /// change exists to end, one layer further down.
+    /// </remarks>
+    [Fact]
+    public void A_copy_the_disk_marked_read_only_is_still_taken()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        Written(context, corpus, meeting, "transcript.md", ArtifactKind.Transcript, "this rendering");
+        var replaced = Aside(corpus, meeting, "transcript.md", "the rendering before this one");
+        CorpusFiles.Locate(corpus.Root, replaced).IsReadOnly = true;
+
+        var swept = ArtifactReconciler.Sweep(context);
+
+        swept.Removed.ShouldBe([replaced]);
+        swept.Left.ShouldBeEmpty("nothing has it open, so nothing is waiting on anything");
+        ArtifactReconciler.Check(context).ShouldBeEmpty();
     }
 
     /// <summary>
@@ -235,6 +314,16 @@ public class ArtifactReconcilerTests
         File.Exists(corpus.DatabasePath).ShouldBeTrue();
         ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
     }
+
+    /// <summary>
+    /// The copy a replace would have set aside of this meeting's file, named the way a replace
+    /// names one, standing in for a machine that stopped before the tidy-up.
+    /// </summary>
+    private static string Aside(TemporaryCorpus corpus, Guid meeting, string name, string text) =>
+        Drop(
+            corpus,
+            $"{CorpusFiles.PathFor(meeting, name)}.{Guid.NewGuid():n}{CorpusFiles.SupersededSuffix}",
+            text);
 
     /// <summary>A file put on disk by something other than a durable write.</summary>
     private static string Drop(TemporaryCorpus corpus, string relativePath, string text)

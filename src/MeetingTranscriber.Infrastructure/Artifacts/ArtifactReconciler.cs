@@ -40,10 +40,13 @@ public enum ArtifactState
     /// <summary>
     /// The copy of a derived file a replace moved out of the way, still there after the replace was
     /// over. Either the machine stopped inside the run of renames or the tidy-up at the end of it
-    /// was refused. Until somebody looks it is the only copy of what that file used to hold, which
-    /// is why nothing removes it on its own — and it is a derivative, so a rebuild is the answer
-    /// and removing it by hand costs nothing.
+    /// was refused.
     /// </summary>
+    /// <remarks>
+    /// One state and two things to do about it, so the finding says which: with the file it came
+    /// out of missing, this is the last copy of it and a rebuild is the answer; with that file back,
+    /// a sweep takes this and nothing else is owed.
+    /// </remarks>
     Superseded = 6,
 }
 
@@ -57,19 +60,20 @@ public sealed record ArtifactFinding(ArtifactState State, string RelativePath, s
     public override string ToString() => $"{State}: {RelativePath}: {Detail}";
 }
 
-/// <summary>What a sweep took, and what it found and did not take.</summary>
-/// <param name="Removed">The unfinished writes it deleted, as stored paths, in a stable order.</param>
-/// <param name="Left">
-/// The unfinished writes something else had open, which is a write still being made.
-/// </param>
+/// <summary>What a sweep took, and what it reached for and was refused.</summary>
+/// <param name="Removed">What it deleted, as stored paths, in a stable order.</param>
+/// <param name="Left">What the delete was refused, so it is still there.</param>
 /// <remarks>
 /// The second list is not a consolation for the first. A write is held for as long as it exists,
 /// so leaving one is what a sweep run beside a working application is supposed to do — and a run
 /// that says only how many it removed answers "none" to a corpus full of live writes and to an
 /// empty one alike, leaving somebody who has just read a report of unfinished writes with no way
 /// to tell a healthy sweep from a broken one.
+///
+/// What the sweep never reached for is in neither list: a copy whose destination is still missing
+/// belongs to <see cref="ArtifactReconciler.Check"/>, which says what it is and what to do.
 /// </remarks>
-public sealed record SweptWrites(IReadOnlyList<string> Removed, IReadOnlyList<string> Left);
+public sealed record SweptFiles(IReadOnlyList<string> Removed, IReadOnlyList<string> Left);
 
 /// <summary>
 /// What start-up does about the fact that the filesystem and SQLite cannot be written together.
@@ -83,18 +87,25 @@ public sealed record SweptWrites(IReadOnlyList<string> Removed, IReadOnlyList<st
 /// with no row may be the only copy of something that was paid for.
 /// </para>
 /// <para>
-/// So <see cref="Sweep"/> removes unfinished writes and nothing else. Adopting an unrecorded file
-/// back into the corpus is a recovery decision with a person in it, not a thing that happens
-/// silently while the app starts.
+/// So <see cref="Sweep"/> removes what nobody can want back, and nothing else. Adopting an
+/// unrecorded file into the corpus is a recovery decision with a person in it, not a thing that
+/// happens silently while the app starts.
 /// </para>
 /// <para>
-/// <b>Nothing else</b> is load-bearing in two directions the name does not say. A copy a replace
-/// moved out of the way is bytes that were an artifact, so it carries its own suffix and is
-/// reported rather than removed. And an artifact write still being made holds its temporary open,
-/// so the sweep is refused it, leaves it and says which ones it left — that, and nothing about
-/// time, is how a <c>sweep</c> run from a terminal beside a working application is safe. It is the
-/// artifact write that guarantees it: a <c>.partial</c> the audio engine wrote beside a recording
-/// it is materialising is held only while something is reading or writing it.
+/// Two things are nobody's, and each is a claim about bytes rather than about a suffix. A
+/// <c>.partial</c> is a write that never became an artifact, so nothing is lost. A
+/// <c>.superseded</c> copy <i>was</i> an artifact, and what says it is finished with is that the
+/// file it was moved out of the way of is back where it was: the only thing that ever puts one of
+/// these back does so into a destination it emptied itself, and it gives up before anything moves
+/// in. Until then it is the last copy of a derived file and the sweep does not reach for it at all.
+/// </para>
+/// <para>
+/// The third thing the sweep must not take is a write still being made, and no suffix can say that
+/// one. An artifact write holds its temporary open, so the delete is refused, the file is left and
+/// the command says which ones it left — that, and nothing about time, is how a <c>sweep</c> run
+/// from a terminal beside a working application is safe. It is the artifact write that guarantees
+/// it: a <c>.partial</c> the audio engine wrote beside a recording it is materialising is held only
+/// while something is reading or writing it.
 /// </para>
 /// </remarks>
 public static class ArtifactReconciler
@@ -169,38 +180,51 @@ public static class ArtifactReconciler
     }
 
     /// <summary>
-    /// Removes the unfinished writes and answers with what it took and what it left. The only
-    /// thing the corpus removes without being asked, and it is safe because one of these was
-    /// never an artifact.
+    /// Removes what the corpus is finished with and answers with what it took and what it was
+    /// refused. Everything it removes is either a write that was never an artifact or a copy the
+    /// file that replaced it is standing in for.
     /// </summary>
     /// <remarks>
     /// It takes the corpus and not a folder even though it never reads a row: this deletes, and
     /// what it deletes from has to be the folder of a corpus rather than a directory somebody
-    /// named that happens to have files ending the same way.
+    /// named that happens to have files ending the same way. A row is still not read — what says a
+    /// replace is over is the destination being on disk, not the corpus agreeing about it, and the
+    /// two come apart for as long as it takes a crash to land between the rename and the save. The
+    /// file there is the newer one either way, and the row disagreeing with it is what
+    /// <see cref="Check"/> reports.
     /// </remarks>
-    public static SweptWrites Sweep(CorpusDbContext context)
+    public static SweptFiles Sweep(CorpusDbContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
 
         var root = context.Root;
         var removed = new List<string>();
         var left = new List<string>();
-        foreach (var file in Walk(root).Where(file => CorpusFiles.IsUnfinished(file.Name)))
+        var takeable = Walk(root)
+            .Where(file => CorpusFiles.IsUnfinished(file.Name) || ReplacementIsBack(file));
+
+        foreach (var file in takeable)
         {
             var relativePath = CorpusFiles.RelativePathOf(root, file);
             try
             {
+                // The read-only bit is not somebody's answer about this file: it rides in on a
+                // backup medium or a policy and survives the rename that set the copy aside, and
+                // the corpus replaces a derivative wearing it without asking. Left standing, it
+                // refuses the delete the same way a live handle does, and a person reading "run
+                // this again once it has finished" would be running it forever.
+                file.IsReadOnly = false;
                 file.Delete();
                 removed.Add(relativePath);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                // Something else has it open, which means a write that is still being made: a
-                // staged artifact holds its temporary from the moment it is created until the
-                // moment it is put in place, so this is the liveness test and not a consolation
-                // for one. It is carried out rather than swallowed, because a sweep beside a
-                // working application leaves files as a matter of course and somebody who just
-                // read a report of unfinished writes has to be able to tell that from a sweep
+                // The delete was refused, and beside a working application that is a write still
+                // being made: a staged artifact holds its temporary from the moment it is created
+                // until the moment it is put in place, so this is the liveness test and not a
+                // consolation for one. It is carried out rather than swallowed, because a sweep
+                // beside a working application leaves files as a matter of course and somebody who
+                // just read a report of unfinished writes has to be able to tell that from a sweep
                 // that is not working.
                 left.Add(relativePath);
             }
@@ -208,8 +232,15 @@ public static class ArtifactReconciler
 
         removed.Sort(StringComparer.Ordinal);
         left.Sort(StringComparer.Ordinal);
-        return new SweptWrites(removed, left);
+        return new SweptFiles(removed, left);
     }
+
+    /// <summary>
+    /// Whether this is a copy a replace of this corpus set aside and the file it came out of is on
+    /// disk again. False for everything that is not one of those copies at all.
+    /// </summary>
+    private static bool ReplacementIsBack(FileInfo aside) =>
+        CorpusFiles.DestinationOfSuperseded(aside) is { } destination && destination.Exists;
 
     /// <summary>
     /// The other direction: what is on disk that the corpus has not accounted for.
@@ -229,13 +260,22 @@ public static class ArtifactReconciler
                 continue;
             }
 
-            if (CorpusFiles.IsSuperseded(file.Name))
+            // Asked as "which file did this come out of" rather than as the suffix, so a name no
+            // replace of this corpus wrote falls through to the file-with-no-row below. That is
+            // what somebody else's file in a meeting's folder is, and the advice under this state
+            // — rebuild the derived file it is a copy of — is advice about a file that does not
+            // exist.
+            if (CorpusFiles.DestinationOfSuperseded(file) is { } destination)
             {
                 yield return new ArtifactFinding(
                     ArtifactState.Superseded,
                     relativePath,
-                    "the copy a replace moved aside and did not get to remove; it is the last one "
-                    + "of what that derived file held, and a rebuild produces it again");
+                    destination.Exists
+                        ? "the copy a replace moved aside and did not get to remove; the file that "
+                        + "replaced it is back, so a sweep is what takes it from here"
+                        : "the copy a replace moved aside and did not get to remove; the file it "
+                        + "came out of is not there, so this is the last one of what that derived "
+                        + "file held and a rebuild is what puts it back");
                 continue;
             }
 
