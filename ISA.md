@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 131/192
+progress: 131/200
 updated: 2026-09-01
 ---
 
@@ -149,6 +149,8 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-124: A recording waiting in that folder is kept, has its audio taken out, or is thrown away — and which of the three happens is somebody's choice every time.
 - [x] ISC-125: Anti: a recording waiting in that folder is removed by nothing but somebody choosing to remove it.
 - [x] ISC-126: Anti: a meeting that is still being recorded is never offered as one to decide about.
+- [ ] ISC-126.1: Anti: a meeting whose save is still running is never offered as one to decide about.
+- [ ] ISC-126.2: A save the process died in the middle of leaves its meeting decidable again, rather than held out of reach by a mark nothing will lift.
 - [x] ISC-128: A source that will not stop is given up on at a deadline, rather than waited on for as long as it takes.
 - [ ] ISC-129: A source that would not stop is named when a recording stops, together with what was kept of it.
 - [ ] ISC-130: A source that would not stop does not keep the recording's other source from being let go of.
@@ -187,6 +189,7 @@ Board: 3 · Grabador WinUI
 - [x] ISC-152: Every text a person reads in the application is there in both Spanish and English.
 - [x] ISC-153: The application opens in the language Windows is set to, unless somebody chose another.
 - [x] ISC-156: A meeting's identity, its row in the corpus and the folder its audio goes into all exist before the first sample of it is captured.
+- [ ] ISC-156.1: Anti: a meeting no sample was ever captured for does not survive as one — its row and its folder are gone the next time the application opens.
 - [x] ISC-157: Anti: stopping a recording queues no work on the meeting that nobody asked for beforehand.
 - [ ] ISC-157.1: What happens to a meeting when its recording ends is what the person settled beforehand, and nothing else.
 - [ ] ISC-158: A meeting is recorded from end to end with nothing typed at a command line.
@@ -202,19 +205,24 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-167: Anti: playing back what a meeting recorded never requires a transcription to have been paid for.
 - [ ] ISC-168: A meeting whose transcription arrived has its readable files without anybody asking for them.
 - [x] ISC-170: The meetings already recorded are on the screen the application opens on, with nothing to press and no second window to reach them.
+- [ ] ISC-170.1: A meeting whose stage changed while the application was open reads its new stage without the application being started again.
 - [x] ISC-171: The list of meetings takes the room the recorder half was using and gives it back, by one control that is in the same place either way.
 - [ ] ISC-172: Anti: a meeting being recorded is never out of sight behind the meetings list — what it is doing, and the press that stops it, are on screen wherever the list is.
+- [ ] ISC-173: The application is drawn from one visual system, so a screen built later looks like the ones already there.
+- [ ] ISC-173.1: Every colour, text size and corner a screen uses is one of the system's named few, and never a value chosen on the screen itself.
+- [ ] ISC-173.2: A screen that rearranges itself moves between the two arrangements, so somebody can tell what arrived from what was already there.
+- [ ] ISC-173.3: Anti: with Windows asked for no animation, nothing on a screen moves, and nothing on it is lost for standing still.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly
 once for exactly what they approved.
 Board: 4 · Deepgram BYOK
 - [ ] ISC-84: The Deepgram key lives in Windows Credential Manager and is read from nowhere else.
-- [ ] ISC-85: Anti: no Deepgram call happens without an explicit approval carrying the estimated cost.
+- [ ] ISC-85: Anti: no Deepgram call happens without an explicit approval carrying an estimate of what that call will cost, worked out from what is actually sent and never from how long the meeting was.
 - [ ] ISC-86: Transcribing again is a new version beside what was paid for, never a replacement.
 - [ ] ISC-87: A job whose outcome is uncertain — a charge that may already have happened — stops on a person.
 - [ ] ISC-88: What the provider returns has the shape the fixtures describe.
-- [ ] ISC-154: Silence nobody spoke into is left out of what is sent to the provider, so it is not paid for.
+- [ ] ISC-154: Silence is left out of what is sent to the provider one channel at a time, so a channel that stayed quiet while the other was being spoken into is not paid for.
 - [ ] ISC-155: Anti: a turn lands where it was said in the meeting, however much of the meeting was left out of what was sent.
 
 ### F6 · Summaries
