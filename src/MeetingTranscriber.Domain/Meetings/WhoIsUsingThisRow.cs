@@ -1,4 +1,4 @@
-namespace MeetingTranscriber.Presentation;
+namespace MeetingTranscriber.Domain.Meetings;
 
 /// <summary>
 /// The row that asks who is using the application, as the facts that decide what it does: whether
@@ -10,8 +10,13 @@ namespace MeetingTranscriber.Presentation;
 /// screen's rules are the half of it a build agent can run, and a window that decided this for
 /// itself would leave "the question is on screen exactly while nobody has answered" true only for
 /// as long as nobody edited the four conditions it is made of. Nothing in it is a corpus, a file
-/// or a control — four facts in, three answers out — which is what lets it live in the project
-/// that references nothing.
+/// or a control — four facts in, three answers out.
+/// </para>
+/// <para>
+/// In <c>Domain</c> and not in <c>MeetingTranscriber.Presentation</c>, where it first landed, for
+/// the rule <c>docs/layout.md</c> gives about where a screen's rules go: this one is about the
+/// person the corpus flags as me, and the answer becomes that person's
+/// <see cref="Person.DisplayName"/>, two files from here.
 /// </para>
 /// <para>
 /// The row is the asking and the answer at once, and that is the whole design: there is one field

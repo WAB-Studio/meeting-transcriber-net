@@ -1,17 +1,21 @@
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Time;
 
+using NAudio.Wave;
+
 namespace MeetingTranscriber.Audio.Tests;
 
 /// <summary>
 /// The half of playing a recording back that has no device in it: where a seek somebody asked for
-/// actually lands.
+/// actually lands, and what the two channels are folded into before an endpoint hears them.
 /// </summary>
 /// <remarks>
 /// The rest of <see cref="Playback"/> is one call to an endpoint each and there is none on a build
 /// agent, which is the same reason nothing here opens a microphone. What a probe reaches instead
 /// is a person pressing play on a packaged build, and that is recorded in the ISA like every other
-/// answer this suite cannot give.
+/// answer this suite cannot give. The fold is on this side of that line because it is arithmetic
+/// over samples: what it does to a pair of them is the same whether an endpoint is listening or
+/// nobody is.
 /// </remarks>
 public class PlaybackTests
 {
@@ -78,6 +82,50 @@ public class PlaybackTests
         finally
         {
             notAWav.Delete();
+        }
+    }
+
+    [Fact]
+    public void The_two_sides_of_a_meeting_are_folded_half_each()
+    {
+        // One side at full scale and the other silent, which is the whole of what a fold can get
+        // wrong: half is the average, one is the fold taking a side, and anything else is a
+        // weighting nobody wrote down. Read through the provider Playback actually builds, so a
+        // package that moved a default underneath it lands here rather than in somebody's earbud.
+        var folded = Playback.BothSidesInBothEars(new Fabricated(channels: 2, [1f, 0f, 0f, 1f]));
+
+        folded.WaveFormat.Channels.ShouldBe(1);
+
+        var heard = new float[2];
+        folded.Read(heard, 0, heard.Length).ShouldBe(2);
+        heard.ShouldBe([0.5f, 0.5f]);
+    }
+
+    [Fact]
+    public void A_recording_that_is_already_one_track_is_handed_over_untouched()
+    {
+        // Audio brought in from outside is one track by the time it is a meeting's, and a fold
+        // over it would do nothing but stand between the file and the device.
+        var one = new Fabricated(channels: 1, [0.25f, 0.5f]);
+
+        Playback.BothSidesInBothEars(one).ShouldBeSameAs(one);
+    }
+
+    /// <summary>Samples that never came off a device, so the fold can be read without one.</summary>
+    private sealed class Fabricated(int channels, float[] samples) : ISampleProvider
+    {
+        private int _read;
+
+        public WaveFormat WaveFormat { get; } =
+            WaveFormat.CreateIeeeFloatWaveFormat(16_000, channels);
+
+        public int Read(float[] buffer, int offset, int count)
+        {
+            var giving = Math.Min(count, samples.Length - _read);
+            Array.Copy(samples, _read, buffer, offset, giving);
+            _read += giving;
+
+            return giving;
         }
     }
 }

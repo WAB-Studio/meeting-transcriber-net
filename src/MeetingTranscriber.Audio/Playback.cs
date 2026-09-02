@@ -22,9 +22,11 @@ namespace MeetingTranscriber.Audio;
 /// </para>
 /// <para>
 /// Nothing here can be run by a build agent, for the same reason nothing that opens a microphone
-/// can: there is no endpoint on one. What <em>is</em> provable is the arithmetic, and it is
-/// <see cref="Within"/> — where a seek somebody asked for actually lands. Everything else in this
-/// type is one call to a device.
+/// can: there is no endpoint on one. What <em>is</em> provable is the arithmetic, and it is two
+/// things — <see cref="Within"/>, where a seek somebody asked for actually lands, and
+/// <see cref="BothSidesInBothEars"/>, what the two channels become before an endpoint hears them.
+/// Both are public for that reason and no other: they are what a device is about to be asked to
+/// do, worked out before there is a device. Everything else in this type is one call to one.
 /// </para>
 /// <para>
 /// It plays a file and knows nothing else about the meeting it came from. That is the whole of
@@ -90,7 +92,7 @@ public sealed class Playback : IDisposable
         try
         {
             var through = new WasapiOut();
-            through.Init(BothSidesInBothEars(wav));
+            through.Init(BothSidesInBothEars(wav.ToSampleProvider()));
             return new Playback(wav, through);
         }
         catch (Exception refused)
@@ -112,21 +114,45 @@ public sealed class Playback : IDisposable
     /// A meeting's two channels are two sources and not a stereo image — channel 0 is what the
     /// machine played and channel 1 is the microphone — so handing the file straight to an
     /// endpoint puts everybody else in one ear and the user in the other, and somebody listening
-    /// on a single earbud hears one side of the conversation. Folded by averaging, which is what
-    /// <see cref="Samples.ToMono"/> already does everywhere else in this project and for the same
-    /// reason: whichever side spoke, it is heard.
+    /// on a single earbud hears one side of the conversation. Folded half each, which is the
+    /// average <see cref="Samples.ToMono"/> takes of the two-channel PCM16 this corpus stores, and
+    /// for the same reason: whichever side spoke, it is heard.
     /// <para>
-    /// Only where there are two. Audio somebody brought in from outside enters as one track, and a
-    /// fold over one channel is a fold that does nothing but stand between the file and the device.
+    /// Both weights are written here rather than left to the provider's own, and that is why this
+    /// is not one line. The weights decide what every listener hears, and a package's default is
+    /// not this repository's to state: the pin in <c>Directory.Packages.props</c> means a bump is a
+    /// change somebody makes here, but nothing about that change would say a default underneath it
+    /// had moved. Written down, the mix is this file's, and
+    /// <c>PlaybackTests.The_two_sides_of_a_meeting_are_folded_half_each</c> is what goes red if
+    /// either the line or the package moves it.
+    /// </para>
+    /// <para>
+    /// Public, and taking what it folds rather than the file it came out of, for that test alone:
+    /// everything else in <see cref="Of"/> is a call to an endpoint, and this is the one part of
+    /// the path to one that is arithmetic. <see cref="Within"/> is public for the same reason.
+    /// </para>
+    /// <para>
+    /// Only where there are exactly two. One track is what audio somebody brought in from outside
+    /// becomes before it is a meeting's, and a fold over it would do nothing but stand between the
+    /// file and the device; anything wider than two is not a shape this corpus stores, and the
+    /// provider refuses it rather than guessing which pair of channels was the conversation.
     /// </para>
     /// </remarks>
-    private static ISampleProvider BothSidesInBothEars(WaveFileReader wav)
+    /// <param name="samples">The recording, as the samples it plays.</param>
+    public static ISampleProvider BothSidesInBothEars(ISampleProvider samples)
     {
-        var samples = wav.ToSampleProvider();
+        ArgumentNullException.ThrowIfNull(samples);
 
-        return samples.WaveFormat.Channels == CapturedAudio.ChannelCount
-            ? new StereoToMonoSampleProvider(samples)
-            : samples;
+        if (samples.WaveFormat.Channels != CapturedAudio.ChannelCount)
+        {
+            return samples;
+        }
+
+        return new StereoToMonoSampleProvider(samples)
+        {
+            LeftVolume = 0.5f,
+            RightVolume = 0.5f,
+        };
     }
 
     /// <summary>

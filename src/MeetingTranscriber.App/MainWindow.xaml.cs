@@ -2,6 +2,7 @@
 
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;

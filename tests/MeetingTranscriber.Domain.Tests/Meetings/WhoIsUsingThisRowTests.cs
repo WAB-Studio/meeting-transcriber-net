@@ -1,4 +1,6 @@
-namespace MeetingTranscriber.Presentation.Tests;
+using MeetingTranscriber.Domain.Meetings;
+
+namespace MeetingTranscriber.Domain.Tests.Meetings;
 
 /// <summary>
 /// The row that asks who is using the application, as the three things it decides. It is here and
@@ -6,6 +8,11 @@ namespace MeetingTranscriber.Presentation.Tests;
 /// exactly while nobody has answered is the whole of the asking, and nothing else could catch it
 /// going away.
 /// </summary>
+/// <remarks>
+/// In this suite rather than <c>Presentation.Tests</c>, following the record itself — the row is
+/// about the person the corpus flags as me, and <c>docs/layout.md</c> is where that placement is
+/// argued. ISC-166 closed on these same facts while both sat one project over.
+/// </remarks>
 public class WhoIsUsingThisRowTests
 {
     private static readonly WhoIsUsingThisRow Answered = new(
