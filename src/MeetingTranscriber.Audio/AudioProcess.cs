@@ -12,5 +12,15 @@ namespace MeetingTranscriber.Audio;
 public sealed record AudioProcess(int Id, string Name, int StartedBy)
 {
     /// <summary>How a person reads it back: the name they typed and the id that disambiguates it.</summary>
+    /// <remarks>
+    /// The recorder's source picker shows this, which is the one place left where a screen joins a
+    /// name a machine gave to punctuation this application chose — the thing
+    /// <see cref="AudioDevice.ToString"/> stopped doing on 2026-09-02. It stayed because the
+    /// question underneath it is not the same one: <c>(default)</c> is an English word and
+    /// <c>pid</c> is what Windows itself calls the number in either language, so moving this line
+    /// into the catalogue means declaring the two versions equal on purpose — which
+    /// <c>UiTextsTests.Reading_in_one_language_leaves_nothing_in_the_other</c> makes somebody say
+    /// out loud, and nobody has. Issue #84 records it as what it did not carry.
+    /// </remarks>
     public override string ToString() => $"{Name} (pid {Id})";
 }
