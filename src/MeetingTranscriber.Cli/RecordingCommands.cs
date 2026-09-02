@@ -202,9 +202,10 @@ public static class RecordingCommands
     /// whose microphone caught nothing is one to be told about before it is kept, not after.
     /// </para>
     /// <para>
-    /// A recording still being written is the one exception, because its files cannot be read
-    /// while a capture holds them. It says so instead, which is the honest answer about a meeting
-    /// that is still happening.
+    /// A recording nothing may be decided about yet is the exception, because its blocks are not
+    /// this command's to read: a capture is still writing them, or a save somewhere is already
+    /// pouring them into the meeting. It says which of the two it is instead, in the same words
+    /// the choices line uses, so one sentence is decided in one place.
     /// </para>
     /// </remarks>
     private static int List(IReadOnlyList<WaitingRecording> waiting, TextWriter output)
@@ -228,9 +229,13 @@ public static class RecordingCommands
                     ?? recording.Spooled.Card?.StartedAt.ToStorage()
                     ?? "unknown");
 
-            if (recording.Running)
+            // Asked as the one question and not as the capture's: a save is reading these blocks
+            // into a meeting right now, so a length read off them here would be this command
+            // pouring a recording somebody else is pouring — and it is the same "not yet" a person
+            // is being told, in the sentence that says which wait it is.
+            if (recording.NothingToDecideYet is { } yet)
             {
-                Report.Line(output, "length", "still being recorded, so its blocks cannot be read yet");
+                Report.Line(output, "length", $"{yet}, so its blocks cannot be read yet");
             }
             else
             {

@@ -339,6 +339,77 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// ISC-126.1 at the engine. A recording whose save is running says so and takes none of the
+    /// three: the blocks are being read into a meeting at that moment, and throwing the folder away
+    /// would take the recording out from under the read that is making it.
+    /// </summary>
+    /// <remarks>
+    /// It is refused in the save's own words and not the capture's. Nobody is speaking into this
+    /// meeting — it is over — and what a person is waiting for is a save ending rather than a
+    /// meeting ending, which is a different sentence and a different length of wait.
+    /// </remarks>
+    [Fact]
+    public void None_of_the_three_outcomes_lands_on_a_recording_whose_save_is_running()
+    {
+        Recorded("daily", both: true);
+
+        using var saving = SavingMark.Take(Folder("daily"));
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        recording.BeingSaved.ShouldBeTrue();
+        recording.NothingToDecideYet.ShouldNotBeNull().ShouldContain("its save is running");
+
+        Refuses(() => recording.Keep());
+        Refuses(() => recording.Export(Folder("out")));
+        Refuses(recording.Discard);
+
+        Folder("daily").Exists.ShouldBeTrue();
+        Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+        Folder("out").Exists.ShouldBeFalse();
+
+        void Refuses(Action decision)
+        {
+            var thrown = Should.Throw<AudioCaptureException>(decision);
+
+            thrown.Message.ShouldContain("save");
+            thrown.Message.ShouldContain(Folder("daily").FullName);
+            thrown.Message.ShouldNotContain(".blocks");
+        }
+    }
+
+    /// <summary>
+    /// ISC-126.2 at the engine. A save that never ended leaves its mark lying in the folder, and
+    /// that folder is one all three outcomes are open to again — the recording is not held out of
+    /// reach by a file nothing is holding.
+    /// </summary>
+    /// <remarks>
+    /// The mark is really there and is asserted to be before anything is asked, so an engine that
+    /// read the mark's existence rather than its handle would fail here rather than pass quietly.
+    /// Throwing the recording away is the one of the three that has to survive it: it removes the
+    /// folder the stale mark is in, so a delete that could not take the mark with it would leave a
+    /// recording nobody could ever be rid of.
+    /// </remarks>
+    [Fact]
+    public void A_mark_left_by_a_save_that_died_leaves_the_recording_decidable()
+    {
+        Recorded("daily", both: true);
+        SavingMark.Take(Folder("daily")).Dispose();
+
+        Marked(Folder("daily"))
+            .ShouldBeTrue("the folder has to be carrying the mark for this to be about one");
+
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        recording.BeingSaved.ShouldBeFalse();
+        recording.NothingToDecideYet.ShouldBeNull();
+        recording.Keep().Count.ShouldBe(2);
+        recording.Export(Folder("out")).Count.ShouldBe(2);
+
+        recording.Discard();
+        Folder("daily").Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
     /// What somebody typed is then a folder rather than a recording, and acting on it as one is
     /// how the wrong directory gets thrown away.
     /// </summary>
@@ -504,4 +575,12 @@ public sealed class UnfinishedRecordingsTests : IDisposable
             writer.Write(packet);
         }
     }
+
+    /// <summary>
+    /// Whether the mark a save writes is lying in this folder. Built here rather than asked of
+    /// <see cref="SavingMark"/>, which deliberately answers nothing about the file being there.
+    /// </summary>
+    private static bool Marked(DirectoryInfo folder) =>
+        File.Exists(Path.Combine(folder.FullName, SavingMark.FileName));
+
 }

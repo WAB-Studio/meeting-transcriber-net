@@ -136,6 +136,75 @@ public sealed class RecoveryCommandTests : IDisposable
     }
 
     /// <summary>
+    /// ISC-126.1 at the prompt, which is the second process the claim is really about: the window
+    /// saving a meeting is not this command, and this command still knows.
+    /// </summary>
+    [Fact]
+    public void A_folder_whose_save_is_running_is_listed_with_none_of_the_three_offered()
+    {
+        Recorded("daily", both: true);
+        Recorded("weekly", both: true);
+
+        using var saving = SavingMark.Take(Folder("daily"));
+
+        var listed = CommandLine.Of("recordings", "--spool", root.FullName);
+
+        listed.Code.ShouldBe(Cli.Ok, listed.Error);
+        listed.Values("choices").ShouldBe(
+            ["nothing yet — its save is running", "keep, export or discard"]);
+    }
+
+    /// <summary>
+    /// And typed anyway, each of the three is refused about the save rather than about a file — a
+    /// discard here would take the folder out from under the finish reading it.
+    /// </summary>
+    [Theory]
+    [InlineData("--keep")]
+    [InlineData("--export")]
+    [InlineData("--discard")]
+    public void None_of_the_three_lands_on_a_folder_whose_save_is_running(string decision)
+    {
+        Recorded("daily", both: true);
+        var into = Folder("taken out");
+
+        using var saving = SavingMark.Take(Folder("daily"));
+
+        string[] typed = ["recover", "--in", Folder("daily").FullName, decision];
+
+        var run = CommandLine.Of(decision is "--export" ? [.. typed, into.FullName] : typed);
+
+        run.Code.ShouldBe(Cli.Refused, run.Output);
+        run.Error.ShouldContain("save");
+        run.Error.ShouldNotContain(".blocks");
+
+        Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+        MeetingAudio.In(Folder("daily")).Exists.ShouldBeFalse();
+        into.Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// ISC-126.2 at the prompt. A save that died left its mark in the folder, and the command
+    /// offers all three over it again rather than reading a file nobody is holding as a save.
+    /// </summary>
+    [Fact]
+    public void A_mark_a_save_left_behind_keeps_none_of_the_three_from_a_folder()
+    {
+        Recorded("daily", both: true);
+        SavingMark.Take(Folder("daily")).Dispose();
+        Marked(Folder("daily")).ShouldBeTrue();
+
+        var listed = CommandLine.Of("recordings", "--spool", root.FullName);
+
+        listed.Code.ShouldBe(Cli.Ok, listed.Error);
+        listed.Values("choices").ShouldBe(["keep, export or discard"]);
+
+        var thrown = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--discard");
+
+        thrown.Code.ShouldBe(Cli.Ok, thrown.Error);
+        Folder("daily").Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
     /// A recording the machine died in the middle of is worth every block that landed, and keeping
     /// it says what the last one cost — and leaves the meeting those blocks are, which is the whole
     /// of what a person came to the folder for.
@@ -377,4 +446,12 @@ public sealed class RecoveryCommandTests : IDisposable
         using var stream = file.Open(FileMode.Open, FileAccess.Write);
         stream.SetLength(file.Length - 32);
     }
+
+    /// <summary>
+    /// Whether the mark a save writes is lying in this folder. Built here rather than asked of
+    /// <see cref="SavingMark"/>, which deliberately answers nothing about the file being there.
+    /// </summary>
+    private static bool Marked(DirectoryInfo folder) =>
+        File.Exists(Path.Combine(folder.FullName, SavingMark.FileName));
+
 }

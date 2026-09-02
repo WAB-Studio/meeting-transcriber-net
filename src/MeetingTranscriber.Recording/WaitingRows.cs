@@ -13,9 +13,9 @@ public enum WaitingStanding
     StillBeingRecorded,
 
     /// <summary>
-    /// Its save is running right now. The blocks are no longer held by a device, so nothing on
-    /// disk tells this apart from a recording the machine died in the middle of — the only thing
-    /// that knows is the recorder doing the saving, and it says so.
+    /// Its save is running right now. The blocks are no longer held by a device, so what tells
+    /// this apart from a recording the machine died in the middle of is the mark the finish holds
+    /// over the folder — and, for the stretch before the finish claims it, the recorder saying so.
     /// </summary>
     BeingSavedNow,
 
@@ -130,10 +130,11 @@ public sealed record WaitingRow(WaitingRecording Recording, WaitingStanding Stan
 /// <para>
 /// It adds one fact to what <see cref="WaitingRecordings"/> already answers, and it is the fact no
 /// corpus read can hold. A meeting being saved is a row with no length whose blocks no device is
-/// holding any more, which on disk is indistinguishable from a recording the machine died in the
-/// middle of — so a list built off what is there alone offers a keep-or-discard on the meeting
-/// somebody stopped four seconds ago, over blocks that are being read at that moment. The recorder
-/// doing the saving is the only thing that knows, so it is asked.
+/// holding any more, which in the corpus is indistinguishable from a recording the machine died in
+/// the middle of — so a list built off the corpus alone offers a keep-or-discard on the meeting
+/// somebody stopped four seconds ago, over blocks that are being read at that moment. The folder
+/// answers it, through the mark the finish holds over it, and whoever pressed stop answers for the
+/// stretch before the finish had claimed anything.
 /// </para>
 /// </remarks>
 public static class WaitingRows
@@ -157,8 +158,10 @@ public static class WaitingRows
     /// </remarks>
     /// <param name="waiting">What the corpus is holding, as it was listed.</param>
     /// <param name="beingSavedNow">
-    /// The meeting whose save is running, or nothing when none is. Told and never worked out here,
-    /// for the reason this type gives.
+    /// The meeting this caller is saving, or nothing when it is saving none. Told rather than
+    /// worked out, and it is not the whole answer: a save any process is running is read off the
+    /// folder as well, so a caller with nothing to say hands in nothing and still gets the right
+    /// row for somebody else's save.
     /// </param>
     /// <param name="blocksThatRefusedToRead">
     /// The folders whose blocks have already been read and would not come back, by full path. Told
@@ -189,28 +192,56 @@ public static class WaitingRows
     /// Where one recording stands, asked in the order the answers overrule each other.
     /// </summary>
     /// <remarks>
-    /// The engine's own refusal first, because a meeting a device is still writing is not a
-    /// recording anything else gets to find a fault in. The save second, because it is the one
-    /// fact the disk cannot show. Then what the folder and the corpus say about each other, which
-    /// is what tells a recording that can be kept from one that can only be thrown away — and only
-    /// after that what reading the blocks found, because a recording already known to make no
-    /// meeting says which folder and which meeting disagree, and that is more than a refusal says
-    /// over exactly the same one answer.
+    /// The save first, and that is the whole of why this order is written down. Stopping a meeting
+    /// lets the devices go and then reads what they wrote, so for the moment between those two a
+    /// folder answers yes to both questions — and asked the other way round the list says
+    /// <em>it is being recorded right now</em> over a meeting somebody stopped, for as long as the
+    /// save takes, which was every save this application has ever run. What is true of it then is
+    /// that it is being saved: the recording is over and nobody is speaking into it.
+    /// <para>
+    /// The engine's own refusal second, because a meeting a device is still writing is not a
+    /// recording anything else gets to find a fault in. Then what the folder and the corpus say
+    /// about each other, which is what tells a recording that can be kept from one that can only be
+    /// thrown away — and only after that what reading the blocks found, because a recording already
+    /// known to make no meeting says which folder and which meeting disagree, and that is more than
+    /// a refusal says over exactly the same one answer.
+    /// </para>
     /// <para>
     /// One place and not two. Every standing is settled here, before the order below is worked out
     /// off it, so a fact arriving later than the list — the save, a read that refused — cannot
     /// rewrite a row behind the sort's back.
+    /// </para>
+    /// <para>
+    /// Each arm asks the fact it is about and never the recording's own reason for having nothing
+    /// to decide yet. That reason is one sentence over two facts, so an arm reading it would take
+    /// whatever a third one was added for and draw these words over it.
     /// </para>
     /// </remarks>
     private static WaitingStanding StandingOf(
         WaitingRecording recording,
         Guid? beingSavedNow,
         IReadOnlySet<string> blocksThatRefusedToRead) =>
-        recording.NothingToDecideYet is not null ? WaitingStanding.StillBeingRecorded
-        : recording.MeetingId is Guid meeting && meeting == beingSavedNow ? WaitingStanding.BeingSavedNow
+        BeingSaved(recording, beingSavedNow) ? WaitingStanding.BeingSavedNow
+        : recording.Running ? WaitingStanding.StillBeingRecorded
         : recording.Unrecoverable is not null ? WaitingStanding.CannotBecomeAMeeting
         : blocksThatRefusedToRead.Contains(recording.Folder.FullName) ? WaitingStanding.CouldNotBeReadThrough
         : WaitingStanding.Waiting;
+
+    /// <summary>
+    /// Whether a save of this recording is running: the mark in its folder, or the caller saying
+    /// so, and either is enough.
+    /// </summary>
+    /// <remarks>
+    /// Two sources for one fact, because they cover different stretches of the same save and
+    /// neither covers the other's. The mark is the folder's and outlives the process that wrote
+    /// it, which is what lets a second window, a prompt or the next start know; it is claimed once
+    /// the finish is under way, so the stretch before it — the devices being let go of, which for a
+    /// wedged one is seconds — is only knowable to whoever pressed stop, and they say so. Read as
+    /// an <c>or</c>: a save neither of them sees is not one anybody can act on.
+    /// </remarks>
+    private static bool BeingSaved(WaitingRecording recording, Guid? beingSavedNow) =>
+        recording.BeingSaved
+        || (recording.MeetingId is Guid meeting && meeting == beingSavedNow);
 
     /// <summary>
     /// When this recording started: what the corpus holds, or failing that what the folder wrote

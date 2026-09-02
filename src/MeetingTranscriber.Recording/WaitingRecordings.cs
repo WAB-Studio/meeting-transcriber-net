@@ -147,6 +147,18 @@ public sealed record WaitingRecording(UnfinishedRecording Spooled, Guid? Meeting
     /// <summary>Whether a capture still holds these files, which on this machine means a meeting in progress.</summary>
     public bool Running => Spooled.Running;
 
+    /// <summary>
+    /// Whether a save of this recording is running right now, wherever it is running from.
+    /// </summary>
+    /// <remarks>
+    /// The spool's own answer, which is a mark held in the folder and readable by anything looking
+    /// at it — another window, a prompt, the next start. It is the half of "being saved" that
+    /// survives the process doing the saving: a screen still has to say so for the stretch between
+    /// somebody pressing stop and the finish claiming the folder, and that stretch is its own to
+    /// know.
+    /// </remarks>
+    public bool BeingSaved => Spooled.BeingSaved;
+
     /// <summary>What its blocks occupy, which is what says a recording caught anything at all.</summary>
     public long Bytes => Spooled.Sources.Sum(source => source.Bytes);
 

@@ -110,11 +110,11 @@ public sealed partial class MeetingsDrawer : UserControl
     /// The meeting the recorder above is saving right now, when it is saving one.
     /// </summary>
     /// <remarks>
-    /// Held rather than read out of the corpus, and that is the whole of why the recorder has to
-    /// say. A meeting being saved is a row with no audio filed yet, which is exactly what a
-    /// recording that never finished is — so the corpus cannot tell the two apart, and a list
-    /// reading it alone would put "no audio yet, it is being recorded or its recording never
-    /// finished" on the meeting somebody stopped four seconds ago.
+    /// Held rather than read out of the corpus, because the corpus cannot say: a meeting being
+    /// saved is a row with no audio filed yet, which is exactly what a recording that never
+    /// finished is. What the folder can say is the mark a finish holds over it, and the list asks
+    /// that on its own — this covers the stretch before there is one, which is the devices being
+    /// let go of, and it is the only stretch nothing outside this window could know about.
     /// </remarks>
     private Guid? _beingSaved;
 

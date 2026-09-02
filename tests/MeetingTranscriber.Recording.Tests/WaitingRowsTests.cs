@@ -8,8 +8,7 @@ namespace MeetingTranscriber.Recording.Tests;
 
 /// <summary>
 /// Which recordings a list offers, in what order, and which of the two answers each of them takes.
-/// ISC-126.1's rule half is here; what that claim also needs, and what keeps it open, is a mark
-/// nothing on disk carries yet.
+/// ISC-126.1 and ISC-126.2 are here, at the surface a person meets them on.
 /// </summary>
 /// <remarks>
 /// A screen is what a person sees this on, and no probe here opens one — a WinUI tree needs a UI
@@ -87,19 +86,50 @@ public sealed class WaitingRowsTests : IDisposable
     }
 
     /// <summary>
-    /// ISC-126.1's rule half. A meeting whose save is running is never offered as one to decide
-    /// about, and it is the recorder that says which one it is: on disk that meeting is a row with
-    /// no length and blocks nothing is holding, which is exactly what a recording nobody finished
-    /// looks like.
+    /// ISC-126.1. A meeting whose save is running is never offered as one to decide about, and it
+    /// is the folder that says so: in the corpus that meeting is a row with no length and blocks
+    /// nothing is holding, which is exactly what a recording nobody finished looks like.
     /// </summary>
     /// <remarks>
-    /// The claim itself says <em>never</em>, and this holds it only of the process the recorder is
-    /// in. Nothing durable carries the mark, so a second process reading the same corpus sees that
-    /// meeting waiting and offers all three at a prompt — which is why the claim is open and why
-    /// this is not the whole of it.
+    /// Nobody is told anything here, which is the point — this is the list a second window, a
+    /// prompt or the next start builds, none of which was in the room when stop was pressed. The
+    /// half where the caller is the one saving is below.
     /// </remarks>
     [Fact]
     public void A_meeting_whose_save_is_running_is_never_offered_as_one_to_decide_about()
+    {
+        using var context = corpus.OpenMigrated();
+        var saving = Killed(context, recordedAt);
+
+        using (SavingMark.Take(Spool(saving.MeetingId)))
+        {
+            var row = Rows(context).ShouldHaveSingleItem();
+
+            row.Standing.ShouldBe(WaitingStanding.BeingSavedNow);
+            row.WaitsOnSomebody.ShouldBeFalse();
+            row.MayBeReadThrough.ShouldBeFalse();
+            row.Allows(WaitingAnswer.Keep).ShouldBeFalse();
+            row.Allows(WaitingAnswer.Discard).ShouldBeFalse();
+        }
+
+        // ISC-126.2 on this surface. The mark the save wrote is still lying in the folder and the
+        // same list offers the same recording both answers again — so a save the process died in
+        // the middle of costs a wait and never the meeting.
+        Marked(Spool(saving.MeetingId)).ShouldBeTrue();
+        Rows(context).ShouldHaveSingleItem().Standing.ShouldBe(WaitingStanding.Waiting);
+    }
+
+    /// <summary>
+    /// The other half of the same standing: whoever pressed stop says so for the stretch before the
+    /// finish has claimed the folder, which is the devices being let go of.
+    /// </summary>
+    /// <remarks>
+    /// It is that caller's own list and nobody else's, so the same corpus read by anything that is
+    /// not saving offers the recording both answers — which is what keeps a window's field from
+    /// being a mark on the corpus that no restart lifts.
+    /// </remarks>
+    [Fact]
+    public void The_one_doing_the_saving_says_so_before_the_finish_has_claimed_the_folder()
     {
         using var context = corpus.OpenMigrated();
         var saving = Killed(context, recordedAt);
@@ -112,11 +142,38 @@ public sealed class WaitingRowsTests : IDisposable
         told.Allows(WaitingAnswer.Keep).ShouldBeFalse();
         told.Allows(WaitingAnswer.Discard).ShouldBeFalse();
 
-        // And nothing on disk says it, which is why the recorder has to. Told nothing is being
-        // saved, the same corpus offers the same recording both answers — so a save marked
-        // anywhere the corpus can see it would leave this meeting held out of reach by something
-        // no restart lifts.
         Rows(context).ShouldHaveSingleItem().Standing.ShouldBe(WaitingStanding.Waiting);
+    }
+
+    /// <summary>
+    /// The save beats the capture, which is the order the list draws its words in. Stopping lets
+    /// the devices go and then reads what they wrote, so for that moment a folder answers yes to
+    /// both — and what is true of it then is that it is being saved.
+    /// </summary>
+    /// <remarks>
+    /// Asked the other way round the list says <em>it is being recorded right now</em> over a
+    /// meeting somebody stopped, for as long as the save takes, and the standing that has the
+    /// right words is never reached. That is what this holds, and it is the one thing the two
+    /// facts arriving together decide.
+    /// </remarks>
+    [Fact]
+    public void A_meeting_whose_devices_are_still_closing_on_a_save_is_a_meeting_being_saved()
+    {
+        using var context = corpus.OpenMigrated();
+        var saving = Killed(context, recordedAt);
+
+        // Both at once: a capture still holding a spool, and the save that has just claimed the
+        // folder — which is where stopping is between letting the devices go and reading them.
+        using var held = BlockSpool.FileFor(Spool(saving.MeetingId), AudioChannel.Loopback)
+            .Open(FileMode.Open, FileAccess.Read, FileShare.None);
+        using var mark = SavingMark.Take(Spool(saving.MeetingId));
+
+        var row = Rows(context).ShouldHaveSingleItem();
+
+        row.Recording.Running.ShouldBeTrue();
+        row.Standing.ShouldBe(WaitingStanding.BeingSavedNow);
+        row.Allows(WaitingAnswer.Keep).ShouldBeFalse();
+        row.Allows(WaitingAnswer.Discard).ShouldBeFalse();
     }
 
     /// <summary>
@@ -298,4 +355,12 @@ public sealed class WaitingRowsTests : IDisposable
 
         return card;
     }
+
+    /// <summary>
+    /// Whether the mark a save writes is lying in this folder. Built here rather than asked of
+    /// <see cref="SavingMark"/>, which deliberately answers nothing about the file being there.
+    /// </summary>
+    private static bool Marked(DirectoryInfo folder) =>
+        File.Exists(Path.Combine(folder.FullName, SavingMark.FileName));
+
 }

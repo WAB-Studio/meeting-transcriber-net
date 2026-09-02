@@ -323,6 +323,93 @@ public sealed class WaitingRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// ISC-126.1, inside a save that is really running. A second reader of the same corpus, which
+    /// is what another window, a prompt or the next start is, is not offered the meeting the save
+    /// is making — and the same reader was offered both answers a moment before and is again a
+    /// moment after.
+    /// </summary>
+    /// <remarks>
+    /// Read from inside the finish, at the one instant it announces itself, so what is measured is
+    /// a save that is actually under way rather than a folder set up to look like one. The reader
+    /// is a second context over the same corpus files and not a second process: what it proves is
+    /// that nothing but the folder was consulted, and the process that dies is
+    /// <c>SavingMarkTests</c>'.
+    /// </remarks>
+    [Fact]
+    public void Nothing_else_is_offered_the_meeting_a_save_is_making_while_it_is_making_it()
+    {
+        using var context = corpus.OpenMigrated();
+        var card = Killed(context, seconds: 2);
+        var spool = CorpusFiles.SpoolFolderFor(corpus.Root, card.MeetingId);
+
+        Elsewhere().Standing.ShouldBe(WaitingStanding.Waiting);
+
+        var during = new List<WaitingStanding>();
+        var heldWhenTold = new List<bool>();
+
+        MeetingRecordings.Finish(
+            context,
+            card.MeetingId,
+            openedAgainAt,
+            new Watcher(_ =>
+            {
+                during.Add(Elsewhere().Standing);
+                heldWhenTold.Add(SavingMark.IsHeldIn(spool));
+            }));
+
+        during.ShouldBe([WaitingStanding.BeingSavedNow]);
+        heldWhenTold.ShouldBe([true]);
+
+        // And the folder is let go of when the save ends, mark still lying there and holding
+        // nobody: the meeting is off the list because it has a length now, not because of a file.
+        Marked(spool).ShouldBeTrue();
+        SavingMark.IsHeldIn(spool).ShouldBeFalse();
+        using var reopened = corpus.Open();
+        WaitingRecordings.In(reopened).ShouldBeEmpty();
+
+        WaitingRow Elsewhere()
+        {
+            using var second = corpus.Open();
+
+            return WaitingRows.Of(
+                    WaitingRecordings.In(second),
+                    beingSavedNow: null,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase))
+                .Single(row => row.Recording.MeetingId == card.MeetingId);
+        }
+    }
+
+    /// <summary>
+    /// Two saves of one recording would read the same blocks into the same meeting at the same
+    /// time, so the second is refused where it can still be refused for nothing — before a block
+    /// has been read and before anything has been written.
+    /// </summary>
+    [Fact]
+    public void A_second_save_of_the_same_recording_is_refused_rather_than_run_beside_the_first()
+    {
+        using var context = corpus.OpenMigrated();
+        var card = Killed(context, seconds: 2);
+        var spool = CorpusFiles.SpoolFolderFor(corpus.Root, card.MeetingId);
+
+        using (SavingMark.Take(spool))
+        {
+            Should.Throw<AudioCaptureException>(
+                    () => MeetingRecordings.Finish(context, card.MeetingId, openedAgainAt))
+                .Message.ShouldContain("already running");
+
+            // Nothing of the meeting was made: no audio row, no length, and the recording is still
+            // waiting where it was.
+            context.Artifacts.Count(artifact => artifact.Kind == ArtifactKind.Audio).ShouldBe(0);
+            WaitingRecordings.In(context).Single().MeetingId.ShouldBe(card.MeetingId);
+        }
+
+        // The refusal was the save and not the recording: with nothing holding the folder, the
+        // same call makes the meeting.
+        MeetingRecordings.Finish(context, card.MeetingId, openedAgainAt)
+            .Length.Milliseconds.ShouldBeInRange(1_900, 2_050);
+    }
+
+    /// <summary>
     /// A recording sitting under a name that is not its meeting's says which folder it is in and
     /// which meeting it is of, because those two disagreeing is the whole of what is wrong with it.
     /// </summary>
@@ -522,6 +609,15 @@ public sealed class WaitingRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// Somebody watching a save, raised where it was raised and at the moment it was raised, which
+    /// is what the corpus is read at. <see cref="Progress{T}"/> would move it off that thread.
+    /// </summary>
+    private sealed class Watcher(Action<SavingWork> told) : IProgress<SavingWork>
+    {
+        public void Report(SavingWork value) => told(value);
+    }
+
+    /// <summary>
     /// Every file of these recordings and what it holds, as something two moments apart can be
     /// compared on. A name and a length would miss a rewrite of the same size.
     /// </summary>
@@ -533,4 +629,12 @@ public sealed class WaitingRecordingsTests : IDisposable
             .OrderBy(file => file.FullName, StringComparer.Ordinal)
             .Select(file => $"{file.FullName} {CorpusFiles.Sha256Of(file)}"),
     ];
+
+    /// <summary>
+    /// Whether the mark a save writes is lying in this folder. Built here rather than asked of
+    /// <see cref="SavingMark"/>, which deliberately answers nothing about the file being there.
+    /// </summary>
+    private static bool Marked(DirectoryInfo folder) =>
+        File.Exists(Path.Combine(folder.FullName, SavingMark.FileName));
+
 }

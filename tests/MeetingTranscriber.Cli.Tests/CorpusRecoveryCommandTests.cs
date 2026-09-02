@@ -70,7 +70,7 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
 
         run.Code.ShouldBe(Cli.Ok, run.Error);
         run.Value("meeting").ShouldBe(meeting.ToString());
-        run.Value("length").ShouldBe("still being recorded, so its blocks cannot be read yet");
+        run.Value("length").ShouldBe("it is still being recorded, so its blocks cannot be read yet");
 
         var choices = run.Value("choices");
         choices.ShouldContain("still being recorded");
@@ -112,6 +112,89 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
         folder.Exists.ShouldBeTrue();
         MeetingAudio.In(folder).Exists.ShouldBeFalse();
         new DirectoryInfo(into).Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// ISC-126.1 at the prompt. The window saving a meeting is not this process, and this list
+    /// still says what that meeting is — and offers nothing about it, because the blocks it would
+    /// read or remove are the ones the save is pouring.
+    /// </summary>
+    /// <remarks>
+    /// It does not read them either, which is the half a listing gets wrong quietly: the length
+    /// printed here comes off a pass over every byte, so a list that read through a save would be a
+    /// second pour of the same blocks reported as what somebody is deciding on.
+    /// </remarks>
+    [Fact]
+    public void A_meeting_whose_save_is_running_is_listed_with_none_of_the_three_offered()
+    {
+        var meeting = Killed();
+        using var saving = SavingMark.Take(CorpusFiles.SpoolFolderFor(corpus.Root, meeting));
+
+        var run = CommandLine.Of("recovery", "--corpus", Root);
+
+        run.Code.ShouldBe(Cli.Ok, run.Error);
+        run.Value("meeting").ShouldBe(meeting.ToString());
+        run.Value("length").ShouldBe("its save is running, so its blocks cannot be read yet");
+
+        var choices = run.Value("choices");
+        choices.ShouldContain("its save is running");
+        choices.ShouldNotContain("keep");
+        choices.ShouldNotContain("export");
+        choices.ShouldNotContain("discard");
+    }
+
+    /// <summary>
+    /// And typed anyway, all three are refused about the save. Discard is the one that matters:
+    /// it would remove the folder a finish is halfway through reading.
+    /// </summary>
+    [Theory]
+    [InlineData("--keep")]
+    [InlineData("--export")]
+    [InlineData("--discard")]
+    public void None_of_the_three_lands_on_a_meeting_whose_save_is_running(string decision)
+    {
+        var meeting = Killed();
+        var into = Path.Combine(Root, "taken out");
+        var folder = CorpusFiles.SpoolFolderFor(corpus.Root, meeting);
+        using var saving = SavingMark.Take(folder);
+
+        string[] typed = ["recovery", "--corpus", Root, "--meeting", meeting.ToString(), decision];
+
+        var run = CommandLine.Of(decision is "--export" ? [.. typed, into] : typed);
+
+        run.Code.ShouldBe(Cli.Refused, run.Output);
+        run.Error.ShouldContain("save");
+        run.Error.ShouldNotContain(".blocks");
+
+        folder.Refresh();
+        folder.Exists.ShouldBeTrue();
+        MeetingAudio.In(folder).Exists.ShouldBeFalse();
+        new DirectoryInfo(into).Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// ISC-126.2 at the prompt. A save the process died in the middle of left its mark in the
+    /// folder, and every one of the three is open over that meeting again — the recording is not
+    /// held out of reach by a file nothing is holding.
+    /// </summary>
+    [Fact]
+    public void A_meeting_whose_save_died_is_offered_again_rather_than_held_by_what_it_left()
+    {
+        var meeting = Killed();
+        var folder = CorpusFiles.SpoolFolderFor(corpus.Root, meeting);
+        SavingMark.Take(folder).Dispose();
+        Marked(folder).ShouldBeTrue();
+
+        var listed = CommandLine.Of("recovery", "--corpus", Root);
+
+        listed.Code.ShouldBe(Cli.Ok, listed.Error);
+        listed.Value("choices").ShouldBe("keep, export or discard");
+
+        var kept = CommandLine.Of(
+            "recovery", "--corpus", Root, "--meeting", meeting.ToString(), "--keep");
+
+        kept.Code.ShouldBe(Cli.Ok, kept.Error);
+        MeetingAudio.In(folder).Exists.ShouldBeTrue();
     }
 
     [Fact]
@@ -348,4 +431,12 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
         using var stream = blocks.Open(FileMode.Open, FileAccess.Write);
         stream.SetLength(blocks.Length - 32);
     }
+
+    /// <summary>
+    /// Whether the mark a save writes is lying in this folder. Built here rather than asked of
+    /// <see cref="SavingMark"/>, which deliberately answers nothing about the file being there.
+    /// </summary>
+    private static bool Marked(DirectoryInfo folder) =>
+        File.Exists(Path.Combine(folder.FullName, SavingMark.FileName));
+
 }
