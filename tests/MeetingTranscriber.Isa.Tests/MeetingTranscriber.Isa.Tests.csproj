@@ -7,8 +7,12 @@
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
   </PropertyGroup>
 
-  <!-- No ProjectReference on purpose: this reads a document at the repo root and nothing else.
-       The day it needs one of the src projects to make a point, the point has moved. -->
+  <!-- No ProjectReference on purpose: this reads a document at the repo root, and the clone that
+       document sits in. The day it needs one of the src projects to make a point, the point has
+       moved. The clone is not a second product dependency but the price of check 15, which asks
+       what ISA.md said before this change — `IsaHistory` is where that is argued, and the cost is
+       that `dotnet test` here wants git on PATH and history behind `origin/main`. -->
+
 
   <ItemGroup>
     <Using Include="Xunit" />

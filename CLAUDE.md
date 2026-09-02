@@ -98,8 +98,8 @@ that rule would only be read by whoever already decided. The *how* is the skill'
 `ISA.md` says what done means, and is never edited by hand: steps 1 and 3 run through the `isa`
 skill. **A claim closes on a probe that ran, never on a task moving.**
 
-1. The claims a piece of work closes exist in `ISA.md` before anything is built — if they do not,
-   they get written first, each stating what would prove it false.
+1. The claims a piece of work closes are on `main` in `ISA.md` before anything is built — if they
+   are not, they land there first, in their own change, each stating what would prove it false.
 2. A task names them, and the pointer only ever goes that way.
 3. Closing is running the probe and marking the claim closed; `IsaStructureTests` fails if the
    count disagrees.
