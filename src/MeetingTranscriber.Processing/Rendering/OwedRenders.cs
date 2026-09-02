@@ -1,10 +1,8 @@
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
-using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Processing.Rendering;
@@ -32,6 +30,10 @@ public sealed record RendersCaughtUp(
 /// A render that fails is tried again next time and nobody is told. The files cost nothing and can
 /// be produced again from what has already been paid for, so failing to produce them is not a
 /// decision a person has to make — the same reason they are never a button on the meetings list.
+/// That covers a render that failed and would work next time; a response the parser can never read
+/// fails the same way on every launch and nobody hears it either, which is a gap this leaves open
+/// deliberately — <see cref="RendersCaughtUp.CouldNotRender"/> carries the line and is waiting for
+/// somewhere to say it.
 /// </para>
 /// <para>
 /// One meeting is one unit of work, down to its own connection and its own transaction. That is
@@ -50,9 +52,19 @@ public static class OwedRenders
     /// happened instead of throwing about it.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// "Instead of throwing about it" is the whole contract and not a description of the usual
+    /// case. Past its two arguments — which are checked at the boundary and are the caller's own
+    /// mistake to make — nothing leaves here that <see cref="Absorbable"/> would take, so a caller
+    /// that forgets to read the answer loses the report and never loses the sweep. That is why the
+    /// clock is asked inside the boundary and not before it: it is a collaborator a caller hands
+    /// in, and a sweep is not something to abandon over one.
+    /// </para>
+    /// <para>
     /// A folder is only ever read, never made into a corpus: somebody's corpus not being where it
     /// was is exactly what an empty new one beside it would hide, and the first recording is what
     /// makes a corpus.
+    /// </para>
     /// </remarks>
     public static RendersCaughtUp CatchUpOn(DirectoryInfo root, TimeProvider clock)
     {
@@ -60,6 +72,7 @@ public static class OwedRenders
         ArgumentNullException.ThrowIfNull(clock);
 
         IReadOnlyList<Guid> owed;
+        UtcTimestamp now;
 
         try
         {
@@ -68,15 +81,23 @@ public static class OwedRenders
                 return new RendersCaughtUp([], []);
             }
 
+            now = UtcTimestamp.From(clock.GetUtcNow());
+
             using var reading = CorpusDatabase.Open(root);
             owed = Owed(reading);
         }
-        catch (Exception unreadable) when (Reportable(unreadable))
+
+        // The same rule as the loop below, for a different reason. Here there is no next meeting to
+        // protect — a corpus that will not open owes nobody a sweep — so what the rule buys is only
+        // the contract: the answer says the corpus could not be read, rather than a caller that
+        // reads the answer being obliged to catch as well. Which is why the two are one predicate
+        // and not two: a second one narrow enough to leave a defect through would have to name what
+        // opening a corpus can refuse, and that is the enumeration this whole class stopped doing.
+        catch (Exception unreadable) when (Absorbable(unreadable))
         {
             return new RendersCaughtUp([], [unreadable.Message]);
         }
 
-        var now = UtcTimestamp.From(clock.GetUtcNow());
         var rendered = new List<Guid>();
         var refused = new List<string>();
 
@@ -87,7 +108,7 @@ public static class OwedRenders
                 Produce(root, meeting, now);
                 rendered.Add(meeting);
             }
-            catch (Exception unrendered) when (Reportable(unrendered))
+            catch (Exception unrendered) when (Absorbable(unrendered))
             {
                 // The meeting is named here rather than left to the message. Only some of these
                 // say which meeting they are about, and a line saying access was denied is a line
@@ -119,17 +140,45 @@ public static class OwedRenders
     }
 
     /// <summary>
-    /// What a corpus, a disk or a response that is no longer there says, as against what a defect
-    /// says. One of these costs the meeting it happened to and nothing else; anything outside the
-    /// set leaves this class, and what becomes of it is the caller's.
+    /// What a catch-up turns into a line instead of throwing, which is everything except a closed
+    /// list of one. Stated as the negative on purpose: the list that can be closed is the one being
+    /// excluded, and the list being included cannot be.
     /// </summary>
-    private static bool Reportable(Exception thrown) => thrown
-        is RenderException
-        or ArtifactWriteException
-        or IOException
-        or UnauthorizedAccessException
-        or SqliteException
-        or DbUpdateException;
+    /// <remarks>
+    /// <para>
+    /// A render walks the response parser, the domain's audio contract, the artifact writer, the
+    /// filesystem and SQLite, and any of those may learn a refusal tomorrow that this file will not
+    /// hear about — so naming what a render <em>may</em> throw is guaranteed to be incomplete, and
+    /// the incompleteness is not a missing line in a report. The sweep runs oldest first and
+    /// remembers nothing between launches, so one escape starves every meeting behind the one that
+    /// threw, on every launch, silently. That is precisely what happened here: a list of six types
+    /// carried neither <c>DeepgramResponseException</c> nor <c>AudioContractException</c>, and both
+    /// are on the ordinary path of a legacy meeting, because the importer files a
+    /// <c>deepgram.json</c> on its sha256 without ever parsing it and imported meetings sort first.
+    /// </para>
+    /// <para>
+    /// So the boundary is the meeting, which is what it was always said to be, and a defect inside
+    /// the render is absorbed with everything else. That is a departure from what
+    /// <c>MeetingsDrawer</c> says about the same choice — that a screen swallowing a defect leaves
+    /// it looking like a corpus somebody could not read — and the departure is the point rather
+    /// than an oversight. A screen has one person standing in front of it and nothing queued
+    /// behind; this has nobody in front of it and every later meeting behind it, so the cost of
+    /// absorbing is one named line and the cost of not absorbing is everybody else's files. What
+    /// keeps a defect visible here is instead the probes: the sweep's ordinary paths assert that
+    /// nothing was refused, so a render that starts throwing on every meeting fails the suite.
+    /// </para>
+    /// <para>
+    /// Excluded is what says nothing about the meeting it was thrown on and would only be thrown
+    /// again by moving to the next one. Out of memory is that, and today it is all of it: carrying
+    /// on would mean attempting N more renders under the pressure that just refused this one. A
+    /// stack overflow is not on the list because the runtime never offers one to a catch, and a
+    /// cancellation is not on it because nothing on this path has a token to cancel — a line for
+    /// one would be a line for a caller that does not exist. It reads the exception it was handed
+    /// and not the chain under it, which is the same call: an out-of-memory wrapped in a
+    /// <c>DbUpdateException</c> arrives as the corpus refusing a write, and that is a meeting.
+    /// </para>
+    /// </remarks>
+    private static bool Absorbable(Exception thrown) => thrown is not OutOfMemoryException;
 
     /// <summary>
     /// The meetings a response has arrived for and whose two files have not been produced from it,

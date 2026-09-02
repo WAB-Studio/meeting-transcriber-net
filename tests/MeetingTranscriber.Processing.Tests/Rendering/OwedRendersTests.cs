@@ -120,8 +120,9 @@ public class OwedRendersTests
             corpus, DeepgramFixtures.TwoChannelOneVoiceMe, When + Duration.FromMilliseconds(3_600_000));
 
         // Something standing where the transcript goes, which is what a folder half-synced from
-        // elsewhere or a path another program is holding comes to. It is not a RenderException,
-        // and that is the point: the isolation is around the meeting, not around one exception.
+        // elsewhere or a path another program is holding comes to. This one the disk says, and the
+        // two below are the ones a response says: together they are why the boundary is the
+        // meeting rather than a list of what a render is thought to throw.
         Directory.CreateDirectory(
             CorpusFiles.Locate(corpus.Root, CorpusFiles.PathFor(blocked, "transcript.md")).FullName);
 
@@ -137,6 +138,95 @@ public class OwedRendersTests
         // back with its files, so the next launch starts from where this one found it.
         Files(context, blocked).ShouldBeEmpty();
         context.Utterances.Count(turn => turn.MeetingId == blocked).ShouldBe(0);
+    }
+
+    /// <summary>
+    /// A response that stops early, which the render path reaches through the parser and no list
+    /// of what a render throws had in it. Nothing files a response through the parser — the legacy
+    /// importer copies a <c>deepgram.json</c> and hashes it — and the sweep runs oldest first,
+    /// which is exactly where an imported meeting sits, so the whole corpus parks behind this one.
+    /// </summary>
+    [Fact]
+    public void A_response_the_parser_cannot_read_does_not_starve_a_newer_meeting()
+    {
+        using var corpus = new TemporaryCorpus();
+        var truncated = Filed(corpus, SourceProfile.Multichannel, When, stream =>
+        {
+            using var response = File.OpenRead(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelShort));
+            var head = new byte[4096];
+            response.ReadExactly(head);
+            stream.Write(head);
+        });
+        var newer = Transcribed(
+            corpus, DeepgramFixtures.TwoChannelOneVoiceMe, When + Duration.FromMilliseconds(3_600_000));
+
+        var caught = OwedRenders.CatchUpOn(corpus.Root, TimeProvider.System);
+
+        caught.Rendered.ShouldBe([newer]);
+
+        // The refusal and not only that one came back: the line has to be the parser saying it
+        // could not read the response, or the probe would still pass if this arrived as something
+        // a list of six would have carried anyway.
+        var line = caught.CouldNotRender.ShouldHaveSingleItem();
+        line.ShouldContain(truncated.ToString());
+        line.ShouldContain("stops early");
+
+        using var context = corpus.Open();
+        Files(context, newer).ShouldBe([ArtifactKind.Transcript, ArtifactKind.Utterances], ignoreOrder: true);
+        Files(context, truncated).ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The other one the response says: a single track filed against a meeting recorded on two
+    /// channels. It is the audio contract refusing — thrown by the domain, reached through the
+    /// parser — and it costs its own meeting the files and the next meeting nothing.
+    /// </summary>
+    [Fact]
+    public void A_response_that_disagrees_with_its_profile_does_not_starve_a_newer_meeting()
+    {
+        using var corpus = new TemporaryCorpus();
+        var mismatched = Filed(corpus, SourceProfile.Multichannel, When, stream =>
+        {
+            using var response = File.OpenRead(DeepgramFixtures.PathOf(DeepgramFixtures.SingleTrackDiarized));
+            response.CopyTo(stream);
+        });
+        var newer = Transcribed(
+            corpus, DeepgramFixtures.TwoChannelOneVoiceMe, When + Duration.FromMilliseconds(3_600_000));
+
+        var caught = OwedRenders.CatchUpOn(corpus.Root, TimeProvider.System);
+
+        caught.Rendered.ShouldBe([newer]);
+
+        var line = caught.CouldNotRender.ShouldHaveSingleItem();
+        line.ShouldContain(mismatched.ToString());
+        line.ShouldContain("needs 2 channel(s), got 1");
+
+        using var context = corpus.Open();
+        Files(context, newer).ShouldBe([ArtifactKind.Transcript, ArtifactKind.Utterances], ignoreOrder: true);
+        Files(context, mismatched).ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The rule itself, as against the two live paths above, which only pin the two refusals the
+    /// old list happened to miss.
+    /// </summary>
+    /// <remarks>
+    /// A catch-up absorbs what it was never going to be able to name in advance, so the probe has
+    /// to arrive as a type nothing in this system throws and no list would ever have carried. The
+    /// clock is the way in because it is the one collaborator a caller hands over, and it stands
+    /// for every refusal the render path has not learnt yet: narrow the boundary back to a list —
+    /// six entries or eight — and this goes red where the two above would stay green.
+    /// </remarks>
+    [Fact]
+    public void A_refusal_no_list_would_have_carried_comes_back_as_an_answer()
+    {
+        using var corpus = new TemporaryCorpus();
+        Transcribed(corpus);
+
+        var caught = OwedRenders.CatchUpOn(corpus.Root, new BrokenClock());
+
+        caught.Rendered.ShouldBeEmpty();
+        caught.CouldNotRender.ShouldHaveSingleItem().ShouldContain("no clock here");
     }
 
     /// <summary>
@@ -212,10 +302,32 @@ public class OwedRendersTests
     private static Guid Transcribed(
         TemporaryCorpus corpus,
         string fixture = DeepgramFixtures.TwoChannelOneVoiceMe,
-        UtcTimestamp? startedAt = null)
+        UtcTimestamp? startedAt = null) =>
+        Filed(corpus, DeepgramFixtures.ProfileOf(fixture), startedAt ?? When, stream =>
+        {
+            using var response = File.OpenRead(DeepgramFixtures.PathOf(fixture));
+            response.CopyTo(stream);
+        });
+
+    /// <summary>
+    /// A meeting with a response filed against it — whatever bytes the caller writes, under
+    /// whatever profile the meeting was recorded on.
+    /// </summary>
+    /// <remarks>
+    /// The two are separate arguments and not one fixture on purpose. Nothing checks that a filed
+    /// response can be read or that it agrees with the meeting it is filed against, so a real
+    /// corpus holds pairs that do not: <c>tools/MeetingTranscriber.CorpusImport</c> files a
+    /// <c>deepgram.json</c> on its sha256 and never opens it. A fixture-only helper could not put
+    /// the corpus into the state the sweep actually meets.
+    /// </remarks>
+    private static Guid Filed(
+        TemporaryCorpus corpus,
+        SourceProfile profile,
+        UtcTimestamp startedAt,
+        Action<Stream> response)
     {
         using var context = corpus.OpenMigrated();
-        var meeting = Meeting(context, DeepgramFixtures.ProfileOf(fixture), startedAt ?? When);
+        var meeting = Meeting(context, profile, startedAt);
 
         DurableArtifact.Write(
             context,
@@ -223,13 +335,20 @@ public class OwedRendersTests
             ArtifactKind.DeepgramResponse,
             CorpusFiles.PathFor(meeting, "deepgram.json"),
             When,
-            stream =>
-            {
-                using var response = File.OpenRead(DeepgramFixtures.PathOf(fixture));
-                response.CopyTo(stream);
-            });
+            response);
 
         return meeting;
+    }
+
+    /// <summary>
+    /// A clock that refuses, with a refusal of a type nothing on the render path throws. It is not
+    /// a scenario anybody meets — it is the only way in from outside to a boundary whose whole
+    /// point is that what crosses it cannot be listed.
+    /// </summary>
+    private sealed class BrokenClock : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() =>
+            throw new NotSupportedException("There is no clock here.");
     }
 
     private static Guid Meeting(CorpusDbContext context, SourceProfile profile, UtcTimestamp? startedAt = null)

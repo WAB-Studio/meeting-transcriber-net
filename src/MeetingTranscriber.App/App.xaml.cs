@@ -97,10 +97,17 @@ public partial class App : Application
     /// <para>
     /// Nobody is told how it went, and that is the decision: the files cost nothing and can be
     /// produced again, so a render that failed is one the next launch tries again and there is
-    /// nothing in it for a person to answer. The discarded task is the price of that — a defect
-    /// inside the render, as against a corpus that would not answer, lands in a task nobody
-    /// observes and the runtime drops it. Saying it out loud instead would need a line on the
-    /// window and words in the catalogue, which is a screen decision and not this one's.
+    /// nothing in it for a person to answer. Saying it out loud instead would need a line on the
+    /// window and words in the catalogue, which is a screen decision and not this one's — and it
+    /// is owed for the failure that is not transient, a response the parser can never read, which
+    /// this retries and drops again on every launch.
+    /// </para>
+    /// <para>
+    /// Discarding the task is an accepted silence and not a second one. <c>CatchUpOn</c> answers
+    /// with what happened instead of throwing about it, so what is dropped here is the report and
+    /// never the sweep: no meeting is lost by nobody reading it, and the only thing that can leave
+    /// it is what nothing on this side could have done anything with anyway. What is accepted is
+    /// the paragraph above — the line naming the meeting goes with the report.
     /// </para>
     /// </remarks>
     private static void CatchUpOnTheRenders(CorpusFolder corpus)
