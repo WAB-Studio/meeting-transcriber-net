@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
@@ -287,6 +287,59 @@ public class MeetingRendererTests
             + "outside every guard, taking the whole run and the report with it.");
     }
 
+    /// <summary>
+    /// A render that cannot write the second file leaves both of the meeting's files as they were,
+    /// with nobody holding a transaction over it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The caller with none of its own is <c>render</c> from the command line and the catch-up that
+    /// produces what a meeting is owed. Until the pair was staged whole this render opened a
+    /// transaction of its own here, and that never made the two files either-or: the transcript's
+    /// file had moved and its row had been saved before the jsonl was written anywhere, so a
+    /// refusal between them left one file of each generation whether or not a transaction was open.
+    /// Rolling it back would not have helped and is the one thing the corpus may not do, because the
+    /// row would go back under a file that has already moved.
+    /// </para>
+    /// <para>
+    /// A resolved speaker is what tells the two renders apart: it reaches <c>transcript.md</c>,
+    /// which is a person's file, and deliberately not the jsonl, which stays comparable to the raw
+    /// response. So the assertion is not that nothing happened — it is that the transcript is still
+    /// the one the jsonl beside it belongs to.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_render_that_cannot_write_the_second_file_leaves_both_of_them_as_they_were()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+        var first = MeetingRenderer.Render(context, meeting, When);
+        var transcript = CorpusFiles.Locate(corpus.Root, first.Transcript.RelativePath).FullName;
+        var utterances = CorpusFiles.Locate(corpus.Root, first.Utterances.RelativePath).FullName;
+        var had = (Transcript: File.ReadAllText(transcript), Utterances: File.ReadAllText(utterances));
+
+        Resolved(context, meeting, "ch1:speaker_0", "Renata");
+
+        context.Database.CurrentTransaction.ShouldBeNull();
+        using (new FileStream(utterances, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            // The filesystem's own refusal, unwrapped: what asks whether the jsonl can be taken is
+            // the rename the replace would have done, so what comes back is what that rename said.
+            Should.Throw<IOException>(() => MeetingRenderer.Render(context, meeting, When));
+        }
+
+        File.ReadAllText(transcript).ShouldBe(had.Transcript);
+        File.ReadAllText(utterances).ShouldBe(had.Utterances);
+        ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
+
+        // And the name the refused render would have written is one that would have shown, so the
+        // two readings above are of two generations rather than of one twice.
+        had.Transcript.ShouldNotContain("Renata");
+        MeetingRenderer.Render(context, meeting, When);
+        File.ReadAllText(transcript).ShouldContain("Renata");
+    }
+
     /// <summary>Every turn of one meeting as text, for comparing a render against the one before.</summary>
     private static List<string> Turns(CorpusDbContext context, Guid meeting) =>
     [
@@ -314,6 +367,28 @@ public class MeetingRendererTests
 
         File.WriteAllText(
             path, CorruptedResponses.WithConfidenceOffTheScale(File.ReadAllText(path)));
+    }
+
+    /// <summary>Somebody saying who a speaker label is, which reaches the transcript and no row.</summary>
+    private static void Resolved(CorpusDbContext context, Guid meeting, string label, string name)
+    {
+        var person = new Person
+        {
+            Id = Guid.NewGuid(),
+            DisplayName = name,
+            CreatedAt = When,
+            UpdatedAt = When,
+        };
+        context.People.Add(person);
+        context.SpeakerAssignments.Add(new SpeakerAssignment
+        {
+            MeetingId = meeting,
+            SpeakerLabel = label,
+            PersonId = person.Id,
+            AssignedBy = SpeakerAssignmentSource.Person,
+            AssignedAt = When,
+        });
+        context.SaveChanges();
     }
 
     /// <summary>A meeting with its paid response in the corpus, ready to be rendered from.</summary>

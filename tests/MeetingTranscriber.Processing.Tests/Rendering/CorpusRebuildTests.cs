@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.RegularExpressions;
 
 using MeetingTranscriber.Domain.Artifacts;
@@ -468,6 +468,68 @@ public class CorpusRebuildTests
     }
 
     /// <summary>
+    /// A meeting whose second derived file cannot be written keeps both of the ones it had, rather
+    /// than one of each generation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The two files are one act. A transcript from today's render beside a jsonl from last
+    /// month's is a meeting that reads as two different meetings depending on which file somebody
+    /// opened, and nothing in the corpus would say so: each row still agrees with the file it
+    /// names, so <c>check</c> is clean and the reconciler finds nothing to report. It went that
+    /// way until the derived pair was staged whole before either half moved.
+    /// </para>
+    /// <para>
+    /// A correction is what tells one generation from the other. It reaches both rendered files and
+    /// never the stored turn, so this meeting's rows are the same either way and the only thing
+    /// that can differ is what is on disk — which is what makes the comparison below about the
+    /// files and not about a render that also changed the corpus underneath them. The other
+    /// meeting is rebuilt through the same correction and is asserted to have taken it, because
+    /// without that this would pass over a correction that reached nothing.
+    /// </para>
+    /// <para>
+    /// The jsonl is held open rather than replaced by a directory, and the difference is the whole
+    /// assertion: a directory standing there is a meeting with no second file to compare. A program
+    /// holding one of a meeting's files open across a render is the ordinary version of this — a
+    /// sync client, an editor, a backup — and it is the one condition a look before the move can
+    /// actually catch.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_meeting_whose_second_derived_file_cannot_be_written_keeps_both_of_the_ones_it_had()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var blocked = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelShort, When);
+        var newer = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelOneVoiceMe, Later(1));
+        CorpusRebuild.Run(context, When);
+
+        var had = Rendered(context, corpus.Root, blocked);
+        var hadTurns = Turns(context, blocked);
+        Corrected(context, "niebla", "neblina");
+
+        RebuildReport report;
+        using (Holding(context, blocked, "utterances.jsonl"))
+        {
+            report = CorpusRebuild.Run(context, Later(2));
+        }
+
+        report.Meetings.ShouldBe(1);
+        report.CouldNotRebuild.ShouldHaveSingleItem().ShouldContain(blocked.ToString());
+
+        // Both files as they were, and the rows still naming them. Compared as text rather than by
+        // hash so a failure says which generation each one came out of.
+        Rendered(context, corpus.Root, blocked).ShouldBe(had);
+        Turns(context, blocked).ShouldBe(hadTurns);
+        ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
+
+        // And the correction is one that reached something, so the comparison above was between
+        // two generations rather than between two copies of one.
+        Rendered(context, corpus.Root, newer).ShouldAllBe(file => file.Contains("neblina", StringComparison.Ordinal));
+        had.ShouldAllBe(file => !file.Contains("neblina", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// A meeting refused as it saves, whose turns claims cite, costs that meeting and not the run.
     /// </summary>
     /// <remarks>
@@ -854,6 +916,44 @@ public class CorpusRebuildTests
 
         using var bytes = CorpusFiles.Locate(root, filed.RelativePath).Create();
         response(bytes);
+    }
+
+    /// <summary>Both of a meeting's derived files, as text, in a stable order.</summary>
+    private static List<string> Rendered(CorpusDbContext context, DirectoryInfo root, Guid meeting) =>
+    [
+        .. context.Artifacts
+            .Where(artifact => artifact.MeetingId == meeting && artifact.Origin == ArtifactOrigin.Derived)
+            .OrderBy(artifact => artifact.RelativePath)
+            .AsEnumerable()
+            .Select(artifact => File.ReadAllText(CorpusFiles.Locate(root, artifact.RelativePath).FullName)),
+    ];
+
+    /// <summary>
+    /// One of a meeting's files held open the way another program holds one, so nothing can replace
+    /// it while the handle is alive.
+    /// </summary>
+    private static FileStream Holding(CorpusDbContext context, Guid meeting, string name) =>
+        new(
+            CorpusFiles.Locate(context.Root, CorpusFiles.PathFor(meeting, name)).FullName,
+            FileMode.Open,
+            FileAccess.ReadWrite,
+            FileShare.None);
+
+    /// <summary>
+    /// A correction over the whole corpus, which reaches every rendered file and no stored turn —
+    /// so it is what tells one render of a meeting from another without changing its rows.
+    /// </summary>
+    private static void Corrected(CorpusDbContext context, string wrong, string right)
+    {
+        context.TerminologyCorrections.Add(new TerminologyCorrection
+        {
+            Id = Guid.NewGuid(),
+            WrongText = wrong,
+            CorrectText = right,
+            MatchMode = TerminologyMatchMode.Exact,
+            CreatedAt = When,
+        });
+        context.SaveChanges();
     }
 
     /// <summary>A fixture, as it was sent.</summary>

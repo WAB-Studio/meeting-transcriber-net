@@ -1,4 +1,4 @@
-using MeetingTranscriber.Domain.Artifacts;
+﻿using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
@@ -125,10 +125,11 @@ public static class OwedRenders
     /// </summary>
     /// <remarks>
     /// The transaction is opened here rather than left to <see cref="MeetingRenderer"/>, which
-    /// opens one around the two files only: the turns it projects are saved before that, so
-    /// without this a meeting whose files could not be written keeps the turns of a render that
-    /// did not happen. Foreign keys are not deferred the way a rebuild defers them, because a
-    /// meeting owed its first render has no turns yet and so nothing cites one.
+    /// opens none of its own at all: it writes its two files as one act and their rows in one save,
+    /// and the turns it projects are saved before either of those. So without this a meeting whose
+    /// files could not be written keeps the turns of a render that did not happen. Foreign keys are
+    /// not deferred the way a rebuild defers them, because a meeting owed its first render has no
+    /// turns yet and so nothing cites one.
     /// </remarks>
     private static void Produce(DirectoryInfo root, Guid meeting, UtcTimestamp now)
     {
