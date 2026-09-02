@@ -3,9 +3,9 @@ using System.Text.RegularExpressions;
 namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
-/// ISC-158.8 and ISC-158.3 on the screen's own side: the state saving a meeting puts the recorder
-/// half into names every step a save runs and no others, and filing the meeting is not something
-/// this window does any part of.
+/// ISC-158.3 on the screen's own side: filing the meeting is not something this window does any
+/// part of. Beside it, the state saving a meeting puts the recorder half into is held to naming
+/// every step a save runs and no others.
 /// </summary>
 /// <remarks>
 /// Source and not a running window, for the reason every check in this project is: there is no
@@ -28,9 +28,9 @@ public partial class SavingCardTests
         Path.Combine("MeetingTranscriber.Cli", "RecordingCommands.cs");
 
     /// <summary>
-    /// ISC-158.8. The screen has an answer for every step a save runs and for nothing else, and
-    /// the steps a save runs are the whole of <c>SavingWork</c> — so a screen cannot name a step
-    /// the save does not run without this going red.
+    /// The screen has an answer for every step a save runs and for nothing else, and the steps a
+    /// save runs are the whole of <c>SavingWork</c> — so a screen cannot name a step the save does
+    /// not run without this going red.
     /// </summary>
     [Fact]
     public void The_screen_names_every_step_a_save_runs_and_no_others() =>

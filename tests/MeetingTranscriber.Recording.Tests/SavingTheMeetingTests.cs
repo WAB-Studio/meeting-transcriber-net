@@ -6,8 +6,8 @@ using MeetingTranscriber.Infrastructure.Storage;
 namespace MeetingTranscriber.Recording.Tests;
 
 /// <summary>
-/// ISC-158.7 and ISC-158.8 on the half that decides them: what saving a meeting does, what it says
-/// while it is doing it, and that what it files does not depend on anybody watching.
+/// ISC-158.7 on the half that decides it: what saving a meeting does, what it says while it is
+/// doing it, and that what it files does not depend on anybody watching.
 /// </summary>
 /// <remarks>
 /// A screen is what a person sees this on, and no probe here opens one — a WinUI tree needs a UI
@@ -20,9 +20,9 @@ public sealed class SavingTheMeetingTests : IDisposable
     private readonly UtcTimestamp now = UtcTimestamp.Parse("2026-09-01T10:00:00.000Z");
 
     /// <summary>
-    /// ISC-158.8. The steps a save runs are the whole of what saving does and nothing else —
-    /// letting the sources go, then writing the meeting down. There is no third one about
-    /// transcribing, because stopping starts nothing.
+    /// The steps a save runs are the whole of what saving does and nothing else — letting the
+    /// sources go, then writing the meeting down. There is no third one about transcribing,
+    /// because stopping starts nothing.
     /// </summary>
     [Fact]
     public void A_save_runs_the_two_steps_there_are_in_the_order_it_runs_them() =>
