@@ -438,12 +438,42 @@ public static class UiTexts
         "La aplicación se cerró en el medio de esta grabación. El audio está entero hasta ahí.",
         "The application closed in the middle of this recording. The audio is whole up to there.");
 
-    // The reason goes on the line as the machine's own words, for the reason ThatDidNotGoThrough
-    // gives: what comes back off the engine is English either way, and a sentence built around it
-    // would be half-translated for good.
+    // The frame, and the reason goes inside it. This once read as ThatDidNotGoThrough's case — a
+    // machine message dropped into {0}, English either way — and it was not: what the engine hands
+    // back is one of WhyNotAMeeting's members, and the five sentences under here are the
+    // application's own words about a recording, which is exactly what the catalogue is for. Until
+    // 2026-09-02 they were English literals on WaitingRecording.Unrecoverable, so somebody reading
+    // in Spanish got half a sentence in a language they did not choose.
     public static UiText ThisCannotBecomeAMeeting { get; } = new(
         "No puede volverse una reunión: {0}",
         "This cannot become a meeting: {0}");
+
+    public static UiText NothingHereSaysWhichMeetingItIs { get; } = new(
+        "nada de lo que hay acá dice de qué reunión es",
+        "nothing here says which meeting it is");
+
+    // No machine message rides on this one, for the reason TheBlocksOfThisOneWouldNotRead gives
+    // below and one more: what a torn card throws is a sentence this repository wrote, in English,
+    // so dropping it into {0} would put an untranslated clause inside a translated frame — the very
+    // thing these five entries exist to stop. It is on the CLI listing and the exception instead,
+    // which are read while debugging, and the answer this row offers is the same either way.
+    public static UiText WhatItSaysAboutItselfCannotBeRead { get; } = new(
+        "no se puede leer lo que dice de sí misma",
+        "what it says about itself cannot be read");
+
+    public static UiText ItIsInAnotherMeetingsFolder { get; } = new(
+        "está en '{0}', y la grabación de la reunión {1} va en una carpeta con el nombre de esa "
+        + "reunión",
+        "it is in '{0}', and meeting {1}'s recording belongs in a folder of that meeting's own "
+        + "name");
+
+    public static UiText ThisCorpusHasNoSuchMeeting { get; } = new(
+        "este corpus no tiene la reunión {0}",
+        "this corpus has no meeting {0}");
+
+    public static UiText NotAllOfItsSourcesAreHere { get; } = new(
+        "está solo {0} de sus {1} fuentes, y una reunión son las dos",
+        "only {0} of its {1} sources is here, and a meeting is both");
 
     // Its own sentence and not ThisCannotBecomeAMeeting's, although the two rows offer the same
     // one answer. That one says the corpus and the folder disagree about a recording; this says

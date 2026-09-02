@@ -185,6 +185,8 @@ Mechanical, enforced by `IsaStructureTests`, and hard failures:
     than what `origin/main` had it saying while it was open is a claim reworded into its closure.
 17. No closed claim is reworded and left on the evidence for its old words — a claim `origin/main`
     already had `[x]`, saying something else here, whose `## Verification` stub has not moved.
+18. Every backticked span that is a path in this repository is a file or a folder this repository
+    has.
 
 The first two are one rule in two shapes: **a closure is scored against what `main` was already
 carrying, under that id and in those words.** The third is the rule after it: **a claim that moves
@@ -270,6 +272,24 @@ Check 10 is the other hand of check 4. A duplicate ID is a number issued twice; 
 deleted instead of tombstoned, or a run of them shifted down to close one — which silently
 re-points every board task and stub that named the old number. Together they leave one shape a
 renumber cannot take.
+
+Check 18 is over a stub's pointers rather than over its size. A stub names the probe that closed a
+claim, and where a probe lives is the one thing about a stub that goes stale on its own: PR #246
+moved a file out from under `ISC-166` and repaired the pointer by hand, which is the class of defect
+this refuses. A span is read as a path when it carries a `/`, is one whitespace-free token, holds no
+wildcard or angle bracket, and its first segment names a directory at the root — four conditions
+because the section also backticks type names, member names, command lines, enum values and English
+sentences, and a gate reddening on `Turns.Group` is a gate somebody deletes. It found nothing the
+day it was written, over seventeen distinct paths and eighty citations; what it is worth is the
+next move. Two things it does not reach: a pointer that resolves and is wrong — a suite cited under
+the project it no longer sits in passes, which is exactly what #246 did — and a root directory
+deleted whole, which stops its own paths being read as paths at all. Both are named in
+`IsaStructureTests`, with what a second gate over the first one would cost.
+
+**A dead pointer is repaired by moving the pointer, never by deleting it.** A stub naming a probe
+that was renamed points at the probe; a stub naming a probe that is gone is a closed claim whose
+evidence nobody can produce, which is a larger thing and is said on the claim rather than tidied
+away.
 
 Checks 7 to 9 exist because a parser that skips what it does not recognise reports a spliced
 section as a sound one. On 2026-08-13 an append landed on the first line of an existing entry and

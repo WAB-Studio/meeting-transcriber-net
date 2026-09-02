@@ -31,7 +31,7 @@ public class ReadingAMeetingTests
                 "kind",
                 "LeftKind",
                 Path.Combine("MeetingTranscriber.Domain", "Knowledge", "WhatTheAiLeft.cs"))
-            .ShouldNameItsWholeEnum("ReadingAMeeting", "LeftKind");
+            .ShouldNameItsWholeEnum("LeftKind");
 
     /// <summary>
     /// Every state a meeting's recording can be in has a sentence where the player would be.
@@ -48,7 +48,7 @@ public class ReadingAMeetingTests
                 "recording",
                 "RecordedAudio",
                 Path.Combine("MeetingTranscriber.Domain", "Meetings", "MeetingScreen.cs"))
-            .ShouldNameItsWholeEnum("ReadingAMeeting", "RecordedAudio");
+            .ShouldNameItsWholeEnum("RecordedAudio");
 
     /// <summary>
     /// Every style this screen looks up by name is one it declares.

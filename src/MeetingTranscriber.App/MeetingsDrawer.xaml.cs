@@ -301,6 +301,42 @@ public sealed partial class MeetingsDrawer : UserControl
     };
 
     /// <summary>
+    /// What a reason a recording is not a meeting reads as. The values its sentence leaves room for
+    /// travel with the reason and are not fetched here, for the reason <see cref="NotAMeeting"/>
+    /// gives.
+    /// </summary>
+    /// <remarks>
+    /// A table over an enum and nothing else, which is <see cref="Reads"/>'s shape and is here for
+    /// the same reason: what a screen says is `UiTexts`', and `UiTexts` is only in reach of the
+    /// application. The last arm stops rather than substituting, and <c>MeetingCardTextTests</c> is
+    /// what catches a reason with no words here before it can be thrown.
+    /// <para>
+    /// What no probe reaches is that each entry asks for as many values as its reason carries. A
+    /// text wanting more than it is given throws where the card is drawn, which is a red nothing
+    /// here can produce: this file has no <c>ProjectReference</c> to it and the switch is read as
+    /// source. The five pairs are three-with-none, one-with-one and one-with-two, and they are
+    /// checked by reading them.
+    /// </para>
+    /// </remarks>
+    private static UiText Words(WhyNotAMeeting why) => why switch
+    {
+        WhyNotAMeeting.NothingSaysWhichMeetingItIs => UiTexts.NothingHereSaysWhichMeetingItIs,
+        WhyNotAMeeting.WhatItSaysAboutItselfCannotBeRead => UiTexts.WhatItSaysAboutItselfCannotBeRead,
+        WhyNotAMeeting.ItIsInAnotherMeetingsFolder => UiTexts.ItIsInAnotherMeetingsFolder,
+        WhyNotAMeeting.ThisCorpusHasNoSuchMeeting => UiTexts.ThisCorpusHasNoSuchMeeting,
+        WhyNotAMeeting.NotAllOfItsSourcesAreHere => UiTexts.NotAllOfItsSourcesAreHere,
+        _ => throw new InvalidOperationException(
+            $"This screen has no words for a recording that is not a meeting because '{why}'."),
+    };
+
+    /// <summary>
+    /// Why this recording is not the meeting it was of, said in the language being read in, or
+    /// nothing when it still can be.
+    /// </summary>
+    private string? Because(WaitingRecording recording) =>
+        recording.Unrecoverable is { } reason ? Words(reason.Why).In(_language, [.. reason.Says]) : null;
+
+    /// <summary>
     /// Reads every meeting and what is owed on it, from a corpus opened for this read and let go
     /// of again.
     /// </summary>
@@ -569,12 +605,14 @@ public sealed partial class MeetingsDrawer : UserControl
             Style = Chrome("MeetingWhen"),
         });
 
-        // The reason rides on the line for the one standing that has one, and is ignored by the
-        // other three: what comes back off the engine names a folder and a meeting id, which is
-        // the machine's own words and reads the same in either language.
+        // The reason rides on the line for the one standing whose sentence leaves room for it, and
+        // is ignored by the other three — a recording still being written can have a reason too,
+        // and their sentences take no value, so it goes nowhere. It is read in this language here
+        // rather than kept: a card is built again from scratch when somebody switches, so nothing
+        // holds these words past the switch.
         lines.Children.Add(new TextBlock
         {
-            Text = TextLine.Says(says, row.Recording.Unrecoverable).In(_language),
+            Text = TextLine.Says(says, Because(row.Recording)).In(_language),
             Style = Chrome("MeetingLine"),
         });
 

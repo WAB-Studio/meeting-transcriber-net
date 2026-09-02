@@ -132,10 +132,12 @@ public sealed class Playback : IDisposable
     /// the path to one that is arithmetic. <see cref="Within"/> is public for the same reason.
     /// </para>
     /// <para>
-    /// Only where there are exactly two. One track is what audio somebody brought in from outside
-    /// becomes before it is a meeting's, and a fold over it would do nothing but stand between the
-    /// file and the device; anything wider than two is not a shape this corpus stores, and the
-    /// provider refuses it rather than guessing which pair of channels was the conversation.
+    /// Only where there are exactly two, and everything else goes to the endpoint as it is. One
+    /// track is what audio somebody brought in from outside becomes before it is a meeting's, and a
+    /// fold over it would do nothing but stand between the file and the device. Anything wider is
+    /// not a shape this corpus stores, and nothing here refuses it — it is played with its channels
+    /// as they are, which is the one answer that does not invent which pair of them was the
+    /// conversation.
     /// </para>
     /// </remarks>
     /// <param name="samples">The recording, as the samples it plays.</param>
