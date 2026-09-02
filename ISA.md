@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 139/207
+progress: 140/207
 updated: 2026-09-02
 ---
 
@@ -63,7 +63,7 @@ Board: —
 - [x] ISC-23: Anti: letting go of one corpus cannot break another that is open.
 - [ ] ISC-134: Anti: no test of this repo fails because of something changed outside it.
 - [ ] ISC-135: A clean clone is enough to build, test and know what this repo requires of a change, with no board behind it and no particular assistant installed.
-- [ ] ISC-176: Anti: nothing closes a claim in words `main` was not already carrying, so what a closure is scored against is never written by the change that closes it.
+- [x] ISC-176: Anti: nothing closes a claim in words `main` was not already carrying, so what a closure is scored against is never written by the change that closes it.
 
 ### F1 · Contracts and characterisation
 Why: what the Python system learned is specified in .NET before any of it is rebuilt, so the
@@ -696,3 +696,4 @@ Board: 7 · Distribución y backup
 - ISC-79 — the UI probe on the packaged build 2026-09-02: `choose MicrophonePicker fifine`, then `press RecordButton sleep 50 see b1-recording kill`. Channel 1 read `-96.6 dBFS` there, a level and not the silent mark ISC-80 shows, so the microphone was open. The next start offers the recording at the top of the list — `The application closed in the middle of this recording. The audio is whole up to there.`, `0:00:50 · 37.0 MB`, Discard and Keep — and `press Keep` files a meeting of `0:00:50`. Its `audio.wav` is 16 kHz stereo, 803262 frames, 50.204 s, channel 0 at RMS 3210 of 32767. Nobody heard it: `SoundPlayer.PlaySync` returning after 50.4 s is Windows accepting the file
 - ISC-126.2 — the UI probe on the packaged build 2026-09-02, a six-minute meeting: `press StopButton see c1-saving sleep 2 see c2-saving kill`, both trees carrying the saving card, so the process died with the pour running over blocks it had begun reading. It could have come back `WaitingStanding.CouldNotBeReadThrough`, which offers no Keep, and did not: the next start offers Discard and Keep, and `press Keep` files a meeting of `0:06:00`. Whoever closes ISC-126.1 writes the durable mark this had none of, and owes lifting it after a crash, or this goes red
 - ISC-168 — a real paid response filed by `import-response` and killed the moment its `manifest.json` landed, which is what `MeetingIntake` says an unfinished render leaves: the folder held that and `deepgram.json`, nothing else. Started with `sleep 20 see d1-after-launch`, nothing pressed, the folder then held `transcript.md` and `utterances.jsonl`, `status` counting 637 more turns. Run again over a second response on a build carrying `main`'s `MeetingRenderer`: 136 more turns, two more derived rows. What was probed is the launch, which today is the only path — nothing brings a response back into a running application, and that is ISC-170.1's
+- ISC-176 — `IsaStructureTests` (`tests/MeetingTranscriber.Isa.Tests`) green 2026-09-02 over checks 15 and 16. Red 2026-09-02 with `ISC-176` itself ticked and reworded in the tree: `.No_claim_is_closed_in_words_the_file_did_not_already_carry` named it while `.No_claim_is_written_into_the_file_already_closed` stayed green over that same edit — check 15's blind spot, measured. Check 16 reaches a claim the trunk had open, so outside it are the three closed claims this repo reworded across the 29 commits that touched the file, and a stub left standing over a moved sentence. Not closed here: words landing ahead of the branch that ticks them can still have been worded to fit, and no gate reaches that — `.claude/agents/auditor.md` is where it is asked.

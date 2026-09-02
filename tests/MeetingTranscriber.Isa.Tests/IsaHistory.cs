@@ -6,10 +6,10 @@ namespace MeetingTranscriber.Isa.Tests;
 
 /// <summary>
 /// ISA.md as another commit had it, and the one rule that needs two versions of the file to state:
-/// a claim is not written into it already closed.
+/// a claim closes only in the words the trunk was already carrying it in.
 /// </summary>
 /// <remarks>
-/// Every other gate reads one document and is a pure function over it. This one cannot be — a
+/// Every other gate reads one document and is a pure function over it. These two cannot be — a
 /// claim marked `[x]` looks identical whether it stood open for a week first or was written that
 /// way in the diff that closes it, and which of those happened is the whole question. So it is the
 /// only part of the gates that asks git anything, and it asks for objects the clone already has:
@@ -34,10 +34,19 @@ internal static class IsaHistory
     ///
     /// In CI on a pull request the checkout puts HEAD on the merge commit, whose other parent is
     /// the base, so this resolves to `main`'s tip instead of to the fork point. The two can only
-    /// differ by claims that landed on `main` while the branch was open, and this gate is what
-    /// stops any of those being closed ones — so both readings say the same thing about the branch.
-    /// On a push to `main` the fork point is HEAD and the comparison is empty: the gate speaks on
-    /// pull requests, which is where a diff is still worth refusing.
+    /// differ by claims that landed on `main` while the branch was open, and check 15 is what stops
+    /// any of those being closed ones — so for check 15 both readings say the same thing about the
+    /// branch. On a push to `main` the fork point is HEAD and the comparison is empty: the gates
+    /// speak on pull requests, which is where a diff is still worth refusing.
+    ///
+    /// Check 16 does not inherit that: `main` may legitimately gain a *reworded open* claim while a
+    /// branch is open, and then the two readings disagree about a branch that has not moved. A
+    /// branch closing that claim in the words it was cut with is green here and red in CI; a
+    /// narrowing pushed to `main` after the branch was cut is red here and green in CI. Both are one
+    /// state — the branch is behind — and neither is fixed by fetching, which does not move a fork
+    /// point. Merging `main` in does, and is what a reviewer wants under the tick anyway. Reading
+    /// the true fork point in CI needs the checkout to stand on the head commit rather than the
+    /// merge commit, which is `.github/workflows/ci.yml`'s to decide and not this file's.
     /// </remarks>
     public static IsaDocument Baseline() => At(Run("merge-base", "HEAD", Trunk).Trim());
 
@@ -55,12 +64,11 @@ internal static class IsaHistory
     /// carry at all — claims born ticked, which never stood as a bet the work had to clear.
     /// </summary>
     /// <remarks>
-    /// Ids are all it compares, so reordering the file, rewriting what a claim says and moving one
-    /// between feature blocks are invisible to it. Two consequences, both deliberate and both
-    /// written down in `references/format.md` rather than only here: renumbering a closed claim
-    /// reads as one appearing, which is right because check 10 already refuses renumbering; and
-    /// rewriting an open claim to describe what the same diff just built is this defect with one
-    /// extra keystroke and is a reviewer's to see, because no comparison of ids can reach it.
+    /// Ids are all it compares, so reordering the file and moving a claim between feature blocks
+    /// are invisible to it, and renumbering a closed claim reads as one appearing — which is right,
+    /// because check 10 already refuses renumbering. What a claim says is
+    /// <see cref="RewordedIntoClosure"/>'s half: between them they name every closure the trunk was
+    /// not already standing behind, under that id and in those words.
     /// </remarks>
     public static IReadOnlyList<string> BornTicked(IsaDocument baseline, IsaDocument head)
     {
@@ -70,6 +78,42 @@ internal static class IsaHistory
         [
             .. head.Claims
                 .Where(claim => claim.Closed && !carried.Contains(claim.Id))
+                .Select(claim => claim.Id),
+        ];
+    }
+
+    /// <summary>
+    /// The claims <paramref name="head"/> closes that <paramref name="baseline"/> had open in other
+    /// words — a claim rewritten to describe what the change just built and then ticked, which is
+    /// <see cref="BornTicked"/>'s defect with the id left alone.
+    /// </summary>
+    /// <remarks>
+    /// It reaches a claim the baseline had open and nothing else, which is the whole of what ISC-176
+    /// says. A claim already closed on the trunk is not being closed here whatever happens to its
+    /// words, and refusing that would refuse what the repo has twice done right: `ISC-121` in PR #58
+    /// and `ISC-120` in PR #74 each followed a product that had moved under a standing closure, and
+    /// each rewrote its `## Verification` stub in the same commit to say so. The gate would have had
+    /// to send both down a route with no reviewer on it.
+    ///
+    /// First wins where the baseline carries an id twice. Check 4 refuses that in the file as it
+    /// stands and cannot promise it of a commit far enough back, so the alternative is a throw
+    /// reporting a duplicate ID as this gate being broken.
+    /// </remarks>
+    public static IReadOnlyList<string> RewordedIntoClosure(IsaDocument baseline, IsaDocument head)
+    {
+        var open = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var claim in baseline.Claims.Where(claim => !claim.Closed))
+        {
+            open.TryAdd(claim.Id, claim.Text);
+        }
+
+        return
+        [
+            .. head.Claims
+                .Where(claim => claim.Closed
+                    && open.TryGetValue(claim.Id, out var was)
+                    && !string.Equals(was, claim.Text, StringComparison.Ordinal))
                 .Select(claim => claim.Id),
         ];
     }
@@ -130,11 +174,12 @@ internal static class IsaHistory
     /// and a message that picks one sends the reader to fix something that is not wrong.
     /// </summary>
     private static string AboutTheClone =>
-        $"Check 15 reads ISA.md as {Trunk} last had it, so it needs git, a remote called origin, "
-        + $"and the history behind {Trunk} back to this branch's fork point. A shallow clone has "
-        + $"none of it, and a {Trunk} nobody has fetched in a while resolves to an older fork "
-        + "point than the real one — `git fetch` before believing what it named. CI asks its "
-        + "checkout for all the history; `.github/workflows/ci.yml` says why.";
+        $"Checks 15 and 16 read ISA.md as {Trunk} last had it, so they need git, a remote called "
+        + $"origin, and the history behind {Trunk} back to this branch's fork point. A shallow "
+        + $"clone has none of it, and a {Trunk} nobody has fetched in a while resolves to an older "
+        + "fork point than the real one — `git fetch` before believing what it named, and merge "
+        + "`main` in if the fork point is what is behind. CI asks its checkout for all the history; "
+        + "`.github/workflows/ci.yml` says why.";
 
     private static Process Start(ProcessStartInfo start)
     {

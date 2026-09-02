@@ -33,7 +33,11 @@ carries a one-line provenance stub in `## Verification` — a test name, a commi
 
 When a probe fails, the question is always *is the code wrong, or is the claim wrong?* Both
 answers are progress. A claim that mis-stated done gets rewritten in place, and the commit says
-what it used to say; that is not cheating, that is the articulation improving.
+what it used to say; that is not cheating, that is the articulation improving. What makes it
+cheating is a tick arriving with it: a claim rewritten and closed in one change is scored against a
+bet written to fit, and check 16 refuses that. Rewriting one already closed is not that — the tick
+predates the change — but its stub was written against the old sentence, so the rewrite says so in
+the stub, the way `ISC-120` and `ISC-121` did.
 
 ## The board and the ISA
 
@@ -118,17 +122,23 @@ Then write the claim and check the Splitting Test:
 - Crosses a boundary (domain / storage / processing / UI) → one per boundary.
 
 Splits preserve the parent: `ISC-7` becomes the container, leaves become `ISC-7.1`, `ISC-7.2`.
-Never renumber. Splitting a *closed* claim is the one split check 15 refuses, because a leaf
-marked `[x]` on the day it is written is a second closure however it reads — narrow the claim by
-rewriting its own text instead, which keeps the id that carried the bet.
+Never renumber. Splitting a *closed* claim is the one split check 15 refuses, because a leaf marked
+`[x]` on the day it is written is a second closure however it reads. Narrowing the claim's own text
+instead keeps the id that carried the bet — but not in the change that ticks it, which is check 16:
+a claim closed in words the same change wrote is the same closure of nothing. A narrowing goes in a
+change that does not tick it, by the route below.
 
 **Run the probe before building.** If it passes with no work done, either the claim was already
 true — delete it — or the probe cannot fail, which means it is not a probe. Deterministic types
 only; never for `manual`.
 
-**A claim lands on `main` before the work that closes it starts** — in its own change, with
-nothing built on top of it there. Check 15 refuses a claim written and ticked together, so a card
-whose claim does not exist yet is two pieces of work, and the first of them is this one.
+**A claim lands, in the words it will close in, before the work that closes it starts** — in its own
+change, with nothing built on top of it. Checks 15 and 16 refuse a claim written and ticked together
+and an open claim reworded and ticked together, so a card whose claim does not exist yet, or whose
+claim does not yet say what it needs to say, is two pieces of work and the first of them is this
+one. `main` takes direct pushes, so where that first piece is only `ISA.md` it costs a push and not
+a second pull request. What the gates cannot reach — whether the words were written ahead of the
+work or to fit it — is a reviewer's, and `references/format.md` says where it is asked.
 
 ### Interview — fill a thin section
 

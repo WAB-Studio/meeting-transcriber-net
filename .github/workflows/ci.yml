@@ -13,11 +13,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # ISA.md's check 15 refuses a claim written into the file already closed, and the only
-          # way to see that is to read the file as `origin/main` had it. The default fetch-depth
-          # of 1 leaves no `origin/main` and no history behind it; 0 fetches every branch whole.
-          # Undo this and the check goes red saying so rather than passing on a comparison it
-          # never made — `IsaHistory` is what reads it.
+          # ISA.md's checks 15 and 16 refuse a claim written, or reworded, into its own closure,
+          # and the only way to see either is to read the file as `origin/main` had it. The default
+          # fetch-depth of 1 leaves no `origin/main` and no history behind it; 0 fetches every
+          # branch whole. Undo this and both go red saying so rather than passing on a comparison
+          # they never made. `IsaHistory` is what reads it, and says why check 16 can answer
+          # differently here than on the branch: this checkout stands on the merge commit.
           fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
