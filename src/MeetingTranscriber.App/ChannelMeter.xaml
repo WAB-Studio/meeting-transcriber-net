@@ -35,38 +35,18 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Which channel this is, and what it has open. The artboard writes the channel twice —
-             a mono `ch0` chip and then *Los otros* beside it — and the catalogue already carries
-             the two as one entry, "Canal 0 · los otros". One of them is the screen saying the same
-             thing again, so there is one here. -->
-        <Grid Grid.Row="0" ColumnSpacing="9">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+        <!-- Nothing here says which channel this is, and that is the redraw rather than an
+             omission. `docs/design.md` §Where it goes pins the meter to the control that chooses
+             its source, so the mono chip, the role and the picker are the row above and belong to
+             `ChannelStrip` — a meter that wrote *Canal 0 · los demás* over its own bar as well
+             would be one column saying the same thing twice. What stays here is what nothing else
+             in this application draws: the four layers, the scale under them and the retained
+             peak. The name a screen reader reads off the bar is still set from outside, because the
+             bar is the thing carrying a value. -->
 
-            <TextBlock
-                x:Name="WhichChannel"
-                Grid.Column="0"
-                VerticalAlignment="Center"
-                Style="{StaticResource BodyText}"
-                FontWeight="SemiBold" />
-
-            <!-- The device or the program, in whatever its maker called it: data, and so the same
-                 in every language. -->
-            <TextBlock
-                x:Name="Capturing"
-                Grid.Column="1"
-                VerticalAlignment="Center"
-                Style="{StaticResource BodyText}"
-                Foreground="{StaticResource SecondaryTextBrush}"
-                TextTrimming="CharacterEllipsis" />
-        </Grid>
-
-        <StackPanel Grid.Row="1" Spacing="6">
+        <StackPanel Grid.Row="0" Spacing="6">
             <!-- The four layers, bottom to top, all on the same segments. Each is that one set of
                  segments clipped to its own range and never a rectangle sized to it: a sized layer
                  re-tiles its own pattern and the segments walk as the level moves.
@@ -108,7 +88,7 @@
              answers this case itself — a second line that is quieter is quieter by colour, and
              there is no rank between Body and Data to reach for. So the two are one rank in two
              inks. The artboard is what gets corrected. -->
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

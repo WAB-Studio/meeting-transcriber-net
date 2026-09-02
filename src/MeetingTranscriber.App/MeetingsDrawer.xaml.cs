@@ -654,7 +654,11 @@ public sealed partial class MeetingsDrawer : UserControl
         withTheMark.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         withTheMark.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        var mark = new Microsoft.UI.Xaml.Shapes.Path { Style = Chrome("SomethingIsLostMark") };
+        // Loaded from a template rather than built here and given a style, because the whole of the
+        // mark is one `Geometry` and a `Geometry` has one parent: a style shared by two rows would
+        // draw one triangle and one blank space. The template's own remark in the markup is where
+        // that is written down.
+        var mark = (FrameworkElement)((DataTemplate)Root.Resources["SomethingIsLostMark"]).LoadContent();
         Grid.SetColumn(mark, 0);
         Grid.SetColumn((FrameworkElement)lines, 1);
 

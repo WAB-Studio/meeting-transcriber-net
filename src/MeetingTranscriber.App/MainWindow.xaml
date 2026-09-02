@@ -37,139 +37,354 @@
     <Grid
         Background="{StaticResource PaperBrush}"
         Padding="{StaticResource ScreenPadding}"
-        RowSpacing="18">
+        RowSpacing="20">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel x:Name="RecordingCard" Grid.Row="0" Spacing="18">
+        <!-- The application saying which application it is, which every artboard opens with. The
+             mark and the name are the one thing `docs/design.md` §The artboards and this page calls
+             deliberately unfinished, so what is drawn here is the placeholder those artboards
+             carry, in one place for whoever draws the real one.
+
+             **There is no settings gear**, and that is a decision rather than a piece left out.
+             Every artboard draws a 34×34 gear at the right of this row and there is no settings
+             screen behind it — #108 owns that screen and it is not built. Of the three answers, a
+             live gear that opens nothing is the one this repository refuses outright; a disabled
+             one says *not answerable just now*, which is what disabled means everywhere else in
+             this application and is a lie here, since nothing about the state of the screen is
+             stopping it; and explaining it in a line under it is what §The rules the design imposes
+             forbids in as many words. So the row is drawn without it, and #108 puts it in the place
+             this row already leaves for it. -->
+        <Grid x:Name="TheApplication" Grid.Row="0" ColumnSpacing="11" Margin="6,0,6,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Drawn on the artboards' own 24-unit box inside a Viewbox rather than as two paths
+                 each stretched to its own bounds, which would scale the two arcs independently and
+                 pull the mark apart. -->
+            <Viewbox Grid.Column="0" Width="22" Height="22" VerticalAlignment="Center">
+                <Canvas Width="24" Height="24">
+                    <Path
+                        Data="M8 7a7 7 0 0 0 0 10"
+                        Stroke="{StaticResource InkBrush}"
+                        StrokeThickness="2.2"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round" />
+                    <Path
+                        Data="M14.5 5a9.5 9.5 0 0 1 0 14"
+                        Stroke="{StaticResource OliveBrush}"
+                        StrokeThickness="2.2"
+                        StrokeStartLineCap="Round"
+                        StrokeEndLineCap="Round" />
+                </Canvas>
+            </Viewbox>
+
+            <TextBlock
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Text="{x:Bind In(loc:UiTexts.TheApplicationsName)}"
+                Style="{StaticResource SectionText}" />
+        </Grid>
+
+        <!-- What the next meeting will record, on tarjeta. A card and not a stack of controls on
+             the paper: `docs/design.md` §Two colours and nothing else has the window as papel and
+             a block laid on it as tarjeta, and every artboard of this screen draws this half as one
+             card with the meetings below it on the paper. -->
+        <Border
+            x:Name="RecordingCard"
+            Grid.Row="1"
+            Style="{StaticResource Card}"
+            Padding="{StaticResource LargeCardPadding}">
+            <StackPanel Spacing="18">
             <!-- What the next meeting will record and the presses that run it. It goes as one
                  thing while the meeting is being saved, because none of it is answerable then:
                  every control in it is dead, and a dead screen headed "record a meeting" over a
                  meeting being saved is a window that looks like it lost the one it just had. -->
             <StackPanel x:Name="TheNextMeeting" Spacing="18">
-                <TextBlock Text="{x:Bind In(loc:UiTexts.RecordAMeeting)}" Style="{StaticResource ScreenTitleText}" />
+                <!-- The screen's title, and at its right the two things that are true of the
+                     meeting as a whole rather than of one channel: what will be spoken in it, and
+                     what will transcribe it. -->
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
 
-                <!-- What the next meeting will record. Everything here is dead the moment one starts:
-                     changing the microphone half way through is not a thing the engine can do, so it is
-                     not a thing this screen offers. -->
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <ComboBox
-                        x:Name="MicrophonePicker"
-                        MinWidth="240"
-                        Style="{StaticResource DropDown}"
-                        Header="{x:Bind In(loc:UiTexts.Microphone)}"
-                        SelectionChanged="OnMicrophoneChosen" />
-                    <ComboBox
-                        x:Name="SourcePicker"
-                        MinWidth="280"
-                        Style="{StaticResource DropDown}"
-                        Header="{x:Bind In(loc:UiTexts.WhatToRecordFromThisMachine)}"
-                        SelectionChanged="OnSourceChosen">
-                        <!-- The one picker that says which panel holds it, and the only one long
-                             enough for it to matter: this list is every program on the machine, and a
-                             ComboBox's own CarouselPanel decides where a list too long to fit opens.
-                             With nothing chosen it opened part way down the alphabet, so the answer
-                             that is always available and always right about what it records — the
-                             whole machine, put first by SourcesNow for exactly that reason — was not
-                             on screen when the list was, and the first thing somebody saw was a
-                             service they have never heard of. A linear panel opens at the top, and
-                             still draws only what fits. What should change is the list being this
-                             long at all, which is not this card's. -->
-                        <ComboBox.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <VirtualizingStackPanel />
-                            </ItemsPanelTemplate>
-                        </ComboBox.ItemsPanel>
-                    </ComboBox>
-                    <Button
-                        x:Name="RefreshTheMachineButton"
-                        VerticalAlignment="Bottom"
-                        Style="{StaticResource NormalButtonOnPaper}"
-                        Click="OnRefreshTheMachine"
-                        Content="{x:Bind In(loc:UiTexts.RefreshTheList)}" />
-                </StackPanel>
+                    <TextBlock
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Text="{x:Bind In(loc:UiTexts.RecordAMeeting)}"
+                        Style="{StaticResource ScreenTitleText}" />
 
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <StackPanel Spacing="2">
+                    <StackPanel
+                        Grid.Column="1"
+                        Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        Spacing="8">
+                        <!-- The meeting's language and not the one the application is read in. The
+                             two answer different questions and this is the one about the meeting,
+                             which is why it is on this card and the other is below with the rest of
+                             what is true of the install.
+
+                             The line that used to explain it is gone. `docs/design.md` §The rules
+                             the design imposes: a screen gets one sentence and only where something
+                             failed, and **if an option needs a line explaining it, its name is
+                             wrong** — *Idioma de la reunión* does not need one. What names it to a
+                             screen reader is its automation name, because the pill carries no
+                             header — and its placeholder says the same words, because this is the
+                             one picker on the screen with nothing beside it: the two on the
+                             channels carry a chip and a role, and on a fresh install this one
+                             opens with nothing chosen and would otherwise be an empty box under a
+                             status line telling somebody to choose what will be spoken. -->
                         <ComboBox
                             x:Name="SpokenPicker"
-                            MinWidth="240"
+                            MinWidth="180"
                             Style="{StaticResource DropDown}"
-                            Header="{x:Bind In(loc:UiTexts.WhatWillBeSpoken)}"
+                            PlaceholderText="{x:Bind In(loc:UiTexts.WhatWillBeSpoken)}"
+                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.WhatWillBeSpoken)}"
                             SelectionChanged="OnSpokenChosen" />
-                        <!-- Quieter by colour and never by opacity. `docs/design.md` gives three
-                             inks and opacity is not one of them: text faded to 70 per cent is a
-                             fourth grey nobody chose, and it is a different fourth grey over every
-                             surface it lands on. Every `Opacity` on this screen was one of those. -->
-                        <TextBlock
-                            Text="{x:Bind In(loc:UiTexts.WhatWillBeSpokenIsAskedEveryTime)}"
-                            Style="{StaticResource BodyText}"
-                            Foreground="{StaticResource SecondaryTextBrush}"
-                            MaxWidth="360"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-                    <ComboBox
-                        x:Name="LanguagePicker"
-                        MinWidth="160"
-                        VerticalAlignment="Top"
-                        Style="{StaticResource DropDown}"
-                        Header="{x:Bind In(loc:UiTexts.Language)}"
-                        SelectionChanged="OnLanguageChosen" />
-                </StackPanel>
 
-                <StackPanel Spacing="8">
+                        <!-- What transcribes the meeting. #97 settled that it is **shown here and
+                             changed in the settings**, so it is the pill without the chevron: the
+                             chevron is what says there is a list under a thing, and there is no
+                             list here. The settings screen is #108's.
+
+                             It is a constant in the catalogue and not something read off a
+                             transcription: nothing in `src/` names a model yet, and this is the
+                             engine `CLAUDE.md` and `docs/reference-behaviour.md` both say this
+                             application transcribes with. When a request exists it is what this
+                             reads. -->
+                        <Border Style="{StaticResource Pill}">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Text="{x:Bind In(loc:UiTexts.TheEngineThatTranscribes)}"
+                                Style="{StaticResource BodyText}" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Two channels, each with its picker over its own meter, split by a 1px rule.
+                     `docs/design.md` §Where it goes: the meter is pinned to the control that
+                     chooses its source — pick, look, pick the next one — and separating them turns
+                     the answer into a memory test. That is the case of the three processes called
+                     Teams, and the two pickers in one row over two meters in another was exactly
+                     the arrangement that case defeats.
+
+                     A rule and not a third surface. The same section: where a card genuinely holds two
+                     things, a 1px rule separates them, because a third tint at the same lightness
+                     as the paper is depth as decoration.
+
+                     The channels are two and they are fixed: channel 0 is the others, channel 1 is
+                     you. This is never a list. Everything in it is dead the moment a recording
+                     starts — changing the microphone half way through is not a thing the engine can
+                     do, so it is not a thing this screen offers. -->
+                <Grid ColumnSpacing="20" RowSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <local:ChannelStrip
+                        x:Name="TheOthers"
+                        Grid.Row="0"
+                        Grid.Column="0"
+                        Chose="OnSourceChosen" />
+
+                    <Border
+                        Grid.Row="0"
+                        Grid.RowSpan="2"
+                        Grid.Column="1"
+                        Width="1"
+                        Background="{StaticResource LineBrush}" />
+
+                    <local:ChannelStrip
+                        x:Name="Mine"
+                        Grid.Row="0"
+                        Grid.Column="2"
+                        Chose="OnMicrophoneChosen" />
+
+                    <!-- Each channel's own lines under its own meter, which is where the evidence
+                         for them is. They are live regions, so their words are set in the
+                         code-behind and never bound here: a line bound in the XAML is set once
+                         while it is collapsed and never changes again, which is a live region that
+                         announces nothing. MainWindow.Tell is what says these and why, and
+                         LiveRegionTests fails if one is bound here or never told. -->
+                    <StackPanel Grid.Row="1" Grid.Column="0" Spacing="6">
+                        <!-- A device dying is an event and not something to find by looking. -->
+                        <TextBlock
+                            x:Name="OthersStopped"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{StaticResource PeakBrush}"
+                            AutomationProperties.LiveSetting="Assertive"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed" />
+                        <!-- A channel that changed what it is on mid meeting, which is an event for
+                             the same reason: the picker above it goes on saying what was chosen,
+                             and what the recording holds from here on is another source. This is
+                             the one thing that says so, which is why the meter under it no longer
+                             repeats what it is capturing in grey. -->
+                        <TextBlock
+                            x:Name="OthersMoved"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{StaticResource PeakBrush}"
+                            AutomationProperties.LiveSetting="Assertive"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" Grid.Column="2" Spacing="6">
+                        <!-- Told, not bound, for the reason channel 0's line says. -->
+                        <TextBlock
+                            x:Name="MineStopped"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{StaticResource PeakBrush}"
+                            AutomationProperties.LiveSetting="Assertive"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed" />
+                        <!-- Told, not bound, for the reason channel 0's line says. -->
+                        <TextBlock
+                            x:Name="MineMoved"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{StaticResource PeakBrush}"
+                            AutomationProperties.LiveSetting="Assertive"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- True of both channels at once, so it sits under both rather than in either
+                     column. Told, not bound, for the reason the four above are. -->
+                <TextBlock
+                    x:Name="HeardTwice"
+                    Style="{StaticResource BodyText}"
+                    Foreground="{StaticResource PeakBrush}"
+                    AutomationProperties.LiveSetting="Polite"
+                    TextWrapping="Wrap"
+                    Visibility="Collapsed" />
+
+                <!-- The offer, and it is not on screen until the recording has made it. That is the
+                     whole of the consent here: there is nothing to press early, so nothing pressed
+                     early can be spent on it.
+
+                     Not pico, and `docs/design.md`'s `NadaLlego` says why in as many words: taking
+                     the whole machine costs nothing and loses nothing. It is the act on a
+                     notice, and an act on a notice takes the normal rank. A notice's act sits on
+                     the right of it, which is the grammar every row on every screen keeps. -->
+                <Grid x:Name="WholeMachineOffer" ColumnSpacing="16" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock
+                        Grid.Column="0"
+                        VerticalAlignment="Center"
+                        Text="{x:Bind In(loc:UiTexts.NothingCameFromThatProgram)}"
+                        Style="{StaticResource BodyText}"
+                        TextWrapping="Wrap" />
+                    <Button
+                        x:Name="WholeMachineButton"
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource NormalButtonOnCard}"
+                        Click="OnRecordTheWholeMachine"
+                        Content="{x:Bind In(loc:UiTexts.RecordTheWholeMachine)}" />
+                </Grid>
+
+                <!-- The foot: the neutral answers on the left, the act on the right. -->
+                <Grid ColumnSpacing="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                        <!-- When the meeting gets transcribed. #97 settled that this is chosen
+                             here, per meeting, as the two-way the artboard draws — and **nothing
+                             in this application transcribes during a recording**, so the choice
+                             has one answer and *Al terminar* is what happens to every meeting.
+
+                             So it is the pill and not the trough, which is the same shape and the
+                             same reason as the engine beside the title: a value that is true here
+                             and settled elsewhere. Drawn as the two-way it would be the page's own
+                             spec for a **live** control — trough, chosen half in papel at weight
+                             500 — with nothing behind it: somebody presses *En vivo*, nothing
+                             happens, no line appears, and they record an hour believing it is
+                             being transcribed as they speak. Every other control on this card that
+                             cannot be pressed is visibly dead; a two-way that looked alive would be
+                             the one thing here that lies, and it would spend the trough's meaning
+                             on a screen where it means the opposite. The card that makes live
+                             transcription real is the one that brings the trough. -->
+                        <Border Style="{StaticResource Pill}">
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                Text="{x:Bind In(loc:UiTexts.TranscribedAtTheEnd)}"
+                                Style="{StaticResource BodyText}" />
+                        </Border>
+
+                        <!-- The neutral press on this card: it opens no question and answers none,
+                             it asks the machine what it has again. -->
+                        <Button
+                            x:Name="RefreshTheMachineButton"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource ButtonAtTheMargin}"
+                            Click="OnRefreshTheMachine"
+                            Content="{x:Bind In(loc:UiTexts.RefreshTheList)}" />
+                    </StackPanel>
+
                     <!-- The one thing this screen is for takes the principal rank, and nothing else
                          on the screen does: `docs/design.md` §Controls says a screen has at most one
                          of the first. The three beside it steer a recording that is already running
                          rather than being what the screen is asking for, so they are normal. -->
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Name="PauseButton"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource NormalButtonOnCard}"
+                            Click="OnPause"
+                            Content="{x:Bind In(loc:UiTexts.Pause)}" />
+                        <Button
+                            x:Name="ResumeButton"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource NormalButtonOnCard}"
+                            Click="OnResume"
+                            Content="{x:Bind In(loc:UiTexts.Resume)}" />
+                        <Button
+                            x:Name="StopButton"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource NormalButtonOnCard}"
+                            Click="OnStop"
+                            Content="{x:Bind In(loc:UiTexts.Stop)}" />
+                        <!-- The words and nothing else, and the dot the artboards draw on it is
+                             deliberately not here. Built as a panel it cost two things worth more
+                             than a glyph: the button's automation name, which is its content and
+                             which a panel leaves empty, and the whole of its dead state — the fill
+                             and the ink of a dead button are the platform's, and a circle and a
+                             line of text carrying papel of their own stayed papel on top of it,
+                             which is what a probe photographed. Colour is information here and
+                             never decoration, and a dot that cannot be dimmed with the button it is
+                             on is decoration that lies. -->
                         <Button
                             x:Name="RecordButton"
                             Style="{StaticResource PrincipalActButton}"
                             Click="OnRecord"
                             Content="{x:Bind In(loc:UiTexts.Record)}" />
-                        <Button
-                            x:Name="PauseButton"
-                            Style="{StaticResource NormalButtonOnPaper}"
-                            Click="OnPause"
-                            Content="{x:Bind In(loc:UiTexts.Pause)}" />
-                        <Button
-                            x:Name="ResumeButton"
-                            Style="{StaticResource NormalButtonOnPaper}"
-                            Click="OnResume"
-                            Content="{x:Bind In(loc:UiTexts.Resume)}" />
-                        <Button
-                            x:Name="StopButton"
-                            Style="{StaticResource NormalButtonOnPaper}"
-                            Click="OnStop"
-                            Content="{x:Bind In(loc:UiTexts.Stop)}" />
                     </StackPanel>
-
-                    <!-- The offer, and it is not on screen until the recording has made it. That is the
-                         whole of the consent here: there is nothing to press early, so nothing pressed
-                         early can be spent on it.
-
-                         Not pico, and `docs/design.md` §NadaLlego says why in as many words: taking
-                         the whole machine costs nothing and loses nothing. It is the act on a
-                         notice, and an act on a notice takes the normal rank. -->
-                    <StackPanel x:Name="WholeMachineOffer" Spacing="4" Visibility="Collapsed">
-                        <TextBlock
-                            Text="{x:Bind In(loc:UiTexts.NothingCameFromThatProgram)}"
-                            Style="{StaticResource BodyText}"
-                            TextWrapping="Wrap"
-                            MaxWidth="640" />
-                        <Button
-                            x:Name="WholeMachineButton"
-                            HorizontalAlignment="Left"
-                            Style="{StaticResource NormalButtonOnPaper}"
-                            Click="OnRecordTheWholeMachine"
-                            Content="{x:Bind In(loc:UiTexts.RecordTheWholeMachine)}" />
-                    </StackPanel>
-                </StackPanel>
+                </Grid>
             </StackPanel>
 
             <!-- Saving the meeting: the state the screen is in between stop and the meeting being
@@ -221,85 +436,8 @@
                 Visibility="Collapsed"
                 AutomationProperties.HelpText="{x:Bind In(loc:UiTexts.HowLongTheMeetingHasBeenRunning)}" />
 
-            <!-- What is arriving, while it is arriving. There is no meeting to meter until one is
-                 being recorded, so none of this is on screen before that and none of it is left
-                 standing after — a meter showing its last reading is a screen saying a recording is
-                 still going. Which is not decided here: RecordingMeters answers it, in a project a
-                 build agent can run, and this reads the answer onto controls.
-
-                 Two channels and not a list, because two is the contract: channel 0 is the loopback
-                 and channel 1 is the microphone, and a recording that disagreed with that would be
-                 refused long before it reached a screen.
-
-                 Each is a ChannelMeter and no longer a ProgressBar. `docs/design.md` §The meter is
-                 the one component in this application that cannot be copied from anywhere, and a
-                 progress bar has none of it: no hot zone standing there before anything clips, no
-                 scale under the bar, and no retained peak — so nothing on it said whether −16 was
-                 close to clipping or nowhere near it. -->
-            <StackPanel x:Name="Meters" Spacing="18" Visibility="Collapsed">
-                <StackPanel Spacing="6">
-                    <local:ChannelMeter x:Name="OthersMeter" />
-                    <!-- A live region, because a device dying is an event and not something to find by
-                         looking — and its words are deliberately not here. A line bound in the XAML is
-                         set once while this panel is collapsed and never changes again, which is a
-                         live region that announces nothing: MainWindow.Tell is what says these
-                         and why, and LiveRegionTests fails if one is bound here or never told. -->
-                    <TextBlock
-                        x:Name="OthersStopped"
-                        Style="{StaticResource BodyText}"
-                        Foreground="{StaticResource PeakBrush}"
-                        AutomationProperties.LiveSetting="Assertive"
-                        TextWrapping="Wrap"
-                        MaxWidth="640"
-                        Visibility="Collapsed" />
-                    <!-- A channel that changed what it is on mid meeting, which is an event for the
-                         same reason a device dying is: the label above it changes quietly, and what
-                         the recording holds from here on is another source. Told, not bound. -->
-                    <TextBlock
-                        x:Name="OthersMoved"
-                        Style="{StaticResource BodyText}"
-                        Foreground="{StaticResource PeakBrush}"
-                        AutomationProperties.LiveSetting="Assertive"
-                        TextWrapping="Wrap"
-                        MaxWidth="640"
-                        Visibility="Collapsed" />
-                </StackPanel>
-
-                <StackPanel Spacing="6">
-                    <local:ChannelMeter x:Name="MineMeter" />
-                    <!-- Told, not bound, for the reason channel 0's line says. -->
-                    <TextBlock
-                        x:Name="MineStopped"
-                        Style="{StaticResource BodyText}"
-                        Foreground="{StaticResource PeakBrush}"
-                        AutomationProperties.LiveSetting="Assertive"
-                        TextWrapping="Wrap"
-                        MaxWidth="640"
-                        Visibility="Collapsed" />
-                    <!-- Told, not bound, for the reason channel 0's line says. -->
-                    <TextBlock
-                        x:Name="MineMoved"
-                        Style="{StaticResource BodyText}"
-                        Foreground="{StaticResource PeakBrush}"
-                        AutomationProperties.LiveSetting="Assertive"
-                        TextWrapping="Wrap"
-                        MaxWidth="640"
-                        Visibility="Collapsed" />
-                </StackPanel>
-
-                <!-- Beside the meters and not in the report: it is true of the whole meeting rather
-                     than of a moment in it, and a line that scrolled away would be read once. -->
-                <TextBlock
-                    x:Name="HeardTwice"
-                    Style="{StaticResource BodyText}"
-                    Foreground="{StaticResource PeakBrush}"
-                    AutomationProperties.LiveSetting="Polite"
-                    TextWrapping="Wrap"
-                    MaxWidth="640"
-                    Visibility="Collapsed" />
             </StackPanel>
-
-        </StackPanel>
+        </Border>
 
         <!-- Outside the half above, and bounded rather than left to take what is going. Outside
              because a line saying the chosen microphone has gone is written while the drawer may
@@ -307,10 +445,10 @@
              saying nothing at the moment it had something to say. Bounded because the meetings own
              the room that is left, and a report that grew into it would push the list off the
              screen a line at a time. -->
-        <StackPanel Grid.Row="1" Spacing="8">
+        <StackPanel Grid.Row="2" Spacing="8" Margin="6,0,6,0">
             <!-- Who is using the application, beside where their meetings are kept: both are
                  answers about this install rather than about the next meeting, which is why they
-                 are here and not up with the pickers. It is one field and one press whether it is
+                 are here and not up on the card. It is one field and one press whether it is
                  being answered for the first time or corrected afterwards — the asking is the
                  sentence under it, which is on screen exactly while nobody has answered.
 
@@ -333,10 +471,36 @@
                         Style="{StaticResource NormalButtonOnPaper}"
                         Click="OnKeepWhoIsUsingThis"
                         Content="{x:Bind In(loc:UiTexts.Save)}" />
+
+                    <!-- The language the application is **read** in, which is the other of the two
+                         language questions on this screen and the one that is not about the next
+                         meeting. It is here rather than on the card for the reason the row it sits
+                         in is, and it goes to the settings with that row when #108 builds them.
+
+                         Its label is beside it and not over it: a picker is a pill now and a pill
+                         carries no header, so what it chooses is said as text. That text is also
+                         what a screen reader is given, by name. -->
+                    <TextBlock
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,0,7"
+                        Text="{x:Bind In(loc:UiTexts.Language)}"
+                        Style="{StaticResource BodyText}"
+                        Foreground="{StaticResource SecondaryTextBrush}" />
+                    <ComboBox
+                        x:Name="LanguagePicker"
+                        MinWidth="150"
+                        VerticalAlignment="Bottom"
+                        Style="{StaticResource DropDown}"
+                        AutomationProperties.Name="{x:Bind In(loc:UiTexts.Language)}"
+                        SelectionChanged="OnLanguageChosen" />
                 </StackPanel>
 
+                <!-- Left and not merely bounded. A `MaxWidth` on a block that stretches centres it,
+                     so this sentence stood in the middle of a window nothing else on the row was
+                     under — which a probe photographed. -->
                 <TextBlock
                     x:Name="NobodyHasSaidYet"
+                    HorizontalAlignment="Left"
                     Text="{x:Bind In(loc:UiTexts.NobodyHasSaidWhoIsUsingThis)}"
                     Style="{StaticResource BodyText}"
                     Foreground="{StaticResource SecondaryTextBrush}"
@@ -373,16 +537,16 @@
             </ScrollViewer>
         </StackPanel>
 
-        <local:MeetingsDrawer x:Name="Meetings" Grid.Row="2" />
+        <local:MeetingsDrawer x:Name="Meetings" Grid.Row="3" Margin="6,0,6,0" />
 
         <!-- One meeting, read in the room the list was using. The same screen and not another
              window: a meeting is reached from the list and returns to it, and a second window
              would be one more thing to find again — which is the same argument that keeps the list
              itself out of one. Which of the two is on screen is answered in the code-behind, where
              the drawer already says which position it is in. -->
-        <local:ReadingAMeeting x:Name="Reading" Grid.Row="2" Visibility="Collapsed" />
+        <local:ReadingAMeeting x:Name="Reading" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" Margin="6,0,6,0">
             <TextBlock
                 x:Name="StatusText"
                 VerticalAlignment="Center"

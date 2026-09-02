@@ -111,19 +111,29 @@
                  mark that says something did.
 
                  Drawn on the artboard's own 24-unit geometry and scaled to 18, so the stroke stays
-                 the weight that was drawn rather than the weight a re-typed path happened to give. -->
-            <Style x:Key="SomethingIsLostMark" TargetType="Path">
-                <Setter Property="Stroke" Value="{StaticResource PeakBrush}" />
-                <Setter Property="StrokeThickness" Value="1.9" />
-                <Setter Property="StrokeLineJoin" Value="Round" />
-                <Setter Property="StrokeStartLineCap" Value="Round" />
-                <Setter Property="StrokeEndLineCap" Value="Round" />
-                <Setter Property="Width" Value="18" />
-                <Setter Property="Height" Value="18" />
-                <Setter Property="Stretch" Value="Uniform" />
-                <Setter Property="VerticalAlignment" Value="Top" />
-                <Setter Property="Data" Value="M12 4.6L21.2 19.4H2.8z M12 10.2v3.9 M12 16.9v.1" />
-            </Style>
+                 the weight that was drawn rather than the weight a re-typed path happened to give.
+
+                 **A template and not a style**, and that is the one thing here that is not a
+                 preference. A `Setter` holds one value, and the value of a `Data` setter is one
+                 `Geometry` — a `DependencyObject`, which has one parent. So the first row to take
+                 the style would get the triangle and every row after it a blank space, on a build
+                 with no warning anywhere in it. A template hands out its own objects on every
+                 `LoadContent`, which is what a mark drawn once per row needs. The same defect drew
+                 one chevron across the four pickers on the front door until a photograph of the
+                 window found it. -->
+            <DataTemplate x:Key="SomethingIsLostMark">
+                <Path
+                    Stroke="{StaticResource PeakBrush}"
+                    StrokeThickness="1.9"
+                    StrokeLineJoin="Round"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    Width="18"
+                    Height="18"
+                    Stretch="Uniform"
+                    VerticalAlignment="Top"
+                    Data="M12 4.6L21.2 19.4H2.8z M12 10.2v3.9 M12 16.9v.1" />
+            </DataTemplate>
 
             <!-- The one press on this screen that loses something. It sits to the left of the left
                  one, past a gap, so it cannot be pressed by reflex — the margin is the gap, and it

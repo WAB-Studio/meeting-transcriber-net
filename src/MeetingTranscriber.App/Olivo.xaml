@@ -183,6 +183,14 @@
     <x:Double x:Key="PrincipalActHeight">46</x:Double>
     <x:Double x:Key="NormalButtonHeight">42</x:Double>
 
+    <!-- A control — a picker, a pill, a two-way. It was missing while the pickers still carried a
+         header, because on a `ComboBox` `Height` is the whole control including that header and 34
+         left about fourteen pixels for the box: the four pickers on the front door rendered as a
+         label over a hairline, so the number was left at the platform's 32 and this key was not
+         settled. The picker is a pill now and the header is gone, so 34 is the box and the page's
+         own value goes back on. -->
+    <x:Double x:Key="ControlHeight">34</x:Double>
+
     <x:Double x:Key="RowButtonHeight">30</x:Double>
 
     <!-- ── Spacing ──────────────────────────────────────────────────────────────────────────────
@@ -191,9 +199,19 @@
          from. The screen's own margin is the only one that is two numbers, because the page gives
          it as 30 vertical and 40 horizontal. -->
 
+    <!-- Every one of them a Thickness, which is what a padding is. Written as a bare number these
+         two set a `Padding` through a `Setter`, which converts, and threw the moment a screen named
+         one straight on a control — "the type Double cannot be assigned to the type Thickness", at
+         `InitializeComponent`, on a build that compiled green. A key that works in one of the two
+         places a screen can name it is a key with a trap in it.
+
+         The values are what they were. The artboards draw the large card at 24 across and 22 down,
+         which is inside the page's 20–24 and would be the better number — but this key is also the
+         meeting screen's, and re-tuning a shared value on the way past is a change to a screen this
+         work did not draw and nobody photographed. -->
     <Thickness x:Key="ScreenPadding">40,30,40,30</Thickness>
-    <x:Double x:Key="LargeCardPadding">20</x:Double>
-    <x:Double x:Key="SmallCardPadding">16</x:Double>
+    <Thickness x:Key="LargeCardPadding">20</Thickness>
+    <Thickness x:Key="SmallCardPadding">16</Thickness>
 
     <!-- The one press that loses something sits to the left of the left one, past a gap, so it
          cannot be pressed by reflex. The gap is the whole difference between it and every other
@@ -316,18 +334,151 @@
 
     <!-- ── Controls that are not buttons ────────────────────────────────────────────────────────
 
-         A drop-down is a 34-high control on papel with a 1px `#E6E4DE` rule. Its chevron is the
-         ComboBox's own at 11px in secondary, which is what the page asks for and what the platform
-         already draws. -->
+         `docs/design.md` §Controls, last paragraph: a drop-down is a 34-high control on papel with
+         a 1px `#E6E4DE` rule and an 11px chevron in secondary; a two-way choice is two halves
+         inside a `#E6E4DE` trough with 3px of padding. Both are drawn here and both are drawn
+         once. -->
 
-    <!-- Neither of the two carries the control rank's 34, and that is measured rather than
-         conceded. On both of these `Height` is the whole control **including the header above it**,
-         so pinning it to 34 left about fourteen pixels for the box the value sits in and the four
-         pickers on the front door rendered as a label over a hairline. `docs/design.md` gives 34 to
-         the box and the artboards draw the picker with no header at all — a pill carrying the value
-         and a chevron, with what it chooses said elsewhere — so the honest fix is the one that
-         redraws the picker, not a number that squashes it. Until then the box is the platform's own
-         height, which is 32. -->
+    <!-- A pill: 34 high, papel, a 1px rule, radius 4. It is the shape the picker below wears and
+         the shape a value that is **shown here and changed elsewhere** wears without one — the
+         chevron is the whole difference, and it is what says there is a list under this.
+
+         There is no `ChevronDown` style beside it, and that is deliberate. A `Setter` holds one
+         value, and the value of a `Data` setter is one `Geometry` — every `Path` taking the style
+         is handed the same object, and only the first one draws. That is what the four pickers on
+         the front door did: the one that sizes to its content drew a chevron and the two that
+         stretch drew none, on a build with no warning in it, found by photographing the window.
+         Splitting it — geometry on the element, everything else in a style — leaves the trap armed
+         for whoever writes the next `Path`, so the chevron is written where it is drawn, once, and
+         the shape a second one would take is this one copied. -->
+    <Style x:Key="Pill" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource PaperBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
+        <Setter Property="Height" Value="{StaticResource ControlHeight}" />
+        <Setter Property="Padding" Value="12,0,12,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- One entry of an open list. Templated for the reason the picker below is and for one more:
+         the platform draws the selected entry with an accent-coloured pill down its left edge, and
+         `docs/design.md` §And five things this application is not says outright that this
+         application never uses the system accent colour. It has two colours and neither of them is
+         Windows'. What says which entry is chosen here is the decision tint, which is what that
+         page gives for **the selected option of a set**.
+
+         The parts are ComboBoxItem's own two — `LayoutRoot` carries the fill and is the focus
+         target, `ContentPresenter` is what the peer reads — and the eight states it goes to by
+         name. Over and pressed are the one place a cursor is answered anywhere in this design,
+         and they are not `§What never moves` being broken: a list that is open is a thing being
+         pointed at one entry at a time, and an open list where nothing says which entry the
+         pointer is on is a list you choose out of by luck. -->
+    <Style x:Key="DropDownItem" TargetType="ComboBoxItem" BasedOn="{StaticResource DefaultComboBoxItemStyle}">
+        <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
+        <Setter Property="FontSize" Value="{StaticResource BodySize}" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
+        <Setter Property="Padding" Value="12,0,12,0" />
+        <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border
+                        x:Name="LayoutRoot"
+                        Background="{TemplateBinding Background}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        Margin="4,0,4,0"
+                        MinHeight="{TemplateBinding MinHeight}"
+                        Control.IsTemplateFocusTarget="True">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{StaticResource CardBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{StaticResource CardBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Selected">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{StaticResource DecisionTintBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="SelectedUnfocused">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{StaticResource DecisionTintBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="SelectedPointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{StaticResource DecisionTintBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="SelectedPressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{StaticResource DecisionTintBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="ContentPresenter.Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="SelectedDisabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="ContentPresenter.Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+
+                        <ContentPresenter
+                            x:Name="ContentPresenter"
+                            Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}"
+                            Foreground="{TemplateBinding Foreground}"
+                            Margin="{TemplateBinding Padding}"
+                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- The picker, as the artboards draw it: that same pill carrying its value and the chevron,
+         and **no header** — what a picker chooses is said beside it, as text the screen lays out,
+         which is what lets the box itself stand at the page's 34.
+
+         A template and not a style, which is the difference between this and every button here.
+         Three of the things `docs/design.md` refuses are in the platform's own ComboBox template
+         and none of them can be set off from outside it: the box takes `ComboBoxBackgroundPointerOver`
+         the moment a cursor crosses it — §What never moves is explicit that nothing in this
+         application reacts to a passing cursor — and pressed and disabled reach for the same
+         family, which is the system's skin and, through it, the system accent this design does not
+         have. A `Background` setter loses to a visual state every time, so the states are what had
+         to be rewritten.
+
+         What the platform still owns is everything a hand-written template gets wrong by omission,
+         and each part below is here because ComboBox itself looks it up by name: `Popup` and the
+         `ItemsPresenter` inside it are the list and where it opens, `Background` is
+         `IsTemplateFocusTarget` so the focus rectangle is the system's, and `ContentPresenter` is
+         what the drop-down animates from and what the automation peer reads the selection off. The
+         keyboard, the peer and selection itself are ComboBox's own code and are not touched.
+
+         The list opens at the top of itself and never on a carousel — settled here rather than on
+         one screen, because a carousel decides where a list too long to fit opens, and with nothing
+         chosen it opened part way down the alphabet: the answer that is always right about what it
+         records was off screen at the moment the list appeared. Every picker in the application
+         gets that, so no screen has to remember it. -->
     <Style x:Key="DropDown" TargetType="ComboBox" BasedOn="{StaticResource DefaultComboBoxStyle}">
         <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
         <Setter Property="FontSize" Value="{StaticResource BodySize}" />
@@ -336,6 +487,163 @@
         <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
+        <Setter Property="Height" Value="{StaticResource ControlHeight}" />
+        <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+        <Setter Property="Padding" Value="12,0,8,0" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="ItemContainerStyle" Value="{StaticResource DropDownItem}" />
+        <Setter Property="ItemsPanel">
+            <Setter.Value>
+                <ItemsPanelTemplate>
+                    <VirtualizingStackPanel />
+                </ItemsPanelTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid x:Name="LayoutRoot">
+                        <VisualStateManager.VisualStateGroups>
+                            <!-- Normal, over and pressed are one appearance on purpose: this
+                                 control does not react to a cursor passing over it, and pressing it
+                                 opens the list, which is the answer. Only being dead looks
+                                 different, and it looks different by ink rather than by opacity. -->
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver" />
+                                <VisualState x:Name="Pressed" />
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="ContentPresenter.Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                                        <Setter Target="Chevron.Stroke" Value="{StaticResource TertiaryTextBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+
+                            <!-- Named and left empty rather than left out. ComboBox goes to each of
+                                 these by name, and a group it cannot find is a state change that
+                                 silently does nothing — which is fine here and would not be if one
+                                 of them ever had to draw something. The focus rectangle itself is
+                                 the system's, off `IsTemplateFocusTarget` below. -->
+                            <VisualStateGroup x:Name="FocusStates">
+                                <VisualState x:Name="Focused" />
+                                <VisualState x:Name="FocusedPressed" />
+                                <VisualState x:Name="Unfocused" />
+                                <VisualState x:Name="PointerFocused" />
+                                <VisualState x:Name="FocusedDropDown" />
+                            </VisualStateGroup>
+
+                            <!-- Empty on purpose, and it takes something out: the platform runs a
+                                 split-open animation off `TemplateSettings` here, and a list that
+                                 unfolds from the middle of the box is not on `docs/design.md`
+                                 §What moves, which has four entries and no drop-down among them.
+                                 The list is there or it is not, at the platform's own speed.
+                                 ISC-173.2 and ISC-173.3 are the open claims about motion; whoever
+                                 closes them decides whether this group gains something. -->
+                            <VisualStateGroup x:Name="DropDownStates">
+                                <VisualState x:Name="Opened" />
+                                <VisualState x:Name="Closed" />
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+
+                        <!-- The chevron's column is a fixed width and not `Auto`, which the
+                             platform's own template also does. Left to size itself it measured to
+                             nothing on every picker that stretched — the two on the recording card
+                             stood with no chevron at all while the two that sized to their content
+                             had one, which a probe photographed. 11 for the mark and 12 to the
+                             pill's edge, as the artboards draw it. -->
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="23" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border
+                            x:Name="Background"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="2"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Control.IsTemplateFocusTarget="True" />
+
+                        <!-- One line. It does not trim, and a `ContentPresenter` has no property
+                             for trimming — so a pill is as wide as the name in it, and what keeps
+                             a name from being cut is that nothing caps the width. A device is
+                             called whatever its maker called it, and *Micrófono (Realtek(R) Audio)
+                             - High Definition Audio Device* is the length that has to fit. -->
+                        <ContentPresenter
+                            x:Name="ContentPresenter"
+                            Grid.Column="0"
+                            Margin="{TemplateBinding Padding}"
+                            Foreground="{TemplateBinding Foreground}"
+                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                            TextWrapping="NoWrap">
+                            <!-- What the pill says with nothing chosen. It is a part ComboBox
+                                 realises by name, so leaving it out is what makes `PlaceholderText`
+                                 a property that binds, compiles and draws nothing. -->
+                            <TextBlock
+                                x:Name="PlaceholderTextBlock"
+                                Text="{TemplateBinding PlaceholderText}"
+                                Foreground="{StaticResource TertiaryTextBrush}"
+                                TextTrimming="CharacterEllipsis" />
+                        </ContentPresenter>
+
+                        <!-- Written here rather than taken off a style, for the reason `Pill`
+                             above says: a `Geometry` in a `Setter` is one object handed to every
+                             `Path` that takes it, and only the first draws. -->
+                        <Path
+                            x:Name="Chevron"
+                            Grid.Column="1"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Center"
+                            Width="11"
+                            Height="11"
+                            Stretch="Uniform"
+                            IsHitTestVisible="False"
+                            Stroke="{StaticResource SecondaryTextBrush}"
+                            StrokeThickness="2.2"
+                            StrokeStartLineCap="Round"
+                            StrokeEndLineCap="Round"
+                            StrokeLineJoin="Round"
+                            Data="M5 9l7 7 7-7" />
+
+                        <Popup x:Name="Popup">
+                            <Border
+                                x:Name="PopupBorder"
+                                Background="{StaticResource PaperBrush}"
+                                BorderBrush="{StaticResource LineBrush}"
+                                BorderThickness="1"
+                                BackgroundSizing="InnerBorderEdge"
+                                CornerRadius="{StaticResource PressedCorner}"
+                                Padding="0,4,0,4"
+                                HorizontalAlignment="Stretch">
+                                <ScrollViewer
+                                    x:Name="ScrollViewer"
+                                    MinWidth="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=TemplateSettings.DropDownContentMinWidth}"
+                                    VerticalSnapPointsType="OptionalSingle"
+                                    VerticalSnapPointsAlignment="Near"
+                                    HorizontalScrollMode="{TemplateBinding ScrollViewer.HorizontalScrollMode}"
+                                    HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}"
+                                    VerticalScrollMode="{TemplateBinding ScrollViewer.VerticalScrollMode}"
+                                    VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}"
+                                    IsVerticalRailEnabled="{TemplateBinding ScrollViewer.IsVerticalRailEnabled}"
+                                    IsDeferredScrollingEnabled="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}"
+                                    BringIntoViewOnFocusChange="{TemplateBinding ScrollViewer.BringIntoViewOnFocusChange}"
+                                    ZoomMode="Disabled"
+                                    AutomationProperties.AccessibilityView="Raw">
+                                    <ItemsPresenter />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <Style x:Key="TypedField" TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
@@ -347,5 +655,12 @@
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
     </Style>
+
+    <!-- `docs/design.md` §Controls also draws a two-way choice — two halves inside a `#E6E4DE`
+         trough — and there is nothing for it here, because nothing in the application offers a
+         choice of two yet. The one screen that wanted the shape wanted it for an answer that
+         cannot be given: whichever card makes *en vivo* against *al terminar* pressable brings the
+         trough with it, and the page has the six numbers it needs. A dictionary entry a screen
+         cannot honestly use is a shape somebody reaches for because it is there. -->
 
 </ResourceDictionary>

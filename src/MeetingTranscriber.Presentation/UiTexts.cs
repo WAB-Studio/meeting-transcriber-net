@@ -14,6 +14,15 @@
 /// </remarks>
 public static class UiTexts
 {
+    // ── The application ──────────────────────────────────────────────────────────
+
+    // What the window says it is, in the row every artboard opens with. The same either way
+    // because it is the product's name and a product is not translated — and it is a placeholder:
+    // `docs/design.md` §The artboards and this page says the name and the mark are the one thing on
+    // those drawings that is deliberately unfinished.
+    public static UiText TheApplicationsName { get; } =
+        new("Meeting Transcriber", "Meeting Transcriber");
+
     // ── The recording screen ─────────────────────────────────────────────────────
 
     public static UiText RecordAMeeting { get; } = new("Grabar una reunión", "Record a meeting");
@@ -27,6 +36,35 @@ public static class UiTexts
     // which is why it is a value rather than words.
     public static UiText TheDeviceWindowsUsesByDefault { get; } =
         new("{0} (predeterminado)", "{0} (default)");
+
+    // The two channels, as the chip and the role the artboards draw beside each picker. The chip is
+    // the channel index Deepgram reports back, in mono at the data rank, and it is the same either
+    // way because a number is: `docs/design.md` §Type gives mono to every number that gets compared
+    // to another one, and *ch0* against *canal 0* would be two spellings of one index. The role
+    // beside it is the words, and those are translated.
+    //
+    // Two entries where there used to be one saying both at once. The meter drew "Canal 0 · los
+    // demás" over its own bar while the picker had a header of its own, and the redraw put the
+    // three things the artboards draw — the chip, the role and the pill — in one row instead.
+    public static UiText Channel0 { get; } = new("ch0", "ch0");
+
+    public static UiText Channel1 { get; } = new("ch1", "ch1");
+
+    public static UiText TheOthersRole { get; } = new("Los demás", "The others");
+
+    public static UiText MyRole { get; } = new("Yo", "Me");
+
+    // What transcribes the meeting, shown on the card and changed in the settings — which is what
+    // #97 settled, and why it is a pill with no chevron under it. A provider's model name is what
+    // that provider called it, so it is the same either way.
+    public static UiText TheEngineThatTranscribes { get; } =
+        new("Deepgram nova-3", "Deepgram nova-3");
+
+    // When the meeting gets transcribed, at the foot of the card. #97 settled that this is chosen
+    // here and per meeting; nothing transcribes during a recording yet, so it has one answer and
+    // this is the whole of it. *En vivo* is not in the catalogue, because a word for an answer
+    // nobody can give is a word waiting to be put on a control that lies.
+    public static UiText TranscribedAtTheEnd { get; } = new("Al terminar", "At the end");
 
     public static UiText NoMicrophoneOnThisMachine { get; } = new(
         "Esta máquina no tiene ningún micrófono.",
@@ -78,19 +116,18 @@ public static class UiTexts
     public static UiText RefreshTheList { get; } =
         new("Actualizar la lista", "Refresh the list");
 
-    // Its own question, and the caption is not decoration: this screen has two language pickers on
-    // it and they answer different things. A meeting filed in the language of the menu somebody
-    // happens to read is a meeting transcribed in the wrong one.
+    // Its own question, because this screen has two language pickers on it and they answer
+    // different things: a meeting filed in the language of the menu somebody happens to read is a
+    // meeting transcribed in the wrong one. The name says which it is and carries the difference
+    // on its own — the caption under it that used to explain that is gone, because
+    // `docs/design.md` §The rules the design imposes says a screen gets one sentence and only
+    // where something failed, and **if an option needs a line explaining it, its name is wrong**.
     public static UiText WhatWillBeSpoken { get; } =
         new("Idioma de la reunión", "The meeting's language");
 
-    public static UiText WhatWillBeSpokenIsAskedEveryTime { get; } = new(
-        "Se pregunta por reunión. El idioma en el que se lee la aplicación no dice en qué se va a "
-        + "hablar.",
-        "Asked for every meeting. The language the application is read in does not say what will "
-        + "be spoken in it.");
-
-    public static UiText Record { get; } = new("Grabar", "Record");
+    // The verb `docs/design.md` §One verb per act fixes for this. The same act is never said two
+    // ways, and this one was *Grabar* on the screen against *Empezar a grabar* on the page.
+    public static UiText Record { get; } = new("Empezar a grabar", "Start recording");
 
     public static UiText Pause { get; } = new("Pausar", "Pause");
 
@@ -196,14 +233,6 @@ public static class UiTexts
         "How long the meeting has been running");
 
     // ── The meters, while a meeting is being recorded ────────────────────────────
-
-    // The channel number is in the name a person reads, and not decoration. It is the number the
-    // provider reports back and the number a citation is anchored by, so somebody looking at a
-    // transcript later and somebody watching this meter are reading the same two numbers.
-    public static UiText Channel0TheOthers { get; } =
-        new("Canal 0 · los demás", "Channel 0 · the others");
-
-    public static UiText Channel1Me { get; } = new("Canal 1 · yo", "Channel 1 · me");
 
     /// <summary>
     /// A channel that brought back nothing at all in the second just read. Said in words beside

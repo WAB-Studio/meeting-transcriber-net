@@ -32,6 +32,7 @@ public partial class OlivoTests
     private static readonly HashSet<string> PlatformBases =
     [
         "DefaultButtonStyle",
+        "DefaultComboBoxItemStyle",
         "DefaultComboBoxStyle",
         "DefaultTextBoxStyle",
     ];
@@ -281,15 +282,45 @@ public partial class OlivoTests
         // reach somebody through a property a screen binds, and that check refuses anything but
         // `{x:Bind}` on every one of them — so a sentence in here is unreachable. This is the other
         // half: it cannot be put here in the first place.
+        //
+        // The subject is the words and not the element. It was the element, which was right while
+        // the dictionary held only styles — and a control template has to be able to carry a
+        // `TextBlock`, because `PlaceholderText` reaches the screen through a template part named
+        // `PlaceholderTextBlock` and nothing else draws it. What is refused is the same thing it
+        // always was: a `Text` this file settles rather than passes through, as an attribute or
+        // between the tags.
         var words = Olivo()
             .Descendants()
             .Where(element => element.Name.LocalName is "String" or "TextBlock")
-            .Select(element => element.Name.LocalName)
+            .Where(Says)
+            .Select(element => $"<{element.Name.LocalName}>")
             .ToArray();
 
         words.ShouldBeEmpty(
             "Olivo.xaml holds words rather than values: " + string.Join("; ", words));
     }
+
+    /// <summary>
+    /// Every shape the check above has to tell apart, kept as rows rather than as a sentence about
+    /// them: narrowing it from "no TextBlock at all" to "no TextBlock that says something" is
+    /// exactly the edit that could let a word through, and a green run over a dictionary that
+    /// happens to hold none would not notice. The inline pair is why there are five and not three
+    /// — a `Run` carries most of what a `TextBlock` says and neither of its two shapes is an
+    /// attribute or a text node on the element the filter stopped at.
+    /// </summary>
+    public static TheoryData<string, bool> WordsOrValues() => new()
+    {
+        { """<TextBlock Text="Elegí un idioma" />""", true },
+        { """<TextBlock>Elegí un idioma</TextBlock>""", true },
+        { """<TextBlock><Run Text="Elegí un idioma" /></TextBlock>""", true },
+        { """<TextBlock Text="{TemplateBinding PlaceholderText}" />""", false },
+        { """<TextBlock><Run Text="{TemplateBinding PlaceholderText}" /></TextBlock>""", false },
+    };
+
+    [Theory]
+    [MemberData(nameof(WordsOrValues))]
+    public void A_word_is_told_from_a_value_however_it_was_written(string written, bool isAWord) =>
+        Says(XElement.Parse(written)).ShouldBe(isAWord, written);
 
     [Fact]
     public void Both_fonts_are_in_the_package_with_the_licence_that_lets_them_be()
@@ -369,6 +400,30 @@ public partial class OlivoTests
                 row => row.Groups["value"].Value,
                 StringComparer.Ordinal);
     }
+
+    /// <summary>
+    /// Whether an element carries words of its own — a <c>Text</c> that is not a binding, or text
+    /// between its tags.
+    /// </summary>
+    /// <remarks>
+    /// A markup extension is a value coming from somewhere else, and a template part carrying
+    /// <c>{TemplateBinding PlaceholderText}</c> settles nothing: the words are whatever the screen
+    /// put on the control, which <see cref="ScreenTextsTests"/> holds to the catalogue at the other
+    /// end. Anything not in braces is this file saying it.
+    /// <para>
+    /// It reads what is under the element and not only the element, because a <c>TextBlock</c> says
+    /// most of what it says through inlines: <c>&lt;TextBlock&gt;&lt;Run Text="Hola" /&gt;&lt;/TextBlock&gt;</c>
+    /// has no text node of its own and no <c>Text</c> attribute of its own, and is a sentence on a
+    /// screen. The element filter above already stops at a <c>TextBlock</c>, so this is what decides
+    /// whether that <c>TextBlock</c> is holding words.
+    /// </para>
+    /// </remarks>
+    private static bool Says(XElement element) =>
+        element.DescendantNodesAndSelf().OfType<XText>().Any(text => !string.IsNullOrWhiteSpace(text.Value))
+        || element.DescendantsAndSelf()
+            .Select(inline => (string?)inline.Attribute("Text"))
+            .OfType<string>()
+            .Any(said => !said.TrimStart().StartsWith('{'));
 
     /// <summary>Every key a dictionary or a screen's own resources define.</summary>
     private static HashSet<string> Keys(XDocument document) =>

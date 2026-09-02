@@ -67,13 +67,27 @@ public class UiTextsTests
         // The catalogue's half of "changing the language leaves no text in the previous one":
         // every entry whose two versions are different words really does come back different.
         // The screen's half is ScreenTextsTests — that no screen carries words of its own.
-        // Three entries read the same either way, and each is named here rather than allowed by a
-        // rule, because "the two versions happen to be equal" is also what a translation nobody
-        // got round to looks like. A fourth costs a red test until somebody says which it is.
+        // These read the same either way, and each is named here rather than allowed by a rule,
+        // because "the two versions happen to be equal" is also what a translation nobody got round
+        // to looks like. One more costs a red test until somebody says which it is.
+        //
         // The two language names are equal so a picker stays findable by somebody who cannot read
-        // the language the application is in; "no" is the same word in both.
+        // the language the application is in; "no" is the same word in both. The four the redrawn
+        // front door added are one answer said four times: **what a machine, a provider or a maker
+        // called something is not translated.** A channel's chip is the index the provider reports
+        // back, and `docs/design.md` §Type puts every number that gets compared to another one in
+        // mono; the engine is what Deepgram called that model; and the product's name is the
+        // product's.
         string[] sameEitherWayOnPurpose =
-            [nameof(UiTexts.EnglishName), nameof(UiTexts.SpanishName), nameof(UiTexts.No)];
+        [
+            nameof(UiTexts.Channel0),
+            nameof(UiTexts.Channel1),
+            nameof(UiTexts.EnglishName),
+            nameof(UiTexts.No),
+            nameof(UiTexts.SpanishName),
+            nameof(UiTexts.TheApplicationsName),
+            nameof(UiTexts.TheEngineThatTranscribes),
+        ];
 
         var sameEitherWay = Catalogue
             .Where(entry => string.Equals(entry.Text.Spanish, entry.Text.English, StringComparison.Ordinal))
