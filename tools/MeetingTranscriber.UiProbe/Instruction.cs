@@ -13,13 +13,17 @@ namespace MeetingTranscriber.UiProbe;
 /// costs is loud rather than a script that runs and does nothing.
 /// <para>
 /// Closed on purpose, and small on purpose. Everything a screen is checked for is some
-/// arrangement of look, press, fill in and pick from a list, and a verb beyond those has to argue
-/// that no arrangement of them would have done. Two do, and both are about a recorder rather than
-/// about a screen: <see cref="Sleep"/>, because a meeting's screen is a function of elapsed real
+/// arrangement of these — get in, look, press, fill in, pick from a list — and a verb beyond the
+/// five has to argue that no arrangement of them would have done. Two do, and neither is about a
+/// screen at all: <see cref="Sleep"/>, because a meeting's screen is a function of elapsed real
 /// time and nothing that reads a screen makes ninety seconds pass — <see cref="Wait"/> is bounded
 /// at fifteen seconds and returns on the first frame that matches, which is the opposite of
 /// holding one; and <see cref="Kill"/>, because what a crash leaves behind cannot be reached by
 /// asking an application to shut down.
+/// </para>
+/// <para>
+/// <see cref="Sleep"/> is not a way to wait for something to happen and <see cref="Wait"/> is:
+/// a screen that will change is waited for, and only a screen that changes by the second is held.
 /// </para>
 /// </remarks>
 internal enum Verb
@@ -87,19 +91,26 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
                     $"\"{words[at]}\" wants {takes} word(s) after it and the script ends there.");
             }
 
-            var step = new Instruction(
-                verb,
-                takes >= 1 ? words[at + 1] : string.Empty,
-                takes == 2 ? words[at + 2] : string.Empty);
-
+            // Both checks are here rather than where the step runs, and for one reason: a script
+            // with a mistake in it is refused before an application is started, rather than after
+            // minutes of real recording that then have to happen again.
             if (verb is Verb.Sleep)
             {
-                // Read here and not where it is slept, so a script with a typo in it is refused
-                // before an application is started rather than halfway through a meeting.
-                _ = step.Held;
+                _ = Seconds(words[at + 1]);
             }
 
-            script.Add(step);
+            if (verb is Verb.Kill && at + 1 < words.Count)
+            {
+                throw new ProbeFailed(
+                    "\"kill\" ends the application, so nothing after it can be done to a screen: "
+                    + $"\"{words[at + 1]}\" follows it. Put kill last, and read what it left "
+                    + "behind with a second run.");
+            }
+
+            script.Add(new Instruction(
+                verb,
+                takes >= 1 ? words[at + 1] : string.Empty,
+                takes == 2 ? words[at + 2] : string.Empty));
 
             at += takes + 1;
         }
@@ -107,9 +118,14 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
         return script;
     }
 
-    /// <summary>How long a <c>sleep</c> is, off the word after it.</summary>
-    internal TimeSpan Held =>
-        double.TryParse(Subject, System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+    /// <summary>How long a <c>sleep</c> is, off the word written after it.</summary>
+    /// <remarks>
+    /// Static, and not a property of an instruction: five of the seven verbs take no number, so a
+    /// member every instruction carries and six of them throw from is a member that lies about
+    /// what an instruction is.
+    /// </remarks>
+    internal static TimeSpan Seconds(string word) =>
+        double.TryParse(word, System.Globalization.CultureInfo.InvariantCulture, out var seconds)
         // The bounds are read off the number and not off a TimeSpan made from it: `TryParse` takes
         // "Infinity", and `TimeSpan.FromSeconds` of that throws out of here as the probe breaking
         // rather than as the script being wrong, which is what it is.
@@ -117,7 +133,7 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
         && seconds <= LongestSleep.TotalSeconds
             ? TimeSpan.FromSeconds(seconds)
             : throw new ProbeFailed(
-                $"\"{Subject}\" is not a number of seconds between 0 and "
+                $"\"{word}\" is not a number of seconds between 0 and "
                 + $"{LongestSleep.TotalSeconds:0} to hold a screen for.");
 
     private static Verb VerbIn(string word)

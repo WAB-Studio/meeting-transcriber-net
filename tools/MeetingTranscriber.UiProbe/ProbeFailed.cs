@@ -11,3 +11,29 @@ namespace MeetingTranscriber.UiProbe;
 /// the artifact would be believed.
 /// </remarks>
 internal sealed class ProbeFailed(string message) : Exception(message);
+
+/// <summary>
+/// A <c>see</c> whose window would not be photographed, carrying the tree it did read.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Still a failure and still ends the run: a <c>see</c> promises both halves and one of them is
+/// missing. What it stops being is a total loss. Measured on 2026-09-02, on a packaged build whose
+/// window printed its frame and nothing else for the whole ten-second budget — foreground or not,
+/// three runs in a row — while the automation tree read whole through the same window, every other
+/// application on the machine printed normally, and the desktop composited normally. Under the old
+/// shape the picture was taken first, so that run answered with a sentence about a photograph and
+/// nothing at all about the screen, which is the half the run was for.
+/// </para>
+/// <para>
+/// So both hosts hand the tree back beside the reason there is no picture. Neither is allowed to
+/// let that read as success — the command line writes the tree, says why the picture is missing and
+/// exits on it, and the server answers with both and marks the answer an error.
+/// </para>
+/// </remarks>
+internal sealed class ScreenWouldNotBePhotographed(string tree, string why)
+    : Exception(why)
+{
+    /// <summary>What the screen was, which reading it never depended on the picture.</summary>
+    internal string Tree { get; } = tree;
+}

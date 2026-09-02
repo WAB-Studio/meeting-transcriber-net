@@ -126,12 +126,30 @@ internal sealed class Session : IDisposable
     /// picture is printed out of the window rather than copied off the desktop, so nothing is
     /// raised, focused or moved by looking.
     /// </summary>
+    /// <remarks>
+    /// The tree is read first, and the order is the whole of why: the two halves fail
+    /// independently — a window can print nothing but its frame while its tree reads whole, which
+    /// is what <see cref="ScreenWouldNotBePhotographed"/> was measured against — and taking the
+    /// picture first threw the readable half away on the way out.
+    /// </remarks>
+    /// <exception cref="ScreenWouldNotBePhotographed">
+    /// The window would not be photographed. The tree is on it.
+    /// </exception>
     internal Screen See()
     {
         var window = _app.Windows.Active();
-        var picture = WindowPicture.Of(window);
+        var tree = UiTree.Render(window);
 
-        return new Screen(UiTree.Render(window), picture.Png, picture.Size);
+        try
+        {
+            var picture = WindowPicture.Of(window);
+
+            return new Screen(tree, picture.Png, picture.Size);
+        }
+        catch (ProbeFailed noPicture)
+        {
+            throw new ScreenWouldNotBePhotographed(tree, noPicture.Message);
+        }
     }
 
     /// <summary>The tree alone, which is what a screen that has just changed is asked for.</summary>
@@ -141,11 +159,9 @@ internal sealed class Session : IDisposable
     /// Ends the application the way a crash does, with nothing asked and nothing let finish.
     /// </summary>
     /// <remarks>
-    /// The only verb here that is not about a screen, and it earns its place on what it reaches:
-    /// a recording nobody stopped and a save the process died in the middle of are states the
-    /// corpus arrives at only that way, and what a later start finds in them is a question no
-    /// polite close can be asked. Disposing this afterwards is still correct and still what the
-    /// host does — it finds an application that has already gone and returns.
+    /// The only verb here that answers with nothing about a screen. Why it is a verb at all, and
+    /// why the death is waited for, is <see cref="LaunchedApp.Kill"/>. Disposing this afterwards
+    /// is still correct and still what the host does: it finds an application already gone.
     /// </remarks>
     internal void Kill() => _app.Kill();
 

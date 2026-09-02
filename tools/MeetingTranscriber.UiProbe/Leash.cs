@@ -23,7 +23,9 @@ namespace MeetingTranscriber.UiProbe;
 /// <para>
 /// It is a backstop and not the way out. The polite close still happens first, because it is what
 /// lets the application finish whatever it was writing; this is what happens when nobody got to be
-/// polite. When Windows refuses to make one the tool goes on, because an application that might be
+/// polite. A script that asks for a <c>kill</c> is not that case and does not come through here —
+/// it is deliberately impolite and says so, where this is the ending nobody chose. When Windows
+/// refuses to make one the tool goes on, because an application that might be
 /// left behind is worth less than no probe at all — but the refusal is handed back rather than
 /// printed, because the host that most needs to hear it is the one whose reader never sees a
 /// console.

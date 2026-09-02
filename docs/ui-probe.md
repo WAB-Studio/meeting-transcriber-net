@@ -107,16 +107,28 @@ and the build fails on them. A build alone does not lift the refusal; only start
 **It may. This file said not to until 2026-09-02, and the repository's owner withdrew that in as
 many words: the corpus on this machine holds nothing sensitive and nothing worth rescuing.** So a
 probe records meetings into it, keeps and discards recordings on the list, and kills the
-application in the middle of both. What the rule was protecting was a corpus that had something to
-lose, and this one does not; a machine where it does gets the rule back, and this paragraph is
-where that goes.
+application in the middle of both. A machine whose corpus has something to lose gets the rule
+back, and this paragraph is where that goes.
 
-What that costs is worth knowing before a script asks for it. A meeting spools both channels at
-the rate the devices really run, which on this machine is about 44 MB a minute — six minutes is
-265 MB — and the spool folder stays after the meeting is made. Recording needs a microphone, what
-channel 0 follows, and what will be spoken, all three chosen before `RecordButton` is anything but
-disabled. Saving a six-minute meeting took under five seconds here, so a script meaning to catch
-the saving state on screen samples it with consecutive `see`s and not with a `sleep`.
+**What the withdrawn sentence was also doing is keeping two probes out of one corpus, and nothing
+replaced that.** The corpus is one folder for every checkout and the package suffix does not
+divide it: two runs recording at once are two writers on one SQLite file and one spool folder.
+Run them one at a time — and read the list before you start, because a killed run leaves a
+recording at the top of it waiting for Discard or Keep, and the next run's first `see` is a screen
+the last one dirtied.
+
+**Nothing tells a meeting a probe made from a meeting somebody recorded**, and the corpus is built
+never to lose either: `docs/corpus.md` files `audio.wav` and the spool's blocks as sources, and
+nothing removes a waiting recording but a person choosing to. So a run's meetings stay until
+somebody presses Discard on them, and they cost what they weigh — both channels spool at the rate
+the devices really run, about 44 MB a minute on this machine, six minutes is 265 MB, and the spool
+folder stays after the meeting is made. Whether a probe should write into the product's corpus at
+all, or into one of its own, is a decision nobody has taken.
+
+Recording needs a microphone, what channel 0 follows, and what will be spoken, all three chosen
+before `RecordButton` is anything but disabled. Saving a six-minute meeting took under five seconds
+here, so a script meaning to catch the saving state samples it with consecutive `see`s rather than
+a `sleep`.
 
 ## The verbs
 
@@ -134,10 +146,23 @@ the saving state on screen samples it with consecutive `see`s and not with a `sl
 Put a `wait` after any `press`, `type` or `choose` whose effect you are about to look at. It is the
 only thing here that synchronises.
 
+**A `see` whose window will not be photographed still writes the tree**, says why there is no
+picture, and fails on it. That is not a hypothetical: on 2026-09-02 this window printed its frame
+around a black rectangle for the whole ten-second budget, three runs in a row, foreground or not,
+while the tree read whole through the same window and every other application on the machine
+printed normally. Nothing here fixes that — a redraw, a minimise and restore and a one-pixel resize
+were each tried and each left it black — so what the tool does instead is not lose the half it
+could read. If `see` starts failing that way, `wait` and `press` still work, and the tree beside the
+failure is the screen.
+
 `sleep` is for the one screen that is a function of elapsed real time — a meeting running — and
 nothing else here makes ninety seconds pass: `wait` is capped at fifteen seconds and returns on the
 first frame that matches, which is the opposite of holding a screen. It is the script host's own,
 because over MCP a turn is how time passes.
+
+**`sleep` is never a substitute for `wait`.** Waiting for something to happen with a stopwatch is a
+script that passes here and fails on a slower machine, and the failure reads as the application
+having regressed. If what you are waiting for reaches a screen, `wait` for it.
 
 `kill` is for what a *later* start finds: a recording nobody stopped, a save the process died in
 the middle of. Nothing works after it, so it is a script's last instruction and a second run is
@@ -149,8 +174,9 @@ purpose.
 
 `start` first — nothing else works until an application is open — and `close` when you are done,
 because it stays open between calls. `close`, build the application, `start` is how you pick up a
-change to it. A refused `start` leaves the session you had alone. `kill` is here too and means what
-it means above; there is no `sleep`, because a turn is already how time passes.
+change to it. A refused `start` leaves the session you had alone. Neither `sleep` nor `kill` is
+here: a turn is already how time passes, and every walk that has wanted a crash has been a script,
+because what comes after one is a second run reading what the first left.
 
 Every verb answers with the tree of the screen it became, so you choose the next step from the last
 answer instead of writing the whole walk in advance. `see` also returns the picture, inline.

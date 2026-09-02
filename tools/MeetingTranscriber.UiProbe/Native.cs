@@ -91,14 +91,6 @@ internal static class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool PrintWindow(IntPtr window, IntPtr deviceContext, uint flags);
 
-    /// <summary>
-    /// Whether the window is minimised. Asked only when a photograph has already failed, to say
-    /// which of the two reasons it was instead of naming both and leaving the reader to guess.
-    /// </summary>
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool IsIconic(IntPtr window);
-
     [DllImport("user32.dll")]
     internal static extern IntPtr GetDC(IntPtr window);
 

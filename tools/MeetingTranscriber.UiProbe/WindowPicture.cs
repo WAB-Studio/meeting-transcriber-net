@@ -51,28 +51,22 @@ internal static class WindowPicture
 
         var inside = Inside(handle, rect, window);
 
-        // A refusal to print is inside the budget and not above it. Both ways this can fail are
-        // the same fact — the window has not composed yet — and the retry loop was written for
-        // only one of them: a print that comes back blank was asked again, and a print Windows
-        // refused outright threw straight out of the wait that exists to absorb it. A screen busy
-        // enough to refuse one print refuses it for a frame or two, so what that cost was the
-        // whole verb, tree included, on a window that was about to be photographable.
-        var refused = false;
-
+        // A refusal to print is inside the budget and not above it. The two ways this fails are one
+        // fact — the window has not composed — and the retry loop was written for only one of
+        // them: a print that came back blank was asked again, and a print Windows refused outright
+        // threw straight out of the wait that exists to absorb it, so a busy frame cost the whole
+        // verb and the tree with it. What the budget running out means is unchanged, which is why
+        // the sentence below is unchanged: past ten seconds of either, this window is not one a
+        // picture can be taken of, and which of the two it was is not what the reader does next.
         var pixels = Patience.Until(ToDraw, () =>
         {
             var taken = Copy(handle, rect);
-            refused = taken is null;
 
             return taken is not null && Drawn(taken, rect.Width, inside) ? taken : null;
         }) ?? throw new ProbeFailed(
-            $"The window \"{ElementWords.Name(window)}\" "
-            + (refused
-                ? $"refused to be printed for {ToDraw.TotalSeconds:0} seconds."
-                : $"printed as a frame around one flat colour for {ToDraw.TotalSeconds:0} seconds.")
-            + (Native.IsIconic(handle)
-                ? " It is minimised."
-                : " It is not minimised, so it never drew."));
+            $"The window \"{ElementWords.Name(window)}\" would not print anything but a frame "
+            + $"around one flat colour for {ToDraw.TotalSeconds:0} seconds. It is minimised, or it "
+            + "never drew.");
 
         var picture = BitmapSource.Create(
             rect.Width,

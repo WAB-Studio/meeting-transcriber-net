@@ -176,6 +176,14 @@ internal sealed class LaunchedApp : IDisposable
     /// machine died, so probing what a later start finds has to arrive at them the same way. The
     /// process tree and not the process, because what Windows activated is the application and
     /// anything it started is part of the same death.
+    /// <para>
+    /// The death is waited for and checked, which is the difference between this verb and a
+    /// wish. Everything a probe concludes from a kill is a sentence about a process that was
+    /// gone — so a kill that has not landed inside the budget has to say so and stop, rather than
+    /// answer as though it had: <see cref="Dispose"/> would then find a live application, take the
+    /// polite path over it, and let the application finish the very save this was meant to
+    /// interrupt. That is a run that reports a crash and recorded a clean shutdown.
+    /// </para>
     /// </remarks>
     internal void Kill()
     {
@@ -185,8 +193,30 @@ internal sealed class LaunchedApp : IDisposable
                 "The application is not running any more, so there is nothing left to kill.");
         }
 
-        _process.Kill(entireProcessTree: true);
-        _process.WaitForExit(ToShutDown);
+        try
+        {
+            _process.Kill(entireProcessTree: true);
+        }
+
+        // The same three as Abandon and Insist, and for the same reason: the process can go in the
+        // gap after HasGone, and a child of the tree can refuse. Neither is the probe breaking.
+        catch (Exception beyondUs)
+            when (beyondUs is InvalidOperationException or COMException or Win32Exception)
+        {
+            if (!HasGone)
+            {
+                throw new ProbeFailed(
+                    $"The application (process {_process.Id}) would not be killed: {beyondUs.Message}");
+            }
+        }
+
+        if (!_process.WaitForExit(ToShutDown))
+        {
+            throw new ProbeFailed(
+                $"The application (process {_process.Id}) was killed and was still running "
+                + $"{ToShutDown.TotalSeconds:0} seconds later, so nothing after this is about a "
+                + "process that died.");
+        }
     }
 
     /// <summary>

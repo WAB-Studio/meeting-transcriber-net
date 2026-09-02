@@ -130,7 +130,20 @@ internal sealed class McpHost : IDisposable
             + "question is about how the screen looks rather than what is on it.",
             () => Answer(() =>
             {
-                var screen = Live().See();
+                Screen screen;
+                try
+                {
+                    screen = Live().See();
+                }
+
+                // Still an error, and still says so — a `see` that answered with half of what it
+                // promises and no mark on it would be read as a screen with nothing on it. What it
+                // stops being is a turn that comes back with a sentence about a photograph and
+                // nothing about the screen, which is the half the call was for.
+                catch (ScreenWouldNotBePhotographed noPicture)
+                {
+                    return Failure($"{noPicture.Message}{Break}{noPicture.Tree}");
+                }
 
                 return new CallToolResult
                 {
@@ -191,25 +204,11 @@ internal sealed class McpHost : IDisposable
             ([Description("The x:Name of something on the screen you expect, or the words on it.")] string element) =>
                 Turn(session => $"on \"{session.Wait(element)}\"")),
 
-        Tool(
-            "kill",
-            "Ends the application the way a crash does — nothing asked, nothing let finish. Use it "
-            + "to reach what a later `start` finds after a machine died mid-recording or "
-            + "mid-save; for everything else `close` is the verb, because it lets the application "
-            + "write out what it was writing.",
-            () => Answer(() =>
-            {
-                // Live() and not _open: an application already gone is a kill that says so rather
-                // than one that quietly reports success over nothing.
-                var session = Live();
-                session.Kill();
-
-                _open = null;
-                session.Dispose();
-
-                return Text("Killed.");
-            })),
-
+        // There is no `kill` here, and the omission is a decision. `Session` has one, and reaching
+        // what a start finds after a crash is what it is for — but every walk that needs it is a
+        // script, because a crash is the end of a session and what comes after it is a second run
+        // reading what the first left. Nothing has yet wanted it a turn at a time, and the one
+        // destructive verb in this tool is not the one to offer a caller that does not exist.
         Tool(
             "close",
             "Closes the application. Nothing but `start` works afterwards, and a build of the "

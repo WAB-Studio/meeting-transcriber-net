@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 
 namespace MeetingTranscriber.UiProbe;
@@ -28,6 +29,14 @@ internal static class CommandLine
 
     /// <summary>The probe itself broke. This is a bug in here, not a finding about a screen.</summary>
     internal const int BadProbe = 3;
+
+    /// <summary>
+    /// How much of a <c>sleep</c> is slept at a time, so that a hold notices an application that
+    /// has gone within a slice of it rather than at the end. Coarse enough that twenty minutes of
+    /// holding costs twelve hundred cheap questions, and fine enough that a crash is reported
+    /// while it is still news.
+    /// </summary>
+    private static readonly TimeSpan ASlice = TimeSpan.FromSeconds(1);
 
     private const string Usage = """
         usage: dotnet run --project tools/MeetingTranscriber.UiProbe -- --out <folder> <instruction>...
@@ -161,7 +170,7 @@ internal static class CommandLine
         switch (step.Verb)
         {
             case Verb.See:
-                Keep(folder, step.Subject, session.See());
+                See(session, folder, step.Subject);
                 break;
             case Verb.Press:
                 session.Press(step.Subject);
@@ -173,11 +182,10 @@ internal static class CommandLine
                 session.Choose(step.Subject, step.Detail);
                 break;
             case Verb.Sleep:
-                // The only step here that touches neither the session nor the folder. It is the
-                // host's own and not the core's: an agent driving over the server lets time pass
-                // by taking a turn, and a core with a sleep in it would be a core with a verb only
-                // one of its two hosts could ever mean.
-                Thread.Sleep(step.Held);
+                // The host's own and not the core's: an agent driving over the server lets time
+                // pass by taking a turn, so a sleep on Session would be a verb only one of its two
+                // hosts could ever mean.
+                Hold(session, Instruction.Seconds(step.Subject));
                 break;
             case Verb.Kill:
                 session.Kill();
@@ -186,10 +194,66 @@ internal static class CommandLine
                 Console.WriteLine($"    on \"{session.Wait(step.Subject)}\"");
                 break;
             default:
-                // Not unreachable, and that is the point: a sixth verb wired into `Session` and
-                // into the server and forgotten here would otherwise parse, print, do nothing and
-                // exit 0 saying "done".
+                // Not unreachable, and that is the point: a verb added to the enum and forgotten
+                // here would otherwise parse, print, do nothing and exit 0 saying "done".
                 throw new ProbeFailed($"\"{step.Verb}\" is not wired into the command line.");
+        }
+    }
+
+    /// <summary>
+    /// Lets the time pass, in slices, asking between them whether there is still an application to
+    /// be holding a screen of.
+    /// </summary>
+    /// <remarks>
+    /// One <c>Thread.Sleep</c> of the whole stretch was the first shape and it hid the one thing
+    /// worth hearing about early: the application crashing at minute two of a twenty-minute hold
+    /// went unnoticed until the next verb, so a run nobody is watching spent eighteen more minutes
+    /// on a screen that had gone. Liveness only, and not <c>MustStillBeUsable</c> — the freshness
+    /// half refuses a window older than the code, which is a rule about what a reading is worth,
+    /// and a hold reads nothing. The next verb asks it, as it always did.
+    /// </remarks>
+    private static void Hold(Session session, TimeSpan wanted)
+    {
+        var spent = Stopwatch.StartNew();
+
+        while (spent.Elapsed < wanted)
+        {
+            if (session.HasGone)
+            {
+                throw new ProbeFailed(
+                    $"The application went {spent.Elapsed.TotalSeconds:0} seconds into a "
+                    + $"{wanted.TotalSeconds:0} second hold — it crashed, or something closed it.");
+            }
+
+            var left = wanted - spent.Elapsed;
+            Thread.Sleep(left < ASlice ? left : ASlice);
+        }
+    }
+
+    /// <summary>
+    /// Files both halves of a screen, or the half there was and the reason for the other.
+    /// </summary>
+    /// <remarks>
+    /// The name is held to being a file name before anything is asked of the window, because the
+    /// failing path writes a file too and a run that photographed a screen and then refused the
+    /// name it was to be filed under would have looked at the screen for nothing.
+    /// </remarks>
+    private static void See(Session session, string folder, string name)
+    {
+        var called = Named(name);
+
+        try
+        {
+            Keep(folder, called, session.See());
+        }
+        catch (ScreenWouldNotBePhotographed noPicture)
+        {
+            var tree = Path.Combine(folder, $"{called}.tree.txt");
+            File.WriteAllText(tree, noPicture.Tree);
+
+            throw new ProbeFailed(
+                $"{noPicture.Message} {Path.GetFileName(tree)} was written anyway — the tree read "
+                + "whole, and only the picture is missing.");
         }
     }
 
