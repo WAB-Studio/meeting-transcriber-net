@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 132/206
+progress: 132/207
 updated: 2026-09-02
 ---
 
@@ -63,6 +63,7 @@ Board: —
 - [x] ISC-23: Anti: letting go of one corpus cannot break another that is open.
 - [ ] ISC-134: Anti: no test of this repo fails because of something changed outside it.
 - [ ] ISC-135: A clean clone is enough to build, test and know what this repo requires of a change, with no board behind it and no particular assistant installed.
+- [ ] ISC-176: Anti: nothing closes a claim in words `main` was not already carrying, so what a closure is scored against is never written by the change that closes it.
 
 ### F1 · Contracts and characterisation
 Why: what the Python system learned is specified in .NET before any of it is rebuilt, so the
