@@ -26,15 +26,22 @@ public sealed class LegacyCorpusBuilder : IDisposable
     }
 
     /// <summary>A meeting folder with a response in it, and whatever else the test asked for.</summary>
+    /// <param name="response">
+    /// The response bytes, when a test needs ones this would not have written. Nothing on the way
+    /// in reads a <c>deepgram.json</c> past its metadata — it is copied and hashed — so a legacy
+    /// corpus really does hold responses only the renderer ever finds out about, and this is the
+    /// only way to put one of them in front of the importer.
+    /// </param>
     public LegacyCorpusBuilder WithMeeting(
         string id,
         int channels = 2,
         double seconds = 1800.5,
         string? meta = DefaultMeta,
         string? extraction = DefaultExtraction,
-        bool transcript = true)
+        bool transcript = true,
+        string? response = null)
     {
-        Write($"{id}/deepgram.json", Response(id, channels, seconds));
+        Write($"{id}/deepgram.json", response ?? Response(id, channels, seconds));
 
         if (meta is not null)
         {
@@ -94,7 +101,11 @@ public sealed class LegacyCorpusBuilder : IDisposable
     /// with the same bytes, and a fixture that pretended otherwise would be testing a case the
     /// importer is right to treat as one meeting.
     /// </summary>
-    private static string Response(string requestId, int channels, double seconds)
+    /// <remarks>
+    /// Public so a test that needs a response this would not have written can say what is wrong
+    /// with one in a line, rather than spelling out a second response that would drift from this.
+    /// </remarks>
+    public static string Response(string requestId, int channels = 2, double seconds = 1800.5)
     {
         var duration = seconds.ToString("0.0###", CultureInfo.InvariantCulture);
         var alternatives = string.Join(

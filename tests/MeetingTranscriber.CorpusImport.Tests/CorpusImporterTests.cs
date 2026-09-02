@@ -402,6 +402,123 @@ public class CorpusImporterTests
     }
 
     /// <summary>
+    /// A response the .NET parser rejects: the import names the meeting and finishes, rather than
+    /// ending on an exception with the report that says what the run left behind never printed.
+    /// </summary>
+    /// <remarks>
+    /// Ordinary input here rather than an exotic case. A <c>deepgram.json</c> is copied and hashed,
+    /// and only its metadata is read on the way in — which is where the profile comes from — so the
+    /// first thing that ever puts one through the parser is the render at the end, by which point
+    /// the meeting and its sources are already in the corpus.
+    /// </remarks>
+    [Fact]
+    public void A_response_the_parser_cannot_read_is_named_and_the_rest_still_imports()
+    {
+        const string Broken = "2026-07-29 09-35-15";
+        using var legacy = new LegacyCorpusBuilder()
+            .WithCatalog()
+            .WithMeeting(Broken, response: ClaimsTwoChannelsAndCarriesOne(Broken))
+            .WithMeeting("2026-08-03 08-13-17");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        report.MeetingsImported.ShouldBe(2);
+        report.MeetingsRendered.ShouldBe(1);
+        report.NotImported.ShouldHaveSingleItem()
+            .ShouldContain("it claims 2 channel(s) and carries 1", Case.Sensitive);
+        report.NotImported.ShouldHaveSingleItem().ShouldContain(Broken, Case.Sensitive);
+    }
+
+    /// <summary>
+    /// The rule itself, as against the probe above, which only pins one refusal the parser happens
+    /// to raise.
+    /// </summary>
+    /// <remarks>
+    /// A speaker numbered below zero. The parser range checks the channel of an utterance and not
+    /// its speaker, so this reaches <c>SpeakerLabels.For</c> and comes back as the domain's speaker
+    /// contract refusing — an <see cref="ArgumentOutOfRangeException"/>, which reads like somebody's
+    /// bug rather than a refusal and which no list of what a render may throw would have carried.
+    /// Narrow the catch to a longer list of render exceptions and the probe above stays green while
+    /// this one goes red, which is the whole reason it is here.
+    /// </remarks>
+    [Fact]
+    public void A_refusal_no_list_would_have_carried_is_named_and_the_rest_still_imports()
+    {
+        const string Impossible = "2026-07-29 09-35-15";
+        using var legacy = new LegacyCorpusBuilder()
+            .WithCatalog()
+            .WithMeeting(Impossible, response: WithSpeakerBelowZero(Impossible))
+            .WithMeeting("2026-08-03 08-13-17");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var report = new CorpusImporter(context, Clock).Import(new LegacyCorpus(legacy.Directory));
+
+        report.MeetingsImported.ShouldBe(2);
+        report.MeetingsRendered.ShouldBe(1);
+        report.NotImported.ShouldHaveSingleItem()
+            .ShouldContain("A provider numbers speakers from zero", Case.Sensitive);
+        report.NotImported.ShouldHaveSingleItem().ShouldContain(Impossible, Case.Sensitive);
+    }
+
+    /// <summary>
+    /// A meeting whose files the folder refuses keeps no turns of a render that did not happen, and
+    /// the import still finishes.
+    /// </summary>
+    /// <remarks>
+    /// The refusal that lands after the turns have been written rather than before them, which is
+    /// what makes the render its own transaction here. A directory standing where
+    /// <c>transcript.md</c> goes is what a folder half synced from elsewhere comes to, and without
+    /// the transaction this meeting would be left holding turns nothing counted, under a line in
+    /// the report saying it could not be finished.
+    /// </remarks>
+    [Fact]
+    public void A_meeting_whose_files_the_folder_refuses_keeps_no_half_of_a_render()
+    {
+        using var legacy = new LegacyCorpusBuilder().WithCatalog().WithMeeting("2026-07-29 09-35-15");
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var importer = new CorpusImporter(context, Clock);
+
+        // Imported once to learn which meeting the response became, then put back into the state a
+        // meeting has before it has ever been rendered: the turns thrown away, and a directory
+        // standing where the transcript goes. The second run matches the same response by its
+        // sha256 and renders it again, which is the render this is about.
+        importer.Import(new LegacyCorpus(legacy.Directory));
+        var meeting = context.Meetings.Single().Id;
+        context.Utterances.Where(turn => turn.MeetingId == meeting).ExecuteDelete();
+        var transcript = CorpusFiles.Locate(corpus.Root, CorpusFiles.PathFor(meeting, "transcript.md"));
+        transcript.Delete();
+        Directory.CreateDirectory(transcript.FullName);
+
+        var report = importer.Import(new LegacyCorpus(legacy.Directory));
+
+        report.NotImported.ShouldHaveSingleItem().ShouldContain("2026-07-29 09-35-15", Case.Sensitive);
+
+        // The turns went back with the files. Without the transaction they would be sitting there,
+        // projected by a render the report has just said it could not finish and counted by
+        // nothing — the corpus holding turns the run does not know it wrote.
+        report.TurnsProjected.ShouldBe(0);
+        context.Utterances.Count(turn => turn.MeetingId == meeting).ShouldBe(0);
+    }
+
+    /// <summary>
+    /// A response whose metadata says two channels and whose body carries one. The metadata is what
+    /// the importer reads on the way in, so the meeting is filed as multichannel and the two halves
+    /// disagreeing only surfaces when the parser is finally asked to read the whole thing.
+    /// </summary>
+    private static string ClaimsTwoChannelsAndCarriesOne(string id) =>
+        LegacyCorpusBuilder.Response(id, channels: 1)
+            .Replace(@"""channels"":1", @"""channels"":2", StringComparison.Ordinal);
+
+    /// <summary>A response whose speakers are numbered below zero, and unaltered otherwise.</summary>
+    private static string WithSpeakerBelowZero(string id) =>
+        LegacyCorpusBuilder.Response(id)
+            .Replace(@"""speaker"":0", @"""speaker"":-1", StringComparison.Ordinal);
+
+    /// <summary>
     /// Repeatable, like everything else here. A second run finds the same meeting and re-renders to
     /// the same bytes rather than to a second file or a different one.
     /// </summary>
