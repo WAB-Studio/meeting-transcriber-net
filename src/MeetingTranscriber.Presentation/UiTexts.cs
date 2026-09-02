@@ -378,6 +378,16 @@ public static class UiTexts
         "No puede volverse una reunión: {0}",
         "This cannot become a meeting: {0}");
 
+    // Its own sentence and not ThisCannotBecomeAMeeting's, although the two rows offer the same
+    // one answer. That one says the corpus and the folder disagree about a recording; this says
+    // the blocks themselves would not come back, which is what somebody would otherwise read as
+    // the application having nothing to say about a recording it plainly has. No machine message
+    // rides on it: what a torn spool throws names a file and an offset, and the answer this row
+    // offers is the same whichever offset it was.
+    public static UiText TheBlocksOfThisOneWouldNotRead { get; } = new(
+        "No se pudieron leer los bloques de esta grabación, así que no se puede decir cuánto duró.",
+        "The blocks of this recording would not read, so how long it is cannot be said.");
+
     // The two answers, and there are two. Taking the audio out to a folder is a copy and not an
     // answer — the recording is still waiting afterwards — so it is not a button on this row.
     public static UiText Keep { get; } = new("Conservar", "Keep");

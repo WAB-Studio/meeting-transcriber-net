@@ -3,9 +3,9 @@ using System.Text.RegularExpressions;
 namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
-/// ISC-82's and ISC-79.1's half that lives on the screen: a meeting's card names every stage a
-/// meeting can be at, every standing that stage can be in and every standing a recording nobody
-/// got to stop can be in, and substitutes for none of them.
+/// ISC-82's half that lives on the screen, and the same rule over a recording nobody got to stop:
+/// a meeting's card names every stage a meeting can be at, every standing that stage can be in and
+/// every standing such a recording can be in, and substitutes for none of them.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -127,8 +127,8 @@ public class MeetingCardTextTests
         EnumTable.Read(Screen, "standing", "StageStanding", StagesDeclaredIn);
 
     /// <summary>
-    /// ISC-79.1 on the screen. The table it reads answers two things at once — the sentence and
-    /// the surface it sits on — because a row saying it is waiting on somebody over a surface that
+    /// The waiting recordings' table. It answers two things at once — the sentence and the
+    /// surface it sits on — because a row saying it is waiting on somebody over a surface that
     /// says it is not would be the screen contradicting itself. A standing added to the rule and
     /// not here is a recording drawn as another one, which is the whole reason to read it.
     /// </summary>

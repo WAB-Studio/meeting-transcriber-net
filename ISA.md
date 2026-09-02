@@ -1,7 +1,7 @@
 ﻿---
 phase: climbing
-progress: 136/207
-updated: 2026-09-02
+progress: 132/204
+updated: 2026-09-01
 ---
 
 # ISA — meeting-transcriber-net
@@ -149,7 +149,7 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-124: A recording waiting in that folder is kept, has its audio taken out, or is thrown away — and which of the three happens is somebody's choice every time.
 - [x] ISC-125: Anti: a recording waiting in that folder is removed by nothing but somebody choosing to remove it.
 - [x] ISC-126: Anti: a meeting that is still being recorded is never offered as one to decide about.
-- [x] ISC-126.1: Anti: a meeting whose save is still running is never offered as one to decide about.
+- [ ] ISC-126.1: Anti: a meeting whose save is still running is never offered as one to decide about.
 - [ ] ISC-126.2: A save the process died in the middle of leaves its meeting decidable again, rather than held out of reach by a mark nothing will lift.
 - [x] ISC-128: A source that will not stop is given up on at a deadline, rather than waited on for as long as it takes.
 - [ ] ISC-129: A source that would not stop is named when a recording stops, together with what was kept of it.
@@ -174,9 +174,6 @@ Why: the application replaces OBS. Recording, pausing, stopping and recovering h
 native app with no Python, no WSL and no FFmpeg anywhere behind it.
 Board: 3 · Grabador WinUI
 - [ ] ISC-79: Opening the application after it was killed mid-recording ends in a meeting somebody can play.
-- [x] ISC-79.1: A recording the application never finished is offered on the screen it opens on, above the meetings already recorded, saying how long it turned out to be.
-- [x] ISC-79.2: Keeping one of those recordings makes it the meeting it is of, with nothing typed at a command line.
-- [x] ISC-79.3: Anti: a recording that cannot be made into the meeting it was of is never offered as one to keep.
 - [x] ISC-80: A source that is hearing nothing is shown as silent while the meeting is still running.
 - [x] ISC-81: A recording that was paused is one meeting as long as the clock says, carrying the paused stretch as the silence it was.
 - [x] ISC-82: A meeting says what stage it is at and what the application would do to it next.
@@ -689,7 +686,3 @@ Board: 7 · Distribución y backup
 - ISC-170 — the UI probe on the packaged build 2026-09-01, the application in English: `see` as the first instruction after it was started and before anything was pressed. One window, and its tree carries both halves — the microphone and source pickers, what will be spoken and record above, and under them the meetings header, the count and a recorded meeting's row with the press its stage offers. A list arriving in a window of its own would have stopped that walk rather than passed it, for the reason `docs/ui-probe.md` gives under `Which window is the screen`
 - ISC-171 — the UI probe on the packaged build 2026-09-01, the application in English: `see docked press OpennessButton wait OpennessButton see whole press OpennessButton wait OpennessButton see docked-again`. Raised, the recorder half is out of the tree rather than scrolled off it — the pickers, record, pause, carry on and stop gone — while the corpus line, the report, the status line and the packaging button stay, for the reason `MainWindow.xaml` gives, which is why the claim is the recorder's room and not the window. The control that raised it is the same element in the same place, reading `Bring the list back down` where it read `Open the whole list`, and the third tree is the first line for line apart from when it was read
 - ISC-158.3 — `SavingTheMeetingTests.What_is_filed_is_the_same_whether_or_not_anybody_is_watching` (`tests/MeetingTranscriber.Recording.Tests`) and `SavingCardTests.The_application_and_the_prompt_stop_a_meeting_through_the_same_call` (`tests/MeetingTranscriber.App.Tests`) green 2026-09-01: two meetings out of identical spools finished at the same instant, one save watched and one not, equal on the audio's hash and size, the length, the run's end and every stored fact but their ids — and both entry points stopping through the recording's own call, with neither filing any part of a meeting itself. Red 2026-09-01 twice: with the window's `recording.Stop(` replaced, and with `MeetingRecordings.Finish` written into its stop handler. What no probe reaches is a window really recording one, which needs two devices and a meeting somebody sat through
-- ISC-79.1 — the UI probe on the packaged build 2026-09-02, over a corpus a process was killed part way through recording into: `press OpennessButton wait OpennessButton press zzznotathing`, whose refusal prints the tree. The recording is the first card under the header — `Unnamed`, `2026-09-01 22:26 · 0:01:32 · 42.3 MB` — the count says one is waiting, and it is that meeting's only card. The length is what `recovery --corpus` reports off the same blocks. `WaitingRowsTests` (`tests/MeetingTranscriber.Recording.Tests`) and `MeetingCardTextTests` (`tests/MeetingTranscriber.App.Tests`) green 2026-09-02, red that day with the rows unsorted, a table arm gone and a surface renamed. The spools were fabricated and cut mid-block, not left by a crash
-- ISC-79.2 — the same probe on the same corpus, next: `press Keep wait "it is a meeting now" press zzznotathing`. The row is gone and that meeting is drawn as recorded — `2026-09-01 22:26 · 0:01:32`, `Recorded.`, offering `Transcribe` — under `Done: it is a meeting now.`. On disk `recovery --corpus` then says `waiting none` and `meetings/<id>/audio.wav` is 5,920,046 bytes beside its manifest. Nothing was typed at a prompt. Not reached: hearing it play, which needs a person and a player this application has not got
-- ISC-79.3 — `WaitingRowsTests.A_recording_that_cannot_become_a_meeting_is_only_ever_thrown_away` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-09-02, red that day with the answer made unconditional. On a screen, the UI probe of 2026-09-02 over a spool folder no meeting owns: that card carries one button, `Discard`, and pressing it left the folder and both its sources gone and the row off the list
-- ISC-126.1 — `WaitingRowsTests.A_meeting_whose_save_is_running_is_never_offered_as_one_to_decide_about` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-09-02, red that day with both answers made unconditional. The same corpus told nothing is being saved offers that recording both, which is what says no row and no file carries the mark. Not reached: a process killed mid-save, which is ISC-126.2

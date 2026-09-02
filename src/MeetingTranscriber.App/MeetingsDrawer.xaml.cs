@@ -61,8 +61,7 @@ public sealed partial class MeetingsDrawer : UserControl
     private readonly List<MeetingAndWork> _meetings = [];
 
     /// <summary>
-    /// What each waiting recording turned out to be worth, by the folder holding it — with nothing
-    /// against a folder whose blocks would not read.
+    /// What each waiting recording turned out to be worth, by the folder holding it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -72,16 +71,29 @@ public sealed partial class MeetingsDrawer : UserControl
     /// they are, so an answer read an hour ago is the answer now.
     /// </para>
     /// <para>
-    /// A folder is in here exactly when its read is over, and that is what
-    /// <see cref="Answers"/> waits on. It is the entry and never the value, so a recording whose
-    /// blocks would not read reaches its answers like any other.
+    /// A folder is in here exactly when its read came back with something. One whose read refused
+    /// is in <see cref="_wouldNotRead"/> instead, and <see cref="ReadThrough"/> asks both: what a
+    /// row's answers wait on is the read being over, never on its having worked.
     /// </para>
     /// </remarks>
-    private readonly Dictionary<string, WhatSurvived?> _survived =
+    private readonly Dictionary<string, WhatSurvived> _survived =
         new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Which folders have already been handed to a read, so none is read twice.</summary>
     private readonly HashSet<string> _asked = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Which folders were read and would not come back, for as long as the application is open.
+    /// </summary>
+    /// <remarks>
+    /// Held here and handed to <see cref="WaitingRows.Of"/> on every build, because
+    /// <see cref="Read"/> builds the rows out of the corpus again each time anything happens to
+    /// the list — and the corpus cannot know this. Forgotten between builds, the row would go back
+    /// to offering both answers with no length on it, which is the decide-blind the read-first
+    /// rule exists to prevent, and nothing would find out again because <see cref="_asked"/>
+    /// already holds the folder.
+    /// </remarks>
+    private readonly HashSet<string> _wouldNotRead = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Where the meetings are, handed over once by the window that holds this. Not a constructor
@@ -119,11 +131,22 @@ public sealed partial class MeetingsDrawer : UserControl
     private IReadOnlyList<WaitingRow> _waiting = [];
 
     /// <summary>
-    /// Whether a recording is being kept right now. While one is, no row on this list offers
-    /// anything: keeping writes the meeting into the corpus, and a second answer given over the
-    /// top of it would be somebody deciding about a recording that is already being decided.
+    /// The folder of the recording being kept right now, when one is being kept.
     /// </summary>
-    private bool _keeping;
+    /// <remarks>
+    /// The folder and not a flag, because what a keep in flight rules out is an answer about
+    /// <em>that</em> recording — it is already being decided, and a second press over the top of
+    /// it would be somebody deciding twice. Every other row on the list is about a different
+    /// folder and stays answerable: keeping one recording takes minutes, and a list that went
+    /// blank for all of them would read as broken over a recording somebody is not looking at.
+    /// <para>
+    /// The keep on the other rows goes with it, and only the keep. Two keeps at once are two
+    /// long corpus writes racing for one status line, so the list takes one at a time — shown as
+    /// the press not being there rather than as a button that does nothing, which is the same
+    /// thing <see cref="Answers"/> does with a row that has not been read through.
+    /// </para>
+    /// </remarks>
+    private string? _keeping;
 
     /// <summary>
     /// Whether the window holding this has closed. Read after every await, because keeping a
@@ -323,6 +346,7 @@ public sealed partial class MeetingsDrawer : UserControl
         WaitingStanding.BeingSavedNow => (UiTexts.ThisOneIsBeingSaved, "MeetingCard"),
         WaitingStanding.Waiting => (UiTexts.TheApplicationClosedInTheMiddleOfThisOne, "WaitingOnADecision"),
         WaitingStanding.CannotBecomeAMeeting => (UiTexts.ThisCannotBecomeAMeeting, "SomethingIsLost"),
+        WaitingStanding.CouldNotBeReadThrough => (UiTexts.TheBlocksOfThisOneWouldNotRead, "SomethingIsLost"),
         _ => throw new InvalidOperationException(
             $"This screen has no text for a waiting recording that is '{waiting}'."),
     };
@@ -359,7 +383,8 @@ public sealed partial class MeetingsDrawer : UserControl
                 // On the same read and out of the same context, because the two are one list. A
                 // recording nobody got to stop reads no block here — the folders, their cards and
                 // what each occupies, which is what a start can run before anything is on screen.
-                _waiting = WaitingRows.Of(WaitingRecordings.In(context), _beingSaved);
+                _waiting = WaitingRows.Of(
+                    WaitingRecordings.In(context), _beingSaved, _wouldNotRead);
             }
             catch (Exception unreadable) when (Reportable(unreadable))
             {
@@ -388,7 +413,8 @@ public sealed partial class MeetingsDrawer : UserControl
     /// only produce the same answer at the same cost — and a list that is read again on every
     /// press would otherwise start one on each of them. A folder whose blocks would not read is
     /// still a folder somebody may throw away, and that is what being read once buys it: the row
-    /// reaches its answers rather than waiting on a pass that will fail again.
+    /// says the blocks refused and offers the one answer that does not need them, rather than
+    /// waiting on a pass that will fail again.
     /// </para>
     /// </remarks>
     private void ReadWhatSurvived()
@@ -422,10 +448,18 @@ public sealed partial class MeetingsDrawer : UserControl
                     // Every exception, and this is the one place in this file that does not sort
                     // them. Everything inside the try is the engine reading a file that a machine
                     // died in the middle of writing, so there is no defect of this screen's to
-                    // stay loud about — and what a narrower catch would leave behind is a faulted
-                    // task nobody observes, over a folder this pass will never look at again,
-                    // whose row would then sit there for the rest of the session with no length
-                    // and no answers on it. The recording not going quiet is the whole card.
+                    // stay loud about, and what comes back names a file and an offset rather than
+                    // anything a person acts on — the row saying the blocks refused is what they
+                    // need, and the standing below is what says it.
+                    //
+                    // Not `Absorbable(thrown) => thrown is not OutOfMemoryException`, which is the
+                    // rule at the two per-item sweeps in `Processing`, and the difference is what
+                    // an escape costs rather than what the exception means. There an escape ends
+                    // one sweep, reaches a caller and is retried on the next launch. Here `_asked`
+                    // claims every folder before this loop starts and the task is nobody's to
+                    // observe, so an escape strands every row behind it, silently, for the rest of
+                    // the session — with no length and no answers, which is the state this whole
+                    // pass exists to get a row out of.
                     _ = unreadable;
                 }
 
@@ -441,7 +475,21 @@ public sealed partial class MeetingsDrawer : UserControl
                         return;
                     }
 
-                    _survived[folder] = survived;
+                    if (survived is null)
+                    {
+                        // Built again rather than patched, out of the recordings already listed
+                        // and never a second corpus read: every standing is settled in one place
+                        // and the order comes off it, so a refusal arriving after the list cannot
+                        // rewrite one row behind the sort's back.
+                        _wouldNotRead.Add(folder);
+                        _waiting = WaitingRows.Of(
+                            _waiting.Select(other => other.Recording), _beingSaved, _wouldNotRead);
+                    }
+                    else
+                    {
+                        _survived[folder] = survived;
+                    }
+
                     Render();
                 });
             }
@@ -631,10 +679,17 @@ public sealed partial class MeetingsDrawer : UserControl
     /// where it cannot be reached by the reflex that presses the left-hand button.
     /// </para>
     /// <para>
-    /// Nothing at all while a recording is being kept, and that is not the same as the buttons
-    /// being disabled: keeping writes a meeting into the corpus over minutes, and what a person
-    /// should see on the other rows in that stretch is that this list is not taking answers, not a
-    /// row of dead controls.
+    /// Nothing at all on the row being kept, and that is not the same as the buttons being
+    /// disabled: keeping writes a meeting into the corpus over minutes, and what a person should
+    /// see in that stretch is a row that is not taking answers, not a row of dead controls. It is
+    /// that row and not the list — a recording somebody is not deciding about is not made
+    /// undecidable by one they are, and a list that went blank for the minutes a keep runs would
+    /// read as broken.
+    /// </para>
+    /// <para>
+    /// What the other rows do lose is the keep, because two of those at once are two long corpus
+    /// writes racing for one status line. Losing the press rather than having it refuse is the
+    /// same rule as the paragraph below: this screen does not draw an answer it will not take.
     /// </para>
     /// <para>
     /// Nothing either until this recording's blocks have been read through, and that is the one
@@ -649,9 +704,9 @@ public sealed partial class MeetingsDrawer : UserControl
     /// </remarks>
     private UIElement? Answers(WaitingRow row)
     {
-        var offered = ReadThrough(row) && !_keeping;
+        var offered = ReadThrough(row) && !BeingKept(row);
         var thrown = offered && row.Allows(WaitingAnswer.Discard);
-        var kept = offered && row.Allows(WaitingAnswer.Keep);
+        var kept = offered && _keeping is null && row.Allows(WaitingAnswer.Keep);
 
         if (!thrown && !kept)
         {
@@ -688,11 +743,22 @@ public sealed partial class MeetingsDrawer : UserControl
     }
 
     /// <summary>
-    /// Whether this recording's own blocks have been read through, which is what its answers wait
-    /// on. Said once, because the press asks it again after the button carrying it was drawn.
+    /// Whether this recording's own read is over, which is what its answers wait on. Said once,
+    /// because the press asks it again after the button carrying it was drawn.
     /// </summary>
-    private bool ReadThrough(WaitingRow row) =>
-        !row.MayBeReadThrough || _survived.ContainsKey(row.Recording.Folder.FullName);
+    /// <remarks>
+    /// Over, and not over with a length: a folder whose blocks refused is one somebody may still
+    /// be rid of, and it is nothing holding its files that says so — the read that would have has
+    /// already ended. Asking only for a length would leave that row with no press on it for the
+    /// rest of the session, which is the one thing worse than no length.
+    /// </remarks>
+    private bool ReadThrough(WaitingRow row) => !row.MayBeReadThrough
+        || _survived.ContainsKey(row.Recording.Folder.FullName)
+        || _wouldNotRead.Contains(row.Recording.Folder.FullName);
+
+    /// <summary>Whether this is the row whose keep is running right now.</summary>
+    private bool BeingKept(WaitingRow row) => _keeping is { } folder
+        && string.Equals(folder, row.Recording.Folder.FullName, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>One meeting, as the card the task asks for.</summary>
     private UIElement Card(MeetingAndWork entry)
@@ -906,8 +972,12 @@ public sealed partial class MeetingsDrawer : UserControl
     {
         // The read guard again, and not only in Answers: a folder that has not been read through
         // is one a read may still be holding open, and a throw-away that arrived anyway would
-        // delete one source and fail on the other.
-        if (_keeping || !row.Allows(answer) || !ReadThrough(row))
+        // delete one source and fail on the other. Beside it the two the keep in flight rules
+        // out — anything about the recording being kept, and a second keep about any of them.
+        if (BeingKept(row)
+            || (answer == WaitingAnswer.Keep && _keeping is not null)
+            || !row.Allows(answer)
+            || !ReadThrough(row))
         {
             return;
         }
@@ -942,15 +1012,22 @@ public sealed partial class MeetingsDrawer : UserControl
             }
 
             Read();
-            _status ??= said;
+
+            // The keep still running is what the line goes back to saying, and it wins over this
+            // press's own answer: a recording thrown away is gone off the list, which says it
+            // without a sentence, while a keep has nothing else on screen at all. Whatever the
+            // re-read itself had to say still wins over both, for the reason the presses above
+            // give.
+            _status ??= _keeping is null ? said : TextLine.Says(UiTexts.TheRecordingIsBeingKept);
             Render();
             return;
         }
 
-        // Said before it starts and not after, because it is the only thing on screen for the
-        // minutes it runs. Every row loses its answers while it does — Answers is what says so —
-        // so what is drawn is a list that is not taking answers rather than one that is broken.
-        _keeping = true;
+        // Said before it starts and not after, because for the minutes it runs it is all there is
+        // to say a keep is happening. The row it is about loses its answers while it does and the
+        // rest lose only their keep — Answers is what says so — so what is drawn is a list still
+        // answering about the recordings this press is not about.
+        _keeping = waiting;
         _status = TextLine.Says(UiTexts.TheRecordingIsBeingKept);
         Render();
 
@@ -985,7 +1062,7 @@ public sealed partial class MeetingsDrawer : UserControl
         }
         finally
         {
-            _keeping = false;
+            _keeping = null;
         }
 
         // The window may have gone while that ran, in which case there is nothing to draw into.
