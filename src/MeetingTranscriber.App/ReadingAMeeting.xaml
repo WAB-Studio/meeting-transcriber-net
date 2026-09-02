@@ -30,62 +30,64 @@
 
     <Grid x:Name="Root" RowSpacing="12">
         <Grid.Resources>
-            <Style x:Key="ReadingCard" TargetType="Border">
-                <Setter Property="Padding" Value="16" />
-                <Setter Property="CornerRadius" Value="8" />
-                <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
-                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-            </Style>
+            <Style x:Key="ReadingCard" TargetType="Border" BasedOn="{StaticResource Card}" />
 
             <!-- What the meeting was about, in the summary's own words. It is the one block on this
                  screen that is not a list, and it sits on the tint the rest of the application uses
-                 for something addressed to the reader rather than to the machine. Windows' own
-                 brush and not Olivo's `#EEF2EF`, for the reason MeetingsDrawer.xaml gives about
-                 the two tints: this application is not drawn from that palette yet, and a literal
-                 here would be one more thing for ISC-173 to find. -->
-            <Style x:Key="TheAbstract" TargetType="Border" BasedOn="{StaticResource ReadingCard}">
-                <Setter Property="Padding" Value="20" />
-                <Setter Property="Background" Value="{ThemeResource SystemFillColorAttentionBackgroundBrush}" />
+                 for something addressed to the reader rather than to the machine, which
+                 `docs/design.md` §Reunion names outright: the abstract sits on the decision tint.
+                 It was Windows' own brush standing in for that until ISC-173 put every screen on
+                 one visual system, which is this change. -->
+            <Style x:Key="TheAbstract" TargetType="Border" BasedOn="{StaticResource WaitingOnADecisionCard}">
+                <Setter Property="Padding" Value="{StaticResource LargeCardPadding}" />
             </Style>
 
-            <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource SubtitleTextBlockStyle}" />
+            <!-- A section of the meeting, at the rank `docs/design.md` §Type gives one. This
+                 screen's own title is the sub-screen rank above it, because a meeting is reached
+                 from the list and returns to it. -->
+            <Style x:Key="SectionTitle" TargetType="TextBlock" BasedOn="{StaticResource SectionText}" />
 
-            <Style x:Key="SectionCount" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
-                <Setter Property="Opacity" Value="0.6" />
-            </Style>
+            <Style x:Key="SectionCount" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
 
-            <Style x:Key="Said" TargetType="TextBlock">
+            <!-- What the AI left, in its own words: a sentence somebody reads, so the body rank. -->
+            <Style x:Key="Said" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
 
             <!-- The transcript, unfolded under the thing that cited it. Quieter than the sentence
                  above it on purpose: what is being read is the claim, and this is what it rests
-                 on. -->
-            <Style x:Key="Quoted" TargetType="TextBlock">
+                 on. It is the transcript rank, which is the one rank on the ramp set at 15/26 and
+                 exists for exactly this: a stretch of what was actually said, read at length. -->
+            <Style x:Key="Quoted" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}">
                 <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="Opacity" Value="0.75" />
+                <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
             </Style>
 
-            <Style x:Key="Data" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
-                <Setter Property="Opacity" Value="0.6" />
-            </Style>
+            <Style x:Key="Data" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
 
             <!-- The press on every thing the AI left. It carries the minute it was said at, and
                  that minute is the whole of its words: a play glyph beside a number, repeated
                  twelve times down a column, is twelve controls saying the same thing. -->
-            <Style x:Key="WhenItWasSaid" TargetType="Button">
-                <Setter Property="Padding" Value="10,2,10,2" />
+            <Style x:Key="WhenItWasSaid" TargetType="Button" BasedOn="{StaticResource RowButtonOnCard}">
+                <Setter Property="Padding" Value="10,0,10,0" />
                 <Setter Property="MinWidth" Value="0" />
+                <Setter Property="FontFamily" Value="{StaticResource NumberFace}" />
+                <Setter Property="FontSize" Value="{StaticResource DataSize}" />
             </Style>
 
-            <Style x:Key="TakeTheStage" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}" />
+            <!-- The act on the right, and the normal rank rather than pico or the platform's
+                 accent. `docs/design.md` §Controls: a button that opens the question is not the
+                 button that answers it — *Transcribir* opens the dialogue where the charge is
+                 agreed to, and pico belongs on the act inside that dialogue. The accent brush this
+                 replaced was the system's own, which §And five things this application is not
+                 rules out on its own: this application has two colours and they are on that page. -->
+            <Style x:Key="TakeTheStage" TargetType="Button" BasedOn="{StaticResource RowButtonOnCard}" />
 
             <!-- One mark along the track for each thing the AI left, so where each of them falls
                  across the hour is visible without reading a list. -->
             <Style x:Key="ACitationOnTheTrack" TargetType="Rectangle">
                 <Setter Property="Height" Value="8" />
-                <Setter Property="Fill" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                <Setter Property="Fill" Value="{StaticResource OliveBrush}" />
             </Style>
         </Grid.Resources>
 
@@ -108,6 +110,7 @@
                 Grid.Column="0"
                 VerticalAlignment="Top"
                 Margin="0,24,0,0"
+                Style="{StaticResource ButtonAtTheMargin}"
                 Click="OnBack"
                 Content="{x:Bind In(loc:UiTexts.BackToTheMeetings)}" />
 
@@ -123,6 +126,7 @@
                      worked out from the date would read as a name the application chose. -->
                 <TextBox
                     x:Name="NameBox"
+                    Style="{StaticResource TypedField}"
                     HorizontalAlignment="Left"
                     MinWidth="360"
                     MaxWidth="560"
@@ -132,13 +136,13 @@
 
                 <!-- When it was and how long it ran: the machine's own numbers, so the same in
                      either language. -->
-                <TextBlock x:Name="WhenText" Style="{StaticResource CaptionTextBlockStyle}" Opacity="0.6" />
+                <TextBlock x:Name="WhenText" Style="{StaticResource DataText}" />
 
                 <TextBlock
                     x:Name="StageText"
-                    Style="{StaticResource CaptionTextBlockStyle}"
-                    TextWrapping="Wrap"
-                    Opacity="0.75" />
+                    Style="{StaticResource BodyText}"
+                    Foreground="{StaticResource SecondaryTextBrush}"
+                    TextWrapping="Wrap" />
             </StackPanel>
         </Grid>
 
@@ -162,8 +166,8 @@
                         <!-- Who wrote this. A summary is a machine's words under a meeting's own
                              name, so whose words they are is said here rather than left to be
                              worked out from which buttons are on screen. -->
-                        <TextBlock x:Name="TranscribedText" TextWrapping="Wrap" />
-                        <TextBlock x:Name="SummarisedText" TextWrapping="Wrap" />
+                        <TextBlock x:Name="TranscribedText" Style="{StaticResource BodyText}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="SummarisedText" Style="{StaticResource BodyText}" TextWrapping="Wrap" />
 
                         <!-- The stage's two answers, in the two places docs/design.md fixes: the
                              neutral one on the left and the act on the right, exactly as they sit
@@ -185,9 +189,20 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
-            <Button x:Name="PlayButton" Grid.Column="0" Click="OnPlayOrPause" />
+            <Button
+                x:Name="PlayButton"
+                Grid.Column="0"
+                Style="{StaticResource NormalButtonOnPaper}"
+                Click="OnPlayOrPause" />
 
-            <TextBlock x:Name="AtText" Grid.Column="1" VerticalAlignment="Center" MinWidth="64" />
+            <!-- How far into the meeting, against how long it is: two numbers read against each
+                 other, so the data rank. -->
+            <TextBlock
+                x:Name="AtText"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                MinWidth="64"
+                Style="{StaticResource DataText}" />
 
             <Grid Grid.Column="2" VerticalAlignment="Center">
                 <Grid.RowDefinitions>
@@ -208,13 +223,18 @@
                 <Slider
                     x:Name="Track"
                     Grid.Row="1"
+                    Foreground="{StaticResource OliveBrush}"
                     Minimum="0"
                     StepFrequency="1000"
                     ValueChanged="OnTrackMoved"
                     AutomationProperties.Name="{x:Bind In(loc:UiTexts.HowFarIntoTheMeeting)}" />
             </Grid>
 
-            <TextBlock x:Name="LengthText" Grid.Column="3" VerticalAlignment="Center" Opacity="0.6" />
+            <TextBlock
+                x:Name="LengthText"
+                Grid.Column="3"
+                VerticalAlignment="Center"
+                Style="{StaticResource DataText}" />
         </Grid>
 
         <!-- Where the player would be, when it will not play. A machine with nothing to play
@@ -224,9 +244,9 @@
         <TextBlock
             x:Name="PlayerStatusText"
             Grid.Row="2"
-            Style="{StaticResource CaptionTextBlockStyle}"
+            Style="{StaticResource BodyText}"
+            Foreground="{StaticResource PeakBrush}"
             TextWrapping="Wrap"
-            Visibility="Collapsed"
-            Opacity="0.7" />
+            Visibility="Collapsed" />
     </Grid>
 </UserControl>

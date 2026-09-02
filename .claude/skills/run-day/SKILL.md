@@ -56,9 +56,10 @@ the card in progress or the PR open, and §4 gets its context back.
    itself. You decide which PRs are audited, on whether the work carries a decision that holds up
    other parts of the application for months — a contract, a convention, a name that reaches disk,
    what proves a piece of work done. Which folder the diff touched is not the test.
-   - **Two floors override your judgement**, read off the PR and never off the record
-     (`gh pr view <n> --json files`): it changes `ISA.md`, or it touches `Domain/Audio`,
-     `Domain/Time` or `Domain/Jobs`.
+   - **The audit floor overrides your judgement**: a PR touching any path `.claude/audit-floor.md`
+     names is audited whatever you think of it. Open that file — it is the only place the floor is
+     stated — and read the PR's own files against it (`gh pr view <n> --json files`), never the
+     record.
    - Say which way you went, and why, in one line on the PR before you spawn anything or merge.
    - **One audit per PR.** It does not run again after a fix. A run that came back with nothing is
      not a run — that is §4.

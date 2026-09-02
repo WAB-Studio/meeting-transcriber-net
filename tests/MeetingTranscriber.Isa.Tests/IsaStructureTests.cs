@@ -640,14 +640,15 @@ public class IsaStructureTests
     /// evidence for a closed claim out of anybody's reach and every gate here stayed green.
     /// </summary>
     /// <remarks>
-    /// It found nothing the day it was written: seventeen distinct paths over eighty citations on
-    /// `main` at 828501c on 2026-09-02, and every one of them resolved. So it repairs nothing and
-    /// is worth only what it refuses next time, which makes a false red the one thing that could
-    /// put it behind where the file started — hence four conditions rather than "looks like a
-    /// path", and hence <see cref="A_path_is_told_from_a_name_a_command_and_a_glob"/> being written
-    /// over the spans this file actually holds. `## Verification` backticks type names, member
-    /// names, command lines, enum values and whole English sentences: 588 spans that day against
-    /// the 80 this reads, and a gate reddening on `Turns.Group` is one somebody deletes.
+    /// It has found nothing yet, spelling included: seventeen distinct paths over eighty-one
+    /// citations on `main` at c4046fa on 2026-09-02, and every one of them resolves and is spelled
+    /// the way the tree spells it. So it repairs nothing and is worth only what it refuses next
+    /// time, which makes a false red the one thing that could put it behind where the file started
+    /// — hence four conditions rather than "looks like a path", and hence
+    /// <see cref="A_path_is_told_from_a_name_a_command_and_a_glob"/> being written over the spans
+    /// this file actually holds. `## Verification` backticks type names, member names, command
+    /// lines, enum values and whole English sentences: 593 spans that day against the 81 this
+    /// reads, and a gate reddening on `Turns.Group` is one somebody deletes.
     /// <para>
     /// What it reaches is thinner than it sounds and the measurement says so: eleven of the
     /// seventeen are `tests/` and the ten test project directories, and not one span in the file is
@@ -673,9 +674,11 @@ public class IsaStructureTests
             "no backticked span in `ISA.md` was read as a path, so this check reads nothing.");
 
         isa.Paths.Where(path => !Resolves(path)).ShouldBeEmpty(
-            "a claim's evidence is cited by path, and this path is not in the repository. Whatever "
-            + "moved takes its pointer with it, so point the stub at where the probe lives now. If "
-            + "the probe is gone rather than moved, say so on the claim — a closed claim whose "
+            "a claim's evidence is cited by path, and this repository has nothing at this path "
+            + "under this spelling — which on Windows can mean the pointer opens on the machine "
+            + "you are reading it on and nowhere else. Whatever moved takes its pointer with it, "
+            + "so point the stub at where the probe lives now, spelled the way the tree spells it. "
+            + "If the probe is gone rather than moved, say so on the claim — a closed claim whose "
             + "evidence no longer exists is a claim nobody can follow, and deleting the reference "
             + "would leave it reading as closed on something.");
     }
@@ -705,6 +708,16 @@ public class IsaStructureTests
         Resolves("src/MeetingTranscriber.Gone/Moved.cs").ShouldBeFalse(
             "and this is the red half: a pointer read as a path that the tree has not got.");
 
+        Paths("`TESTS/MeetingTranscriber.Isa.Tests`").ShouldBe(
+            ["TESTS/MeetingTranscriber.Isa.Tests"],
+            "a root is matched without regard to case on purpose, so a pointer spelled wrong is "
+            + "still read as a path and still answered. Matching the root exactly would make this "
+            + "span stop being a path at all, which is the one answer worse than either.");
+
+        Resolves("TESTS/MeetingTranscriber.Isa.Tests").ShouldBeFalse(
+            "and this is what Windows will not say: it opens that directory happily, git has it "
+            + "under one spelling only, and a reader on a case-sensitive checkout finds nothing.");
+
         Paths("`Turns.Group`").ShouldBeEmpty(
             "a member name is not a path, and reddening on this one is how a gate gets deleted by "
             + "the first person it stops.");
@@ -719,6 +732,12 @@ public class IsaStructureTests
             "a glob names a set, and whether a set has members is a different question.");
         Paths("`meetings/<id>/manifest.json`").ShouldBeEmpty(
             "a shape standing for a folder in somebody's corpus, which no checkout has.");
+        Paths("`tests/MeetingTranscriber.Isa.Tests/IsaStructureTests.cs:120`").ShouldBeEmpty(
+            "a line number points inside a file, so the span names a place and not a file — and "
+            + "reddening on it would stop somebody who cited their evidence more precisely.");
+        Paths("`docs/layout.md#a-heading`").ShouldBeEmpty("an anchor points inside a document.");
+        Paths("`docs/[a-z]+`").ShouldBeEmpty(
+            "a character class names a set, which is the glob above under another spelling.");
         Paths("`MeetingTranscriber.Testing/DeepgramFixtures.cs`").ShouldBeEmpty(
             "what a `git grep` inside `tests/` printed, so resolving it would mean guessing the "
             + "directory it was run from.");
@@ -726,12 +745,48 @@ public class IsaStructureTests
         Paths("`press <the meeting> wait BackButton`").ShouldBeEmpty("a UI probe walk.");
     }
 
-    /// <summary>Whether one of the file's pointers is a file or a folder this repository has.</summary>
+    /// <summary>
+    /// Whether one of the file's pointers is a file or a folder this repository has, spelled the
+    /// way this repository spells it.
+    /// </summary>
+    /// <remarks>
+    /// Segment by segment against what each directory actually holds, rather than
+    /// <c>File.Exists</c> over the joined path. This runs on <c>windows-latest</c>, where the file
+    /// system answers without regard to case, so <c>TESTS/MeetingTranscriber.Audio.Tests</c> is
+    /// there as far as this machine is concerned and nowhere else: GitHub serves the directory
+    /// under one spelling, and a checkout on a case-sensitive volume has nothing at the other. A
+    /// pointer only the machine that wrote it can follow is the same defect as one that resolves
+    /// nowhere, and the whole of what this gate is for is that a claim's evidence can be found.
+    /// <para>
+    /// What is compared is the disk and not the index. A working tree whose spelling has drifted
+    /// from what git recorded — a case-only rename made by hand, which `core.ignorecase` lets pass
+    /// uncommitted — reds here and would be green on a fresh clone. That is the right way round:
+    /// the local tree is where somebody is about to follow the pointer.
+    /// </para>
+    /// </remarks>
     private static bool Resolves(string path)
     {
-        var full = Path.Combine(IsaDocument.Root().FullName, path);
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var walked = IsaDocument.Root().FullName;
 
-        return File.Exists(full) || Directory.Exists(full);
+        foreach (var segment in segments)
+        {
+            // What the directory hands back is the name on disk, so comparing it to the segment is
+            // what the file system itself will not do. The pattern is the segment verbatim, which
+            // is safe because a span holding a wildcard was never read as a path.
+            var spelled = Directory.Exists(walked)
+                && Directory.EnumerateFileSystemEntries(walked, segment).Any(
+                    entry => string.Equals(Path.GetFileName(entry), segment, StringComparison.Ordinal));
+
+            if (!spelled)
+            {
+                return false;
+            }
+
+            walked = Path.Combine(walked, segment);
+        }
+
+        return segments.Length > 0;
     }
 
     /// <summary>What the path rule reads out of one line, so a case is one line.</summary>

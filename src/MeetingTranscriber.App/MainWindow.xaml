@@ -13,6 +13,12 @@
          so `Bindings.Update()` after a language change is the whole of what re-reads this screen.
          MeetingTranscriber.App.Tests fails the build if a literal creeps back in.
 
+         No value chosen on the screen either, which is the same rule applied to what it looks
+         like: every colour, text size and corner here names a key in Olivo.xaml, and OlivoTests
+         fails the build over a hex value, a font size or a corner radius typed in. `docs/design.md`
+         is the authority, and this is the screen that settled those keys — it was the first to need
+         them, so every screen after this one uses these names rather than proposing its own.
+
          Which controls are live is not decided here either. Every one of them is set from a
          RecorderScreen in the code-behind, which is the one thing that answers that question and
          the one thing a build agent can run.
@@ -20,14 +26,18 @@
          The whole screen in two halves: what the next meeting will record, above, and the meetings
          already recorded, below. One window and not two, because the second is what somebody comes
          back to the application for and a list behind a button is a list nobody opens. The drawer
-         raises itself to the whole window, at which point the half above goes â€” said here as a
-         Visibility and answered in the code-behind, which is where the drawer says it moved. -->
+         raises itself to the whole window, at which point the half above travels out of the way
+         rather than vanishing — 300 ms, accelerating out, and nothing at all on a machine that
+         asked Windows for no animation. How long that is worth is Movement's, in a project a build
+         agent runs against both answers; what moves is ScreenMotion's. -->
 
-    <Window.SystemBackdrop>
-        <MicaBackdrop />
-    </Window.SystemBackdrop>
-
-    <Grid Padding="24" RowSpacing="16">
+    <!-- Papel, and opaque. `docs/design.md` §And five things this application is not: never mica or
+         acrylic, because a translucent window is one where nothing weighs anything. What was here
+         was the platform's Mica backdrop. -->
+    <Grid
+        Background="{StaticResource PaperBrush}"
+        Padding="{StaticResource ScreenPadding}"
+        RowSpacing="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -35,13 +45,13 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel x:Name="RecordingCard" Grid.Row="0" Spacing="16">
+        <StackPanel x:Name="RecordingCard" Grid.Row="0" Spacing="18">
             <!-- What the next meeting will record and the presses that run it. It goes as one
                  thing while the meeting is being saved, because none of it is answerable then:
                  every control in it is dead, and a dead screen headed "record a meeting" over a
                  meeting being saved is a window that looks like it lost the one it just had. -->
-            <StackPanel x:Name="TheNextMeeting" Spacing="16">
-                <TextBlock Text="{x:Bind In(loc:UiTexts.RecordAMeeting)}" Style="{StaticResource TitleTextBlockStyle}" />
+            <StackPanel x:Name="TheNextMeeting" Spacing="18">
+                <TextBlock Text="{x:Bind In(loc:UiTexts.RecordAMeeting)}" Style="{StaticResource ScreenTitleText}" />
 
                 <!-- What the next meeting will record. Everything here is dead the moment one starts:
                      changing the microphone half way through is not a thing the engine can do, so it is
@@ -50,19 +60,21 @@
                     <ComboBox
                         x:Name="MicrophonePicker"
                         MinWidth="240"
+                        Style="{StaticResource DropDown}"
                         Header="{x:Bind In(loc:UiTexts.Microphone)}"
                         SelectionChanged="OnMicrophoneChosen" />
                     <ComboBox
                         x:Name="SourcePicker"
                         MinWidth="280"
+                        Style="{StaticResource DropDown}"
                         Header="{x:Bind In(loc:UiTexts.WhatToRecordFromThisMachine)}"
                         SelectionChanged="OnSourceChosen">
                         <!-- The one picker that says which panel holds it, and the only one long
                              enough for it to matter: this list is every program on the machine, and a
                              ComboBox's own CarouselPanel decides where a list too long to fit opens.
                              With nothing chosen it opened part way down the alphabet, so the answer
-                             that is always available and always right about what it records â€” the
-                             whole machine, put first by SourcesNow for exactly that reason â€” was not
+                             that is always available and always right about what it records — the
+                             whole machine, put first by SourcesNow for exactly that reason — was not
                              on screen when the list was, and the first thing somebody saw was a
                              service they have never heard of. A linear panel opens at the top, and
                              still draws only what fits. What should change is the list being this
@@ -76,6 +88,7 @@
                     <Button
                         x:Name="RefreshTheMachineButton"
                         VerticalAlignment="Bottom"
+                        Style="{StaticResource NormalButtonOnPaper}"
                         Click="OnRefreshTheMachine"
                         Content="{x:Bind In(loc:UiTexts.RefreshTheList)}" />
                 </StackPanel>
@@ -85,46 +98,74 @@
                         <ComboBox
                             x:Name="SpokenPicker"
                             MinWidth="240"
+                            Style="{StaticResource DropDown}"
                             Header="{x:Bind In(loc:UiTexts.WhatWillBeSpoken)}"
                             SelectionChanged="OnSpokenChosen" />
+                        <!-- Quieter by colour and never by opacity. `docs/design.md` gives three
+                             inks and opacity is not one of them: text faded to 70 per cent is a
+                             fourth grey nobody chose, and it is a different fourth grey over every
+                             surface it lands on. Every `Opacity` on this screen was one of those. -->
                         <TextBlock
                             Text="{x:Bind In(loc:UiTexts.WhatWillBeSpokenIsAskedEveryTime)}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{StaticResource SecondaryTextBrush}"
                             MaxWidth="360"
-                            TextWrapping="Wrap"
-                            Opacity="0.7" />
+                            TextWrapping="Wrap" />
                     </StackPanel>
                     <ComboBox
                         x:Name="LanguagePicker"
                         MinWidth="160"
                         VerticalAlignment="Top"
+                        Style="{StaticResource DropDown}"
                         Header="{x:Bind In(loc:UiTexts.Language)}"
                         SelectionChanged="OnLanguageChosen" />
                 </StackPanel>
 
                 <StackPanel Spacing="8">
+                    <!-- The one thing this screen is for takes the principal rank, and nothing else
+                         on the screen does: `docs/design.md` §Controls says a screen has at most one
+                         of the first. The three beside it steer a recording that is already running
+                         rather than being what the screen is asking for, so they are normal. -->
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button
                             x:Name="RecordButton"
-                            Style="{StaticResource AccentButtonStyle}"
+                            Style="{StaticResource PrincipalActButton}"
                             Click="OnRecord"
                             Content="{x:Bind In(loc:UiTexts.Record)}" />
-                        <Button x:Name="PauseButton" Click="OnPause" Content="{x:Bind In(loc:UiTexts.Pause)}" />
-                        <Button x:Name="ResumeButton" Click="OnResume" Content="{x:Bind In(loc:UiTexts.Resume)}" />
-                        <Button x:Name="StopButton" Click="OnStop" Content="{x:Bind In(loc:UiTexts.Stop)}" />
+                        <Button
+                            x:Name="PauseButton"
+                            Style="{StaticResource NormalButtonOnPaper}"
+                            Click="OnPause"
+                            Content="{x:Bind In(loc:UiTexts.Pause)}" />
+                        <Button
+                            x:Name="ResumeButton"
+                            Style="{StaticResource NormalButtonOnPaper}"
+                            Click="OnResume"
+                            Content="{x:Bind In(loc:UiTexts.Resume)}" />
+                        <Button
+                            x:Name="StopButton"
+                            Style="{StaticResource NormalButtonOnPaper}"
+                            Click="OnStop"
+                            Content="{x:Bind In(loc:UiTexts.Stop)}" />
                     </StackPanel>
 
                     <!-- The offer, and it is not on screen until the recording has made it. That is the
                          whole of the consent here: there is nothing to press early, so nothing pressed
-                         early can be spent on it. -->
+                         early can be spent on it.
+
+                         Not pico, and `docs/design.md` §NadaLlego says why in as many words: taking
+                         the whole machine costs nothing and loses nothing. It is the act on a
+                         notice, and an act on a notice takes the normal rank. -->
                     <StackPanel x:Name="WholeMachineOffer" Spacing="4" Visibility="Collapsed">
                         <TextBlock
                             Text="{x:Bind In(loc:UiTexts.NothingCameFromThatProgram)}"
+                            Style="{StaticResource BodyText}"
                             TextWrapping="Wrap"
                             MaxWidth="640" />
                         <Button
                             x:Name="WholeMachineButton"
                             HorizontalAlignment="Left"
+                            Style="{StaticResource NormalButtonOnPaper}"
                             Click="OnRecordTheWholeMachine"
                             Content="{x:Bind In(loc:UiTexts.RecordTheWholeMachine)}" />
                     </StackPanel>
@@ -149,7 +190,7 @@
             <StackPanel x:Name="SavingCard" Spacing="12" Visibility="Collapsed">
                 <TextBlock
                     Text="{x:Bind In(loc:UiTexts.SavingTheMeeting)}"
-                    Style="{StaticResource TitleTextBlockStyle}" />
+                    Style="{StaticResource ScreenTitleText}" />
 
                 <StackPanel x:Name="SavingSteps" Spacing="8" MaxWidth="640" HorizontalAlignment="Left" />
             </StackPanel>
@@ -159,6 +200,10 @@
                  screen for exactly as long as the meters are, paused included, and answered by
                  RecordingClock in a project a build agent can run rather than decided here.
 
+                 The stopwatch rank, and the only thing on any screen set at 62. It is also the one
+                 thing `docs/design.md` §What never moves names outright: a number that animates
+                 between two values is unreadable at exactly the moment somebody is reading it.
+
                  Not a live region, and that is a decision rather than an omission. It changes
                  every second, so announcing it would talk over every line beside it — including
                  the ones about a device dying, which are the only things on this screen worth
@@ -167,48 +212,42 @@
                  HelpText and not Name, which on a TextBlock are not two ways of saying the same
                  thing: a TextBlock's automation name is its own text, and setting Name replaces it
                  rather than labelling it — so the biggest number on the screen would be read out
-                 as the words "how long the meeting has been running" and never as a length. The
-                 meters can label themselves that way because a ProgressBar hands its value back
-                 through a pattern of its own; this has nothing but its text. -->
+                 as the words "how long the meeting has been running" and never as a length. A
+                 meter labels itself that way because the bar carries the name; this has nothing
+                 but its text. -->
             <TextBlock
                 x:Name="TheClock"
-                Style="{StaticResource DisplayTextBlockStyle}"
+                Style="{StaticResource StopwatchText}"
                 Visibility="Collapsed"
                 AutomationProperties.HelpText="{x:Bind In(loc:UiTexts.HowLongTheMeetingHasBeenRunning)}" />
 
             <!-- What is arriving, while it is arriving. There is no meeting to meter until one is
                  being recorded, so none of this is on screen before that and none of it is left
-                 standing after â€” a meter showing its last reading is a screen saying a recording is
+                 standing after — a meter showing its last reading is a screen saying a recording is
                  still going. Which is not decided here: RecordingMeters answers it, in a project a
                  build agent can run, and this reads the answer onto controls.
 
                  Two channels and not a list, because two is the contract: channel 0 is the loopback
                  and channel 1 is the microphone, and a recording that disagreed with that would be
-                 refused long before it reached a screen. -->
-            <StackPanel x:Name="Meters" Spacing="12" Visibility="Collapsed">
-                <StackPanel Spacing="2">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="{x:Bind In(loc:UiTexts.Channel0TheOthers)}" />
-                        <!-- The device or the program, in whatever its maker called it: data, and so
-                             the same in every language. -->
-                        <TextBlock x:Name="OthersCapturing" TextTrimming="CharacterEllipsis" Opacity="0.7" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ProgressBar
-                            x:Name="OthersMeter"
-                            Width="260"
-                            VerticalAlignment="Center"
-                            Maximum="1"
-                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.Channel0TheOthers)}" />
-                        <TextBlock x:Name="OthersLevel" MinWidth="72" Opacity="0.7" />
-                    </StackPanel>
+                 refused long before it reached a screen.
+
+                 Each is a ChannelMeter and no longer a ProgressBar. `docs/design.md` §The meter is
+                 the one component in this application that cannot be copied from anywhere, and a
+                 progress bar has none of it: no hot zone standing there before anything clips, no
+                 scale under the bar, and no retained peak — so nothing on it said whether −16 was
+                 close to clipping or nowhere near it. -->
+            <StackPanel x:Name="Meters" Spacing="18" Visibility="Collapsed">
+                <StackPanel Spacing="6">
+                    <local:ChannelMeter x:Name="OthersMeter" />
                     <!-- A live region, because a device dying is an event and not something to find by
-                         looking â€” and its words are deliberately not here. A line bound in the XAML is
+                         looking — and its words are deliberately not here. A line bound in the XAML is
                          set once while this panel is collapsed and never changes again, which is a
                          live region that announces nothing: MainWindow.Tell is what says these
                          and why, and LiveRegionTests fails if one is bound here or never told. -->
                     <TextBlock
                         x:Name="OthersStopped"
+                        Style="{StaticResource BodyText}"
+                        Foreground="{StaticResource PeakBrush}"
                         AutomationProperties.LiveSetting="Assertive"
                         TextWrapping="Wrap"
                         MaxWidth="640"
@@ -218,29 +257,21 @@
                          the recording holds from here on is another source. Told, not bound. -->
                     <TextBlock
                         x:Name="OthersMoved"
+                        Style="{StaticResource BodyText}"
+                        Foreground="{StaticResource PeakBrush}"
                         AutomationProperties.LiveSetting="Assertive"
                         TextWrapping="Wrap"
                         MaxWidth="640"
                         Visibility="Collapsed" />
                 </StackPanel>
 
-                <StackPanel Spacing="2">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="{x:Bind In(loc:UiTexts.Channel1Me)}" />
-                        <TextBlock x:Name="MineCapturing" TextTrimming="CharacterEllipsis" Opacity="0.7" />
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <ProgressBar
-                            x:Name="MineMeter"
-                            Width="260"
-                            VerticalAlignment="Center"
-                            Maximum="1"
-                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.Channel1Me)}" />
-                        <TextBlock x:Name="MineLevel" MinWidth="72" Opacity="0.7" />
-                    </StackPanel>
+                <StackPanel Spacing="6">
+                    <local:ChannelMeter x:Name="MineMeter" />
                     <!-- Told, not bound, for the reason channel 0's line says. -->
                     <TextBlock
                         x:Name="MineStopped"
+                        Style="{StaticResource BodyText}"
+                        Foreground="{StaticResource PeakBrush}"
                         AutomationProperties.LiveSetting="Assertive"
                         TextWrapping="Wrap"
                         MaxWidth="640"
@@ -248,6 +279,8 @@
                     <!-- Told, not bound, for the reason channel 0's line says. -->
                     <TextBlock
                         x:Name="MineMoved"
+                        Style="{StaticResource BodyText}"
+                        Foreground="{StaticResource PeakBrush}"
                         AutomationProperties.LiveSetting="Assertive"
                         TextWrapping="Wrap"
                         MaxWidth="640"
@@ -258,6 +291,8 @@
                      than of a moment in it, and a line that scrolled away would be read once. -->
                 <TextBlock
                     x:Name="HeardTwice"
+                    Style="{StaticResource BodyText}"
+                    Foreground="{StaticResource PeakBrush}"
                     AutomationProperties.LiveSetting="Polite"
                     TextWrapping="Wrap"
                     MaxWidth="640"
@@ -276,12 +311,12 @@
             <!-- Who is using the application, beside where their meetings are kept: both are
                  answers about this install rather than about the next meeting, which is why they
                  are here and not up with the pickers. It is one field and one press whether it is
-                 being answered for the first time or corrected afterwards â€” the asking is the
+                 being answered for the first time or corrected afterwards — the asking is the
                  sentence under it, which is on screen exactly while nobody has answered.
 
                  It lives here until the settings screen exists, and then it moves there with the
                  language and this line: #108 is the card, and the row it is built around is this
-                 one. The affiliation the design asks about is not here and is not missing â€”
+                 one. The affiliation the design asks about is not here and is not missing —
                  `docs/design.md` says the first screen of an application is not where somebody
                  enumerates their jobs, and the `Persona` dialogue is where one is added. -->
             <StackPanel Spacing="4">
@@ -289,11 +324,13 @@
                     <TextBox
                         x:Name="WhoIsUsingThisBox"
                         MinWidth="240"
+                        Style="{StaticResource TypedField}"
                         Header="{x:Bind In(loc:UiTexts.WhoIsUsingTheApplication)}"
                         TextChanged="OnWhoIsUsingThisTyped" />
                     <Button
                         x:Name="WhoIsUsingThisButton"
                         VerticalAlignment="Bottom"
+                        Style="{StaticResource NormalButtonOnPaper}"
                         Click="OnKeepWhoIsUsingThis"
                         Content="{x:Bind In(loc:UiTexts.Save)}" />
                 </StackPanel>
@@ -301,29 +338,36 @@
                 <TextBlock
                     x:Name="NobodyHasSaidYet"
                     Text="{x:Bind In(loc:UiTexts.NobodyHasSaidWhoIsUsingThis)}"
-                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Style="{StaticResource BodyText}"
+                    Foreground="{StaticResource SecondaryTextBrush}"
                     TextWrapping="Wrap"
                     MaxWidth="640"
-                    Opacity="0.7"
                     Visibility="Collapsed" />
             </StackPanel>
 
             <!-- Where the meetings go, and which folder was refused when there is nowhere. Outside
                  the half above for the reason the report below it is: the drawer may take the
-                 window while there is no corpus â€” nothing is being recorded then and nothing can
-                 be â€” and this is the only line in the application that says which refusal it was.
+                 window while there is no corpus — nothing is being recorded then and nothing can
+                 be — and this is the only line in the application that says which refusal it was.
                  The drawer's own line says the corpus could not be opened and sends somebody here
                  for why, so a screen that let this go with the recorder would be answering that
-                 with an empty window. -->
+                 with an empty window.
+
+                 A sentence, and so the body rank in a quieter ink. The path inside it is data and
+                 the line around it is not — `docs/design.md` §Type: text never goes in mono, and a
+                 number that is part of a sentence is text. Set at the data rank this read as a
+                 whole line of code, which is what mono says about anything it is given. -->
             <TextBlock
                 x:Name="CorpusText"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                TextWrapping="Wrap"
-                Opacity="0.7" />
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource SecondaryTextBrush}"
+                TextWrapping="Wrap" />
 
             <ScrollViewer MaxHeight="180">
                 <TextBlock
                     x:Name="OutputText"
+                    Style="{StaticResource BodyText}"
+                    Foreground="{StaticResource SecondaryTextBrush}"
                     IsTextSelectionEnabled="True"
                     TextWrapping="Wrap" />
             </ScrollViewer>
@@ -342,11 +386,12 @@
             <TextBlock
                 x:Name="StatusText"
                 VerticalAlignment="Center"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                TextWrapping="Wrap"
-                Opacity="0.7" />
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource SecondaryTextBrush}"
+                TextWrapping="Wrap" />
             <Button
                 x:Name="PackagingChecksButton"
+                Style="{StaticResource ButtonAtTheMargin}"
                 Click="OnOpenPackagingChecks"
                 Content="{x:Bind In(loc:UiTexts.PackagingChecks)}" />
         </StackPanel>

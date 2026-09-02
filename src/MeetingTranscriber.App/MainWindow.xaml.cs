@@ -468,8 +468,8 @@ public sealed partial class MainWindow : Window
         var others = meters.On(AudioChannel.Loopback);
         var mine = meters.On(AudioChannel.Microphone);
 
-        Show(others, OthersCapturing, OthersMeter, OthersLevel);
-        Show(mine, MineCapturing, MineMeter, MineLevel);
+        Show(others, OthersMeter, UiTexts.Channel0TheOthers);
+        Show(mine, MineMeter, UiTexts.Channel1Me);
 
         // Each of the three named where its words are, rather than reached through the row above.
         // A live region that nothing hands a sentence to renders blank and announces nothing, which
@@ -502,35 +502,63 @@ public sealed partial class MainWindow : Window
 
     /// <summary>What one channel's meter reads as: what it is capturing, and how loud.</summary>
     /// <remarks>
-    /// Taking the controls rather than being written twice, because the two rows are now one rule
-    /// with nothing to tell them apart, and a second copy of it is a second chance to set the wrong
-    /// one. What the two rows really do differ in — which sentence they say when the device is
-    /// gone — is said where the line is, in <see cref="ShowTheMeters"/>.
+    /// Taking the control rather than being written twice, because the two meters are one rule with
+    /// nothing to tell them apart but which channel they are, and a second copy of it is a second
+    /// chance to set the wrong one. What the two really do differ in — which sentence they say when
+    /// the device is gone — is said where the line is, in <see cref="ShowTheMeters"/>.
+    /// <para>
+    /// The words are set here and the drawing is the meter's. A <see cref="ChannelMeter"/> is one
+    /// control used twice, so it cannot hold a name for either channel; and it would otherwise have
+    /// to know which language it is in to say that nothing is arriving. So it draws and remembers,
+    /// and every sentence on it comes off the catalogue through here.
+    /// </para>
     /// </remarks>
-    private void Show(ChannelReading? reading, TextBlock capturing, ProgressBar meter, TextBlock level)
+    private void Show(ChannelReading? reading, ChannelMeter meter, UiText channel)
     {
+        meter.ChannelName = In(channel);
+
         // Cleared and not left standing. The row belongs to a meeting that is over, and the panel
         // around it is hidden — but the next meeting's first frame is drawn from these controls,
         // and the last one's microphone is not something to show for a second under a new one.
         if (reading is null)
         {
-            capturing.Text = string.Empty;
-            meter.Value = 0;
-            level.Text = string.Empty;
+            meter.CapturingSaid = string.Empty;
+            meter.LoudnessSaid = string.Empty;
+            meter.LoudestSoFarSaid = string.Empty;
+            meter.Show(null);
             return;
         }
 
         // The catalogue where the reading hands back no name, which is a channel capturing the
         // whole machine — the same shape as the level below it, and for the same reason.
-        capturing.Text = Capturing(reading.Capturing);
-        meter.Value = reading.Meter;
+        meter.CapturingSaid = Capturing(reading.Capturing);
 
         // A level is a measurement and reads the same in every language, so the reading hands one
         // back as data. Having measured nothing is a sentence and the reading hands back none, so
         // the word for it comes from the catalogue — which is also what this screen exists to show:
         // an empty bar and a bar nothing has drawn yet look the same.
-        level.Text = reading.Loudness ?? In(UiTexts.NothingIsArriving);
+        meter.LoudnessSaid = reading.Loudness ?? In(UiTexts.NothingIsArriving);
+
+        // The bar is drawn before the peak is worded, because drawing is what moves the peak: the
+        // meter is the only thing that remembers the loudest moment, and the sentence around that
+        // number is the one thing about it the catalogue owns.
+        //
+        // The number itself is written the invariant way and not the reading language's, which is
+        // the one place a value inside a catalogue sentence does not follow its language. It stands
+        // beside the level directly above it, and that one comes off LevelReading already written
+        // — so following the language here would put `pico -9,4` under `-16.2 dBFS`, two numbers
+        // whose whole purpose is being compared to each other, punctuated two ways.
+        meter.Show(reading);
+        meter.LoudestSoFarSaid = meter.LoudestSoFar is { } loudest
+            ? UiTexts.TheLoudestSoFar.In(_language, loudest.ToString("0.0", CultureInfo.InvariantCulture))
+            : string.Empty;
     }
+
+    /// <summary>
+    /// One of Olivo's named sizes, by the key it is settled under. A glyph built in code is still
+    /// something on a screen, so it names a rank rather than carrying a number of its own.
+    /// </summary>
+    private static double Sized(string key) => (double)Application.Current.Resources[key];
 
     /// <summary>
     /// What a channel is capturing, in words a person reads: the name where the reading has one,
@@ -782,7 +810,7 @@ public sealed partial class MainWindow : Window
         {
             // Segoe Fluent's tick. A glyph is a code point and not a word, so it says the same
             // thing in either language and names no entry of the catalogue.
-            StepStanding.Done => ((FrameworkElement)new FontIcon { Glyph = "", FontSize = 14 },
+            StepStanding.Done => ((FrameworkElement)new FontIcon { Glyph = "", FontSize = Sized("BodySize") },
                 (UiText?)UiTexts.ThisStepIsDone),
             StepStanding.Underway => (new ProgressRing { IsActive = true }, UiTexts.ThisStepIsUnderWay),
             StepStanding.NotYet => (new Border(), null),
@@ -1218,10 +1246,21 @@ public sealed partial class MainWindow : Window
 
         Reading.Visibility = reading ? Visibility.Visible : Visibility.Collapsed;
         Meetings.Visibility = reading ? Visibility.Collapsed : Visibility.Visible;
-        RecordingCard.Visibility =
-            Meetings.HasTheWholeWindow || (reading && Screen().TheMeetingsMayTakeTheWholeWindow)
-                ? Visibility.Collapsed
-                : Visibility.Visible;
+
+        // The recorder half travels and the room below simply takes what it gives up. That is the
+        // arrangement moving rather than snapping, and it is ISC-173.2: the drawer rising is what
+        // says this is the same screen and not another one. `docs/design.md` §Movement gives the
+        // drawer 300 ms, decelerating in and accelerating out — and none of it on a machine that
+        // asked Windows for no animation, where the half is simply already gone.
+        var above =
+            !Meetings.HasTheWholeWindow && !(reading && Screen().TheMeetingsMayTakeTheWholeWindow);
+
+        // Where it is heading and not where it is: a half on its way out is still visible for the
+        // whole of the move, so reading its visibility here would drop the press that reversed it.
+        if (above != ScreenMotion.IsShowing(RecordingCard))
+        {
+            ScreenMotion.ArriveOrLeave(RecordingCard, above, Move.Travelling);
+        }
     }
 
     /// <summary>
@@ -1399,6 +1438,14 @@ public sealed partial class MainWindow : Window
         // the previous meeting's devices and levels under the new one for as long as the first tick
         // takes to arrive.
         _channels = [];
+
+        // And the one thing on this screen that outlives a tick. A meter's retained peak does not
+        // decay — that is what makes it a memory rather than a reading — so the mark left standing
+        // is the loudest moment of the meeting before this one, sitting on a bar that has heard
+        // nothing yet. Emptying the readings above does not reach it, because nothing about it
+        // comes off a reading.
+        OthersMeter.ForgetTheLoudestMoment();
+        MineMeter.ForgetTheLoudestMoment();
         _step = RecorderStep.Starting;
         Refresh();
 

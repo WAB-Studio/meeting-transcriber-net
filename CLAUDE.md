@@ -68,6 +68,7 @@ something here has stopped earning its place, and the fix is to move a section o
 | `docs/packages.md` | Adding, bumping or choosing a package. |
 | `docs/corpus.md` | Deciding what gets backed up, what is deletable, what is rebuildable. |
 | `docs/process-capture.md` | How channel 0 is captured either way: what Windows gives, and what was probed. |
+| `docs/design.md` | Building a screen, or adding a control to one. Its keys are `Olivo.xaml`. |
 | `docs/reference-behaviour.md` | Grouping turns, and where .NET departs from the Python system. |
 | `docs/ui-probe.md` | Seeing a screen actually run: starting the app, reading its tree, pressing what is on it. |
 
@@ -110,8 +111,8 @@ skill. **A claim closes on a probe that ran, never on a task moving.**
 
 ## The contract
 
-`Domain/Audio/`, `Domain/Time/` and `Domain/Jobs/` hold invariants the rest of the system assumes.
-Breaking one corrupts meetings already recorded and artifacts already paid for.
+These invariants are what the rest of the system assumes: breaking one corrupts meetings already
+recorded and artifacts already paid for. `.claude/audit-floor.md` derives the reviews they force.
 
 - Channel 0 is the loopback, channel 1 is the microphone. The number is the channel index Deepgram
   reports back, not an internal detail, so only `CapturedAudio` turns a channel into a position.

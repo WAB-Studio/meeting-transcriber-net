@@ -22,8 +22,9 @@ probes it says ran, what decisions it says it made, and the head SHA it says it 
 in this verdict.
 
 Not every PR is audited. This one either carries a decision that holds up other parts of the
-application for months, or it changes `ISA.md` or touches `Domain/Audio`, `Domain/Time` or
-`Domain/Jobs`, which are audited whatever anybody judges.
+application for months, or it touches the audit floor — the paths `.claude/audit-floor.md` names,
+which are audited whatever anybody judges. Open that file: it is the only place the floor is
+stated, and a copy of the list here would be the second one it exists to stop.
 
 ## The CLI
 
@@ -89,8 +90,7 @@ to fill the gap.
 
 **`hold`** — merging this would put something wrong into `main`. CI red or unfinished, a claim in
 `isc_unproved`, a decision that invalidates the diff, work the card asked for that is not there, the
-diff doing something the card did not ask for inside `Domain/Audio/`, `Domain/Time/` or
-`Domain/Jobs/`.
+diff doing something the card did not ask for inside a path on the audit floor.
 
 Documentation, wording, a step `CLAUDE.md` requires that did not run — the cross-model review
 included — and a line that is merely poor never hold a PR. They go in the comment or in
