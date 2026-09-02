@@ -30,10 +30,13 @@ namespace MeetingTranscriber.App.Tests;
 internal sealed partial class EnumTable
 {
     private EnumTable(
-        string screen, IReadOnlyList<string> named, IReadOnlyList<string> declared, string? fallthrough)
+        string screen,
+        IReadOnlyDictionary<string, string> answers,
+        IReadOnlyList<string> declared,
+        string? fallthrough)
     {
         Screen = screen;
-        Named = named;
+        Answers = answers;
         Declared = declared;
         Fallthrough = fallthrough;
     }
@@ -46,8 +49,21 @@ internal sealed partial class EnumTable
     /// </summary>
     public string Screen { get; }
 
+    /// <summary>
+    /// What each arm answers with, by the member it answers for — the rest of the line after its
+    /// <c>=&gt;</c>, whatever shape that is.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than in whoever wants it, and it is why the arms are read with one pattern
+    /// instead of one per question. A second pattern over the same switch is a second place for the
+    /// worked examples below to be forgotten in — that is what this class is for — and it is also a
+    /// pattern with no <c>{over} switch</c> around it, so it would go on finding arms after the
+    /// table it was written for stopped existing.
+    /// </remarks>
+    public IReadOnlyDictionary<string, string> Answers { get; }
+
     /// <summary>The members the table has an arm for.</summary>
-    public IReadOnlyList<string> Named { get; }
+    public IReadOnlyList<string> Named => [.. Answers.Keys];
 
     /// <summary>The members the enum actually declares.</summary>
     public IReadOnlyList<string> Declared { get; }
@@ -116,10 +132,22 @@ internal sealed partial class EnumTable
 
         var fallthrough = Fallthroughs().Match(table.Value);
 
+        // Distinct before the dictionary, and only so that a repeated member is a failed assertion
+        // rather than a crash inside a collection. C# refuses two arms for one constant, so the
+        // reading that would produce one is a pattern that has gone wrong, not a screen that has.
+        var answers = Regex.Matches(
+                table.Value,
+                $@"^[ ]*{Regex.Escape(enumeration)}\.(?<name>\w+)\s*=>(?<answer>[^\r\n]*)",
+                RegexOptions.Multiline)
+            .DistinctBy(arm => arm.Groups["name"].Value, StringComparer.Ordinal)
+            .ToDictionary(
+                arm => arm.Groups["name"].Value,
+                arm => arm.Groups["answer"].Value.Trim(),
+                StringComparer.Ordinal);
+
         return new EnumTable(
             name,
-            [.. Regex.Matches(table.Value, $@"^[ ]*{Regex.Escape(enumeration)}\.(?<name>\w+)\s*=>", RegexOptions.Multiline)
-                .Select(match => match.Groups["name"].Value)],
+            answers,
             Members(enumeration, declaredIn),
             fallthrough.Success ? fallthrough.Groups["answer"].Value : null);
     }
