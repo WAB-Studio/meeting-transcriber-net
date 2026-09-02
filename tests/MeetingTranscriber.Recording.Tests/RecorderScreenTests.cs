@@ -297,34 +297,92 @@ public class RecorderScreenTests
     }
 
     /// <summary>
-    /// The list under the recorder may have the whole window only while no meeting is under way.
-    /// What goes with the recorder is stop, both meters and every line a narrator is told about
-    /// the moment a device dies, so a list that could swallow a running meeting is one press
-    /// between somebody and stopping it — and starting and finishing go with it, because a press
-    /// is running in each and what it comes back with lands on the half that would be hidden.
-    /// Without a corpus it is a yes: the recorder half is dead controls over a folder that was
-    /// refused, and the line saying which folder and why is not on it. That state does not say on
-    /// its own that no meeting is under way, and where that is settled is on the property.
+    /// ISC-172's automated half. The room below may have the whole window in every state a screen
+    /// can be in, a meeting being recorded included: nothing here refuses it, and what makes that
+    /// safe is that the strip stands in for the recorder half for exactly as long as there is a
+    /// meeting to say anything about — so the half travelling out of the way never takes the last
+    /// thing saying what a meeting is doing with it.
     /// </summary>
     /// <remarks>
-    /// Over every state rather than the ones somebody had in mind, because the failure is a state
-    /// added later and not thought about: the question is asked of the screen, and a new state
-    /// answers it one way or the other whether or not anybody chose.
+    /// <para>
+    /// Over every state and both arrangements rather than the rows somebody had in mind, because
+    /// the failure is a state added later and not thought about: the question is asked of the
+    /// screen, and a new state answers it one way or the other whether or not anybody chose.
+    /// </para>
+    /// <para>
+    /// Exactly one of the two is on screen while a meeting is under way, and that is the assertion
+    /// rather than two independent ones — a screen with both up says a meeting's length twice, and
+    /// a screen with neither is the failure the claim names.
+    /// </para>
     /// </remarks>
     [Theory]
-    [InlineData(RecorderState.Choosing, true)]
-    [InlineData(RecorderState.WithoutACorpus, true)]
-    [InlineData(RecorderState.Recording, false)]
-    [InlineData(RecorderState.Paused, false)]
-    [InlineData(RecorderState.Starting, false)]
-    [InlineData(RecorderState.Finishing, false)]
-    public void The_meetings_take_the_whole_window_only_while_no_meeting_is_under_way(
+    [InlineData(RecorderState.Choosing, false)]
+    [InlineData(RecorderState.WithoutACorpus, false)]
+    [InlineData(RecorderState.Starting, true)]
+    [InlineData(RecorderState.Recording, true)]
+    [InlineData(RecorderState.Paused, true)]
+    [InlineData(RecorderState.Finishing, true)]
+    public void One_of_the_recorder_and_the_strip_says_what_a_meeting_under_way_is_doing(
         RecorderState state,
-        bool may)
+        bool underWay)
     {
-        Screen(state, Everything).TheMeetingsMayTakeTheWholeWindow.ShouldBe(may);
+        var docked = Screen(state, Everything);
+        var raised = Raised(state, Everything);
+
+        // Docked, the recorder half is the one that says it, whatever the meeting is doing.
+        docked.TheRecorderIsOnScreen.ShouldBeTrue();
+        docked.TheStripIsOnScreen.ShouldBeFalse();
+
+        // Raised, the strip is — and it is there for every state there is a meeting in, which is
+        // the four rather than the two a clock runs in.
+        raised.TheRecorderIsOnScreen.ShouldBeFalse();
+        raised.TheStripIsOnScreen.ShouldBe(underWay);
+    }
+
+    /// <summary>
+    /// The other half of the same claim: the press that stops a meeting is on screen wherever the
+    /// list is. Asserted as what the claim says — wherever stop can be pressed at all, the thing
+    /// carrying it is up — and not as the two sets being equal, which they are not: the strip is
+    /// up through a save, where there is nothing left to stop.
+    /// </summary>
+    /// <remarks>
+    /// An implication rather than an equality because the two come off different tables.
+    /// <see cref="RecorderStates.Reaches"/> says where stop is offered and
+    /// <see cref="RecorderStates.IsInAMeeting"/> says where the strip is, and a state added to the
+    /// first and not the second would put stop off the screen for as long as the list is up, which
+    /// is the exact thing ISC-172 forbids. Written as an equality this would go green over that.
+    /// </remarks>
+    [Theory]
+    [InlineData(RecorderState.Choosing)]
+    [InlineData(RecorderState.WithoutACorpus)]
+    [InlineData(RecorderState.Starting)]
+    [InlineData(RecorderState.Recording)]
+    [InlineData(RecorderState.Paused)]
+    [InlineData(RecorderState.Finishing)]
+    public void Stopping_is_never_offered_where_the_strip_carrying_it_is_not(RecorderState state)
+    {
+        var raised = Raised(state, Everything);
+
+        if (raised.Allows(RecorderPress.Stop))
+        {
+            raised.TheStripIsOnScreen.ShouldBeTrue();
+        }
+    }
+
+    /// <summary>
+    /// And that stop really is offered on it, so the theory above cannot pass by nothing ever
+    /// being stoppable.
+    /// </summary>
+    [Fact]
+    public void Stop_is_pressable_on_the_strip_while_a_meeting_is_being_recorded()
+    {
+        Raised(RecorderState.Recording, Everything).Allows(RecorderPress.Stop).ShouldBeTrue();
+        Raised(RecorderState.Paused, Everything).Allows(RecorderPress.Stop).ShouldBeTrue();
     }
 
     private static RecorderScreen Screen(RecorderState state, RecorderChoices chosen) =>
         new() { State = state, Chosen = chosen };
+
+    private static RecorderScreen Raised(RecorderState state, RecorderChoices chosen) =>
+        Screen(state, chosen) with { TheRoomBelowHasTheWindow = true };
 }

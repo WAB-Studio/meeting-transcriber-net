@@ -29,7 +29,7 @@ namespace MeetingTranscriber.App.Tests;
 /// down, like every other check that needs a packaged host.
 /// </para>
 /// </remarks>
-public class LiveRegionTests
+public partial class LiveRegionTests
 {
     private const string LiveSetting = "AutomationProperties.LiveSetting";
 
@@ -118,6 +118,96 @@ public class LiveRegionTests
     }
 
     /// <summary>
+    /// The third way to have a live region that says nothing, and the one #204 was written about:
+    /// it is inside something that travels off the screen.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The two halves above hold a line that is on screen and never announced. This holds the
+    /// other shape — a line that is announced correctly and is not on screen. A screen that
+    /// rearranges itself takes a whole subtree away with <c>ScreenMotion.ArriveOrLeave</c>, and
+    /// what that leaves behind is <c>Visibility.Collapsed</c>: not in the automation tree, so
+    /// every live region under it is told its words into nothing. That is what the recording
+    /// card's five fault lines were doing for the whole of every raised list, and moving them out
+    /// is the fix — this is what stops the next one going back in.
+    /// </para>
+    /// <para>
+    /// Read off the source like the rest of this class, and by name: what travels is whatever the
+    /// code-behind hands to <c>ArriveOrLeave</c>, so the element has to be named at that call and
+    /// not inside a local function that takes it — a helper leaves the source carrying a parameter
+    /// name, which is what this check would then look for in the markup and never find. The first
+    /// version of this check did exactly that and passed over a live region put back inside the
+    /// travelling half, which is why <see cref="Something_on_these_screens_travels"/> stands beside
+    /// it.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(Screens))]
+    public void No_live_region_lives_inside_something_the_screen_travels_off_it(string path)
+    {
+        var behind = new FileInfo(path + ".cs");
+        if (!behind.Exists)
+        {
+            return;
+        }
+
+        var travelling = Travels()
+            .Matches(File.ReadAllText(behind.FullName))
+            .Select(match => match.Groups["element"].Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (travelling.Count == 0)
+        {
+            return;
+        }
+
+        var hidden = XDocument
+            .Load(path)
+            .Descendants()
+            .Where(element => travelling.Contains(element.Attribute(Named)?.Value ?? string.Empty))
+            .SelectMany(element => element.DescendantsAndSelf())
+            .Where(IsALiveRegion)
+            .Select(NameOf)
+            .ToArray();
+
+        hidden.ShouldBeEmpty(
+            $"{Path.GetFileName(path)} puts live regions inside something {behind.Name} travels "
+            + "off the screen, so they announce nothing for as long as it is away — which is the "
+            + "whole of what a collapsed element costs a narrator: "
+            + string.Join("; ", hidden));
+    }
+
+    /// <summary>
+    /// Something on these screens really does travel, so the theory above cannot pass by finding
+    /// nothing — which is how it passed the first time it was written, over a defect that was
+    /// there.
+    /// </summary>
+    [Fact]
+    public void Something_on_these_screens_travels()
+    {
+        var named = AppSources
+            .With(".xaml")
+            .Select(file => new FileInfo(file.FullName + ".cs"))
+            .Where(behind => behind.Exists)
+            .SelectMany(behind => Travels().Matches(File.ReadAllText(behind.FullName)))
+            .Select(match => match.Groups["element"].Value)
+            .ToArray();
+
+        named.ShouldNotBeEmpty(
+            "no screen hands an element to ScreenMotion.ArriveOrLeave by name, so the check that "
+            + "no live region is inside one has nothing to look at.");
+    }
+
+    /// <summary>An element this screen's code-behind moves on or off the screen, by name.</summary>
+    [GeneratedRegex(@"ArriveOrLeave\(\s*(?<element>\w+)\s*,")]
+    private static partial Regex Travels();
+
+    /// <summary>Whether this element is declared a live region, by either spelling.</summary>
+    private static bool IsALiveRegion(XElement element) =>
+        element.Attributes().Any(attribute => attribute.Name.LocalName == LiveSetting)
+        || element.Elements().Any(child => child.Name.LocalName == LiveSetting);
+
+    /// <summary>
     /// Every property a live region's words can arrive on. Read as a set rather than as one name,
     /// because which one a line uses is a matter of what control it is — a <c>TextBlock</c> says
     /// <c>Text</c>, anything with content says <c>Content</c>, and a region announced by its
@@ -143,14 +233,7 @@ public class LiveRegionTests
 
     /// <summary>Every element declared a live region, by either spelling of the attached property.</summary>
     private static IReadOnlyList<XElement> LiveRegions(string path) =>
-    [
-        .. XDocument
-            .Load(path)
-            .Descendants()
-            .Where(element =>
-                element.Attributes().Any(attribute => attribute.Name.LocalName == LiveSetting)
-                || element.Elements().Any(child => child.Name.LocalName == LiveSetting)),
-    ];
+        [.. XDocument.Load(path).Descendants().Where(IsALiveRegion)];
 
     private static string NameOf(XElement element) =>
         element.Attribute(Named)?.Value ?? element.Name.LocalName;

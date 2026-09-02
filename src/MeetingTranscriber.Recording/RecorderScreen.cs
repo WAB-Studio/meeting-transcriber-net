@@ -138,7 +138,8 @@ public sealed record RecorderChoices
 }
 
 /// <summary>
-/// The recording screen as the facts that decide what can be pressed on it, and nothing else.
+/// The recording screen as the facts that decide what can be pressed on it and which of its two
+/// arrangements it is in, and nothing else.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -177,40 +178,67 @@ public sealed record RecorderScreen
     public bool WholeMachineTaken { get; init; }
 
     /// <summary>
-    /// Whether the meetings under the recorder may take the whole window, hiding it.
+    /// Whether the room under the recorder has the whole window — the meetings raised into it, or
+    /// a meeting being read in it — so the recorder half is not on screen.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Only while no meeting is under way, and that is not a layout preference. What goes with the
-    /// recorder is stop, both meters and every line a narrator is told about the moment a device
-    /// dies â€” and a hidden element is not in the automation tree at all, so those lines announce
-    /// nothing while it is gone. A list that could swallow a running meeting is one press between
-    /// somebody and stopping it, and silence on the one fault they needed to hear about. Starting
-    /// and finishing are the same answer for the same reason: a press is running, what it comes
-    /// back with lands on the half above, and hiding that half is hiding the outcome of something
-    /// somebody just did.
+    /// Told and never worked out here, because it is the one fact this record needs that is not
+    /// about the meeting: which of its two arrangements the window is in belongs to the control
+    /// that changes it. It is handed over so that everything following from it — what is on
+    /// screen, and what says what a meeting is doing — is one answer rather than one per control.
+    /// It opens as no, which is the arrangement a window nobody has rearranged is in.
     /// </para>
     /// <para>
-    /// Without a corpus it is a yes. The recorder half is dead controls over a folder that was
-    /// refused, and there is nothing on it to lose sight of — the line saying which folder and
-    /// why is outside the half that goes, put there because of this answer. What the state does
-    /// not say on its own is that no meeting is under way: <see cref="RecorderStates.Of"/> asks
-    /// the corpus before it asks anything else, so a screen that could lose its corpus mid
-    /// meeting would land here with one running and this would answer yes over it. Nothing
-    /// reaches that today — where the corpus is is settled once as the window opens and never
-    /// asked again — and the day something does ask again, this is the first thing that has to
-    /// be answered.
-    /// </para>
-    /// <para>
-    /// Not one of <see cref="RecorderPress"/>, though it is a press on the same screen. That set is
-    /// what a recording offers, and <c>Available</c> being empty is how a screen with nothing said
-    /// on it is asserted; folding a control that is live before anything has been chosen into it
-    /// would make that assertion say something else. This is the one thing on this screen that is
-    /// about the screen rather than about the meeting, and it is answered on its own.
+    /// Not one of <see cref="RecorderPress"/>, though raising the list is a press on the same
+    /// screen. That set is what a recording offers, and <c>Available</c> being empty is how a
+    /// screen with nothing said on it is asserted; folding a control that is live before anything
+    /// has been chosen into it would make that assertion say something else.
     /// </para>
     /// </remarks>
-    public bool TheMeetingsMayTakeTheWholeWindow =>
-        State is RecorderState.Choosing or RecorderState.WithoutACorpus;
+    public bool TheRoomBelowHasTheWindow { get; init; }
+
+    /// <summary>
+    /// Whether the recorder half is on screen: the pickers, the meters, the stopwatch and the
+    /// presses that run a meeting.
+    /// </summary>
+    /// <remarks>
+    /// There is no answer here about whether the room below <em>may</em> take the window, and its
+    /// absence is what this card changed. The list used to be refused the window from the moment a
+    /// meeting started, because what went with the recorder half was stop, the clock and every
+    /// line a narrator is told about the moment a device dies — and a collapsed element is not in
+    /// the automation tree at all. That left the front door's most-used control dead for the whole
+    /// of every meeting. What answers it instead is <see cref="TheStripIsOnScreen"/>: the strip
+    /// carries what the recorder half was carrying, so the raise costs nothing and is never
+    /// refused.
+    /// </remarks>
+    public bool TheRecorderIsOnScreen => !TheRoomBelowHasTheWindow;
+
+    /// <summary>
+    /// Whether the strip above the room below is what says what a meeting under way is doing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Exactly when the recorder half is not on screen and there is a meeting to say anything
+    /// about, which is what makes it the recorder half's stand-in rather than a second opinion
+    /// beside it: the two are never both up, and neither reads the recording for itself — both are
+    /// set from this one record and from the one clock, so how long the meeting has been running
+    /// cannot be two numbers. Written against <see cref="TheRecorderIsOnScreen"/> rather than
+    /// against the field both come from, so the two cannot come apart into an arrangement where
+    /// neither half is anywhere.
+    /// </para>
+    /// <para>
+    /// <see cref="RecorderStates.IsInAMeeting"/> and not
+    /// <see cref="RecorderStates.IsRecording"/>, which is the difference between the raise costing
+    /// nothing and costing the two states nobody would think to check. Stop is what creates
+    /// finishing, and stop is on the strip: a strip that went away on its own press would answer
+    /// somebody with an empty window for the minutes a long meeting takes to be made. Starting is
+    /// the same shape from the other end — two devices are opening, each with its own deadline.
+    /// Neither has a clock or a press, so what the strip says in them is the state and nothing
+    /// else, which is exactly what there is to say.
+    /// </para>
+    /// </remarks>
+    public bool TheStripIsOnScreen => !TheRecorderIsOnScreen && State.IsInAMeeting();
 
     /// <summary>
     /// What can be pressed now: what the state reaches, less what has not been answered yet.
