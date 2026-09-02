@@ -166,6 +166,67 @@ internal sealed class LaunchedApp : IDisposable
     internal void OpenAWindow() => Windows.WaitForAWindow(ToOpenAWindow);
 
     /// <summary>
+    /// Ends the application without asking it, which is the one ending it cannot prepare for.
+    /// </summary>
+    /// <remarks>
+    /// The opposite of <see cref="Dispose"/>, and deliberately not a variation on it: what that
+    /// method is careful to do first — send every window a close, wait for whatever was being
+    /// written to finish — is exactly what must not happen here. A meeting whose save is halfway
+    /// through and a recording nobody stopped are states the corpus only reaches after somebody's
+    /// machine died, so probing what a later start finds has to arrive at them the same way. The
+    /// process tree and not the process, because what Windows activated is the application and
+    /// anything it started is part of the same death.
+    /// <para>
+    /// The death is waited for and checked, which is the difference between this verb and a
+    /// wish. Everything a probe concludes from a kill is a sentence about a process that was
+    /// gone — so a kill that has not landed inside the budget has to say so and stop, rather than
+    /// answer as though it had: <see cref="Dispose"/> would then find a live application, take the
+    /// polite path over it, and let the application finish the very save this was meant to
+    /// interrupt. That is a run that reports a crash and recorded a clean shutdown.
+    /// </para>
+    /// <para>
+    /// What is waited for is the process Windows handed back and not the tree: <c>WaitForExit</c>
+    /// takes one process, and a descendant is signalled by the kill and never checked. The
+    /// application starts nothing that writes the corpus today, so the sentence a probe draws from
+    /// this holds — but it holds on that and not on the wait, and a child that wrote would need
+    /// waiting for by name.
+    /// </para>
+    /// </remarks>
+    internal void Kill()
+    {
+        if (HasGone)
+        {
+            throw new ProbeFailed(
+                "The application is not running any more, so there is nothing left to kill.");
+        }
+
+        try
+        {
+            _process.Kill(entireProcessTree: true);
+        }
+
+        // The same three as Abandon and Insist, and for the same reason: the process can go in the
+        // gap after HasGone, and a child of the tree can refuse. Neither is the probe breaking.
+        catch (Exception beyondUs)
+            when (beyondUs is InvalidOperationException or COMException or Win32Exception)
+        {
+            if (!HasGone)
+            {
+                throw new ProbeFailed(
+                    $"The application (process {_process.Id}) would not be killed: {beyondUs.Message}");
+            }
+        }
+
+        if (!_process.WaitForExit(ToShutDown))
+        {
+            throw new ProbeFailed(
+                $"The application (process {_process.Id}) was killed and was still running "
+                + $"{ToShutDown.TotalSeconds:0} seconds later, so nothing after this is about a "
+                + "process that died.");
+        }
+    }
+
+    /// <summary>
     /// Asks every window to close, the way pressing the cross does, and only then insists. The
     /// polite half is what lets the application finish whatever it was writing; the insistent half
     /// is what makes sure the next run starts an application rather than finding this one.
