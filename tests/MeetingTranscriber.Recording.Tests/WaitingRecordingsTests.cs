@@ -1,4 +1,4 @@
-using MeetingTranscriber.Audio;
+﻿using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
@@ -237,7 +237,12 @@ public sealed class WaitingRecordingsTests : IDisposable
 
         waiting.MeetingId.ShouldBe(recorded);
         waiting.Meeting.ShouldBeNull();
-        waiting.Unrecoverable.ShouldNotBeNull().ShouldContain(recorded.ToString());
+        // The reason and the facts it turns on come back together, which is what keeps a screen
+        // from fetching the values itself and pairing them with the wrong sentence.
+        var reason = waiting.Unrecoverable.ShouldNotBeNull();
+        reason.Why.ShouldBe(WhyNotAMeeting.ThisCorpusHasNoSuchMeeting);
+        reason.Says.ShouldBe([recorded]);
+        reason.ToString().ShouldBe($"{WhyNotAMeeting.ThisCorpusHasNoSuchMeeting}: {recorded}");
 
         // A recording nothing is writing is one to decide about, whatever is shut to it. This is
         // the other side of the property the meeting still happening answers.
@@ -318,6 +323,42 @@ public sealed class WaitingRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// A recording sitting under a name that is not its meeting's says which folder it is in and
+    /// which meeting it is of, because those two disagreeing is the whole of what is wrong with it.
+    /// </summary>
+    /// <remarks>
+    /// The one reason that carries two values, and the reason this test exists rather than the
+    /// arm's coverage being taken as enough: a screen builds one sentence out of both, and two
+    /// values in the wrong order reads as a recording sitting in a folder named after the meeting
+    /// it is already named after. Nothing downstream can tell that from the right answer, so the
+    /// order is pinned where the values are chosen.
+    /// </remarks>
+    [Fact]
+    public void A_recording_under_another_name_says_the_folder_it_is_in_and_the_meeting_it_is_of()
+    {
+        using var context = corpus.OpenMigrated();
+        var recorded = Killed(context, seconds: 2).MeetingId;
+
+        // The card still says which meeting it is; only the folder holding it has the wrong name,
+        // which is what a hand-moved spool looks like.
+        var spooled = CorpusFiles.SpoolFolderFor(corpus.Root, recorded);
+        var moved = Path.Combine(spooled.Parent!.FullName, "somewhere-else");
+        Directory.Move(spooled.FullName, moved);
+
+        var waiting = WaitingRecordings.In(context).Single();
+
+        waiting.MeetingId.ShouldBe(recorded);
+
+        var reason = waiting.Unrecoverable.ShouldNotBeNull();
+        reason.Why.ShouldBe(WhyNotAMeeting.ItIsInAnotherMeetingsFolder);
+        reason.Says.ShouldBe(["somewhere-else", recorded], "the folder first and the meeting "
+            + "second, which is the order the sentence naming them takes.");
+
+        Should.Throw<RecordingException>(
+            () => WaitingRecordings.Recover(context, waiting, openedAgainAt));
+    }
+
+    /// <summary>
     /// A folder whose card was torn in half cannot become a meeting — the finish reads that card
     /// again — so the list says so rather than offering a choice that throws.
     /// </summary>
@@ -334,7 +375,12 @@ public sealed class WaitingRecordingsTests : IDisposable
         var waiting = WaitingRecordings.In(context).Single();
 
         waiting.MeetingId.ShouldBe(recorded);
-        waiting.Unrecoverable.ShouldNotBeNull().ShouldContain("cannot be read");
+        // Nothing rides on this one. What a torn card throws is a sentence this repository wrote,
+        // in English, so a row carrying it would be a translated frame around an untranslated
+        // clause — the defect the reasons exist to end. It is on the throw below instead.
+        var reason = waiting.Unrecoverable.ShouldNotBeNull();
+        reason.Why.ShouldBe(WhyNotAMeeting.WhatItSaysAboutItselfCannotBeRead);
+        reason.Says.ShouldBeEmpty();
         Should.Throw<RecordingException>(() => WaitingRecordings.Recover(context, waiting, openedAgainAt));
 
         // And it is still somebody's to take out or throw away, which is why it is on the list.

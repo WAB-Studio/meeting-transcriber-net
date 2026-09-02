@@ -635,6 +635,109 @@ public class IsaStructureTests
     }
 
     /// <summary>
+    /// The gate on a pointer that stopped resolving. A stub cites the probe that closed a claim by
+    /// path, and until this nothing held those paths to the tree — so a file moving took the
+    /// evidence for a closed claim out of anybody's reach and every gate here stayed green.
+    /// </summary>
+    /// <remarks>
+    /// It found nothing the day it was written: seventeen distinct paths over eighty citations on
+    /// `main` at 828501c on 2026-09-02, and every one of them resolved. So it repairs nothing and
+    /// is worth only what it refuses next time, which makes a false red the one thing that could
+    /// put it behind where the file started — hence four conditions rather than "looks like a
+    /// path", and hence <see cref="A_path_is_told_from_a_name_a_command_and_a_glob"/> being written
+    /// over the spans this file actually holds. `## Verification` backticks type names, member
+    /// names, command lines, enum values and whole English sentences: 588 spans that day against
+    /// the 80 this reads, and a gate reddening on `Turns.Group` is one somebody deletes.
+    /// <para>
+    /// What it reaches is thinner than it sounds and the measurement says so: eleven of the
+    /// seventeen are `tests/` and the ten test project directories, and not one span in the file is
+    /// a path under `src/`. A stub cites its probe as a backticked type name with the project
+    /// directory beside it, so what this holds is mostly the directories, which go stale only when
+    /// a project is renamed.
+    /// </para>
+    /// <para>
+    /// Which is also what it cannot see: a pointer that resolves and is wrong. `ISC-166`'s stub
+    /// names a suite and the project it sits in; PR #246 moved the suite between two projects that
+    /// both exist, repaired that stub by hand, and named this gate — so the gate it named would
+    /// have been green over it. Holding a cited suite to the project cited beside it is the gate
+    /// that catches that one. Measured over this file the pairing appears twenty times and every
+    /// one of them is sound today, so it is a card and not a line here.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Every_path_the_file_points_at_is_one_this_repository_has()
+    {
+        // Without this the check below passes by finding nothing, which is how a rule that stopped
+        // recognising a path reads exactly like a file whose pointers are all sound.
+        isa.Paths.ShouldNotBeEmpty(
+            "no backticked span in `ISA.md` was read as a path, so this check reads nothing.");
+
+        isa.Paths.Where(path => !Resolves(path)).ShouldBeEmpty(
+            "a claim's evidence is cited by path, and this path is not in the repository. Whatever "
+            + "moved takes its pointer with it, so point the stub at where the probe lives now. If "
+            + "the probe is gone rather than moved, say so on the claim — a closed claim whose "
+            + "evidence no longer exists is a claim nobody can follow, and deleting the reference "
+            + "would leave it reading as closed on something.");
+    }
+
+    /// <summary>
+    /// The rule over the spans it has to tell apart, because over `ISA.md` the fact above only
+    /// proves that nothing is broken today — it cannot show which of the file's backticked spans
+    /// were read as paths, and a rule that had quietly stopped recognising one would pass it. Every
+    /// line here is a span this file carries or carried.
+    /// </summary>
+    [Fact]
+    public void A_path_is_told_from_a_name_a_command_and_a_glob()
+    {
+        Paths("`tests/MeetingTranscriber.Isa.Tests`").ShouldBe(["tests/MeetingTranscriber.Isa.Tests"]);
+        Paths("`docs/ui-probe.md`").ShouldBe(["docs/ui-probe.md"]);
+        Paths("`.claude/agents/auditor.md`").ShouldBe(
+            [".claude/agents/auditor.md"], "a root whose name opens with a dot is a root.");
+        Paths("`tests/`").ShouldBe(["tests/"], "a directory is a pointer like any other.");
+        Paths("`tests/fixtures/deepgram/two-channel-one-voice-me.json`").ShouldBe(
+            ["tests/fixtures/deepgram/two-channel-one-voice-me.json"]);
+        Paths("`src/MeetingTranscriber.Gone/Moved.cs`").ShouldBe(
+            ["src/MeetingTranscriber.Gone/Moved.cs"],
+            "a span is read as a path on its shape alone, whether or not it resolves. Which of the "
+            + "two it is, is the next assertion, and no file `ISA.md` cites is used for either — "
+            + "pinning a real path as absent would go red the day somebody creates it.");
+
+        Resolves("src/MeetingTranscriber.Gone/Moved.cs").ShouldBeFalse(
+            "and this is the red half: a pointer read as a path that the tree has not got.");
+
+        Paths("`Turns.Group`").ShouldBeEmpty(
+            "a member name is not a path, and reddening on this one is how a gate gets deleted by "
+            + "the first person it stops.");
+        Paths("`ISA.md`").ShouldBeEmpty(
+            "a bare file name says which file and never which one of them, so it is a name.");
+        Paths("`ch1:speaker_0`").ShouldBeEmpty("a speaker label.");
+        Paths("`multichannel`").ShouldBeEmpty("a Deepgram option.");
+        Paths("`git grep -l \"class TemporaryCorpus\" -- tests/`").ShouldBeEmpty(
+            "a recorded run holding a path is evidence of the run, not a pointer at the path.");
+        Paths("`mklink /J`").ShouldBeEmpty("a command whose switch reads as a path.");
+        Paths("`tests/**/*.cs`").ShouldBeEmpty(
+            "a glob names a set, and whether a set has members is a different question.");
+        Paths("`meetings/<id>/manifest.json`").ShouldBeEmpty(
+            "a shape standing for a folder in somebody's corpus, which no checkout has.");
+        Paths("`MeetingTranscriber.Testing/DeepgramFixtures.cs`").ShouldBeEmpty(
+            "what a `git grep` inside `tests/` printed, so resolving it would mean guessing the "
+            + "directory it was run from.");
+        Paths("`https://api.deepgram.com/v1/listen`").ShouldBeEmpty("a URL is not this tree.");
+        Paths("`press <the meeting> wait BackButton`").ShouldBeEmpty("a UI probe walk.");
+    }
+
+    /// <summary>Whether one of the file's pointers is a file or a folder this repository has.</summary>
+    private static bool Resolves(string path)
+    {
+        var full = Path.Combine(IsaDocument.Root().FullName, path);
+
+        return File.Exists(full) || Directory.Exists(full);
+    }
+
+    /// <summary>What the path rule reads out of one line, so a case is one line.</summary>
+    private static IReadOnlyList<string> Paths(string line) => IsaDocument.Of(line).Paths;
+
+    /// <summary>
     /// A document holding nothing but claims, in one feature block so they parse as claims. The
     /// gates above read claim lines and nothing else, so a case is claim lines and nothing else.
     /// </summary>

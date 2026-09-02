@@ -106,8 +106,13 @@ What a record is made of is the weakest reason available and is the one to distr
 choice rather than a fact about the screen, so it moves a screen's rules between projects on a
 changed parameter type, and it says nothing at all when every parameter is a primitive — which is
 exactly the case that went wrong. What a screen is about does not move. `Presentation` is never the
-answer either, and not for what it references: it is the catalogue and the rule that picks a
-language, so nothing in it is ever a subject a screen asks about. It is what a screen says.
+answer either, and not for what it references: it holds what a screen **says** — the catalogue, the
+rule that picks a language, the line a screen keeps instead of a string. A record of what a screen
+decides is a different kind of thing and goes with its subject. The earlier version of this
+paragraph said the stronger thing, that nothing in `Presentation` is ever a subject a screen asks
+about, and the language picker falsifies it: `LanguageChoice` and `UiLanguages` are exactly what
+that picker is about. The positive reason is the one that decides, and it decides those three cases
+without the universal.
 
 `Processing` references `Infrastructure`, and only that way round: rendering reads the paid
 response out of the corpus and puts the derivatives back, so it sits above storage. The opposite

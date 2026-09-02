@@ -9,6 +9,65 @@ using MeetingTranscriber.Infrastructure.Storage;
 namespace MeetingTranscriber.Recording;
 
 /// <summary>
+/// Why a recording nobody got to stop cannot be made into the meeting it was of.
+/// </summary>
+/// <remarks>
+/// Closed, and one member per way the corpus and the folder can disagree about a recording. It is
+/// an enum and not a sentence because the answer reaches a person: what a screen says about each of
+/// these is in `UiTexts` in both languages, and a member added here with no words for it is caught
+/// by `MeetingCardTextTests` before it can reach anybody as another one.
+/// </remarks>
+public enum WhyNotAMeeting
+{
+    /// <summary>Neither the folder's card nor its own name says which meeting this is.</summary>
+    NothingSaysWhichMeetingItIs,
+
+    /// <summary>Its card is torn, so what the recording says about itself cannot be read.</summary>
+    WhatItSaysAboutItselfCannotBeRead,
+
+    /// <summary>It is sitting in a folder that is not the one its meeting's blocks belong in.</summary>
+    ItIsInAnotherMeetingsFolder,
+
+    /// <summary>The recording names a meeting this corpus does not hold.</summary>
+    ThisCorpusHasNoSuchMeeting,
+
+    /// <summary>Fewer sources are on disk than a meeting is made of.</summary>
+    NotAllOfItsSourcesAreHere,
+}
+
+/// <summary>
+/// Why a recording cannot become the meeting it was of, and the facts the reason turns on.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The two travel together and that is the whole point of the type. The reason alone would leave
+/// whoever says it in words to go back to the recording for the folder name and the meeting id, and
+/// then nothing anywhere would hold the values it fetched to the reason it fetched them for: two
+/// values in the wrong order is a row telling somebody their recording is in a folder named after a
+/// meeting, and no test on either side of that seam can see it. Read once, here, beside the branch
+/// that chose the reason.
+/// </para>
+/// <para>
+/// <see cref="Says"/> is data and never words — a folder name, a meeting id, a count. What the
+/// reason reads as is `UiTexts`', in both languages, and nothing in this project has an opinion
+/// about it. That is also the rule for what may go in here: an English sentence this repository
+/// wrote would be a translated frame with an untranslated clause inside it, which is the defect
+/// this type was made to end.
+/// </para>
+/// </remarks>
+/// <param name="Why">Which of the five it is.</param>
+/// <param name="Says">The values that reason's sentence leaves room for, in the order it takes them.</param>
+public sealed record NotAMeeting(WhyNotAMeeting Why, IReadOnlyList<object?> Says)
+{
+    /// <summary>
+    /// The reason named, with the facts behind it — machine words, for an exception message and for
+    /// the developer listing the CLI prints. Never a sentence somebody reads on a screen.
+    /// </summary>
+    public override string ToString() =>
+        Says.Count == 0 ? Why.ToString() : $"{Why}: {string.Join(", ", Says)}";
+}
+
+/// <summary>
 /// One recording a corpus is holding that nobody got to stop, and everything somebody needs in
 /// order to say what happens to it.
 /// </summary>
@@ -67,22 +126,36 @@ public sealed record WaitingRecording(UnfinishedRecording Spooled, Guid? Meeting
     /// other two would be a sentence about a meeting still happening that is not true of it.
     /// <see cref="NothingToDecideYet"/> is that case, and what keeps a caller who asked only this
     /// one from acting on the answer is that the engine refuses all three outcomes itself.
+    /// <para>
+    /// The reason and not the sentence. This used to hand back English prose, which a screen then
+    /// printed inside a catalogued frame — so somebody reading in Spanish got "No puede volverse
+    /// una reunión: this corpus has no meeting …", half of it in a language they did not choose.
+    /// What comes back now is a closed reason and the data it turns on, and the words for it are in
+    /// `UiTexts` beside every other sentence a person reads.
+    /// </para>
+    /// <para>
+    /// The torn card is the one that carries nothing. What a spool throws when its card will not
+    /// read is a sentence this repository wrote, so putting it on the row would be the same defect
+    /// one level down — and the answer the row offers is the same whatever the card says. It is on
+    /// the diagnosis surfaces instead, which is where `TheBlocksOfThisOneWouldNotRead` already puts
+    /// the same call.
+    /// </para>
     /// </remarks>
-    public string? Unrecoverable
+    public NotAMeeting? Unrecoverable
     {
         get
         {
             if (MeetingId is not Guid meeting)
             {
-                return "nothing here says which meeting it is";
+                return new NotAMeeting(WhyNotAMeeting.NothingSaysWhichMeetingItIs, []);
             }
 
             // The card is read again by the finish, so a folder whose card is torn cannot become a
             // meeting however much audio is in it. Offering it and then throwing would be this
             // list saying a choice was open and the choice failing on the sentence it already had.
-            if (Spooled.Unreadable is { } torn)
+            if (Spooled.Unreadable is not null)
             {
-                return $"what it says about itself cannot be read: {torn}";
+                return new NotAMeeting(WhyNotAMeeting.WhatItSaysAboutItselfCannotBeRead, []);
             }
 
             // A recording is finished into the folder its meeting's blocks belong in, which is the
@@ -90,19 +163,20 @@ public sealed record WaitingRecording(UnfinishedRecording Spooled, Guid? Meeting
             // report naming one folder and the finish reading another.
             if (!string.Equals(Folder.Name, meeting.ToString(), StringComparison.OrdinalIgnoreCase))
             {
-                return $"it is in '{Folder.Name}', and meeting {meeting}'s recording belongs in a "
-                    + "folder of that meeting's own name";
+                return new NotAMeeting(
+                    WhyNotAMeeting.ItIsInAnotherMeetingsFolder, [Folder.Name, meeting]);
             }
 
             if (Meeting is null)
             {
-                return $"this corpus has no meeting {meeting}";
+                return new NotAMeeting(WhyNotAMeeting.ThisCorpusHasNoSuchMeeting, [meeting]);
             }
 
             return Spooled.Sources.Count == CapturedAudio.ChannelCount
                 ? null
-                : $"only {Spooled.Sources.Count} of its {CapturedAudio.ChannelCount} sources is "
-                    + "here, and a meeting is both";
+                : new NotAMeeting(
+                    WhyNotAMeeting.NotAllOfItsSourcesAreHere,
+                    [Spooled.Sources.Count, CapturedAudio.ChannelCount]);
         }
     }
 
@@ -251,12 +325,14 @@ public static class WaitingRecordings
         // read half a meeting.
         recording.Spooled.EnsureThereIsSomethingToDecide();
 
-        if (recording.Unrecoverable is not null)
+        // The reason named, with its facts after it — `NotAMeeting.ToString`'s, which is machine
+        // words for whoever is debugging. What a person reads is `UiTexts`' and is not built here.
+        if (recording.Unrecoverable is { } reason)
         {
             throw new RecordingException(
-                $"'{recording.Folder.FullName}' cannot be made into a meeting: "
-                + $"{recording.Unrecoverable}. Its blocks are untouched, and taking them out to a "
-                + "folder or throwing them away are still open.");
+                $"'{recording.Folder.FullName}' cannot be made into a meeting: {reason}. Its "
+                + "blocks are untouched, and taking them out to a folder or throwing them away "
+                + "are still open.");
         }
 
         var card = recording.Spooled.Card;

@@ -281,6 +281,9 @@ public static class RecordingCommands
             return "keep, export or discard";
         }
 
+        // The reason named, with its facts after it — `NotAMeeting.ToString`'s, for the reason
+        // `WaitingRecordings.Recover`'s throw gives. This listing is read while debugging, and the
+        // sentence somebody reads on a screen is `UiTexts`' and is written in one place.
         return recording.MeetingId is null
             ? $"'recover --in {recording.Folder.FullName}' — this command names a recording by its "
                 + $"meeting, and {why}"

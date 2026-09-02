@@ -1,4 +1,4 @@
-using MeetingTranscriber.Audio;
+﻿using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
@@ -141,7 +141,8 @@ public sealed class WaitingRowsTests : IDisposable
 
         // Said, and said as what was observed before what it means, so a row can carry the reason
         // instead of a person pressing to find it out.
-        row.Recording.Unrecoverable.ShouldNotBeNull().ShouldContain(orphan.ToString());
+        row.Recording.Unrecoverable.ShouldNotBeNull().Why
+            .ShouldBe(WhyNotAMeeting.ThisCorpusHasNoSuchMeeting);
     }
 
     /// <summary>
