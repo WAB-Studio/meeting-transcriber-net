@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="MeetingTranscriber.App.ChannelMeter"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MeetingTranscriber.App"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- The one component that is this application's own, drawn from `docs/design.md` §The meter.
+         One control and not one per channel: two meters is the contract — channel 0 is the others
+         and channel 1 is you — and anything the same on two screens is one component before it is
+         on the second one. It is on five of the eighteen artboards.
+
+         It shows now and never a history. A strip of the last few seconds answers for the process
+         before this one, which is the wrong answer at the moment it is read.
+
+         No literal and no value chosen on the screen: every colour is a brush key and every text is
+         a rank from Olivo. The five numbers that are this component's own anatomy rather than the
+         system's — the bar's 20 high, the scale's 18, the segment's 3 on and 3 off, the peak's 2
+         wide and 4 proud — are in ChannelMeter.xaml.cs beside the code that lays them out, because
+         a token used once is a token that only moves the value somewhere harder to find.
+
+         Square ends, and the four-value radius scale deliberately does not reach here: a quantity
+         drawn as a length is not a card, and a rounded cap on a bar that is twenty pixels tall is a
+         cap that lies about where the level is.
+
+         What it does **not** carry is the three states — being heard, clipping, no signal — and the
+         fourth condition that is not a state, a source that died. Those are words and a dimming
+         that answer *what is wrong with this channel*, which is what cards #101 and #102 are for. A
+         slot here for a caller that does not exist yet would cost more than the line it saved. -->
+
+    <Grid RowSpacing="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Which channel this is, and what it has open. The artboard writes the channel twice —
+             a mono `ch0` chip and then *Los otros* beside it — and the catalogue already carries
+             the two as one entry, "Canal 0 · los otros". One of them is the screen saying the same
+             thing again, so there is one here. -->
+        <Grid Grid.Row="0" ColumnSpacing="9">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                x:Name="WhichChannel"
+                Grid.Column="0"
+                VerticalAlignment="Center"
+                Style="{StaticResource BodyText}"
+                FontWeight="SemiBold" />
+
+            <!-- The device or the program, in whatever its maker called it: data, and so the same
+                 in every language. -->
+            <TextBlock
+                x:Name="Capturing"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource SecondaryTextBrush}"
+                TextTrimming="CharacterEllipsis" />
+        </Grid>
+
+        <StackPanel Grid.Row="1" Spacing="6">
+            <!-- The four layers, bottom to top, all on the same segments. Each is that one set of
+                 segments clipped to its own range and never a rectangle sized to it: a sized layer
+                 re-tiles its own pattern and the segments walk as the level moves.
+
+                 This replaced a ProgressBar, which could not be it: one rounded fill, no hot zone,
+                 no scale and no peak, so nothing on it said whether −16 was close to clipping or
+                 nowhere near it. -->
+            <Grid x:Name="Bar" Height="20" SizeChanged="OnBarResized">
+                <Canvas x:Name="TrackLayer" />
+                <Canvas x:Name="HotZoneLayer" />
+                <Canvas x:Name="LevelLayer" />
+                <Canvas x:Name="ClippedLayer" />
+
+                <!-- The meter's only memory. It stands where the loudest moment was and does not
+                     decay at all, which is why it needs no rate where the level needs one. -->
+                <Rectangle
+                    x:Name="RetainedPeak"
+                    Width="2"
+                    Margin="0,-4,0,-4"
+                    HorizontalAlignment="Left"
+                    Fill="{StaticResource PeakBrush}"
+                    Visibility="Collapsed" />
+            </Grid>
+
+            <!-- The zero is always there. Without the scale under it the bars are decoration:
+                 nothing says whether −16 is close to clipping or nowhere near it. Laid out on a
+                 Canvas because each number sits at its own fraction of the bar — 0, 33.3, 66.7, 80
+                 and 100 per cent — and a Grid cannot put one at 66.7. -->
+            <Canvas x:Name="ScaleUnderTheBar" Height="18" SizeChanged="OnScaleResized" />
+        </StackPanel>
+
+        <!-- How loud it is now, and the loudest it has been. Both are numbers that get compared to
+             another one, so both are mono at the data rank — the level in tinta because it is what
+             the row is about, the peak in pico because it is the peak.
+
+             The artboard sets the level at 14/18 mono 500, which is an eighth rank: the ramp has
+             seven and its only mono entries are the stopwatch at 62/72 and data at 11/18.
+             `docs/design.md` §The artboards and this page says the page is what gets built, and it
+             answers this case itself — a second line that is quieter is quieter by colour, and
+             there is no rank between Body and Data to reach for. So the two are one rank in two
+             inks. The artboard is what gets corrected. -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                x:Name="Level"
+                Grid.Column="0"
+                Style="{StaticResource DataText}"
+                Foreground="{StaticResource InkBrush}" />
+
+            <TextBlock
+                x:Name="Peak"
+                Grid.Column="1"
+                Style="{StaticResource DataText}"
+                Foreground="{StaticResource PeakBrush}" />
+        </Grid>
+    </Grid>
+</UserControl>

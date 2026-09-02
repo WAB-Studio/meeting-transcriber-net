@@ -13,11 +13,15 @@
          so `Bindings.Update()` after a language change is the whole of what re-reads this screen.
          MeetingTranscriber.App.Tests fails the build if a literal creeps back in. -->
 
-    <Window.SystemBackdrop>
-        <MicaBackdrop />
-    </Window.SystemBackdrop>
+    <!-- Papel and opaque, like every other window: never mica or acrylic. This screen is
+         scaffolding rather than one of the eighteen, and it is drawn from Olivo anyway — a screen
+         held to a different vocabulary because it is temporary is a screen that teaches the
+         vocabulary is optional. -->
 
-    <Grid Padding="24" RowSpacing="16">
+    <Grid
+        Background="{StaticResource PaperBrush}"
+        Padding="{StaticResource ScreenPadding}"
+        RowSpacing="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -26,19 +30,20 @@
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Spacing="4">
-            <TextBlock Text="{x:Bind In(loc:UiTexts.PackagingChecks)}" Style="{StaticResource TitleTextBlockStyle}" />
+            <TextBlock Text="{x:Bind In(loc:UiTexts.PackagingChecks)}" Style="{StaticResource ScreenTitleText}" />
             <TextBlock
                 Text="{x:Bind In(loc:UiTexts.PackagingChecksAreScaffolding)}"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Opacity="0.7" />
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource SecondaryTextBrush}" />
         </StackPanel>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
-            <Button x:Name="EnvironmentButton" Click="OnRunEnvironmentProbe" Content="{x:Bind In(loc:UiTexts.ChildEnvironmentCheck)}" />
-            <Button x:Name="FileSystemButton" Click="OnRunFileSystemProbe" Content="{x:Bind In(loc:UiTexts.WritePathCheck)}" />
-            <Button x:Name="SaveButton" Click="OnSaveReport" Content="{x:Bind In(loc:UiTexts.SaveReport)}" />
+            <Button x:Name="EnvironmentButton" Style="{StaticResource NormalButtonOnPaper}" Click="OnRunEnvironmentProbe" Content="{x:Bind In(loc:UiTexts.ChildEnvironmentCheck)}" />
+            <Button x:Name="FileSystemButton" Style="{StaticResource NormalButtonOnPaper}" Click="OnRunFileSystemProbe" Content="{x:Bind In(loc:UiTexts.WritePathCheck)}" />
+            <Button x:Name="SaveButton" Style="{StaticResource NormalButtonOnPaper}" Click="OnSaveReport" Content="{x:Bind In(loc:UiTexts.SaveReport)}" />
             <ComboBox
                 x:Name="LanguagePicker"
+                Style="{StaticResource DropDown}"
                 Header="{x:Bind In(loc:UiTexts.Language)}"
                 SelectionChanged="OnLanguageChosen" />
         </StackPanel>
@@ -46,8 +51,8 @@
         <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Auto">
             <TextBlock
                 x:Name="OutputText"
-                FontFamily="Cascadia Mono, Consolas"
-                FontSize="12"
+                Style="{StaticResource DataText}"
+                Foreground="{StaticResource InkBrush}"
                 IsTextSelectionEnabled="True"
                 TextWrapping="NoWrap" />
         </ScrollViewer>
@@ -55,7 +60,7 @@
         <TextBlock
             Grid.Row="3"
             x:Name="StatusText"
-            Style="{StaticResource CaptionTextBlockStyle}"
-            Opacity="0.7" />
+            Style="{StaticResource BodyText}"
+            Foreground="{StaticResource SecondaryTextBrush}" />
     </Grid>
 </Window>

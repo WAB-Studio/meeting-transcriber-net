@@ -28,6 +28,36 @@
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
   </ItemGroup>
 
+  <!-- The two faces, inside the package. `docs/design.md` says every text on every screen is set
+       in Space Grotesk and every number that gets compared to another one in JetBrains Mono, so a
+       machine that has this application has both of them and no screen falls back to anything.
+
+       Both are under the SIL Open Font License 1.1, which permits bundling and redistributing them
+       with software provided each copy carries the copyright notice and the licence — so the two
+       `OFL.txt` files ship beside the fonts and are Content for that reason and not by accident.
+       Neither font declares a Reserved Font Name and neither is modified here; only the file names
+       were shortened, because the published names carry the `[wght]` of a variable axis and square
+       brackets are a wildcard to MSBuild's own globber.
+
+       Variable rather than one file per weight: Space Grotesk publishes no static SemiBold and
+       three of the seven ranks are 600. -->
+  <!--
+    `CopyToOutputDirectory` and not `Content` alone, which is the difference between a font that is
+    in the package and a font that loads. Content on its own indexes the file into `resources.pri`
+    and puts nothing on disk: the layout this project builds has no `Assets` folder in it at all,
+    and `ms-appx:///Assets/Fonts/...` has to reach a real file for DirectWrite to open one. The
+    failure is silent at every level — the build says nothing, the resource resolves, and the screen
+    renders whole in Segoe UI — so it was found by photographing the window and not by reading
+    anything. The logos above have the same shape and get away with it because a dev layout's tiles
+    are nobody's evidence.
+  -->
+  <ItemGroup>
+    <Content Include="Assets\Fonts\SpaceGrotesk.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\JetBrainsMono.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\SpaceGrotesk-OFL.txt" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\JetBrainsMono-OFL.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
   </ItemGroup>
