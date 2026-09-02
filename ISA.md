@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 133/205
+progress: 132/205
 updated: 2026-09-02
 ---
 
@@ -106,7 +106,7 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-54: Exactly one person is the user of this install.
 - [x] ISC-55: Anti: a speaker somebody resolved is never overwritten by what the recording settled.
 - [x] ISC-127: Anti: nothing one extraction produced shares a position with another of its kind, so what somebody pinned to a decision, an action or an open question cannot come to mean another one.
-- [x] ISC-174: Anti: a meeting whose turns the corpus refuses partway through producing them again is left holding the ones it already had, never none at all.
+- [ ] ISC-174: Anti: a meeting whose turns the corpus refuses partway through producing them again is left holding the ones it already had, never none at all.
 
 ### F3 · Audio engine
 Why: two sources become one timeline a person can trust. This is the largest technical risk in
@@ -596,7 +596,7 @@ Board: 7 · Distribución y backup
 - ISC-35 — `CorpusRebuildTests.Deleting_every_derived_row_and_projecting_again_leaves_every_other_table_as_it_was` green 2026-08-07, which holds the classifications and the speaker assignments a person edited as well as the rows nothing touched
 - ISC-36 — `CorpusRebuildTests.Rebuilding_produces_the_same_projections_and_the_same_files` and `MeetingRendererTests.Rendering_again_leaves_the_sources_alone_and_produces_the_same_files` green 2026-08-07
 - ISC-37 — `CorpusRebuildTests.A_claim_cannot_cite_a_turn_the_meeting_never_had` green 2026-08-07. That half only: the deleted-out-from-under-it half held for a rebuild that finishes and not for one refused partway, where the turns went and the claims stayed. `.A_meeting_refused_with_cited_turns_costs_that_meeting_and_not_the_run` (`tests/MeetingTranscriber.Processing.Tests`) green 2026-09-02 is what reaches it, red that day against the projection deleting before it knew the new turns would save
-- ISC-38 — `CorpusRebuildTests.A_claim_still_points_at_the_turn_it_came_from` green 2026-08-07
+- ISC-38 — `CorpusRebuildTests.A_claim_still_points_at_the_turn_it_came_from` green 2026-08-07, over a rebuild that reproduces every position a claim cites. `.A_response_that_no_longer_reaches_a_cited_turn_costs_that_meeting_and_not_the_run` (`tests/MeetingTranscriber.Processing.Tests`) green 2026-09-02 is the half where it cannot, a response swapped for a shorter one: red that day at the corpus-wide commit, which took the whole run and the report naming the meeting rather than costing that meeting
 - ISC-39 — `DurableWriteTests.A_source_is_never_written_over` green 2026-08-07
 - ISC-40 — `DurableWriteTests.A_derivative_is_replaced_and_stays_one_row` green 2026-08-07, and `ArtifactsTests.Which_kinds_a_second_write_may_replace` for which kinds those are
 - ISC-41 — `DurableWriteTests.A_write_cut_while_its_content_is_produced_leaves_nothing_at_all` green 2026-08-07
@@ -687,4 +687,3 @@ Board: 7 · Distribución y backup
 - ISC-170 — the UI probe on the packaged build 2026-09-01, the application in English: `see` as the first instruction after it was started and before anything was pressed. One window, and its tree carries both halves — the microphone and source pickers, what will be spoken and record above, and under them the meetings header, the count and a recorded meeting's row with the press its stage offers. A list arriving in a window of its own would have stopped that walk rather than passed it, for the reason `docs/ui-probe.md` gives under `Which window is the screen`
 - ISC-171 — the UI probe on the packaged build 2026-09-01, the application in English: `see docked press OpennessButton wait OpennessButton see whole press OpennessButton wait OpennessButton see docked-again`. Raised, the recorder half is out of the tree rather than scrolled off it — the pickers, record, pause, carry on and stop gone — while the corpus line, the report, the status line and the packaging button stay, for the reason `MainWindow.xaml` gives, which is why the claim is the recorder's room and not the window. The control that raised it is the same element in the same place, reading `Bring the list back down` where it read `Open the whole list`, and the third tree is the first line for line apart from when it was read
 - ISC-158.3 — `SavingTheMeetingTests.What_is_filed_is_the_same_whether_or_not_anybody_is_watching` (`tests/MeetingTranscriber.Recording.Tests`) and `SavingCardTests.The_application_and_the_prompt_stop_a_meeting_through_the_same_call` (`tests/MeetingTranscriber.App.Tests`) green 2026-09-01: two meetings out of identical spools finished at the same instant, one save watched and one not, equal on the audio's hash and size, the length, the run's end and every stored fact but their ids — and both entry points stopping through the recording's own call, with neither filing any part of a meeting itself. Red 2026-09-01 twice: with the window's `recording.Stop(` replaced, and with `MeetingRecordings.Finish` written into its stop handler. What no probe reaches is a window really recording one, which needs two devices and a meeting somebody sat through
-- ISC-174 — `CorpusRebuildTests.A_meeting_refused_as_it_saves_keeps_the_turns_it_already_had`, `.A_meeting_refused_with_cited_turns_costs_that_meeting_and_not_the_run` (`tests/MeetingTranscriber.Processing.Tests`) and `MeetingRendererTests.A_render_outside_a_transaction_leaves_a_refused_meeting_the_turns_it_had` green 2026-09-02, all three red that day against the projection deleting a meeting's turns before it knew the new ones would save: every turn of that meeting to none. The refusal induced is the corpus refusing a confidence it will not store, which is the one that arrives from inside the save; a refusal reaching that point from the disk is not something the repo can induce

@@ -40,9 +40,24 @@ public sealed record RebuildReport(
 /// deleted nor touched. That is possible because a citation anchors on the meeting and the turn's
 /// position rather than on a turn's id, so projecting the same response again lands every claim
 /// back on the turn it came from — and it is <em>checked</em> because the whole rebuild runs in one
-/// transaction with foreign keys deferred to its commit. A rebuild that moved an ordinal therefore
-/// fails at the end instead of quietly rewriting what every stored claim points at, which is the
-/// one failure this operation could have that nothing else would notice.
+/// transaction with foreign keys deferred to its commit. A rebuild that dropped a cited position
+/// therefore fails instead of quietly leaving every stored claim over that meeting pointing at
+/// nothing.
+/// </para>
+/// <para>
+/// Where it fails is the renderer and not that commit, and the difference is the whole run.
+/// Deferring the check to a single commit is what makes it a check at all, but the commit is one
+/// event outside every guard below: a meeting whose response no longer reaches a cited position
+/// would fail there, taking every meeting the run had rebuilt and the report naming the one it
+/// could not — absorbing a refusal defeated through the one door left open.
+/// <c>MeetingRenderer.RefuseStrandedClaims</c> asks the same question of one meeting before it
+/// deletes anything, so the refusal arrives inside the guard, costs that meeting, and leaves the
+/// deferred commit with nothing left to find. What neither reaches is a response that still lands
+/// on every cited position with other words on it: that re-anchors every claim of the meeting, and
+/// no foreign key, no deferral and no <c>CorpusIntegrity.Check</c> can see it — see
+/// <c>MeetingRenderer.RefuseStrandedClaims</c> for what closing it would take. That, and anything
+/// else <c>rebuild.Commit()</c> or <see cref="Infrastructure.Storage.CorpusIntegrity"/>'s index
+/// rebuild can refuse, still costs the run rather than a meeting, because both sit after the loop.
 /// </para>
 /// <para>
 /// Summaries, decisions, actions and open questions are left where they are rather than
@@ -213,7 +228,8 @@ public static class CorpusRebuild
     /// files answer differently — <c>CorpusImporter.Commit</c> prints one level down and
     /// <see cref="OwedRenders"/> prints the head — and it wins because either of those drops the
     /// sentence that names the meeting or the sentence that names the cause, depending on which
-    /// refusal arrived. Reaching one spelling across the three is a card of its own.
+    /// refusal arrived. Reaching one spelling across the three is its own piece of work, and no card
+    /// on the board carries it.
     /// </remarks>
     private static string Why(Exception thrown)
     {

@@ -523,6 +523,64 @@ public class CorpusRebuildTests
     }
 
     /// <summary>
+    /// A meeting whose response no longer reaches the position its claim cites costs that meeting
+    /// and not the run.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The refusal that used to arrive at the corpus-wide commit, which is the one place a rebuild
+    /// has no guard around. The deferral is what lets every meeting's turns be deleted and put back
+    /// at all, and the price of deferring is that a citation left pointing at nothing is not
+    /// discovered until the commit — outside the loop, after every meeting has been rebuilt and the
+    /// report written. So one meeting whose response had changed underneath it took all of them: the
+    /// run threw, nothing was committed, and the line naming the meeting to look at went with it.
+    /// </para>
+    /// <para>
+    /// The meeting is given a response that is real and readable and simply not the one its claims
+    /// were made from — a shorter one, whose projection stops before the position the claim
+    /// cites. That is the folder half restored from somewhere else, or a re-transcription, and it is
+    /// the state <c>MeetingRenderer</c> now refuses before it deletes anything rather than after it
+    /// has saved everything.
+    /// </para>
+    /// <para>
+    /// A cited meeting behind it too, because the promise is about the run and not only about the
+    /// refused meeting: it is rebuilt, its claim lands back on the words it came from, and the
+    /// commit that used to be where all of this went wrong is the one that carries it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_response_that_no_longer_reaches_a_cited_turn_costs_that_meeting_and_not_the_run()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var losing = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelShort, When);
+        var behind = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelOneVoiceMe, Later(1));
+        CorpusRebuild.Run(context, When);
+
+        var quoted = ClaimedOnItsLastTurn(context, losing);
+        var quotedBehind = Claimed(context, behind);
+        var had = Turns(context, losing);
+        Refiled(context, corpus.Root, losing, Copied(DeepgramFixtures.TwoChannelOneVoiceMe));
+
+        // What the swap is worth saying out loud: the meeting behind it was rebuilt from that same
+        // response, so its turn count is what this one is about to come to — and the position its
+        // claim cites is the last of the turns it has now, which is past the end of them.
+        had.Count.ShouldBeGreaterThan(Turns(context, behind).Count);
+
+        var report = CorpusRebuild.Run(context, Later(2));
+
+        report.Meetings.ShouldBe(1);
+        var line = report.CouldNotRebuild.ShouldHaveSingleItem();
+        line.ShouldContain(losing.ToString());
+        line.ShouldContain("citing nothing");
+
+        Turns(context, losing).ShouldBe(had);
+        Files(context, losing).ShouldBe(Rebuilt, ignoreOrder: true);
+        Resolved(context, losing).ShouldBe(quoted);
+        Resolved(context, behind).ShouldBe(quotedBehind);
+    }
+
+    /// <summary>
     /// A meeting refused earlier in the run leaves the deferral standing for the meetings behind
     /// it, whose turns are cited by claims and cannot be replaced without it.
     /// </summary>
@@ -827,39 +885,11 @@ public class CorpusRebuildTests
             stream.Write(Encoding.UTF8.GetBytes(response.Replace(@"""speaker"":0", @"""speaker"":-1", StringComparison.Ordinal)));
         };
 
-    /// <summary>
-    /// A fixture whose confidences the corpus will not store. Every timing, channel, speaker and
-    /// word it was sent with is left alone, and the one edit is the only number on this path that
-    /// nothing checks until SQLite does.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The parser carries a confidence exactly as sent and refuses nothing over it, deliberately —
-    /// it is the provider's own number about one stretch of speech, and a whole meeting is not
-    /// worth refusing over it. <c>ck_utterances_confidence</c> disagrees: the column it lands in is
-    /// bounded to zero through one. So a response the parser reads happily is a row the corpus
-    /// refuses, and the refusal arrives from inside <c>MeetingRenderer.Project</c>'s own
-    /// <c>SaveChanges</c> with the meeting's turns already staged — which is the state no other
-    /// fixture here can reach, because every one of them is refused before a row is built at all.
-    /// </para>
-    /// <para>
-    /// Every utterance rather than one: <c>Turns.Group</c> averages a turn's confidence over the
-    /// segments it merges, weighted by their lengths, so a single out-of-range segment could come
-    /// back inside the bound and prove nothing.
-    /// </para>
-    /// </remarks>
+    /// <summary>A fixture whose confidences the corpus will not store.</summary>
     private static Action<Stream> WithConfidenceOffTheScale(
         string fixture = DeepgramFixtures.TwoChannelShort) =>
-        stream =>
-        {
-            // The confidence of an utterance and not of a word or of a channel's transcript: only
-            // an utterance carries the channel it was on, and only its confidence is read.
-            var reported = new Regex(@"""confidence"":[0-9.]+,""channel"":");
-            var response = File.ReadAllText(DeepgramFixtures.PathOf(fixture));
-            reported.IsMatch(response).ShouldBeTrue();
-            stream.Write(Encoding.UTF8.GetBytes(
-                reported.Replace(response, @"""confidence"":1.5,""channel"":")));
-        };
+        stream => stream.Write(Encoding.UTF8.GetBytes(CorruptedResponses.WithConfidenceOffTheScale(
+            File.ReadAllText(DeepgramFixtures.PathOf(fixture)))));
 
     /// <summary>
     /// A claim over one of this meeting's turns, and the words it was made from.
@@ -868,16 +898,33 @@ public class CorpusRebuildTests
     /// The fourth turn rather than the first, so a rebuild that shifted every ordinal by one would
     /// still be caught by <see cref="Resolved"/> reading different words back.
     /// </remarks>
-    private static string Claimed(CorpusDbContext context, Guid meeting)
-    {
-        var turn = context.Utterances
+    private static string Claimed(CorpusDbContext context, Guid meeting) => Claiming(
+        context,
+        context.Utterances
             .Where(row => row.MeetingId == meeting)
             .OrderBy(row => row.Ordinal)
             .Skip(3)
-            .First();
+            .First());
 
-        Claim(context, meeting, Extracted(context, meeting), turn);
-        return turn.Text;
+    /// <summary>
+    /// A claim over the last turn this meeting has, and the words it was made from.
+    /// </summary>
+    /// <remarks>
+    /// The one position a shorter response cannot produce again, which is what a meeting whose
+    /// response is no longer the one its claims came from looks like from the outside.
+    /// </remarks>
+    private static string ClaimedOnItsLastTurn(CorpusDbContext context, Guid meeting) => Claiming(
+        context,
+        context.Utterances
+            .Where(row => row.MeetingId == meeting)
+            .OrderByDescending(row => row.Ordinal)
+            .First());
+
+    /// <summary>An accepted extraction with a claim over that turn, and the words the claim cites.</summary>
+    private static string Claiming(CorpusDbContext context, Utterance cited)
+    {
+        Claim(context, cited.MeetingId, Extracted(context, cited.MeetingId), cited);
+        return cited.Text;
     }
 
     /// <summary>The words the turn a meeting's claim cites is holding now.</summary>
