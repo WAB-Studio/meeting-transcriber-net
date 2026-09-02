@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 140/207
+progress: 139/207
 updated: 2026-09-02
 ---
 
@@ -153,7 +153,7 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-125: Anti: a recording waiting in that folder is removed by nothing but somebody choosing to remove it.
 - [x] ISC-126: Anti: a meeting that is still being recorded is never offered as one to decide about.
 - [ ] ISC-126.1: Anti: a meeting whose save is still running is never offered as one to decide about.
-- [x] ISC-126.2: A save the process died in the middle of leaves its meeting decidable again, rather than held out of reach by a mark nothing will lift.
+- [ ] ISC-126.2: A save the process died in the middle of leaves its meeting decidable again, rather than held out of reach by a mark nothing will lift.
 - [x] ISC-128: A source that will not stop is given up on at a deadline, rather than waited on for as long as it takes.
 - [ ] ISC-129: A source that would not stop is named when a recording stops, together with what was kept of it.
 - [ ] ISC-130: A source that would not stop does not keep the recording's other source from being let go of.
@@ -555,6 +555,23 @@ Board: 7 · Distribución y backup
   Channel 0 opens no playback stream and names no endpoint either way it is obtained, so what
   another application does with the speakers cannot cost a meeting a stretch of itself.
 
+- **conjecture** — Killing the application while a save runs is the probe for the claim that no
+  mark left behind holds a meeting out of reach: the process dies with whatever says the save is
+  under way, and the next start either offers that meeting or does not.
+- **refuted-by** — The walk offered it and Keep filed a meeting of `0:06:00`, and nothing had been
+  held. What says a save is running is an id the window hands the list and clears in a `finally`;
+  a crash takes it with the process, so there was never a mark for a next start to fail to lift.
+  The standing the run offered as its discriminator is reached only from a block a read refused,
+  and a pour reads blocks rather than writing them, so that branch was not live either.
+- **learned** — A probe that kills the process and finds the good outcome says nothing about a
+  claim whose whole bet is that the bad outcome cannot happen, while the mechanism that would
+  produce it does not exist. Both branches answer the same and the run cannot tell them apart.
+  What it did measure is worth keeping: Keep works after a save was interrupted, the meeting comes
+  back on the next start, and its audio is whole up to the kill.
+- **criterion-now** — A claim about a mark being lifted closes only against a build that writes
+  one, on a run where the crash strands a real mark and the next start clears it. Until then the
+  claim stays open however the walk comes out, and card #86, which owns the mark, owns both halves.
+
 ## Verification
 - ISC-163 — `DeviceEnquiryTests` and `.Both_questions_this_application_asks_about_devices_go_through_the_deadline` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-20. Red 2026-08-20 with the question run on the caller's thread instead: the six-test run was killed at 120 s with one of them still going at 1 m 57 s, where bounded they take 21 s. Red again with the memory ignored, where `AudioDevices.Microphones()` enumerated this machine's real endpoints and answered. That a third question added beside the two would be inside the ask, and why `AudioDevices.Open` and `AudioDevices.EngineFormat` are not, is read off `AudioDevices`
 - ISC-162 — `DeviceEnquiryTests.A_question_that_has_not_come_back_is_not_put_to_the_machine_again` and `.Two_lookers_that_arrive_together_pay_the_deadline_once_each_and_no_more` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-20. Red 2026-08-20 with the memory ignored: 4 of the 7 failed and the second look reached the machine and waited five seconds of its own. Narrowed on 2026-08-20 from every question about this machine's devices to the one asked; `git log -- ISA.md` holds what it used to say, and ISC-164 is the half that says why. What no probe reaches is two callers of one question at once, because the product has none
@@ -694,6 +711,5 @@ Board: 7 · Distribución y backup
 - ISC-158.10 — the same walk and ISC-158.7's. A meeting being recorded and one being saved show a size on the list and never a length — `2026-09-02 02:13 · 265.5 MB` — and the saving card carries none; the first tree after the save reads `2026-09-02 02:13 · 0:06:00`, the figure the report gives. ISC-79's run is the sharper case: a crashed recording read `0:00:50 · 37.0 MB` and became a meeting of `0:00:50`. Scoped to the screen; `status` and the rendered files are not probed here
 - ISC-158.7 — the UI probe on the packaged build 2026-09-02, a six-minute meeting, 265 MB of spool: `press StopButton see e1 see e2 see e3 sleep 1 see e4 sleep 1 see e5 sleep 2 see e6 sleep 2 see e7 sleep 3 see e8 sleep 5 see e9 sleep 10 see e10`. The recorder card is out of the tree and `Saving the meeting` in it on the first five, 0.1 to 2.5 seconds after the press returned; the sixth, at 4.6 seconds, carries `recorded: 0:06:00`. Unreached: `Letting both sources go` was done on the first tree, so the card was never seen to change; the save ended somewhere in the 2.1 seconds nothing sampled; and it never took the minutes a long meeting does
 - ISC-79 — the UI probe on the packaged build 2026-09-02: `choose MicrophonePicker fifine`, then `press RecordButton sleep 50 see b1-recording kill`. Channel 1 read `-96.6 dBFS` there, a level and not the silent mark ISC-80 shows, so the microphone was open. The next start offers the recording at the top of the list — `The application closed in the middle of this recording. The audio is whole up to there.`, `0:00:50 · 37.0 MB`, Discard and Keep — and `press Keep` files a meeting of `0:00:50`. Its `audio.wav` is 16 kHz stereo, 803262 frames, 50.204 s, channel 0 at RMS 3210 of 32767. Nobody heard it: `SoundPlayer.PlaySync` returning after 50.4 s is Windows accepting the file
-- ISC-126.2 — the UI probe on the packaged build 2026-09-02, a six-minute meeting: `press StopButton see c1-saving sleep 2 see c2-saving kill`, both trees carrying the saving card, so the process died with the pour running over blocks it had begun reading. It could have come back `WaitingStanding.CouldNotBeReadThrough`, which offers no Keep, and did not: the next start offers Discard and Keep, and `press Keep` files a meeting of `0:06:00`. Whoever closes ISC-126.1 writes the durable mark this had none of, and owes lifting it after a crash, or this goes red
 - ISC-168 — a real paid response filed by `import-response` and killed the moment its `manifest.json` landed, which is what `MeetingIntake` says an unfinished render leaves: the folder held that and `deepgram.json`, nothing else. Started with `sleep 20 see d1-after-launch`, nothing pressed, the folder then held `transcript.md` and `utterances.jsonl`, `status` counting 637 more turns. Run again over a second response on a build carrying `main`'s `MeetingRenderer`: 136 more turns, two more derived rows. What was probed is the launch, which today is the only path — nothing brings a response back into a running application, and that is ISC-170.1's
 - ISC-176 — `IsaStructureTests` (`tests/MeetingTranscriber.Isa.Tests`) green 2026-09-02 over checks 15 and 16. Red 2026-09-02 with `ISC-176` itself ticked and reworded in the tree: `.No_claim_is_closed_in_words_the_file_did_not_already_carry` named it while `.No_claim_is_written_into_the_file_already_closed` stayed green over that same edit — check 15's blind spot, measured. Check 16 reaches a claim the trunk had open, so outside it are the three closed claims this repo reworded across the 29 commits that touched the file, and a stub left standing over a moved sentence. Not closed here: words landing ahead of the branch that ticks them can still have been worded to fit, and no gate reaches that — `.claude/agents/auditor.md` is where it is asked.
