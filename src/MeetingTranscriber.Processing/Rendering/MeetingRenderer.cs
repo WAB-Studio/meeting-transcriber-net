@@ -1,4 +1,4 @@
-using MeetingTranscriber.Domain.Artifacts;
+﻿using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
@@ -50,39 +50,47 @@ public static class MeetingRenderer
         var header = Header(context, meeting);
         var rendered = TranscriptRenderer.Render(header, turns);
 
-        // Both or neither, and only while this opens the transaction. A transcript naming turns the
-        // jsonl does not have is a meeting that reads as two different meetings depending on which
-        // file somebody opened, and a caller with none of its own is held to that here. A caller
-        // already inside a transaction keeps its own — a rebuild wraps the whole corpus in one, and
-        // opening a second here would throw rather than nest — so on that path this pairing is not
-        // enforced at all: the transcript's row lands in the caller's transaction and the jsonl
-        // refused after it leaves the meeting holding one file of each generation, which nothing
-        // reports, because every row still agrees with the file it names. That hole is older than
-        // the savepoint below and wider than it: DurableArtifact.WriteText stages and commits in
-        // one breath, so the first file has moved before the second is written anywhere. Closing it
-        // means staging both and committing both, which changes DurableArtifact's stage-and-commit
-        // contract. No card on the board carries it: it is going out as its own piece of work.
-        using var write = context.Database.CurrentTransaction is null
-            ? context.Database.BeginTransaction()
-            : null;
-        var transcript = DurableArtifact.WriteText(
+        // Both or neither, on every caller. A transcript naming turns the jsonl does not have is a
+        // meeting that reads as two different meetings depending on which file somebody opened, and
+        // nothing in the corpus would say so: each row would still agree with the file it names.
+        // Both files are therefore written whole and both destinations emptied before either file
+        // is put in place, which is what DurableArtifact.WriteAllText is; the rows land in one
+        // save, in whatever unit of work the caller has.
+        //
+        // The turns are outside it and ahead of it. Project has already replaced them, so a
+        // meeting refused here keeps rows from this render and files from the last one — which is
+        // the deliberate half of the trade, because those rows are what a claim cites and the
+        // caller is the one that decides whether to undo them: OwedRenders and the importer wrap
+        // this in a transaction for exactly that, and a rebuild refuses to, because undoing a row
+        // under a file already moved is the one direction the corpus never goes.
+        //
+        // This used to open a transaction when the caller had none, and that was never the thing
+        // making the pair either-or: the transcript's row and its file were already committed by
+        // the time the jsonl was written anywhere, so a refusal between them left one file of each
+        // generation with or without a transaction. A caller already inside one — a rebuild wraps
+        // the whole corpus in a single transaction, because every stored claim is checked against
+        // the turns it cites at one commit — got no pairing at all. There is nothing left for a
+        // transaction here to do, so there is not one.
+        var written = DurableArtifact.WriteAllText(
             context,
             meeting.Id,
-            ArtifactKind.Transcript,
-            CorpusFiles.PathFor(meeting.Id, "transcript.md"),
             now,
-            rendered.Markdown);
-        var utterances = DurableArtifact.WriteText(
-            context,
-            meeting.Id,
-            ArtifactKind.Utterances,
-            CorpusFiles.PathFor(meeting.Id, "utterances.jsonl"),
-            now,
-            rendered.Jsonl);
-        write?.Commit();
+            (ArtifactKind.Transcript, CorpusFiles.PathFor(meeting.Id, "transcript.md"), rendered.Markdown),
+            (ArtifactKind.Utterances, CorpusFiles.PathFor(meeting.Id, "utterances.jsonl"), rendered.Jsonl));
 
-        return new RenderedMeeting(turns.Count, transcript, utterances);
+        return new RenderedMeeting(
+            turns.Count, Of(written, ArtifactKind.Transcript), Of(written, ArtifactKind.Utterances));
     }
+
+    /// <summary>The one artifact of that kind the write came back with.</summary>
+    /// <remarks>
+    /// By kind and not by position. The set goes in as a list and comes back as one, so a third
+    /// derived file added in the middle of it would silently move the jsonl into the transcript's
+    /// place on this record, and every citation checked against that record would be checked
+    /// against the wrong file.
+    /// </remarks>
+    private static Artifact Of(IReadOnlyList<Artifact> written, ArtifactKind kind) =>
+        written.Single(artifact => artifact.Kind == kind);
 
     /// <summary>
     /// Reads the response and puts the meeting's turns back, all of them or none of them.

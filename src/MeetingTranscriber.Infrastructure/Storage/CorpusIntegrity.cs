@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Infrastructure.Storage;
@@ -28,8 +28,19 @@ public sealed class CorpusIntegrityException(IReadOnlyList<CorpusProblem> proble
 /// Whether a corpus is sound, and the one safe way to compact it.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Runnable by hand, and the thing anything that copies the corpus has to pass first: a backup of
 /// a corpus that was already wrong is a backup of being wrong, restored later with confidence.
+/// </para>
+/// <para>
+/// Soundness here is the database's: the file reads, every reference points at something, and each
+/// search index agrees with the table it indexes. It opens no artifact file, and that is a division
+/// of labour rather than a gap — whether a row still names the file it describes is
+/// <see cref="Artifacts.ArtifactReconciler"/>'s question, and it walks every row against the disk,
+/// hashing the contents when it is asked to. Neither of them can see a meeting whose two derived
+/// files came from different renders, because there every row agrees with the file it names; what
+/// answers that is the write being one act, in <see cref="Artifacts.DurableArtifact"/>.
+/// </para>
 /// </remarks>
 public static class CorpusIntegrity
 {

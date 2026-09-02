@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 139/207
+progress: 140/207
 updated: 2026-09-02
 ---
 
@@ -108,7 +108,7 @@ Board: 1 · Núcleo .NET desde artefactos
 - [x] ISC-55: Anti: a speaker somebody resolved is never overwritten by what the recording settled.
 - [x] ISC-127: Anti: nothing one extraction produced shares a position with another of its kind, so what somebody pinned to a decision, an action or an open question cannot come to mean another one.
 - [ ] ISC-174: Anti: a meeting whose turns the corpus refuses partway through producing them again is left holding the ones it already had, never none at all.
-- [ ] ISC-175: Anti: a meeting's derived files are never left describing two different renders of it.
+- [x] ISC-175: Anti: a meeting's derived files are never left describing two different renders of it.
 
 ### F3 · Audio engine
 Why: two sources become one timeline a person can trust. This is the largest technical risk in
@@ -713,3 +713,4 @@ Board: 7 · Distribución y backup
 - ISC-79 — the UI probe on the packaged build 2026-09-02: `choose MicrophonePicker fifine`, then `press RecordButton sleep 50 see b1-recording kill`. Channel 1 read `-96.6 dBFS` there, a level and not the silent mark ISC-80 shows, so the microphone was open. The next start offers the recording at the top of the list — `The application closed in the middle of this recording. The audio is whole up to there.`, `0:00:50 · 37.0 MB`, Discard and Keep — and `press Keep` files a meeting of `0:00:50`. Its `audio.wav` is 16 kHz stereo, 803262 frames, 50.204 s, channel 0 at RMS 3210 of 32767. Nobody heard it: `SoundPlayer.PlaySync` returning after 50.4 s is Windows accepting the file
 - ISC-168 — a real paid response filed by `import-response` and killed the moment its `manifest.json` landed, which is what `MeetingIntake` says an unfinished render leaves: the folder held that and `deepgram.json`, nothing else. Started with `sleep 20 see d1-after-launch`, nothing pressed, the folder then held `transcript.md` and `utterances.jsonl`, `status` counting 637 more turns. Run again over a second response on a build carrying `main`'s `MeetingRenderer`: 136 more turns, two more derived rows. What was probed is the launch, which today is the only path — nothing brings a response back into a running application, and that is ISC-170.1's
 - ISC-176 — `IsaStructureTests` (`tests/MeetingTranscriber.Isa.Tests`) green 2026-09-02 over checks 15 and 16. Red 2026-09-02 with `ISC-176` itself ticked and reworded in the tree: `.No_claim_is_closed_in_words_the_file_did_not_already_carry` named it while `.No_claim_is_written_into_the_file_already_closed` stayed green over that same edit — check 15's blind spot, measured. Check 16 reaches a claim the trunk had open, so outside it are the three closed claims this repo reworded across the 29 commits that touched the file, and a stub left standing over a moved sentence. Not closed here: words landing ahead of the branch that ticks them can still have been worded to fit, and no gate reaches that — `.claude/agents/auditor.md` is where it is asked.
+- ISC-175 — `CorpusRebuildTests.A_meeting_whose_second_derived_file_cannot_be_written_keeps_both_of_the_ones_it_had` and `MeetingRendererTests.A_render_that_cannot_write_the_second_file_leaves_both_of_them_as_they_were` (`tests/MeetingTranscriber.Processing.Tests`), `DurableWriteTests.A_set_whose_second_file_cannot_be_written_leaves_the_first_one_alone` and `.A_set_whose_second_destination_cannot_be_taken_leaves_the_first_one_where_it_was` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-09-02, each red that day against a render that put one file in place before it began the next. Two things none of them reaches: a machine dying inside the run of renames, which no filesystem makes one act, and the stored turns, which are replaced before either file and can be a generation ahead of both
