@@ -407,10 +407,149 @@ public static class UnfinishedRecordings
     }
 
     /// <summary>
-    /// What is in one folder, or nothing when no source of a recording is. The card alone is not a
-    /// recording — a capture that was refused its devices can leave one — and neither is a folder
-    /// somebody made by hand.
+    /// What in <paramref name="folder"/> says a recording happened there, or nothing when nothing
+    /// in it does and it is a folder a press left behind.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The question a sweep asks before it decides anything, and it is here rather than where the
+    /// sweeping is because every name in it is written from this project. A folder a recording never
+    /// filled holds only files this engine makes before there is anything to record — the two marks,
+    /// a spool carrying its header and nothing else, the card, and the note of a channel somebody
+    /// moved — and anything else in it is either a recording or somebody's.
+    /// </para>
+    /// <para>
+    /// It says what it found rather than yes or no, because whoever asks has to tell a person which
+    /// folder they are looking at and why it is still there.
+    /// </para>
+    /// </remarks>
+    public static string? WhatSaysARecordingHappenedIn(DirectoryInfo folder)
+    {
+        ArgumentNullException.ThrowIfNull(folder);
+
+        var left = NamesAPressLeaves(folder);
+        var spools = SpoolsIn(folder).Select(spool => spool.Name).ToArray();
+
+        foreach (var file in folder.EnumerateFiles())
+        {
+            if (!Array.Exists(left, one => Named(one.Name, file.Name)))
+            {
+                return $"'{file.Name}' is in it";
+            }
+
+            if (Array.Exists(spools, spool => Named(spool, file.Name))
+                && file.Length > BlockSpool.HeaderBytes)
+            {
+                return $"'{file.Name}' holds what a device handed over";
+            }
+        }
+
+        return folder.EnumerateDirectories().FirstOrDefault() is { } inside
+            ? $"'{inside.Name}' is in it"
+            : null;
+    }
+
+    /// <summary>
+    /// Removes a folder nothing was ever recorded into, and refuses whole — having removed nothing
+    /// — when anything in it says otherwise.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The second of the two places a folder under <c>spool/</c> goes, and the one that is nobody's
+    /// decision: <see cref="UnfinishedRecording.Discard"/> throws away a recording because somebody
+    /// said to, and this takes away a folder that never held one. It is here so that both are in the
+    /// file that owns what a recording is and what its files are called, and so a third is a change
+    /// somebody has to argue for in one place.
+    /// </para>
+    /// <para>
+    /// Named one by one and then the folder by itself, never recursively. A recursive delete unlinks
+    /// in whatever order the directory is enumerated in, so a folder that turned out to hold
+    /// something would be half emptied before the refusal landed; named, the only thing that can go
+    /// is a file this engine wrote before there was anything to record, and the empty delete at the
+    /// end is the file system saying there was nothing else.
+    /// </para>
+    /// <para>
+    /// <b>The delete is the authority and the question above it is only the sentence.</b> A capture
+    /// that claimed this folder between the two holds <see cref="CaptureMark"/> in a share mode that
+    /// forbids unlinking, so the first delete throws and the folder stands with its meeting — which
+    /// is why nothing here asks whether a mark is held. What Windows answers cannot be out of date;
+    /// what a listing answered a moment ago can.
+    /// </para>
+    /// </remarks>
+    /// <param name="folder">The folder to take away.</param>
+    /// <exception cref="AudioCaptureException">Something in it says a recording happened there.</exception>
+    public static void EraseWhereNothingWasRecorded(DirectoryInfo folder)
+    {
+        ArgumentNullException.ThrowIfNull(folder);
+
+        if (WhatSaysARecordingHappenedIn(folder) is { } said)
+        {
+            throw new AudioCaptureException(
+                $"Nothing is taken away from '{folder.FullName}': {said}, and a folder holding "
+                + "anything a recording left is a recording somebody still has to decide about.");
+        }
+
+        foreach (var file in NamesAPressLeaves(folder))
+        {
+            file.Delete();
+        }
+
+        // Spelled through `Directory` rather than the handle already in hand, and never recursively:
+        // this is the spelling `UnfinishedRecordingsTests` greps for, and a folder removal this
+        // repository cannot grep for is one nobody is holding to the rule above.
+        Directory.Delete(folder.FullName);
+    }
+
+    /// <summary>
+    /// Every file a press can leave in a folder it never recorded into, whether or not it is there.
+    /// </summary>
+    /// <remarks>
+    /// One list, read by the question and by the delete, so that the two cannot come to disagree
+    /// about what an empty folder is allowed to hold — and so that a third mark is one edit.
+    /// </remarks>
+    private static FileInfo[] NamesAPressLeaves(DirectoryInfo folder) =>
+    [
+        .. SpoolsIn(folder),
+        SpoolManifest.In(folder),
+        SpoolChanges.In(folder),
+        new FileInfo(Path.Combine(folder.FullName, CaptureMark.FileName)),
+        new FileInfo(Path.Combine(folder.FullName, SavingMark.FileName)),
+    ];
+
+    /// <summary>The two spools of a folder, which are the only names carrying a size rule.</summary>
+    private static FileInfo[] SpoolsIn(DirectoryInfo folder) =>
+    [
+        BlockSpool.FileFor(folder, AudioChannel.Loopback),
+        BlockSpool.FileFor(folder, AudioChannel.Microphone),
+    ];
+
+    /// <summary>
+    /// Whether two files in one folder are the same one. Windows decides case for itself, so the
+    /// comparison does too rather than trusting how a name was spelled to whoever made it.
+    /// </summary>
+    private static bool Named(string one, string other) =>
+        string.Equals(one, other, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// What is in one folder, or nothing when nothing in it was ever recorded. The card alone is
+    /// not a recording — a capture that was refused its devices can leave one — and neither is a
+    /// folder somebody made by hand.
+    /// </summary>
+    /// <remarks>
+    /// A spool file is made when its device opens and carries its header from that instant, so its
+    /// being there says a device was opened and never that anything was caught. What says something
+    /// was caught is a byte past that header, which is what <see cref="UnfinishedSource.Bytes"/> is
+    /// for — so a folder whose every spool is its header and nothing else is not a recording, and a
+    /// machine killed between the first device opening and its first packet leaves one. It is the
+    /// same answer as no spool at all, deliberately: there is nothing in either to keep, to take out
+    /// or to play, and offering somebody the choice would be offering them a meeting of nothing.
+    /// <para>
+    /// Every source that is there stays a source once any of them holds a block. A device that
+    /// opened and was taken away before it handed anything over is a channel that recorded silence,
+    /// and the meeting is still the other channel's — dropping it would make an hour of one-sided
+    /// conversation unrecoverable over the microphone that never worked.
+    /// </para>
+    /// </remarks>
     private static UnfinishedRecording? Found(DirectoryInfo folder)
     {
         var sources = new[] { AudioChannel.Loopback, AudioChannel.Microphone }
@@ -419,7 +558,7 @@ public static class UnfinishedRecordings
             .Select(source => new UnfinishedSource(source.Channel, source.Blocks, source.Blocks.Length))
             .ToArray();
 
-        if (sources.Length == 0)
+        if (Array.TrueForAll(sources, source => source.Bytes <= BlockSpool.HeaderBytes))
         {
             return null;
         }
