@@ -5,16 +5,18 @@ using System.Text;
 namespace MeetingTranscriber.Isa.Tests;
 
 /// <summary>
-/// ISA.md as another commit had it, and the one rule that needs two versions of the file to state:
-/// a claim closes only in the words the trunk was already carrying it in.
+/// ISA.md as another commit had it, and the rules that need two versions of the file to state: a
+/// claim closes only in the words the trunk was already carrying it in, and a claim that moves
+/// afterwards takes its evidence with it.
 /// </summary>
 /// <remarks>
-/// Every other gate reads one document and is a pure function over it. These two cannot be — a
+/// Every other gate reads one document and is a pure function over it. These three cannot be — a
 /// claim marked `[x]` looks identical whether it stood open for a week first or was written that
-/// way in the diff that closes it, and which of those happened is the whole question. So it is the
-/// only part of the gates that asks git anything, and it asks for objects the clone already has:
-/// `GIT_NO_LAZY_FETCH` below is what keeps that true on a partial clone, where reading a blob the
-/// clone does not hold would otherwise go and get it over the network.
+/// way in the diff that closes it, and a stub reads the same whether it was written against the
+/// sentence above it or against one that has since been rewritten. So it is the only part of the
+/// gates that asks git anything, and it asks for objects the clone already has: `GIT_NO_LAZY_FETCH`
+/// below is what keeps that true on a partial clone, where reading a blob the clone does not hold
+/// would otherwise go and get it over the network.
 /// </remarks>
 internal static class IsaHistory
 {
@@ -25,19 +27,28 @@ internal static class IsaHistory
     private const string Trunk = "origin/main";
 
     /// <summary>
-    /// The file as the trunk last had it: the fork point, so a branch is judged on what it did and
-    /// not on what landed while it was open.
+    /// Where a push started, when the thing doing the pushing says so.
+    /// `.github/workflows/ci.yml` sets it, on a push and only on a push.
     /// </summary>
+    private const string PushedOnto = "ISA_TRUNK_BEFORE";
+
+    /// <summary>
+    /// The file as the trunk had it before the change now in hand, resolved once so the three gates
+    /// score one document rather than three: `origin/main` is a ref other worktrees over this object
+    /// store move, and a fetch between two calls would otherwise give two of them different files.
+    /// </summary>
+    private static readonly Lazy<IsaDocument> TheBaseline =
+        new(() => At(TrunkBefore(Environment.GetEnvironmentVariable(PushedOnto))));
+
+    /// <summary>What the change in hand is judged against.</summary>
     /// <remarks>
     /// Compared against the working tree rather than against `HEAD`, so the gate answers before the
     /// commit exists — the four commands run over a tree where ISA.md is usually still uncommitted.
     ///
     /// In CI on a pull request the checkout puts HEAD on the merge commit, whose other parent is
-    /// the base, so this resolves to `main`'s tip instead of to the fork point. The two can only
-    /// differ by claims that landed on `main` while the branch was open, and check 15 is what stops
-    /// any of those being closed ones — so for check 15 both readings say the same thing about the
-    /// branch. On a push to `main` the fork point is HEAD and the comparison is empty: the gates
-    /// speak on pull requests, which is where a diff is still worth refusing.
+    /// the base, so the fork point resolves to `main`'s tip instead. The two can only differ by
+    /// claims that landed on `main` while the branch was open, and check 15 is what stops any of
+    /// those being closed ones — so for check 15 both readings say the same thing about the branch.
     ///
     /// Check 16 does not inherit that: `main` may legitimately gain a *reworded open* claim while a
     /// branch is open, and then the two readings disagree about a branch that has not moved. A
@@ -48,7 +59,61 @@ internal static class IsaHistory
     /// the true fork point in CI needs the checkout to stand on the head commit rather than the
     /// merge commit, which is `.github/workflows/ci.yml`'s to decide and not this file's.
     /// </remarks>
-    public static IsaDocument Baseline() => At(Run("merge-base", "HEAD", Trunk).Trim());
+    public static IsaDocument Baseline() => TheBaseline.Value;
+
+    /// <summary>
+    /// The commit to read the baseline out of: where the push began if something told us, and the
+    /// fork point otherwise.
+    /// </summary>
+    /// <remarks>
+    /// Which route a change is taking is knowable, so it is stated rather than worked out. The
+    /// tempting inference — that HEAD being an ancestor of <see cref="Trunk"/> means a push to the
+    /// trunk — is true of a branch cut from `main` that has not committed yet, which is the state
+    /// the four commands usually run in, and it would judge that branch against `main` minus its own
+    /// tip. A worker following `.claude/skills/isa/SKILL.md` — push the claim open, cut a branch,
+    /// close it — would be told the claim was born ticked. So the environment is the only signal,
+    /// and its absence means the fork point, which is what every route but the push wants.
+    ///
+    /// On the trunk the fork point is HEAD, so the file is compared with itself. Before the commit
+    /// exists that is still a real comparison and the gates speak; after it, they cannot, which is
+    /// the whole of what CI on a push is here to cover.
+    ///
+    /// A value that is not a commit behind HEAD throws rather than falling back, because on the one
+    /// route this is read the fallback would be that silence again. Three ways it can happen and one
+    /// answer to all of them: a force push names a tip nothing points at any more, a rollback names
+    /// one HEAD does not descend from, and a hand-set `ISA_TRUNK_BEFORE=HEAD` names the tree itself
+    /// — which is why the shape is checked before the ancestry, since `--is-ancestor HEAD HEAD` is
+    /// perfectly true and would turn every gate off from a shell.
+    /// </remarks>
+    internal static string TrunkBefore(string? pushedOnto)
+    {
+        var told = pushedOnto?.Trim();
+
+        if (string.IsNullOrEmpty(told))
+        {
+            return Run("merge-base", "HEAD", Trunk).Trim();
+        }
+
+        return Behind(told)
+            ? told
+            : throw new InvalidOperationException(
+                $"{PushedOnto} is '{told}', and a baseline has to be a commit this clone holds "
+                + $"with HEAD descended from it. {AboutTheClone}");
+    }
+
+    /// <summary>
+    /// Whether <paramref name="commit"/> is a full commit id this clone holds and HEAD stands after.
+    /// </summary>
+    /// <remarks>
+    /// The shape first, so nothing that resolves to a ref is ever asked about: a name, a tag or
+    /// `HEAD` would all answer the ancestry question honestly and mean something else. A push event
+    /// carries forty hex digits or the all-zero id that says there was nothing before it, and the
+    /// second is not a commit git can answer about, so it fails the ancestry test with the rest.
+    /// </remarks>
+    private static bool Behind(string commit) =>
+        commit.Length == 40
+        && commit.All(char.IsAsciiHexDigit)
+        && Execute("merge-base", "--is-ancestor", commit, "HEAD").Code == 0;
 
     /// <summary>ISA.md as one commit had it.</summary>
     /// <remarks>
@@ -119,6 +184,69 @@ internal static class IsaHistory
     }
 
     /// <summary>
+    /// The claims <paramref name="head"/> rewords while they are already closed and leaves their
+    /// `## Verification` stub exactly as it was — a tick standing over a sentence nobody probed.
+    /// </summary>
+    /// <remarks>
+    /// The half <see cref="RewordedIntoClosure"/> deliberately does not reach: rewording a standing
+    /// closure is allowed, and the two times this repo did it right are named there. What is not
+    /// allowed is doing it and leaving the evidence pointing at the old sentence, which is how
+    /// `ISC-157` came to read closed over a run against a narrower claim for eight days.
+    ///
+    /// One direction only. A stub is rewritten whenever the probe is re-run, and a claim that has
+    /// not moved has nothing to say about that; the rule is that a moved claim drags its evidence
+    /// with it, not that the two change together.
+    ///
+    /// What it sees is bytes: that the stub moved, never that a probe ran. A date bumped over a run
+    /// nobody made passes, and no gate could tell — the residue is the reviewer's, and
+    /// `references/format.md` says so where it says what else is.
+    ///
+    /// A claim with no stub on either side is out of reach here and is check 5's, which fails on a
+    /// closed claim carrying no evidence at all. Nothing is left standing when nothing was there.
+    /// </remarks>
+    public static IReadOnlyList<string> StubLeftBehind(IsaDocument baseline, IsaDocument head)
+    {
+        var was = Closures(baseline);
+
+        return
+        [
+            .. Closures(head)
+                .Where(now => was.TryGetValue(now.Key, out var before)
+                    && !string.Equals(before.Text, now.Value.Text, StringComparison.Ordinal)
+                    && string.Equals(before.Evidence, now.Value.Evidence, StringComparison.Ordinal))
+                .Select(now => now.Key),
+        ];
+    }
+
+    /// <summary>
+    /// Every closed claim in <paramref name="document"/> that carries a stub, as the sentence it
+    /// makes and the evidence under it. First wins on both, the way
+    /// <see cref="RewordedIntoClosure"/> takes duplicates: checks 4 and 14 refuse a second of
+    /// either in the file as it stands and can promise nothing of a commit far enough back.
+    /// </summary>
+    private static Dictionary<string, (string Text, string Evidence)> Closures(IsaDocument document)
+    {
+        var stubs = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var stub in document.Stubs)
+        {
+            stubs.TryAdd(stub.Id, stub.Evidence);
+        }
+
+        var closures = new Dictionary<string, (string Text, string Evidence)>(StringComparer.Ordinal);
+
+        foreach (var claim in document.Claims.Where(claim => claim.Closed))
+        {
+            if (stubs.TryGetValue(claim.Id, out var evidence))
+            {
+                closures.TryAdd(claim.Id, (claim.Text, evidence));
+            }
+        }
+
+        return closures;
+    }
+
+    /// <summary>
     /// The repo root, from this file's compile-time path rather than from a working directory that
     /// depends on where the runner was launched from.
     /// </summary>
@@ -126,6 +254,21 @@ internal static class IsaHistory
         Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", ".."));
 
     private static string Run(params string[] arguments)
+    {
+        var (code, answer, complaint) = Execute(arguments);
+
+        return code == 0
+            ? answer
+            : throw new InvalidOperationException(
+                $"`git {string.Join(' ', arguments)}` exited {code}: "
+                + $"{complaint.Trim()}{Environment.NewLine}{AboutTheClone}");
+    }
+
+    /// <summary>
+    /// git run for its exit code as well as its output, for the one question asked of a commit that
+    /// may honestly not be here — <see cref="Reaches"/>, over a tip a force push orphaned.
+    /// </summary>
+    private static (int Code, string Answer, string Complaint) Execute(params string[] arguments)
     {
         var start = new ProcessStartInfo("git")
         {
@@ -162,11 +305,7 @@ internal static class IsaHistory
         var answer = git.StandardOutput.ReadToEnd();
         git.WaitForExit();
 
-        return git.ExitCode == 0
-            ? answer
-            : throw new InvalidOperationException(
-                $"`git {string.Join(' ', arguments)}` exited {git.ExitCode}: "
-                + $"{complaint.GetAwaiter().GetResult().Trim()}{Environment.NewLine}{AboutTheClone}");
+        return (git.ExitCode, answer, complaint.GetAwaiter().GetResult());
     }
 
     /// <summary>
@@ -174,12 +313,14 @@ internal static class IsaHistory
     /// and a message that picks one sends the reader to fix something that is not wrong.
     /// </summary>
     private static string AboutTheClone =>
-        $"Checks 15 and 16 read ISA.md as {Trunk} last had it, so they need git, a remote called "
-        + $"origin, and the history behind {Trunk} back to this branch's fork point. A shallow "
-        + $"clone has none of it, and a {Trunk} nobody has fetched in a while resolves to an older "
-        + "fork point than the real one — `git fetch` before believing what it named, and merge "
-        + "`main` in if the fork point is what is behind. CI asks its checkout for all the history; "
-        + "`.github/workflows/ci.yml` says why.";
+        $"Checks 15, 16 and 17 read ISA.md as {Trunk} had it before this change, so they need git, "
+        + $"a remote called origin, and the history behind {Trunk} back to this branch's fork point. "
+        + $"A shallow clone has none of it, and a {Trunk} nobody has fetched in a while resolves to "
+        + "an older fork point than the real one — `git fetch` before believing what it named, and "
+        + "merge `main` in if the fork point is what is behind. In CI on a push the baseline is "
+        + $"`{PushedOnto}` instead, which is where the push began: a force push names a commit "
+        + "nothing points at any more, and nothing can judge a push against history it destroyed. "
+        + "CI asks its checkout for all the history; `.github/workflows/ci.yml` says why.";
 
     private static Process Start(ProcessStartInfo start)
     {
