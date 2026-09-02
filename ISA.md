@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 142/209
+progress: 142/212
 updated: 2026-09-02
 ---
 
@@ -221,6 +221,9 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-173.1: Every colour, text size and corner a screen uses is one of the system's named few, and never a value chosen on the screen itself.
 - [ ] ISC-173.2: A screen that rearranges itself moves between the two arrangements, so somebody can tell what arrived from what was already there.
 - [ ] ISC-173.3: Anti: with Windows asked for no animation, nothing on a screen moves, and nothing on it is lost for standing still.
+- [ ] ISC-179: Every stage a meeting can be at is read from the one screen that meeting opens on.
+- [ ] ISC-180: Every thing an extraction left of a meeting says where in that meeting it was said.
+- [ ] ISC-180.1: The transcript at that moment opens under the thing that cited it, without leaving the screen it is read on.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly
