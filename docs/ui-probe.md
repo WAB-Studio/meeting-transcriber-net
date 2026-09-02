@@ -102,6 +102,13 @@ Anything is refused once the application is older than the code on disk. To pick
 close, build, start — in that order, because a running application holds its own assemblies open
 and the build fails on them. A build alone does not lift the refusal; only starting again does.
 
+**When that is asked differs by host, on purpose.** Over MCP it is asked every turn, because the
+agent taking the turns is the one editing. A script is asked once, at `start`, and by no verb after
+it: nothing in a fixed list of instructions edits code, and a refusal raised halfway would end a
+walk that had already spent six minutes of real recording over an edit that changed nothing the
+window is showing. So a script's trees are evidence about the commit it was started at — if you
+edit while a long one runs, nothing will tell you, and what it wrote is still about the old build.
+
 ## Record may be pressed
 
 **It may. This file said not to until 2026-09-02, and the repository's owner withdrew that in as

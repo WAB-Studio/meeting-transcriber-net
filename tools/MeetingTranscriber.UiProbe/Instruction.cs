@@ -51,6 +51,17 @@ internal enum Verb
 }
 
 /// <summary>One instruction, as it was written on the command line.</summary>
+/// <remarks>
+/// This is the one part of the probe a build agent could run — reading words into steps opens no
+/// window and needs no desktop — and it is nonetheless held by the reasoning written on
+/// <see cref="Read"/> and <see cref="Seconds"/> and by nothing that goes red. That is not an
+/// oversight to be fixed by adding a test project beside it: `docs/layout.md` says nothing under
+/// `tests/` may come to depend on `tools/`, and the bright line is what stops a test in such a
+/// project from reaching <see cref="Session.Open"/>, which no build agent can run. Narrowing that
+/// rule to the parts that need a desktop is a decision about how this repository is laid out, and
+/// it is worth taking — the walks this tool produces are the most expensive evidence in the repo —
+/// but it is that decision and not a test.
+/// </remarks>
 internal sealed record Instruction(Verb Verb, string Subject, string Detail)
 {
     private static readonly Dictionary<Verb, int> Takes = new()

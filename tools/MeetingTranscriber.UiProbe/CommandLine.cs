@@ -18,6 +18,22 @@ namespace MeetingTranscriber.UiProbe;
 /// them, emptying the folder they go in and printing where they went are this host's, because they
 /// are what a script leaves behind and a turn does not.
 /// </para>
+/// <para>
+/// Freshness is asked once, at <see cref="Session.Open"/>, and by no verb after it — where
+/// <see cref="McpHost"/> asks <see cref="Session.MustStillBeUsable"/> every turn. That is the
+/// difference between the two hosts and not an omission in this one. A script is a fixed list
+/// handed to one process and nothing in it edits code, so <see cref="Freshness"/>'s own rule
+/// applies whole: what a window can contain is settled when the process starts, and that is when
+/// the question has an answer. Re-asking would catch only somebody editing a source file while the
+/// script runs, and the refusal would end a walk that had already spent six minutes of real
+/// recording over an edit that changed nothing the window is showing. An agent over the server is
+/// itself the one editing, which is why that host pays for it every turn.
+/// </para>
+/// <para>
+/// What a caller gives up: a long script running through somebody else's edit says nothing about
+/// it, so what a run's trees are evidence about is the commit it was started at and not the tree on
+/// disk when it ended.
+/// </para>
 /// </remarks>
 internal static class CommandLine
 {
@@ -208,9 +224,9 @@ internal static class CommandLine
     /// One <c>Thread.Sleep</c> of the whole stretch was the first shape and it hid the one thing
     /// worth hearing about early: the application crashing at minute two of a twenty-minute hold
     /// went unnoticed until the next verb, so a run nobody is watching spent eighteen more minutes
-    /// on a screen that had gone. Liveness only, and not <c>MustStillBeUsable</c> — the freshness
-    /// half refuses a window older than the code, which is a rule about what a reading is worth,
-    /// and a hold reads nothing. The next verb asks it, as it always did.
+    /// on a screen that had gone. Liveness only, and not <see cref="Session.MustStillBeUsable"/>:
+    /// no verb of this host asks the freshness half, for the reason on the class, and a hold is not
+    /// the exception to a rule this host has.
     /// </remarks>
     private static void Hold(Session session, TimeSpan wanted)
     {
