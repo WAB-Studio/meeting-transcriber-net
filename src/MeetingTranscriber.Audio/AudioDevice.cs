@@ -42,5 +42,18 @@ public sealed record AudioDevice(string Id, string Name, bool IsDefault)
     /// </remarks>
     public bool PlaysIntoTheRoom => Kind is EndpointKind.Speakers;
 
+    /// <summary>
+    /// How a report or a log names it: the maker's name, and whether Windows reaches for this one
+    /// when nothing was asked for.
+    /// </summary>
+    /// <remarks>
+    /// English, and never what a window shows. This is the audio domain, which does not know what
+    /// language somebody is reading the application in and is given no way to find out, so a
+    /// screen putting this in front of a person says <c>(default)</c> to somebody who chose
+    /// Spanish. What a picker shows is <c>DeviceLines.Of</c> in
+    /// <c>MeetingTranscriber.Presentation</c>, where the whole line is an entry of the catalogue
+    /// with the maker's name inside it. What is left here is for the command line and for whoever
+    /// reads a report afterwards.
+    /// </remarks>
     public override string ToString() => IsDefault ? $"{Name} (default)" : Name;
 }

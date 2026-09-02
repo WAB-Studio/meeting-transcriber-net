@@ -986,8 +986,14 @@ public sealed partial class MainWindow : Window
         _filling = true;
         try
         {
-            // A device's name is what its maker called it, so it is data and has no language.
-            MicrophonePicker.ItemsSource = _microphones.Select(device => device.ToString()).ToArray();
+            // A device's name is what its maker called it, so it is data and has no language. The
+            // row is not only the name, though, and what this application adds around it is words:
+            // which entry an endpoint gets is DeviceLines', and the entry carries the name inside
+            // it, so neither the word nor the bracket is picked on this line. The source picker
+            // under it still is — AudioProcess.ToString says why, and it is not settled here.
+            MicrophonePicker.ItemsSource = _microphones
+                .Select(device => DeviceLines.Of(device.Name, device.IsDefault).In(_language))
+                .ToArray();
             MicrophonePicker.SelectedIndex = _chosen.Microphone is null
                 ? -1
                 : Array.FindIndex(_microphones, device =>

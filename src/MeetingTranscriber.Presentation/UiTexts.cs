@@ -20,6 +20,14 @@ public static class UiTexts
 
     public static UiText Microphone { get; } = new("Micrófono", "Microphone");
 
+    // The whole line and not the parenthesis on its own, which is what makes it an entry here at
+    // all: a screen handed "(predeterminado)" would still be the one deciding that a space and a
+    // bracket go between it and the device's name, and where the bracket goes is as much a
+    // language as the word inside it. The device's name is the maker's and is never translated,
+    // which is why it is a value rather than words.
+    public static UiText TheDeviceWindowsUsesByDefault { get; } =
+        new("{0} (predeterminado)", "{0} (default)");
+
     public static UiText NoMicrophoneOnThisMachine { get; } = new(
         "Esta máquina no tiene ningún micrófono.",
         "This machine has no microphone.");

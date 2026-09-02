@@ -294,6 +294,127 @@ public partial class ScreenTextsTests
             + "no longer agree: " + written);
 
     /// <summary>
+    /// A word a screen never typed and shows anyway: what a type says about itself. The three
+    /// checks above are about words a screen wrote down, and a `ToString` is the one shape that
+    /// puts words on a screen without any being written there — the words are in another
+    /// assembly, in whatever language whoever wrote that type happened to be in.
+    /// </summary>
+    /// <remarks>
+    /// This is what let `(default)` on to the microphone picker: `AudioDevice.ToString` returned
+    /// `"{Name} (default)"` and the recorder assigned it to `ItemsSource`, so the screen carried
+    /// no literal, bound no catalogue entry, and said an English word to somebody reading in
+    /// Spanish. Every check above ran green over it for as long as the picker existed.
+    /// <para>
+    /// <c>ItemsSource</c> is held here and is deliberately not in <see cref="Reads"/>. It never
+    /// holds a string, so the literal check would have nothing to find in it, and holding markup
+    /// to binding one would refuse the collections every picker on these screens is filled from
+    /// in code. What it is is a list somebody picks from, which is words a person reads by the
+    /// dozen — a screen reader says every row of it out loud.
+    /// </para>
+    /// <para>
+    /// Only a <c>ToString()</c> taking nothing. One taking a format or a culture is how a screen
+    /// writes a number in the language it is being read in, which is <c>ScreenNumbers</c>' whole
+    /// job and the opposite of the mistake — and a type's own no-argument rendering is never data
+    /// the way a resource key is, so this crosses brackets freely where
+    /// <see cref="WithinOneAssignment"/> may not.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(CodeBehind))]
+    public void No_screen_shows_a_person_what_a_type_says_about_itself(string path)
+    {
+        var shown = SaidByATypeIn(File.ReadAllText(path));
+
+        shown.ShouldBeEmpty(
+            $"{Path.GetFileName(path)} puts what a type says about itself in front of a person, "
+            + "so those words are in whatever language that type was written in: "
+            + string.Join("; ", shown));
+    }
+
+    /// <summary>
+    /// The places <paramref name="source"/> hands a person a type's own rendering, each with the
+    /// line it is on — the same shape the sibling above answers in, for the same reason.
+    /// </summary>
+    private static string[] SaidByATypeIn(string source) =>
+    [
+        .. WhatATypeSaysAboutItself
+            .Matches(source)
+            .Where(match => !SourceLines.StandsInACommentedLine(source, match.Index))
+            .Select(match => $"line {SourceLines.LineOf(source, match.Index)}: "
+                + string.Join(' ', match.Value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))),
+    ];
+
+    /// <summary>
+    /// What a screen shows a person out of a type rather than out of the catalogue. Rows and not
+    /// only a pattern, for the reason <see cref="WordsAPersonWouldRead"/> gives: this check has
+    /// exactly one subject in the application today and it is the one that was just taken out, so
+    /// without these it would be a guard with nothing to find, which reads the same as a guard
+    /// that works.
+    /// </summary>
+    public static TheoryData<string> WhatATypeSaysForItself() =>
+    [
+        @"MicrophonePicker.ItemsSource = _microphones.Select(device => device.ToString()).ToArray();",
+        "MicrophonePicker.ItemsSource = _microphones\n            .Select(device => device.ToString())\n            .ToArray();",
+        @"StatusText.Text = chosen.ToString();",
+        @"Foo.Header = program?.ToString() ?? string.Empty;",
+        @"AutomationProperties.SetName(box, device.ToString());",
+        @"ToolTipService.SetToolTip(row, meeting.ToString());",
+    ];
+
+    /// <summary>
+    /// A rendering the reader's own language decides, which is data written the way that language
+    /// writes it and is exactly what a screen is supposed to do with a number.
+    /// </summary>
+    public static TheoryData<string> WhatTheReadersLanguageDecides() =>
+    [
+        @"Text = things.Count.ToString(UiLanguages.Culture(_language));",
+        @"Text = length.ToTimeSpan().ToString(@""h\:mm\:ss"", CultureInfo.InvariantCulture);",
+        @"AutomationProperties.SetAutomationId(open, entry.Meeting.Id.ToString());",
+        @"Dump(wouldNotSay.ToString());",
+        @"var spelt = device.ToString();",
+        @"        // MicrophonePicker.ItemsSource = _microphones.Select(device => device.ToString()).ToArray();",
+    ];
+
+    /// <summary>
+    /// What this is known not to reach, named rather than papered over — and one of these is live
+    /// in the application as it stands, which is why it is a row and not a sentence.
+    /// </summary>
+    /// <remarks>
+    /// A <c>ToString</c> behind a method is out of reach for the reason
+    /// <see cref="OutOfReachOnPurpose"/> already gives about an expression-bodied member: there is
+    /// no assignment to find it by, and following the call is a parse. <c>MainWindow.NameOf</c> is
+    /// that shape today — it renders an <c>AudioProcess</c> as <c>"{Name} (pid {Id})"</c> into the
+    /// source picker, one row under the microphone one this check was written for. Whether
+    /// <c>(pid …)</c> is a word this application chose or a token Windows spells the same in both
+    /// languages is a question nobody has answered, and it is issue #84's `left_out` rather than
+    /// something to decide inside a guard.
+    /// </remarks>
+    public static TheoryData<string> SaidThroughAMethodAndOutOfReach() =>
+    [
+        @"SourcePicker.ItemsSource = _sources.Select(NameOf).ToArray();",
+        @"private string NameOf(RecorderSource source) => source.Follow!.ToString();",
+    ];
+
+    [Theory]
+    [MemberData(nameof(WhatATypeSaysForItself))]
+    public void What_a_type_says_about_itself_is_found_however_it_reaches_a_person(string written) =>
+        SaidByATypeIn(written).ShouldNotBeEmpty(
+            "this puts a type's own words on a screen and nothing found it: " + written);
+
+    [Theory]
+    [MemberData(nameof(WhatTheReadersLanguageDecides))]
+    public void A_rendering_the_reader_chose_is_left_alone(string written) =>
+        SaidByATypeIn(written).ShouldBeEmpty(
+            "the language being read in decides this one and it was reported anyway: " + written);
+
+    [Theory]
+    [MemberData(nameof(SaidThroughAMethodAndOutOfReach))]
+    public void What_is_said_through_a_method_is_still_out_of_reach(string written) =>
+        SaidByATypeIn(written).ShouldBeEmpty(
+            "this row says the check does not reach this, and it did, so the row and the check "
+            + "no longer agree: " + written);
+
+    /// <summary>
     /// ISC-152's other half on a screen that prints what a machine said. A path, a device's own
     /// name or a message off an exception is data and goes in the report untranslated — but never
     /// on a line of its own, where English reads as the application talking to somebody who chose
@@ -405,6 +526,38 @@ public partial class ScreenTextsTests
         Assignment() + "|" + AttachedSetter(),
         RegexOptions.None,
         TimeSpan.FromSeconds(2));
+
+    /// <summary>
+    /// A <c>ToString()</c> taking nothing, reaching one of <see cref="Reads"/> or a list somebody
+    /// picks from — built out of the same one list, for the same reason
+    /// <see cref="LiteralOnScreen"/> is.
+    /// </summary>
+    /// <remarks>
+    /// <c>[^;]*?</c> and not <see cref="WithinOneAssignment"/>, which is the one place these two
+    /// patterns part. That bound exists to keep the literal check out of argument lists, where a
+    /// resource key would be reported as a word wanting a translation; there is no such thing
+    /// here, because a no-argument <c>ToString()</c> is never a key, a format or a path. So this
+    /// one goes wherever the statement goes — through a <c>Select</c>, across a lambda's
+    /// <c>=&gt;</c>, over as many lines as the statement takes — and stops at the <c>;</c> that
+    /// ends it, which is what keeps one statement's words off the next one's name.
+    /// </remarks>
+    private static readonly Regex WhatATypeSaysAboutItself = new(
+        SaysItselfInto(Named(Plain, name => name) + "|" + PickedFrom)
+        + "|" + @"(?<!\w)(?:" + Named(Attached, name => name.Replace(".", ".Set", StringComparison.Ordinal))
+        + @")\([^;]*?\.ToString\(\)",
+        RegexOptions.None,
+        TimeSpan.FromSeconds(2));
+
+    /// <summary>
+    /// The property a list somebody picks from is set through. Not an entry of
+    /// <see cref="Reads"/>, for the reason
+    /// <see cref="No_screen_shows_a_person_what_a_type_says_about_itself"/> gives.
+    /// </summary>
+    private const string PickedFrom = "ItemsSource";
+
+    /// <summary>One of <paramref name="properties"/> taking a type's own rendering.</summary>
+    private static string SaysItselfInto(string properties) =>
+        @"(?<!\w)(?:" + properties + @")\s*(?:\+|\?\?)?=(?![=>])[^;]*?\.ToString\(\)";
 
     /// <summary>
     /// One of the plain properties taking a literal, whatever stands between the <c>=</c> and it.
