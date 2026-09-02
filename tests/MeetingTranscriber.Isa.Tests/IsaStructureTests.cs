@@ -381,4 +381,105 @@ public class IsaStructureTests
         present.ShouldBeSubsetOf(expected);
         present.ShouldBe([.. expected.Where(present.Contains)]);
     }
+
+    /// <summary>
+    /// The gate on a claim born ticked, and the only one here whose input is not the file. What it
+    /// refuses is a claim written into `ISA.md` already closed, inside the diff that delivers the
+    /// work it was supposed to judge — a claim that never stood as a bet the work had to clear, so
+    /// the closure it records is of nothing and the work is scored against itself.
+    /// </summary>
+    /// <remarks>
+    /// Why this could not be a check on the file: a claim marked `[x]` reads the same either way.
+    /// Why it could not be a person: it was one, four times in two days, and each was caught on the
+    /// way past rather than refused. `IsaHistory` is the seam and says what the comparison is.
+    /// </remarks>
+    [Fact]
+    public void No_claim_is_written_into_the_file_already_closed()
+    {
+        IsaHistory.BornTicked(IsaHistory.Baseline(), isa).ShouldBeEmpty(
+            "a claim marked `[x]` that the trunk does not carry at all was written and closed in "
+            + "the same change, so nothing was ever at stake in it. The claim goes in open and "
+            + "reaches `main` before the work that closes it starts — this gate is the one place "
+            + "that says so out loud, and a card whose claim does not exist yet needs the claim "
+            + "landed first. If the trunk does carry it, `git fetch`: the fork point is read "
+            + "through `origin/main`, and a stale one has not seen the claim you are closing.");
+    }
+
+    /// <summary>
+    /// The rule over documents written to break it, because over a green branch the fact above has
+    /// nothing to bite on and passes without proving the rule holds.
+    /// </summary>
+    [Fact]
+    public void A_claim_stands_open_before_it_closes_and_the_file_moving_under_it_is_not_that()
+    {
+        var none = Claims();
+        var open = Claims("- [ ] ISC-1: A meeting is recorded.");
+        var closed = Claims("- [x] ISC-1: A meeting is recorded.");
+
+        IsaHistory.BornTicked(none, closed).ShouldBe(
+            ["ISC-1"], "written and closed in one change is the defect, whole.");
+        IsaHistory.BornTicked(none, open).ShouldBeEmpty("added open is what the rule asks for.");
+        IsaHistory.BornTicked(open, closed).ShouldBeEmpty(
+            "a claim that stood open and is now closed is what closing one looks like.");
+        IsaHistory.BornTicked(closed, Claims("- [ ] ISC-1: [DROPPED 2026-09-02: nobody asked.]"))
+            .ShouldBeEmpty("withdrawing a claim opens it; a tombstone closes nothing.");
+        IsaHistory.BornTicked(
+            open, Claims("- [ ] ISC-2: [DROPPED 2026-09-02: issued and withdrawn unbuilt.]", "- [ ] ISC-1: A meeting is recorded."))
+            .ShouldBeEmpty(
+                "a tombstone is written open, so one arriving whole in a single change is fine — "
+                + "which is how ISC-160 and ISC-161 both landed. Reordering is nothing either.");
+        IsaHistory.BornTicked(closed, Claims("- [x] ISC-1: A meeting somebody sat through is kept."))
+            .ShouldBeEmpty("ids are what it compares, so a rewrite in place is invisible to it.");
+    }
+
+    /// <summary>
+    /// The seam, over a merge that really did it. Without this the fact above proves the rule and
+    /// nothing proves the reading — that git is asked at all, that a commit which is not the
+    /// working tree comes back, and that what comes back parses as claims.
+    /// </summary>
+    /// <remarks>
+    /// What it still cannot reach, said rather than left for somebody to find: that `Trunk` names
+    /// the trunk. Point it at `HEAD` and the baseline becomes the working tree, the gate says yes
+    /// to everything, and every assertion in this file stays green — because the two only differ
+    /// over a tree that changed `ISA.md`, which no test can conjure without editing the file the
+    /// gates run over. A constant cannot be checked from inside the suite that reads it; what
+    /// stands there instead is that it is one line, named, with this paragraph under it.
+    /// </remarks>
+    /// <remarks>
+    /// PR #63 is the merge chosen because it is the file's worst case rather than its plainest.
+    /// It split the closed `ISC-139` into two leaves marked closed, and in the same breath issued
+    /// `ISC-158` with nine children and ticked two of them the day they were written. The gate
+    /// names all four, and that a split of a closed claim is among them is the rule and not an
+    /// oversight: `ISC-139.2` is about a screen that same pull request built, closed on a stub
+    /// written that day naming tests written that day. A narrowing that hands an already-standing
+    /// closure down has a form nothing here refuses — the claim's own text is rewritten in place,
+    /// which keeps the id that carried the bet — and a split into new closed ids is a second
+    /// closure however it reads, so it goes red and the person says why.
+    /// </remarks>
+    [Fact]
+    public void The_gate_reads_history_and_not_the_tree_it_is_standing_on()
+    {
+        const string TheRecordingWindow = "0f63462def717e9278640979964e2d155f713e3a";
+        const string WhatItWasMergedOnto = "34bc0b461ef3f6eb6c08c40ada2838936abb42a3";
+
+        IsaHistory.BornTicked(
+            IsaHistory.At(WhatItWasMergedOnto),
+            IsaHistory.At(TheRecordingWindow)).ShouldBe(
+            ["ISC-139.1", "ISC-139.2", "ISC-158.4", "ISC-158.5"],
+            ignoreOrder: true,
+            customMessage: "the four claims PR #63 marked closed on the day it wrote them.");
+    }
+
+    /// <summary>
+    /// A document holding nothing but claims, in one feature block so they parse as claims. The
+    /// gate above reads claim lines and nothing else, so a case is claim lines and nothing else.
+    /// </summary>
+    private static IsaDocument Claims(params string[] claims) => IsaDocument.Of(
+    [
+        "## Features",
+        "### F1 · Recording",
+        "Why: it is where the lines below have to sit to be read as claims.",
+        "Board: —",
+        .. claims,
+    ]);
 }
