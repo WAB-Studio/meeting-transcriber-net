@@ -512,7 +512,8 @@ own screen afterwards, so while one is running there is nothing to put there and
 invented. The header carries what is true at that moment: a recording is running, and it is
 capturing two channels. That stays true on the two screens where a source has failed — the
 recording is still a two-channel recording, and the meter below is what says which one broke.
-`AlParar` is the same moment later and carries the duration alone.
+`AlParar` is the same moment later and puts nothing in that place either: *Guardando la reunión*
+stands where a name would, and nothing stands beside it.
 
 **`GrabandoDiferido`** · Recording, transcribing at the end. **The screen is quieter on purpose.**
 With no transcript, the stopwatch takes the full 62/72 and the meters take the space rather than
@@ -538,6 +539,11 @@ come back.
 finished, running, not started — as a tick, a spinner and an empty circle at 45%. **There is no
 "do not close the application" sign**: if it is closed it is recovered next time. The meeting is
 already in the list below, saving.
+
+**No length on this screen.** A meeting's length is what pouring the spools onto a timeline
+produces, and while the save is running that has not happened: the devices are still draining and
+the drift the timeline exists to take out is still in it, so any number readable here is short of
+the one the report states minutes later. One meeting, one length, and this is not where it is said.
 
 **Unfinished recordings have no screen of their own.** A recording the application was killed in the
 middle of has its row in the corpus before its first sample was captured, so it is a row in the
