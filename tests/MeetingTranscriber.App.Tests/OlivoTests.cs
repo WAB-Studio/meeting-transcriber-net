@@ -278,10 +278,17 @@ public partial class OlivoTests
     [Fact]
     public void The_dictionary_names_no_word_anybody_reads()
     {
-        // What pays for `ScreenTextsTests` leaving a ResourceDictionary alone. A word can only
-        // reach somebody through a property a screen binds, and that check refuses anything but
-        // `{x:Bind}` on every one of them — so a sentence in here is unreachable. This is the other
-        // half: it cannot be put here in the first place.
+        // What pays for `ScreenTextsTests` leaving a ResourceDictionary alone. A word reaches
+        // somebody through a property a screen sets, and that check refuses anything but a binding
+        // naming an entry of the catalogue on every one of them. This is the other half: it cannot
+        // be put here in the first place.
+        //
+        // One route is open and this is the half that would close it. A `Setter` over one of the
+        // properties a person reads — `<Setter Property="Text" Value="Sin nombre" />` — reaches
+        // every screen wearing the style, and the words below look at `String` and `TextBlock`
+        // elements while `Values` reads the `Setter` shape only for the colours, sizes and corners
+        // of ISC-173.1. `ScreenTextsTests` closed that shape in a screen's own resources and named
+        // this as the half it did not touch, which is #182's `left_out`.
         //
         // The subject is the words and not the element. It was the element, which was right while
         // the dictionary held only styles — and a control template has to be able to carry a
