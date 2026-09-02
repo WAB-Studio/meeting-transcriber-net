@@ -2,7 +2,7 @@
   "mcpServers": {
     "ui-probe": {
       "type": "stdio",
-      "command": "${CLAUDE_PROJECT_DIR}/tools/MeetingTranscriber.UiProbe/bin/mcp/MeetingTranscriber.UiProbe.exe",
+      "command": "${CLAUDE_PROJECT_DIR:-.}/tools/MeetingTranscriber.UiProbe/bin/mcp/MeetingTranscriber.UiProbe.exe",
       "args": ["--mcp"]
     }
   }
