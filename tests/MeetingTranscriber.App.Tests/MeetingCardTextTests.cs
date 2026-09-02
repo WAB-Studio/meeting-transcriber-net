@@ -39,55 +39,32 @@ public class MeetingCardTextTests
     public static TheoryData<string> Tables() => [.. Held.Keys];
 
     [Fact]
-    public void There_are_tables_and_enums_to_check()
+    public void There_is_a_table_over_every_kind_a_card_offers()
     {
-        // Both sides of each are found by pattern over source, so both can quietly find nothing —
-        // which is how a file that moved reads exactly like a screen with nothing wrong in it.
-        foreach (var table in new[] { Stages(), Standings(), Actions() })
-        {
-            table.Declared.ShouldNotBeEmpty();
-            table.Named.ShouldNotBeEmpty();
-        }
+        // Both sides are found by pattern over source, so both can quietly find nothing — which is
+        // how a file that moved reads exactly like a screen with nothing wrong in it. The other
+        // two tables say this for themselves, inside the check below.
+        var offered = Actions();
+
+        offered.Declared.ShouldNotBeEmpty();
+        offered.Named.ShouldNotBeEmpty();
     }
 
+    /// <summary>
+    /// Every stage a meeting can be at and every standing that stage can be in has a word on the
+    /// card, the card answers for nothing a meeting cannot be, and one it has no word for stops
+    /// rather than reading as another.
+    /// </summary>
+    /// <remarks>
+    /// The three are one call on <see cref="EnumTable"/> rather than three theories here, because
+    /// a second screen came to want the same three and copied this class to get them — the harness
+    /// and its comments, not the mechanism. What is this class's is which tables exist and what
+    /// they are over.
+    /// </remarks>
     [Theory]
     [MemberData(nameof(Tables))]
-    public void Every_stage_and_every_standing_has_a_word_on_the_card(string enumeration)
-    {
-        var table = Held[enumeration]();
-        var unnamed = table.Declared.Except(table.Named).ToArray();
-
-        unnamed.ShouldBeEmpty(
-            $"MeetingsDrawer has no text for these members of {enumeration}, so a meeting at one "
-            + "of them says the wrong thing about itself or nothing at all: "
-            + string.Join("; ", unnamed));
-    }
-
-    [Theory]
-    [MemberData(nameof(Tables))]
-    public void What_the_card_names_is_something_a_meeting_can_actually_be(string enumeration)
-    {
-        // An arm left behind by a renamed member still compiles as long as some member has that
-        // name, and reads exactly like a table that is complete.
-        var table = Held[enumeration]();
-        var stale = table.Named.Except(table.Declared).ToArray();
-
-        stale.ShouldBeEmpty(
-            $"MeetingsDrawer answers for members {enumeration} does not have: " + string.Join("; ", stale));
-    }
-
-    [Theory]
-    [MemberData(nameof(Tables))]
-    public void A_stage_or_standing_it_has_no_word_for_stops_rather_than_reading_as_another(string enumeration)
-    {
-        var table = Held[enumeration]();
-
-        table.Fallthrough.ShouldBe(
-            "throw",
-            customMessage: $"MeetingsDrawer's table over {enumeration} answers an unknown member "
-            + "with a text instead of throwing, so a member added later is shown to somebody as a "
-            + "different one.");
-    }
+    public void Every_stage_and_every_standing_has_a_word_on_the_card(string enumeration) =>
+        Held[enumeration]().ShouldNameItsWholeEnum("MeetingsDrawer", enumeration);
 
     [Fact]
     public void The_button_is_only_ever_offered_for_work_that_spends_something()

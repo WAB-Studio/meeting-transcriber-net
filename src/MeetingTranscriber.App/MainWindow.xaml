@@ -36,93 +36,124 @@
         </Grid.RowDefinitions>
 
         <StackPanel x:Name="RecordingCard" Grid.Row="0" Spacing="16">
-            <TextBlock Text="{x:Bind In(loc:UiTexts.RecordAMeeting)}" Style="{StaticResource TitleTextBlockStyle}" />
+            <!-- What the next meeting will record and the presses that run it. It goes as one
+                 thing while the meeting is being saved, because none of it is answerable then:
+                 every control in it is dead, and a dead screen headed "record a meeting" over a
+                 meeting being saved is a window that looks like it lost the one it just had. -->
+            <StackPanel x:Name="TheNextMeeting" Spacing="16">
+                <TextBlock Text="{x:Bind In(loc:UiTexts.RecordAMeeting)}" Style="{StaticResource TitleTextBlockStyle}" />
 
-            <!-- What the next meeting will record. Everything here is dead the moment one starts:
-                 changing the microphone half way through is not a thing the engine can do, so it is
-                 not a thing this screen offers. -->
-            <StackPanel Orientation="Horizontal" Spacing="12">
-                <ComboBox
-                    x:Name="MicrophonePicker"
-                    MinWidth="240"
-                    Header="{x:Bind In(loc:UiTexts.Microphone)}"
-                    SelectionChanged="OnMicrophoneChosen" />
-                <ComboBox
-                    x:Name="SourcePicker"
-                    MinWidth="280"
-                    Header="{x:Bind In(loc:UiTexts.WhatToRecordFromThisMachine)}"
-                    SelectionChanged="OnSourceChosen">
-                    <!-- The one picker that says which panel holds it, and the only one long
-                         enough for it to matter: this list is every program on the machine, and a
-                         ComboBox's own CarouselPanel decides where a list too long to fit opens.
-                         With nothing chosen it opened part way down the alphabet, so the answer
-                         that is always available and always right about what it records â€” the
-                         whole machine, put first by SourcesNow for exactly that reason â€” was not
-                         on screen when the list was, and the first thing somebody saw was a
-                         service they have never heard of. A linear panel opens at the top, and
-                         still draws only what fits. What should change is the list being this
-                         long at all, which is not this card's. -->
-                    <ComboBox.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <VirtualizingStackPanel />
-                        </ItemsPanelTemplate>
-                    </ComboBox.ItemsPanel>
-                </ComboBox>
-                <Button
-                    x:Name="RefreshTheMachineButton"
-                    VerticalAlignment="Bottom"
-                    Click="OnRefreshTheMachine"
-                    Content="{x:Bind In(loc:UiTexts.RefreshTheList)}" />
+                <!-- What the next meeting will record. Everything here is dead the moment one starts:
+                     changing the microphone half way through is not a thing the engine can do, so it is
+                     not a thing this screen offers. -->
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <ComboBox
+                        x:Name="MicrophonePicker"
+                        MinWidth="240"
+                        Header="{x:Bind In(loc:UiTexts.Microphone)}"
+                        SelectionChanged="OnMicrophoneChosen" />
+                    <ComboBox
+                        x:Name="SourcePicker"
+                        MinWidth="280"
+                        Header="{x:Bind In(loc:UiTexts.WhatToRecordFromThisMachine)}"
+                        SelectionChanged="OnSourceChosen">
+                        <!-- The one picker that says which panel holds it, and the only one long
+                             enough for it to matter: this list is every program on the machine, and a
+                             ComboBox's own CarouselPanel decides where a list too long to fit opens.
+                             With nothing chosen it opened part way down the alphabet, so the answer
+                             that is always available and always right about what it records â€” the
+                             whole machine, put first by SourcesNow for exactly that reason â€” was not
+                             on screen when the list was, and the first thing somebody saw was a
+                             service they have never heard of. A linear panel opens at the top, and
+                             still draws only what fits. What should change is the list being this
+                             long at all, which is not this card's. -->
+                        <ComboBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <VirtualizingStackPanel />
+                            </ItemsPanelTemplate>
+                        </ComboBox.ItemsPanel>
+                    </ComboBox>
+                    <Button
+                        x:Name="RefreshTheMachineButton"
+                        VerticalAlignment="Bottom"
+                        Click="OnRefreshTheMachine"
+                        Content="{x:Bind In(loc:UiTexts.RefreshTheList)}" />
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <StackPanel Spacing="2">
+                        <ComboBox
+                            x:Name="SpokenPicker"
+                            MinWidth="240"
+                            Header="{x:Bind In(loc:UiTexts.WhatWillBeSpoken)}"
+                            SelectionChanged="OnSpokenChosen" />
+                        <TextBlock
+                            Text="{x:Bind In(loc:UiTexts.WhatWillBeSpokenIsAskedEveryTime)}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            MaxWidth="360"
+                            TextWrapping="Wrap"
+                            Opacity="0.7" />
+                    </StackPanel>
+                    <ComboBox
+                        x:Name="LanguagePicker"
+                        MinWidth="160"
+                        VerticalAlignment="Top"
+                        Header="{x:Bind In(loc:UiTexts.Language)}"
+                        SelectionChanged="OnLanguageChosen" />
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            x:Name="RecordButton"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Click="OnRecord"
+                            Content="{x:Bind In(loc:UiTexts.Record)}" />
+                        <Button x:Name="PauseButton" Click="OnPause" Content="{x:Bind In(loc:UiTexts.Pause)}" />
+                        <Button x:Name="ResumeButton" Click="OnResume" Content="{x:Bind In(loc:UiTexts.Resume)}" />
+                        <Button x:Name="StopButton" Click="OnStop" Content="{x:Bind In(loc:UiTexts.Stop)}" />
+                    </StackPanel>
+
+                    <!-- The offer, and it is not on screen until the recording has made it. That is the
+                         whole of the consent here: there is nothing to press early, so nothing pressed
+                         early can be spent on it. -->
+                    <StackPanel x:Name="WholeMachineOffer" Spacing="4" Visibility="Collapsed">
+                        <TextBlock
+                            Text="{x:Bind In(loc:UiTexts.NothingCameFromThatProgram)}"
+                            TextWrapping="Wrap"
+                            MaxWidth="640" />
+                        <Button
+                            x:Name="WholeMachineButton"
+                            HorizontalAlignment="Left"
+                            Click="OnRecordTheWholeMachine"
+                            Content="{x:Bind In(loc:UiTexts.RecordTheWholeMachine)}" />
+                    </StackPanel>
+                </StackPanel>
             </StackPanel>
 
-            <StackPanel Orientation="Horizontal" Spacing="12">
+            <!-- Saving the meeting: the state the screen is in between stop and the meeting being
+                 there. It is a state and not a moment — for a long meeting the spools take minutes
+                 to become a recording — so it has a heading of its own and the steps of the save
+                 under it. There is no notice about leaving the application alone, deliberately: a
+                 save the process did not survive leaves the spools recovery already offers.
+
+                 The steps are built in the code-behind and not templated here, for the reason the
+                 meeting cards are: which of them exist is an answer, not a layout. What decides it
+                 is SavingTheMeeting, in a project a build agent can run. -->
+            <StackPanel x:Name="SavingCard" Spacing="12" Visibility="Collapsed">
                 <StackPanel Spacing="2">
-                    <ComboBox
-                        x:Name="SpokenPicker"
-                        MinWidth="240"
-                        Header="{x:Bind In(loc:UiTexts.WhatWillBeSpoken)}"
-                        SelectionChanged="OnSpokenChosen" />
                     <TextBlock
-                        Text="{x:Bind In(loc:UiTexts.WhatWillBeSpokenIsAskedEveryTime)}"
+                        Text="{x:Bind In(loc:UiTexts.SavingTheMeeting)}"
+                        Style="{StaticResource TitleTextBlockStyle}" />
+                    <!-- How long the meeting ran, as the machine's own number: it reads the same
+                         in either language, so it carries no entry of the catalogue. -->
+                    <TextBlock
+                        x:Name="SavedMeetingLength"
                         Style="{StaticResource CaptionTextBlockStyle}"
-                        MaxWidth="360"
-                        TextWrapping="Wrap"
                         Opacity="0.7" />
                 </StackPanel>
-                <ComboBox
-                    x:Name="LanguagePicker"
-                    MinWidth="160"
-                    VerticalAlignment="Top"
-                    Header="{x:Bind In(loc:UiTexts.Language)}"
-                    SelectionChanged="OnLanguageChosen" />
-            </StackPanel>
 
-            <StackPanel Spacing="8">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button
-                        x:Name="RecordButton"
-                        Style="{StaticResource AccentButtonStyle}"
-                        Click="OnRecord"
-                        Content="{x:Bind In(loc:UiTexts.Record)}" />
-                    <Button x:Name="PauseButton" Click="OnPause" Content="{x:Bind In(loc:UiTexts.Pause)}" />
-                    <Button x:Name="ResumeButton" Click="OnResume" Content="{x:Bind In(loc:UiTexts.Resume)}" />
-                    <Button x:Name="StopButton" Click="OnStop" Content="{x:Bind In(loc:UiTexts.Stop)}" />
-                </StackPanel>
-
-                <!-- The offer, and it is not on screen until the recording has made it. That is the
-                     whole of the consent here: there is nothing to press early, so nothing pressed
-                     early can be spent on it. -->
-                <StackPanel x:Name="WholeMachineOffer" Spacing="4" Visibility="Collapsed">
-                    <TextBlock
-                        Text="{x:Bind In(loc:UiTexts.NothingCameFromThatProgram)}"
-                        TextWrapping="Wrap"
-                        MaxWidth="640" />
-                    <Button
-                        x:Name="WholeMachineButton"
-                        HorizontalAlignment="Left"
-                        Click="OnRecordTheWholeMachine"
-                        Content="{x:Bind In(loc:UiTexts.RecordTheWholeMachine)}" />
-                </StackPanel>
+                <StackPanel x:Name="SavingSteps" Spacing="8" MaxWidth="640" HorizontalAlignment="Left" />
             </StackPanel>
 
             <!-- What is arriving, while it is arriving. There is no meeting to meter until one is

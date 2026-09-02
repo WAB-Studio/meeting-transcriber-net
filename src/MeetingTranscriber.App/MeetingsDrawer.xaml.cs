@@ -59,6 +59,18 @@ public sealed partial class MeetingsDrawer : UserControl
     /// </summary>
     private bool _mayTakeTheWholeWindow;
 
+    /// <summary>
+    /// The meeting the recorder above is saving right now, when it is saving one.
+    /// </summary>
+    /// <remarks>
+    /// Held rather than read out of the corpus, and that is the whole of why the recorder has to
+    /// say. A meeting being saved is a row with no audio filed yet, which is exactly what a
+    /// recording that never finished is — so the corpus cannot tell the two apart, and a list
+    /// reading it alone would put "no audio yet, it is being recorded or its recording never
+    /// finished" on the meeting somebody stopped four seconds ago.
+    /// </remarks>
+    private Guid? _beingSaved;
+
     public MeetingsDrawer()
     {
         InitializeComponent();
@@ -133,6 +145,19 @@ public sealed partial class MeetingsDrawer : UserControl
 
         OpennessButton.IsEnabled = offered || HasTheWholeWindow;
     }
+
+    /// <summary>
+    /// Which meeting the recorder above is saving, or nothing when it is saving none. Told and
+    /// never worked out here, for the reason <see cref="_beingSaved"/> gives.
+    /// </summary>
+    /// <remarks>
+    /// It draws nothing, which is not an omission. Both ends of a save are moments the list has to
+    /// be read again anyway — a meeting arriving in it, and one finished in it — so the window
+    /// says this and then reads, and a draw here would be a second rebuild of every card for one
+    /// press. It also keeps this off the path a window closed mid save takes, where drawing is the
+    /// one thing that must not happen.
+    /// </remarks>
+    public void BeingSavedNow(Guid? meeting) => _beingSaved = meeting;
 
     /// <summary>
     /// What a text says in the language this screen is being read in. The XAML binds to it, which
@@ -348,9 +373,17 @@ public sealed partial class MeetingsDrawer : UserControl
             Style = Chrome("MeetingWhen"),
         });
 
+        // The one line on this list not read out of the corpus. A meeting being saved has no audio
+        // filed yet, which is exactly what a recording that never finished looks like from here —
+        // so the corpus cannot tell the two apart, and left to it the list would say "no audio
+        // yet: it is being recorded, or its recording never finished" about the meeting somebody
+        // stopped four seconds ago. Only the line changes: a meeting at that stage has no action
+        // and no standing either way, so there is nothing else on the card for this to decide.
         lines.Children.Add(new TextBlock
         {
-            Text = In(Reached(entry.Owed.Stage)),
+            Text = In(entry.Meeting.Id == _beingSaved
+                ? UiTexts.ThisOneIsBeingSaved
+                : Reached(entry.Owed.Stage)),
             Style = Chrome("MeetingLine"),
         });
 

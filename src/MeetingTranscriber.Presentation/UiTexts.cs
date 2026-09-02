@@ -134,6 +134,30 @@ public static class UiTexts
         "Stopping. The meeting is being made out of what was recorded, and for a long meeting that "
         + "takes some minutes.");
 
+    // ── Saving the meeting, which is a state of the screen and not a moment ──────
+    //
+    // The heading the recorder half takes while a meeting is being saved, and one line per step
+    // that save is going to run. What decides which of them are on screen is not here: a step is
+    // shown because the save runs it, so this file holds words for steps and never the list.
+
+    public static UiText SavingTheMeeting { get; } =
+        new("Guardando la reunión", "Saving the meeting");
+
+    public static UiText LettingBothSourcesGo { get; } = new(
+        "Soltando las dos fuentes",
+        "Letting both sources go");
+
+    public static UiText SavingTheAudioOfBothChannels { get; } = new(
+        "Guardando el audio de los dos canales",
+        "Saving the audio of both channels");
+
+    // The two marks beside a step. They are what a narrator reads out where somebody looking sees
+    // a tick or a ring, so they are texts and not decoration; a step still to come carries neither,
+    // because there is nothing yet to say about it.
+    public static UiText ThisStepIsDone { get; } = new("listo", "done");
+
+    public static UiText ThisStepIsUnderWay { get; } = new("en curso", "under way");
+
     public static UiText TheMeetingIsRecorded { get; } = new(
         "Reunión {0} grabada: {1} de audio en {2}.",
         "Meeting {0} recorded: {1} of audio at {2}.");
@@ -309,6 +333,14 @@ public static class UiTexts
     public static UiText NoAudioYet { get; } = new(
         "Todavía no hay audio: se está grabando, o la grabación no llegó a terminar.",
         "No audio yet: it is being recorded, or its recording never finished.");
+
+    // Not a stage: it is the one meeting the recorder above is saving right now, said on its row
+    // so the list and the half above it agree about what is happening to it. Every other meeting
+    // on the list reads its stage out of the corpus, which is where this one will read from too
+    // the moment the save is over.
+    public static UiText ThisOneIsBeingSaved { get; } = new(
+        "Guardándose ahora.",
+        "Being saved right now.");
 
     public static UiText Recorded { get; } = new("Grabada.", "Recorded.");
 
