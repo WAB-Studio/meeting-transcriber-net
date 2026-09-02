@@ -64,6 +64,34 @@
             </Style>
 
             <Style x:Key="TakeTheStage" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}" />
+
+            <!-- The two tints `docs/design.md` fixes, and the only thing that tells a row waiting
+                 on the person from one the application is merely working on. Something waiting on
+                 a decision is the decision tint; something lost or about to be is the attention
+                 tint. Which is why the recording still running takes neither and sits on the card
+                 surface with the meetings — `tarjeta`, in that document's own words: nothing about
+                 it is waiting on anybody.
+
+                 The brushes are Windows' own rather than Olivo's `#EEF2EF` and `#F8EDE6`, because
+                 this application is not drawn from that palette yet — ISC-173 is what puts every
+                 screen on one visual system, and a hard-coded pair of hex values here would be two
+                 more things for that card to find. What is held to now is the distinction, not the
+                 colour: these are the two Windows uses for the same two meanings, and they follow
+                 the theme, which a literal would not. -->
+            <Style x:Key="WaitingOnADecision" TargetType="Border" BasedOn="{StaticResource MeetingCard}">
+                <Setter Property="Background" Value="{ThemeResource SystemFillColorAttentionBackgroundBrush}" />
+            </Style>
+
+            <Style x:Key="SomethingIsLost" TargetType="Border" BasedOn="{StaticResource MeetingCard}">
+                <Setter Property="Background" Value="{ThemeResource SystemFillColorCautionBackgroundBrush}" />
+            </Style>
+
+            <!-- The one press on this screen that loses something. It sits to the left of the left
+                 one, past a gap, so it cannot be pressed by reflex — the margin is the gap, and it
+                 is the whole difference between this and every other neutral button here. -->
+            <Style x:Key="ItLosesSomething" TargetType="Button">
+                <Setter Property="Margin" Value="0,0,20,0" />
+            </Style>
         </Grid.Resources>
 
         <Grid.RowDefinitions>
@@ -113,7 +141,15 @@
                  instead of looking like a control somebody lost. What it does not say is when they
                  appear: today they are produced by `rebuild` and `render` at the command line and
                  never by this application, so a caption about that would be a promise this screen
-                 cannot keep. -->
+                 cannot keep.
+
+                 There is no second caption here saying nothing is deleted until somebody chooses
+                 it, and that is where somebody would put one. `docs/design.md` settled it on
+                 2026-08-26, twenty minutes after the card that asked for it: nothing is deleted
+                 until somebody chooses it, and saying so is the application reassuring the reader
+                 about a thing it was never going to do. What says it instead is the row — a
+                 recording sits there over as many starts as it takes, and *Descartar* is the only
+                 thing that removes it. -->
             <TextBlock
                 Text="{x:Bind In(loc:UiTexts.TheRenderedFilesAreNeverAskedAbout)}"
                 Style="{StaticResource CaptionTextBlockStyle}"

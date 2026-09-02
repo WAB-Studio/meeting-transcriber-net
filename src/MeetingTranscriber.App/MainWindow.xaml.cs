@@ -15,9 +15,9 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 
-// WinUI has a Duration of its own — an animation's, in ticks — and this file is the one place in
-// the application where the domain's meets it. Aliased rather than qualified at the use, so that
-// the day a second use appears it cannot quietly be the other one.
+// WinUI has a Duration of its own — an animation's, in ticks — and this file is one of the two
+// places in the application where the domain's meets it. Aliased rather than qualified at the use,
+// so that a use written later cannot quietly be the other one; `MeetingsDrawer` does the same.
 using Duration = MeetingTranscriber.Domain.Time.Duration;
 
 namespace MeetingTranscriber.App;
@@ -1465,6 +1465,11 @@ public sealed partial class MainWindow : Window
     {
         _closed = true;
         _watch.Stop();
+
+        // The list below has a press of its own that outlives the handler that started it —
+        // keeping a recording is the same minutes of work stopping is — and it is told for the
+        // same reason this window keeps `_closed`: what it must not do afterwards is draw.
+        Meetings.Closing();
 
         // Before the guard below, and it is the one thing here that is: what it stops is Windows
         // calling into a closed window about a device, which has nothing to do with whichever
