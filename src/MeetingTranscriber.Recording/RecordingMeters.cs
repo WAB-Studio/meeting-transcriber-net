@@ -229,13 +229,17 @@ public sealed record RecordingMeters
     /// </remarks>
     public bool TheOthersAreHeardTwice { get; init; }
 
-    /// <summary>Whether there is a meeting to show any of this for.</summary>
-    public bool Showing => Channels.Count > 0;
-
     /// <summary>
     /// What one channel reads as, or nothing when there is no meeting — so a screen asks for the
     /// channel it has a row for instead of walking a list it cannot have the wrong length of.
     /// </summary>
+    /// <remarks>
+    /// Nothing is the whole of what this says about a screen with no meeting on it, and there is no
+    /// second answer beside it saying whether to draw the meters at all. There was one, and it went
+    /// with the arrangement it belonged to: a meter is pinned to the control that chooses its
+    /// source, so the bar stands under its picker whether or not anything is arriving — what is not
+    /// drawn without a reading is the level and the peak, which is this answer being nothing.
+    /// </remarks>
     public ChannelReading? On(AudioChannel channel) =>
         Channels.FirstOrDefault(reading => reading.Channel == channel);
 
@@ -244,8 +248,8 @@ public sealed record RecordingMeters
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A state with no meeting in it shows none of this, and that is the rule rather than a
-    /// convenience. A meter left standing after a meeting ended is the last second of a recording
+    /// A state with no meeting in it reads as nothing at all, and that is the rule rather than a
+    /// convenience. A level left standing after a meeting ended is the last second of a recording
     /// that is over, and somebody reads it as a recording that is still going; the warning beside
     /// it is worse, because it is about a microphone that is not open.
     /// </para>

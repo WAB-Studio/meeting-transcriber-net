@@ -76,21 +76,21 @@ public sealed partial class ChannelMeter : UserControl
     }
 
     /// <summary>
-    /// Which channel this is, in the words the catalogue carries for it. Set by the window, because
+    /// Which channel this is, in the words the catalogue carries for it. Set from outside, because
     /// this control is one and the channels are two: a meter knows it is a meter and never which.
     /// </summary>
+    /// <remarks>
+    /// Nothing on this control draws it, and it reaches the automation tree and nowhere else. The
+    /// words are the row above's — the chip, the role and the picker — because
+    /// <c>docs/design.md</c> §Where it goes pins the meter to the control that chooses its source.
+    /// But the bar is the thing carrying a value, so it is the thing that has to carry the name a
+    /// screen reader says: a TextBlock beside it announces itself and leaves the one element on
+    /// here that somebody listening needs named unnamed.
+    /// </remarks>
     public string ChannelName
     {
-        get => WhichChannel.Text;
-        set
-        {
-            WhichChannel.Text = value;
-
-            // The bar is the thing carrying a value, so it is the thing that carries the name a
-            // screen reader says. A TextBlock beside it announces itself and leaves the bar
-            // unnamed, which is the one element on here somebody listening needs named.
-            AutomationProperties.SetName(Bar, value);
-        }
+        get => AutomationProperties.GetName(Bar);
+        set => AutomationProperties.SetName(Bar, value);
     }
 
     /// <summary>
@@ -104,13 +104,6 @@ public sealed partial class ChannelMeter : UserControl
     {
         get => Peak.Text;
         set => Peak.Text = value;
-    }
-
-    /// <summary>What this channel has open, in whatever this machine called it.</summary>
-    public string CapturingSaid
-    {
-        get => Capturing.Text;
-        set => Capturing.Text = value;
     }
 
     /// <summary>

@@ -41,10 +41,21 @@
             <Button x:Name="EnvironmentButton" Style="{StaticResource NormalButtonOnPaper}" Click="OnRunEnvironmentProbe" Content="{x:Bind In(loc:UiTexts.ChildEnvironmentCheck)}" />
             <Button x:Name="FileSystemButton" Style="{StaticResource NormalButtonOnPaper}" Click="OnRunFileSystemProbe" Content="{x:Bind In(loc:UiTexts.WritePathCheck)}" />
             <Button x:Name="SaveButton" Style="{StaticResource NormalButtonOnPaper}" Click="OnSaveReport" Content="{x:Bind In(loc:UiTexts.SaveReport)}" />
+            <!-- Its label beside it and not over it. A picker is a pill now — 34 high, the value
+                 and a chevron — and a pill has no header. This one had one, and the day the pill
+                 arrived the word *Idioma* stopped being drawn here with nothing red anywhere,
+                 because `Header` is still a real property that the picker simply no longer
+                 presents. What stops the next screen learning that the same way is the check in
+                 PickerPanelTests that no picker names a header at all. -->
+            <TextBlock
+                VerticalAlignment="Center"
+                Text="{x:Bind In(loc:UiTexts.Language)}"
+                Style="{StaticResource BodyText}"
+                Foreground="{StaticResource SecondaryTextBrush}" />
             <ComboBox
                 x:Name="LanguagePicker"
                 Style="{StaticResource DropDown}"
-                Header="{x:Bind In(loc:UiTexts.Language)}"
+                AutomationProperties.Name="{x:Bind In(loc:UiTexts.Language)}"
                 SelectionChanged="OnLanguageChosen" />
         </StackPanel>
 

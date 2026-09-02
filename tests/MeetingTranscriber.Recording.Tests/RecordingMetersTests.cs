@@ -93,7 +93,6 @@ public class RecordingMetersTests
         // Reached by channel and not by position. What order the readings arrive in is the
         // projection's, which needs two open devices and is not something this can hold — so
         // asserting it here would be asserting the order this test built them in.
-        meters.Showing.ShouldBeTrue();
         meters.On(AudioChannel.Loopback).ShouldNotBeNull();
         meters.On(AudioChannel.Microphone).ShouldNotBeNull();
     }
@@ -109,7 +108,6 @@ public class RecordingMetersTests
     {
         var meters = Metered(state, Speakers, others: Speech, mine: Speech);
 
-        meters.Showing.ShouldBeFalse();
         meters.Channels.ShouldBeEmpty();
         meters.On(AudioChannel.Loopback).ShouldBeNull();
     }

@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="MeetingTranscriber.App.ChannelStrip"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MeetingTranscriber.App"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- One channel: the picker that chooses its source, and under it the meter of what that source
+         is bringing in. `docs/design.md` §Where it goes is the whole reason the two are one control
+         — **the meter is pinned to the control that chooses its source**, so somebody picks, looks,
+         and picks the next one. That is the case of the three processes called Teams, and the two
+         drawn apart turn it into a memory test.
+
+         One control used twice, because two meters is the contract: channel 0 is the others and
+         channel 1 is you, and there are two of them for ever. It knows it is a channel and never
+         which — the chip, the role, what the picker offers and what the picker is called all come
+         from the window, which is what keeps one control from having to know which language it is
+         being read in.
+
+         No literal and no colour, size or corner of its own: every text is set by the window, and
+         every brush and rank names an Olivo key. The four numbers here are spacings and widths,
+         which the system does not name and no screen is held to.
+
+         What the channel is **actually** capturing is not restated under the bar. While nothing has
+         moved it is what the picker says, and the moment it stops being that, the line the window
+         writes beside this one says so in pico, with both names in it. A quiet grey repeat of the
+         same fact under every meter would be the screen saying the same thing twice and saying it
+         loudest where nothing had happened.
+
+         The artboard puts a fourth thing on this row — *se escucha*, right-aligned in olivo — and
+         it is not here: what a channel says about itself is #101's and #102's, and the room it
+         takes is why the pill stops short of the column's edge instead of running to it. -->
+
+    <Grid RowSpacing="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" ColumnSpacing="9">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Which channel this is, as the number Deepgram reports back: data, mono, and the
+                 same in every language. It is not the domain leaking onto the screen — the channel
+                 index is what a person is choosing a source *for*, and the role beside it is what
+                 that means. -->
+            <TextBlock
+                x:Name="Chip"
+                Grid.Column="0"
+                VerticalAlignment="Center"
+                Style="{StaticResource DataText}" />
+
+            <!-- What this channel is: the others, or you. -->
+            <TextBlock
+                x:Name="Role"
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Style="{StaticResource BodyText}"
+                FontWeight="SemiBold" />
+
+            <!-- The pill. It carries no header, which is what lets it stand at the control rank's
+                 34 — what it chooses is the two texts to its left. A screen reader has no label to
+                 read off those, so the window gives it one by name. -->
+            <!-- Left and not stretched, with a floor and no ceiling. The artboard runs the pill
+                 from the role to just short of the status word; that word is #101's and #102's, so
+                 what holds its room open until then is the pill stopping at its own content. No
+                 ceiling because a `ContentPresenter` cannot trim: a maximum width is a device name
+                 cut flat at the pill's edge, reading as a name that is still going. -->
+            <ComboBox
+                x:Name="Picker"
+                Grid.Column="2"
+                MinWidth="260"
+                HorizontalAlignment="Left"
+                Style="{StaticResource DropDown}"
+                SelectionChanged="OnChosen" />
+        </Grid>
+
+        <local:ChannelMeter x:Name="Meter" Grid.Row="1" />
+    </Grid>
+</UserControl>

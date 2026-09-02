@@ -244,7 +244,7 @@ A line is `Type #x:Name "what it says"`, indented by depth, with `value=`, `help
 
 ```text
       ComboBox #MicrophonePicker "Micrófono"
-      Button #RecordButton "Grabar"  disabled
+      Button #RecordButton "Empezar a grabar"  disabled
       Button #OpennessButton "Abrir la lista entera"
 ```
 

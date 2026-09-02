@@ -214,6 +214,12 @@ public sealed partial class MainWindow : Window
         _drawnOn = DispatcherQueue;
         Closed += OnClosed;
 
+        // Once, and not with the words. A strip is one control used twice, so both carry the same
+        // x:Name and something has to tell them apart for a probe and for a tool; an id nobody
+        // hears is not a text and has no business on the path a language change walks.
+        TheOthers.Identity = "SourcePicker";
+        Mine.Identity = "MicrophonePicker";
+
         Meetings.Open(corpus);
         Meetings.OpennessChanged += OnMeetingsMoved;
         Meetings.MeetingChosen += OnMeetingChosen;
@@ -354,8 +360,8 @@ public sealed partial class MainWindow : Window
         // What the next meeting records cannot be changed once one is running: the devices are
         // open, and the engine has no way to swap one out under a recording.
         var choosing = screen.State == RecorderState.Choosing;
-        MicrophonePicker.IsEnabled = choosing;
-        SourcePicker.IsEnabled = choosing;
+        Mine.PickerIsLive = choosing;
+        TheOthers.PickerIsLive = choosing;
         SpokenPicker.IsEnabled = choosing;
         RefreshTheMachineButton.IsEnabled = choosing;
 
@@ -461,15 +467,19 @@ public sealed partial class MainWindow : Window
     {
         var meters = RecordingMeters.Of(state, _playback, _channels);
 
-        // The panel before the lines inside it, because nothing inside a Collapsed element is in
-        // the automation tree — the rest of that chain, and why each step of it matters, is Tell's.
-        Meters.Visibility = meters.Showing ? Visibility.Visible : Visibility.Collapsed;
-
+        // The bars stand on the screen whether or not anything is arriving, and that is the redraw
+        // rather than a regression. `docs/design.md` §The four layers: the hot zone is **visible
+        // even when nothing is arriving**, so the colour is not something that appears out of
+        // nowhere on the day it clips — and a meter that is not drawn at all until a recording
+        // starts is a picker with an empty space under it, which is the arrangement §Where it goes
+        // exists to stop. What is not drawn before a meeting is the level and the peak, which is
+        // what a reading of nothing already says: `Show(null)` leaves the track and the hot zone
+        // and paints neither.
         var others = meters.On(AudioChannel.Loopback);
         var mine = meters.On(AudioChannel.Microphone);
 
-        Show(others, OthersMeter, UiTexts.Channel0TheOthers);
-        Show(mine, MineMeter, UiTexts.Channel1Me);
+        Show(others, TheOthers);
+        Show(mine, Mine);
 
         // Each of the three named where its words are, rather than reached through the row above.
         // A live region that nothing hands a sentence to renders blank and announces nothing, which
@@ -500,58 +510,75 @@ public sealed partial class MainWindow : Window
             Capturing(mine?.Capturing));
     }
 
-    /// <summary>What one channel's meter reads as: what it is capturing, and how loud.</summary>
+    /// <summary>What one channel's meter reads as: how loud it is, and the loudest it has been.</summary>
     /// <remarks>
-    /// Taking the control rather than being written twice, because the two meters are one rule with
+    /// Taking the control rather than being written twice, because the two strips are one rule with
     /// nothing to tell them apart but which channel they are, and a second copy of it is a second
     /// chance to set the wrong one. What the two really do differ in — which sentence they say when
     /// the device is gone — is said where the line is, in <see cref="ShowTheMeters"/>.
     /// <para>
-    /// The words are set here and the drawing is the meter's. A <see cref="ChannelMeter"/> is one
-    /// control used twice, so it cannot hold a name for either channel; and it would otherwise have
+    /// The words are set here and the drawing is the meter's. A <see cref="ChannelStrip"/> is one
+    /// control used twice, so it cannot hold words for either channel; and it would otherwise have
     /// to know which language it is in to say that nothing is arriving. So it draws and remembers,
-    /// and every sentence on it comes off the catalogue through here.
+    /// and every sentence on it comes off the catalogue through here or through
+    /// <see cref="NameTheChannels"/>.
+    /// </para>
+    /// <para>
+    /// Nothing here says what the channel is capturing any more, and that is the redraw: what it is
+    /// capturing is what the picker above the bar says, and the moment the two stop agreeing the
+    /// line beside it says so in pico with both names in it. A grey repeat of the same fact under
+    /// every meter said it loudest where nothing had happened.
     /// </para>
     /// </remarks>
-    private void Show(ChannelReading? reading, ChannelMeter meter, UiText channel)
+    private void Show(ChannelReading? reading, ChannelStrip strip)
     {
-        meter.ChannelName = In(channel);
-
-        // Cleared and not left standing. The row belongs to a meeting that is over, and the panel
-        // around it is hidden — but the next meeting's first frame is drawn from these controls,
-        // and the last one's microphone is not something to show for a second under a new one.
+        // Cleared and not left standing. The reading belongs to a meeting that is over — but the
+        // next meeting's first frame is drawn from these controls, and the last one's level is not
+        // something to show for a second under a new one.
         if (reading is null)
         {
-            meter.CapturingSaid = string.Empty;
-            meter.LoudnessSaid = string.Empty;
-            meter.LoudestSoFarSaid = string.Empty;
-            meter.Show(null);
+            strip.LoudnessSaid = string.Empty;
+            strip.LoudestSoFarSaid = string.Empty;
+            strip.Show(null);
             return;
         }
-
-        // The catalogue where the reading hands back no name, which is a channel capturing the
-        // whole machine — the same shape as the level below it, and for the same reason.
-        meter.CapturingSaid = Capturing(reading.Capturing);
 
         // A level is a measurement and reads the same in every language, so the reading hands one
         // back as data. Having measured nothing is a sentence and the reading hands back none, so
         // the word for it comes from the catalogue — which is also what this screen exists to show:
         // an empty bar and a bar nothing has drawn yet look the same.
-        meter.LoudnessSaid = reading.Loudness ?? In(UiTexts.NothingIsArriving);
+        strip.LoudnessSaid = reading.Loudness ?? In(UiTexts.NothingIsArriving);
 
-        // The bar is drawn before the peak is worded, because drawing is what moves the peak: the
-        // meter is the only thing that remembers the loudest moment, and the sentence around that
-        // number is the one thing about it the catalogue owns.
+        // The peak comes back from the call that draws the bar, because drawing is what moves it.
         //
         // The number itself is written the invariant way and not the reading language's, which is
         // the one place a value inside a catalogue sentence does not follow its language. It stands
         // beside the level directly above it, and that one comes off LevelReading already written
         // — so following the language here would put `pico -9,4` under `-16.2 dBFS`, two numbers
         // whose whole purpose is being compared to each other, punctuated two ways.
-        meter.Show(reading);
-        meter.LoudestSoFarSaid = meter.LoudestSoFar is { } loudest
+        strip.LoudestSoFarSaid = strip.Show(reading) is { } loudest
             ? UiTexts.TheLoudestSoFar.In(_language, loudest.ToString("0.0", CultureInfo.InvariantCulture))
             : string.Empty;
+    }
+
+    /// <summary>
+    /// Says which channel each strip is: the mono chip, the role beside it, and what its picker
+    /// chooses, for somebody who cannot see the two texts.
+    /// </summary>
+    /// <remarks>
+    /// Every word of it is the catalogue's and is said again on every language change, which is why
+    /// it is a call from <see cref="FillThePickers"/> rather than a binding inside
+    /// <see cref="ChannelStrip"/>: one control is used for both channels, and a control that named
+    /// itself would be a second place that has to agree with the contract about which channel is
+    /// which. What a probe finds them by is not said here, because an automation id nobody hears is
+    /// not a word and does not change with the language — that is set once, when the window opens.
+    /// </remarks>
+    private void NameTheChannels()
+    {
+        TheOthers.Describe(
+            In(UiTexts.Channel0), In(UiTexts.TheOthersRole), In(UiTexts.WhatToRecordFromThisMachine));
+
+        Mine.Describe(In(UiTexts.Channel1), In(UiTexts.MyRole), In(UiTexts.Microphone));
     }
 
     /// <summary>
@@ -983,19 +1010,26 @@ public sealed partial class MainWindow : Window
 
     private void FillThePickers()
     {
+        NameTheChannels();
+
+        // A device's name is what its maker called it, so it is data and has no language. Each
+        // strip is told what it offers and what is chosen in one call, and the strip's own flag is
+        // the whole of what keeps that from being read as somebody choosing — the window's
+        // `_filling` covers the three pickers below and nothing here.
+        Mine.Offer(
+            [.. _microphones.Select(device => device.ToString())],
+            _chosen.Microphone is null
+                ? -1
+                : Array.FindIndex(_microphones, device =>
+                    device.Id.Equals(_chosen.Microphone.Id, StringComparison.OrdinalIgnoreCase)));
+
+        TheOthers.Offer(
+            [.. _sources.Select(NameOf)],
+            _chosen.Source is null ? -1 : Array.IndexOf(_sources, _chosen.Source));
+
         _filling = true;
         try
         {
-            // A device's name is what its maker called it, so it is data and has no language.
-            MicrophonePicker.ItemsSource = _microphones.Select(device => device.ToString()).ToArray();
-            MicrophonePicker.SelectedIndex = _chosen.Microphone is null
-                ? -1
-                : Array.FindIndex(_microphones, device =>
-                    device.Id.Equals(_chosen.Microphone.Id, StringComparison.OrdinalIgnoreCase));
-
-            SourcePicker.ItemsSource = _sources.Select(NameOf).ToArray();
-            SourcePicker.SelectedIndex = _chosen.Source is null ? -1 : Array.IndexOf(_sources, _chosen.Source);
-
             SpokenPicker.ItemsSource = Spoken.Select(offered => In(offered.Name)).ToArray();
             SpokenPicker.SelectedIndex = _chosen.Spoken is null
                 ? -1
@@ -1065,25 +1099,32 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void OnMicrophoneChosen(object sender, SelectionChangedEventArgs e)
+    /// <remarks>
+    /// The strip refuses its own refilling, so what arrives here is somebody choosing. What arrives
+    /// with it is a position into the list this window handed over, which is a promise about two
+    /// arrays staying aligned that no signature can carry — so it is checked at the seam, on both
+    /// sides, where the answer is one line and the alternative is an exception on the UI thread.
+    /// </remarks>
+    private void OnMicrophoneChosen(object? sender, int chosen)
     {
-        if (_filling || MicrophonePicker.SelectedIndex < 0)
+        if (chosen < 0 || chosen >= _microphones.Length)
         {
             return;
         }
 
-        _chosen = _chosen with { Microphone = _microphones[MicrophonePicker.SelectedIndex] };
+        _chosen = _chosen with { Microphone = _microphones[chosen] };
         Refresh();
     }
 
-    private void OnSourceChosen(object sender, SelectionChangedEventArgs e)
+    /// <remarks>Guarded the way the microphone's is, for the reason written there.</remarks>
+    private void OnSourceChosen(object? sender, int chosen)
     {
-        if (_filling || SourcePicker.SelectedIndex < 0)
+        if (chosen < 0 || chosen >= _sources.Length)
         {
             return;
         }
 
-        _chosen = _chosen with { Source = _sources[SourcePicker.SelectedIndex] };
+        _chosen = _chosen with { Source = _sources[chosen] };
         Refresh();
     }
 
@@ -1444,8 +1485,8 @@ public sealed partial class MainWindow : Window
         // is the loudest moment of the meeting before this one, sitting on a bar that has heard
         // nothing yet. Emptying the readings above does not reach it, because nothing about it
         // comes off a reading.
-        OthersMeter.ForgetTheLoudestMoment();
-        MineMeter.ForgetTheLoudestMoment();
+        TheOthers.ForgetTheLoudestMoment();
+        Mine.ForgetTheLoudestMoment();
         _step = RecorderStep.Starting;
         Refresh();
 
