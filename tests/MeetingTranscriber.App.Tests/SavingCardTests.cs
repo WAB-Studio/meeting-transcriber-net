@@ -36,7 +36,7 @@ public partial class SavingCardTests
     public void The_screen_names_every_step_a_save_runs_and_no_others() =>
         EnumTable
             .Read(Screen, "step", "SavingWork", StepsDeclaredIn)
-            .ShouldNameItsWholeEnum("MainWindow", "the steps of a save");
+            .ShouldNameItsWholeEnum("the steps of a save");
 
     /// <summary>
     /// The other table on that card: what each step's mark looks like and what a narrator is told
@@ -47,7 +47,7 @@ public partial class SavingCardTests
     public void The_screen_marks_every_standing_a_step_can_be_in() =>
         EnumTable
             .Read(Screen, "standing", "StepStanding", StepsDeclaredIn)
-            .ShouldNameItsWholeEnum("MainWindow", "where a step of a save stands");
+            .ShouldNameItsWholeEnum("where a step of a save stands");
 
     /// <summary>
     /// ISC-158.3. Stopping on a screen and stopping at a prompt reach the same call, and the window

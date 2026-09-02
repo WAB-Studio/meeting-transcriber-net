@@ -20,6 +20,8 @@ internal sealed partial class IsaDocument
 
     private const string VerificationSection = "## Verification";
 
+    private List<string>? _paths;
+
     private IsaDocument(string[] lines)
     {
         Lines = lines;
@@ -69,13 +71,37 @@ internal sealed partial class IsaDocument
     public IReadOnlyList<string> Fog { get; }
 
     /// <summary>
-    /// The file lives at the repo root, and the root is found from this source file's compile-time
-    /// path — the same way <c>DeepgramFixtures</c> finds the fixture folder. A path built from the
-    /// working directory would depend on where the runner was launched from.
+    /// Every path in this repository the file points at, deduplicated and in the order they first
+    /// appear. A stub cites its probe by path, and nothing else here says those resolve.
     /// </summary>
-    public static FileInfo Path([CallerFilePath] string thisFile = "") => new(
+    /// <remarks>
+    /// Worked out when it is asked for and not in the constructor, which every other member here
+    /// is: this is the one that reads the disk, one document is built per test method and one per
+    /// commit the history gates walk, and exactly one fact asks for it.
+    /// </remarks>
+    public IReadOnlyList<string> Paths => _paths ??= ReadPaths(Lines);
+
+    /// <summary>
+    /// Where this repository is, found from this source file's compile-time path — the same way
+    /// <c>DeepgramFixtures</c> finds the fixture folder. A path built from the working directory
+    /// would depend on where the runner was launched from.
+    /// </summary>
+    /// <remarks>
+    /// The <c>[CallerFilePath]</c> is on the private overload and not on this one, which is
+    /// <c>AppSources</c>'s rule and for its reason: a default argument binds at the call site, so a
+    /// caller in another folder would silently resolve a different root. Here that would hand the
+    /// two halves of the path gate two different trees — one deciding what counts as a root, the
+    /// other deciding whether a path exists under it.
+    /// </remarks>
+    public static DirectoryInfo Root() => Here();
+
+    private static DirectoryInfo Here([CallerFilePath] string thisFile = "") => new(
         System.IO.Path.GetFullPath(
-            System.IO.Path.Combine(System.IO.Path.GetDirectoryName(thisFile)!, "..", "..", "ISA.md")));
+            System.IO.Path.Combine(System.IO.Path.GetDirectoryName(thisFile)!, "..", "..")));
+
+    /// <summary>The file itself, which lives at the root.</summary>
+    public static FileInfo Path() =>
+        new(System.IO.Path.Combine(Root().FullName, "ISA.md"));
 
     public static IsaDocument Read() => new(File.ReadAllLines(Path().FullName));
 
@@ -189,6 +215,60 @@ internal sealed partial class IsaDocument
         return stubs;
     }
 
+    /// <summary>
+    /// The backticked spans anywhere in the file that are unambiguously a path in this repository.
+    /// </summary>
+    /// <remarks>
+    /// Read over the whole file and not only over <c>## Verification</c>, because a claim and the
+    /// header both point at files too and a pointer that has stopped resolving is the same defect
+    /// wherever it sits.
+    /// <para>
+    /// Four conditions, and each one is a shape the section actually holds. The span carries a
+    /// <c>/</c>, which is what tells a path from a name: <c>Turns.Group</c>, <c>ISA.md</c> and
+    /// <c>ch1:speaker_0</c> are all things somebody could go and look up, and none of them says
+    /// where. It is one whitespace-free token, which drops the recorded command lines —
+    /// <c>git grep -l "class TemporaryCorpus" -- tests/</c> is a run and not a pointer, and so is
+    /// <c>mklink /J</c>. It holds no wildcard or angle bracket, which drops the one glob and the
+    /// one shape: <c>tests/**/*.cs</c> names a set and <c>meetings/&lt;id&gt;/manifest.json</c>
+    /// names a corpus folder nobody's checkout has. And its first segment names a directory at the
+    /// root, which is what makes it a path in <em>this</em> repository rather than a relative one
+    /// whose base is a sentence — <c>MeetingTranscriber.Testing/DeepgramFixtures.cs</c> is what a
+    /// <c>git grep</c> run inside <c>tests/</c> printed, and resolving it would mean guessing the
+    /// directory it was run from.
+    /// </para>
+    /// <para>
+    /// What the last condition lets through, said rather than left to be found. A root directory
+    /// that is gone makes every pointer under it unreadable rather than red, because the segment
+    /// stops naming a root and the span stops being read as a path at all — the one way this fails
+    /// open, and it takes deleting <c>docs/</c> or <c>tests/</c> whole. The same condition drops
+    /// the only two source files `ISA.md` cites, both of them what a `git grep` inside <c>tests/</c>
+    /// printed, and those are the pointers most likely to rot: a file rooted nowhere resolves only
+    /// against a directory a sentence beside it names, which is a reading and not a rule.
+    /// </para>
+    /// </remarks>
+    private static List<string> ReadPaths(string[] lines)
+    {
+        var roots = Root().EnumerateDirectories()
+            .Select(directory => directory.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return
+        [
+            .. lines
+                .SelectMany(line => Pointer().Matches(line))
+                .Select(span => span.Value.Trim('`'))
+                .Where(span => IsAPath(span, roots))
+                .Distinct(StringComparer.Ordinal),
+        ];
+    }
+
+    /// <summary>The four conditions, in the order the remark above states them.</summary>
+    private static bool IsAPath(string span, HashSet<string> roots) =>
+        span.IndexOf('/', StringComparison.Ordinal) > 0
+        && !span.Any(char.IsWhiteSpace)
+        && span.IndexOfAny(NotInAPath) < 0
+        && roots.Contains(span[..span.IndexOf('/', StringComparison.Ordinal)]);
+
     private static List<string> ReadLearningLabels(string[] lines) =>
     [
         .. ReadSectionBody(lines, LearningSection)
@@ -221,6 +301,15 @@ internal sealed partial class IsaDocument
     /// <summary>A backticked span: a test name, a command, a path — the pointer part of a stub.</summary>
     [GeneratedRegex("`[^`]*`")]
     private static partial Regex Pointer();
+
+    /// <summary>
+    /// What a path in this repository cannot hold: a wildcard, which makes the span a set, and an
+    /// angle bracket, which makes it a shape. Both are answered by a different question than the
+    /// one <see cref="Paths"/> is asked. Nothing else is here — a quote and a pipe are illegal in a
+    /// Windows path too, and every span in the file that carries one already carries whitespace, so
+    /// listing them would be two conditions nothing has ever reached.
+    /// </summary>
+    private static readonly char[] NotInAPath = ['*', '?', '<', '>'];
 
     /// <summary>
     /// The longest a backticked span is free for. Past it the span is priced as prose, one

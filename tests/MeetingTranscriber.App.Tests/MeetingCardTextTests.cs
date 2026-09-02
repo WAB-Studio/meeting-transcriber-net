@@ -4,8 +4,9 @@ namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
 /// ISC-82's half that lives on the screen, and the same rule over a recording nobody got to stop:
-/// a meeting's card names every stage a meeting can be at, every standing that stage can be in and
-/// every standing such a recording can be in, and substitutes for none of them.
+/// a meeting's card names every stage a meeting can be at, every standing that stage can be in,
+/// every standing such a recording can be in and every reason one gives for not becoming a meeting,
+/// and substitutes for none of them.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -44,6 +45,7 @@ public class MeetingCardTextTests
         ["MeetingStage"] = Stages,
         ["StageStanding"] = Standings,
         ["WaitingStanding"] = Waitings,
+        ["WhyNotAMeeting"] = Reasons,
     };
 
     public static TheoryData<string> Tables() => [.. Held.Keys];
@@ -61,9 +63,8 @@ public class MeetingCardTextTests
     }
 
     /// <summary>
-    /// Every stage a meeting can be at and every standing that stage can be in has a word on the
-    /// card, the card answers for nothing a meeting cannot be, and one it has no word for stops
-    /// rather than reading as another.
+    /// Every member of every enum a card turns into words has one, the card answers for nothing
+    /// those enums cannot be, and one it has no word for stops rather than reading as another.
     /// </summary>
     /// <remarks>
     /// The three are one call on <see cref="EnumTable"/> rather than three theories here, because
@@ -74,7 +75,7 @@ public class MeetingCardTextTests
     [Theory]
     [MemberData(nameof(Tables))]
     public void Every_stage_and_every_standing_has_a_word_on_the_card(string enumeration) =>
-        Held[enumeration]().ShouldNameItsWholeEnum("MeetingWords", enumeration);
+        Held[enumeration]().ShouldNameItsWholeEnum(enumeration);
 
     [Fact]
     public void The_button_is_only_ever_offered_for_work_that_spends_something()
@@ -143,6 +144,20 @@ public class MeetingCardTextTests
         "waiting",
         "WaitingStanding",
         Path.Combine("MeetingTranscriber.Recording", "WaitingRows.cs"));
+
+    /// <summary>
+    /// The reasons a waiting recording gives for not being the meeting it was of. Here for the same
+    /// reason the standings are, and it exists at all because those reasons used to be English prose
+    /// on <c>WaitingRecording.Unrecoverable</c> — printed inside a catalogued frame, so a Spanish
+    /// reader got an English clause in the middle of a Spanish sentence. Neither guard could see
+    /// that: <see cref="ScreenTextsTests"/> reads the application's own source, where the words were
+    /// not, and this class read only the enum beside them. A reason with no words is a red here now.
+    /// </summary>
+    private static EnumTable Reasons() => EnumTable.Read(
+        Screen,
+        "why",
+        "WhyNotAMeeting",
+        Path.Combine("MeetingTranscriber.Recording", "WaitingRecordings.cs"));
 
     private static EnumTable Actions() => EnumTable.Read(
         Words, "kind", "JobKind", Path.Combine("MeetingTranscriber.Domain", "Jobs", "JobKind.cs"));
