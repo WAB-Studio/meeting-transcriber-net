@@ -9,6 +9,7 @@ using MeetingTranscriber.Processing.Rendering;
 using MeetingTranscriber.Recording;
 
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Cli;
 
@@ -179,7 +180,7 @@ public static class Cli
         }
         catch (Exception refused) when (IsRefusal(refused))
         {
-            error.WriteLine(refused.Message);
+            error.WriteLine(Said(refused));
             return Refused;
         }
     }
@@ -204,6 +205,18 @@ public static class Cli
     /// recording that names a meeting this corpus does not have.
     /// Anything else is a bug and comes out as one.
     /// </summary>
+    /// <remarks>
+    /// <see cref="DbUpdateException"/> is the same corpus failure as <see cref="SqliteException"/>
+    /// with EF's wrapper on it: everything <c>SaveChanges</c> meets — a database another writer is
+    /// holding, a constraint, a row that moved underneath it — arrives under that one type, with
+    /// SQLite's own exception inside it. Which of the two a command line meets is decided by
+    /// nothing anybody chose: every write path this program reaches from here opens a transaction
+    /// first, and Microsoft.Data.Sqlite starts one with <c>BEGIN IMMEDIATE</c>, so a locked corpus
+    /// is met one statement before <c>SaveChanges</c> and arrives unwrapped. An untransacted save
+    /// — which is most of <c>HumanLayer</c>, and why the windows have named this type all along —
+    /// arrives wrapped. Letting the wrapper decide between an answer and a stack trace would make
+    /// which one somebody gets a property of how the write happened to be written.
+    /// </remarks>
     private static bool IsRefusal(Exception exception) => exception
         is CommandException
         or AudioCaptureException
@@ -217,8 +230,18 @@ public static class Cli
         or ArtifactRestoreException
         or RecordingException
         or SqliteException
+        or DbUpdateException
         or IOException
         or UnauthorizedAccessException;
+
+    /// <summary>
+    /// What a refusal says. Every type above carries its own sentence except
+    /// <see cref="DbUpdateException"/>, whose message is that there is an inner exception to go and
+    /// look at — which is true, and is of no use at all to somebody standing at a prompt. Saying
+    /// the cause is what makes the same corpus failure read the same whether EF wrapped it or not.
+    /// </summary>
+    private static string Said(Exception refused) =>
+        refused is DbUpdateException { InnerException: { } cause } ? cause.Message : refused.Message;
 
     /// <summary>One command: how it is typed, what it does, and what runs it.</summary>
     private sealed record Command(

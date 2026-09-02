@@ -1,7 +1,10 @@
+using System.Reflection;
+
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
 
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Cli.Tests;
@@ -325,6 +328,52 @@ public class CommandLineTests
         run.Code.ShouldBe(Cli.Misused);
         run.Error.ShouldContain("the-one-about-the-orchard");
     }
+
+    /// <summary>
+    /// One corpus, and more than one thing writing to it: the application in front of somebody,
+    /// and this prompt. A write the corpus turns down is the corpus working as designed — nothing
+    /// is broken and the answer is usually to run it again — so it is an answer this program owes
+    /// whoever typed the command, under the exit code every other corpus refusal already uses.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It asks the predicate rather than typing a command because no command can reach the wrapped
+    /// shape today, and that is the point rather than a gap in the test. Every write path reachable
+    /// from here opens a transaction first and Microsoft.Data.Sqlite starts one with
+    /// <c>BEGIN IMMEDIATE</c>, so a corpus another writer is holding is met one statement before
+    /// <c>SaveChanges</c> and arrives unwrapped, as <see cref="SqliteException"/>, which was already
+    /// a refusal. Nobody chose that ordering and nothing holds it still.
+    /// </para>
+    /// <para>
+    /// That <c>SaveChanges</c> against this corpus really does throw this was measured rather than
+    /// assumed: with the write lock held by a second connection it came back as
+    /// <see cref="DbUpdateException"/> wrapping <c>SQLite Error 5: 'database is locked'</c>. The
+    /// untransacted saves that produce it live in <c>HumanLayer</c>, which is why all three of the
+    /// window's predicates have named this type since they were written.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_corpus_write_that_comes_back_wrapped_is_still_a_refusal()
+    {
+        var wrapped = new DbUpdateException(
+            "An error occurred while saving the entity changes.",
+            new SqliteException("SQLite Error 5: 'database is locked'.", 5));
+
+        Inside("IsRefusal").Invoke(null, [wrapped]).ShouldBe(true);
+
+        // And says which corpus failure it was, rather than sending somebody to look at an inner
+        // exception they have no way of seeing. It is the sentence the unwrapped path prints.
+        Inside("Said").Invoke(null, [wrapped]).ShouldBe("SQLite Error 5: 'database is locked'.");
+    }
+
+    /// <summary>
+    /// One of the two the refusal contract is made of. They are private because nothing outside
+    /// this class decides a refusal, and reached this way because no command can hand them a
+    /// wrapped corpus failure — a rename lands here as a failure that says which one went.
+    /// </summary>
+    private static MethodInfo Inside(string name) =>
+        typeof(Cli).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException($"Cli.{name} decides what a refusal is, and it is gone or renamed.");
 
     private static Run Import(string root) => CommandLine.Of(
         "import-response",
