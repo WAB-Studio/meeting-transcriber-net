@@ -213,6 +213,13 @@ public static class DeepgramTranscriptParser
     /// Optional on purpose: it is the provider's own number about one stretch of speech, worth
     /// carrying because it was paid for, and not worth refusing a whole meeting over.
     /// </summary>
+    /// <remarks>
+    /// Unbounded here and bounded where it lands: <c>ck_utterances_confidence</c> holds the column
+    /// to zero through one, so a number outside that is refused by the corpus as the turns are
+    /// saved rather than by the parser as the response is read. That is the only number on this
+    /// path the two halves disagree about, and it is left alone deliberately — no provider sends
+    /// one, and a check here would be a refusal written for input nothing produces.
+    /// </remarks>
     private static double? Confidence(JsonElement utterance) =>
         utterance.TryGetProperty("confidence", out var confidence)
         && confidence.ValueKind is JsonValueKind.Number
