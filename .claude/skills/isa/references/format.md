@@ -94,6 +94,9 @@ Board: 3 · Grabador WinUI
   name in a claim — a claim outlives the design under it, and the evidence stub is where the test
   is named. A claim a rename would falsify was never about the product.
 - `- [x]` closed, `- [ ]` open. A claim closes on evidence, never on a task's status.
+- **A claim is written open, and reaches `main` before the work that closes it starts.** Writing it
+  already ticked beside the work it judges scores that work against a bet it never had to clear.
+  Check 15 refuses it.
 - `Anti:` prefixes a claim about what must *not* happen. At least one is required overall — a
   goal with no failure mode worth naming is under-specified.
 - Nested IDs (`ISC-7.1`) organise a split; the atomicity rule applies at the leaves.
@@ -175,6 +178,26 @@ Mechanical, enforced by `IsaStructureTests`, and hard failures:
     evidence runs no longer than `LongestStubProse` and `MostFreePointers` together.
 13. Every `## Verification` stub names a claim above, and that claim is marked closed.
 14. No ISC ID carries two `## Verification` stubs.
+15. No claim is closed by the change that wrote it — a claim marked `[x]` that `origin/main` does
+    not carry at all is a claim born ticked.
+
+Check 15 is the only one that reads history, because it is the only rule the file cannot state
+about itself: a claim marked `[x]` reads the same whether it stood open for a week or was written
+that way in the diff that closes it. It compares the working tree against the fork point from
+`origin/main`, so it answers before the change is committed, and CI owes it `fetch-depth: 0` at
+the checkout. It speaks on a pull request; on a push to `main` the fork point is HEAD.
+
+Ids are all it compares, and three consequences follow. Reordering, rewording and moving a claim
+between blocks are invisible to it. Renumbering a closed claim reads as one appearing, which is
+right, since check 10 refuses renumbering anyway. And rewriting an open claim to describe what the
+same diff just built, then ticking it, is the same defect with one extra keystroke and no gate
+reaches it — that one is a reviewer's to see, and it is written here so they know to look.
+
+There is no exception for a split. Narrowing a closed claim by rewriting its own text keeps the id
+that carried the bet and passes; splitting it into new ids marked closed is a second closure
+however it reads, so it goes red and the person says why in the pull request. The one time the
+repo did that — `ISC-139` in PR #63 — the new leaf was about a screen that same pull request
+built, which is the defect and not the exception.
 
 Check 11 was advisory until 2026-08-26, on the argument that a pointer cannot be told from a
 paragraph by counting characters. That holds for the line, which here is mostly test names — seven

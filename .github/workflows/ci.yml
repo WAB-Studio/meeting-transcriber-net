@@ -12,6 +12,13 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # ISA.md's check 15 refuses a claim written into the file already closed, and the only
+          # way to see that is to read the file as `origin/main` had it. The default fetch-depth
+          # of 1 leaves no `origin/main` and no history behind it; 0 fetches every branch whole.
+          # Undo this and the check goes red saying so rather than passing on a comparison it
+          # never made — `IsaHistory` is what reads it.
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
         with:

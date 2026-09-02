@@ -118,11 +118,17 @@ Then write the claim and check the Splitting Test:
 - Crosses a boundary (domain / storage / processing / UI) → one per boundary.
 
 Splits preserve the parent: `ISC-7` becomes the container, leaves become `ISC-7.1`, `ISC-7.2`.
-Never renumber.
+Never renumber. Splitting a *closed* claim is the one split check 15 refuses, because a leaf
+marked `[x]` on the day it is written is a second closure however it reads — narrow the claim by
+rewriting its own text instead, which keeps the id that carried the bet.
 
 **Run the probe before building.** If it passes with no work done, either the claim was already
 true — delete it — or the probe cannot fail, which means it is not a probe. Deterministic types
 only; never for `manual`.
+
+**A claim lands on `main` before the work that closes it starts** — in its own change, with
+nothing built on top of it there. Check 15 refuses a claim written and ticked together, so a card
+whose claim does not exist yet is two pieces of work, and the first of them is this one.
 
 ### Interview — fill a thin section
 
