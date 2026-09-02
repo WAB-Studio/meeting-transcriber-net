@@ -75,14 +75,14 @@ public sealed record RebuildReport(
 /// detaches rather than opening a context per meeting.
 /// </para>
 /// <para>
-/// The promise does not yet reach the refused meeting's own turns. <c>MeetingRenderer</c> drops
-/// them before projecting the new ones and the drop is not pending — it is a statement that has
-/// run — so a meeting refused between the two keeps neither generation, and a rebuild is the only
-/// thing that would put them back and refuses the same way every time. Where that lands is on the
-/// corpus-wide commit and never quietly: a claim citing one of those turns fails the deferred
-/// foreign key check, which takes the whole run rather than the meeting. Narrowing that to the
-/// meeting it came from is the same open question as <c>rebuild.Commit()</c> sitting outside the
-/// guard, and it is not this loop's to answer — the delete is the renderer's.
+/// The promise reaches the refused meeting's own turns too, and the renderer is what keeps it:
+/// <c>MeetingRenderer</c> swaps a meeting's turns inside a savepoint of its own, so a refusal
+/// between dropping them and saving the new ones puts the old ones back instead of leaving the
+/// meeting holding neither generation. That savepoint is taken inside this transaction and rolled
+/// back inside it, and this loop depends on two things being true of that: the deferral set below
+/// survives a rollback to a savepoint, and the deferred count a deleted cited turn raised comes
+/// back down with the row it was raised for. Without the second, one refused meeting would take
+/// this commit and every meeting in the run with it.
 /// </para>
 /// <para>
 /// EF Core tracking is the write path on purpose, for now. This is the bulk write of the system and
