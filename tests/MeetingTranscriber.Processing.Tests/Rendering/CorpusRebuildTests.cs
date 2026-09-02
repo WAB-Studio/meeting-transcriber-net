@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
@@ -354,6 +355,63 @@ public class CorpusRebuildTests
     }
 
     /// <summary>
+    /// A meeting refused by the corpus as its own turns are saved costs that meeting and leaves the
+    /// meetings behind it a change tracker with nothing of it in it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The other side of absorbing, and the one the shared context makes possible. Every other
+    /// refusal in this file is thrown before the turns are saved — by the parser, by the domain, or
+    /// by the filesystem on the write that comes after — so the tracker the next meeting inherits
+    /// is clean without anything having kept it that way. This one is refused by SQLite from inside
+    /// <c>MeetingRenderer.Project</c>'s own <c>SaveChanges</c>, with the whole meeting's turns
+    /// already added, and <c>Project</c> only ever detaches turns of the meeting it is rendering.
+    /// So without a reset those rows are still pending when the next meeting saves anything at all,
+    /// and the corpus refuses them again: one meeting costing every meeting behind it, which is
+    /// what absorbing exists to stop.
+    /// </para>
+    /// <para>
+    /// One good meeting on each side, because both halves are the point: the meeting already
+    /// rebuilt has to come through the reset whole, and the meeting behind the refusal has to come
+    /// back rebuilt exactly as it would have without one.
+    /// </para>
+    /// <para>
+    /// What the refused meeting itself is left holding is not asserted here, and deliberately.
+    /// This one has never been rendered, so it has nothing to lose and would say nothing about a
+    /// meeting that has —
+    /// <see cref="A_meeting_the_rebuild_could_not_render_keeps_its_card_and_neither_derived_file"/>
+    /// covers the half that is settled, and the half that is not is the renderer dropping a
+    /// meeting's turns before it knows the new ones will save.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_meeting_the_corpus_refuses_as_it_saves_leaves_the_next_one_a_clean_change_tracker()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var older = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelShort, When);
+        var refused = Filed(context, SourceProfile.Multichannel, Later(1), WithConfidenceOffTheScale());
+        var newer = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelOneVoiceMe, Later(2));
+
+        var report = CorpusRebuild.Run(context, When);
+
+        report.Meetings.ShouldBe(2);
+        Files(context, older).ShouldBe(Rebuilt, ignoreOrder: true);
+        Files(context, newer).ShouldBe(Rebuilt, ignoreOrder: true);
+
+        // The constraint by name, or this would pass on a refusal that never reached SQLite at all
+        // — which is every other refusal in this file, and precisely what makes them the wrong
+        // probe for this.
+        var line = report.CouldNotRebuild.ShouldHaveSingleItem();
+        line.ShouldContain(refused.ToString());
+        line.ShouldContain("ck_utterances_confidence");
+
+        // Every row the run did commit still agreeing with the file it names, which is what says
+        // the reset threw away only writes that had not happened.
+        CorpusIntegrity.Check(context).ShouldBeEmpty();
+    }
+
+    /// <summary>
     /// A meeting refused earlier in the run leaves the deferral standing for the meetings behind
     /// it, whose turns are cited by claims and cannot be replaced without it.
     /// </summary>
@@ -623,6 +681,40 @@ public class CorpusRebuildTests
             var response = File.ReadAllText(DeepgramFixtures.PathOf(fixture));
             response.ShouldContain(@"""speaker"":0");
             stream.Write(Encoding.UTF8.GetBytes(response.Replace(@"""speaker"":0", @"""speaker"":-1", StringComparison.Ordinal)));
+        };
+
+    /// <summary>
+    /// A fixture whose confidences the corpus will not store. Every timing, channel, speaker and
+    /// word it was sent with is left alone, and the one edit is the only number on this path that
+    /// nothing checks until SQLite does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The parser carries a confidence exactly as sent and refuses nothing over it, deliberately —
+    /// it is the provider's own number about one stretch of speech, and a whole meeting is not
+    /// worth refusing over it. <c>ck_utterances_confidence</c> disagrees: the column it lands in is
+    /// bounded to zero through one. So a response the parser reads happily is a row the corpus
+    /// refuses, and the refusal arrives from inside <c>MeetingRenderer.Project</c>'s own
+    /// <c>SaveChanges</c> with the meeting's turns already staged — which is the state no other
+    /// fixture here can reach, because every one of them is refused before a row is built at all.
+    /// </para>
+    /// <para>
+    /// Every utterance rather than one: <c>Turns.Group</c> averages a turn's confidence over the
+    /// segments it merges, weighted by their lengths, so a single out-of-range segment could come
+    /// back inside the bound and prove nothing.
+    /// </para>
+    /// </remarks>
+    private static Action<Stream> WithConfidenceOffTheScale(
+        string fixture = DeepgramFixtures.TwoChannelShort) =>
+        stream =>
+        {
+            // The confidence of an utterance and not of a word or of a channel's transcript: only
+            // an utterance carries the channel it was on, and only its confidence is read.
+            var reported = new Regex(@"""confidence"":[0-9.]+,""channel"":");
+            var response = File.ReadAllText(DeepgramFixtures.PathOf(fixture));
+            reported.IsMatch(response).ShouldBeTrue();
+            stream.Write(Encoding.UTF8.GetBytes(
+                reported.Replace(response, @"""confidence"":1.5,""channel"":")));
         };
 
     /// <summary>An accepted extraction to hang a claim off. Written as SQL: it is not under test.</summary>
