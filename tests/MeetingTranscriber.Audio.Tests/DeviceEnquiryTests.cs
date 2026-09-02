@@ -176,19 +176,36 @@ public class DeviceEnquiryTests
 
             // The seam the watcher really calls — AudioDevices.Microphones() with this question
             // unwedged — is not asserted here, and asking it was this test's whole flakiness. On a
-            // build agent that call is a real endpoint enumeration under no deadline of ours: it
-            // took 1.26 s against a one-second bound, and on the run before that it took longer
-            // than the product's own five seconds, so the ask gave up and the assertion that the
-            // refusal was not this memory's failed on a refusal that was nobody's fault. Worse than
-            // one red — the given-up-on ask leaves a microphones entry behind that this test's
-            // `finally` does not heal, since it heals only the question it wedged, so every later
-            // test in the class asking that question fails with a wedge it never caused.
+            // build agent that call is a real endpoint enumeration under no deadline of ours, so a
+            // clock over it reads the machine rather than this code: across three reds it measured
+            // 1.9277846 s on one and 1.2555430 s on another, against the one-second bound this
+            // suite used to carry. A bound read off the deadline holds both of those, and that is
+            // the bound now. The third is the one that settles it — the enumeration ran past the
+            // product's own five seconds, so the ask gave up, and the assertion that the refusal
+            // was not this memory's failed on a refusal that was nobody's fault. No bound a test
+            // may choose widens that away, because the number it ran past is the product's.
             //
-            // Nothing is lost by not asking it, because two probes compose to the same statement
-            // without a real audio stack: the line above says a wedged playback device leaves
-            // `Answering(Microphones, …)` unrefused, and `Both_questions…` says
-            // `AudioDevices.Microphones()` is that call — it wedges the question first, so it is
-            // refused by the memory and never reaches Windows either.
+            // What that costs is worth naming rather than denying. With this line gone, nothing in
+            // `dotnet test` runs the body of AudioDevices.Microphones() or AudioDevices.Playback()
+            // at all: the only calls left are the two in `Both_questions…`, which wedges each
+            // question first, so both bodies are refused before Windows is touched. So the suite no
+            // longer says that a real enumeration comes back rather than throwing something out of
+            // COM that is not an AudioCaptureException. That is a smoke test gone, and it cannot be
+            // had back here, since the only machine that could answer it is the one whose answer
+            // was the flakiness. What survives is the claim this test is for, by composition: the
+            // line above says a wedged playback device leaves `Answering(Microphones, …)`
+            // unrefused, and `Both_questions…` says `AudioDevices.Microphones()` is that call.
+            //
+            // The other reason not to buy it back with a longer bound is a hazard rather than
+            // anything a run showed. An ask given up on leaves an entry behind, dropped again on
+            // `Answered`, which the body sets whenever it comes back — and read by the next
+            // question anybody asks, since the pruning is over the whole list and not the question
+            // being asked. So an enumeration that is only slow heals itself and takes nothing with
+            // it, which is what those runs did: each was one red out of 287. What would not heal is
+            // an enumeration that never came back, and then every later test asking about the
+            // microphones fails with a wedge it never caused. That is a stuck audio service on the
+            // agent rather than anything seen, and it is reason enough, because what it would cost
+            // is the run and not the test.
 
             // And the wedged one is still wedged, so what is being measured is the scope of the
             // memory and not the memory having quietly emptied itself.
@@ -236,16 +253,26 @@ public class DeviceEnquiryTests
         using var stuckSecond = new ManualResetEventSlim(initialState: false);
         using var secondCameBack = new ManualResetEventSlim(initialState: false);
         var secondWaited = TimeSpan.Zero;
+        Exception? secondMet = null;
 
         try
         {
+            // What the second looker met is carried back rather than asserted where it happened.
+            // That thread is the process's and not xunit's, so an assertion failing inside it is an
+            // unhandled exception on a thread nobody is catching for: it takes the test host down,
+            // and the run then says the host died rather than naming which of this assembly's tests
+            // failed. One readable red is worth more than a killed run in any class, and in this one
+            // it is the subject — what these tests are for is a wedge being reported as the wedge it
+            // is, by whoever is waiting on it.
             var second = new Thread(() =>
             {
                 Thread.Sleep(TimeSpan.FromSeconds(1));
-                secondWaited = Deadlines.Time(() => Should.Throw<AudioDeviceWedgedException>(() =>
+                secondWaited = Deadlines.Time(() => secondMet = Record.Exception(() =>
+                {
                     DeviceEnquiry.Answering(
                         DeviceQuestion.PlaybackDevice,
-                        Wedging(stuckSecond, cameBack: secondCameBack))));
+                        Wedging(stuckSecond, cameBack: secondCameBack));
+                }));
             })
             {
                 IsBackground = true,
@@ -258,10 +285,12 @@ public class DeviceEnquiryTests
                     DeviceEnquiry.Answering(DeviceQuestion.Microphones, Wedging(stuckFirst))))
                 .ShouldHaveWaitedTheDeadline();
 
-            // Joined before it is read, which is also what makes what that thread measured visible
-            // here at all. That it waited the deadline is the half that matters: it was inside its
-            // own five seconds while the other gave up, and was not refused for it.
+            // Joined before either is read, which is also what makes what that thread met and
+            // measured visible here at all. That it was given up on, and waited the deadline to be,
+            // is the half that matters: it was inside its own five seconds while the other gave up,
+            // and was not refused for it.
             second.Join();
+            secondMet.ShouldBeOfType<AudioDeviceWedgedException>();
             secondWaited.ShouldHaveWaitedTheDeadline();
 
             var asked = false;
