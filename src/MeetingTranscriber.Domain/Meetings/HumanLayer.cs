@@ -8,6 +8,13 @@ public enum SpeakerAssignmentSource
     /// with a single speaker, so there was nobody else it could be. <c>Speakers.Resolve</c> is the
     /// only thing that hands this out.
     /// </summary>
+    /// <remarks>
+    /// One row writes it — <c>HumanLayer.SettleTheMicrophone</c> — and today one door calls that:
+    /// <c>MeetingIntake.Receive</c>, where a paid response becomes turns. A second door that turns
+    /// a response into turns, which is what a transcription job brings back, calls it too or the
+    /// meetings that arrive through it read as labels while the ones filed by hand read as a name.
+    /// Nothing mechanical says so, because the two doors have nothing in common to check.
+    /// </remarks>
     Channel = 1,
 
     /// <summary>Somebody resolved a diarized label, which outranks any guess.</summary>

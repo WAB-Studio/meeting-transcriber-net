@@ -1,5 +1,6 @@
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
@@ -188,6 +189,202 @@ public class HumanLayerTests
 
         context.People.Single(person => person.IsMe).Id.ShouldBe(ada.Id);
     }
+
+    /// <summary>
+    /// Nobody is a first-class answer and the one every corpus starts on. It is what the screen
+    /// that asks reads to know it still has to, so an install where this came back with somebody
+    /// would never ask and the microphone's voice would settle onto a row nobody named.
+    /// </summary>
+    [Fact]
+    public void Nobody_is_using_this_install_until_somebody_says()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
+
+        human.Add("Ada");
+
+        human.Me().ShouldBeNull();
+    }
+
+    [Fact]
+    public void Answering_who_is_using_this_install_names_them_and_keeps_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
+
+        human.ThisIsMe("Ada");
+
+        human.Me()!.DisplayName.ShouldBe("Ada");
+        context.People.Single().IsMe.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The whole of what makes the answer editable. A second row would leave the first standing on
+    /// every meeting that already cites it, so a corpus with one user would grow a person per
+    /// correction and the old citations would keep the misspelling.
+    /// </summary>
+    [Fact]
+    public void Answering_again_corrects_the_same_person_rather_than_naming_a_second()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var fixture = new HumanLayerFixture(context, corpus.Root);
+        var human = fixture.HumanLayer;
+
+        var meeting = fixture.Meeting("la daily");
+        var first = human.ThisIsMe("Adam");
+        human.Assign(meeting.Id, "ch1:speaker_0", first, SpeakerAssignmentSource.Channel);
+
+        var corrected = human.ThisIsMe("Ada");
+
+        corrected.Id.ShouldBe(first.Id);
+        context.People.Count().ShouldBe(1);
+        context.SpeakerAssignments.Single().PersonId.ShouldBe(first.Id);
+        human.Me()!.DisplayName.ShouldBe("Ada");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void A_blank_answer_is_not_one(string blank)
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
+
+        Should.Throw<ArgumentException>(() => human.ThisIsMe(blank));
+        context.People.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The one assignment the system is allowed to make without being asked, and the whole of what
+    /// answering the question buys: from here on the microphone's own voice reads as a name.
+    /// </summary>
+    [Fact]
+    public void The_microphone_catching_one_voice_settles_it_on_whoever_is_using_this_install()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var fixture = new HumanLayerFixture(context, corpus.Root);
+        var human = fixture.HumanLayer;
+
+        var meeting = fixture.Meeting("la daily");
+        var ada = human.ThisIsMe("Ada");
+
+        var settled = human.SettleTheMicrophone(meeting.Id, SourceProfile.Multichannel, Heard);
+
+        settled!.SpeakerLabel.ShouldBe("ch1:speaker_0");
+        settled.PersonId.ShouldBe(ada.Id);
+        settled.AssignedBy.ShouldBe(SpeakerAssignmentSource.Channel);
+
+        // The other side of the meeting is somebody else's and stays unresolved: a channel names a
+        // source and never a person, and nobody has said who was on the loopback.
+        context.SpeakerAssignments.Select(assignment => assignment.SpeakerLabel)
+            .ToArray()
+            .ShouldBe(["ch1:speaker_0"]);
+    }
+
+    /// <summary>
+    /// The half the card is named after. Until somebody says who is using this install there is no
+    /// row to settle a voice onto, and inventing one would put a name nobody gave on somebody's
+    /// own words.
+    /// </summary>
+    [Fact]
+    public void The_microphone_settles_nothing_while_nobody_has_said_who_is_using_this_install()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var fixture = new HumanLayerFixture(context, corpus.Root);
+        var human = fixture.HumanLayer;
+
+        var meeting = fixture.Meeting("la daily");
+        human.Add("Ada");
+
+        human.SettleTheMicrophone(meeting.Id, SourceProfile.Multichannel, Heard).ShouldBeNull();
+        context.SpeakerAssignments.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Two people sharing the microphone is an ordinary meeting and not a fault. Which of them is
+    /// the user is exactly what the recording cannot know, so both wait for a person.
+    /// </summary>
+    [Fact]
+    public void The_microphone_catching_two_voices_settles_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var fixture = new HumanLayerFixture(context, corpus.Root);
+        var human = fixture.HumanLayer;
+
+        var meeting = fixture.Meeting("la de a tres");
+        human.ThisIsMe("Ada");
+
+        var shared = Heard.Append(Said(AudioChannel.Microphone, "ch1:speaker_1", "y yo tambien"));
+
+        human.SettleTheMicrophone(meeting.Id, SourceProfile.Multichannel, shared).ShouldBeNull();
+        context.SpeakerAssignments.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// One track has no microphone channel to be deterministic about, so nothing on it is settled
+    /// by the recording however few voices it caught.
+    /// </summary>
+    [Fact]
+    public void A_meeting_recorded_as_one_track_settles_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var fixture = new HumanLayerFixture(context, corpus.Root);
+        var human = fixture.HumanLayer;
+
+        var meeting = fixture.Meeting("una importada");
+        human.ThisIsMe("Ada");
+
+        var track = new[] { Said(channel: null, "speaker_0", "hola") };
+
+        human.SettleTheMicrophone(meeting.Id, SourceProfile.Diarize, track).ShouldBeNull();
+        context.SpeakerAssignments.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Through this door as well as through <c>Assign</c>'s own. Somebody who said which voice is
+    /// whose answered a question the recording was only guessing at, and a later filing of the same
+    /// response arriving at the same conclusion by default does not get to take it back.
+    /// </summary>
+    [Fact]
+    public void What_the_microphone_settles_never_overwrites_what_a_person_resolved()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var fixture = new HumanLayerFixture(context, corpus.Root);
+        var human = fixture.HumanLayer;
+
+        var meeting = fixture.Meeting("la daily");
+        human.ThisIsMe("Ada");
+        var jo = human.Add("Jo");
+        human.Assign(meeting.Id, "ch1:speaker_0", jo);
+
+        human.SettleTheMicrophone(meeting.Id, SourceProfile.Multichannel, Heard);
+
+        var assignment = context.SpeakerAssignments.Single();
+        assignment.PersonId.ShouldBe(jo.Id);
+        assignment.AssignedBy.ShouldBe(SpeakerAssignmentSource.Person);
+    }
+
+    /// <summary>
+    /// A meeting with one voice on the microphone and one on the loopback, which is the only shape
+    /// in which the recording settles anybody by itself.
+    /// </summary>
+    private static IEnumerable<SpeechSegment> Heard =>
+    [
+        Said(AudioChannel.Microphone, "ch1:speaker_0", "arranco yo"),
+        Said(AudioChannel.Loopback, "ch0:speaker_0", "dale"),
+    ];
+
+    private static SpeechSegment Said(AudioChannel? channel, string label, string text) =>
+        new(Duration.Zero, Duration.FromMilliseconds(1_000), channel, label, text);
 
     /// <summary>
     /// The recording only ever guessed: the microphone came back with one speaker, so there was

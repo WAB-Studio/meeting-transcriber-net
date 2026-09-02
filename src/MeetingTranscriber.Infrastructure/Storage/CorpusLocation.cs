@@ -93,6 +93,22 @@ public sealed record CorpusFolder
     /// <summary>The folder, which only an answer nothing stopped has.</summary>
     public DirectoryInfo? Folder => Refusal is null ? new DirectoryInfo(Path) : null;
 
+    /// <summary>
+    /// The same answer with <see cref="HoldsACorpus"/> asked again, for a caller that has just
+    /// made the corpus this said there was none of.
+    /// </summary>
+    /// <remarks>
+    /// Only that half, and only when nothing was refused. A refusal is what <see cref="Path"/>
+    /// leads to and what a packaged build's writes are redirected out of, neither of which this
+    /// can re-ask without the setting and the fallback <see cref="CorpusLocation"/> holds — so a
+    /// refused answer comes back as itself rather than as a quieter version of the same refusal.
+    /// The corpus appearing is the one thing about this answer that a screen makes happen, which
+    /// is why it is the one thing that can be asked again from where it happened.
+    /// </remarks>
+    public CorpusFolder AsItIsNow() => Refusal is null
+        ? new CorpusFolder(Path, null, CorpusDatabase.HoldsACorpus(new DirectoryInfo(Path)))
+        : this;
+
     internal static CorpusFolder Opens(DirectoryInfo folder, bool holdsACorpus) =>
         new(folder.FullName, null, holdsACorpus);
 

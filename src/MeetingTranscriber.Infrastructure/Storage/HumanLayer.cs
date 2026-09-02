@@ -1,3 +1,5 @@
+using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
@@ -43,6 +45,17 @@ namespace MeetingTranscriber.Infrastructure.Storage;
 /// </remarks>
 public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
 {
+    /// <summary>
+    /// For a caller holding the instant rather than a clock, which is every edit made as part of
+    /// filing a meeting: the response arrives once, and everything written about it is written at
+    /// the one instant that filing is. Without this the only way in from there is a clock invented
+    /// beside the instant, and the two then disagree by however long the filing took.
+    /// </summary>
+    public HumanLayer(CorpusDbContext context, UtcTimestamp at)
+        : this(context, new Frozen(at))
+    {
+    }
+
     private UtcTimestamp Now => UtcTimestamp.From(clock.GetUtcNow());
 
     /// <summary>
@@ -149,8 +162,95 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
     }
 
     /// <summary>
+    /// Who is using this install, or <c>null</c> while nobody has said. Nobody is a first-class
+    /// answer and not a missing row: it is what the screen that asks reads to know it still has to,
+    /// and what leaves the microphone's own voice unresolved until somebody answers.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Enumerable.SingleOrDefault{T}(IEnumerable{T})"/> and not a first: two people
+    /// carrying the flag is the invariant <see cref="ThisIsMe(Person)"/> exists to hold, and a
+    /// corpus that broke it would otherwise put one person's name on the other's words with
+    /// nothing failing. Whichever row a query returned first is exactly the wrong answer to give.
+    /// </remarks>
+    public Person? Me() => context.People.SingleOrDefault(person => person.IsMe);
+
+    /// <summary>
+    /// Answers who is using this install. Asked once because the answer is kept: the first answer
+    /// names them, and every one after it corrects that same person's name rather than naming a
+    /// second person.
+    /// </summary>
+    /// <remarks>
+    /// A correction and not a new person, and the difference reaches every meeting already
+    /// recorded. Turns carry the label the provider wrote and never a name, so the name a citation
+    /// reads is this row's — which means fixing a typo here fixes it in every meeting, and is what
+    /// somebody editing this expects. Handing the flag to a second row instead would leave the
+    /// first standing on the meetings that cite it, so a corpus with one user would grow a person
+    /// per correction and old citations would keep the misspelling.
+    /// </remarks>
+    public Person ThisIsMe(string displayName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+
+        var now = Now;
+        if (Me() is { } me)
+        {
+            me.DisplayName = displayName;
+            me.UpdatedAt = now;
+            context.SaveChanges();
+            return me;
+        }
+
+        // Written here rather than through Add and ThisIsMe in turn, which would be two saves and
+        // a moment in between where this corpus holds a person nothing says anything about.
+        var person = new Person
+        {
+            Id = Guid.NewGuid(),
+            DisplayName = displayName,
+            IsMe = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        context.People.Add(person);
+        context.SaveChanges();
+        return person;
+    }
+
+    /// <summary>
+    /// Settles the voice the microphone caught onto whoever is using this install, and answers
+    /// with what it settled or <c>null</c> for the meetings where it settles nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two things have to be true and neither is guessed at. The recording has to settle a label
+    /// by itself — one speaker on the microphone channel, which is the whole of what
+    /// <c>Speakers.Resolve</c> will hand out — and somebody has to have said who is using this
+    /// install. Missing either, the label stays unresolved and reads as the label, which is what
+    /// every other speaker in the meeting does until a person says who they are.
+    /// </para>
+    /// <para>
+    /// It is where a transcript first becomes turns, once per meeting, so a meeting filed before
+    /// anybody answered keeps its labels rather than gaining a name later. That is the claim's own
+    /// wording — from then on — and it is also the safe direction: a name arriving on meetings
+    /// recorded before this install had a user would be asserting something nobody said.
+    /// </para>
+    /// </remarks>
+    public SpeakerAssignment? SettleTheMicrophone(
+        Guid meetingId,
+        SourceProfile profile,
+        IEnumerable<SpeechSegment> segments)
+    {
+        if (Speakers.Resolve(profile, segments).Mine is not { } mine || Me() is not { } me)
+        {
+            return null;
+        }
+
+        return Assign(meetingId, mine, me, SpeakerAssignmentSource.Channel);
+    }
+
+    /// <summary>
     /// Somebody new. Never the user of this install: that flag moves through
-    /// <see cref="ThisIsMe"/>, which is what keeps it on one person.
+    /// <see cref="ThisIsMe(Person)"/>, which is what keeps it on one person.
     /// </summary>
     public Person Add(string displayName)
     {
@@ -503,5 +603,11 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
         meeting.TemplateId = template?.Id;
         meeting.UpdatedAt = Now;
         context.SaveChanges();
+    }
+
+    /// <summary>One instant, for as long as the edits made at it take.</summary>
+    private sealed class Frozen(UtcTimestamp at) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => at.Value;
     }
 }
