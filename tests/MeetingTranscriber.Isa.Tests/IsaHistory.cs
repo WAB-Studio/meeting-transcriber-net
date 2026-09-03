@@ -37,8 +37,10 @@ internal static class IsaHistory
     /// score one document rather than three: `origin/main` is a ref other worktrees over this object
     /// store move, and a fetch between two calls would otherwise give two of them different files.
     /// </summary>
-    private static readonly Lazy<IsaDocument> TheBaseline =
-        new(() => At(TrunkBefore(Environment.GetEnvironmentVariable(PushedOnto))));
+    private static readonly Lazy<string> TheBaselineCommit =
+        new(() => TrunkBefore(Environment.GetEnvironmentVariable(PushedOnto)));
+
+    private static readonly Lazy<IsaDocument> TheBaseline = new(() => At(TheBaselineCommit.Value));
 
     /// <summary>What the change in hand is judged against.</summary>
     /// <remarks>
@@ -145,6 +147,83 @@ internal static class IsaHistory
                 .Where(claim => claim.Closed && !carried.Contains(claim.Id))
                 .Select(claim => claim.Id),
         ];
+    }
+
+    /// <summary>
+    /// The claims <paramref name="head"/> carries that <paramref name="baseline"/> did not, open or
+    /// closed alike — every id the trunk had never issued.
+    /// </summary>
+    /// <remarks>
+    /// A claim written and a claim split into leaves are one act here, which is the point: `ISC-42`
+    /// becoming `ISC-42.1` and `ISC-42.2` issues two ids the trunk did not carry, and a split is the
+    /// shape a bet takes when somebody wants a smaller one to clear. <see cref="BornTicked"/> is the
+    /// closed half of this set and refuses it outright; the open half is legitimate on its own and
+    /// wrong only in company, which is what <see cref="CodeTouchedSince"/> is paired with it for.
+    ///
+    /// Tombstones are in the set and are meant to be. One arriving whole in a change of its own is
+    /// how `ISC-160` and `ISC-161` landed, and that change touches no code, so nothing fires.
+    /// </remarks>
+    public static IReadOnlyList<string> Introduced(IsaDocument baseline, IsaDocument head)
+    {
+        var carried = baseline.Claims.Select(claim => claim.Id).ToHashSet(StringComparer.Ordinal);
+
+        return [.. head.Claims.Where(claim => !carried.Contains(claim.Id)).Select(claim => claim.Id)];
+    }
+
+    /// <summary>
+    /// The files under `src/` and `tests/` this change has touched since <paramref name="commit"/>,
+    /// the working tree included.
+    /// </summary>
+    /// <remarks>
+    /// The working tree and not `HEAD`, for <see cref="Baseline"/>'s reason: the four commands run
+    /// over a tree where the change is usually still uncommitted, and a gate that only speaks after
+    /// the commit speaks after the worker has stopped listening. Untracked files are asked for
+    /// separately because `git diff` does not see a file git has never been told about, which is
+    /// what a new test class is for the first few minutes of its life.
+    ///
+    /// Only those two trees. The rule this serves is that a claim is not written by the work that
+    /// scores against it, and prose is not that work: an `arquitectura.md` paragraph landing beside
+    /// a new claim is the articulation being written, not a bet trimmed to fit something already
+    /// built. Refusing it would send the honest act down a route with no reviewer on it, which is
+    /// the trade <see cref="RewordedIntoClosure"/> already names.
+    /// </remarks>
+    public static IReadOnlyList<string> CodeTouchedSince(string commit) =>
+    [
+        .. Run("diff", "--name-only", commit)
+            .Split('\n')
+            .Concat(Run("ls-files", "--others", "--exclude-standard").Split('\n'))
+            .Select(path => path.Trim())
+            .Where(path => path.StartsWith("src/", StringComparison.Ordinal)
+                || path.StartsWith("tests/", StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal),
+    ];
+
+    /// <summary>The commit <see cref="Baseline"/> was read out of.</summary>
+    /// <remarks>
+    /// Off the same <see cref="Lazy{T}"/> as the document, so a fetch between two calls cannot hand
+    /// one gate a commit and another the file from a different one.
+    /// </remarks>
+    public static string BaselineCommit() => TheBaselineCommit.Value;
+
+    /// <summary>
+    /// Whether something told us where a push began, which is CI on the trunk and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// A range on the trunk spans whatever was merged into it, so a claim landed by one pull request
+    /// and code landed by another read there as one change that did both. That is a sentence about
+    /// two changes nobody made, and the rule it would be enforcing has already been enforced on each
+    /// of them: every change reaches `main` through a branch, and CI runs on `pull_request`.
+    /// </remarks>
+    public static bool OnTheTrunk()
+    {
+        // The baseline first, and its value thrown away: <see cref="TrunkBefore"/> refuses anything
+        // that is not a commit HEAD stands after, and asking it here is what stops this being an
+        // off switch. Read the environment on its own and `ISA_TRUNK_BEFORE=x` turns the gate off
+        // from a shell without ever reaching the shape check that exists to catch exactly that.
+        _ = TheBaselineCommit.Value;
+
+        return !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(PushedOnto)?.Trim());
     }
 
     /// <summary>

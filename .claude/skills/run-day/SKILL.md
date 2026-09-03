@@ -1,177 +1,139 @@
 ---
 name: run-day
 description: >-
-  Run a day of unattended work on the board: cycle after cycle, spawn the picker, the worker and the
-  audit as subagents, act on what each returns, and report what happened. Triggers: "trabajá el día",
-  "work the day", "arrancá el día", "seguí el board todo el día".
+  Run a day of unattended work on the board: cycle after cycle, spawn each stage as a subagent, act
+  on what it returns, and report what happened. Triggers: "trabajá el día", "work the day",
+  "arrancá el día", "seguí el board todo el día".
 ---
 
 # run-day — you are the orchestrator
 
-**You are the day.** Not a sequencer of scripts: the session that spawns each stage as a subagent,
-reads what it returns, and does the acting itself. There is no engine under this file, no lock, no
-run folder and no event stream. There used to be all four; §1 is the rule that replaced them.
-
-Four agents do the thinking, and you do everything between them:
+You spawn the stages, route between them and do the acting. You are the only thing that knows this
+table exists.
 
 | Stage | `subagent_type` | Give it | It returns |
 | --- | --- | --- | --- |
-| pick | `picker` | nothing | one card id, or a reason there isn't one |
-| work | `worker` | card id, PR number, any briefing | a record: what was built, the PR, what it left out |
-| audit | `auditor` | PR number and that record | a verdict: `pass`, `pass_with_followup`, `ask` or `hold` |
-| recover | `recoverer` | card id, PR number | a briefing on what was already done |
+| pick | `picker` | a ceiling | the batch, and which cards may run together |
+| recover | `recoverer` | card id, its card dir, PR number | a briefing on what was already done |
+| plan | `planner` | card id, its card dir, PR number | a plan written to that card dir |
+| validate | `validator` | the batch dir, the cards | `pass`, `revise` or `ask` per card, and collisions |
+| work | `worker` | card id, its card dir, PR number | a record, and an open PR |
+| audit | `auditor` | PR number, its card dir | `pass`, `pass_with_followup`, `ask` or `hold` |
 
-Spawn each with the Agent tool, one at a time, and wait for it. **An agent's final message is its
-answer** — you read it directly, and nothing writes it to disk on the way.
+Pass each agent what its column says and nothing more: never who produced it, never what happens to
+it next, never where the day stands.
 
-**None of them knows the others exist.** Each is written for its own inputs and its own answer, so
-you pass what the table says and nothing more: never who produced it, never what happens to it next,
-never where the day stands.
+**Route on the object; never retell the content.** Each stage writes what it knows to a file and the
+next stage reads that file whole. What reaches you is the structured object, and it is what you act
+on and what you report. Never paraphrase one stage's work into another's input.
 
-## 1 · The state is not yours to keep
+## 1 · The run directory
 
-**Everything that has to survive you already lives somewhere durable:** the card's status and its
-comments on the board, the branch and its commits in git, the PR on GitHub. That is the whole state
-of a day, and none of it is a copy.
+```
+private/runs/<yyyy-mm-dd-hhmm>/<task_id>/
+```
 
-So you keep nothing. No file says which cycle you are on, because the board says which card is in
-progress and GitHub says which PR is open — and those two are what a next session reads anyway.
-**Never write a parallel record of what a cycle did.** The moment there are two, they disagree, and
-the one you kept is the one nobody else can see.
+Absolute paths, under the primary checkout, ignored by git. The batch dir is the dated folder; a
+card dir is the folder named for a card. Create each before the stage that writes into it, and pass
+the right one — a stage given the wrong depth reads nothing and says nothing about it.
 
-Which means a day that dies is picked up by starting a new one: the picker reads the board, finds
-the card in progress or the PR open, and §4 gets its context back.
+A card dir holds `briefing.md`, `plan.md`, `review.md` and `record.json` — four files, each written
+by one stage and read by the next. A stage whose answer has a reader on GitHub writes no file: the
+verdict is the comment on the PR, and a second copy on disk is a copy nobody reads.
+
+It is scratch. What survives a day is the card's status and comments, the branch and its commits,
+and the PR — nothing else, and you write no parallel record of what a cycle did. Pick a dead day up
+by starting a new one; §3 gets the context back.
 
 ## 2 · The cycle
 
-1. **Pick.** Spawn `picker` with no input. It returns one card, or `no_tasks`, or `blocked`.
-   - `no_tasks` or `blocked` → the day ends. Say why.
-   - A card → say the card and the `why` in one line, before you spawn anything else.
-   - It also returns `skipped[]` and `finished[]`. **You do the board moves it declared** —
-     `skipped` to `Backlog` with its reason, `finished` to `In review` — because a subagent that
-     moves a card and then dies has taken it out of the pool with nothing saying why.
-2. **Work.** Spawn `worker` with the card id, and the PR number if the pick found one. If the card
-   was `In progress` or its PR is open, spawn `recoverer` first and pass the worker its briefing. §4.
-3. **Audit, or don't.** Only a record of `pr_opened` reaches here; any other outcome closed the card
-   itself. You decide which PRs are audited, on whether the work carries a decision that holds up
-   other parts of the application for months — a contract, a convention, a name that reaches disk,
-   what proves a piece of work done. Which folder the diff touched is not the test.
-   - **The audit floor overrides your judgement**: a PR touching any path `.claude/audit-floor.md`
-     names is audited whatever you think of it. Read that file at `origin/main`, not in the card's
-     worktree — a PR that narrows the floor is still judged against the floor it was opened under.
-     It is the only place the floor is stated. Read the PR's own files against it
-     (`gh pr view <n> --json files`), never the record.
+1. **Pick.** Spawn `picker` with a ceiling — one unless this machine has room for more.
+   - `no_tasks` or `blocked` → end the day. Say why.
+   - Move each `skipped` card to `Backlog` with its reason, and each `finished` card to `In review`.
+     **Leave `held_over` where it is** — those cards are still `Ready` and still in the user's order.
+   - Say the cards and the `why` in one line before you spawn anything else.
+2. **Plan.** Spawn one `planner` per card, in parallel, each with its own card dir. A card that is
+   `In progress` or has an open PR gets a `recoverer` into that dir first.
+   - `already_done` → that card closed itself. Drop it from the batch.
+   - `needs_grill` or `blocked` → §4. Drop it from the batch.
+3. **Validate, or don't.** Spawn `validator` once over the batch when more than one card survived,
+   when any plan returned `floor_paths`, or when a plan carries a decision that holds up other parts
+   of the application for months. One card, no floor path, nothing structural → skip it and say so.
+   - `revise` → spawn that card's `planner` again, on the same card dir. It reads `review.md` there
+     and answers every finding. **Once.** A second `revise` → §4.
+   - `ask` → §4.
+   - A collision → drop the card that waits; it is `Ready` and the next pick finds it.
+4. **Work.** Spawn one `worker` per surviving card, in parallel, each in its own worktree under
+   `C:\Users\pc\Documents\GitHub\Personal\worktrees`, never inside the checkout, deleted when the
+   card is done and never reused. Give each its card dir by absolute path. Tell each which folders
+   its card owns and which it may not enter; say other cards are running and never which.
+5. **Audit, or don't.** Only `pr_opened` reaches here. Decide on whether the work carries a decision
+   that holds up other parts of the application for months — a contract, a convention, a name that
+   reaches disk, what proves a piece of work done. Which folder the diff touched is not the test.
+   - **A path `.claude/audit-floor.md` names is audited whatever you think of it.** Check the PR's
+     own files with `gh pr view <n> --json files`, and read that file at `origin/main`, never in a
+     card's worktree.
+   - A long `departures`, or a PR that ticks a claim, earns an audit more than a big diff does.
    - Say which way you went, and why, in one line on the PR before you spawn anything or merge.
-   - **One audit per PR.** It does not run again after a fix. A run that came back with nothing is
-     not a run — that is §4.
-   - Audited → spawn `auditor` with the PR number and that record.
-4. **Act.** This part is yours and there is no subagent for it:
-   - **Merge only green, and only what is finished.** `gh pr checks <n> --watch` red or unfinished
-     is a `hold`, and so is a record declaring `blocks_the_pr` or a `left_out` the card asked for.
-   - **Not audited**, `pass` or `pass_with_followup` → merge.
-     `gh pr merge <n> --merge --delete-branch`. The card stays in `In review`; closing it is the
-     user's.
-   - `hold` → the PR stays open. **One line to fix it is yours**, on the PR's branch in that card's
-     worktree: make it, commit, push, say so on the PR, merge on green. More than one line → spawn
-     `worker` once with the verdict as its briefing, then read the hold's own reason against the
-     diff or the run before you merge. Still there → send the card where the verdict says, with the
-     verdict's own body as a comment, and take the next card.
+   - **One audit per PR.** It does not run again after a fix.
+6. **Act.** Yours, with no subagent, one PR at a time.
+   - **Merge only green and only finished.** Bring the branch up to the `main` you are merging onto
+     before you read its checks — two independently green PRs land a red trunk otherwise. `gh pr
+     checks <n> --watch` red or unfinished is a `hold`, and so is a record declaring
+     `blocks_the_pr` or a `left_out` the card asked for.
+   - Not audited, `pass` or `pass_with_followup` → `gh pr merge <n> --merge --delete-branch`. The
+     card stays in `In review`.
+   - `hold` → the PR stays open. Fix it in one line yourself, in that card's worktree: make it,
+     commit, push, say so on the PR, merge on green. More than one line → spawn `worker` once with
+     the verdict, then read the hold's reason against the diff before you merge. Still there → send
+     the card where the verdict says, with the verdict's own body as a comment, and move on.
    - A `hold` over documentation, wording, a step that did not run or a merely poor line is not one.
      Merge, and leave it as a comment or a card.
-   - **A verdict's `followups_proposed` is a proposal and you are what decides.** Most of them are
-     not cards: a finding the worker can take goes back to the worker. Before you open one, say
-     which existing card it is not — there are ninety-odd open, and two follow-ups over one piece of
-     work, each naming the other, is how that work ends up owned by nobody.
-   - `ask` → a decision nobody here may make. Write it on the card, label it `question`, send it
-     back to `Backlog`, and take the next card. §5.
+   - `ask`, or a `blocked` on a claim `ISA.md` does not carry → §4. Write no claim yourself.
+   - **`followups_proposed` is a proposal and you decide.** Send a finding a worker can take back to
+     a worker. Before you open a card, say which existing card it is not.
 
-Then start again at the pick. Nothing paces this.
+Then pick again. Nothing paces this.
 
-## 3 · Cards in parallel
+## 3 · A stage that returns nothing
 
-One card at a time is the default. How many run beside it is your decision — the picker knows about
-none of them.
+A stage returns prose instead of its object, dies, or answers about the wrong card. Spawn
+`recoverer` for that card, then a fresh agent of the stage that failed.
 
-**Where a worker works:** its own worktree under `C:\Users\pc\Documents\GitHub\Personal\worktrees`,
-never inside the checkout. It is that card's alone, and it is deleted when the card is done — never
-reused.
+Twice on one stage in one cycle → stop. Leave the card in `In progress`, say so, take the next.
 
-**Run cards together when** they sit in different projects, or all but one are tests or documents
-only.
+Do not protect work already done at any price. Say what was lost and move on.
 
-**Never run a card beside anything when** it refactors, moves or renames what exists; changes a
-contract under `Domain/`, a migration, or a name that reaches disk; or settles a convention.
-Whatever ran beside it was built against a shape that stopped being true, and lands green agreeing
-with nothing.
+## 4 · Park, never wait
 
-Conflicting lines at merge are expected and are not the thing being avoided.
+A decision no stage may make: label the card `question`, send it to `Backlog`, take the next card.
 
-**Tell each worker which folders its card owns and which it may not enter.** Say other cards are
-running; never say which.
+The stage that met the decision already wrote it on the card. Do not write it again — move the card
+and say in one line what is parked and why.
 
-**Merge one at a time**, and check CI against what is already merged.
+The second card parked in one day ends it, naming both. Say plainly when a day ends on that twice.
 
-The ceiling is what this machine builds and tests at once, not how many cards look independent.
+## 5 · A decision the user hands you
 
-## 4 · A stage that comes back with nothing
+Say before you write it down and before you act on it when the framework or the platform will not
+take it, naming what refuses it. Taste fires nothing. Then take whatever they answer second.
 
-A subagent can end holding nothing useful: it returns prose instead of its contract, or it dies, or
-it answers about the wrong card. **That is not the day ending.** It costs one stage, and the fix is
-to give the next attempt the context the last one had.
+Never write down an answer you had reason to question and keep the reason.
 
-Spawn `recoverer` with the card id. Pass its briefing to a fresh agent of the stage that failed, and
-go on.
+## 6 · What you say
 
-**Twice on the same stage in one cycle and you stop trying.** Leave the card in `In progress`, say
-so, and take the next card: a stage that fails twice with context in hand is not failing over
-context.
+Speak when a batch is picked, when a cycle closes, when a rule fires, and when the day ends.
 
-**Work already done is not worth protecting at any price.** A cycle that ends with the branch
-committed and no PR is a cycle whose work a later session can find or rebuild. Say what was lost
-and move on; standing still costs more than rebuilding.
-
-## 5 · Nothing here waits for the user
-
-A cycle that meets a decision neither the worker nor the audit can make writes it on the card, sends
-the card back to `Backlog` labelled `question`, and takes the next task. Say it in one line — the card, the
-PR, what has to be settled — and go on.
-
-**The second card parked in one day ends it**, naming both. A day that ends on that ceiling twice
-means the grill is not catching what it should. Say so plainly.
-
-## 6 · A decision the user hands you
-
-Decisions arrive outside a grill — over a verdict, in passing, to get a cycle moving — and the
-grill's check on them does not arrive with them. It runs here: an answer the framework or the
-platform will not take gets said before you write it on a card and before you act on it, naming
-what refuses it. Taste fires nothing.
-
-Then take whatever they answer second. What you may not do is write down an answer you had reason
-to question and keep the reason.
-
-## 7 · What you say, and when
-
-**Silence is the default.** You speak when a card is picked, when a cycle closes, when a rule fires,
-and when the day ends. Somebody who asked to be left alone for the day does not want a heartbeat.
-
-- **A pick** — the card, its name, the `why`. It goes out *before* you spawn the worker.
+- **A pick** — the cards, their names, the `why`, before you spawn the next stage.
 - **A cycle closing** — the card, the PR, the verdict, what happened to it.
 - **A permission denied to an agent** — quote it exactly, naming the tool and what it tried.
-  Never round it down to "there were some permission warnings".
 
-**Say once, when you start, that you only report while this conversation is alive.** If it ends
-mid-day the day stops where it stood. What survives is on the board and on GitHub, which is the
-whole point, and the next day picks it up from there.
+Quote a stage's own words for what it found. Summarise only what you did.
 
-Every comment you leave on a card or a PR opens with `[Day]`.
+Say once at the start that you report only while this conversation is alive. Open every comment you
+leave with `[Day]`, and leave one only where §2 says to.
 
-## 8 · Do not touch the repo yourself
+## 7 · Do not touch the repo
 
-The worker owns the checkout. You do not edit files, do not commit and do not switch branches
-between cycles — a dirty tree stops the next worker in its preflight, including over a fix you
-found. Write it on a card and let a later day take it.
-
-Two exceptions, both in §2: the merge, which touches GitHub rather than the checkout, and the
-one-line fix, which you make on the PR's branch in that card's worktree. The worktrees of §3 are not
-a third exception: they sit outside the checkout, and the reason they sit outside it is that a
-worktree inside one is a dirty tree under another name.
+Edit no file, make no commit, switch no branch between cycles. Two exceptions, both in §2.6: the
+merge, and the one-line fix in that card's worktree.

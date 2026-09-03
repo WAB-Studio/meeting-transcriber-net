@@ -433,6 +433,70 @@ public class IsaStructureTests
     }
 
     /// <summary>
+    /// The gate on a claim written beside the work it scores. The one above refuses a claim written
+    /// and ticked together; this refuses the same act with the tick left for the next change, which
+    /// is what it looks like once somebody has read that message.
+    /// </summary>
+    /// <remarks>
+    /// Why it is a gate and not a reviewer: what a claim is worth is that it was written before
+    /// anybody knew what would be built, and there is no way to see from the file that it was not.
+    /// The residue is the range — a change that issues an id and writes code in the same breath is
+    /// one where the bet and the thing it judges were drafted by the same hand on the same day.
+    ///
+    /// Splitting is the shape that matters most and is why <see cref="IsaHistory.Introduced"/>
+    /// counts open claims too: a bet nobody could clear becomes two smaller ones, both green, and
+    /// the count in the frontmatter goes up. Nothing else in this file reaches that.
+    ///
+    /// It is not asked on the trunk, and <see cref="IsaHistory.OnTheTrunk"/> says why.
+    /// </remarks>
+    [Fact]
+    public void A_claim_arrives_in_a_change_that_writes_no_code()
+    {
+        if (IsaHistory.OnTheTrunk())
+        {
+            return;
+        }
+
+        var introduced = IsaHistory.Introduced(IsaHistory.Baseline(), isa);
+
+        if (introduced.Count == 0)
+        {
+            return;
+        }
+
+        IsaHistory.CodeTouchedSince(IsaHistory.BaselineCommit()).ShouldBeEmpty(
+            $"this change issues {string.Join(", ", introduced)} and writes code in the same "
+            + "breath. A claim is what work is scored against, so it lands on `main` in a change "
+            + "of its own before the work that closes it starts — CLAUDE.md's 'How work starts and "
+            + "ends' says so, and the reason is that a bet drafted beside the thing it judges is "
+            + "drafted to fit it. Land the claim open through `.claude/skills/isa/SKILL.md`, then "
+            + "cut the branch. Splitting one counts: the leaves are ids the trunk never issued.");
+    }
+
+    /// <summary>
+    /// The rule over documents written to break it, because over a branch that issues no claim the
+    /// fact above returns early and proves nothing about what it would have refused.
+    /// </summary>
+    [Fact]
+    public void A_split_issues_ids_the_trunk_never_carried()
+    {
+        var one = Claims("- [ ] ISC-1: A meeting is recorded.");
+
+        IsaHistory.Introduced(one, one).ShouldBeEmpty("nothing arrived.");
+        IsaHistory.Introduced(one, Claims(
+            "- [ ] ISC-1.1: The audio is kept.",
+            "- [ ] ISC-1.2: The transcript is kept."))
+            .ShouldBe(["ISC-1.1", "ISC-1.2"], "a split issues leaves the trunk never carried, and "
+                + "that is the whole defect: the bet got smaller and the count got bigger.");
+        IsaHistory.Introduced(one, Claims(
+            "- [ ] ISC-1: A meeting is recorded.",
+            "- [x] ISC-2: A meeting is transcribed."))
+            .ShouldBe(["ISC-2"], "open or closed, an id the trunk had not issued is one arriving.");
+        IsaHistory.Introduced(one, Claims("- [ ] ISC-1: [DROPPED 2026-09-03: nobody asked.]"))
+            .ShouldBeEmpty("a tombstone over an id the trunk carried issues nothing.");
+    }
+
+    /// <summary>
     /// The gate on a claim reworded into its own closure: an open claim rewritten to describe what
     /// the change just built, then ticked. The id carried a bet, and the bet it carried is not the
     /// one being scored — which reads as an ordinary closure to the gate above and to anybody who

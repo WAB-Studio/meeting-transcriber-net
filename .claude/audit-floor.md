@@ -1,6 +1,6 @@
 ---
 contract-sha: 5daa595f5833
-entries: 14
+entries: 16
 ---
 
 # The audit floor
@@ -33,18 +33,25 @@ read that changes the answer, and a gate answering differently per shell is the 
 to stop. What it cannot tell is a re-derivation from a paste. It makes the question unavoidable, not
 the answer right.
 
-**Some entries decide audits rather than carry an invariant**, and that is deliberate. This file,
-`.claude/agents/auditor.md` and `.claude/skills/run-day/SKILL.md` are the three documents that
-decide whether a given change is audited at all; `ISA.md` is here for the separate reason its own
-entry gives. CI can prove the two readers still name this file, which is what it does, but it cannot
-tell a pointer kept from a mandate weakened, and "whatever anybody judges" is one adjective away
-from being a judgement call again. The rule is closed on that sentence — *decides whether a change
-is audited* — and the near misses are named below, because a membership rule nobody can see the
-edge of is the one that grows by argument.
+**Some entries decide checking rather than carry an invariant**, and that is deliberate. This file,
+`.claude/agents/auditor.md` and `.claude/skills/run-day/SKILL.md` decide whether a given change is
+checked at all. `.claude/agents/planner.md` and `.claude/agents/validator.md` decide what a check is
+able to find: an audit judges a diff against the plan it was built from, so a planner told to write
+vaguer plans hands every later audit a baseline that can no longer contradict anything, and the
+verdict comes back clean. `ISA.md` is here for the separate reason its own entry gives.
+
+The rule is closed on one sentence — *decides whether a change is checked, or what a check can find*
+— and the near misses are named below, because a membership rule nobody can see the edge of is the
+one that grows by argument. The second half was added the day the work moved to a plan written
+before the code: until then nothing but the diff was checked, and there was no baseline to soften.
+
+CI can prove the readers still name this file, which is what it does, but it cannot tell a pointer
+kept from a mandate weakened, and "whatever anybody judges" is one adjective away from being a
+judgement call again.
 
 Its cost is that editing how the work is run is now audited. That is the rule working rather than a
-side effect of it: those two documents are the only place the mandate can be narrowed, so an
-unwitnessed edit to them is precisely the thing being stopped.
+side effect of it: these are the only places the mandate can be narrowed, so an unwitnessed edit to
+one of them is precisely the thing being stopped.
 
 **The unit is the invariant, not the folder.** A folder is named only where every file under it
 serves one; everywhere else the file is. A folder is a proxy for the type inside it and goes quiet
@@ -84,7 +91,12 @@ somebody's job.
   reaches disk, which is why it is here and the rest of its project is not.
 - `ISA.md` — what done means, and the only place a claim closes. Here for its own reason rather
   than the contract's: a claim narrowed until the work it scores fits it is not something one
-  branch's diff shows.
+  branch's diff shows, and it is not something a test reaches either.
+  `tests/MeetingTranscriber.Isa.Tests` compares one baseline to one head, so it refuses a claim born
+  ticked, one reworded into its own closure, a stub left on words a claim no longer has, and a claim
+  issued beside the work that closes it — and a narrowing that landed on `main` in a change of its
+  own is *inside* that baseline and passes every one of them. Reading the claim's history against
+  the work is a person's, and so is whether the evidence under a tick proves the claim at all.
 - `.claude/audit-floor.md` — this file. What decides which changes are audited is itself audited,
   or the floor is one unwitnessed edit away from naming less than it used to.
 - `.claude/agents/auditor.md` — what an audit reads, and what makes a verdict `hold`. The floor
@@ -92,11 +104,17 @@ somebody's job.
 - `.claude/skills/run-day/SKILL.md` — §2, where the floor overrides the day's judgement about which
   PRs are worth a second read. The day is the one being overridden, so it does not get to edit it
   unwatched.
+- `.claude/agents/planner.md` — what a plan has to name. The plan is the baseline an audit reads a
+  diff against, so what this file stops demanding is what no later audit can find.
+- `.claude/agents/validator.md` — what holds a plan back before any code exists. The only gate that
+  runs while a wrong decision is still free to undo.
 
 ## Read by
 
 - `CLAUDE.md`
 - `.claude/agents/auditor.md`
+- `.claude/agents/planner.md`
+- `.claude/agents/validator.md`
 - `.claude/skills/run-day/SKILL.md`
 
 Each must name this file, and CI fails when one stops. A document that decides audits and neither
@@ -117,9 +135,15 @@ A list nobody can see the end of is one that gets widened by argument, so the ed
   The naming tests spell out every stored name, and `docs/migrations.md` gates a migration.
 - **`.claude/skills/isa/SKILL.md`, `.claude/skills/adversarial-review/SKILL.md` and
   `.claude/skills/github/SKILL.md`** — the near misses, and the reason the rule above is a sentence
-  rather than a feeling. Each shapes how work is checked; none decides whether a change is audited.
-  `ISA.md` is on the floor and the skill that edits it is not, the same way `Turns.cs` is and the
-  tests that exercise it are not.
+  rather than a feeling. Each shapes how work is checked; none decides whether a change is checked
+  or what a check can find. `ISA.md` is on the floor and the skill that edits it is not, the same
+  way `Turns.cs` is and the tests that exercise it are not.
+- **`.claude/skills/agents/SKILL.md`** — the closest miss of all, and it is out for that same
+  reason. It says how an agent file is written, so it reaches every entry above it at one remove:
+  the rule that an agent file carries no procedure is what turned the audit from a list of checks
+  into a question. But it decides nothing about any particular change, and putting it on would put
+  the next document that governs this one on too. The gate is on the files that name the checks,
+  not on the grammar they are written in.
 - **Prose outside the documents that decide audits.** The duplication check reads `CLAUDE.md` and
   `.claude/`, not the whole repository, so `docs/reference-behaviour.md` may go on naming a floor
   path in a sentence about history. Restating the floor is the defect; mentioning a path is not.

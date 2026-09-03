@@ -499,3 +499,8 @@ $RECYCLE.BIN/
 # it is a fact about a folder, and the next worktree's answer is not this one's.
 # docs/ui-probe.md says what goes in it.
 /PackageIdentity.props
+
+# What a day of unattended work writes while it runs: the plan a card was built from, the review
+# of that plan, the record the work returned, the verdict on its PR. It is scratch between stages
+# and never part of a diff — what survives a day is on the board, in git and on the PR.
+/private/
