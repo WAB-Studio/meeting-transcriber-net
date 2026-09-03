@@ -2035,7 +2035,7 @@ public sealed partial class MainWindow : Window
                 Say(UiTexts.TheMicrophoneIsRecordingAgain);
             }
         }
-        catch (Exception refused) when (Reportable(refused))
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
             // Reported and not thrown, for the reason taking the whole machine is: the channel is
             // exactly where it was, the meeting is still being recorded on channel 0, and the press
