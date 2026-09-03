@@ -46,6 +46,18 @@
          meter's track, every button on every card silently moves with it. -->
     <SolidColorBrush x:Key="ControlRuleBrush" Color="#E1DED7" />
 
+    <!-- The 1px inset ring on an empty or optional control — *Agregar*, the `+` at the end of a
+         path, a toggle that is off. `docs/design.md` §Colour deliberately kept this out of the
+         twelve-row table and named it in the prose under it, as one of three greys that appear
+         inside components rather than as tokens; the screen that files a meeting is the first to
+         need to name it, and `OlivoTests.No_screen_chooses_a_colour_a_size_or_a_corner_of_its_own`
+         leaves a screen no other way to spell it. That page is changed with this, because a key
+         promoted out of the prose has to stop being described as prose.
+
+         It is one of the six #284 is about. The other five and every dark half are still that
+         card's: this settles the one a screen reached for. -->
+    <SolidColorBrush x:Key="EmptyControlRingBrush" Color="#DEDBD4" />
+
     <!-- ── The two faces ────────────────────────────────────────────────────────────────────────
 
          Both ship inside the package: `Assets/Fonts/`, listed as Content in the project file, under
@@ -93,6 +105,7 @@
 
     <x:Double x:Key="StopwatchSize">62</x:Double>
     <x:Double x:Key="ScreenTitleSize">26</x:Double>
+    <x:Double x:Key="SubScreenTitleSize">20</x:Double>
     <x:Double x:Key="SectionSize">17</x:Double>
     <x:Double x:Key="TranscriptSize">15</x:Double>
     <x:Double x:Key="BodySize">14</x:Double>
@@ -112,6 +125,21 @@
         <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
         <Setter Property="FontSize" Value="{StaticResource ScreenTitleSize}" />
         <Setter Property="LineHeight" Value="32" />
+        <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="CharacterSpacing" Value="-20" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+    </Style>
+
+    <!-- The rank a sub-screen's own title takes. `docs/design.md` §Type: a sub-screen is one
+         reached from another and returning to it, and it carries 20/26 rather than the 26/32 a
+         top-level screen does. It was the one rank of the seven with no key, because the only
+         sub-screen before this one has no title — the meeting's header is a field with a header of
+         its own, so it never needed the rank. -->
+    <Style x:Key="SubScreenTitleText" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
+        <Setter Property="FontSize" Value="{StaticResource SubScreenTitleSize}" />
+        <Setter Property="LineHeight" Value="26" />
         <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="CharacterSpacing" Value="-20" />

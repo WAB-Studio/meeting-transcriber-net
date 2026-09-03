@@ -52,6 +52,18 @@ internal static class ScreenNumbers
     public static string Beside(params string[] facts) => string.Join(" · ", facts);
 
     /// <summary>
+    /// One thing inside another inside another — a path down the classification tree, root first.
+    /// </summary>
+    /// <remarks>
+    /// A second separator and not <see cref="Beside"/>, because it says something else: those are
+    /// facts standing next to each other and these are one thing containing the next, so
+    /// <em>TechSed › Soporte › ticket #4312</em> reads as a place and <em>TechSed · Soporte ·
+    /// ticket #4312</em> would read as three of them. It is here for the reason that one is: a
+    /// punctuation mark typed into a screen is a literal on a line a person reads.
+    /// </remarks>
+    public static string Inside(params string[] path) => string.Join(" › ", path);
+
+    /// <summary>
     /// When something was, to the minute and never to the second: what tells two meetings apart on
     /// a list is which one it was, not how far into a minute it started.
     /// </summary>
@@ -71,6 +83,18 @@ internal static class ScreenNumbers
     /// </remarks>
     public static string TimeOfDay(UtcTimestamp moment) => moment.Value.ToLocalTime()
         .ToString("HH:mm", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The year something began, which is the whole of what an affiliation says about when.
+    /// </summary>
+    /// <remarks>
+    /// A number and not a date. A period on a person is read against another person's and against
+    /// the meeting's own — <em>did this hold when this happened</em> — so it goes in mono like
+    /// every other number a reader compares, and the month and the day would be two facts nobody
+    /// compares standing in front of the one they do.
+    /// </remarks>
+    public static string Year(UtcTimestamp moment) =>
+        moment.Value.ToLocalTime().ToString("yyyy", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// How long something ran, or how far into a meeting something is.

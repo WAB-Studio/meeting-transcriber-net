@@ -77,7 +77,8 @@ public class UiTextsTests
         // called something is not translated.** A channel's chip is the index the provider reports
         // back, and `docs/design.md` §Type puts every number that gets compared to another one in
         // mono; the engine is what Deepgram called that model; and the product's name is the
-        // product's.
+        // product's. The last one is the same answer once more: a daily is called a daily in both,
+        // and the word came into Spanish from the ceremony rather than being translated out of it.
         string[] sameEitherWayOnPurpose =
         [
             nameof(UiTexts.Channel0),
@@ -87,6 +88,7 @@ public class UiTextsTests
             nameof(UiTexts.SpanishName),
             nameof(UiTexts.TheApplicationsName),
             nameof(UiTexts.TheEngineThatTranscribes),
+            nameof(UiTexts.TheShapeDaily),
         ];
 
         var sameEitherWay = Catalogue

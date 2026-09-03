@@ -93,6 +93,15 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAu
     /// </remarks>
     public bool TheNameMayBeTyped => Stage is not MeetingStage.Recording;
 
+    /// <summary>Whether this meeting is one to file under what it was about.</summary>
+    /// <remarks>
+    /// Every stage but the bottom one, and for the reason <see cref="TheNameMayBeTyped"/> gives: a
+    /// meeting whose recording has not been filed yet is one the application is still writing rows
+    /// about, and links written into that window race the save that made the meeting. So the press
+    /// is not there, rather than there and liable to be lost.
+    /// </remarks>
+    public bool ItMayBeFiled => Stage is not MeetingStage.Recording;
+
     /// <summary>Where each thing the AI left sits along the meeting.</summary>
     public IReadOnlyList<Duration> MarkedAlongTheMeeting => Left.MarkedAlongTheMeeting;
 }

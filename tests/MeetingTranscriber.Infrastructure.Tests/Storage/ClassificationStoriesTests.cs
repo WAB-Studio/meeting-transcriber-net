@@ -323,15 +323,25 @@ internal sealed class Stories
         (OneToOne, "Jo", MeetingPersonRole.Subject),
     ];
 
-    public static Stories Write(CorpusDbContext context)
-    {
-        var stories = new Stories();
-        stories.Build(context);
-        context.SaveChanges();
-        return stories;
-    }
+    /// <summary>The thirteen, filed.</summary>
+    public static Stories Write(CorpusDbContext context) => Write(context, theFilingToo: true);
+
+    /// <summary>
+    /// The thirteen, with every link and every naming left off.
+    /// </summary>
+    /// <remarks>
+    /// The same tree, the same people and the same meetings, and nothing saying what any of them
+    /// was about — which is a corpus something else can file into. <c>MeetingClassifyingTests</c>
+    /// is what needs it: the screen's own save cannot be proved against a corpus where the answer
+    /// is already on disk, because writing what is already there is what that save does when
+    /// nothing changed.
+    /// </remarks>
+    public static Stories WriteWithNothingFiled(CorpusDbContext context) =>
+        Write(context, theFilingToo: false);
 
     public Guid MeetingId(string title) => meetings[title].Id;
+
+    public Guid NodeId(string name) => nodes[name].Id;
 
     public Guid PersonId(string name) => people[name].Id;
 
@@ -363,7 +373,19 @@ internal sealed class Stories
     private static UtcTimestamp On(int year, int month, int day) =>
         UtcTimestamp.From(new DateTimeOffset(year, month, day, 12, 0, 0, TimeSpan.Zero));
 
-    private void Build(CorpusDbContext context)
+    private static Stories Write(CorpusDbContext context, bool theFilingToo)
+    {
+        var stories = new Stories();
+        stories.Build(context, theFilingToo);
+        context.SaveChanges();
+        return stories;
+    }
+
+    /// <param name="theFilingToo">
+    /// Whether the links and the namings go in with the rest. Everything above them is what the
+    /// corpus knows before anybody classified anything, and they are what classifying it writes.
+    /// </param>
+    private void Build(CorpusDbContext context, bool theFilingToo)
     {
         foreach (var (name, parent, kind) in Tree)
         {
@@ -403,6 +425,11 @@ internal sealed class Stories
             };
             meetings[title] = meeting;
             context.Meetings.Add(meeting);
+        }
+
+        if (!theFilingToo)
+        {
+            return;
         }
 
         foreach (var (meeting, node, role) in Links)
