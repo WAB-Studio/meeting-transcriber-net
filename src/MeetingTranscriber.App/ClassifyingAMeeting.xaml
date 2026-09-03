@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="MeetingTranscriber.App.ClassifyingAMeeting"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MeetingTranscriber.App"
+    xmlns:loc="using:MeetingTranscriber.Presentation"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Filing a meeting under what it was about, and the whole of what #105 asks: no technical
+         name anywhere on it. There is no tree drawn, no word for a node, a role or a link, and no
+         help panel explaining any of them — the columns are three sentences about the meeting and
+         the chips are fourteen meetings said by name.
+
+         What is on it is built in the code-behind and not templated here, for the reason the
+         meeting screen's sections are: how many columns there are, how deep a path runs and how
+         many people are on it are answers, not a layout. What stays here is the look, as the
+         styles below, so the code-behind chooses a style and never a colour.
+
+         Nothing is written to the corpus until *Guardar*, with one exception the design already
+         allows: naming a node or a person is corpus-wide vocabulary rather than something about
+         this meeting, so it is written when it is named. *Dejarla sin clasificar* writes nothing
+         either — it empties the screen, and *Guardar* is still what files it. That is what keeps
+         it honestly in the neutral left-hand slot rather than past the gap. -->
+
+    <Grid x:Name="Root" RowSpacing="18">
+        <Grid.Resources>
+            <!-- Every Olivo *style* this screen builds in code is aliased here first. `Chrome` is a
+                 ResourceDictionary indexer over this screen's own resources and does not walk up to
+                 the application's, so a code-behind naming an Olivo key directly is green in CI and
+                 throws on the UI thread the moment a control is drawn. Brushes and sizes go through
+                 `Painted` and `Sized`, which read Application.Current.Resources. -->
+
+            <!-- One of the fourteen shapes, unchosen: the normal rank on papel at the control
+                 height, which is what the artboard draws. -->
+            <Style x:Key="Chip" TargetType="Button" BasedOn="{StaticResource NormalButtonOnPaper}">
+                <Setter Property="Height" Value="{StaticResource ControlHeight}" />
+                <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+                <Setter Property="Padding" Value="15,0,15,0" />
+            </Style>
+
+            <!-- The one that is chosen. Olivo is what is alive and well, which is what a chosen
+                 option of a set is; the decision tint is for something still waiting on a person,
+                 and by the time a chip is lit it has been answered. -->
+            <Style x:Key="ChipChosen" TargetType="Button" BasedOn="{StaticResource Chip}">
+                <Setter Property="Background" Value="{StaticResource OliveBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource PaperBrush}" />
+            </Style>
+
+            <!-- *Ninguna — la lleno yo*, which fills nothing and so is drawn as the optional
+                 control `docs/design.md` §Controls gives the 1px inset ring. Built off the rank
+                 that already has no fill rather than by spelling one: a screen may not choose a
+                 colour, and "no colour at all" is a colour to that rule. -->
+            <Style x:Key="ChipFilledByHand" TargetType="Button" BasedOn="{StaticResource ButtonAtTheMargin}">
+                <Setter Property="Height" Value="{StaticResource ControlHeight}" />
+                <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+                <Setter Property="Padding" Value="15,0,15,0" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="{StaticResource EmptyControlRingBrush}" />
+            </Style>
+
+            <!-- What a column is called: the artboard's 14/20 in secondary, and deliberately not
+                 the section rank. A section title is a heading over a part of a screen; these three
+                 are the beginning of a sentence the pills under them finish. -->
+            <Style x:Key="ColumnHeading" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+            </Style>
+
+            <!-- What stands where the pills would be while a column has none. The transcript rank,
+                 which is the rank the pills beside it take, so an empty column and a filled one sit
+                 on the same line. -->
+            <Style x:Key="NothingHere" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}">
+                <Setter Property="Foreground" Value="{StaticResource TertiaryTextBrush}" />
+            </Style>
+
+            <!-- A pill in a path, and it is a picker rather than a label: what stands at that
+                 level is chosen there, not somewhere else and shown here. Olivo's DropDown already
+                 draws it as the pill the artboard draws, chevron and all. -->
+            <Style x:Key="Picker" TargetType="ComboBox" BasedOn="{StaticResource DropDown}">
+                <Setter Property="HorizontalAlignment" Value="Left" />
+                <Setter Property="MinWidth" Value="150" />
+                <Setter Property="FontSize" Value="{StaticResource TranscriptSize}" />
+            </Style>
+
+            <!-- The pill somebody is typing a new name into, in the place the picker was. -->
+            <Style x:Key="Naming" TargetType="TextBox" BasedOn="{StaticResource TypedField}">
+                <Setter Property="MinWidth" Value="150" />
+            </Style>
+
+            <!-- The person using this install: their name, shown here and settled elsewhere. The
+                 pill without the chevron, which is what Olivo says a value shown and not chosen
+                 wears. -->
+            <Style x:Key="TheirName" TargetType="Border" BasedOn="{StaticResource Pill}" />
+
+            <Style x:Key="TheirNameSays" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}" />
+
+            <!-- Where somebody belonged the day of the meeting, at the end of their row. -->
+            <Style x:Key="WhereTheyBelonged" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{StaticResource TertiaryTextBrush}" />
+            </Style>
+
+            <!-- *Agregar* and *Agregar a alguien*: optional, so no fill and the 1px inset ring. -->
+            <Style x:Key="AnOptionalPress" TargetType="Button" BasedOn="{StaticResource ButtonAtTheMargin}">
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="{StaticResource EmptyControlRingBrush}" />
+                <Setter Property="Height" Value="{StaticResource ControlHeight}" />
+                <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+                <Setter Property="HorizontalAlignment" Value="Left" />
+            </Style>
+
+            <!-- The `+` at the end of a path: the same optional control, square, carrying a glyph
+                 instead of a word. What it is called is its automation name, because a glyph with
+                 no name is nothing to a screen reader. -->
+            <Style x:Key="AddALevel" TargetType="Button" BasedOn="{StaticResource AnOptionalPress}">
+                <Setter Property="Width" Value="{StaticResource ControlHeight}" />
+                <Setter Property="MinWidth" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+            </Style>
+
+            <!-- One of the two ways a meeting can name somebody, off. Both are pressable and both
+                 are there on every row: §5.3 row 10 is a person a meeting is about who was never in
+                 the room, and with one badge nobody filing that meeting by hand could say so. -->
+            <Style x:Key="Badge" TargetType="Button" BasedOn="{StaticResource RowButtonAtTheMargin}">
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="BorderBrush" Value="{StaticResource EmptyControlRingBrush}" />
+                <Setter Property="Padding" Value="11,0,11,0" />
+            </Style>
+
+            <!-- And on. -->
+            <Style x:Key="BadgeOn" TargetType="Button" BasedOn="{StaticResource Badge}">
+                <Setter Property="Background" Value="{StaticResource OliveBrush}" />
+                <Setter Property="Foreground" Value="{StaticResource PaperBrush}" />
+                <Setter Property="BorderThickness" Value="0" />
+            </Style>
+
+            <!-- The one thing this screen is for. A whole screen whose purpose is the act takes the
+                 principal rank, which `docs/design.md` §Two places gives it. -->
+            <Style x:Key="TheAct" TargetType="Button" BasedOn="{StaticResource PrincipalActButton}" />
+
+            <Style x:Key="TheNeutralAnswer" TargetType="Button" BasedOn="{StaticResource ButtonAtTheMargin}" />
+
+            <!-- The dividing rule above *Quiénes*. -->
+            <Style x:Key="ARule" TargetType="Border">
+                <Setter Property="Height" Value="1" />
+                <Setter Property="Background" Value="{StaticResource LineBrush}" />
+            </Style>
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- The header. A sub-screen: it is reached from one meeting and returns to it, and the way
+             back says where back is rather than saying "back". -->
+        <Grid Grid.Row="0" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Button
+                x:Name="BackButton"
+                Grid.Column="0"
+                VerticalAlignment="Top"
+                Style="{StaticResource ButtonAtTheMargin}"
+                Click="OnBack"
+                Content="{x:Bind In(loc:UiTexts.BackToTheMeeting)}" />
+
+            <StackPanel Grid.Column="1" Spacing="1">
+                <TextBlock
+                    Style="{StaticResource SubScreenTitleText}"
+                    Text="{x:Bind In(loc:UiTexts.WhatThisMeetingWasAbout)}" />
+
+                <!-- Which meeting this is: its name and when it was, which are the machine's own
+                     numbers and read the same in either language. -->
+                <TextBlock x:Name="WhichMeetingText" Style="{StaticResource DataText}" />
+            </StackPanel>
+        </Grid>
+
+        <StackPanel Grid.Row="1" Spacing="10">
+            <TextBlock
+                Style="{StaticResource SectionText}"
+                Text="{x:Bind In(loc:UiTexts.WhichOneWasItLike)}" />
+
+            <!-- The fourteen, in the order `MeetingShape` declares them, which is §5.3's own row
+                 order. Built in code because which of them exist is an answer and not a layout. -->
+            <local:WrappingRow x:Name="TheShapes" HorizontalGap="8" VerticalGap="8" />
+        </StackPanel>
+
+        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="{StaticResource LargeCardPadding}">
+            <Grid RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Everything a person fills in scrolls, and the two answers do not. *Agregar*
+                     puts a row on a column every time it is pressed and nothing caps how many —
+                     with the columns laid out at their own height, the fifteenth press pushes
+                     *Guardar* off the bottom of the card and the only way out is the press that
+                     throws the draft away. -->
+                <ScrollViewer Grid.Row="0">
+                    <StackPanel Spacing="12">
+                        <!-- One column per way a meeting relates to what it was about. The columns
+                             are made in code by walking that vocabulary, so a fourth one is a
+                             column here rather than a thing the corpus can hold and the screen
+                             cannot say. -->
+                        <Grid x:Name="Columns" ColumnSpacing="20" />
+
+                        <Border Style="{StaticResource ARule}" />
+
+                        <StackPanel x:Name="Who" Spacing="8" />
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Said where it happened rather than in a notice: a corpus that would not open
+                     and a save that was refused are things about this screen, and the two the
+                     design allows to stop it are a charge and adding a person. -->
+                <TextBlock
+                    x:Name="StatusText"
+                    Grid.Row="1"
+                    Style="{StaticResource BodyText}"
+                    Foreground="{StaticResource PeakBrush}"
+                    TextWrapping="Wrap"
+                    Visibility="Collapsed" />
+
+                <!-- The two answers, in the two places the grammar fixes. There is no third and
+                     nothing here sits past the gap, because neither of them loses anything: the one
+                     on the left empties the screen and the one on the right is what writes. -->
+                <Grid Grid.Row="2" ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button
+                        x:Name="UnclassifyButton"
+                        Grid.Column="0"
+                        HorizontalAlignment="Right"
+                        Style="{StaticResource TheNeutralAnswer}"
+                        Click="OnLeaveItUnclassified"
+                        Content="{x:Bind In(loc:UiTexts.LeaveItUnclassified)}" />
+
+                    <Button
+                        x:Name="SaveButton"
+                        Grid.Column="1"
+                        Style="{StaticResource TheAct}"
+                        Click="OnSave"
+                        Content="{x:Bind In(loc:UiTexts.Save)}" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- Adding a person, which is the second and last dialogue `docs/design.md` §Notices
+             allows. It lives in this file rather than in a control of its own because it has
+             exactly one caller: the second place that would want it is `QuienEsQuien`, and that
+             screen is not built — an abstraction for a caller that does not exist costs more than
+             the duplication it saved, and the day that screen arrives is the day this moves.
+
+             Naming a node is not a third dialogue for the same reason it is not a second: it
+             happens on the pill, in place, where the picker offering it stands. -->
+        <ContentDialog
+            x:Name="AddingSomebody"
+            PrimaryButtonClick="OnSomebodyNamed"
+            Title="{x:Bind In(loc:UiTexts.AddSomebody)}"
+            PrimaryButtonText="{x:Bind In(loc:UiTexts.Save)}"
+            CloseButtonText="{x:Bind In(loc:UiTexts.Cancel)}">
+            <StackPanel Spacing="12" MinWidth="320">
+                <TextBox
+                    x:Name="TheirNameBox"
+                    Style="{StaticResource TypedField}"
+                    TextChanged="OnTheirNameTyped"
+                    Header="{x:Bind In(loc:UiTexts.NameOfAPerson)}" />
+
+                <!-- The organization is said beside the picker and never as a header on it: a pill
+                     has no part to draw one, so a `Header` here binds, builds green and shows
+                     nothing at all. -->
+                <StackPanel Spacing="6">
+                    <TextBlock
+                        Style="{StaticResource BodyText}"
+                        Text="{x:Bind In(loc:UiTexts.Organization)}" />
+                    <ComboBox x:Name="TheirOrganization" Style="{StaticResource DropDown}" />
+                </StackPanel>
+
+                <!-- Optional, and empty means what `Affiliation` already means by no start: as far
+                     back as this corpus goes. A year and not a date, because a period on a person
+                     is read against the meeting's own year and nothing finer. -->
+                <TextBox
+                    x:Name="TheirYearBox"
+                    Style="{StaticResource TypedField}"
+                    MaxLength="4"
+                    Header="{x:Bind In(loc:UiTexts.From)}" />
+
+                <TextBlock
+                    x:Name="DialogueStatusText"
+                    Style="{StaticResource BodyText}"
+                    Foreground="{StaticResource PeakBrush}"
+                    TextWrapping="Wrap"
+                    Visibility="Collapsed" />
+            </StackPanel>
+        </ContentDialog>
+    </Grid>
+</UserControl>

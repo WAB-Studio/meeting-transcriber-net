@@ -92,6 +92,14 @@ public sealed partial class ReadingAMeeting : UserControl
     private MeetingAsRead? _read;
 
     /// <summary>
+    /// What this meeting is filed under, read with it. Its own read and not part of
+    /// <see cref="MeetingAsRead"/>, because this screen wants two rows of pills and the screen that
+    /// sets them wants the whole tree, everybody and their affiliations — and paying for those to
+    /// draw a block in a corner is a read nobody asked for.
+    /// </summary>
+    private IReadOnlyList<(MeetingNodeRole Role, NodePath Path)>? _filing;
+
+    /// <summary>
     /// The recording being played, held open for as long as this screen is showing the meeting it
     /// belongs to. Null when there is no audio, or when the machine would not play it.
     /// </summary>
@@ -118,6 +126,9 @@ public sealed partial class ReadingAMeeting : UserControl
 
     /// <summary>Somebody asked to go back to the meetings.</summary>
     public event EventHandler? Left;
+
+    /// <summary>Somebody asked to file this meeting under what it was about.</summary>
+    public event EventHandler<Guid>? Classify;
 
     /// <summary>Whether this screen is showing a meeting.</summary>
     public bool IsShowingAMeeting => _meeting is not null;
@@ -181,6 +192,38 @@ public sealed partial class ReadingAMeeting : UserControl
     }
 
     /// <summary>
+    /// Reads this meeting again without touching the recording.
+    /// </summary>
+    /// <remarks>
+    /// What the screen that files a meeting comes back through. Coming back is a redraw and not a
+    /// reopen, so the player is exactly where <see cref="Pause"/> left it rather than rewound to
+    /// the start of an hour somebody was half way through.
+    /// </remarks>
+    public void ReadAgain() => Draw(theRecordingToo: false);
+
+    /// <summary>
+    /// Stops the recording where it is, without letting go of it.
+    /// </summary>
+    /// <remarks>
+    /// What <see cref="Close"/> says is why this exists: a player left running behind a screen
+    /// nobody is looking at is sound coming out of an application that appears to be doing nothing
+    /// else. The screen that files this meeting takes the window and leaves this one collapsed —
+    /// out of the automation tree as well, so a reader would have audio coming from nothing they
+    /// can find — and coming back is a redraw, so the recording is kept and paused rather than
+    /// closed and rewound.
+    /// </remarks>
+    public void Pause()
+    {
+        _watch.Stop();
+
+        if (_playing is { IsPlaying: true } playing)
+        {
+            playing.Pause();
+            ShowWhereItIs();
+        }
+    }
+
+    /// <summary>
     /// Reads the meeting on screen again and puts it back on the controls.
     /// </summary>
     /// <param name="theRecordingToo">
@@ -191,6 +234,7 @@ public sealed partial class ReadingAMeeting : UserControl
     private void Draw(bool theRecordingToo)
     {
         _read = null;
+        _filing = null;
         _status = null;
 
         if (_meeting is not { } meetingId)
@@ -207,8 +251,14 @@ public sealed partial class ReadingAMeeting : UserControl
         {
             try
             {
+                // Both reads inside the one context, and both here rather than in Render. That
+                // method is called from the early return above, where no context was ever opened,
+                // and again after this block has closed the one there is — which is why what was
+                // read is a field at all. A read from in there would also put a SqliteException on
+                // the UI thread outside both of these catches, where nothing is holding it.
                 using var context = CorpusDatabase.Open(folder);
                 _read = new MeetingReading(context, TimeProvider.System).Of(meetingId);
+                _filing = new MeetingClassifying(context, TimeProvider.System).Filing(meetingId);
             }
             catch (MeetingStageException gone)
             {
@@ -237,11 +287,13 @@ public sealed partial class ReadingAMeeting : UserControl
         StopPlaying();
         _meeting = null;
         _read = null;
+        _filing = null;
         _status = null;
         _nameAsRead = string.Empty;
         NameBox.Text = string.Empty;
         TheSections.Children.Clear();
         Presses.Children.Clear();
+        TheFiling.Children.Clear();
     }
 
     /// <summary>
@@ -280,6 +332,7 @@ public sealed partial class ReadingAMeeting : UserControl
     {
         TheSections.Children.Clear();
         Presses.Children.Clear();
+        TheFiling.Children.Clear();
 
         if (_read is not { } read)
         {
@@ -289,6 +342,7 @@ public sealed partial class ReadingAMeeting : UserControl
             StageText.Text = _status?.In(_language) ?? string.Empty;
             TranscribedText.Text = string.Empty;
             SummarisedText.Text = string.Empty;
+            ClassifyButton.IsEnabled = false;
 
             if (theRecordingToo)
             {
@@ -308,6 +362,7 @@ public sealed partial class ReadingAMeeting : UserControl
         WhoWroteIt(read.Screen);
         WhatWasLeft(read.Screen.Left);
         TheActOnOffer(read.Screen);
+        WhatItWasAbout(read.Screen);
 
         if (theRecordingToo)
         {
@@ -346,6 +401,51 @@ public sealed partial class ReadingAMeeting : UserControl
             : In(screen.ThereIsASummary
                 ? UiTexts.TheCorpusDoesNotSayWhoSummarisedIt
                 : UiTexts.NobodyHasSummarisedThisYet);
+    }
+
+    /// <summary>
+    /// What this meeting is filed under, and whether it is one to file at all.
+    /// </summary>
+    /// <remarks>
+    /// One chip per link, carrying the whole path down the tree rather than the node the meeting
+    /// hangs off: <em>ticket #4312</em> on its own names an incident belonging to nobody, and the
+    /// company above it is what makes it a subject. Which of the three ways it relates to each is
+    /// not said here — this block asks one question, and the screen the press opens is where the
+    /// three columns are.
+    /// </remarks>
+    private void WhatItWasAbout(MeetingScreen screen)
+    {
+        ClassifyButton.IsEnabled = screen.ItMayBeFiled;
+
+        if (_filing is not { Count: > 0 } filed)
+        {
+            // A real answer and not a gap: §5.3 says a casual chat is stored with no links at all,
+            // and somebody chooses that rather than failing to answer.
+            TheFiling.Children.Add(new TextBlock
+            {
+                Text = In(UiTexts.ItIsFiledUnderNothing),
+                Style = Chrome("FiledUnderNothing"),
+            });
+
+            return;
+        }
+
+        // One chip per place and not per link. A meeting that is work of a company and has that
+        // same company on the other side of the table is two links and one answer to the question
+        // this block asks, and drawing the name twice reads as something gone wrong rather than as
+        // a filing. Which way each relates to it is the screen the press below opens.
+        var places = filed
+            .Select(found => ScreenNumbers.Inside([.. found.Path.Nodes.Select(node => node.Name)]))
+            .Distinct(StringComparer.Ordinal);
+
+        foreach (var place in places)
+        {
+            TheFiling.Children.Add(new Border
+            {
+                Style = Chrome("FiledUnder"),
+                Child = new TextBlock { Text = place, Style = Chrome("FiledUnderSays") },
+            });
+        }
     }
 
     /// <summary>
@@ -918,5 +1018,27 @@ public sealed partial class ReadingAMeeting : UserControl
 
         Close();
         Left?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Somebody asked to file this meeting under what it was about.</summary>
+    /// <remarks>
+    /// The name first, for the reason <see cref="OnBack"/> gives, and then the recording is stopped
+    /// where it is: the screen that files this meeting takes the window, and a player left running
+    /// behind a collapsed one is sound coming out of an application that appears to be doing
+    /// nothing else. It is paused and not closed, because coming back is a redraw.
+    /// </remarks>
+    private void OnClassify(object sender, RoutedEventArgs e)
+    {
+        if (!CommitTheName())
+        {
+            return;
+        }
+
+        Pause();
+
+        if (_meeting is { } meeting)
+        {
+            Classify?.Invoke(this, meeting);
+        }
     }
 }

@@ -67,9 +67,9 @@ Speakers get their own three, and only these three:
 A fourth speaker has no colour yet and nobody has decided one. Until somebody does, a third named
 speaker takes the no-name grey rather than a colour invented on the spot.
 
-Three greys appear inside components rather than as tokens: `#DEDBD4` for the 1px inset ring on an
-empty or optional control, `#C3BFB6` for an unticked box, and `#B9B5AC` for the bars of an audio
-clip's waveform.
+Two greys appear inside components rather than as tokens: `#C3BFB6` for an unticked box, and
+`#B9B5AC` for the bars of an audio clip's waveform. `#DEDBD4` — the 1px inset ring on an empty or
+optional control — was one of them until a screen needed to name it; it is `EmptyControlRingBrush`.
 
 ## Type
 
@@ -216,6 +216,7 @@ already named.
 | Walk away from one | *Cancelar* |
 | File a meeting under nothing, on purpose | *Dejarla sin clasificar* |
 | Add a person, anywhere | *Agregar a alguien* |
+| Add a path to a column | *Agregar* |
 
 A screen needing a verb that is not here either found a new act — which is a decision — or is saying
 one of these in its own words, which is the thing this table exists to stop.
@@ -294,7 +295,8 @@ to type three fields is a flow that loses what you were doing.
 Same panel as the charge: radius 12, papel, the same scrim. What it asks is the name, and optionally
 the organization and since when — a person carries as many affiliations as they have, each with its
 own period, so this dialogue adds one and never replaces what is there. Two answers, in the two
-places the grammar fixes: *Guardar* on the right, *Dejarlo como está* on the left.
+places the grammar fixes: *Guardar* on the right, *Cancelar* on the left — the verb the closed table
+above gives for walking away from a form, and the one `Persona.dc.html` draws.
 
 ## Movement
 

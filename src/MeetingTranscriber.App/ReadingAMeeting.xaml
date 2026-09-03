@@ -65,6 +65,23 @@
 
             <Style x:Key="Data" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
 
+            <!-- One thing this meeting was filed under: the whole path down the tree, as one chip.
+                 The path and not its deepest node alone, because *ticket #4312* on its own says
+                 nothing and the company above it is what makes it a subject. It is a value shown
+                 here and changed on the screen the press below opens, which is what Olivo's pill
+                 without a chevron is for. -->
+            <Style x:Key="FiledUnder" TargetType="Border" BasedOn="{StaticResource Pill}">
+                <Setter Property="Padding" Value="11,0,11,0" />
+            </Style>
+
+            <Style x:Key="FiledUnderSays" TargetType="TextBlock" BasedOn="{StaticResource BodyText}" />
+
+            <!-- A meeting nobody filed. It is a real answer and not a gap: §5.3 says a casual chat
+                 is stored with no links at all and found by text. -->
+            <Style x:Key="FiledUnderNothing" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{StaticResource TertiaryTextBrush}" />
+            </Style>
+
             <!-- The press on every thing the AI left. It carries the minute it was said at, and
                  that minute is the whole of its words: a play glyph beside a number, repeated
                  twelve times down a column, is twelve controls saying the same thing. -->
@@ -174,6 +191,32 @@
                              on the list. Built in the code-behind because which of them exist is
                              an answer and not a layout. -->
                         <StackPanel x:Name="Presses" Orientation="Horizontal" Spacing="8" />
+                    </StackPanel>
+                </Border>
+
+                <!-- What this meeting was filed under, and the way to set it. `Reunion.dc.html`
+                     draws it as a card of its own in this column and nothing built it until now.
+                     The label is mono at the data rank, like *esto lo escribió* above it: it names
+                     the block rather than being a heading over a part of the screen.
+
+                     The artboard draws no press here and there is one, at the same normal rank the
+                     act on the card above takes. A block showing a filing with no way to set it is
+                     worse than no block, and *Clasificar* is already the verb `docs/design.md`
+                     §One verb per act gives for this. -->
+                <Border Style="{StaticResource ReadingCard}">
+                    <StackPanel Spacing="10">
+                        <TextBlock
+                            Style="{StaticResource DataText}"
+                            Text="{x:Bind In(loc:UiTexts.WhatItWasFiledUnder)}" />
+
+                        <local:WrappingRow x:Name="TheFiling" HorizontalGap="6" VerticalGap="6" />
+
+                        <Button
+                            x:Name="ClassifyButton"
+                            HorizontalAlignment="Right"
+                            Style="{StaticResource TakeTheStage}"
+                            Click="OnClassify"
+                            Content="{x:Bind In(loc:UiTexts.Classify)}" />
                     </StackPanel>
                 </Border>
             </StackPanel>

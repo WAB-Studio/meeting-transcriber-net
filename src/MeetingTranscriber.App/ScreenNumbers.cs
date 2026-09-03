@@ -52,6 +52,18 @@ internal static class ScreenNumbers
     public static string Beside(params string[] facts) => string.Join(" · ", facts);
 
     /// <summary>
+    /// One thing inside another inside another — a path down the classification tree, root first.
+    /// </summary>
+    /// <remarks>
+    /// A second separator and not <see cref="Beside"/>, because it says something else: those are
+    /// facts standing next to each other and these are one thing containing the next, so
+    /// <em>TechSed › Soporte › ticket #4312</em> reads as a place and <em>TechSed · Soporte ·
+    /// ticket #4312</em> would read as three of them. It is here for the reason that one is: a
+    /// punctuation mark typed into a screen is a literal on a line a person reads.
+    /// </remarks>
+    public static string Inside(params string[] path) => string.Join(" › ", path);
+
+    /// <summary>
     /// When something was, to the minute and never to the second: what tells two meetings apart on
     /// a list is which one it was, not how far into a minute it started.
     /// </summary>
@@ -71,6 +83,34 @@ internal static class ScreenNumbers
     /// </remarks>
     public static string TimeOfDay(UtcTimestamp moment) => moment.Value.ToLocalTime()
         .ToString("HH:mm", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The year something began, which is the whole of what an affiliation says about when.
+    /// </summary>
+    /// <remarks>
+    /// A year and not a date. A period on a person is read against another person's and against the
+    /// meeting's own — <em>did this hold when this happened</em> — and the month and the day would
+    /// be two facts nobody compares standing in front of the one they do. It is here rather than in
+    /// <c>UiTexts</c> because it is the same number in either language; the sentence it goes inside
+    /// is the catalogue's, and that sentence is text rather than mono for the reason
+    /// <c>docs/design.md</c> §Type gives — a number that is part of a sentence is text.
+    /// </remarks>
+    public static string Year(UtcTimestamp moment) =>
+        moment.Value.ToLocalTime().ToString("yyyy", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The instant a year begins, as the person typing it means it.
+    /// </summary>
+    /// <remarks>
+    /// The exact inverse of <see cref="Year"/>, and it is here beside it because that is the whole
+    /// of what makes it right. <see cref="Year"/> reads an instant in whatever zone the reader is
+    /// in, so a start written as midnight UTC comes back a year early for everybody west of it: on
+    /// this machine, typing 2024 and being told <em>desde 2023</em>, permanently and with no screen
+    /// that can correct it. Midnight local is the answer that round trips, and it is also what
+    /// somebody means when they write a year down.
+    /// </remarks>
+    public static UtcTimestamp TheStartOfTheYear(int year) =>
+        UtcTimestamp.From(new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Local));
 
     /// <summary>
     /// How long something ran, or how far into a meeting something is.

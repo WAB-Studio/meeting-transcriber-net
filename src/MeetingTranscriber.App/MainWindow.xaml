@@ -656,6 +656,11 @@
              the drawer already says which position it is in. -->
         <local:ReadingAMeeting x:Name="Reading" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
 
+        <!-- Filing that meeting, in the same room again. A sub-screen of a sub-screen: it is
+             reached from the meeting and returns to it, and the meeting keeps its recording —
+             paused — for as long as this is up. -->
+        <local:ClassifyingAMeeting x:Name="Classifying" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
+
         <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" Margin="6,0,6,0">
             <TextBlock
                 x:Name="StatusText"

@@ -116,6 +116,25 @@ public class MeetingScreenTests
         screen.TheNameMayBeTyped.ShouldBeFalse();
     }
 
+    /// <summary>
+    /// A meeting still being recorded is not one to file, and every other stage is.
+    /// </summary>
+    /// <remarks>
+    /// The same window the name is kept out of: while the recording is still being filed the
+    /// application is writing rows about this meeting, and links written into that window race the
+    /// save that made it.
+    /// </remarks>
+    [Fact]
+    public void A_meeting_still_being_recorded_is_not_one_to_file()
+    {
+        foreach (var stage in Enum.GetValues<MeetingStage>())
+        {
+            Screen(new OwedWork(Meeting, stage, StageStanding.Offered), RecordedAudio.Playable)
+                .ItMayBeFiled
+                .ShouldBe(stage is not MeetingStage.Recording, stage.ToString());
+        }
+    }
+
     [Fact]
     public void A_recorded_meeting_offers_the_transcription_and_the_name()
     {

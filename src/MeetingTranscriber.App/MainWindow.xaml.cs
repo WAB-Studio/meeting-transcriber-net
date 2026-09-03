@@ -232,6 +232,11 @@ public sealed partial class MainWindow : Window
 
         Reading.Open(corpus);
         Reading.Left += OnLeftTheMeeting;
+        Reading.Classify += OnClassifyTheMeeting;
+
+        Classifying.Open(corpus);
+        Classifying.Filed += OnFiled;
+        Classifying.Left += OnLeftTheClassification;
 
         // Read off the drawer once here as well as on every move, so which position the screen
         // opens in is the drawer's answer rather than two defaults that happen to agree.
@@ -304,6 +309,7 @@ public sealed partial class MainWindow : Window
         // the language before.
         Meetings.ReadIn(language);
         Reading.ReadIn(language);
+        Classifying.ReadIn(language);
         Refresh();
     }
 
@@ -354,7 +360,8 @@ public sealed partial class MainWindow : Window
             // list raised into it, and a meeting being read in it. Read off the two controls rather
             // than kept, for the reason every other field here is — a copy of it updated by whichever
             // handler remembered to is how a screen comes to disagree with the arrangement it is in.
-            TheRoomBelowHasTheWindow = Meetings.HasTheWholeWindow || Reading.IsShowingAMeeting,
+            TheRoomBelowHasTheWindow =
+                Meetings.HasTheWholeWindow || Reading.IsShowingAMeeting || Classifying.IsOpen,
         };
     }
 
@@ -1528,10 +1535,15 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private void ShowWhatTheRoomIsShowing(RecorderScreen screen)
     {
-        var reading = Reading.IsShowingAMeeting;
+        // Three now, and the order is what says which wins: filing a meeting is reached from the
+        // meeting, so the meeting screen is still holding one — with its recording paused — for the
+        // whole of it, and asking it whether it has the window would put two screens in one room.
+        var classifying = Classifying.IsOpen;
+        var reading = !classifying && Reading.IsShowingAMeeting;
 
+        Classifying.Visibility = classifying ? Visibility.Visible : Visibility.Collapsed;
         Reading.Visibility = reading ? Visibility.Visible : Visibility.Collapsed;
-        Meetings.Visibility = reading ? Visibility.Collapsed : Visibility.Visible;
+        Meetings.Visibility = classifying || reading ? Visibility.Collapsed : Visibility.Visible;
 
         // Where each is heading and not where it is: something on its way out is still visible for
         // the whole of the move, so reading its visibility here would drop the press that reversed
@@ -1580,6 +1592,42 @@ public sealed partial class MainWindow : Window
     private void OnLeftTheMeeting(object? sender, EventArgs e)
     {
         Meetings.Read();
+        Refresh();
+    }
+
+    /// <summary>
+    /// Somebody asked to file the meeting they are reading.
+    /// </summary>
+    /// <remarks>
+    /// Shown before the room is rearranged, for the reason <see cref="OnMeetingChosen"/> gives: it
+    /// is showing one that makes <see cref="ClassifyingAMeeting.IsOpen"/> true, and that is what
+    /// the arrangement is read off.
+    /// </remarks>
+    private void OnClassifyTheMeeting(object? sender, Guid meeting)
+    {
+        Classifying.Show(meeting);
+        Refresh();
+    }
+
+    /// <summary>
+    /// The meeting was filed. The screen it came from is still holding it, so coming back is a
+    /// redraw and not a reopen — its filing block has changed and its recording has not, and it
+    /// stays paused where the press that left it put it.
+    /// </summary>
+    private void OnFiled(object? sender, Guid meeting)
+    {
+        Classifying.Close();
+        Reading.ReadAgain();
+        Refresh();
+    }
+
+    /// <summary>
+    /// Somebody came back from filing a meeting without filing it. Nothing was written, so nothing
+    /// is read again: the meeting screen is showing exactly what it was showing.
+    /// </summary>
+    private void OnLeftTheClassification(object? sender, EventArgs e)
+    {
+        Classifying.Close();
         Refresh();
     }
 
@@ -2125,6 +2173,7 @@ public sealed partial class MainWindow : Window
         // listening, and a window that closed over one would leave both to whenever a finaliser
         // got round to them — with the recording still coming out of the machine until it did.
         Reading.Close();
+        Classifying.Close();
 
         // Before the guard below, and it is the one thing here that is: what it stops is Windows
         // calling into a closed window about a device, which has nothing to do with whichever
