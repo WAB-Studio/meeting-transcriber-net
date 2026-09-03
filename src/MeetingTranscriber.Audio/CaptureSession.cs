@@ -363,6 +363,70 @@ public sealed class CaptureSession : IDisposable
     }
 
     /// <summary>
+    /// Puts channel 1 back on the microphone it is already on, after that stream ended by itself.
+    /// Does nothing at all when the channel is recording.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same device again and never another one, which is what makes this a different act from
+    /// <see cref="RecordFrom"/> rather than a spelling of it: a device that stopped responding is
+    /// answered by trying that same device again, and a source that is alive and silent is answered
+    /// by pointing somewhere else. <c>docs/design.md</c> §Fallo is where that split is decided, and
+    /// it is the whole reason `Fallo` and `NadaLlego` are two screens.
+    /// </para>
+    /// <para>
+    /// <b>The microphone and not a channel handed in</b>, and that is the shape rather than a
+    /// narrowing. Both ways of obtaining channel 0 open through a loopback that always carries a
+    /// sequence on, and <c>CaptureTarget.Program.Open</c> refuses a sequence outright — *which
+    /// program a recording follows is what the recording is*. So a channel 0 following a program
+    /// cannot be opened again at all, and a method that took the channel would be one whose
+    /// commonest argument throws a sentence about a decision nobody made. Naming the one channel
+    /// this works on makes that unreachable instead of guarded. What answers a channel 0 that
+    /// stopped is <see cref="RecordTheWholeMachine"/>, which opens a different way in.
+    /// </para>
+    /// <para>
+    /// <b>Nothing rather than a refusal</b> for a channel that is already recording. A microphone
+    /// Windows took away is followed onto a replacement by this session's own thread within two
+    /// seconds, so a person pressing this is racing something that may have answered already — and
+    /// what they asked for is true either way. Refusing there would report a failure about a channel
+    /// that is fine, which is the one outcome worse than doing nothing.
+    /// </para>
+    /// <para>
+    /// It is a move like any other underneath, so the seam is recorded the way every seam is: the
+    /// stream is a new one placed where the old one got to, and what nobody was handed in between is
+    /// the gap it really was. The line it appends names the same device on both sides, which is
+    /// exactly what happened — the device did not change and the stream did, and a folder that said
+    /// nothing here would be a recording with an unexplained seam in it.
+    /// </para>
+    /// <para>
+    /// <b>Not on a thread somebody is looking at</b>, for the reason the two moves above are not: it
+    /// opens one device and lets another go, each with its own deadline.
+    /// </para>
+    /// </remarks>
+    public void OpenTheMicrophoneAgain()
+    {
+        lock (gate)
+        {
+            EnsureRunning(AudioChannel.Microphone);
+
+            var mine = On(AudioChannel.Microphone);
+            if (!mine.HasEnded)
+            {
+                return;
+            }
+
+            // Channel 1 is an endpoint and nothing else — CaptureTarget.Endpoint is the only target
+            // that feeds it — so the id is always there and the fallback is unreachable. It is
+            // spelled as a pattern rather than a cast because a cast would be this file asserting
+            // that contract a second time.
+            Move(
+                AudioChannel.Microphone,
+                mine.Listening,
+                (mine.Listening as CaptureTarget.Endpoint)?.Device.Id);
+        }
+    }
+
+    /// <summary>
     /// Moves one channel onto <paramref name="destination"/> and writes the move down, which is the
     /// whole of what every move here is made of.
     /// </summary>

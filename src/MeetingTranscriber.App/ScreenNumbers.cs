@@ -59,6 +59,20 @@ internal static class ScreenNumbers
         .ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 
     /// <summary>
+    /// What time of day it was, with no date on it, for a moment inside something the reader is
+    /// already in the middle of.
+    /// </summary>
+    /// <remarks>
+    /// The date is what tells two meetings apart on a list and there is nothing to tell apart
+    /// inside one: somebody watching a recording being made and reading that a device was cut off
+    /// knows what day it is, and a date in that sentence is a fact they are asked to skip over to
+    /// reach the one they need. The same minute and the same clock as <see cref="At"/>, which is
+    /// why the two are here together and not one of them typed into a screen.
+    /// </remarks>
+    public static string TimeOfDay(UtcTimestamp moment) => moment.Value.ToLocalTime()
+        .ToString("HH:mm", CultureInfo.InvariantCulture);
+
+    /// <summary>
     /// How long something ran, or how far into a meeting something is.
     /// </summary>
     /// <remarks>

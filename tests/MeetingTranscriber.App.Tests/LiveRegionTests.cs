@@ -178,6 +178,51 @@ public partial class LiveRegionTests
     }
 
     /// <summary>
+    /// The fourth way, and the one the theory above does not reach: it is inside something that is
+    /// simply not on the screen yet.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Travelling is one way a subtree leaves the automation tree and it is not the only one. A
+    /// container written <c>Visibility="Collapsed"</c> and shown by its code-behind is the other,
+    /// and it costs a live region inside it exactly the same thing — worse, in fact, because the
+    /// container is usually shown in the same pass that tells the line, and whichever of the two
+    /// runs second decides whether anything was announced. <c>MainWindow.Tell</c> shows the line,
+    /// lays it out and then sets its words, which is a chain built on the line's own visibility
+    /// being what puts it in the tree; a collapsed ancestor breaks that chain silently, and the
+    /// next tick short-circuits on the text already being right, so nothing is ever announced.
+    /// </para>
+    /// <para>
+    /// Held as "no collapsed ancestor at all" rather than as an ordering rule, because an ordering
+    /// rule is what nothing can check: the two calls sit thirty lines apart in one method and
+    /// reading which comes first is not something a test over markup can do. A line that must be
+    /// announced stands in a row that is always there, and what appears beside it is its own
+    /// sibling. The region's own <c>Collapsed</c> is not an ancestor and is the whole point of it.
+    /// </para>
+    /// <para>
+    /// This was written against a change that put the recording card's two fault lines inside
+    /// notice grids of their own, which read as tidier markup and would have announced nothing on
+    /// the one frame a device dies.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(Screens))]
+    public void No_live_region_lives_inside_something_that_starts_off_the_screen(string path)
+    {
+        var hidden = LiveRegions(path)
+            .Where(region => region.Ancestors().Any(IsCollapsed))
+            .Select(NameOf)
+            .ToArray();
+
+        hidden.ShouldBeEmpty(
+            $"{Path.GetFileName(path)} puts live regions inside something the markup collapses, so "
+            + "they are told their words while out of the automation tree and announce nothing on "
+            + "the one frame they exist for. A line a narrator has to hear stands in a row that is "
+            + "always there, and whatever appears beside it is its sibling: "
+            + string.Join("; ", hidden));
+    }
+
+    /// <summary>
     /// Something on these screens really does travel, so the theory above cannot pass by finding
     /// nothing — which is how it passed the first time it was written, over a defect that was
     /// there.
@@ -201,6 +246,15 @@ public partial class LiveRegionTests
     /// <summary>An element this screen's code-behind moves on or off the screen, by name.</summary>
     [GeneratedRegex(@"ArriveOrLeave\(\s*(?<element>\w+)\s*,")]
     private static partial Regex Travels();
+
+    /// <summary>Whether this element is written as not being on the screen.</summary>
+    /// <remarks>
+    /// The attribute and nothing else. A style or a binding could collapse an element too, and
+    /// neither exists on any screen here — what does exist, and what this is written against, is a
+    /// container spelled <c>Visibility="Collapsed"</c> and shown by the code behind it.
+    /// </remarks>
+    private static bool IsCollapsed(XElement element) =>
+        element.Attribute("Visibility")?.Value == "Collapsed";
 
     /// <summary>Whether this element is declared a live region, by either spelling.</summary>
     private static bool IsALiveRegion(XElement element) =>

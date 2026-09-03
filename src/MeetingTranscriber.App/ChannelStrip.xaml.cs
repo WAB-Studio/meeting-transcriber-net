@@ -20,6 +20,14 @@ namespace MeetingTranscriber.App;
 public sealed partial class ChannelStrip : UserControl
 {
     /// <summary>
+    /// How much of itself the card keeps once its source is gone. <c>docs/design.md</c> §The three
+    /// states is where the number comes from, and it is here beside what it applies to for the
+    /// reason <see cref="ChannelMeter"/>'s five are there: a value used in one place is a value a
+    /// token only moves somewhere harder to find.
+    /// </summary>
+    private const double WhenItsSourceDied = 0.62;
+
+    /// <summary>
     /// Raised when somebody picks something in this strip's picker — never when the window is the
     /// one putting the answers in, which is what <see cref="Offer"/> is careful about.
     /// </summary>
@@ -121,14 +129,30 @@ public sealed partial class ChannelStrip : UserControl
     /// this source has reached for the window to word.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The peak comes back from the call that moves it rather than off a property beside it. Read
     /// separately it is a two-step whose order only a comment carries: drawing is what moves the
     /// peak, so a window that worded it first would print the moment before this one, for ever,
     /// with nothing on screen that looked wrong.
+    /// </para>
+    /// <para>
+    /// The whole card dims where the source is gone, and the whole card is this control: the chip,
+    /// the role, the picker and the bar under them. <c>docs/design.md</c> §The three states asks
+    /// for that rather than for a dimmed bar, and the difference is what it is for — a channel
+    /// nobody is recording on is not a meter reading low, it is a row that has stopped being about
+    /// anything. Dimming the bar alone would leave the device's name standing at full weight over
+    /// it, reading as the device that is recording.
+    /// </para>
+    /// <para>
+    /// Opacity and not a second set of brushes, which is what keeps this one line rather than one
+    /// per text: every colour on the row is already an Olivo key, and there is no second palette
+    /// for the same row read faintly.
+    /// </para>
     /// </remarks>
     public float? Show(ChannelReading? reading)
     {
         Meter.Show(reading);
+        Opacity = reading is { Stopped: true } ? WhenItsSourceDied : 1;
         return Meter.LoudestSoFar;
     }
 

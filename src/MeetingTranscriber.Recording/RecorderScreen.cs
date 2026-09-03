@@ -178,6 +178,30 @@ public sealed record RecorderScreen
     public bool WholeMachineTaken { get; init; }
 
     /// <summary>
+    /// Whether the microphone's device stopped responding, as the meters last read it.
+    /// </summary>
+    /// <remarks>
+    /// Carried and not worked out here, exactly like <see cref="WholeMachineOffered"/>: what says a
+    /// source died is its stream having ended, which is a device's answer and not a layout. False
+    /// is the ordinary case and the one this record opens in, so a screen nobody has metered offers
+    /// nothing rather than everything.
+    /// </remarks>
+    public bool TheMicrophoneDied { get; init; }
+
+    /// <summary>
+    /// Whether opening it again has been asked for and has not come back, so the offer is not
+    /// there to take a second time.
+    /// </summary>
+    /// <remarks>
+    /// The same shape as <see cref="WholeMachineTaken"/> and for the same reason: what it guards is
+    /// a press arriving while the first is still opening a device. What says the channel is dead is
+    /// a reading up to a second old, so without this a second press lands on a channel the first
+    /// one already brought back — and the meeting is told the microphone could not be opened
+    /// immediately after being told it is recording again.
+    /// </remarks>
+    public bool TheMicrophoneIsBeingOpenedAgain { get; init; }
+
+    /// <summary>
     /// Whether the room under the recorder has the whole window — the meetings raised into it, or
     /// a meeting being read in it — so the recorder half is not on screen.
     /// </summary>
@@ -254,7 +278,7 @@ public sealed record RecorderScreen
     public bool Allows(RecorderPress press) => Available.Contains(press);
 
     /// <summary>
-    /// What has to be true beyond the state, per press. Two conditions and both are refusals a
+    /// What has to be true beyond the state, per press. Three conditions and each is a refusal a
     /// person would otherwise meet as an exception thrown out of a button.
     /// </summary>
     private bool Allowed(RecorderPress press) => press switch
@@ -272,6 +296,12 @@ public sealed record RecorderScreen
             WholeMachineOffered
             && !WholeMachineTaken
             && Chosen.Source?.IsTheWholeMachine == false,
+
+        // The microphone has to have died, and nothing must already be opening it. The second half
+        // is what the whole machine's `Taken` is: an offer stays on screen while the press it
+        // belongs to is opening a device, and one taken twice reaches a channel the first press
+        // brought back.
+        RecorderPress.TryTheMicrophoneAgain => TheMicrophoneDied && !TheMicrophoneIsBeingOpenedAgain,
 
         _ => true,
     };

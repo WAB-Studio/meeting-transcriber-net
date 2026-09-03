@@ -280,32 +280,83 @@ public static class UiTexts
         + "measurement of the echo. A headset avoids it.");
 
     /// <summary>
-    /// One channel's device gone while the meeting carries on. Two entries and not one with the
-    /// channel as a value: what each of them costs is different, and a person deciding what to do
-    /// needs to be told which half of the conversation they still have.
+    /// One channel's device gone while the meeting carries on, naming it and the moment it went.
+    /// <c>docs/design/Fallo</c> is what these are drawn from.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// Two entries and not one with the channel as a value: what each of them costs is different,
+    /// and a person deciding what to do needs to be told which half of the conversation they still
+    /// have. Each ends by saying the other channel is still recording, which is the drawing's
+    /// header said in the sentence — the meeting is still a two-channel recording and the one thing
+    /// somebody has to know is that it did not stop.
+    /// </para>
+    /// <para>
+    /// The device's name and the time go in as values, for the reason
+    /// <see cref="TheChannelMovedToAnotherDevice"/> takes its two: a name this machine gave and a
+    /// number read off a clock are the same in every language, and a catalogue that held either
+    /// would be a catalogue holding this machine's answers.
+    /// </para>
+    /// <para>
     /// Neither says to press stop, and that is not an omission. Stopping a meeting one of whose
     /// sources ended by itself does not make a meeting — the source says so as it is let go of, and
     /// the recording comes back refused — so what is on disk is dealt with afterwards rather than
     /// by a press. Saying "stop and keep what it has" would be this screen promising an outcome the
-    /// press does not produce, which is worse than saying nothing.
+    /// press does not produce, which is worse than saying nothing. What answers the notice is the
+    /// press beside it, which opens the same device again.
+    /// </para>
     /// </remarks>
     public static UiText TheOthersChannelStoppedOnItsOwn { get; } = new(
-        "El canal 0 dejó de grabar solo: se desconectó el dispositivo o Windows lo cerró. Lo que "
-        + "digan los demás desde acá no queda en la grabación; el micrófono sigue grabando. Lo que "
-        + "ya se grabó está en su carpeta y no se pierde.",
-        "Channel 0 stopped recording on its own — the device was unplugged, or Windows closed it. "
-        + "Nothing the other side says from here on is being recorded; the microphone still is. "
-        + "What was already recorded is in its folder and is not lost.");
+        "«{0}» dejó de responder a las {1}. Lo que dijeron los demás desde entonces no quedó y no "
+        + "se recupera; el micrófono sigue grabando.",
+        "‘{0}’ stopped responding at {1}. Nothing the other side said from then on was kept, and "
+        + "it does not come back; the microphone is still recording.");
 
     public static UiText TheMicrophoneChannelStoppedOnItsOwn { get; } = new(
-        "El canal 1 dejó de grabar solo: se desconectó el micrófono o Windows lo cerró. Lo que "
-        + "digas desde acá no queda en la grabación; el canal 0 sigue grabando. Lo que ya se grabó "
-        + "está en su carpeta y no se pierde.",
-        "Channel 1 stopped recording on its own — the microphone was unplugged, or Windows closed "
-        + "it. Nothing you say from here on is being recorded; channel 0 still is. What was "
-        + "already recorded is in its folder and is not lost.");
+        "«{0}» dejó de responder a las {1}. Lo que escuchó ese micrófono desde entonces no quedó y "
+        + "no se recupera; el canal 0 sigue grabando.",
+        "‘{0}’ stopped responding at {1}. What that microphone heard from then on was not kept, "
+        + "and it does not come back; channel 0 is still recording.");
+
+    /// <summary>
+    /// The act on the microphone's notice. <c>docs/design.md</c> §Fallo is what makes it this word
+    /// and not <em>Cambiar</em>: a source that is alive and silent is answered by pointing
+    /// somewhere else, and a device that stopped responding is answered by trying that same device
+    /// again.
+    /// </summary>
+    public static UiText TryTheMicrophoneAgain { get; } = new("Reintentar", "Try again");
+
+    /// <summary>
+    /// What the meter says where the level would be, for a channel whose device is gone.
+    /// </summary>
+    /// <remarks>
+    /// The level's place and not a line of its own, which is <c>docs/design.md</c> §The three
+    /// states: a dead source has no level to put there, and the one measurement left worth making
+    /// about it is when it stopped. In pico, like the peak it stands in the row with, because it is
+    /// the thing on that row wanting attention.
+    /// </remarks>
+    public static UiText ItWasCutOffAt { get; } = new("se cortó a las {0}", "cut off at {0}");
+
+    /// <summary>What the report says when opening the microphone again worked.</summary>
+    /// <remarks>
+    /// Everything the press changes is visible — the notice goes, the card comes back to full
+    /// weight, the scale's two coloured numbers return, and the time it was cut off is replaced by
+    /// a level. This is that said in words, for somebody reading the screen through a narrator, who
+    /// sees none of it.
+    /// </remarks>
+    public static UiText TheMicrophoneIsRecordingAgain { get; } =
+        new("El micrófono está grabando otra vez.", "The microphone is recording again.");
+
+    /// <summary>And when it did not.</summary>
+    /// <remarks>
+    /// It says the meeting is still going, because that is the thing somebody who just pressed a
+    /// button that failed is about to doubt. The refusal's own words are dumped under it, where the
+    /// machine's English belongs.
+    /// </remarks>
+    public static UiText TheMicrophoneCouldNotBeOpenedAgain { get; } = new(
+        "No se pudo abrir el micrófono otra vez. La reunión sigue grabándose por el canal 0.",
+        "The microphone could not be opened again. The meeting is still being recorded on "
+        + "channel 0.");
 
     /// <summary>
     /// What a channel that changed device mid meeting says, naming the device it moved to.

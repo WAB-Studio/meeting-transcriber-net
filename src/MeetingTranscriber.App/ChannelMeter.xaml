@@ -26,10 +26,15 @@
          drawn as a length is not a card, and a rounded cap on a bar that is twenty pixels tall is a
          cap that lies about where the level is.
 
-         What it does **not** carry is the three states — being heard, clipping, no signal — and the
-         fourth condition that is not a state, a source that died. Those are words and a dimming
-         that answer *what is wrong with this channel*, which is what cards #101 and #102 are for. A
-         slot here for a caller that does not exist yet would cost more than the line it saved. -->
+         What it carries of the four conditions in `docs/design.md` §The three states is the one
+         that is not a state: a source that died, which takes the hot zone, the peak and both
+         coloured numbers off the scale and leaves the bare track. It is here and not in the window
+         because every one of those is a layer or a mark this component draws and nothing else can
+         reach. What is not here is the words that go with it — *se cortó a las 08:12* stands where
+         the level does, and the window writes it, like every other sentence on this control.
+
+         The three states themselves are still not here. Being heard and clipping are what the four
+         layers already draw, and *sin señal* is #102's. -->
 
     <Grid RowSpacing="10">
         <Grid.RowDefinitions>

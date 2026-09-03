@@ -59,6 +59,14 @@ public sealed partial class ChannelMeter : UserControl
     /// </summary>
     private double? _asFullAs;
 
+    /// <summary>
+    /// Whether the source behind this bar is gone. Kept rather than passed down to each of the two
+    /// things it changes, because one of them is the scale, which is laid out on resize and not on
+    /// a reading: a bar that read it off the reading alone would put the two coloured numbers back
+    /// under a dead channel the first time the window was made wider.
+    /// </summary>
+    private bool _died;
+
     public ChannelMeter()
     {
         InitializeComponent();
@@ -94,10 +102,20 @@ public sealed partial class ChannelMeter : UserControl
     }
 
     /// <summary>
-    /// The loudest this source has reached, for the window to word. The number is the meter's and
-    /// the sentence around it is the catalogue's, so neither has to know what the other is for.
+    /// The loudest this source has reached, for the window to word, or nothing where there is no
+    /// peak to say. The number is the meter's and the sentence around it is the catalogue's, so
+    /// neither has to know what the other is for.
     /// </summary>
-    public float? LoudestSoFar => _loudestSoFar;
+    /// <remarks>
+    /// Nothing while the source is dead, and that is one rule rather than two. The mark on the bar
+    /// and the words beside it are the same peak said two ways — <c>docs/design.md</c> §The three
+    /// states takes both off a source that died — so the answer that draws the mark is the answer
+    /// the window words, and they cannot come apart into a bar with no mark under a line reading
+    /// <c>pico −6.1</c>. What it is not is forgotten: the meeting's loudest moment is still there
+    /// and comes back with the channel, because it is the peak of <em>this</em> meeting and the
+    /// meeting did not stop.
+    /// </remarks>
+    public float? LoudestSoFar => _died ? null : _loudestSoFar;
 
     /// <summary>What the window wrote about <see cref="LoudestSoFar"/>, or nothing.</summary>
     public string LoudestSoFarSaid
@@ -132,6 +150,7 @@ public sealed partial class ChannelMeter : UserControl
     }
 
 
+
     /// <summary>
     /// Draws <paramref name="reading"/>, or the bar with nothing on it when there is nothing to
     /// draw. The track and the hot zone are there either way: the hot zone is visible even when
@@ -139,9 +158,19 @@ public sealed partial class ChannelMeter : UserControl
     /// it clips.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// It draws and it remembers, and it says nothing: the three lines of words on it are the
     /// window's, because a sentence is the catalogue's and this control would otherwise have to
     /// know which language it is in to say that nothing is arriving.
+    /// </para>
+    /// <para>
+    /// The exception the hot zone has is a source that died, which is the one condition that is not
+    /// a meter state — <c>docs/design.md</c> §The three states. There the bar keeps the bare track
+    /// and loses the hot zone, and that difference is the whole point of it: no signal is a source
+    /// still there hearing nothing, and the hot zone under it is the standing promise that it would
+    /// colour if what arrived ever clipped. A source that is not there makes no such promise, so
+    /// the colour goes with it.
+    /// </para>
     /// </remarks>
     public void Show(ChannelReading? reading)
     {
@@ -152,8 +181,30 @@ public sealed partial class ChannelMeter : UserControl
                 : reading.Level.Decibels;
         }
 
-        _asFullAs = reading is { IsSilent: false } ? reading.Meter : null;
+        // Asked before anything is drawn, because it decides three of the four layers, the retained
+        // peak and both coloured numbers under them.
+        var died = reading is { Stopped: true };
+        var moved = died != _died;
+        _died = died;
+
+        _asFullAs = reading is { IsSilent: false, Stopped: false } ? reading.Meter : null;
         Draw();
+
+        // The level's ink follows what it is saying. Where the source is alive it is a measurement
+        // and reads in tinta, because it is what the row is about; where the source is gone the
+        // words in its place are when it was cut off, and that is the thing on the row wanting
+        // attention. `docs/design.md` §The three states puts it in pico for exactly that reason,
+        // and this is one rank in two inks rather than the artboard's second size — the same
+        // correction the peak beside it already stands as.
+        Level.Foreground = Painted(died ? "PeakBrush" : "InkBrush");
+
+        // Only where the answer moved. The scale is a canvas of text laid out by hand, so building
+        // it again every second for as long as a dead device stays dead would be a screen doing
+        // layout once a second to arrive at what was already on it.
+        if (moved)
+        {
+            PaintTheScale(ScaleUnderTheBar.ActualWidth);
+        }
     }
 
     /// <summary>
@@ -172,7 +223,11 @@ public sealed partial class ChannelMeter : UserControl
         var to = (_asFullAs ?? 0) * width;
 
         ShowOnly(TrackLayer, 0, width);
-        ShowOnly(HotZoneLayer, hotFrom, width);
+
+        // The bare track and nothing else for a source that died, which is the one thing on this
+        // component that is not a meter state. Everything below is then already nothing — a dead
+        // source has no level — so this line is the whole of the difference.
+        ShowOnly(HotZoneLayer, hotFrom, _died ? hotFrom : width);
 
         // Nothing arriving means no level and no peak: a bar drawn to nothing is what says the
         // source is silent, and the two coloured layers are the ones that would otherwise claim
@@ -180,9 +235,12 @@ public sealed partial class ChannelMeter : UserControl
         ShowOnly(LevelLayer, 0, _asFullAs is null ? 0 : to);
         ShowOnly(ClippedLayer, hotFrom, _asFullAs is null ? hotFrom : Math.Max(hotFrom, to));
 
-        RetainedPeak.Visibility = _loudestSoFar is null ? Visibility.Collapsed : Visibility.Visible;
+        // Off LoudestSoFar and not off the field behind it, which is what makes the mark and the
+        // words the window writes beside it one answer: a source that died has no peak to say, and
+        // that is decided in one place rather than at each of the two things that draw it.
+        RetainedPeak.Visibility = LoudestSoFar is null ? Visibility.Collapsed : Visibility.Visible;
 
-        if (_loudestSoFar is { } loudest)
+        if (LoudestSoFar is { } loudest)
         {
             RetainedPeak.Height = BarHeight + (PeakStandsProud * 2);
             RetainedPeak.Margin = new Thickness(
@@ -236,8 +294,21 @@ public sealed partial class ChannelMeter : UserControl
     /// runs in the middle: the last mark sits at the full width, so a number starting there would
     /// be drawn off the end, and how wide it is is not known until it has been measured.
     /// </remarks>
-    private void OnScaleResized(object sender, SizeChangedEventArgs e)
+    private void OnScaleResized(object sender, SizeChangedEventArgs e) =>
+        PaintTheScale(e.NewSize.Width);
+
+    /// <summary>Writes the scale out at <paramref name="width"/>.</summary>
+    /// <remarks>
+    /// Called on a resize and on the source dying or coming back, because those are the two things
+    /// that move it: where each number goes, and which ink it is in.
+    /// </remarks>
+    private void PaintTheScale(double width)
     {
+        if (width <= 0)
+        {
+            return;
+        }
+
         ScaleUnderTheBar.Children.Clear();
 
         foreach (var mark in MeterScale.Marks)
@@ -249,7 +320,7 @@ public sealed partial class ChannelMeter : UserControl
                 Foreground = Painted(InkOf(mark)),
             };
 
-            Canvas.SetLeft(number, MeterScale.Along(mark) * e.NewSize.Width);
+            Canvas.SetLeft(number, MeterScale.Along(mark) * width);
             ScaleUnderTheBar.Children.Add(number);
         }
 
@@ -258,7 +329,7 @@ public sealed partial class ChannelMeter : UserControl
         foreach (var number in ScaleUnderTheBar.Children.OfType<TextBlock>())
         {
             Canvas.SetLeft(number, Math.Max(
-                0, Math.Min(Canvas.GetLeft(number), e.NewSize.Width - number.ActualWidth)));
+                0, Math.Min(Canvas.GetLeft(number), width - number.ActualWidth)));
         }
     }
 
@@ -267,8 +338,15 @@ public sealed partial class ChannelMeter : UserControl
     /// and the rest are data like any other — a scale where every number was coloured would be one
     /// where none of them meant anything.
     /// </summary>
-    private static string InkOf(float mark) => mark switch
+    /// <remarks>
+    /// A dead source has neither of the two. What −12 and 0 say is where this bar's colours would
+    /// change, and a bar that is no longer measuring anything has no such place: leaving them lit
+    /// under it would be the scale going on describing a meter that is not running.
+    /// <c>docs/design.md</c> §The three states is where that is decided.
+    /// </remarks>
+    private string InkOf(float mark) => mark switch
     {
+        _ when _died => "TertiaryTextBrush",
         MeterScale.HotFrom => "PeakBrush",
         MeterScale.Loudest => "InkBrush",
         _ => "TertiaryTextBrush",

@@ -142,6 +142,17 @@ public sealed class MeetingRecording : IDisposable
     public void RecordTheWholeMachine() => session.RecordTheWholeMachine();
 
     /// <summary>
+    /// Somebody asking for the microphone to be opened again, after its stream ended by itself. The
+    /// meeting goes on either way — what this can win back is the channel, and what it cannot is
+    /// the stretch between.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="RecordTheWholeMachine"/>, not on a thread somebody is looking at, and the
+    /// meeting is being recorded on channel 0 the whole time it runs.
+    /// </remarks>
+    public void OpenTheMicrophoneAgain() => session.OpenTheMicrophoneAgain();
+
+    /// <summary>
     /// Pauses the meeting. The clock keeps running: what the pause costs the recording is silence
     /// of exactly the length it lasted, and never a shorter meeting.
     /// </summary>

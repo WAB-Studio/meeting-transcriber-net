@@ -448,7 +448,13 @@
                  XAML is set once while it is collapsed and never changes again, which is a live
                  region that announces nothing. MainWindow.Tell is what says these and why, and
                  LiveRegionTests fails if one is bound here or never told. -->
-            <!-- A device dying is an event and not something to find by looking. -->
+            <!-- A device dying is an event and not something to find by looking.
+
+                 Channel 0 gets the line and no press, and that is the engine's answer rather than
+                 a gap: both ways of obtaining channel 0 carry a sequence on, and a program refuses
+                 to be opened under one, so there is no *Reintentar* to make for it.
+                 `CaptureSession.OpenTheMicrophoneAgain` says it in full. What channel 0 has is
+                 *Grabar toda la máquina*, which is the offer further down this row. -->
             <TextBlock
                 x:Name="OthersStopped"
                 Style="{StaticResource BodyText}"
@@ -475,6 +481,27 @@
                 AutomationProperties.LiveSetting="Assertive"
                 TextWrapping="Wrap"
                 Visibility="Collapsed" />
+
+            <!-- The act on that line, and it is a sibling of it rather than a row around the two.
+                 `docs/design/Fallo` draws *Reintentar* under the sentence, which is what this is —
+                 but the reason it is not a Grid holding both is the lesson #204 was written about
+                 and this nearly repeated: a collapsed element is not in the automation tree, so a
+                 live region inside a container the code-behind collapses is told its words into
+                 nothing on the one frame it exists for. Nothing may stand between one of these
+                 lines and the row, and LiveRegionTests now fails if anything does.
+
+                 *Reintentar* and not *Cambiar*, which `docs/design.md` §Fallo decides in as many
+                 words: a source that is alive and silent is answered by pointing somewhere else,
+                 and a device that stopped responding is answered by trying that same device again.
+                 The artboard draws *Cambiar* beside it; the page and the drawing disagree there,
+                 the page won, and the drawing stands as drawn. -->
+            <Button
+                x:Name="MineTryAgainButton"
+                HorizontalAlignment="Left"
+                Style="{StaticResource NormalButtonOnPaper}"
+                Visibility="Collapsed"
+                Click="OnTryTheMicrophoneAgain"
+                Content="{x:Bind In(loc:UiTexts.TryTheMicrophoneAgain)}" />
             <!-- Told, not bound, for the reason channel 0's line says. -->
             <TextBlock
                 x:Name="MineMoved"

@@ -1,4 +1,4 @@
-using MeetingTranscriber.Audio;
+﻿using MeetingTranscriber.Audio;
 
 namespace MeetingTranscriber.Recording.Tests;
 
@@ -380,9 +380,62 @@ public class RecorderScreenTests
         Raised(RecorderState.Paused, Everything).Allows(RecorderPress.Stop).ShouldBeTrue();
     }
 
+    /// <summary>
+    /// Nothing offers to open the microphone again while it is recording. It is the same rule the
+    /// whole machine follows and for the same reason: what is not available is not on screen, so a
+    /// meeting where nothing broke has no press to make about it.
+    /// </summary>
+    [Fact]
+    public void The_microphone_is_not_offered_to_be_opened_again_while_it_is_recording() =>
+        Screen(RecorderState.Recording, Everything)
+            .Allows(RecorderPress.TryTheMicrophoneAgain).ShouldBeFalse();
+
+    [Fact]
+    public void The_microphone_is_offered_to_be_opened_again_once_its_device_has_died() =>
+        Died(RecorderState.Recording).Allows(RecorderPress.TryTheMicrophoneAgain).ShouldBeTrue();
+
+    /// <summary>
+    /// And it is offered once, not for as long as opening it takes. What says the microphone died
+    /// is a reading up to a second old, so without this a second press lands on a channel the first
+    /// one already brought back — and the meeting is told the microphone could not be opened
+    /// immediately after being told it is recording again.
+    /// </summary>
+    [Fact]
+    public void The_microphone_is_not_offered_again_while_it_is_already_being_opened() =>
+        (Died(RecorderState.Recording) with { TheMicrophoneIsBeingOpenedAgain = true })
+            .Allows(RecorderPress.TryTheMicrophoneAgain).ShouldBeFalse();
+
+    /// <summary>
+    /// Paused as well as recording, which is the opposite of the whole machine and right for the
+    /// same reason read the other way: the offer there comes from a level and a paused channel
+    /// hears nothing by definition. A stream that ended did not end because nobody spoke into it,
+    /// and a meeting somebody paused to go and plug the microphone back in is exactly when this
+    /// gets pressed.
+    /// </summary>
+    [Fact]
+    public void The_microphone_is_opened_again_from_a_paused_meeting_too() =>
+        Died(RecorderState.Paused).Allows(RecorderPress.TryTheMicrophoneAgain).ShouldBeTrue();
+
+    /// <summary>
+    /// Anti: and never once the meeting is over. A microphone that died belongs to a recording
+    /// whose devices are already let go of, so the press would reach nothing — and the states it
+    /// would reach it in are the two nobody would think to check.
+    /// </summary>
+    [Theory]
+    [InlineData(RecorderState.Starting)]
+    [InlineData(RecorderState.Finishing)]
+    [InlineData(RecorderState.Choosing)]
+    [InlineData(RecorderState.WithoutACorpus)]
+    public void The_microphone_is_never_opened_again_outside_a_running_meeting(RecorderState state) =>
+        Died(state).Allows(RecorderPress.TryTheMicrophoneAgain).ShouldBeFalse();
+
     private static RecorderScreen Screen(RecorderState state, RecorderChoices chosen) =>
         new() { State = state, Chosen = chosen };
 
     private static RecorderScreen Raised(RecorderState state, RecorderChoices chosen) =>
         Screen(state, chosen) with { TheRoomBelowHasTheWindow = true };
+
+    /// <summary>A screen whose microphone lost its device.</summary>
+    private static RecorderScreen Died(RecorderState state) =>
+        Screen(state, Everything) with { TheMicrophoneDied = true };
 }
