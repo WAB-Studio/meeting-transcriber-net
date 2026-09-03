@@ -42,8 +42,19 @@ by one stage and read by the next. A stage whose answer has a reader on GitHub w
 verdict is the comment on the PR, and a second copy on disk is a copy nobody reads.
 
 It is scratch. What survives a day is the card's status and comments, the branch and its commits,
-and the PR — nothing else, and you write no parallel record of what a cycle did. Pick a dead day up
-by starting a new one; §3 gets the context back.
+the PR and the handoff — nothing else, and you write no parallel record of what a cycle did. Pick a
+dead day up by starting a new one; §3 gets the context back.
+
+### The handoff
+
+`private/handoff.md` — one file, replaced whole at every close and never appended to.
+
+Read it before the first pick. It is the only thing a day inherits.
+
+Write it when the day ends: the user calling the close, `no_tasks`, `blocked`, or the second park.
+Fifteen lines at the outside, and only what the next day would otherwise work out again — what waits
+on a person, what a card turned out to need, a card that moved without landing. Never what happened:
+the cards, the PRs and the commits carry that already.
 
 ## 2 · The cycle
 
@@ -88,10 +99,12 @@ by starting a new one; §3 gets the context back.
      the verdict, then read the hold's reason against the diff before you merge. Still there → send
      the card where the verdict says, with the verdict's own body as a comment, and move on.
    - A `hold` over documentation, wording, a step that did not run or a merely poor line is not one.
-     Merge, and leave it as a comment or a card.
+     Merge, and leave it as a comment.
    - `ask`, or a `blocked` on a claim `ISA.md` does not carry → §4. Write no claim yourself.
-   - **`followups_proposed` is a proposal and you decide.** Send a finding a worker can take back to
-     a worker. Before you open a card, say which existing card it is not.
+   - **`followups_proposed` is a proposal and you decide.** A card is only for what no day finishes:
+     a decision somebody has to make, or a piece too big for one PR. Everything smaller is taken
+     today — send what a worker can take to a worker, and leave the rest as a comment on the PR.
+     Before you open a card, say which existing card it is not.
 
 Then pick again. Nothing paces this.
 
