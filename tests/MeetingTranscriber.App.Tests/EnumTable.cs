@@ -124,33 +124,51 @@ internal sealed partial class EnumTable
         var source = File.ReadAllText(Source(screen));
         var name = Path.GetFileName(screen);
 
-        var table = Regex.Match(source, $@"{Regex.Escape(over)} switch\r?\n\s*\{{.*?\r?\n[ ]*\}};", RegexOptions.Singleline);
+        // Every table over that expression, and not the first one. `Match` — singular — meant a
+        // file could hold only one switch per variable name, and what a file gets for holding two
+        // is not a failure that says so: the second read finds the first table, no arms for the
+        // enum it asked about, and a message claiming the screen has no table at all. That is a
+        // limitation of this reader, and it was about to be paid for by a rule on every future
+        // screen — "no two switches in one file may share a variable name", enforced by a test of
+        // its own. One word here is the whole of it instead.
+        var tables = Regex.Matches(
+            source,
+            $@"{Regex.Escape(over)} switch\r?\n\s*\{{.*?\r?\n[ ]*\}};",
+            RegexOptions.Singleline);
 
-        table.Success.ShouldBeTrue(
+        tables.Count.ShouldBeGreaterThan(
+            0,
             $"{name} no longer holds a `{over} switch`, so this test is reading nothing. Whatever "
             + "replaced it needs holding to the same rule.");
-
-        var fallthrough = Fallthroughs().Match(table.Value);
 
         // Distinct before the dictionary, and only so that a repeated member is a failed assertion
         // rather than a crash inside a collection. C# refuses two arms for one constant, so the
         // reading that would produce one is a pattern that has gone wrong, not a screen that has.
-        var answers = Regex.Matches(
-                table.Value,
-                $@"^[ ]*{Regex.Escape(enumeration)}\.(?<name>\w+)\s*=>(?<answer>[^\r\n]*)",
-                RegexOptions.Multiline)
-            .DistinctBy(arm => arm.Groups["name"].Value, StringComparer.Ordinal)
-            .ToDictionary(
-                arm => arm.Groups["name"].Value,
-                arm => arm.Groups["answer"].Value.Trim(),
-                StringComparer.Ordinal);
+        var read = tables
+            .Select(table => (Table: table, Answers: Arms(table.Value, enumeration)))
+            .ToArray();
+
+        // The one that answers for this enum. Where none of them does — the table was renamed, or
+        // the enum was — the last is taken, so what comes back is an empty table over a real switch
+        // and `ShouldNameItsWholeEnum` reports the members that have no answer rather than passing.
+        var found = read.FirstOrDefault(table => table.Answers.Count > 0, read[^1]);
+        var fallthrough = Fallthroughs().Match(found.Table.Value);
 
         return new EnumTable(
             name,
-            answers,
+            found.Answers,
             Members(enumeration, declaredIn),
             fallthrough.Success ? fallthrough.Groups["answer"].Value : null);
     }
+
+    /// <summary>What one table answers for each member of <paramref name="enumeration"/>.</summary>
+    private static Dictionary<string, string> Arms(string table, string enumeration) => Regex
+        .Matches(table, $@"^[ ]*{Regex.Escape(enumeration)}\.(?<name>\w+)\s*=>(?<answer>[^\r\n]*)", RegexOptions.Multiline)
+        .DistinctBy(arm => arm.Groups["name"].Value, StringComparer.Ordinal)
+        .ToDictionary(
+            arm => arm.Groups["name"].Value,
+            arm => arm.Groups["answer"].Value.Trim(),
+            StringComparer.Ordinal);
 
     /// <summary>Every member of an enum, read where it is declared.</summary>
     private static IReadOnlyList<string> Members(string enumeration, string declaredIn)

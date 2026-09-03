@@ -82,25 +82,32 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAu
     public bool TheActMayBeLeft => Owed.MayBeLeft && Owed.Next is not null;
 
     /// <summary>
+    /// Whether the application has finished writing the rows this meeting is made of.
+    /// </summary>
+    /// <remarks>
+    /// Every stage but the bottom one, and it is one fact rather than two that agree. A meeting
+    /// whose recording has not been filed yet is one the application is still writing rows about,
+    /// and anything a person writes into that window — a title, a link, a name — is a write racing
+    /// the save that made the meeting. So each of those is offered or not offered off this, rather
+    /// than each restating the stage for itself and coming to disagree.
+    /// </remarks>
+    private bool TheRowsAreWritten => Stage is not MeetingStage.Recording;
+
+    /// <summary>
     /// Whether the name is the reader's to type here.
     /// </summary>
     /// <remarks>
-    /// Every stage but the bottom one. A meeting whose recording has not been filed yet is one the
-    /// application is still writing rows about, and a title typed into that window is a write
-    /// racing the save that made the meeting — so the field is not there rather than there and
-    /// liable to be lost. Every other stage is fair game, which is what "at any time after it was
-    /// recorded" means.
+    /// The field is not there rather than there and liable to be lost. Every other stage is fair
+    /// game, which is what "at any time after it was recorded" means.
     /// </remarks>
-    public bool TheNameMayBeTyped => Stage is not MeetingStage.Recording;
+    public bool TheNameMayBeTyped => TheRowsAreWritten;
 
     /// <summary>Whether this meeting is one to file under what it was about.</summary>
     /// <remarks>
-    /// Every stage but the bottom one, and for the reason <see cref="TheNameMayBeTyped"/> gives: a
-    /// meeting whose recording has not been filed yet is one the application is still writing rows
-    /// about, and links written into that window race the save that made the meeting. So the press
-    /// is not there, rather than there and liable to be lost.
+    /// The same window and the same reason: links written while the meeting's own rows are still
+    /// being written race the save that made it, so the press is not there.
     /// </remarks>
-    public bool ItMayBeFiled => Stage is not MeetingStage.Recording;
+    public bool ItMayBeFiled => TheRowsAreWritten;
 
     /// <summary>Where each thing the AI left sits along the meeting.</summary>
     public IReadOnlyList<Duration> MarkedAlongTheMeeting => Left.MarkedAlongTheMeeting;

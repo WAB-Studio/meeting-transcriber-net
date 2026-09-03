@@ -332,7 +332,38 @@ public class MeetingClassifyingTests
         var casual = stories.MeetingId(Stories.Casual);
 
         classifying.Filing(casual).ShouldBeEmpty();
-        classifying.Of(casual).Chosen.IsUnclassified.ShouldBeTrue();
+
+        var chosen = classifying.Of(casual).Chosen;
+
+        chosen.Links.ShouldBeEmpty();
+        chosen.Named.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A meeting this corpus does not have is refused rather than half filed.
+    /// </summary>
+    /// <remarks>
+    /// Asked before anything is written, so a filing aimed at a meeting that is not there leaves
+    /// nothing behind — where a foreign key would refuse the first link out of the middle of the
+    /// walk, naming a constraint rather than the meeting.
+    /// </remarks>
+    [Fact]
+    public void A_meeting_this_corpus_does_not_have_is_not_filed_either()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var stories = Stories.WriteWithNothingFiled(context);
+
+        var filing = MeetingFiling.Nothing with
+        {
+            WorkOf = [new ChosenPath([stories.NodeId("Coati")])],
+        };
+
+        Should.Throw<MeetingStageException>(
+            () => new MeetingClassifying(context, TimeProvider.System).Save(Guid.NewGuid(), filing));
+
+        using var reading = corpus.Open();
+        reading.MeetingNodes.ShouldBeEmpty();
     }
 
     /// <summary>

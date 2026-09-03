@@ -25,6 +25,20 @@ namespace MeetingTranscriber.App;
 /// </remarks>
 public sealed partial class WrappingRow : Panel
 {
+    /// <summary>
+    /// The width the last measure broke its lines against.
+    /// </summary>
+    /// <remarks>
+    /// Arranging breaks against the same width and not against the one it is given, which is what
+    /// keeps the two passes agreeing. What is measured is a height, and a height is only true of
+    /// one set of line breaks: a parent that hands back less room than it offered — anything that
+    /// arranges a child at its desired size rather than stretching it — would otherwise wrap one
+    /// more line here than the height reserved for, and the last line would be cut off with nothing
+    /// to say so. Both panels using this stretch today, so the two widths agree; this is what keeps
+    /// that from being the reason it works.
+    /// </remarks>
+    private double _brokeAt = double.PositiveInfinity;
+
     /// <summary>How much room is left between two things on one line.</summary>
     public double HorizontalGap { get; set; }
 
@@ -38,6 +52,7 @@ public sealed partial class WrappingRow : Panel
         // would be squeezed by where it fell, so the same chip would be a different size depending
         // on how many stood before it.
         var room = new Size(double.PositiveInfinity, double.PositiveInfinity);
+        _brokeAt = available.Width;
         var line = 0d;
         var lineHeight = 0d;
         var width = 0d;
@@ -73,6 +88,8 @@ public sealed partial class WrappingRow : Panel
 
     protected override Size ArrangeOverride(Size given)
     {
+        // The width measure broke against, so the lines are the lines whose height was reported.
+        var room = double.IsInfinity(_brokeAt) ? given.Width : _brokeAt;
         var x = 0d;
         var y = 0d;
         var lineHeight = 0d;
@@ -81,7 +98,7 @@ public sealed partial class WrappingRow : Panel
         {
             var wanted = child.DesiredSize;
 
-            if (x > 0 && x + HorizontalGap + wanted.Width > given.Width)
+            if (x > 0 && x + HorizontalGap + wanted.Width > room)
             {
                 x = 0;
                 y += lineHeight + VerticalGap;

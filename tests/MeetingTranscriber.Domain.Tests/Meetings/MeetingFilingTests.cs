@@ -148,24 +148,10 @@ public class MeetingFilingTests
         filing.Named.ShouldBeEmpty();
     }
 
-    /// <summary>
-    /// Read off what would be written and never off the shape. The other way round, every meeting
-    /// somebody opened this screen over and pressed a chip on would count as filed.
-    /// </summary>
-    [Fact]
-    public void A_meeting_with_nothing_chosen_is_unclassified()
-    {
-        MeetingFiling.Nothing.IsUnclassified.ShouldBeTrue();
-        MeetingFiling.AsShapedBy(MeetingShape.Daily).IsUnclassified.ShouldBeTrue();
-
-        var filed = MeetingFiling.Nothing with { WorkOf = [new ChosenPath([Company])] };
-        filed.IsUnclassified.ShouldBeFalse();
-    }
-
     [Fact]
     public void Choosing_a_shape_opens_its_slots_and_files_nothing()
     {
-        var filing = MeetingFiling.AsShapedBy(MeetingShape.SellingToAClient);
+        var filing = MeetingFiling.Nothing.ShapedBy(MeetingShape.SellingToAClient);
 
         filing.Shape.ShouldBe(MeetingShape.SellingToAClient);
         filing.WorkOf.ShouldBe([ChosenPath.Empty]);
@@ -177,25 +163,166 @@ public class MeetingFilingTests
     }
 
     /// <summary>
-    /// Choosing a shape replaces the columns rather than adding to them, which is what the card's
-    /// <em>what each one fills is seen when it is chosen</em> asks for.
+    /// A second shape leaves the first one's empty places behind, so pressing chips until one fits
+    /// shows what that one asks for and nothing accumulated on the way.
     /// </summary>
     [Fact]
-    public void Choosing_a_shape_replaces_whatever_was_there()
+    public void A_second_shape_shows_what_it_asks_for_and_not_the_one_before_it()
     {
-        var filing = MeetingFiling.AsShapedBy(MeetingShape.Conference);
+        var filing = MeetingFiling.Nothing
+            .ShapedBy(MeetingShape.TwoProjects)
+            .ShapedBy(MeetingShape.Conference);
 
         filing.WorkOf.ShouldBeEmpty();
         filing.About.ShouldBe([ChosenPath.Empty]);
     }
 
+    /// <summary>
+    /// A shape never takes an answer away, and this is the finding it exists against.
+    /// </summary>
+    /// <remarks>
+    /// Nothing on the screen lights the chip a meeting was filed under, because a shape is a
+    /// pre-fill and no meeting carries which one it was. So somebody coming back to a filed meeting
+    /// has every reason to press the chip they used last time — and if that press replaced the
+    /// draft, it would wipe every path and every person the corpus holds, one <em>Guardar</em> from
+    /// permanent.
+    /// </remarks>
+    [Fact]
+    public void A_shape_pressed_over_a_filing_that_is_already_there_takes_nothing_away()
+    {
+        var filed = MeetingFiling.Nothing with
+        {
+            WorkOf = [new ChosenPath([Company, Project])],
+            Counterpart = [new ChosenPath([Ticket])],
+            Somebody = [new ChosenPerson(Jo, Attended: true, Subject: true)],
+        };
+
+        var after = filed.ShapedBy(MeetingShape.Daily);
+
+        Down(after.WorkOf).ShouldBe(Down(filed.WorkOf));
+        Down(after.Counterpart).ShouldBe(Down(filed.Counterpart));
+        after.Somebody.ShouldBe(filed.Somebody);
+        after.Links.ShouldBe(filed.Links, ignoreOrder: true);
+        after.Named.ShouldBe(filed.Named, ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// It opens what the story still needs on top of what is answered, and never fewer places than
+    /// are already filled.
+    /// </summary>
+    [Fact]
+    public void A_shape_opens_the_places_a_filing_is_still_short_of()
+    {
+        var filed = MeetingFiling.Nothing with { WorkOf = [new ChosenPath([Company])] };
+
+        // Two projects wants two and one is answered, so one more place opens.
+        Down(filed.ShapedBy(MeetingShape.TwoProjects).WorkOf).ShouldBe([[Company], []]);
+
+        // A conference wants none, and the one that is answered stays.
+        Down(filed.ShapedBy(MeetingShape.Conference).WorkOf).ShouldBe([[Company]]);
+    }
+
     [Fact]
     public void A_shape_that_puts_somebody_on_the_meeting_opens_a_place_with_nobody_in_it()
     {
-        var slot = MeetingFiling.AsShapedBy(MeetingShape.HumanResources).Somebody.ShouldHaveSingleItem();
+        var slot = MeetingFiling.Nothing
+            .ShapedBy(MeetingShape.HumanResources)
+            .Somebody
+            .ShouldHaveSingleItem();
 
         slot.PersonId.ShouldBeNull();
-        slot.Attended.ShouldBeFalse();
         slot.Subject.ShouldBeTrue();
     }
+
+    /// <summary>
+    /// Replacing one column leaves the other two alone.
+    /// </summary>
+    /// <remarks>
+    /// The write half of what <see cref="MeetingFiling.Column"/> reads, and the reason it is here:
+    /// the screen mutates a filing through nothing else, and swapping two arms of that table would
+    /// file <em>es trabajo de TechSed</em> as <em>trata sobre TechSed</em> with every other test in
+    /// the solution still green.
+    /// </remarks>
+    [Theory]
+    [InlineData(MeetingNodeRole.WorkOf)]
+    [InlineData(MeetingNodeRole.Counterpart)]
+    [InlineData(MeetingNodeRole.About)]
+    public void One_column_is_replaced_and_the_others_are_left_as_they_were(MeetingNodeRole role)
+    {
+        var filing = new MeetingFiling(
+            null,
+            [new ChosenPath([Company])],
+            [new ChosenPath([Project])],
+            [new ChosenPath([Ticket])],
+            []);
+
+        var after = filing.With(role, [new ChosenPath([Jo])]);
+
+        Down(after.Column(role)).ShouldBe([[Jo]]);
+
+        foreach (var other in Enum.GetValues<MeetingNodeRole>().Where(found => found != role))
+        {
+            Down(after.Column(other)).ShouldBe(Down(filing.Column(other)), customMessage: other.ToString());
+        }
+    }
+
+    [Fact]
+    public void A_column_that_is_not_one_of_the_three_cannot_be_replaced() =>
+        Should.Throw<InvalidOperationException>(
+            () => MeetingFiling.Nothing.With((MeetingNodeRole)99, [ChosenPath.Empty]));
+
+    /// <summary>
+    /// Turning one way of naming somebody over leaves the other where it was.
+    /// </summary>
+    /// <remarks>
+    /// The write half of <see cref="ChosenPerson.Carries"/>, here for the same reason: the badges
+    /// on the screen go through nothing else, and two arms the wrong way round would put
+    /// <em>estuvo</em> on the control that says the meeting is about them.
+    /// </remarks>
+    [Theory]
+    [InlineData(MeetingPersonRole.Attended)]
+    [InlineData(MeetingPersonRole.Subject)]
+    public void One_way_of_being_named_is_turned_over_and_the_other_is_left_alone(MeetingPersonRole role)
+    {
+        var place = new ChosenPerson(Jo, Attended: false, Subject: false);
+        var after = place.Flipped(role);
+
+        after.Carries(role).ShouldBeTrue();
+        after.Flipped(role).ShouldBe(place);
+
+        foreach (var other in Enum.GetValues<MeetingPersonRole>().Where(found => found != role))
+        {
+            after.Carries(other).ShouldBeFalse(other.ToString());
+        }
+    }
+
+    [Fact]
+    public void A_way_of_being_named_that_is_not_one_of_the_two_is_refused()
+    {
+        var place = new ChosenPerson(Jo, Attended: true, Subject: false);
+
+        Should.Throw<InvalidOperationException>(() => place.Carries((MeetingPersonRole)99));
+        Should.Throw<InvalidOperationException>(() => place.Flipped((MeetingPersonRole)99));
+    }
+
+    [Fact]
+    public void A_place_added_by_hand_has_nobody_in_it_and_says_they_were_there()
+    {
+        ChosenPerson.NobodyYet.PersonId.ShouldBeNull();
+        ChosenPerson.NobodyYet.Carries(MeetingPersonRole.Attended).ShouldBeTrue();
+        ChosenPerson.NobodyYet.Carries(MeetingPersonRole.Subject).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A column as the ids in each of its paths, which is what an assertion about one has to
+    /// compare.
+    /// </summary>
+    /// <remarks>
+    /// A <c>ChosenPath</c> is a record over a list, and a record compares a list member by
+    /// reference — so two paths holding the same ids are not equal and an assertion written the
+    /// obvious way fails over nothing. Nothing in the application compares two paths; every test
+    /// that looks like it does goes through here instead, and says so.
+    /// </remarks>
+    private static IReadOnlyList<Guid[]> Down(IReadOnlyList<ChosenPath> column) =>
+        [.. column.Select(path => path.Nodes.ToArray())];
 }

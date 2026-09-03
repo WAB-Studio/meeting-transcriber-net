@@ -111,10 +111,15 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
     /// What one meeting is filed under, each link as the whole path up to its root.
     /// </summary>
     /// <remarks>
-    /// The short read, for the screen a meeting is read from: it draws two rows of pills and has no
-    /// use for the tree, everybody or the affiliations. It shares <see cref="PathTo"/> with
-    /// <see cref="Of"/>, because a second walk up the tree is a second place to get the order wrong
-    /// and the two screens would then disagree about the same meeting.
+    /// The short read, for the screen a meeting is read from: it draws a row of pills and has no
+    /// use for everybody or the affiliations, which is what <see cref="Of"/> pays for. It shares
+    /// <see cref="PathTo"/> with that method, because a second walk up the tree is a second place
+    /// to get the order wrong and the two screens would then disagree about one meeting.
+    /// <para>
+    /// It reads every node rather than the linked ones and their ancestors, which was two queries
+    /// and a loop. The tree stops at three levels and belongs to one person, so the whole of it is
+    /// the cheapest read in the schema — and <see cref="Of"/> reads it whole two methods away.
+    /// </para>
     /// </remarks>
     public IReadOnlyList<(MeetingNodeRole Role, NodePath Path)> Filing(Guid meetingId)
     {
@@ -128,7 +133,7 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
             return [];
         }
 
-        var byId = WithEverythingAbove([.. links.Select(link => link.NodeId)]);
+        var byId = context.Nodes.AsNoTracking().ToDictionary(node => node.Id);
 
         return
         [
@@ -161,7 +166,16 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
     /// There is no <c>Unclassify</c> beside this. <c>Save(meetingId, MeetingFiling.Nothing)</c> is
     /// it: the same diff with an empty left-hand side takes every link and every naming off.
     /// </para>
+    /// <para>
+    /// That the meeting is there at all is asked here rather than left to a foreign key, and it is
+    /// asked first, so nothing is written on the way to finding out. The screen asks a second
+    /// question of its own — <see cref="MeetingScreen.ItMayBeFiled"/>, which keeps the press off a
+    /// meeting whose recording is still being written — and that one stays a screen's: it is about
+    /// a window being open at the wrong moment, and the corpus has no half-written meeting to see.
+    /// What the corpus can answer for itself is whether the meeting exists.
+    /// </para>
     /// </remarks>
+    /// <exception cref="MeetingStageException">This corpus holds no such meeting.</exception>
     /// <exception cref="ArgumentException">
     /// The screen offered a node or a person this corpus does not hold, which is a defect in the
     /// screen rather than something a person did — so it stops rather than being reported as a
@@ -173,6 +187,11 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
 
         var human = new HumanLayer(context, clock);
         using var filing = context.Database.BeginTransaction();
+
+        if (!context.Meetings.Any(row => row.Id == meetingId))
+        {
+            throw new MeetingStageException($"This corpus holds no meeting {meetingId}.");
+        }
 
         var wanted = chosen.Links;
         var nodes = NodesHeld([.. wanted.Select(link => link.Node)]);
@@ -186,10 +205,14 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
             human.Link(meetingId, nodes[node], role);
         }
 
+        // What is coming off was read from disk a moment ago, so it is looked up and not demanded:
+        // a link whose node the `nodes` table no longer holds is a foreign key the database
+        // already refuses, and taking the application down over one on the way to deleting it
+        // would be the refusal doing harm rather than good.
         var gone = stored.Where(link => !wanted.Contains((link.NodeId, link.Role))).ToArray();
-        var unlinking = NodesHeld([.. gone.Select(link => link.NodeId)]);
+        var unlinking = NodesBy([.. gone.Select(link => link.NodeId)]);
 
-        foreach (var link in gone)
+        foreach (var link in gone.Where(link => unlinking.ContainsKey(link.NodeId)))
         {
             human.Unlink(meetingId, unlinking[link.NodeId], link.Role);
         }
@@ -204,9 +227,9 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
         }
 
         var unnamed = known.Where(row => !naming.Contains((row.PersonId, row.Role))).ToArray();
-        var taking = PeopleHeld([.. unnamed.Select(row => row.PersonId)]);
+        var taking = PeopleBy([.. unnamed.Select(row => row.PersonId)]);
 
-        foreach (var row in unnamed)
+        foreach (var row in unnamed.Where(row => taking.ContainsKey(row.PersonId)))
         {
             human.Unname(meetingId, taking[row.PersonId], row.Role);
         }
@@ -214,27 +237,42 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
         filing.Commit();
     }
 
+    /// <summary>The nodes with these ids, whichever of them the corpus holds.</summary>
+    /// <remarks>One query and not one per id.</remarks>
+    private Dictionary<Guid, Node> NodesBy(IReadOnlyList<Guid> ids)
+    {
+        var wanted = ids.Distinct().ToArray();
+
+        return context.Nodes.Where(node => wanted.Contains(node.Id)).ToDictionary(node => node.Id);
+    }
+
+    private Dictionary<Guid, Person> PeopleBy(IReadOnlyList<Guid> ids)
+    {
+        var wanted = ids.Distinct().ToArray();
+
+        return context.People.Where(person => wanted.Contains(person.Id)).ToDictionary(person => person.Id);
+    }
+
     /// <summary>The nodes with these ids, and a refusal for any the corpus does not hold.</summary>
     /// <remarks>
-    /// One query and not one per id. The ordering in <see cref="Save"/> is what lets the whole
-    /// batch be resolved up front without the refusal moving in front of every write.
+    /// The refusing half, for the ids that came off a screen rather than off disk. The ordering in
+    /// <see cref="Save"/> is what lets a whole batch be resolved at once without the refusal moving
+    /// in front of every write.
     /// </remarks>
     private Dictionary<Guid, Node> NodesHeld(IReadOnlyList<Guid> ids)
     {
-        var wanted = ids.Distinct().ToArray();
-        var found = context.Nodes.Where(node => wanted.Contains(node.Id)).ToDictionary(node => node.Id);
+        var found = NodesBy(ids);
 
-        Refuse(wanted, found.Keys, "node");
+        Refuse(ids, found.Keys, "node");
         return found;
     }
 
     /// <summary>The people with these ids, and a refusal for any the corpus does not hold.</summary>
     private Dictionary<Guid, Person> PeopleHeld(IReadOnlyList<Guid> ids)
     {
-        var wanted = ids.Distinct().ToArray();
-        var found = context.People.Where(person => wanted.Contains(person.Id)).ToDictionary(person => person.Id);
+        var found = PeopleBy(ids);
 
-        Refuse(wanted, found.Keys, "person");
+        Refuse(ids, found.Keys, "person");
         return found;
     }
 
@@ -256,13 +294,23 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
         }
     }
 
-    /// <summary>The path from a node's root down to it, root first.</summary>
+    /// <summary>
+    /// The path from a node's root down to it, root first.
+    /// </summary>
+    /// <remarks>
+    /// It stops on a node it has already walked through as well as on one with no parent, and that
+    /// is not a hypothetical guard: a walk up a cycle never ends, and this one runs on the thread a
+    /// window is drawn on. Nothing in the application can write a cycle — the factories set a
+    /// parent once and a depth with it — but the importer writes nodes straight into the tables,
+    /// and a read that hangs the window is a worse answer than a path that stops early.
+    /// </remarks>
     private static NodePath PathTo(Node deepest, IReadOnlyDictionary<Guid, Node> byId)
     {
         var up = new List<Node>();
+        var walked = new HashSet<Guid>();
         var node = deepest;
 
-        while (true)
+        while (walked.Add(node.Id))
         {
             up.Add(node);
 
@@ -356,40 +404,5 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
                             .OrderBy(at => at.Organization.Name, StringComparer.Ordinal),
                     ])),
         ];
-    }
-
-    /// <summary>
-    /// The nodes with these ids and every node above them, by id.
-    /// </summary>
-    /// <remarks>
-    /// A loop and not a join, because the tree stops at three levels: two more reads at the most,
-    /// against a recursive query SQLite would need for a depth nothing here has.
-    /// </remarks>
-    private Dictionary<Guid, Node> WithEverythingAbove(IReadOnlyList<Guid> ids)
-    {
-        var byId = new Dictionary<Guid, Node>();
-        var wanted = ids.Distinct().ToArray();
-
-        while (wanted.Length > 0)
-        {
-            var asked = wanted;
-            var found = context.Nodes.AsNoTracking().Where(node => asked.Contains(node.Id)).ToArray();
-
-            foreach (var node in found)
-            {
-                byId[node.Id] = node;
-            }
-
-            wanted =
-            [
-                .. found
-                    .Select(node => node.ParentId)
-                    .Where(parent => parent is { } id && !byId.ContainsKey(id))
-                    .Select(parent => parent!.Value)
-                    .Distinct(),
-            ];
-        }
-
-        return byId;
     }
 }

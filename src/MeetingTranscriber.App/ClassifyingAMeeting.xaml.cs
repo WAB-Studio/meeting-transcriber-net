@@ -243,9 +243,9 @@ public sealed partial class ClassifyingAMeeting : UserControl
 
     /// <summary>What one of the two toggles on a person's row says.</summary>
     /// <remarks>
-    /// The variable is <c>named</c> and the two above are <c>shape</c> and <c>role</c>, and that is
-    /// not style: the checks that hold these tables to their enums find a table by the expression
-    /// it switches on, one per file, so two tables over one name would be read as one.
+    /// Both of them are drawn on every row, because both are things somebody has to be able to say:
+    /// §5.3 row 10 is a dismissal discussed before the person is in the room, and one badge would
+    /// leave whoever files that meeting by hand recording them as having been at it.
     /// </remarks>
     private static UiText Badge(MeetingPersonRole named) => named switch
     {
@@ -366,6 +366,22 @@ public sealed partial class ClassifyingAMeeting : UserControl
         Render();
     }
 
+    /// <summary>
+    /// The draft moved: whatever went wrong last is no longer what is on screen.
+    /// </summary>
+    /// <remarks>
+    /// Every press that changes the draft comes through here rather than calling
+    /// <see cref="Render"/>, and the one thing it adds is clearing the line. That line is the only
+    /// feedback this screen has, and one left standing — a corpus that was locked for a second,
+    /// answered ten minutes ago — is worse than none, because it is about a screen that no longer
+    /// exists.
+    /// </remarks>
+    private void Changed()
+    {
+        _status = null;
+        Render();
+    }
+
     /// <summary>Puts the draft and what was read onto the controls.</summary>
     private void Render()
     {
@@ -378,8 +394,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
             Columns.ColumnDefinitions.Clear();
             Who.Children.Clear();
 
-            StatusText.Text = _status?.In(_language) ?? string.Empty;
-            StatusText.Visibility = _status is null ? Visibility.Collapsed : Visibility.Visible;
+            ShowTheStatus();
 
             if (_read is not { } read)
             {
@@ -421,7 +436,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
         // to keep in step with that page.
         foreach (var shape in Enum.GetValues<MeetingShape>())
         {
-            var chip = new Button { Content = In(Named(shape)), Style = Chrome(HowAChipIsDrawn(shape)) };
+            var chip = new Button { Content = In(Named(shape)), Style = HowAChipIsDrawn(shape) };
 
             chip.Click += (_, _) => ChooseTheShape(shape);
             TheShapes.Children.Add(chip);
@@ -429,33 +444,48 @@ public sealed partial class ClassifyingAMeeting : UserControl
     }
 
     /// <summary>
-    /// Which of the three ways a chip is drawn this one takes: chosen, ordinary, or the one that
-    /// fills nothing and so wears the empty control's ring.
+    /// Which of the three ways a chip is drawn this one takes: chosen, ordinary, or the escape
+    /// hatch.
     /// </summary>
-    private string HowAChipIsDrawn(MeetingShape shape)
+    /// <remarks>
+    /// <para>
+    /// It hands back the style and not the key, and that is what makes it checkable: the guard
+    /// holding every <c>Chrome</c> key to the markup reads a string literal inside the call, so a
+    /// method returning a key by name is a key nothing checks — and a key that names nothing throws
+    /// on the UI thread off a green build.
+    /// </para>
+    /// <para>
+    /// The third is <em>Ninguna — la lleno yo</em> by name and not by what it opens. That is worth
+    /// being exact about: <see cref="MeetingShape.CasualCatchUp"/> opens exactly the same nothing
+    /// and is drawn as an ordinary chip, because it is an answer about the meeting. This one is the
+    /// way out of the fourteen, so it wears the ring <c>docs/design.md</c> §Controls gives an
+    /// optional control.
+    /// </para>
+    /// </remarks>
+    private Style HowAChipIsDrawn(MeetingShape shape)
     {
         if (_chosen.Shape == shape)
         {
-            return "ChipChosen";
+            return Chrome("ChipChosen");
         }
 
-        return shape is MeetingShape.FilledByHand ? "ChipFilledByHand" : "Chip";
+        return shape is MeetingShape.FilledByHand ? Chrome("ChipFilledByHand") : Chrome("Chip");
     }
 
     /// <summary>
-    /// Choosing a shape replaces what is on screen and writes nothing.
+    /// Choosing a shape opens the places that story needs and writes nothing.
     /// </summary>
     /// <remarks>
-    /// The card's <em>what each one fills is seen when it is chosen</em> only reads true if
-    /// choosing changes the screen. What is lost is a draft; the corpus is where it was either way,
-    /// and pressing the shape that was already lit re-opens its empty places.
+    /// It never takes an answer away — what that costs and why is <see cref="MeetingFiling.ShapedBy"/>'s
+    /// own remark. What it does clear is this screen's own state about rows that are about to be
+    /// drawn again in different positions.
     /// </remarks>
     private void ChooseTheShape(MeetingShape shape)
     {
-        _chosen = MeetingFiling.AsShapedBy(shape);
+        _chosen = _chosen.ShapedBy(shape);
         _deeper.Clear();
         _naming = null;
-        Render();
+        Changed();
     }
 
     // ── The three columns ─────────────────────────────────────────────────────────────────────
@@ -553,7 +583,49 @@ public sealed partial class ClassifyingAMeeting : UserControl
             return AName(read, role, row, path, level);
         }
 
-        var offered = WhatMayStandAt(read, path, level);
+        return APicker(
+            [.. WhatMayStandAt(read, path, level).Select(node => (node.Id, node.Name))],
+            level < path.Nodes.Count ? path.Nodes[level] : null,
+
+            // Nothing chosen empties this pill and everything to the right of it, because what a
+            // deeper pill offered was the children of this one.
+            chosen => PutAt(role, row, level, chosen),
+            () =>
+            {
+                _naming = (role, row, level);
+                Changed();
+            });
+    }
+
+    /// <summary>
+    /// One pill over a list of things the corpus holds, with a way to say <em>none</em> and a way to
+    /// name one that is not there yet.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One construction and not one per list. The pills over the tree and the pill over the people
+    /// are the same control asking the same three-part question — one of these, none of them, or a
+    /// new one — and the index arithmetic that turns an answer back into an id is where that gets
+    /// quietly wrong. It was written twice before this, and the same off-by-one had to be fixed in
+    /// both.
+    /// </para>
+    /// <para>
+    /// <c>SelectedIndex</c> is set before anything is subscribed, so the value this screen writes
+    /// cannot come back as somebody having chosen it. The list is strings and never the rows
+    /// themselves: a <c>ComboBox</c> handed objects draws whatever they say about themselves, which
+    /// is a technical name on a screen that must not have one.
+    /// </para>
+    /// </remarks>
+    /// <param name="offered">What the corpus holds that may stand here, in the order it is offered.</param>
+    /// <param name="standing">What stands here now, or nothing.</param>
+    /// <param name="chose">Called with what was chosen, or with nothing for <em>Ninguno</em>.</param>
+    /// <param name="naming">Called when somebody asked to name one the corpus does not have.</param>
+    private ComboBox APicker(
+        IReadOnlyList<(Guid Id, string Name)> offered,
+        Guid? standing,
+        Action<Guid?> chose,
+        Action naming)
+    {
         var picker = new ComboBox
         {
             Style = Chrome("Picker"),
@@ -561,40 +633,35 @@ public sealed partial class ClassifyingAMeeting : UserControl
             ItemsSource = (string[])
             [
                 In(UiTexts.NoneOfThese),
-                .. offered.Select(node => node.Name),
+                .. offered.Select(one => one.Name),
                 In(UiTexts.NameANewOne),
             ],
         };
 
-        var here = level < path.Nodes.Count ? path.Nodes[level] : (Guid?)null;
-        var standing = offered.Select((node, at) => (node.Id, At: at)).FirstOrDefault(found => found.Id == here);
+        // Nothing chosen when nothing stands here, and nothing chosen when what stands here is not
+        // on the list — which is the answer that has to be spelt out. A position defaulting to zero
+        // would put the pill on the first thing the list offers and read as an answer somebody
+        // gave, which on the row of people is another person's name.
+        var at = offered
+            .Select((one, position) => (one.Id, At: position))
+            .FirstOrDefault(found => found.Id == standing, (Id: Guid.Empty, At: -1));
 
-        picker.SelectedIndex = here is null ? -1 : standing.At + 1;
+        picker.SelectedIndex = at.At < 0 ? -1 : at.At + 1;
 
         picker.SelectionChanged += (_, _) =>
         {
-            if (_drawing)
+            if (_drawing || picker.SelectedIndex < 0)
             {
                 return;
             }
 
-            var picked = picker.SelectedIndex;
-
-            if (picked < 0)
+            if (picker.SelectedIndex == offered.Count + 1)
             {
+                naming();
                 return;
             }
 
-            if (picked == offered.Count + 1)
-            {
-                _naming = (role, row, level);
-                Render();
-                return;
-            }
-
-            // Nothing chosen empties this pill and everything to the right of it, because what a
-            // deeper pill offered was the children of this one.
-            PutAt(role, row, level, picked == 0 ? null : offered[picked - 1].Id);
+            chose(picker.SelectedIndex == 0 ? null : offered[picker.SelectedIndex - 1].Id);
         };
 
         return picker;
@@ -622,13 +689,13 @@ public sealed partial class ClassifyingAMeeting : UserControl
     private void AddAPath(MeetingNodeRole role)
     {
         _chosen = _chosen.With(role, [.. _chosen.Column(role), ChosenPath.Empty]);
-        Render();
+        Changed();
     }
 
     private void OpenOneMoreLevel(MeetingNodeRole role, int row)
     {
         _deeper.Add((role, row));
-        Render();
+        Changed();
     }
 
     /// <summary>Puts a node at one level of a path, and empties everything below it.</summary>
@@ -647,18 +714,28 @@ public sealed partial class ClassifyingAMeeting : UserControl
         _deeper.Remove((role, row));
         _naming = null;
         _chosen = _chosen.With(role, paths);
-        Render();
+        Changed();
     }
 
     // ── Naming something the corpus does not have yet ──────────────────────────────────────────
 
-    /// <summary>The field a new name is typed into, standing where its pill was.</summary>
+    /// <summary>
+    /// The field a new name is typed into, standing where its pill was.
+    /// </summary>
+    /// <remarks>
+    /// It commits on Enter and on nothing else. Leaving the field puts the pill back and writes
+    /// nothing, which is the opposite of what a name field usually does and is right here for one
+    /// reason: what a commit does is write a node into the classification tree for good, and there
+    /// is no screen anywhere in this application that can take one out again. Committing on a
+    /// focus that was lost — a click on another pill, the window going to the background — would
+    /// grow a tree of half-typed names that every picker after it offers.
+    /// </remarks>
     private UIElement AName(MeetingAsClassified read, MeetingNodeRole role, int row, ChosenPath path, int level)
     {
         var typing = new TextBox { Style = Chrome("Naming") };
 
         typing.Loaded += (_, _) => typing.Focus(FocusState.Programmatic);
-        typing.LostFocus += (_, _) => NameANode(read, role, row, path, level, typing.Text);
+        typing.LostFocus += (_, _) => NeverMind(role, row, level);
 
         typing.KeyDown += (_, pressed) =>
         {
@@ -667,9 +744,29 @@ public sealed partial class ClassifyingAMeeting : UserControl
                 pressed.Handled = true;
                 NameANode(read, role, row, path, level, typing.Text);
             }
+            else if (pressed.Key is VirtualKey.Escape)
+            {
+                pressed.Handled = true;
+                NeverMind(role, row, level);
+            }
         };
 
         return typing;
+    }
+
+    /// <summary>Puts the pill back where the field is, having written nothing.</summary>
+    private void NeverMind(MeetingNodeRole role, int row, int level)
+    {
+        // Only over the field this is about. Drawing the screen again takes the field off it, which
+        // is itself a lost focus — so without this the redraw would call back into here about a
+        // field that no longer exists, over a pill somebody has since answered.
+        if (_drawing || _naming != (role, row, level))
+        {
+            return;
+        }
+
+        _naming = null;
+        Changed();
     }
 
     /// <summary>
@@ -712,8 +809,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
         // it — which the press that opened this one cannot produce and is checked anyway.
         if (name.Length == 0 || kind is not { } placed)
         {
-            _naming = null;
-            Render();
+            NeverMind(role, row, level);
             return;
         }
 
@@ -794,67 +890,53 @@ public sealed partial class ClassifyingAMeeting : UserControl
     {
         var row = ARowOfPeople();
 
-        // Everybody but the one using this install, who is drawn above and cannot be a place: two
-        // rows for one person is a meeting naming somebody twice.
+        // Everybody the meeting does not already name somewhere else, and never the one using this
+        // install, who is drawn above and is not a place. Two rows for one person is a meeting
+        // naming somebody twice — and the corpus cannot hold that, so it would come back as one row
+        // with badges nobody set on it.
         var offered = read.Everybody
-            .Where(found => found.Person.Id != read.Me?.Id)
             .Select(found => found.Person)
+            .Where(found => found.Id != read.Me?.Id)
+            .Where(found => found.Id == person.PersonId || !StandsInAnotherPlace(found.Id, slot))
+            .Select(found => (found.Id, Name: found.DisplayName))
             .ToArray();
 
-        var picker = new ComboBox
-        {
-            Style = Chrome("Picker"),
-            PlaceholderText = In(UiTexts.NoneOfThese),
-            ItemsSource = (string[])
-            [
-                In(UiTexts.NoneOfThese),
-                .. offered.Select(found => found.DisplayName),
-                In(UiTexts.NameANewOne),
-            ],
-        };
-
-        var standing = offered
-            .Select((found, at) => (found.Id, At: at))
-            .FirstOrDefault(found => found.Id == person.PersonId);
-
-        picker.SelectedIndex = person.PersonId is null ? -1 : standing.At + 1;
-
-        picker.SelectionChanged += async (_, _) =>
-        {
-            if (_drawing || picker.SelectedIndex < 0)
-            {
-                return;
-            }
-
-            if (picker.SelectedIndex == offered.Length + 1)
-            {
-                await AskWhoTheyAre(read, slot);
-                return;
-            }
+        var picker = APicker(
+            offered,
+            person.PersonId,
 
             // Nothing chosen is how somebody comes off this meeting. The place stays and names
             // nobody, which files nothing.
-            PutSomebodyIn(slot, picker.SelectedIndex == 0 ? null : offered[picker.SelectedIndex - 1].Id);
-        };
+            chosen => PutSomebodyIn(slot, chosen),
+            () => _ = AskWhoTheyAre(read, slot));
 
         Grid.SetColumn(picker, 0);
         row.Children.Add(picker);
 
         var badges = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var pressed = new List<(Button Button, MeetingPersonRole Role)>();
 
         // Both of them, and both pressable. One badge would leave somebody filing §5.3 row 10 by
         // hand unable to say that the person the meeting is about was never in the room.
         foreach (var named in Enum.GetValues<MeetingPersonRole>())
         {
-            var badge = new Button
+            var badge = new Button { Content = In(Badge(named)) };
+
+            // The one press on this screen that does not draw it again, and the reason is the
+            // keyboard: everything else here changes which controls exist, and a redraw takes focus
+            // back to the top of the screen with it. A badge changes nothing but its own fill, so
+            // it stays where it is and whoever pressed it can press the next one.
+            badge.Click += (_, _) =>
             {
-                Content = In(Badge(named)),
-                Style = Chrome(person.Carries(named) ? "BadgeOn" : "Badge"),
+                Flip(slot, named);
+                ShowTheBadges(slot, pressed);
             };
 
-            badge.Click += (_, _) => Flip(slot, named);
+            pressed.Add((badge, named));
             badges.Children.Add(badge);
         }
+
+        ShowTheBadges(slot, pressed);
 
         Grid.SetColumn(badges, 1);
         row.Children.Add(badges);
@@ -865,6 +947,25 @@ public sealed partial class ClassifyingAMeeting : UserControl
         }
 
         return row;
+    }
+
+    /// <summary>Whether somebody is already standing in one of the other places on this meeting.</summary>
+    private bool StandsInAnotherPlace(Guid person, int slot) => _chosen.Somebody
+        .Where((_, at) => at != slot)
+        .Any(place => place.PersonId == person);
+
+    /// <summary>Puts the two badges on a row into the state the draft has them in.</summary>
+    private void ShowTheBadges(int slot, IReadOnlyList<(Button Button, MeetingPersonRole Role)> badges)
+    {
+        var person = _chosen.Somebody[slot];
+
+        foreach (var (button, role) in badges)
+        {
+            // Two calls and not one over a ternary, for the reason `HowAChipIsDrawn` hands back a
+            // style rather than a key: what holds these names to the markup reads a literal inside
+            // the call, and a key computed on the way in is a key nothing checks.
+            button.Style = person.Carries(role) ? Chrome("BadgeOn") : Chrome("Badge");
+        }
     }
 
     /// <summary>The three places a person's row lays out in: their name, the two badges, where they
@@ -916,14 +1017,18 @@ public sealed partial class ClassifyingAMeeting : UserControl
             UiTexts.SinceTheYear.In(_language, ScreenNumbers.Year(since)))
         : spell.Organization.Name;
 
+    /// <summary>
+    /// One more place for somebody, with nobody in it.
+    /// </summary>
+    /// <remarks>
+    /// How it opens — <em>estuvo</em> and not the subject — is <see cref="ChosenPerson.NobodyYet"/>'s,
+    /// beside the type it is about, because it is a statement about how a meeting names people
+    /// rather than a default this window happened to pick.
+    /// </remarks>
     private void AddAPlaceForSomebody()
     {
-        _chosen = _chosen with
-        {
-            Somebody = [.. _chosen.Somebody, new ChosenPerson(null, Attended: true, Subject: false)],
-        };
-
-        Render();
+        _chosen = _chosen with { Somebody = [.. _chosen.Somebody, ChosenPerson.NobodyYet] };
+        Changed();
     }
 
     private void PutSomebodyIn(int slot, Guid? person)
@@ -931,15 +1036,31 @@ public sealed partial class ClassifyingAMeeting : UserControl
         var slots = _chosen.Somebody.ToList();
         slots[slot] = slots[slot] with { PersonId = person };
         _chosen = _chosen with { Somebody = slots };
-        Render();
+        Changed();
     }
 
+    /// <summary>
+    /// Turns one of the two ways this meeting names somebody the other way.
+    /// </summary>
+    /// <remarks>
+    /// It draws nothing. Whoever pressed the badge puts it back into the state the draft has it in,
+    /// which is what keeps focus on the control that was pressed — see the remark where the badges
+    /// are built.
+    /// </remarks>
     private void Flip(int slot, MeetingPersonRole named)
     {
         var slots = _chosen.Somebody.ToList();
         slots[slot] = slots[slot].Flipped(named);
         _chosen = _chosen with { Somebody = slots };
-        Render();
+        _status = null;
+        ShowTheStatus();
+    }
+
+    /// <summary>Puts the line saying what went wrong on the screen, or takes it off.</summary>
+    private void ShowTheStatus()
+    {
+        StatusText.Text = _status?.In(_language) ?? string.Empty;
+        StatusText.Visibility = _status is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     // ── Adding a person ───────────────────────────────────────────────────────────────────────
@@ -982,12 +1103,21 @@ public sealed partial class ClassifyingAMeeting : UserControl
             AddingSomebody.XamlRoot = Root.XamlRoot;
         }
 
-        await AddingSomebody.ShowAsync();
+        try
+        {
+            await AddingSomebody.ShowAsync();
+        }
+        finally
+        {
+            // Cleared however it ended, and not only where somebody was written: a place left
+            // pointing at a cancelled dialogue is a place the next press would fill in.
+            _namingSomebody = null;
 
-        // Whatever happened, the pill that opened this is showing *Nombrar uno nuevo…* as though it
-        // were an answer. Drawing again puts it back to whoever is in the place now, which is the
-        // person just written or nobody at all.
-        Render();
+            // The pill that opened this is showing *Nombrar uno nuevo…* as though it were an
+            // answer. Drawing again puts it back to whoever is in the place now, which is the
+            // person just written or nobody at all.
+            Render();
+        }
     }
 
     private void OnTheirNameTyped(object sender, TextChangedEventArgs e) =>
@@ -997,8 +1127,18 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// Writes somebody the corpus does not have yet, and puts them in the place that asked.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The dialogue stays open on a refusal, because the alternative is losing three fields
     /// somebody typed to a corpus that was locked for a second.
+    /// </para>
+    /// <para>
+    /// One transaction around both writes, for the reason <see cref="MeetingClassifying.Save"/> has
+    /// one. <c>HumanLayer.Add</c> and <c>.Join</c> each save; a refusal on the second leaves the
+    /// person on disk, the dialogue open, and nothing on the screen pointing at them — so the
+    /// obvious next move, fixing the year and pressing again, adds a *second* person of the same
+    /// name. That is exactly what the picker on the row exists to prevent: a corpus that grows a
+    /// person per meeting is one where searching a person stops finding the meetings they are on.
+    /// </para>
     /// </remarks>
     private void OnSomebodyNamed(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
@@ -1029,6 +1169,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
         try
         {
             using var context = CorpusDatabase.Open(folder);
+            using var naming = context.Database.BeginTransaction();
             var human = new HumanLayer(context, TimeProvider.System);
             var person = human.Add(name);
 
@@ -1039,6 +1180,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
                 human.Join(person, organization, TheFirstOfTheYear(TheirYearBox.Text));
             }
 
+            naming.Commit();
             made = person.Id;
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
@@ -1064,12 +1206,16 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// </summary>
     /// <remarks>
     /// A year and not a date, because that is the whole of what this screen shows about a period —
-    /// and a start read back at a finer grain than it was asked for would be an invention.
+    /// and a start read back at a finer grain than it was asked for would be an invention. The
+    /// instant is <see cref="ScreenNumbers.TheStartOfTheYear"/>'s and is deliberately not built
+    /// here: what makes it right is that it is the exact inverse of the way the year is read back
+    /// out beside the person, and two halves of one round trip written in two places is how one of
+    /// them comes to be a midnight in the wrong zone.
     /// </remarks>
     private static UtcTimestamp? TheFirstOfTheYear(string? typed) =>
         int.TryParse((typed ?? string.Empty).Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var year)
         && year is >= 1 and <= 9999
-            ? UtcTimestamp.From(new DateTimeOffset(year, 1, 1, 0, 0, 0, TimeSpan.Zero))
+            ? ScreenNumbers.TheStartOfTheYear(year)
             : null;
 
     // ── The two answers ───────────────────────────────────────────────────────────────────────
@@ -1087,7 +1233,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
         _chosen = MeetingFiling.Nothing;
         _deeper.Clear();
         _naming = null;
-        Render();
+        Changed();
     }
 
     private void OnSave(object sender, RoutedEventArgs e)

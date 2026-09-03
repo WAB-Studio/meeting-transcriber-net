@@ -88,13 +88,29 @@ internal static class ScreenNumbers
     /// The year something began, which is the whole of what an affiliation says about when.
     /// </summary>
     /// <remarks>
-    /// A number and not a date. A period on a person is read against another person's and against
-    /// the meeting's own — <em>did this hold when this happened</em> — so it goes in mono like
-    /// every other number a reader compares, and the month and the day would be two facts nobody
-    /// compares standing in front of the one they do.
+    /// A year and not a date. A period on a person is read against another person's and against the
+    /// meeting's own — <em>did this hold when this happened</em> — and the month and the day would
+    /// be two facts nobody compares standing in front of the one they do. It is here rather than in
+    /// <c>UiTexts</c> because it is the same number in either language; the sentence it goes inside
+    /// is the catalogue's, and that sentence is text rather than mono for the reason
+    /// <c>docs/design.md</c> §Type gives — a number that is part of a sentence is text.
     /// </remarks>
     public static string Year(UtcTimestamp moment) =>
         moment.Value.ToLocalTime().ToString("yyyy", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The instant a year begins, as the person typing it means it.
+    /// </summary>
+    /// <remarks>
+    /// The exact inverse of <see cref="Year"/>, and it is here beside it because that is the whole
+    /// of what makes it right. <see cref="Year"/> reads an instant in whatever zone the reader is
+    /// in, so a start written as midnight UTC comes back a year early for everybody west of it: on
+    /// this machine, typing 2024 and being told <em>desde 2023</em>, permanently and with no screen
+    /// that can correct it. Midnight local is the answer that round trips, and it is also what
+    /// somebody means when they write a year down.
+    /// </remarks>
+    public static UtcTimestamp TheStartOfTheYear(int year) =>
+        UtcTimestamp.From(new DateTime(year, 1, 1, 0, 0, 0, DateTimeKind.Local));
 
     /// <summary>
     /// How long something ran, or how far into a meeting something is.

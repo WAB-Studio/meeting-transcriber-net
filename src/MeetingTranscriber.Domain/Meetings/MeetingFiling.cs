@@ -25,6 +25,18 @@ public sealed record ChosenPath(IReadOnlyList<Guid> Nodes)
 /// </remarks>
 public sealed record ChosenPerson(Guid? PersonId, bool Attended, bool Subject)
 {
+    /// <summary>
+    /// A place opened by hand rather than by a shape, with nobody in it yet.
+    /// </summary>
+    /// <remarks>
+    /// It opens on <em>estuvo</em>, and that is a statement about people rather than a convenience:
+    /// somebody added to a meeting by hand was at it until whoever added them says otherwise, which
+    /// is what all but one of the thirteen stories say too. It is here and not on the screen for
+    /// the reason <see cref="Flipped"/> is: how a meeting names somebody is not the window's to
+    /// decide.
+    /// </remarks>
+    public static readonly ChosenPerson NobodyYet = new(null, Attended: true, Subject: false);
+
     /// <summary>Whether this place names somebody under that role.</summary>
     /// <remarks>
     /// The last arm throws for the reason every table in this file does: a role added to the closed
@@ -81,23 +93,42 @@ public sealed record MeetingFiling(
     public static readonly MeetingFiling Nothing = new(null, [], [], [], []);
 
     /// <summary>
-    /// The columns a shape opens, empty, with the person slots that story sets.
+    /// The places this shape opens, on top of whatever has already been answered.
     /// </summary>
     /// <remarks>
-    /// It replaces rather than merges: the card's <em>what each one fills is seen when it is
-    /// chosen</em> only reads true if choosing changes the screen. What is lost is a draft, and the
-    /// corpus is not touched either way.
+    /// <para>
+    /// It opens places and never takes one away, and that is the whole rule — not "it replaces the
+    /// draft", which is what it used to be and what loses a meeting's filing. Nothing on this
+    /// screen lights the chip a meeting was filed under, because a shape is a pre-fill and no
+    /// meeting carries which one it was; so somebody coming back to a filed meeting to add one
+    /// attendee has every reason to press the chip they used last time, and under "replace" that
+    /// press wipes every path and every person the corpus holds, one <em>Guardar</em> from
+    /// permanent.
+    /// </para>
+    /// <para>
+    /// On the path the card describes — a meeting nobody has filed — the two rules are the same
+    /// thing, because there is nothing filled to keep: pressing a shape shows exactly the places
+    /// that story needs, and pressing a second shape shows exactly the second one's. That is what
+    /// <em>what each one fills is seen when it is chosen</em> asks for, and it now reads true on
+    /// re-entry as well as on the first visit.
+    /// </para>
     /// </remarks>
-    public static MeetingFiling AsShapedBy(MeetingShape shape)
+    public MeetingFiling ShapedBy(MeetingShape shape)
     {
         var opens = MeetingShapes.Opens(shape);
+        var somebody = Somebody.Where(slot => slot.PersonId is not null).ToArray();
 
         return new MeetingFiling(
             shape,
-            Slots(opens.WorkOf),
-            Slots(opens.Counterpart),
-            Slots(opens.About),
-            [.. opens.Somebody.Select(slot => new ChosenPerson(null, slot.Attended, slot.Subject))]);
+            Beside(WorkOf, opens.WorkOf),
+            Beside(Counterpart, opens.Counterpart),
+            Beside(About, opens.About),
+            [
+                .. somebody,
+                .. opens.Somebody
+                    .Skip(somebody.Length)
+                    .Select(slot => new ChosenPerson(null, slot.Attended, slot.Subject)),
+            ]);
     }
 
     /// <summary>The column a link of this role is drawn in.</summary>
@@ -166,15 +197,18 @@ public sealed record MeetingFiling(
     ];
 
     /// <summary>
-    /// Whether this would file the meeting under nothing at all.
+    /// One column with the places a shape wants opened in it, keeping every path already answered.
     /// </summary>
     /// <remarks>
-    /// Read off what would be written and never off <see cref="Shape"/>. A shape chosen and left
-    /// unanswered opens slots and fills none of them, so a meeting somebody merely looked at is
-    /// still unclassified.
+    /// The count is the larger of the two, so a story that wants one place beside a meeting already
+    /// filed under two takes neither away. An empty path is a place and not an answer, so the ones
+    /// standing there are dropped rather than counted — otherwise pressing two shapes in a row
+    /// would leave the first one's empty places behind for good.
     /// </remarks>
-    public bool IsUnclassified => Links.Count == 0 && Named.Count == 0;
+    private static IReadOnlyList<ChosenPath> Beside(IReadOnlyList<ChosenPath> answered, int howMany)
+    {
+        var filled = answered.Where(path => path.Deepest is not null).ToArray();
 
-    private static IReadOnlyList<ChosenPath> Slots(int howMany) =>
-        [.. Enumerable.Repeat(ChosenPath.Empty, howMany)];
+        return [.. filled, .. Enumerable.Repeat(ChosenPath.Empty, Math.Max(0, howMany - filled.Length))];
+    }
 }

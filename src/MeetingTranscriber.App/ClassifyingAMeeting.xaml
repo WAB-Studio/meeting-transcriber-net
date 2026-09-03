@@ -195,22 +195,28 @@
         <Border Grid.Row="2" Style="{StaticResource Card}" Padding="{StaticResource LargeCardPadding}">
             <Grid RowSpacing="12">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <!-- One column per way a meeting relates to what it was about. The columns are made
-                     in code by walking that vocabulary, so a fourth one is a column here rather
-                     than a thing the corpus can hold and the screen cannot say. -->
-                <Grid x:Name="Columns" Grid.Row="0" ColumnSpacing="20" />
+                <!-- Everything a person fills in scrolls, and the two answers do not. *Agregar*
+                     puts a row on a column every time it is pressed and nothing caps how many —
+                     with the columns laid out at their own height, the fifteenth press pushes
+                     *Guardar* off the bottom of the card and the only way out is the press that
+                     throws the draft away. -->
+                <ScrollViewer Grid.Row="0">
+                    <StackPanel Spacing="12">
+                        <!-- One column per way a meeting relates to what it was about. The columns
+                             are made in code by walking that vocabulary, so a fourth one is a
+                             column here rather than a thing the corpus can hold and the screen
+                             cannot say. -->
+                        <Grid x:Name="Columns" ColumnSpacing="20" />
 
-                <Border Grid.Row="1" Style="{StaticResource ARule}" />
+                        <Border Style="{StaticResource ARule}" />
 
-                <ScrollViewer Grid.Row="2" VerticalAlignment="Top">
-                    <StackPanel x:Name="Who" Spacing="8" />
+                        <StackPanel x:Name="Who" Spacing="8" />
+                    </StackPanel>
                 </ScrollViewer>
 
                 <!-- Said where it happened rather than in a notice: a corpus that would not open
@@ -218,7 +224,7 @@
                      design allows to stop it are a charge and adding a person. -->
                 <TextBlock
                     x:Name="StatusText"
-                    Grid.Row="3"
+                    Grid.Row="1"
                     Style="{StaticResource BodyText}"
                     Foreground="{StaticResource PeakBrush}"
                     TextWrapping="Wrap"
@@ -227,7 +233,7 @@
                 <!-- The two answers, in the two places the grammar fixes. There is no third and
                      nothing here sits past the gap, because neither of them loses anything: the one
                      on the left empties the screen and the one on the right is what writes. -->
-                <Grid Grid.Row="4" ColumnSpacing="10">
+                <Grid Grid.Row="2" ColumnSpacing="10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />

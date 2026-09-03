@@ -430,16 +430,20 @@ public sealed partial class ReadingAMeeting : UserControl
             return;
         }
 
-        foreach (var (_, path) in filed)
+        // One chip per place and not per link. A meeting that is work of a company and has that
+        // same company on the other side of the table is two links and one answer to the question
+        // this block asks, and drawing the name twice reads as something gone wrong rather than as
+        // a filing. Which way each relates to it is the screen the press below opens.
+        var places = filed
+            .Select(found => ScreenNumbers.Inside([.. found.Path.Nodes.Select(node => node.Name)]))
+            .Distinct(StringComparer.Ordinal);
+
+        foreach (var place in places)
         {
             TheFiling.Children.Add(new Border
             {
                 Style = Chrome("FiledUnder"),
-                Child = new TextBlock
-                {
-                    Text = ScreenNumbers.Inside([.. path.Nodes.Select(node => node.Name)]),
-                    Style = Chrome("FiledUnderSays"),
-                },
+                Child = new TextBlock { Text = place, Style = Chrome("FiledUnderSays") },
             });
         }
     }

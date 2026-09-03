@@ -61,28 +61,6 @@ public class ClassifyingAMeetingTests
             .ShouldNameItsWholeEnum("MeetingPersonRole");
 
     /// <summary>
-    /// The three tables above are over three differently-named expressions, and that is load
-    /// bearing rather than a matter of taste.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="EnumTable.Read"/> matches one switch per file per expression, so two tables over
-    /// one name would leave the second read finding the first table, no arms for the enum it asked
-    /// about, and a failure that says the screen holds no table at all. Held here rather than left
-    /// to whoever reads the three tests above and wonders why the variables differ.
-    /// </remarks>
-    [Fact]
-    public void No_two_tables_on_this_screen_switch_on_the_same_word()
-    {
-        var switching = Regex
-            .Matches(File.ReadAllText(AppSources.At(Screen).FullName), @"(?<over>\w+) switch\r?\n")
-            .Select(match => match.Groups["over"].Value)
-            .ToArray();
-
-        switching.ShouldNotBeEmpty("ClassifyingAMeeting.xaml.cs holds no table, so this reads nothing.");
-        switching.Distinct(StringComparer.Ordinal).ShouldBe(switching);
-    }
-
-    /// <summary>
     /// Every style this screen looks up by name is one it declares.
     /// </summary>
     /// <remarks>
@@ -95,9 +73,20 @@ public class ClassifyingAMeetingTests
     [Fact]
     public void Every_style_this_screen_names_is_one_it_declares()
     {
-        var named = Regex.Matches(
-                File.ReadAllText(AppSources.At(Screen).FullName),
-                @"Chrome\(""(?<key>\w+)""\)")
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        // Every lookup takes its key as a literal, which is what makes the check below able to see
+        // them all. A key worked out on the way in — a ternary in the call, a method handing one
+        // back by name — is a key this reads past, and a key that names nothing is an exception on
+        // the UI thread off a build with nothing wrong in it. Two of these had that shape and were
+        // caught by nothing; the answer was to hand back the style instead of the name.
+        Regex.Matches(source, @"Chrome\((?<taking>[^)]*)\)")
+            .Select(match => match.Groups["taking"].Value.Trim())
+            .Where(taking => !Regex.IsMatch(taking, @"^""\w+""$") && taking != "string named")
+            .ToArray()
+            .ShouldBeEmpty("these lookups do not name their style as a literal, so nothing checks it.");
+
+        var named = Regex.Matches(source, @"Chrome\(""(?<key>\w+)""\)")
             .Select(match => match.Groups["key"].Value)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
@@ -174,7 +163,19 @@ public class ClassifyingAMeetingTests
         raising.Success.ShouldBeTrue(
             "ReadingAMeeting.xaml.cs no longer has an OnClassify, so this check reads nothing.");
 
-        raising.Value.ShouldContain("Pause()");
-        raising.Value.ShouldContain("Classify?.Invoke");
+        var stopped = raising.Value.IndexOf("Pause()", StringComparison.Ordinal);
+        var raised = raising.Value.IndexOf("Classify?.Invoke", StringComparison.Ordinal);
+
+        stopped.ShouldBeGreaterThan(-1, "OnClassify does not stop the recording at all.");
+        raised.ShouldBeGreaterThan(-1, "OnClassify raises nothing, so no screen is opened.");
+
+        // The order and not only that both are there, which is the whole of what this is named
+        // after: raised first, the recording plays on behind a screen that has already been
+        // collapsed out of the automation tree, for as long as the handler and the redraw under it
+        // take.
+        stopped.ShouldBeLessThan(
+            raised,
+            "OnClassify raises Classify before it pauses, so the recording keeps playing behind a "
+            + "screen nobody can see.");
     }
 }
