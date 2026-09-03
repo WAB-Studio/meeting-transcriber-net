@@ -529,9 +529,12 @@ left, since it opens a picker rather than answering the notice — a button that
 not the button that answers it. Neither is pico: taking the whole machine costs nothing and loses
 nothing. Channel 1 goes on reading normally underneath, which is what says the recording is fine.
 
-**`Fallo`** · A source died. Its act is *Reintentar*, not *Cambiar*, and the difference from
-`NadaLlego` is the whole reason both exist: a source that is alive and silent is answered by pointing
-somewhere else, and a device that stopped responding is answered by trying that same device again.
+**`Fallo`** · A source died. Its act is *Reintentar* and *Cambiar* is the neutral one on the left,
+which is the mirror of `NadaLlego` and the whole reason both exist: a source that is alive and silent
+is answered by pointing somewhere else, so taking the whole machine is the act there; a device that
+stopped responding is answered by trying that same device again, so retrying is the act here.
+Pointing the channel somewhere else is offered on both and answers neither — a replacement plugged in
+mid-meeting is reached without stopping the recording.
 **Losing the microphone does not kill the meeting**: channel 0 goes on
 and is visibly going on. Channel 1 dims to the dead state described above, and the notice says what
 was observed, then that what was said into that microphone from that moment is gone and does not
@@ -631,6 +634,11 @@ first screen of an application is not where somebody enumerates their jobs.
 window. The same screen, not another one: the recording card is still above and slides out of the
 way. The list scrolls whole — no paging, and no search field until the index behind it exists.
 
+**A meeting being recorded keeps a strip while the list is raised**, because the press that stops it
+is never off screen. The strip carries the elapsed time and *Detener*, and nothing else: the meters
+and the name belong to the card that slid away. Elapsed time is spelled the way it is spelled
+everywhere, through `ScreenNumbers.Long`, so it reads `0:08:12` and not `08:12`.
+
 **`Persona`** · Adding somebody, over whatever screen asked. The second of the two dialogues, and
 the last: name, and optionally an organization and since when. It adds an affiliation and never
 replaces one.
@@ -659,6 +667,10 @@ two screens is one component before it is on the second one.**
 The artboards are this page drawn. Where one of them and a sentence here ever disagree, **this page
 is what a screen is built from** and the artboard is what gets corrected — not the other way, and
 not both kept.
+
+An artboard and a closed claim of `ISA.md` disagree the same way, and the claim wins: it says what
+has to be true of the product and it closed on a probe that ran, which a drawing never does. The
+artboard is corrected and this page gains the sentence the drawing was carrying alone.
 
 Two things on them are deliberately unfinished: the product's name and mark are a placeholder, and
 `Sistema` is this page as a picture, so it is the one artboard that has to be re-read whenever this

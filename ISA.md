@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 152/213
+progress: 152/217
 updated: 2026-09-03
 ---
 
@@ -148,6 +148,7 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-118: Anti: a recording that follows one application carries nothing another application played over it.
 - [x] ISC-119: A recording says in its own folder which meeting it is, when it started and under what profile, with nothing else read.
 - [x] ISC-120: A recording says in its own folder what fed each of its channels.
+- [ ] ISC-120.1: A recording whose channel came to name two devices says in its own folder which of them fed each stretch, so that two devices sharing a name are still told apart by somebody reading it.
 - [x] ISC-121: A recording whose channel 0 stopped following the program it was asked to says so in its own folder, and says when.
 - [ ] ISC-161: [DROPPED 2026-08-20: written and marked closed in the same pass as the code under it, over a folder contract no card decided, and what it said is not what its probe reached; the behaviour and its test stay.]
 - [x] ISC-122: Anti: what a recording's folder says about it is what was true when it started, and nothing that happens while it records rewrites it.
@@ -189,9 +190,10 @@ Board: 3 · Grabador WinUI
 - [x] ISC-148: What a meeting is waiting for survives the application closing and opening again.
 - [x] ISC-149: Anti: a recording waiting to be decided about never keeps a new meeting from being recorded.
 - [x] ISC-150: Somebody listening to the meeting through speakers is told, while it is still running, that the microphone is picking the other side up twice.
+- [ ] ISC-150.1: What that person is told does not change because this machine stopped answering: the last thing it said about what the meeting is playing through stands until it says otherwise.
 - [x] ISC-151: Anti: audio this application did not record is never taken as two channels of one meeting.
 - [x] ISC-159: Audio nothing in its folder vouches for enters as one track, whatever shape the file itself is in.
-- [ ] ISC-160: [DROPPED 2026-08-20: nobody decided the corpus is obliged to say a mix down happened; the audit line and its probe stay, the requirement never existed.]
+- [ ] ISC-160: A meeting whose audio had its channels averaged into one on the way in still says so once the command that brought it in is gone.
 - [x] ISC-152: Every text a person reads in the application is there in both Spanish and English.
 - [x] ISC-153: The application opens in the language Windows is set to, unless somebody chose another.
 - [x] ISC-156: A meeting's identity, its row in the corpus and the folder its audio goes into all exist before the first sample of it is captured.
@@ -237,6 +239,8 @@ Board: 4 · Deepgram BYOK
 - [ ] ISC-88: What the provider returns has the shape the fixtures describe.
 - [ ] ISC-154: Silence is left out of what is sent to the provider one channel at a time, so a channel that stayed quiet while the other was being spoken into is not paid for.
 - [ ] ISC-155: Anti: a turn lands where it was said in the meeting, however much of the meeting was left out of what was sent.
+- [ ] ISC-182: A meeting transcribed while it was being recorded has its transcript when it stops, and nothing transcribes it a second time on its own.
+- [ ] ISC-183: A live transcription the provider was lost in the middle of says which stretch of the meeting it is missing, rather than reading as the whole of it.
 
 ### F6 · Summaries
 Why: a meeting becomes a summary whose every claim resolves to something said, using the user's
@@ -299,8 +303,6 @@ Board: 7 · Distribución y backup
 - **How a summary citation anchors.** ISC-37 says a citation always resolves; whether it stores
   the turn id or an offset into the transcript changes what happens when turns are regrouped.
   `docs/reference-behaviour.md` has the grouping rules but not this.
-- **What bounds an MCP response in ISC-99.** Rows, bytes or tokens — and the answer depends on
-  what an agent actually asks for, which nobody has measured yet.
 - **How the corpus decides that a decision stopped standing.** ISC-101 to ISC-109 say what has to
   be true of the answer; none of them says what produces it, and four shapes are on the table with
   no evidence between them. A pass over each arriving meeting, linking a new decision to the
