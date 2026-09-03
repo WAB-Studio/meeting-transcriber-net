@@ -1,7 +1,7 @@
 ﻿---
 phase: climbing
-progress: 151/213
-updated: 2026-09-02
+progress: 152/213
+updated: 2026-09-03
 ---
 
 # ISA — meeting-transcriber-net
@@ -215,7 +215,7 @@ Board: 3 · Grabador WinUI
 - [x] ISC-167: Anti: playing back what a meeting recorded never requires a transcription to have been paid for.
 - [x] ISC-168: A meeting whose transcription arrived has its readable files without anybody asking for them.
 - [x] ISC-170: The meetings already recorded are on the screen the application opens on, with nothing to press and no second window to reach them.
-- [ ] ISC-170.1: A meeting whose stage changed while the application was open reads its new stage without the application being started again.
+- [x] ISC-170.1: A meeting whose stage changed while the application was open reads its new stage without the application being started again.
 - [x] ISC-171: The list of meetings takes the room the recorder half was using and gives it back, by one control that is in the same place either way.
 - [ ] ISC-172: Anti: a meeting being recorded is never out of sight behind the meetings list — what it is doing, and the press that stops it, are on screen wherever the list is.
 - [x] ISC-173: The application is drawn from one visual system, so a screen built later looks like the ones already there.
@@ -731,3 +731,4 @@ Board: 7 · Distribución y backup
 - ISC-181 — `CommandLineTests.A_copy_a_finished_replace_left_behind_stops_the_corpus_reading_unsound` (`tests/MeetingTranscriber.Cli.Tests`) green 2026-09-02: `check` refused before the sweep and returned clean after, red that day with the sweep left as it was. It drops one copy, so what says the rule is the destination and not the suffix is `ArtifactReconcilerTests.A_copy_is_taken_only_where_the_file_that_replaced_it_is_back`. Not reached: a machine dying inside a replace, stood in for by writing the copy one would have left; and nothing runs the tidy-up on its own, so a person still types the command.
 - ISC-173 — `OlivoTests` (`tests/MeetingTranscriber.App.Tests`) green 2026-09-02 over every screen there is: each names Olivo's keys and none is left on a platform brush or type style. The UI probe on the packaged build 2026-09-02 photographed the front door docked and whole, in papel and tarjeta with both packaged fonts rendering — Space Grotesk for text, JetBrains Mono for the dates. Red that day over twenty-one keys nothing reached. Not reached: the screens nobody has built, which is what the claim is about — the gate holds those, not this run
 - ISC-173.1 — `OlivoTests.No_screen_chooses_a_colour_a_size_or_a_corner_of_its_own`, `.No_code_behind_chooses_a_colour_or_a_size_of_its_own`, `.No_screen_quietens_a_line_of_text_with_opacity`, `.Every_resource_a_screen_names_is_one_that_exists`, `.Every_resource_the_code_behind_asks_for_by_name_exists` and `.The_dictionary_carries_every_colour_the_design_names_at_the_value_it_names` (`tests/MeetingTranscriber.App.Tests`) green 2026-09-02, the last of them reading the twelve-row colour table out of `docs/design.md` rather than out of the dictionary it checks. Red that day over a `FontSize`, a `Background` and a glyph size that had been in the saving card since it was written. Not reached: whether a named key resolves at run time, which no build agent can open a window to see — the probe is what showed it does
+- ISC-170.1 — `MeetingsWatchTests` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-09-03, and the UI probe on the packaged build 2026-09-02: `see a1-before sleep 20 see a2-during sleep 48 see a3-after`, with `record --corpus <the corpus> --language es --seconds 35` at a prompt after the first. Meeting `2e581a94` is absent from that tree, reads `It is being recorded right now.` in the second, and `2026-09-02 18:02 · 0:00:35`, `Recorded.` with Transcribe in the third — nothing pressed, nothing relaunched, 7 rows to 8. Red four times: 2026-09-02 the stage and standing out of it, the recordings out of it, the list's own read not fed back; 2026-09-03 `A_change_that_landed_while_the_list_was_drawing_is_still_told_about`, over a watch answering that read with one of its own. Not reached: a job finishing on its own, nothing runs one — the stage moved here is a recording filed, moving the same two terms

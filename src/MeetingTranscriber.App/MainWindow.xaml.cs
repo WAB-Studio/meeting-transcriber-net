@@ -8,7 +8,6 @@ using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
 using MeetingTranscriber.Recording;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -1079,7 +1078,7 @@ public sealed partial class MainWindow : Window
                 using var context = CorpusDatabase.Open(folder);
                 name = new HumanLayer(context, TimeProvider.System).Me()?.DisplayName ?? string.Empty;
             }
-            catch (Exception wouldNotRead) when (Reportable(wouldNotRead))
+            catch (Exception wouldNotRead) when (ScreenFailures.Reportable(wouldNotRead))
             {
                 // Said rather than left blank. A corpus that will not open reads exactly like one
                 // nobody has answered in, and the difference is somebody's own name: shown the
@@ -1524,7 +1523,7 @@ public sealed partial class MainWindow : Window
                 new HumanLayer(context, TimeProvider.System).ThisIsMe(name);
             });
         }
-        catch (Exception refused) when (Reportable(refused))
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
             if (!_closed)
             {
@@ -1685,7 +1684,7 @@ public sealed partial class MainWindow : Window
             ReadTheDevices();
             ReadWhatTheMachinePlaysThrough();
         }
-        catch (Exception refused) when (Reportable(refused))
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
             Say(UiTexts.TheRecordingCouldNotStart);
             Dump(refused.Message);
@@ -1700,27 +1699,6 @@ public sealed partial class MainWindow : Window
             }
         }
     }
-
-    /// <summary>
-    /// Whether this is something to say on screen rather than something to end the application
-    /// over. Every one of them is a fault in what the machine handed back: a device, a folder, or
-    /// the corpus file itself.
-    /// </summary>
-    /// <remarks>
-    /// The list is closed on purpose, and these handlers are <c>async void</c>, which is what makes
-    /// it worth being exact about: anything not named here reaches the dispatcher and takes the
-    /// application down in the middle of a meeting. What is named is what the layers underneath
-    /// actually throw — the audio engine's refusal, the recording's own, the filesystem's two, and
-    /// SQLite's, which arrives from a corpus that is locked, unwritable or not a database and which
-    /// the command line already answers with a refusal rather than with a stack trace.
-    /// </remarks>
-    private static bool Reportable(Exception thrown) => thrown
-        is AudioCaptureException
-        or RecordingException
-        or IOException
-        or UnauthorizedAccessException
-        or SqliteException
-        or DbUpdateException;
 
     private void OnPause(object sender, RoutedEventArgs e)
     {
@@ -1798,7 +1776,7 @@ public sealed partial class MainWindow : Window
             // Said out loud, every time, because it is the promise and not an omission.
             Say(UiTexts.NothingWasQueued);
         }
-        catch (Exception broke) when (Reportable(broke))
+        catch (Exception broke) when (ScreenFailures.Reportable(broke))
         {
             // The recording is over either way — what is on disk is a spool recovery already knows
             // how to offer — so this says so and does not throw a meeting away over it.
@@ -1875,7 +1853,7 @@ public sealed partial class MainWindow : Window
             await Task.Run(recording.RecordTheWholeMachine);
             Say(UiTexts.NowRecordingTheWholeMachine);
         }
-        catch (Exception refused) when (Reportable(refused))
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
             // Reported and not thrown: the meeting is still being recorded either way, and the
             // channel is where it was, so the offer is there to take again. Wider than the audio

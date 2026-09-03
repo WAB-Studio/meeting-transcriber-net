@@ -44,6 +44,15 @@ namespace MeetingTranscriber.App;
 /// one answer here nothing else can hand back.
 /// </para>
 /// <para>
+/// One thing looks for a change nobody told this control about, and it is
+/// <see cref="MeetingsWatch"/>. Every other call to <see cref="Read"/> is the application drawing
+/// what it has just done — a meeting saved, a stage answered, a screen come back from, a language
+/// changed — at once rather than within a look, and every one of them says so to the watch
+/// afterwards, which is what keeps the watch from telling this control about its own changes two
+/// seconds later. The moment that is gone is the raise: it was neither of those, but a guess that
+/// the list might have gone stale by then.
+/// </para>
+/// <para>
 /// One press outlives the handler that made it, and it is the same minutes of work stopping a
 /// meeting is: keeping a recording. What is not here is the recorder's own protection for that —
 /// the window refuses to let go of anything while its own press is in flight, and it has no such
@@ -149,6 +158,46 @@ public sealed partial class MeetingsDrawer : UserControl
     /// </summary>
     private bool _closed;
 
+    /// <summary>
+    /// What tells this list it has stopped saying what the corpus says.
+    /// </summary>
+    /// <remarks>
+    /// The one thing that causes a re-read while the list is on screen, and it is here rather than
+    /// in the window for the reason every other rule about the list is: what the list is showing is
+    /// this control's, and a window enumerating the moments it might have gone stale is the guess
+    /// this replaces. It is kept only for as long as there is a window — <see cref="Open"/> starts
+    /// it and <see cref="Closing"/> lets it go — because what it does when it finds something is
+    /// draw.
+    /// </remarks>
+    private MeetingsWatch? _watch;
+
+    /// <summary>
+    /// Whether the last read of the list got an answer out of the corpus.
+    /// </summary>
+    /// <remarks>
+    /// What turns on it is whose the sentence on screen is. A read that failed put its own sentence
+    /// in <see cref="_status"/>, and that one must not survive the re-read the failure itself asked
+    /// for; a read that went through left whatever a press put there, and that one must. Nothing
+    /// else can tell the two apart, because the slot is one.
+    /// <para>
+    /// True before the first read, because a list nobody has read yet is not one that failed.
+    /// </para>
+    /// </remarks>
+    private bool _theListRead = true;
+
+    /// <summary>
+    /// Whether a corpus has been in this folder since the window opened, as against when
+    /// <c>App</c> resolved it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="CorpusFolder.HoldsACorpus"/> is the answer as of the moment the folder was
+    /// resolved, and its own remarks say not to draw a line from it: the corpus comes into
+    /// existence under this screen, because the first thing kept makes one. So the fact that says a
+    /// corpus has gone away is this — a corpus this control has seen with its own read, whether it
+    /// was there when the application started or arrived under it a minute later.
+    /// </remarks>
+    private bool _thereWasACorpus;
+
     public MeetingsDrawer()
     {
         InitializeComponent();
@@ -171,14 +220,37 @@ public sealed partial class MeetingsDrawer : UserControl
     public bool HasTheWholeWindow { get; private set; }
 
     /// <summary>
-    /// Hands over the corpus these meetings are in. Reads nothing: the window says which language
-    /// it is being read in immediately afterwards, and that is what fills the list.
+    /// Hands over the corpus these meetings are in, and starts watching it. Draws nothing: the
+    /// window says which language it is being read in immediately afterwards, and that is what
+    /// fills the list.
     /// </summary>
     /// <exception cref="InvalidOperationException">It was opened twice.</exception>
     /// <remarks>
+    /// <para>
     /// Once, and loudly if not. A second corpus handed to a drawer already showing one is two
     /// answers to the question the application cannot be wrong about, which <c>App</c> says is
     /// answered before any window opens.
+    /// </para>
+    /// <para>
+    /// The watch takes what the corpus says here, before the list is filled rather than after, and
+    /// that order is the whole of what it costs: a change landing between the two is told about
+    /// twice, where the other order would lose it for good.
+    /// </para>
+    /// <para>
+    /// A corpus that will not open does not reach out of here, and that is the watch's promise
+    /// rather than a catch of this control's — <see cref="MeetingsWatch.Start"/> says so. It has to
+    /// be somebody's, because this runs from the window's constructor: an exception leaving it is a
+    /// constructor that never returns, and an application that never opens over a corpus another
+    /// process happened to have open. What the person gets instead is <see cref="Read"/> a few
+    /// statements later, which reads the same corpus and has a status line to say it on.
+    /// </para>
+    /// <para>
+    /// A folder nothing could be resolved to is not watched: there is no folder to look at, and
+    /// what is on screen instead is the refusal, which stands for the session. A folder that
+    /// resolved and holds no corpus <em>is</em> watched — that is every installation before its
+    /// first recording, and the corpus arriving under the window is the first thing the watch has
+    /// to say.
+    /// </para>
     /// </remarks>
     public void Open(CorpusFolder corpus)
     {
@@ -190,6 +262,17 @@ public sealed partial class MeetingsDrawer : UserControl
         }
 
         _corpus = corpus;
+
+        // The first of the two witnesses that there was a corpus here, and the only one that can
+        // speak before this control has read anything. The other is a read of its own.
+        _thereWasACorpus = corpus.HoldsACorpus;
+
+        if (corpus.Folder is { } folder)
+        {
+            _watch = new MeetingsWatch(folder, TimeProvider.System);
+            _watch.Changed += OnTheCorpusChanged;
+            _watch.Start();
+        }
     }
 
     /// <summary>
@@ -229,7 +312,58 @@ public sealed partial class MeetingsDrawer : UserControl
     /// a recording is the one thing here that outlives the press that started it, so the one
     /// answer this needs is the window's own.
     /// </remarks>
-    public void Closing() => _closed = true;
+    public void Closing()
+    {
+        _closed = true;
+
+        // Before the flag would have been enough, and not instead of it. A watch let go of stops
+        // looking, but a look already running can still be on its way to this control — and what
+        // stops that one drawing into a closed window is the flag the enqueued work reads.
+        _watch?.Dispose();
+        _watch = null;
+    }
+
+    /// <summary>
+    /// The corpus says something about the meetings that it did not say when the list was last
+    /// read. The one thing that re-reads the list while it is on screen.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Onto the thread this control is drawn on, because the look ran on none. The same shape
+    /// <see cref="ReadWhatSurvived"/> uses for the same reason, closed window included: this is an
+    /// answer arriving from off the drawing thread, and the window it started in may be gone.
+    /// </para>
+    /// <para>
+    /// What the last press said stays, which is the same <c>_status ??= said</c> the two answers on
+    /// a card already do and is here for the sharper reason. This read is the list catching up with
+    /// somebody else's change, and nothing about it supersedes the sentence a person's own press
+    /// put there — clearing it would take "it is in the queue now" off the screen a second after
+    /// the press that spends the money. The watch is handed what every read of this list found, so a
+    /// change this window made is normally spent before a look ever sees it; what is left is a look
+    /// already running when the press landed, and this is what that one costs.
+    /// </para>
+    /// <para>
+    /// A press's sentence and not a failed read's. The two share the one slot, so the sentence
+    /// carried over the re-read is only ever taken from a read that went through: the sequence this
+    /// exists for starts with a read that did not — that is what has the watch telling again in the
+    /// first place — and carrying its sentence over would print "that did not go through" above the
+    /// whole correct list, for as long as nobody pressed anything. Which is the recovery this is
+    /// the second half of, failing one look later instead of not failing.
+    /// </para>
+    /// </remarks>
+    private void OnTheCorpusChanged(object? sender, EventArgs e) =>
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_closed)
+            {
+                return;
+            }
+
+            var said = _theListRead ? _status : null;
+            Read();
+            _status ??= said;
+            Render();
+        });
 
     /// <summary>
     /// What a text says in the language this screen is being read in. The XAML binds to it, which
@@ -307,15 +441,42 @@ public sealed partial class MeetingsDrawer : UserControl
     /// of again.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A folder with no corpus in it is not an error and is not migrated into one from here. The
     /// first recording makes the corpus, and a screen that made an empty one to list nothing out
-    /// of would be making a corpus somewhere a person never asked for one.
+    /// of would be making a corpus somewhere a person never asked for one. A folder that
+    /// <em>had</em> one is the opposite fact and is said out loud: see below.
+    /// </para>
+    /// <para>
+    /// The watch is handed what this read, every time, and that is what keeps it from telling this
+    /// control about changes it is already showing — including the ones this application made
+    /// itself. What it is handed is these two lists and never a read of its own: a read taken a
+    /// moment after this one would carry whatever landed in between, mark it as shown and never
+    /// tell anybody about it, which is the row sitting wrong for the rest of the session. Told
+    /// instead that this read failed, the watch forgets, and the next look asks again rather than
+    /// leaving the sentence on screen until something else in the corpus moves.
+    /// </para>
+    /// <para>
+    /// It is handed over last, and the order is the point rather than a tidy-up: everything above
+    /// that line has emptied the list and filled it again, so the draw is what this method owes and
+    /// nothing else belongs in front of it.
+    /// </para>
     /// </remarks>
     public void Read()
     {
         _meetings.Clear();
         _waiting = [];
         _status = null;
+
+        // Whether the corpus answered, which is not whether there was anything in it and not
+        // whether it was there at all. Those two are answers, and the watch holds them like any
+        // other; this is the read that never happened, and it is the only one worth asking again.
+        var answered = true;
+
+        // What the recordings said before the screen's own two flags were laid over them, which is
+        // the half of this read the watch compares. `WaitingRow` is what a row draws; this is what
+        // the folder says, and a watch holding the first would be told about a flag it cannot see.
+        IReadOnlyList<WaitingRecording> recordings = [];
 
         if (Corpus().Folder is not { } folder)
         {
@@ -326,6 +487,8 @@ public sealed partial class MeetingsDrawer : UserControl
         }
         else if (CorpusDatabase.HoldsACorpus(folder))
         {
+            _thereWasACorpus = true;
+
             try
             {
                 using var context = CorpusDatabase.Open(folder);
@@ -334,17 +497,41 @@ public sealed partial class MeetingsDrawer : UserControl
                 // On the same read and out of the same context, because the two are one list. A
                 // recording nobody got to stop reads no block here — the folders, their cards and
                 // what each occupies, which is what a start can run before anything is on screen.
-                _waiting = WaitingRows.Of(
-                    WaitingRecordings.In(context), _beingSaved, _wouldNotRead);
+                recordings = WaitingRecordings.In(context);
+                _waiting = WaitingRows.Of(recordings, _beingSaved, _wouldNotRead);
             }
             catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
             {
                 _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
+                answered = false;
             }
+        }
+        else if (_thereWasACorpus)
+        {
+            // There was a corpus in this folder and there is not one now: a volume unplugged, a
+            // folder moved out from under it. The same sentence as a folder that refused, because
+            // it is the same fact — and never the empty list, which over a corpus full of paid
+            // artifacts is the one lie this method refuses to tell. Off a corpus this control has
+            // read rather than off the one the application resolved, because a corpus made under
+            // this screen — the first thing kept makes one — is the same thing to lose.
+            _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, folder.FullName);
         }
 
         Render();
         ReadWhatSurvived();
+
+        // What is on screen is now what was read above, and the watch is handed exactly that — the
+        // two lists, and not a state read a moment later that this control never drew.
+        _theListRead = answered;
+
+        if (answered)
+        {
+            _watch?.TheListHasRead(_meetings, recordings);
+        }
+        else
+        {
+            _watch?.TheListCouldNotRead();
+        }
     }
 
     /// <summary>
@@ -467,22 +654,18 @@ public sealed partial class MeetingsDrawer : UserControl
     /// so there is nothing left for a meeting in progress to cost — and this control has no
     /// condition on it at all rather than one that is always true.
     /// <para>
-    /// Raising is also the moment to read the list. It is the one gesture that says somebody is
-    /// about to act on what is in it, and everything that changes a meeting's stage — the runner,
-    /// the command line, this list's own two buttons — happens where nothing tells this control.
-    /// A meeting being recorded is in it too, as the row it has had since before its first sample,
-    /// which is why the raise is what puts it on screen without anything else being told.
+    /// It reads nothing, and it used to. The raise was the one gesture that said somebody was about
+    /// to act on the list, so it was where the list caught up with everything that changes a row
+    /// out of this control's sight — the command line, a second window, whatever runs a job. That
+    /// was a guess about when to look, and <see cref="MeetingsWatch"/> is now looking, at both
+    /// halves of what is drawn here. A re-read on this press would rebuild every card on a gesture
+    /// about how much room they get.
     /// </para>
     /// </remarks>
     private void OnToggleOpenness(object sender, RoutedEventArgs e)
     {
         HasTheWholeWindow = !HasTheWholeWindow;
         ShowWhichPositionItIsIn();
-
-        if (HasTheWholeWindow)
-        {
-            Read();
-        }
 
         OpennessChanged?.Invoke(this, EventArgs.Empty);
     }
