@@ -66,9 +66,6 @@ public sealed class MeetingsWatch : IDisposable
     /// </summary>
     private const char Between = '\u001f';
 
-    /// <summary>What a folder holding no corpus says, which is not what a corpus holding no meeting says.</summary>
-    private const string NoCorpusHere = "no corpus";
-
     /// <summary>
     /// Held for the whole of a look, and taken by <see cref="Dispose"/> on its way out.
     /// </summary>
@@ -88,16 +85,17 @@ public sealed class MeetingsWatch : IDisposable
     private readonly TimeSpan every;
 
     /// <summary>
-    /// What the corpus said the last time the list was known to be showing it, and <c>null</c> when
+    /// What the list is showing, said the way a look says what it read, and <c>null</c> when
     /// nothing read it — the list failed, or the read this made on its own behalf did. Written only
     /// under <see cref="gate"/>, which is what makes it visible to the next look on another thread.
     /// </summary>
     /// <remarks>
     /// <c>null</c> and not an empty string, which is what a corpus holding no meeting really says:
     /// a list that could not be read has to differ from every answer there is, or the one state it
-    /// would never be told about again is the empty one.
+    /// would never be told about again is the empty one. It starts there, because before
+    /// <see cref="Start"/> nothing has read anything.
     /// </remarks>
-    private string? told = string.Empty;
+    private string? told;
 
     private ITimer? timer;
     private bool letGo;
@@ -168,42 +166,64 @@ public sealed class MeetingsWatch : IDisposable
     }
 
     /// <summary>
-    /// The list has just read the corpus itself, and this is whether that read went through.
+    /// The list has just read the corpus itself, and this is what it read. What is drawn out of
+    /// these two is what the list is showing, so this is what a look compares against from here on.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Both answers are here because both are about the same thing: a change is spent when the list
-    /// has drawn it, and not when this managed to read it. Told that a read went through, this
-    /// takes what the corpus says now and keeps it, so a window that has just filed a meeting, kept
-    /// a recording or answered a stage is not told two seconds later about its own change — which
-    /// would clear the line saying what the press did, and rebuild every card under whoever was
-    /// reading them.
+    /// A change is spent when the list has drawn it, which is what this says: a window that has just
+    /// filed a meeting, kept a recording or answered a stage is not told two seconds later about its
+    /// own change — which would clear the line saying what the press did, and rebuild every card
+    /// under whoever was reading them.
     /// </para>
     /// <para>
-    /// Told that it did not, this forgets, so the next look tells again and the list gets another
-    /// go. That is the one way out of a read that failed: the corpus is fine, one connection was
-    /// unlucky, and without this the sentence saying so would stay on screen until something else
-    /// changed.
+    /// The list's own answer and never a read of this class's own, and the difference is the whole
+    /// of what this method is for. What is held here has to be <em>what is on screen</em>, because
+    /// that is what <see cref="Changed"/> means: a second read taken a moment after the list's would
+    /// hold whatever landed in between, mark it as shown, and never tell anybody about it — the row
+    /// wrong for the rest of the session, which is the failure this class exists to end. Being
+    /// handed less than the corpus now holds is the harmless direction and costs one re-read; being
+    /// handed more is the claim.
     /// </para>
     /// <para>
-    /// It reads the corpus again rather than being handed what the list read, and the difference is
-    /// the point: the list read through its own connection at its own moment, and what this has to
-    /// hold is what a look will find next. Taking the list's own answer would leave this claiming to
-    /// have seen a state it never read.
-    /// </para>
-    /// <para>
-    /// Which means there are two reads a press away from each other, and the second one can fail on
-    /// its own. When it does, this lands where being told the list's read failed lands — forgetting,
-    /// so the next look tells again — and nothing comes back out of here, because the thread saying
-    /// this is the thread the window draws on.
+    /// So there is nothing to fail here and nothing to wait for: no connection is opened, and the
+    /// only thing held is the same short lock a look takes. That matters because the thread saying
+    /// this is the thread the window draws on, in the middle of a rebuild of the list.
     /// </para>
     /// </remarks>
-    /// <param name="itWentThrough">Whether the list managed to read the corpus.</param>
-    public void TheListHasRead(bool itWentThrough)
+    /// <param name="meetings">The meetings the list drew, in the order it drew them.</param>
+    /// <param name="waiting">The recordings nobody stopped that it drew above them.</param>
+    public void TheListHasRead(
+        IReadOnlyList<MeetingAndWork> meetings, IReadOnlyList<WaitingRecording> waiting)
+    {
+        ArgumentNullException.ThrowIfNull(meetings);
+        ArgumentNullException.ThrowIfNull(waiting);
+
+        var said = WhatThatSays(meetings, waiting);
+
+        lock (gate)
+        {
+            told = said;
+        }
+    }
+
+    /// <summary>
+    /// The list tried to read the corpus and could not. This forgets, so the next look tells again
+    /// and the list gets another go.
+    /// </summary>
+    /// <remarks>
+    /// The one way out of a read that failed: the corpus is fine, one connection was unlucky, and
+    /// without this the sentence saying so would stay on screen until something else in the corpus
+    /// changed. Separate from <see cref="TheListHasRead"/> rather than a <c>false</c> handed to it,
+    /// because a read that did not happen has nothing to hand over — a caller passing two empty
+    /// lists would be saying the corpus is empty, which is the one answer that must not be
+    /// confused with not having got one.
+    /// </remarks>
+    public void TheListCouldNotRead()
     {
         lock (gate)
         {
-            told = itWentThrough ? WhatTheCorpusSaysIfItWill() : null;
+            told = null;
         }
     }
 
@@ -216,6 +236,12 @@ public sealed class MeetingsWatch : IDisposable
     /// handler is the raise of a look that was already inside one when this was called — the window
     /// that let go says so to itself as well, because that is true of every answer arriving from off
     /// its drawing thread.
+    /// <para>
+    /// The flag is set before the timer is let go of, and it is what makes the wait mean anything:
+    /// letting a timer go does not call back a callback it has already handed to the pool, so
+    /// without the flag a look could start on the far side of this and open a connection into the
+    /// folder whoever let go is deleting. <see cref="Look"/> reads it under the gate this holds.
+    /// </para>
     /// </remarks>
     public void Dispose()
     {
@@ -256,6 +282,14 @@ public sealed class MeetingsWatch : IDisposable
 
         try
         {
+            if (letGo)
+            {
+                // A callback the pool was already holding when the timer was let go of. Nothing is
+                // told after `Dispose` returns, and nothing opens a connection into a folder whose
+                // owner has been told it may take it away.
+                return;
+            }
+
             var says = WhatTheCorpusSaysIfItWill();
             if (says is null || says == told)
             {
@@ -294,14 +328,13 @@ public sealed class MeetingsWatch : IDisposable
     /// <summary>What the corpus says, or nothing at all when it would not be read.</summary>
     /// <remarks>
     /// <para>
-    /// A corpus that refuses never leaves this class, on any of the three threads that ask one for
+    /// A corpus that refuses never leaves this class, on either of the two threads that ask one for
     /// an answer. A look runs on a timer's callback, where an escape ends the process with whatever
     /// meeting was being recorded. <see cref="Start"/> runs inside the constructor of the
     /// application's first window, where an escape is an application that never opens.
-    /// <see cref="TheListHasRead"/> runs on the thread that window draws on, in the middle of a
-    /// rebuild of the list. And all three are reading something that belongs to the machine rather
-    /// than to this program: a corpus another process has open, a spool folder somebody discarded
-    /// from a prompt while the walk was inside it, a volume that went away.
+    /// Both are reading something that belongs to the machine rather than to this program: a corpus
+    /// another process has open, a spool folder somebody discarded from a prompt while the walk was
+    /// inside it, a volume that went away.
     /// </para>
     /// <para>
     /// <see cref="ScreenFailures.Reportable"/> and not everything, which is the whole difference
@@ -332,26 +365,51 @@ public sealed class MeetingsWatch : IDisposable
 
     /// <summary>What the corpus says about the meetings on the list, and the recordings above them.</summary>
     /// <remarks>
-    /// A folder with no corpus in it is one of the answers rather than an absence of one, and it is
-    /// not the answer a corpus holding no meeting gives. That is the state every installation starts
-    /// in — the first recording is what makes the corpus — and it is also what a folder on a volume
-    /// somebody unplugged becomes, which is the opposite fact and has to be able to reach a screen.
+    /// A folder with no corpus in it says what a corpus holding no meeting says, and it is the one
+    /// place the two are not told apart. That is the state every installation starts in — the first
+    /// recording is what makes the corpus — and a list drawn over either of them is the same empty
+    /// list, so a separate answer for it would only ever mean this and the list saying the same
+    /// state two ways, which is a telling every look for as long as the window stayed open. What a
+    /// corpus that <em>was</em> there and is not now has to say to a person is the list's own to
+    /// say, off the folder rather than off this.
+    /// <para>
+    /// Read only, because reading is all this does and <see cref="CorpusDatabase.Open"/> would make
+    /// a corpus out of a folder that lost one between the question above and the line below —
+    /// somewhere nobody asked for one, from a timer, with no window to say so in.
+    /// </para>
     /// </remarks>
     private string WhatTheCorpusSays()
     {
         if (!CorpusDatabase.HoldsACorpus(corpus))
         {
-            return NoCorpusHere;
+            return string.Empty;
         }
 
-        using var context = CorpusDatabase.Open(corpus);
+        using var context = CorpusDatabase.OpenReadOnly(corpus);
+
+        return WhatThatSays(
+            new MeetingWork(context, clock).Listed(), WaitingRecordings.In(context));
+    }
+
+    /// <summary>
+    /// What a list of meetings and the recordings above them say, out of the two lists themselves
+    /// and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is read in here, and that is what lets the list hand back what it drew rather than
+    /// have this class read the corpus a second time behind it. Both callers put the same facts in
+    /// the same order, because it is the same function.
+    /// </remarks>
+    private static string WhatThatSays(
+        IReadOnlyList<MeetingAndWork> meetings, IReadOnlyList<WaitingRecording> waiting)
+    {
         var said = new StringBuilder();
 
         // What a meeting's row draws, and what it offers. `MeetingsDrawer.Card` and
         // `ScreenNumbers.When` read the name, the instant and the length off the meeting, and
         // everything else on the card off the stage and the standing — `OwedWork`'s other answers
         // are worked out from those two. A line added to that card is a fact added here.
-        foreach (var entry in new MeetingWork(context, clock).Listed())
+        foreach (var entry in meetings)
         {
             said.Append(entry.Meeting.Id).Append(Between)
                 .Append(entry.Meeting.Title).Append(Between)
@@ -361,17 +419,18 @@ public sealed class MeetingsWatch : IDisposable
                 .Append(entry.Owed.Standing).Append(Between);
         }
 
-        // And what a recording nobody stopped says it is. Three marks in a folder, each of which
-        // changes what the row above the meetings offers — and not what its blocks occupy, which
-        // grows for the whole of a meeting and would have this telling about a row that is doing
-        // exactly what it was doing.
-        foreach (var waiting in WaitingRecordings.In(context))
+        // And what a recording nobody stopped says it is. The marks in its folder and the one
+        // reason it could not become a meeting, which between them are every arm of
+        // `WaitingRows.StandingOf` — and not what its blocks occupy, which grows for the whole of a
+        // meeting and would have this telling about a row that is doing exactly what it was doing.
+        foreach (var recording in waiting)
         {
-            said.Append(waiting.Folder.Name).Append(Between)
-                .Append(waiting.MeetingId).Append(Between)
-                .Append(waiting.Running).Append(Between)
-                .Append(waiting.BeingSaved).Append(Between)
-                .Append(waiting.NothingToDecideYet).Append(Between);
+            said.Append(recording.Folder.Name).Append(Between)
+                .Append(recording.MeetingId).Append(Between)
+                .Append(recording.Running).Append(Between)
+                .Append(recording.BeingSaved).Append(Between)
+                .Append(recording.NothingToDecideYet).Append(Between)
+                .Append(recording.Unrecoverable?.Why).Append(Between);
         }
 
         return said.ToString();

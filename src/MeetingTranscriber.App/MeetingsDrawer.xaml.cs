@@ -171,6 +171,33 @@ public sealed partial class MeetingsDrawer : UserControl
     /// </remarks>
     private MeetingsWatch? _watch;
 
+    /// <summary>
+    /// Whether the last read of the list got an answer out of the corpus.
+    /// </summary>
+    /// <remarks>
+    /// What turns on it is whose the sentence on screen is. A read that failed put its own sentence
+    /// in <see cref="_status"/>, and that one must not survive the re-read the failure itself asked
+    /// for; a read that went through left whatever a press put there, and that one must. Nothing
+    /// else can tell the two apart, because the slot is one.
+    /// <para>
+    /// True before the first read, because a list nobody has read yet is not one that failed.
+    /// </para>
+    /// </remarks>
+    private bool _theListRead = true;
+
+    /// <summary>
+    /// Whether a corpus has been in this folder since the window opened, as against when
+    /// <c>App</c> resolved it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="CorpusFolder.HoldsACorpus"/> is the answer as of the moment the folder was
+    /// resolved, and its own remarks say not to draw a line from it: the corpus comes into
+    /// existence under this screen, because the first thing kept makes one. So the fact that says a
+    /// corpus has gone away is this — a corpus this control has seen with its own read, whether it
+    /// was there when the application started or arrived under it a minute later.
+    /// </remarks>
+    private bool _thereWasACorpus;
+
     public MeetingsDrawer()
     {
         InitializeComponent();
@@ -235,6 +262,10 @@ public sealed partial class MeetingsDrawer : UserControl
         }
 
         _corpus = corpus;
+
+        // The first of the two witnesses that there was a corpus here, and the only one that can
+        // speak before this control has read anything. The other is a read of its own.
+        _thereWasACorpus = corpus.HoldsACorpus;
 
         if (corpus.Folder is { } folder)
         {
@@ -307,9 +338,17 @@ public sealed partial class MeetingsDrawer : UserControl
     /// a card already do and is here for the sharper reason. This read is the list catching up with
     /// somebody else's change, and nothing about it supersedes the sentence a person's own press
     /// put there — clearing it would take "it is in the queue now" off the screen a second after
-    /// the press that spends the money. The watch is told what every read of this list found, so a
+    /// the press that spends the money. The watch is handed what every read of this list found, so a
     /// change this window made is normally spent before a look ever sees it; what is left is a look
     /// already running when the press landed, and this is what that one costs.
+    /// </para>
+    /// <para>
+    /// A press's sentence and not a failed read's. The two share the one slot, so the sentence
+    /// carried over the re-read is only ever taken from a read that went through: the sequence this
+    /// exists for starts with a read that did not — that is what has the watch telling again in the
+    /// first place — and carrying its sentence over would print "that did not go through" above the
+    /// whole correct list, for as long as nobody pressed anything. Which is the recovery this is
+    /// the second half of, failing one look later instead of not failing.
     /// </para>
     /// </remarks>
     private void OnTheCorpusChanged(object? sender, EventArgs e) =>
@@ -320,7 +359,7 @@ public sealed partial class MeetingsDrawer : UserControl
                 return;
             }
 
-            var said = _status;
+            var said = _theListRead ? _status : null;
             Read();
             _status ??= said;
             Render();
@@ -406,17 +445,21 @@ public sealed partial class MeetingsDrawer : UserControl
     /// A folder with no corpus in it is not an error and is not migrated into one from here. The
     /// first recording makes the corpus, and a screen that made an empty one to list nothing out
     /// of would be making a corpus somewhere a person never asked for one. A folder that
-    /// <em>had</em> one when the application started is the opposite fact and is said out loud:
-    /// see below.
+    /// <em>had</em> one is the opposite fact and is said out loud: see below.
     /// </para>
     /// <para>
-    /// The watch is told how this went, every time, and that is what keeps it from telling this
+    /// The watch is handed what this read, every time, and that is what keeps it from telling this
     /// control about changes it is already showing — including the ones this application made
-    /// itself. It is also the only way back from a read that failed: told so, the watch forgets,
-    /// and the next look asks again rather than leaving the sentence on screen until something
-    /// else in the corpus moves. It is told last and it cannot throw — both, and for one reason:
-    /// this method owes a draw, and neither the cost of that second read nor its failing is allowed
-    /// to stand between the list being emptied and the list being on screen.
+    /// itself. What it is handed is these two lists and never a read of its own: a read taken a
+    /// moment after this one would carry whatever landed in between, mark it as shown and never
+    /// tell anybody about it, which is the row sitting wrong for the rest of the session. Told
+    /// instead that this read failed, the watch forgets, and the next look asks again rather than
+    /// leaving the sentence on screen until something else in the corpus moves.
+    /// </para>
+    /// <para>
+    /// It is handed over last, and the order is the point rather than a tidy-up: everything above
+    /// that line has emptied the list and filled it again, so the draw is what this method owes and
+    /// nothing else belongs in front of it.
     /// </para>
     /// </remarks>
     public void Read()
@@ -430,6 +473,11 @@ public sealed partial class MeetingsDrawer : UserControl
         // other; this is the read that never happened, and it is the only one worth asking again.
         var answered = true;
 
+        // What the recordings said before the screen's own two flags were laid over them, which is
+        // the half of this read the watch compares. `WaitingRow` is what a row draws; this is what
+        // the folder says, and a watch holding the first would be told about a flag it cannot see.
+        IReadOnlyList<WaitingRecording> recordings = [];
+
         if (Corpus().Folder is not { } folder)
         {
             // The one case an empty list would be a lie about. A corpus folder is there exactly
@@ -439,6 +487,8 @@ public sealed partial class MeetingsDrawer : UserControl
         }
         else if (CorpusDatabase.HoldsACorpus(folder))
         {
+            _thereWasACorpus = true;
+
             try
             {
                 using var context = CorpusDatabase.Open(folder);
@@ -447,8 +497,8 @@ public sealed partial class MeetingsDrawer : UserControl
                 // On the same read and out of the same context, because the two are one list. A
                 // recording nobody got to stop reads no block here — the folders, their cards and
                 // what each occupies, which is what a start can run before anything is on screen.
-                _waiting = WaitingRows.Of(
-                    WaitingRecordings.In(context), _beingSaved, _wouldNotRead);
+                recordings = WaitingRecordings.In(context);
+                _waiting = WaitingRows.Of(recordings, _beingSaved, _wouldNotRead);
             }
             catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
             {
@@ -456,26 +506,32 @@ public sealed partial class MeetingsDrawer : UserControl
                 answered = false;
             }
         }
-        else if (Corpus().HoldsACorpus)
+        else if (_thereWasACorpus)
         {
-            // The corpus was there when the application started and is not there now: a volume
-            // unplugged, a folder moved out from under it. The same sentence as a folder that
-            // refused, because it is the same fact — and never the empty list, which over a corpus
-            // full of paid artifacts is the one lie this method refuses to tell. Nothing reached
-            // this before the list was read on its own; a raise is a press, and somebody pressing
-            // it is somebody who has already noticed.
+            // There was a corpus in this folder and there is not one now: a volume unplugged, a
+            // folder moved out from under it. The same sentence as a folder that refused, because
+            // it is the same fact — and never the empty list, which over a corpus full of paid
+            // artifacts is the one lie this method refuses to tell. Off a corpus this control has
+            // read rather than off the one the application resolved, because a corpus made under
+            // this screen — the first thing kept makes one — is the same thing to lose.
             _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, folder.FullName);
         }
 
         Render();
         ReadWhatSurvived();
 
-        // Last, and the order is the point rather than a tidy-up. Everything above this line has
-        // emptied the list and filled it again, so the draw is what this method owes and nothing
-        // fallible belongs in front of it. Telling the watch costs a second read of the corpus —
-        // over one that will not open, seconds of it — and paying that before the draw would show
-        // somebody the emptied list for the whole of it, or, if the read failed, for good.
-        _watch?.TheListHasRead(answered);
+        // What is on screen is now what was read above, and the watch is handed exactly that — the
+        // two lists, and not a state read a moment later that this control never drew.
+        _theListRead = answered;
+
+        if (answered)
+        {
+            _watch?.TheListHasRead(_meetings, recordings);
+        }
+        else
+        {
+            _watch?.TheListCouldNotRead();
+        }
     }
 
     /// <summary>

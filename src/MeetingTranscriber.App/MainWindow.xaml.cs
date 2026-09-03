@@ -8,7 +8,6 @@ using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
 using MeetingTranscriber.Recording;
 
-using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;

@@ -238,7 +238,7 @@ public sealed class MeetingsWatchTests : IDisposable
         var told = new Telling(watch);
 
         new MeetingWork(context, TimeProvider.System).Take(meeting);
-        watch.TheListHasRead(itWentThrough: true);
+        TheListHasRead(watch);
 
         (await told.Arrived(SeveralLooks)).ShouldBeFalse();
 
@@ -254,6 +254,46 @@ public sealed class MeetingsWatchTests : IDisposable
     }
 
     [Fact]
+    public async Task A_change_that_landed_while_the_list_was_drawing_is_still_told_about()
+    {
+        // The gap a list's own read leaves, and the whole reason the watch is handed what the list
+        // read rather than taking one of its own. `MeetingsDrawer.Read` queries the corpus, draws
+        // what came back, and only then says what it read — so anything filed in between is in the
+        // corpus and not on the screen. A watch answering by reading again would take that change
+        // for one the list is already showing, mark it spent and never mention it, and the row
+        // would sit wrong for the rest of the session over the exact write this class exists to
+        // notice: the command line filing a response somebody paid for.
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+
+        using var watch = Watching();
+
+        // The list's read, whole and through its own connection, the way the drawer takes it.
+        IReadOnlyList<MeetingAndWork> drawn;
+        IReadOnlyList<WaitingRecording> waiting;
+
+        using (var read = corpus.Open())
+        {
+            drawn = new MeetingWork(read, TimeProvider.System).Listed();
+            waiting = WaitingRecordings.In(read);
+        }
+
+        using (var elsewhere = corpus.Open())
+        {
+            Add(elsewhere, NewArtifact(meeting, ArtifactKind.DeepgramResponse));
+        }
+
+        watch.TheListHasRead(drawn, waiting);
+
+        // Made after the hand-over on purpose, so nothing here turns on a look having been slow
+        // enough to miss the write: a look that saw it first is not the telling being waited for,
+        // and the hand-over puts the watch back to what the list drew either way.
+        var telling = new Telling(watch);
+
+        (await telling.Arrived()).ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task A_list_that_could_not_read_is_told_again_with_nothing_else_changing()
     {
         // The one way back from a read that failed. The corpus is fine and one connection was
@@ -265,7 +305,7 @@ public sealed class MeetingsWatchTests : IDisposable
         using var watch = Watching();
         var first = new Telling(watch);
 
-        watch.TheListHasRead(itWentThrough: false);
+        watch.TheListCouldNotRead();
 
         (await first.Arrived()).ShouldBeTrue();
     }
@@ -366,36 +406,6 @@ public sealed class MeetingsWatchTests : IDisposable
     }
 
     [Fact]
-    public void A_second_read_that_will_not_answer_never_leaves_the_watch()
-    {
-        // The list says how its own read went, and being told it went through costs a second read
-        // of the corpus — same thread, a moment later, its own connection. That one can fail on its
-        // own, and it is the drawing thread it would fail on. What is claimed here is only that it
-        // does not come back out: what `MeetingsDrawer.Read` then does with the promise is the
-        // order of its own last three lines, and no probe on a build agent can open that window.
-        using (var context = corpus.OpenMigrated())
-        {
-            Record(context);
-        }
-
-        using var held = HeldByAnotherProcess();
-
-        using (var refused = corpus.Open())
-        {
-            Should.Throw<SqliteException>(() => new MeetingWork(refused, TimeProvider.System).Listed());
-        }
-
-        // Built and not started, which is the whole of what this case gives up. A watch that was
-        // looking would redden this over `Start`'s read as well — the case above owns that one and
-        // this one has to be able to fail on its own — and a look in flight would be holding the
-        // file the handle above wants exclusively, which is a case that fails one run in ten for
-        // something it never asserted.
-        using var watch = new MeetingsWatch(corpus.Root, TimeProvider.System, Often);
-
-        Should.NotThrow(() => watch.TheListHasRead(itWentThrough: true));
-    }
-
-    [Fact]
     public async Task A_look_that_could_not_read_tells_nobody_and_asks_again()
     {
         // The list is showing a good read and one look cannot get one. That is not a change, and
@@ -407,26 +417,25 @@ public sealed class MeetingsWatchTests : IDisposable
             Record(context);
         }
 
-        using var watch = Watching(Slowly);
+        using var watch = Watching();
 
-        // Long enough that a look has landed, so what is held is the corpus rather than what
-        // `Start` read. Without it this case would be about `Start` a second time.
-        await Task.Delay(Slowly + Slowly, TestContext.Current.CancellationToken);
-
-        using var held = HeldByAnotherProcess();
+        // What is held is the corpus a look read and not what `Start` read, which is what makes
+        // this a case about a look at all: the good read is watched being made rather than waited
+        // out, so the state the watch is holding when the file goes away is one this case saw it
+        // take. Left behind the handle is a meeting no look has seen — the change the silence below
+        // is silence about, and the one the release below is found by.
+        using var held = await HeldWithAChangeWaitingBehindIt(watch);
         var telling = new Telling(watch);
 
         (await telling.Arrived(SeveralLooks)).ShouldBeFalse();
 
-        // The control, and the other half of the claim: unable to read rather than deaf. Without
-        // it this passes on a watch that stopped looking for any reason at all.
+        // The control, and the other half of the claim: unable to read rather than deaf, and a
+        // change that outlives the reads that could not find it. Without this the case passes on a
+        // watch that stopped looking for any reason at all. Nothing is written here and nothing
+        // needs to be — the corpus has been holding this change for the whole of the silence, so
+        // what is being waited for is one look getting through.
         var next = new Telling(watch);
         held.Dispose();
-
-        using (var elsewhere = corpus.Open())
-        {
-            Record(elsewhere);
-        }
 
         (await next.Arrived()).ShouldBeTrue();
     }
@@ -476,9 +485,13 @@ public sealed class MeetingsWatchTests : IDisposable
     /// Which of the real causes this stands in for does not matter and is deliberately not claimed
     /// — the command line past its <c>busy_timeout</c>, a volume that came back refusing, a folder
     /// that moved. What is asserted is the failure the read produces, and each case checks that for
-    /// itself before it starts a watch. Taken before any watch exists, so nothing here is racing a
-    /// look for the file. The pools go first because this process's own connections hold it too,
-    /// and a corpus already open here is not one another process could take.
+    /// itself before it starts a watch. The pools go first because this process's own connections
+    /// hold it too, and a corpus already open here is not one another process could take.
+    /// <para>
+    /// Nothing calls this while a look could be reading. The launch case takes it before any watch
+    /// exists; the other goes through <see cref="HeldWithAChangeWaitingBehindIt"/>, which is that
+    /// same rule holding for a watch that is already running.
+    /// </para>
     /// </remarks>
     private FileStream HeldByAnotherProcess()
     {
@@ -496,12 +509,104 @@ public sealed class MeetingsWatchTests : IDisposable
     }
 
     /// <summary>
-    /// The handle, waited for rather than demanded once. Two things this suite does not control can
-    /// have the file open for a moment — a look in flight in a case that takes the handle while a
-    /// watch is running, and whatever Windows itself is doing to a file written a moment ago — and
-    /// both let go. A case that failed over one of those would be failing for something it never
-    /// asserted.
+    /// The same handle, taken while a watch is running, with a meeting filed behind it that no look
+    /// has seen. What comes back is the corpus held immediately after a look read it, holding one
+    /// change more than the watch believes it holds.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It is taken from inside a telling, which is the one moment a case can be sure of taking it
+    /// at all. A watch that is looking holds the database file for as long as it lives: the
+    /// connection a look opens goes back to the pool rather than away, so emptying the pool frees
+    /// the file only until the next look, and a case that then waits for a gap is waiting for one
+    /// that closed behind it. What is used instead is the watch's own promise that a look already
+    /// running is not joined by the next — a telling is raised from inside a look, so for as long
+    /// as a handler stands there no look is reading and none can start. Taking the file there is
+    /// not a race that usually goes the right way; it is the only way of taking it that is not one.
+    /// </para>
+    /// <para>
+    /// Two meetings are filed and they do different jobs. The first is what makes the telling this
+    /// gets inside of, and the look that raised it has already read it, so it is part of what the
+    /// watch believes. The second is filed under the handler, after that read and before the file
+    /// goes away, which is the only place a change can be left that no look can reach: while the
+    /// corpus is held nothing can be written to it, and writing to it afterwards is what must not
+    /// happen here. A read SQLite could not make read-write it retries read-only, so a connection
+    /// opened as the handle is being let go of can come back read-only and go on being handed out
+    /// of the pool — which fails a write for a reason no case here is about.
+    /// </para>
+    /// <para>
+    /// Both writes are waited out before the file is taken, because the connection each went
+    /// through holds it as well. The first is waited for across threads; the second is the
+    /// handler's own and is let go of on the line above. Standing still in a handler holds a look,
+    /// which is exactly what a case wanting the corpus to itself is asking for.
+    /// </para>
+    /// <para>
+    /// A second telling finds the file already taken and passes, rather than taking it twice.
+    /// Tellings are raised one at a time under the watch's own lock, so that is a plain check
+    /// rather than one that has to hold against another thread.
+    /// </para>
+    /// </remarks>
+    private async Task<FileStream> HeldWithAChangeWaitingBehindIt(MeetingsWatch watch)
+    {
+        var taken = new TaskCompletionSource<FileStream>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var told = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        watch.Changed += Take;
+
+        try
+        {
+            using var seen = corpus.Open();
+            Record(seen);
+        }
+        finally
+        {
+            // Set however the write went, so a handler waiting on it is never the reason a failed
+            // case hangs instead of failing.
+            told.SetResult();
+        }
+
+        return await taken.Task.WaitAsync(LongEnough, TestContext.Current.CancellationToken);
+
+        void Take(object? sender, EventArgs telling)
+        {
+            told.Task.Wait();
+
+            if (taken.Task.IsCompleted)
+            {
+                return;
+            }
+
+            try
+            {
+                using (var unseen = corpus.Open())
+                {
+                    Record(unseen);
+                }
+
+                taken.SetResult(HeldByAnotherProcess());
+            }
+            catch (Exception thrown)
+            {
+                // Out through the awaiter and not through the timer, which absorbs everything a
+                // look throws: a corpus this could not take has to redden the case that asked for
+                // it rather than leave it waiting for a telling that is never coming.
+                taken.SetException(thrown);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The handle, waited for rather than demanded once. What this suite does not control is
+    /// whatever Windows itself is doing to a file written a moment ago, and it lets go. A case that
+    /// failed over that would be failing for something it never asserted.
+    /// </summary>
+    /// <remarks>
+    /// Patience and not a race: this waits out a handle that is going away on its own, and every
+    /// caller has already made sure no connection of this process's is holding one. Waiting out a
+    /// watch that is looking is what it must never be asked to do — a look puts its connection back
+    /// in the pool rather than away, so the file is held again within a gap and stays held, and
+    /// every retry after the first is spent on a handle nothing is going to let go of.
+    /// </remarks>
     private static FileStream Exclusively(string database)
     {
         var giveUpAt = DateTime.UtcNow + LongEnough;
@@ -517,6 +622,19 @@ public sealed class MeetingsWatchTests : IDisposable
                 Thread.Sleep(25);
             }
         }
+    }
+
+    /// <summary>
+    /// The list reading the corpus for itself and handing over what it read, which is the shape
+    /// <c>MeetingsDrawer.Read</c> has: its own connection, opened for the read and let go of again,
+    /// and both halves of the list off the one context.
+    /// </summary>
+    private void TheListHasRead(MeetingsWatch watch)
+    {
+        using var context = corpus.Open();
+
+        watch.TheListHasRead(
+            new MeetingWork(context, TimeProvider.System).Listed(), WaitingRecordings.In(context));
     }
 
     private MeetingsWatch Watching(TimeSpan? every = null)
