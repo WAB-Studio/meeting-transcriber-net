@@ -47,15 +47,13 @@
     <SolidColorBrush x:Key="ControlRuleBrush" Color="#E1DED7" />
 
     <!-- The 1px inset ring on an empty or optional control — *Agregar*, the `+` at the end of a
-         path, a toggle that is off. `docs/design.md` §Colour deliberately kept this out of the
-         twelve-row table and named it in the prose under it, as one of three greys that appear
-         inside components rather than as tokens; the screen that files a meeting is the first to
-         need to name it, and `OlivoTests.No_screen_chooses_a_colour_a_size_or_a_corner_of_its_own`
-         leaves a screen no other way to spell it. That page is changed with this, because a key
-         promoted out of the prose has to stop being described as prose.
-
-         It is one of the six #284 is about. The other five and every dark half are still that
-         card's: this settles the one a screen reached for. -->
+         path, a toggle that is off. `docs/design.md` §Colour has no row for it: the page writes
+         this value into §Controls, beside the control it describes, rather than deciding it as a
+         token, and the screen that files a meeting is the first that had to name it —
+         `OlivoTests.No_screen_chooses_a_colour_a_size_or_a_corner_of_its_own` leaves a screen no
+         other way to spell it. A colour the page *has* decided and no screen has drawn stands in
+         §Colour's *Decided, and not yet a key* table and joins the colour table when a screen
+         settles it. This one never stood there, which is why settling it added no row. -->
     <SolidColorBrush x:Key="EmptyControlRingBrush" Color="#DEDBD4" />
 
     <!-- ── The two faces ────────────────────────────────────────────────────────────────────────

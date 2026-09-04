@@ -20,6 +20,14 @@ namespace MeetingTranscriber.App.Tests;
 /// the colour table there is parsed and every row of it has to be a brush here with that value. A
 /// test that only said the keys exist would pass over a palette somebody re-tuned by hand.
 /// </para>
+/// <para>
+/// That holds in both directions, so part of this class gates a prose document and fails the build
+/// over a diff carrying no C# and no XAML. The page used to sanction a colour written inside a
+/// component while the screen check refused one, and a rule the authority grants and the build
+/// refuses is settled by whichever the reader happened to open. So every colour the page writes is
+/// held to <c>Olivo.xaml</c> too, and the one place a value with no brush behind it may stand is
+/// §Colour's <c>Decided, and not yet a key</c> table.
+/// </para>
 /// </remarks>
 public partial class OlivoTests
 {
@@ -42,10 +50,20 @@ public partial class OlivoTests
     /// typed into one of these is the failure this class exists to find, and a markup extension
     /// naming a key is what it has to be instead.
     /// </summary>
+    /// <remarks>
+    /// <c>Color</c> is here because the rest only reach a brush a screen <em>uses</em>, and a
+    /// screen that declares one of its own goes round every one of them:
+    /// <c>&lt;SolidColorBrush x:Key="MyOwnGrey" Color="#B9B5AC" /&gt;</c> in a screen's own
+    /// <c>Resources</c> is a value chosen on the screen, and
+    /// <see cref="Every_resource_a_screen_names_is_one_that_exists"/> then allows the screen to name
+    /// it because a screen's own keys are its own. The dictionary is where every brush is built, and
+    /// <see cref="Screens"/> leaves it out, so no legitimate spelling loses anything here.
+    /// </remarks>
     private static readonly HashSet<string> CarriesAValue =
     [
         "Background",
         "BorderBrush",
+        "Color",
         "CornerRadius",
         "Fill",
         "FontFamily",
@@ -175,13 +193,14 @@ public partial class OlivoTests
     {
         var screen = XDocument.Load(path);
         var itsOwn = Keys(screen);
+        var olivos = Keys(Olivo());
 
         var missing = screen
             .Descendants()
             .SelectMany(element => element.Attributes().Select(attribute => attribute.Value)
                 .Concat(element.Elements("Setter").Select(setter => (string?)setter.Attribute("Value") ?? string.Empty)))
             .SelectMany(value => Named().Matches(value).Select(match => match.Groups["key"].Value))
-            .Where(key => !itsOwn.Contains(key) && !Keys(Olivo()).Contains(key))
+            .Where(key => !itsOwn.Contains(key) && !olivos.Contains(key))
             .Distinct()
             .ToArray();
 
@@ -197,13 +216,7 @@ public partial class OlivoTests
         var page = Palette();
         page.Count.ShouldBe(12, "docs/design.md §Colour is the twelve-row table this reads.");
 
-        var brushes = Olivo()
-            .Descendants()
-            .Where(element => element.Name.LocalName == "SolidColorBrush")
-            .ToDictionary(
-                brush => (string?)brush.Attribute(XName.Get("Key", X)) ?? string.Empty,
-                brush => (string?)brush.Attribute("Color") ?? string.Empty,
-                StringComparer.Ordinal);
+        var brushes = Brushes();
 
         foreach (var (key, value) in page)
         {
@@ -214,6 +227,96 @@ public partial class OlivoTests
                 $"{key} is {value} on docs/design.md and {brushes[key]} in Olivo.xaml. That page is "
                 + "the authority, so the dictionary is what is wrong.");
         }
+    }
+
+    [Fact]
+    public void The_page_sanctions_no_colour_a_screen_could_not_write()
+    {
+        // The other half of `No_screen_chooses_a_colour_a_size_or_a_corner_of_its_own`. That check
+        // refuses a value typed onto a screen; this one refuses the page telling somebody to type
+        // one. Until this existed the two contradicted each other in writing — §Colour said two
+        // greys "appear inside components rather than as tokens", and the guard failed the build
+        // over the first component that did it.
+        var page = ColoursOnThePage();
+        var dictionary = ColoursInTheDictionary();
+
+        page.ShouldNotBeEmpty("Nothing on docs/design.md read as a colour, so this check is blind.");
+
+        // Both sides are compared as text, so a second spelling of one colour reads as two. Six
+        // digits is the only one this design has; anything else is said here rather than quietly
+        // counted as a colour of its own, because the confusing failure is the one that names a
+        // value nobody wrote.
+        var odd = page.Concat(dictionary)
+            .Where(colour => colour.Length != 7)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        odd.ShouldBeEmpty(
+            "docs/design.md and Olivo.xaml write colours as six digits and these are not, so the "
+            + "two sides cannot be compared as written: " + string.Join("; ", odd));
+
+        var loose = page
+            .Except(dictionary)
+            .Except(Waiting())
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        loose.ShouldBeEmpty(
+            "docs/design.md writes these and no brush in Olivo.xaml carries them, so the page is "
+            + "telling a screen to draw a colour the guard refuses. Either a brush settles it or "
+            + "§Colour holds it as decided and not yet a key: " + string.Join("; ", loose));
+    }
+
+    [Fact]
+    public void Nothing_waits_for_a_key_it_already_has()
+    {
+        // The table above empties as screens get built, and nothing else makes it. A value left
+        // waiting after the screen that settled it landed is the page going on sanctioning a
+        // colour somebody can now name — the same defect this pair exists to close, arriving the
+        // other way round.
+        var settled = Waiting()
+            .Intersect(ColoursInTheDictionary())
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        settled.ShouldBeEmpty(
+            "§Colour holds these as decided and not yet a key and Olivo.xaml already carries them, "
+            + "so the row belongs in the colour table and not in that one: "
+            + string.Join("; ", settled));
+    }
+
+    /// <summary>
+    /// Every shape <see cref="WaitingIn"/> has to tell apart, as pages rather than as a sentence
+    /// about them — for <see cref="WordsOrValues"/>'s reason. Whole pages and not bare rows,
+    /// because where a row stands decides as much as what it looks like: the last two rows here are
+    /// correctly shaped and are not waiting, and a reader held only to the shape would sanction
+    /// both. Loosening either axis is what would let a colour nobody decided count as decided, and
+    /// a green run over a page that happens to hold none would not notice.
+    /// </summary>
+    public static TheoryData<string, string[]> WaitsOrIsSettled() => new()
+    {
+        { $"{WaitingSection}\n\n| `#A0567A` | the second speaker |\n", ["#A0567A"] },
+        { $"{WaitingSection}\n\n| `#a0567a` | the second speaker |\n", ["#A0567A"] },
+        { $"{WaitingSection}\n\n| Segundo | `#A0567A` | a dot | `SecondSpeakerBrush` |\n", [] },
+        { $"{WaitingSection}\n\n| Second | `#A0567A` |\n", [] },
+        { $"{WaitingSection}\n\nthe second speaker is `#A0567A` and nobody keyed it\n", [] },
+        { $"{WaitingSection}\n\n## Type\n\n| `#A0567A` | the second speaker |\n", [] },
+    };
+
+    [Theory]
+    [MemberData(nameof(WaitsOrIsSettled))]
+    public void A_value_waiting_for_a_key_is_told_from_one_that_has_one(string page, string[] waits) =>
+        WaitingIn(page).Order(StringComparer.Ordinal).ToArray().ShouldBe(waits, page);
+
+    [Fact]
+    public void A_page_with_nowhere_to_wait_is_loud_rather_than_permissive()
+    {
+        // The set this reader returns is subtracted from the colours the page writes, so an empty
+        // one passes everything. A heading somebody renamed would otherwise turn the whole gate off
+        // and read as a clean run. The type is named rather than `Exception`, because a reader that
+        // threw for some other reason would satisfy a looser assertion and prove nothing.
+        Should.Throw<ShouldAssertException>(
+            () => WaitingIn("## Colour\n\n| `#A0567A` | the second speaker |\n"));
     }
 
     [Fact]
@@ -392,21 +495,97 @@ public partial class OlivoTests
         .Select(match => $"{file.Name} line {SourceLines.LineOf(source, match.Index)}: {match.Value}");
 
     /// <summary>
+    /// <c>docs/design.md</c>, whole. One place and not one per check: three things in this class
+    /// now read the page, and a second copy of where it is is a second thing to forget when the
+    /// layout moves.
+    /// </summary>
+    private static string Page() => File.ReadAllText(
+        AppSources.At(Path.Combine("..", "docs", "design.md")).FullName);
+
+    /// <summary>
     /// The colour table of <c>docs/design.md</c> §Colour, as the key each row settles and the value
     /// it settles it at. Read from the page rather than written down here, because a copy of it
     /// here would be a third thing to keep in step with the two this check exists to compare.
     /// </summary>
-    private static Dictionary<string, string> Palette()
-    {
-        var page = File.ReadAllText(AppSources.At(Path.Combine("..", "docs", "design.md")).FullName);
+    private static Dictionary<string, string> Palette() => PaletteRow()
+        .Matches(Page())
+        .ToDictionary(
+            row => row.Groups["key"].Value,
+            row => row.Groups["value"].Value,
+            StringComparer.Ordinal);
 
-        return PaletteRow()
-            .Matches(page)
-            .ToDictionary(
-                row => row.Groups["key"].Value,
-                row => row.Groups["value"].Value,
-                StringComparer.Ordinal);
+    /// <summary>Every colour value the page writes down, wherever on it they stand.</summary>
+    private static HashSet<string> ColoursOnThePage() => Colours(Page());
+
+    /// <summary>
+    /// Every colour <c>Olivo.xaml</c> carries. The brush's value and not the table's row: two of
+    /// the dictionary's keys — <c>ControlRuleBrush</c> and <c>EmptyControlRingBrush</c> — were
+    /// settled by a screen rather than by §Colour's table, so a check held to the table would call
+    /// their values unsanctioned and be wrong about both.
+    /// </summary>
+    private static HashSet<string> ColoursInTheDictionary() =>
+    [
+        .. Brushes().Values.Select(value => value.ToUpperInvariant()),
+    ];
+
+    /// <summary>Every brush <c>Olivo.xaml</c> defines, as the key it is under and the value it is.</summary>
+    private static Dictionary<string, string> Brushes() => Olivo()
+        .Descendants()
+        .Where(element => element.Name.LocalName == "SolidColorBrush")
+        .ToDictionary(
+            brush => (string?)brush.Attribute(XName.Get("Key", X)) ?? string.Empty,
+            brush => (string?)brush.Attribute("Color") ?? string.Empty,
+            StringComparer.Ordinal);
+
+    /// <summary>
+    /// The values §Colour holds as decided and not yet a key — the one place on the page a colour
+    /// with no brush behind it is allowed to stand.
+    /// </summary>
+    private static HashSet<string> Waiting() => WaitingIn(Page());
+
+    /// <summary>
+    /// The waiting values of one page, read out of the body of §Colour's <c>Decided, and not yet a
+    /// key</c> section and never out of the rest of the file.
+    /// </summary>
+    /// <remarks>
+    /// Scoped rather than matched wherever the shape occurs, for the reason
+    /// <c>IsaDocument.ReadSectionBody</c> is: a row shape floating over a seven-hundred-line
+    /// document is a licence anybody grants by accident. <c>| Value | What it is |</c> is the most
+    /// natural two-column header on a page thick with tables, and a hex in its first cell four
+    /// sections away would otherwise sanction a colour nobody decided. Finding the heading is what
+    /// makes the section's own sentence true, and is the blindness guard: a heading that has stopped
+    /// resolving is loud rather than an empty set that passes everything.
+    /// </remarks>
+    private static HashSet<string> WaitingIn(string page)
+    {
+        var lines = page.ReplaceLineEndings("\n").Split('\n');
+        var opens = Array.FindIndex(lines, line => line.StartsWith(WaitingSection, StringComparison.Ordinal));
+
+        opens.ShouldBeGreaterThanOrEqualTo(
+            0,
+            $"docs/design.md has no '{WaitingSection}' heading, so there is nowhere a colour with no "
+            + "brush behind it may stand and this check would pass over every one of them.");
+
+        var body = lines
+            .Skip(opens + 1)
+            .TakeWhile(line => !line.StartsWith("## ", StringComparison.Ordinal));
+
+        return [.. body
+            .Select(line => WaitingRow().Match(line))
+            .Where(row => row.Success)
+            .Select(row => row.Groups["value"].Value.ToUpperInvariant())];
     }
+
+    /// <summary>
+    /// Every colour written in <paramref name="source"/>, upper-cased so one spelling is compared.
+    /// </summary>
+    private static HashSet<string> Colours(string source) =>
+    [
+        .. Hex().Matches(source).Select(found => found.Value.ToUpperInvariant()),
+    ];
+
+    /// <summary>The heading §Colour puts a decided-and-unkeyed colour under.</summary>
+    private const string WaitingSection = "### Decided, and not yet a key";
 
     /// <summary>
     /// Whether an element carries words of its own — a <c>Text</c> that is not a binding, or text
@@ -484,6 +663,28 @@ public partial class OlivoTests
     [GeneratedRegex(@"^\|[^|]+\|\s*`(?<value>#[0-9A-Fa-f]{6})`\s*\|[^|]+\|\s*`(?<key>\w+Brush)`\s*\|",
         RegexOptions.Multiline)]
     private static partial Regex PaletteRow();
+
+    /// <summary>
+    /// A colour written out, however many digits somebody wrote. Whole: the boundaries are what
+    /// stop an eight-digit <c>#AARRGGBB</c> being read as its first six, which would sanction a
+    /// value no brush carries or report one under a name nobody typed. Six digits is the only
+    /// spelling this design has, and
+    /// <see cref="The_page_sanctions_no_colour_a_screen_could_not_write"/> is where that is held
+    /// rather than here, so anything else is loud instead of silently truncated.
+    /// </summary>
+    [GeneratedRegex(@"(?<![0-9A-Fa-f])#[0-9A-Fa-f]{3,8}(?![0-9A-Fa-f])")]
+    private static partial Regex Hex();
+
+    /// <summary>
+    /// A row of §Colour's *Decided, and not yet a key* table: the value, and the sentence saying
+    /// what it is. Two columns and the value first, which is deliberately not
+    /// <see cref="PaletteRow"/>'s four-column shape — a row that matched both would be a colour
+    /// claiming a key and waiting for one at the same time, and it would also push
+    /// <c>Palette()</c> past twelve. Where the row stands is <see cref="WaitingIn"/>'s to decide;
+    /// this only says what one looks like.
+    /// </summary>
+    [GeneratedRegex(@"^\|\s*`(?<value>#[0-9A-Fa-f]{3,8})`\s*\|[^|]+\|\s*$")]
+    private static partial Regex WaitingRow();
 
     [GeneratedRegex(@"EaseInOut|BounceEase|ElasticEase|BackEase")]
     private static partial Regex EasesBothWays();
