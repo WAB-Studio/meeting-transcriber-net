@@ -180,10 +180,12 @@ checked against.
 place a colour, a type rank, a corner, a height or a control rank is written down. `docs/design.md`
 says the resource key is its suggestion and the first screen to need one settles it; `MainWindow`
 was the first, so the keys are settled and every screen after it names them rather than proposing
-its own. `OlivoTests` is what holds both ends: no screen may carry a value of its own, and the
-dictionary's twelve brushes are checked against that page's own colour table rather than against
-themselves. The two fonts sit beside it in `Assets/Fonts/`, inside the package with the licence that
-permits it.
+its own. `OlivoTests` is what holds the page and the dictionary to each other, in both directions:
+no screen may carry a colour, a size or a corner of its own, every row of that page's colour table
+is a brush here at the value the row gives, and every colour the page writes down either has a
+brush here behind it or stands in §Colour's *Decided, and not yet a key* table, which is what stops
+the page sanctioning a value the screens are refused. The two fonts sit beside it in
+`Assets/Fonts/`, inside the package with the licence that permits it.
 
 The one thing about how a screen looks that is **not** in that dictionary is how long a move takes,
 and that is deliberate: a duration fixed when the application starts cannot be zero on a machine
