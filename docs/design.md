@@ -493,7 +493,8 @@ And what the code already required and still does:
 ## The eighteen screens
 
 `docs/design/` holds one file per screen. Seventeen are the flow and the eighteenth is the system
-sheet. `canvas.json` carries their layout and the note that was written against each.
+sheet. `canvas.json` carries their layout and the notes, each naming the artboard it was written
+against. Two artboards have none, and a note nobody has written is not one this index invents.
 
 ### The flow — recording
 
@@ -634,10 +635,27 @@ first screen of an application is not where somebody enumerates their jobs.
 window. The same screen, not another one: the recording card is still above and slides out of the
 way. The list scrolls whole — no paging, and no search field until the index behind it exists.
 
-**A meeting being recorded keeps a strip while the list is raised**, because the press that stops it
-is never off screen. The strip carries the elapsed time and *Detener*, and nothing else: the meters
-and the name belong to the card that slid away. Elapsed time is spelled the way it is spelled
-everywhere, through `ScreenNumbers.Long`, so it reads `0:08:12` and not `08:12`.
+**A meeting under way keeps a strip whenever the room below has the window** — the list raised into
+it, or a meeting being read in it — because what it is doing and the press that stops it are never
+off screen. It is the recording card's stand-in and never a second opinion beside it: the two are
+never both up, and both are drawn from the same clock.
+
+The strip carries three things and nothing else — not the meters, not the stopwatch, not the
+meeting's name, and none of the presses but one:
+
+- **the state word, in olivo.** It is the only thing there in all four states a meeting under way
+  can be in — opening its devices, recording, paused, saving — and it is olivo in all four, because
+  on the strip olivo says a meeting is under way rather than, as in a list, which row is the live
+  one.
+- **one line of data**: how long the meeting has been running, what channel 0 is following and which
+  microphone is on it. The length only where there is one — opening the devices and saving the
+  meeting have no clock, and a strip showing the last reading through either would be a screen
+  saying a meeting is still being recorded. Elapsed time is spelled the way it is spelled
+  everywhere, through `ScreenNumbers.Long`, so it reads `0:08:12` and not `08:12`.
+- ***Detener***, at the normal rank and not the principal one. The screen's one principal act is
+  *Empezar a grabar*; a press that steers a recording already running is normal, here as on the
+  card. It is the one press that cannot wait for somebody to lower the list, so it is the only one
+  the strip has: *Pausar* and *Seguir* wait, and lowering the list is what reaches them.
 
 **`Persona`** · Adding somebody, over whatever screen asked. The second of the two dialogues, and
 the last: name, and optionally an organization and since when. It adds an affiliation and never
@@ -671,6 +689,14 @@ not both kept.
 An artboard and a closed claim of `ISA.md` disagree the same way, and the claim wins: it says what
 has to be true of the product and it closed on a probe that ran, which a drawing never does. The
 artboard is corrected and this page gains the sentence the drawing was carrying alone.
+
+**A screen that is already merged and a sentence here disagree the third way, and the screen is the
+fact.** This page gains the sentence it was missing and the artboard is drawn to both. That is the
+only direction that leaves anything true: a sentence here describing a screen that does not exist
+corrects nothing, and re-drawing the artboard to it would put two drawings of one screen in the
+repo. It is a correction and never a licence — building a screen to something this page does not
+say is still skipping this page, and it is what puts the work of writing the missing sentence on
+whoever comes after.
 
 Two things on them are deliberately unfinished: the product's name and mark are a placeholder, and
 `Sistema` is this page as a picture, so it is the one artboard that has to be re-read whenever this
