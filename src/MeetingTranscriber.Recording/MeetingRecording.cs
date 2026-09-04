@@ -172,10 +172,14 @@ public sealed class MeetingRecording : IDisposable
     /// </para>
     /// <para>
     /// If finishing throws, the recording is over and the meeting can be finished again from the
-    /// blocks with <see cref="MeetingRecordings.Finish"/>. If <b>stopping</b> throws, that is true
-    /// of a stream that ended by itself and not of one that was given up on: that one keeps its
-    /// block file open while a thread may still be writing through it, which is
-    /// <see cref="CaptureSource.Dispose"/>'s rule and not this method's to break. Either way this
+    /// blocks with <see cref="MeetingRecordings.Finish"/>. The one <b>ending</b> that still refuses
+    /// to <b>stop</b> is a stream given up on inside its device: that one keeps its block file open
+    /// while a thread may still be writing through it, which is
+    /// <see cref="CaptureSource.Dispose"/>'s rule and not this method's to break, and why the
+    /// meeting it belonged to is left to a recovery instead of finished from here. A source that
+    /// died is not that case and no longer refuses — its loop came back, so the meeting it is half
+    /// of is made and filed by this press. What can still refuse besides that ending is the disk:
+    /// flushing a block file or releasing the folder's mark is I/O, and I/O throws. Either way this
     /// object is done, which is why the flag goes up before the work rather than after it.
     /// </para>
     /// </remarks>

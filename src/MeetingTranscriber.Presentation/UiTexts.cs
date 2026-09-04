@@ -298,12 +298,14 @@ public static class UiTexts
     /// would be a catalogue holding this machine's answers.
     /// </para>
     /// <para>
-    /// Neither says to press stop, and that is not an omission. Stopping a meeting one of whose
-    /// sources ended by itself does not make a meeting — the source says so as it is let go of, and
-    /// the recording comes back refused — so what is on disk is dealt with afterwards rather than
-    /// by a press. Saying "stop and keep what it has" would be this screen promising an outcome the
-    /// press does not produce, which is worse than saying nothing. What answers the notice is the
-    /// press beside it, which opens the same device again.
+    /// Neither says to press stop, and that is not an omission. Stopping keeps what was recorded,
+    /// the way stopping any meeting does — a source that ended by itself is finished like any
+    /// other, and the meeting is made and filed by that press. So there is nothing extra for either
+    /// notice to promise and nothing for it to warn about, and a line about stopping would be this
+    /// screen telling somebody about a press that already behaves the way they expect. Neither
+    /// leans on there being a press beside it either: what is offered next to which notice is the
+    /// screen's to decide and changes with what else is on it, and a sentence in the catalogue that
+    /// assumed a particular button is the sentence this paragraph replaced.
     /// </para>
     /// </remarks>
     public static UiText TheOthersChannelStoppedOnItsOwn { get; } = new(
@@ -319,10 +321,10 @@ public static class UiTexts
         + "and it does not come back; channel 0 is still recording.");
 
     /// <summary>
-    /// The act on the microphone's notice. <c>docs/design.md</c> §Fallo is what makes it this word
-    /// and not <em>Cambiar</em>: a source that is alive and silent is answered by pointing
-    /// somewhere else, and a device that stopped responding is answered by trying that same device
-    /// again.
+    /// The act on the microphone's notice. <c>docs/design.md</c> §Fallo is what makes it this word:
+    /// a source that is alive and silent is answered by pointing somewhere else, and a device that
+    /// stopped responding is answered by trying that same device again. <em>Cambiar</em> is on that
+    /// page too, as the neutral press on the left rather than the answer.
     /// </summary>
     public static UiText TryTheMicrophoneAgain { get; } = new("Reintentar", "Try again");
 
