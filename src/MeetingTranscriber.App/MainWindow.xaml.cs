@@ -1938,10 +1938,16 @@ public sealed partial class MainWindow : Window
             // The recording is over either way — what is on disk is a spool recovery already knows
             // how to offer — so this says so and does not throw a meeting away over it.
             //
-            // Let go of here and not only inside stopping: stopping releases the devices itself,
-            // but it can throw before it gets that far, and then the meeting has failed with two
-            // devices still open. Letting go of one that did stop does nothing, so this is the
-            // same guarantee the command line gets from holding the recording in a `using`.
+            // Let go of here even though stopping already does: stopping releases the devices
+            // however it went, and marks the recording done before it touches them, so a failure
+            // that reached it answers this with nothing at all. What is left for this to cover is a
+            // failure that never got that far — Task.Run itself, or the day this block grows one —
+            // after which the meeting is over with two devices still open.
+            //
+            // Not free, and worth saying which line it is: on that one path this is the statement
+            // in this catch that can throw, and a throw out of an `async void` handler ends the
+            // process. It is kept because devices held to the end of a session are the worse of the
+            // two, which is the trade the command line makes by holding the recording in a `using`.
             recording.Dispose();
             Say(UiTexts.TheMeetingCouldNotBeMade);
             Dump(broke.Message);
