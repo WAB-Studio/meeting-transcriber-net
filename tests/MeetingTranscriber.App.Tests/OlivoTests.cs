@@ -58,19 +58,21 @@ public partial class OlivoTests
     /// <see cref="Every_resource_a_screen_names_is_one_that_exists"/> then allows the screen to name
     /// it because a screen's own keys are its own. The dictionary is where every brush is built, and
     /// <see cref="Screens"/> leaves it out, so no legitimate spelling loses anything here.
+    /// <para>
+    /// Written as an alternation and split, rather than as a set spelt out. <see cref="ValueInCode"/>
+    /// watches the same nine names where a screen builds a <c>Setter</c> in code, and
+    /// <c>[GeneratedRegex]</c> takes a constant expression only — so the constant is the list and
+    /// this is derived from it, and there is nothing for the two sides to disagree about. The set
+    /// matches an attribute name and the pattern matches a <c>DependencyProperty</c>, which are two
+    /// spellings of one property rather than two lists.
+    /// </para>
     /// </remarks>
+    private const string CarriesAValueSpelt =
+        "Background|BorderBrush|Color|CornerRadius|Fill|FontFamily|FontSize|Foreground|Stroke";
+
+    /// <inheritdoc cref="CarriesAValueSpelt"/>
     private static readonly HashSet<string> CarriesAValue =
-    [
-        "Background",
-        "BorderBrush",
-        "Color",
-        "CornerRadius",
-        "Fill",
-        "FontFamily",
-        "FontSize",
-        "Foreground",
-        "Stroke",
-    ];
+        [.. CarriesAValueSpelt.Split('|')];
 
     public static TheoryData<string> Screens() =>
         [.. AppSources.With(".xaml").Where(file => !IsTheDictionary(file)).Select(file => file.FullName)];
@@ -91,8 +93,8 @@ public partial class OlivoTests
         var chosen = ChosenOn(XDocument.Load(path));
 
         chosen.ShouldBeEmpty(
-            $"{Path.GetFileName(path)} chooses these on the screen instead of naming one of Olivo's: "
-            + string.Join("; ", chosen));
+            $"{Path.GetFileName(path)} chooses these on the screen instead of naming one of Olivo's, "
+            + "or hands one to a binding, which this check cannot follow: " + string.Join("; ", chosen));
     }
 
     /// <summary>
@@ -100,23 +102,21 @@ public partial class OlivoTests
     /// one of Olivo's, as <c>Property="Value"</c>.
     /// </summary>
     /// <remarks>
-    /// A value passes only when the whole of it names a key, which is <see cref="NamesAKey"/> — so
-    /// every markup extension but the two <see cref="Named"/> reads is refused on a screen, and
-    /// that is deliberate rather than an oversight in the pattern. A binding on one of these
-    /// properties hands the value to a code-behind property, where it is invisible to this check
-    /// and reaches the screen all the same; and <c>{TemplateBinding …}</c> only ever stands inside
+    /// A value passes only when the whole of it names a key, which is <see cref="NamesAKey"/>, so
+    /// every markup extension but the two <see cref="Named"/> reads is refused on a screen. That is
+    /// deliberate. A binding hands the value to a code-behind property, where this check cannot
+    /// follow it, and the sanctioned way to reach one from code is <c>Painted(…)</c> or
+    /// <c>Sized(…)</c>, which <see cref="ChosenIn"/> polices — so a card that needs a state-driven
+    /// brush has a door, and it is not this attribute. <c>{TemplateBinding …}</c> stands only inside
     /// a <c>ControlTemplate</c>, which lives in the dictionary <see cref="Screens"/> leaves out, so
     /// the day a screen writes one is the day a template moved out of Olivo.
     /// <para>
-    /// It reads attributes and the <c>Setter</c> shape, which is what <see cref="Values"/> gives it,
-    /// and one property element arrives through that door: a colour written as
-    /// <c>&lt;Border.Background&gt;&lt;SolidColorBrush Color="#FF445566" /&gt;&lt;/Border.Background&gt;</c>
-    /// is caught because the nested brush carries a <c>Color</c> attribute. The other property
-    /// elements are not — <c>&lt;Border.CornerRadius&gt;&lt;CornerRadius&gt;4&lt;/CornerRadius&gt;&lt;/Border.CornerRadius&gt;</c>
-    /// walks past. No screen writes a property element at all today, and a reader general enough for
-    /// those would report
-    /// <c>&lt;Border.Background&gt;&lt;StaticResource ResourceKey="OliveBrush" /&gt;&lt;/Border.Background&gt;</c>,
-    /// which is the one legitimate spelling of the shape.
+    /// It reads what <see cref="Values"/> gives it — attributes and the <c>Setter</c> shape — so a
+    /// colour nested as <c>&lt;Border.Background&gt;&lt;SolidColorBrush Color="…" /&gt;</c> is caught
+    /// through the brush's own <c>Color</c> attribute, and the other property elements are not. None
+    /// is written anywhere today, and a reader general enough for them would report
+    /// <c>&lt;Border.Background&gt;&lt;StaticResource ResourceKey="OliveBrush" /&gt;</c>, the one
+    /// legitimate spelling of the shape.
     /// </para>
     /// </remarks>
     private static string[] ChosenOn(XDocument screen) =>
@@ -134,11 +134,9 @@ public partial class OlivoTests
     /// <remarks>
     /// The whole value and not a match somewhere inside it, because <c>{}</c> is XAML's escape for a
     /// literal opening on a brace: <c>{}{StaticResource PaperBrush}</c> reads as the sanctioned form
-    /// from its third character on, and is a screen writing a value down.
-    /// <para>
-    /// <see cref="Named"/> reused rather than a second anchored pattern, so one spelling of what a
-    /// key looks like reaches both the check that a key exists and the check that a value is one.
-    /// </para>
+    /// from its third character on, and is a screen writing a value down. <see cref="Named"/> reused
+    /// rather than a second anchored pattern, so one spelling of what a key looks like serves both
+    /// the check that a key exists and the check that a value is one.
     /// </remarks>
     private static bool NamesAKey(string value)
     {
@@ -150,17 +148,38 @@ public partial class OlivoTests
     }
 
     /// <summary>
-    /// The namespace every element of every screen is in, spelt onto every markup row below.
+    /// One row of markup as a screen: <paramref name="markup"/> under a root that declares the two
+    /// namespaces every screen declares.
     /// </summary>
     /// <remarks>
-    /// On the rows rather than left off them because it is the subject. <c>XElement.Elements("Setter")</c>
-    /// builds a namespace-less name and matches nothing in a real screen — it stood in two checks
-    /// here and had never matched anything — and a row parsed without this declaration puts its own
-    /// elements in no namespace, where that call works perfectly well. Such a row passes whichever
-    /// way the check reads, and proves nothing.
+    /// The namespace is supplied here and not spelt onto each row, because getting it wrong is the
+    /// one way this whole class of row lands useless and nothing would say so.
+    /// <c>XElement.Elements("Setter")</c> builds a namespace-less name and so matched nothing on a
+    /// real screen — the bug that had two of these checks green while reading nothing — but it
+    /// matches perfectly well against a row parsed with no <c>xmlns</c> at all. Such a row passes
+    /// before the fix and after it. A row cannot be written that way through this.
+    /// <para>
+    /// The root is inert: its only attributes are the two declarations, whose local names are
+    /// <c>xmlns</c> and <c>x</c> and are in neither <see cref="CarriesAValue"/> nor
+    /// <see cref="Named"/>'s vocabulary, and it is not a <c>TextBlock</c> and carries no
+    /// <c>x:Key</c>. So every reader sees the row and the root alike, and reports only the row.
+    /// </para>
     /// </remarks>
-    private const string Presentation =
-        @" xmlns=""http://schemas.microsoft.com/winfx/2006/xaml/presentation""";
+    private static XDocument Screen(string markup) =>
+        XDocument.Parse($@"<Page xmlns=""{Presentation}"" xmlns:x=""{X}"">" + markup + "</Page>");
+
+    [Fact]
+    public void A_row_is_a_screen_and_not_a_fragment_standing_in_no_namespace()
+    {
+        // Every markup row below is a screen because `Screen` says so, and this is what says `Screen`
+        // says so. A fragment parsed with no `xmlns` at all puts its elements in no namespace, which
+        // is exactly where `Elements("Setter")` starts working — so a row written that way passes
+        // with the bug this card fixed and without it, and proves nothing about either. That failure
+        // used to be available to every row author; now it is available to this one line.
+        Screen(@"<Style TargetType=""TextBlock""><Setter Property=""Opacity"" Value=""0.65"" /></Style>")
+            .Descendants()
+            .ShouldAllBe(element => element.Name.NamespaceName == Presentation);
+    }
 
     /// <summary>
     /// Every shape <see cref="ChosenOn"/> has to tell apart, as fragments rather than as a sentence
@@ -168,50 +187,30 @@ public partial class OlivoTests
     /// the check walked past while reading eight real screens green.
     /// </summary>
     /// <remarks>
-    /// Each row carries exactly one value-carrying property, which is what makes <c>Any()</c> enough
-    /// in the assertion: "something was reported" and "that value was reported" cannot come apart. A
-    /// row with two would need the expected findings written out instead.
+    /// Each row carries exactly one value-carrying property, and that is what makes <c>Any()</c>
+    /// enough in the assertion: "something was reported" and "that value was reported" cannot come
+    /// apart. A row added with two would quietly stop saying which of them was found.
     /// </remarks>
     public static TheoryData<string, bool> ChosenOrNamed() => new()
     {
-        { @"<Grid" + Presentation + @" Background=""#FCFCFB"" />", true },
-        {
-            @"<Style" + Presentation
-            + @" TargetType=""Button""><Setter Property=""Foreground"" Value=""#1C1B19"" /></Style>",
-            true
-        },
-        {
-            @"<Border" + Presentation
-            + @"><Border.Background><SolidColorBrush Color=""#FF445566"" /></Border.Background></Border>",
-            true
-        },
-        {
-            @"<Grid" + Presentation + @" xmlns:x=""" + X
-            + @"""><Grid.Resources><SolidColorBrush x:Key=""MyOwnGrey"" Color=""#B9B5AC"" />"
-            + @"</Grid.Resources></Grid>",
-            true
-        },
-        { @"<Grid" + Presentation + @" Background=""{x:Bind SomeBrushProperty}"" />", true },
-        { @"<Grid" + Presentation + @" Background=""{Binding SomeBrush}"" />", true },
-        { @"<Grid" + Presentation + @" Background=""{}{StaticResource PaperBrush}"" />", true },
-        { @"<Grid" + Presentation + @" Background=""{StaticResource PaperBrush}"" />", false },
-        {
-            @"<Style" + Presentation
-            + @" TargetType=""Button""><Setter Property=""Foreground"" Value=""{ThemeResource InkBrush}"" /></Style>",
-            false
-        },
-        { @"<Grid" + Presentation + @" Padding=""15,0,15,0"" />", false },
-        {
-            @"<Style" + Presentation
-            + @" TargetType=""Button""><Setter Property=""Padding"" Value=""15,0,15,0"" /></Style>",
-            false
-        },
+        { @"<Grid Background=""#FCFCFB"" />", true },
+        { @"<Style TargetType=""Button""><Setter Property=""Foreground"" Value=""#1C1B19"" /></Style>", true },
+        { @"<Style TargetType=""Border""><Setter Property=""Border.Background"" Value=""#FCFCFB"" /></Style>", true },
+        { @"<Border><Border.Background><SolidColorBrush Color=""#FF445566"" /></Border.Background></Border>", true },
+        { @"<Grid.Resources><SolidColorBrush x:Key=""MyOwnGrey"" Color=""#B9B5AC"" /></Grid.Resources>", true },
+        { @"<Grid Background=""{x:Bind SomeBrushProperty}"" />", true },
+        { @"<Grid Background=""{Binding SomeBrush}"" />", true },
+        { @"<Grid Background=""{}{StaticResource PaperBrush}"" />", true },
+        { @"<Grid Background=""{StaticResource PaperBrush}"" />", false },
+        { @"<Style TargetType=""Button""><Setter Property=""Foreground"" Value=""{ThemeResource InkBrush}"" /></Style>", false },
+        { @"<Grid Padding=""15,0,15,0"" />", false },
+        { @"<Style TargetType=""Button""><Setter Property=""Padding"" Value=""15,0,15,0"" /></Style>", false },
     };
 
     [Theory]
     [MemberData(nameof(ChosenOrNamed))]
     public void A_value_a_screen_chose_is_told_from_a_key_it_named(string screen, bool chose) =>
-        ChosenOn(XDocument.Parse(screen)).Any().ShouldBe(chose, screen);
+        ChosenOn(Screen(screen)).Any().ShouldBe(chose, screen);
 
     [Theory]
     [MemberData(nameof(Screens))]
@@ -242,11 +241,8 @@ public partial class OlivoTests
     /// <para>
     /// The <c>Setter</c> arm reads local names. It used to be <c>element.Elements("Setter")</c>,
     /// which builds a namespace-less <c>XName</c> while every element of every screen sits in the
-    /// presentation namespace — so that arm had never matched anything and a style quietening every
-    /// <c>TextBlock</c> wearing it went straight through. <c>Elements()</c> and not
-    /// <c>Descendants()</c>: a <c>Setter</c> is a direct child of the <c>Style</c> the
-    /// <c>TargetType</c> filter stopped at, and widening would make any <c>Style</c> above a
-    /// <c>TextBlock</c> answer for one.
+    /// presentation namespace — so that arm had never matched anything, and a style quietening every
+    /// <c>TextBlock</c> wearing it went straight through.
     /// </para>
     /// </remarks>
     private static string[] FadedIn(XDocument screen) =>
@@ -256,39 +252,47 @@ public partial class OlivoTests
             .Where(element => element.Name.LocalName == "TextBlock"
                 || (string?)element.Attribute("TargetType") == "TextBlock")
             .Where(element => element.Attribute("Opacity") is not null
-                || element.Elements().Any(child => child.Name.LocalName == "Setter"
-                    && (string?)child.Attribute("Property") == "Opacity"))
+                || SettersOf(element).Any(setter => (string?)setter.Attribute("Property") == "Opacity"))
             .Select(element => element.Name.LocalName),
     ];
+
+    /// <summary>
+    /// The <c>Setter</c>s a style carries, written either way XAML allows them: as children of the
+    /// <c>Style</c>, and inside the <c>&lt;Style.Setters&gt;</c> the content property can be spelt
+    /// out as.
+    /// </summary>
+    /// <remarks>
+    /// Both, and not <c>Descendants()</c>. A <c>Style</c> in a <c>TextBlock</c>'s own
+    /// <c>Resources</c> is a style for something else, and descending would have this element answer
+    /// for it.
+    /// </remarks>
+    private static IEnumerable<XElement> SettersOf(XElement style) => style
+        .Elements()
+        .SelectMany(child => child.Name.LocalName == "Style.Setters" ? child.Elements() : [child])
+        .Where(child => child.Name.LocalName == "Setter");
 
     /// <summary>
     /// Every shape <see cref="FadedIn"/> has to tell apart. The second row is the one that fails on
     /// <c>main</c> as this card was written: the check it holds had never run.
     /// </summary>
-    /// <remarks>
-    /// Each row carries one element that could be reported, which is what makes <c>Any()</c> enough.
-    /// </remarks>
     public static TheoryData<string, bool> QuietenedOrNot() => new()
     {
-        { @"<TextBlock" + Presentation + @" Opacity=""0.65"" />", true },
+        { @"<TextBlock Opacity=""0.65"" />", true },
+        { @"<Style TargetType=""TextBlock""><Setter Property=""Opacity"" Value=""0.65"" /></Style>", true },
         {
-            @"<Style" + Presentation
-            + @" TargetType=""TextBlock""><Setter Property=""Opacity"" Value=""0.65"" /></Style>",
+            @"<Style TargetType=""TextBlock""><Style.Setters>"
+            + @"<Setter Property=""Opacity"" Value=""0.65"" /></Style.Setters></Style>",
             true
         },
-        { @"<Border" + Presentation + @" Opacity=""0.62"" />", false },
-        {
-            @"<Style" + Presentation
-            + @" TargetType=""Border""><Setter Property=""Opacity"" Value=""0.62"" /></Style>",
-            false
-        },
-        { @"<TextBlock" + Presentation + @" Text=""Hola"" />", false },
+        { @"<Border Opacity=""0.62"" />", false },
+        { @"<Style TargetType=""Border""><Setter Property=""Opacity"" Value=""0.62"" /></Style>", false },
+        { @"<TextBlock Text=""Hola"" />", false },
     };
 
     [Theory]
     [MemberData(nameof(QuietenedOrNot))]
     public void A_line_of_text_quietened_is_told_from_a_card_that_may_be(string screen, bool quietens) =>
-        FadedIn(XDocument.Parse(screen)).Any().ShouldBe(quietens, screen);
+        FadedIn(Screen(screen)).Any().ShouldBe(quietens, screen);
 
     public static TheoryData<string> CodeBehind() =>
         [.. AppSources.With(".cs").Select(file => file.FullName)];
@@ -328,22 +332,31 @@ public partial class OlivoTests
     /// line does not.
     /// </summary>
     /// <remarks>
-    /// The third row carries both halves of the initialiser defect — the <c>new SolidColorBrush</c>
-    /// spelling and <c>ColorHelper</c> — so either arm alone catches it, and it only reddens when
-    /// both are reverted. The fourth row is what holds <c>ColorHelper</c> on its own.
+    /// Each of the six reported rows reddens under exactly one edit to <see cref="ValueInCode"/>, so
+    /// no arm of it is held by another arm's row. That is why the initialiser brush is
+    /// <c>{ Color = chosen }</c> and <c>ColorHelper</c> stands on its own line below it: written as
+    /// one row, <c>new SolidColorBrush { Color = ColorHelper.FromArgb(…) }</c>, either arm catches it
+    /// and neither is proved.
     /// </remarks>
     public static TheoryData<string, bool> WrittenOrNamedInCode() => new()
     {
         { @"Glyph.FontSize = 14;", true },
         { @"var brush = new SolidColorBrush(Colors.Red);", true },
-        { @"var brush = new SolidColorBrush { Color = ColorHelper.FromArgb(255, 28, 27, 25) };", true },
+        { @"var brush = new SolidColorBrush { Color = chosen };", true },
         { @"var c = ColorHelper.FromArgb(255, 28, 27, 25);", true },
         { @"b.Setters.Add(new Setter(TextBlock.FontSizeProperty, 14));", true },
         { @"b.Setters.Add(new Setter(Control.BackgroundProperty, ""#1C1B19""));", true },
+        { @"b.Setters.Add(new Setter { Property = TextBlock.FontSizeProperty, Value = 14 });", true },
         { @"Glyph.FontSize = Sized(""DataSize"");", false },
         { @"var brush = Painted(""OliveBrush"");", false },
         { @"b.Setters.Add(new Setter(TextBlock.FontSizeProperty, Sized(""DataSize"")));", false },
         { @"b.Setters.Add(new Setter(Control.ForegroundProperty, Painted(""InkBrush"")));", false },
+        {
+            @"b.Setters.Add(new Setter(Control.ForegroundProperty, "
+            + @"(Brush)Application.Current.Resources[""InkBrush""]));",
+            false
+        },
+        { @"b.Setters.Add(new Setter { Property = Control.ForegroundProperty, Value = Painted(""x"") });", false },
         { @"x.Padding = new Thickness(15, 0, 15, 0);", false },
         { @"// Glyph.FontSize = 14;", false },
     };
@@ -356,26 +369,21 @@ public partial class OlivoTests
     [Fact]
     public void Every_property_that_carries_a_value_is_watched_where_a_Setter_is_built_in_code()
     {
-        // `CarriesAValue` and `ValueInCode`'s `Setter` arm are one list written twice, and a name in
-        // one and not the other is a property held on the markup side and waved through on the code
-        // side, or the reverse. `Color` arrived in the set with nothing exercising it, and the same
-        // silence is available to the next name. Both directions are held here: the set comparison
-        // catches a name that is only on one side, and the loop catches an arm that names a property
-        // it cannot actually reach.
-        CarriesAValueInAPattern.Split('|')
-            .Order(StringComparer.Ordinal)
-            .ToArray()
-            .ShouldBe(
-                [.. CarriesAValue.Order(StringComparer.Ordinal)],
-                "CarriesAValue and ValueInCode's Setter arm name different properties, so one of the "
-                + "two sides is blind to what the other watches.");
-
+        // `CarriesAValue` is `CarriesAValueSpelt` split, so the markup side and the code side cannot
+        // name different properties. What that does not say is that a name in the alternation is
+        // reachable through the arm around it — the arm could be restructured so a name in it never
+        // matches, which is `Color` arriving with nothing exercising it all over again. This is what
+        // says so, over every name rather than over the two the rows above happen to use.
+        //
+        // What neither says is that the list is long enough. It iterates the list, so a name taken
+        // out of it leaves nothing behind to notice — that is one visible edit narrowing one guard,
+        // and no test derived from the list can be the thing that catches it.
         foreach (var property in CarriesAValue)
         {
             ChosenIn($@"b.Setters.Add(new Setter(Control.{property}Property, ""x""));")
                 .ShouldNotBeEmpty(
                     $"{property} is watched on a screen and nothing watches it where a screen builds "
-                    + "a Setter in code, so the two lists have come apart.");
+                    + "a Setter in code, so the two sides have come apart.");
         }
     }
 
@@ -433,12 +441,11 @@ public partial class OlivoTests
     /// A screen's own keys resolve without being in <paramref name="elsewhere"/>: it keeps the styles
     /// that are only ever its, and what a meeting's row looks like is nobody else's.
     /// <para>
-    /// Attributes, and no <c>Setter</c> arm. There used to be one, reading a <c>Setter</c>'s
-    /// <c>Value</c> off <c>element.Elements("Setter")</c>, which builds a namespace-less name and had
-    /// therefore never matched anything on a real screen. Namespacing it would have made it live and
-    /// exactly redundant: a <c>Setter</c>'s <c>Value</c> is an attribute of the <c>Setter</c>
-    /// element, and <c>Descendants()</c> stops at that element like any other. So it is gone, and the
-    /// first row of <see cref="NamesOrDefines"/> is what holds the shape it claimed.
+    /// Attributes, and no <c>Setter</c> arm. There used to be one, and it was dead for the reason
+    /// <see cref="Screen"/> gives. Reviving it would have made it live and exactly redundant: a
+    /// <c>Setter</c>'s <c>Value</c> is an attribute of the <c>Setter</c> element, and
+    /// <c>Descendants()</c> stops at that element like any other. So it is gone, and the first row of
+    /// <see cref="NamesOrDefines"/> is what holds the shape it claimed.
     /// </para>
     /// </remarks>
     private static string[] NamedButUndefinedIn(XDocument screen, IReadOnlySet<string> elsewhere)
@@ -463,30 +470,35 @@ public partial class OlivoTests
     /// The theory hands these an empty set for <c>elsewhere</c> rather than Olivo's keys. A row
     /// leaning on the real dictionary would go red the day somebody added a key called <c>Nope</c>
     /// to it, and would stop being about what it says it is about.
+    /// <para>
+    /// The last row resolves because <see cref="Keys"/> unions <see cref="PlatformBases"/> into every
+    /// document. That is this check answering "does the key exist", which it does; whether a screen
+    /// is <em>allowed</em> to name a platform base — <see cref="PlatformBases"/> says nowhere but the
+    /// dictionary — is a different question, and nothing in this class asks it.
+    /// </para>
     /// </remarks>
     public static TheoryData<string, string[]> NamesOrDefines() => new()
     {
         {
-            @"<Style" + Presentation
-            + @" TargetType=""TextBlock""><Setter Property=""Foreground"" Value=""{StaticResource Nope}"" /></Style>",
+            @"<Style TargetType=""TextBlock"">"
+            + @"<Setter Property=""Foreground"" Value=""{StaticResource Nope}"" /></Style>",
             ["Nope"]
         },
-        { @"<Grid" + Presentation + @" Background=""{StaticResource Nope}"" />", ["Nope"] },
-        { @"<Grid" + Presentation + @" Background=""{ThemeResource Nope}"" />", ["Nope"] },
+        { @"<Grid Background=""{StaticResource Nope}"" />", ["Nope"] },
+        { @"<Grid Background=""{ThemeResource Nope}"" />", ["Nope"] },
         {
-            @"<Grid" + Presentation + @" xmlns:x=""" + X
-            + @"""><Grid.Resources><SolidColorBrush x:Key=""Mine"" Color=""#B9B5AC"" /></Grid.Resources>"
+            @"<Grid><Grid.Resources><SolidColorBrush x:Key=""Mine"" Color=""#B9B5AC"" /></Grid.Resources>"
             + @"<Border Background=""{StaticResource Mine}"" /></Grid>",
             []
         },
-        { @"<Button" + Presentation + @" Style=""{StaticResource DefaultButtonStyle}"" />", [] },
+        { @"<Button Style=""{StaticResource DefaultButtonStyle}"" />", [] },
     };
 
     [Theory]
     [MemberData(nameof(NamesOrDefines))]
     public void A_key_a_screen_names_without_defining_is_found_however_it_was_written(
         string screen, string[] missing) =>
-        NamedButUndefinedIn(XDocument.Parse(screen), new HashSet<string>(StringComparer.Ordinal))
+        NamedButUndefinedIn(Screen(screen), new HashSet<string>(StringComparer.Ordinal))
             .Order(StringComparer.Ordinal)
             .ToArray()
             .ShouldBe(missing, screen);
@@ -906,6 +918,12 @@ public partial class OlivoTests
     /// What one element carries that is a colour, a size or a corner — as an attribute, and as the
     /// <c>Setter</c> shape that says the same thing inside a style.
     /// </summary>
+    /// <remarks>
+    /// A <c>Setter</c>'s <c>Property</c> is matched on the part after the last dot.
+    /// <c>Property="Border.Background"</c> is legal, is the required spelling for an attached
+    /// property, and sets exactly what <c>Property="Background"</c> sets — so a plain string
+    /// comparison against the set is a hole with a qualifier in front of it.
+    /// </remarks>
     private static IEnumerable<(string Property, string Value)> Values(XElement element)
     {
         foreach (var attribute in element.Attributes().Where(a => CarriesAValue.Contains(a.Name.LocalName)))
@@ -915,7 +933,7 @@ public partial class OlivoTests
 
         if (element.Name.LocalName == "Setter"
             && (string?)element.Attribute("Property") is { } property
-            && CarriesAValue.Contains(property)
+            && CarriesAValue.Contains(property[(property.LastIndexOf('.') + 1)..])
             && (string?)element.Attribute("Value") is { } value)
         {
             yield return (property, value);
@@ -933,6 +951,17 @@ public partial class OlivoTests
 
     private const string X = "http://schemas.microsoft.com/winfx/2006/xaml";
 
+    /// <summary>The namespace every element of every screen is in.</summary>
+    private const string Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+
+    /// <summary>A resource named in markup, and the key it names.</summary>
+    /// <remarks>
+    /// This is the detector and the authorizer both: <see cref="NamedButUndefinedIn"/> and
+    /// <see cref="Reached"/> use it to find every key anybody named, and <see cref="NamesAKey"/>
+    /// uses it to decide what a screen is allowed to write. So widening it — a dotted key, a
+    /// trailing <c>, Mode=…</c> — is not only "the check finds more", it is also "a screen may
+    /// write more", and nothing here goes red to say so.
+    /// </remarks>
     [GeneratedRegex(@"\{(?:Static|Theme)Resource\s+(?<key>[A-Za-z0-9_]+)\s*\}")]
     private static partial Regex Named();
 
@@ -971,19 +1000,6 @@ public partial class OlivoTests
     private static partial Regex EasesBothWays();
 
     /// <summary>
-    /// The nine names of <see cref="CarriesAValue"/> as an alternation, so the arm below and the set
-    /// are one list written twice rather than two lists.
-    /// </summary>
-    /// <remarks>
-    /// A <c>const</c> and not a runtime <c>Regex</c> composed from the set, so the pattern stays a
-    /// constant expression and <c>[GeneratedRegex]</c> goes on checking it when the file compiles.
-    /// <see cref="Every_property_that_carries_a_value_is_watched_where_a_Setter_is_built_in_code"/>
-    /// is what holds the two spellings equal.
-    /// </remarks>
-    private const string CarriesAValueInAPattern =
-        "Background|BorderBrush|Color|CornerRadius|Fill|FontFamily|FontSize|Foreground|Stroke";
-
-    /// <summary>
     /// A colour or a size written into code rather than named. The brush shapes are what building
     /// a colour from nothing looks like; <c>FontSize</c> is what a rank looks like when it is a
     /// number. A key read out of the dictionary is a name and never matches these.
@@ -995,14 +1011,20 @@ public partial class OlivoTests
     /// <c>ColorHelper.FromArgb(…)</c> is the idiomatic WinUI spelling and was outside the old
     /// <c>Color(s)?</c> arm entirely.
     /// <para>
-    /// The last arm is a <c>Setter</c> built in code: <c>new Setter(TextBlock.FontSizeProperty, 14)</c>
-    /// sets a size with no <c>=</c> anywhere in it, so the first arm never sees one. <c>[\w.]*</c>
-    /// takes the qualifier and backtracks so the property name matches. The whitespace after the
-    /// comma is atomic and the lookahead refuses a letter, which together are what keep
-    /// <c>new Setter(TextBlock.FontSizeProperty, Sized("DataSize"))</c> out: naming a rank or a brush
-    /// is the sanctioned route, and <c>14</c> or <c>"#1C1B19"</c> is not. Atomic because a plain
-    /// <c>\s*</c> gives the space back and lets the lookahead read it instead of the letter behind
-    /// it, which passes every sanctioned call as a failure.
+    /// The last two arms are a <c>Setter</c> built in code, in its two spellings:
+    /// <c>new Setter(TextBlock.FontSizeProperty, 14)</c> sets a size with no <c>=</c> anywhere in it,
+    /// so the first arm never sees one, and <c>new Setter { Property = …, Value = 14 }</c> is the
+    /// same failure through the initialiser — the same pair the brush arm above answers for.
+    /// <c>[\w.]*</c> takes the qualifier and backtracks so the property name matches.
+    /// </para>
+    /// <para>
+    /// What tells a value from a name is <see cref="ThroughOlivo"/> after the value opens. It has to
+    /// be read on the character the value starts at, and the whitespace before it is therefore
+    /// atomic: a plain <c>\s*</c> hands the space back and lets the lookahead read <em>it</em>
+    /// instead of the character behind it, which passes every sanctioned call as a failure. That was
+    /// the shape this arm was first written in, and it reported
+    /// <c>new Setter(TextBlock.FontSizeProperty, Sized("DataSize"))</c> — which is the route the
+    /// class exists to sanction.
     /// </para>
     /// </remarks>
     [GeneratedRegex(
@@ -1010,8 +1032,30 @@ public partial class OlivoTests
         + @"|new\s+SolidColorBrush\b"
         + @"|Color(?:s|Helper)?\.From[A-Za-z]*\s*\("
         + @"|Colors\.[A-Za-z]"
-        + @"|new\s+Setter\s*\(\s*[\w.]*(?:" + CarriesAValueInAPattern + @")Property\s*,(?>\s*)(?![A-Za-z_])")]
+        + @"|new\s+Setter\s*\(\s*[\w.]*(?:" + CarriesAValueSpelt + @")Property\s*,(?>\s*)" + ThroughOlivo
+        + @"|new\s+Setter\s*\{[^}]*(?:" + CarriesAValueSpelt + @")Property[^}]*Value\s*=(?>\s*)" + ThroughOlivo)]
     private static partial Regex ValueInCode();
+
+    /// <summary>
+    /// What a value handed to a <c>Setter</c> built in code looks like when it did <em>not</em> come
+    /// through Olivo — read as: the value does not open on one of the sanctioned routes.
+    /// </summary>
+    /// <remarks>
+    /// A letter or an underscore opens a call or a member, which is <c>Sized("DataSize")</c>,
+    /// <c>Painted("InkBrush")</c> or a field holding one of those. <c>@</c> opens a verbatim
+    /// identifier, which is the same thing spelt round a keyword. <c>(</c> opens a cast, and
+    /// <c>(Brush)Application.Current.Resources[key]</c> is verbatim the body of this application's
+    /// own <c>Painted</c> — refusing it would put the guard in front of the route it sanctions,
+    /// which is how a guard stops being believed.
+    /// <para>
+    /// So <c>14</c> and <c>"#1C1B19"</c> are what is left, and they are the failure. What this buys
+    /// the miss with is one level of indirection: <c>var size = 14;</c> and then <c>size</c> passes,
+    /// because it opens on a letter like every sanctioned value does. Telling those apart is a
+    /// scanner and not a pattern, and the smaller mistake is the one that under-reports —
+    /// <c>SourceLines</c> makes the same call for the same reason.
+    /// </para>
+    /// </remarks>
+    private const string ThroughOlivo = @"(?![A-Za-z_@(])";
 
     /// <summary>A resource asked for by name from code.</summary>
     [GeneratedRegex(@"(?:Resources\[|Painted\(|Chrome\(|Sized\()""(?<key>\w+)""")]
