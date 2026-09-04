@@ -176,137 +176,102 @@
   "annotations": [
     {
       "id": "f-intro",
-      "x": 0,
-      "y": -330,
-      "w": 940,
       "page": "page-1",
-      "text": "Dieciséis pantallas en Olivo. Fila 1: grabar. Fila 2: lo que pasa cuando la grabación termina o se rompe. Fila 3: lo que se hace con la reunión después. Fila 4: lo que cruza todo el flujo.\nDos lugares fijos para los botones en las dieciséis: a la izquierda lo neutro, a la derecha el acto, y lo que se pierde o se cobra apartado más a la izquierda. Un verbo por acto. Radios 4 / 8 / 12 y círculo sólo donde la cosa es genuinamente redonda. Una oración por pantalla, y sólo donde algo falló."
+      "text": "Diecisiete pantallas en Olivo. Fila 1: grabar. Fila 2: lo que pasa cuando la grabación termina o se rompe. Fila 3: lo que se hace con la reunión después. Fila 4: lo que cruza todo el flujo.\nDos lugares fijos para los botones en las diecisiete: a la izquierda lo neutro, a la derecha el acto, y lo que se pierde o se cobra apartado más a la izquierda. Un verbo por acto. Radios 4 / 8 / 12 y círculo sólo donde la cosa es genuinamente redonda. Una oración por pantalla, y sólo donde algo falló."
     },
     {
       "id": "f-inicio",
-      "x": 0,
-      "y": -180,
-      "w": 340,
+      "file": "Main.dc.html",
       "page": "page-1",
       "text": "El selector de programa y el de micrófono están pegados al medidor: se elige, se mira, se elige el siguiente. Es el caso de los tres Teams."
     },
     {
       "id": "f-vivo",
-      "x": 2400,
-      "y": -180,
-      "w": 340,
+      "file": "GrabandoVivo.dc.html",
       "page": "page-1",
       "text": "En vivo, el texto aparece palabra por palabra y la cola va en gris: eso es lo provisorio, que el proveedor todavía corrige. Lo gris no es lo que se guarda."
     },
     {
       "id": "f-diferido",
-      "x": 3600,
-      "y": -180,
-      "w": 340,
+      "file": "GrabandoDiferido.dc.html",
       "page": "page-1",
       "text": "Al terminar, la pantalla es más callada a propósito: sin transcripción, los medidores se quedan con el lugar. No hay relleno inventado para tapar el hueco."
     },
     {
       "id": "f-nada",
-      "x": 4800,
-      "y": -180,
-      "w": 340,
+      "file": "NadaLlego.dc.html",
       "page": "page-1",
       "text": "Cambiar de programa está junto al medidor del canal 0, que es la evidencia. Las dos salidas funcionan: grabar toda la máquina ya andaba, y mover el canal 0 a otro programa se decidió el 2026-08-25 y es trabajo con card propia."
     },
     {
       "id": "f-fallo",
-      "x": 0,
-      "y": 730,
-      "w": 340,
+      "file": "Fallo.dc.html",
       "page": "page-1",
       "text": "Perder el micrófono no mata la reunión: el canal 0 sigue y se ve que sigue. Cambiar de micrófono al vuelo ya funciona — el motor se mergeó en ISC-78."
     },
     {
       "id": "f-parar",
-      "x": 1200,
-      "y": 730,
-      "w": 340,
+      "file": "AlParar.dc.html",
       "page": "page-1",
       "text": "Sin el cartel de «no cierres la app». Si se cierra, se recupera en la próxima. La reunión ya aparece abajo, guardándose."
     },
     {
       "id": "t-config",
-      "x": 2400,
-      "y": 730,
-      "w": 340,
+      "file": "Configuracion.dc.html",
       "page": "page-1",
       "text": "Qué pasa al terminar una grabación se lleva un tercio de la pantalla porque es la única elección de acá que gasta plata. Los dos motores comparten una tarjeta, y los tres ajustes callados van densos sobre el papel."
     },
     {
       "id": "f-leer",
-      "x": 0,
-      "y": 1560,
-      "w": 620,
+      "file": "Reunion.dc.html",
       "page": "page-1",
       "text": "La pantalla de leer la transcripción ya no existe: nadie abre una app para leer 148 turnos. En su lugar está lo que dejó la IA, y la transcripción pasó a ser lo que abre una cita — se despliega ahí mismo, sin irse a otro lado.\nEn el reproductor, las marcas de colores son las citas del resumen: se ve dónde cae cada cosa a lo largo de la hora."
     },
     {
       "id": "c-clasificar",
-      "x": 2400,
-      "y": 1560,
-      "w": 340,
+      "file": "Clasificar.dc.html",
       "page": "page-1",
       "text": "Cada cadena es un vínculo dibujado como su camino en el árbol. El + de adentro baja un nivel en el mismo árbol; agregar otra cadena es otro control, abajo. Una reunión de dos empresas es normal, no una excepción."
     },
     {
       "id": "c-quien",
-      "x": 3600,
-      "y": 1560,
-      "w": 340,
+      "file": "QuienEsQuien.dc.html",
       "page": "page-1",
       "text": "Las voces se llaman «Tu micrófono», «Voz 1», «Voz 2», y no por la etiqueta con la que se guardan. Cada una trae un fragmento y un corte de audio; la que habla poco trae tres."
     },
     {
       "id": "c-correcciones",
-      "x": 4800,
-      "y": 1560,
-      "w": 340,
+      "file": "Correcciones.dc.html",
       "page": "page-1",
       "text": "El problema no era aplicar las correcciones sino encontrarlas: nadie va a leer el corpus buscando qué salió mal. Acá la persona escribe la palabra como va y el corpus le devuelve cómo quedó escrita; abajo aparecen solas las que sonaron dudosas y se parecen a algo que decís seguido. Ninguna de las dos listas necesita que un modelo lea las reuniones."
     },
     {
       "id": "f-abierto",
-      "x": 1200,
-      "y": -180,
-      "w": 340,
+      "file": "MainAbierto.dc.html",
       "page": "page-1",
       "text": "La lista de reuniones es un cajón: chica scrollea, y apretando el encabezado sube y ocupa todo el alto. La misma pantalla, no otra."
     },
     {
       "id": "c-cruda",
-      "x": 1200,
-      "y": 1560,
-      "w": 340,
+      "file": "ReunionCruda.dc.html",
       "page": "page-1",
       "text": "Grabada y sin transcribir es lo que una reunión es casi siempre. Escucharla no cuesta nada, y por eso el reproductor es el acto principal."
     },
     {
       "id": "x-primera",
-      "x": 0,
-      "y": 2540,
-      "w": 340,
+      "file": "Primera.dc.html",
       "page": "page-1",
       "text": "Una sola pregunta, una sola vez: quién usa la aplicación. Sin ella la voz del micrófono se resuelve a nadie."
     },
     {
       "id": "x-costo",
-      "x": 1200,
-      "y": 2540,
-      "w": 620,
+      "file": "Costo.dc.html",
       "page": "page-1",
       "text": "Lo único que detiene la pantalla es un cobro. Transcribir estima sobre la duración real de la reunión; resumir muestra el precio oficial del modelo y no estima nada, porque no hay estimación honesta."
     },
     {
       "id": "x-persona",
-      "x": 2400,
-      "y": 2540,
-      "w": 340,
+      "file": "Persona.dc.html",
       "page": "page-1",
       "text": "El segundo y último diálogo. Agrega una afiliación y nunca reemplaza una: alguien tiene tantas como tenga, cada una con su período."
     }
