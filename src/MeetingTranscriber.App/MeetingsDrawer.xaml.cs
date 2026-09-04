@@ -14,6 +14,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+
+using Windows.Foundation;
 
 // WinUI has a Duration of its own — an animation's, in ticks — and both meanings are in scope
 // here. Aliased rather than qualified at the use, for the reason `MainWindow` gives.
@@ -135,6 +138,27 @@ public sealed partial class MeetingsDrawer : UserControl
     /// as. Empty until the first read, which is what a drawer that has not read yet must show.
     /// </summary>
     private IReadOnlyList<WaitingRow> _waiting = [];
+
+    /// <summary>
+    /// Every press the last draw put on the list, by the id it can be found again by.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Rebuilt on every draw, because every button on it is. It is what turns the id somebody had
+    /// the keyboard on into the button carrying that id now, and being in it is also the whole of
+    /// the question <em>was the focus on this list at all</em>: an automation id is set in exactly
+    /// two places in the application, the channel strips on the recorder and
+    /// <see cref="KnownAs"/> here, so nothing else in the window can be a key.
+    /// </para>
+    /// <para>
+    /// Case-insensitively, because half the keys carry a spool folder's name and no key on this
+    /// screen built out of one is anything else — <see cref="_survived"/>, <see cref="_asked"/>,
+    /// <see cref="_wouldNotRead"/> and <see cref="BeingKept"/> all compare a folder that way, off
+    /// its whole path where this compares its name. Windows is what decides whether the two
+    /// spellings can differ, and it is not this screen's to answer.
+    /// </para>
+    /// </remarks>
+    private readonly Dictionary<string, Button> _presses = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// The folder of the recording being kept right now, when one is being kept.
@@ -353,6 +377,11 @@ public sealed partial class MeetingsDrawer : UserControl
     /// whole correct list, for as long as nobody pressed anything. Which is the recovery this is
     /// the second half of, failing one look later instead of not failing.
     /// </para>
+    /// <para>
+    /// And the line after the read is <see cref="SaysWhatItIsShowing"/> rather than a second
+    /// <see cref="Render"/>, for the reason that method gives — the sentence is the whole of what
+    /// this owes, and here it is owed twice a second.
+    /// </para>
     /// </remarks>
     private void OnTheCorpusChanged(object? sender, EventArgs e) =>
         DispatcherQueue.TryEnqueue(() =>
@@ -365,7 +394,7 @@ public sealed partial class MeetingsDrawer : UserControl
             var said = _theListRead ? _status : null;
             Read();
             _status ??= said;
-            Render();
+            SaysWhatItIsShowing();
         });
 
     /// <summary>
@@ -684,25 +713,24 @@ public sealed partial class MeetingsDrawer : UserControl
             : UiTexts.OpenTheMeetingsWhole);
 
     /// <summary>
-    /// Everything on screen, built from the meetings last read. Nothing here decides anything: it
-    /// is the reading of an answer already given.
+    /// Everything on screen, built from the meetings last read, with somebody's place in it kept
+    /// across the rebuild: the press that had the keyboard is taken before the cards go and given
+    /// back once they are all there.
     /// </summary>
+    /// <remarks>
+    /// Nothing here decides what is shown — that is the reading of an answer already given — and
+    /// the order is the method. The capture has to read <see cref="_presses"/> before the clear
+    /// that empties it, and the restore has to run after the last card is added, because the id it
+    /// looks up is looked up among the new buttons. Nothing can come between them: this method has
+    /// no await in it and this control subscribes to no layout event.
+    /// </remarks>
     private void Render()
     {
-        // Nothing about how many there are when the corpus would not open or would not be read:
-        // an empty list is not the same fact as no meetings, and "there is none here yet" over a
-        // corpus nobody reached is the lie Read refuses to tell one line further up.
-        CountText.Text = _status is not null
-            ? string.Empty
-            : _meetings.Count == 0 && _waiting.Count == 0
-                ? In(UiTexts.NoMeetingsHereYet)
-                : UiTexts.SomeAreWaitingToBeTold.In(
-                    _language,
-                    _meetings.Count(entry => entry.Owed.IsOwed)
-                        + _waiting.Count(row => row.WaitsOnSomebody));
+        SaysWhatItIsShowing();
 
-        MeetingsStatusText.Text = _status?.In(_language) ?? string.Empty;
+        var place = WhereTheyWere();
 
+        _presses.Clear();
         Cards.Children.Clear();
 
         // The recordings first, which is the whole of where they go: a recording the application
@@ -725,6 +753,152 @@ public sealed partial class MeetingsDrawer : UserControl
                 Cards.Children.Add(Card(entry));
             }
         }
+
+        PutThemBack(place);
+    }
+
+    /// <summary>
+    /// The two lines above the cards: how many are waiting to be told, and whatever the last thing
+    /// that happened had to say.
+    /// </summary>
+    /// <remarks>
+    /// Apart from the cards, because a sentence and a list are two different things to owe and
+    /// most of what happens here owes only the first. Everything that ends in <see cref="Read"/>
+    /// has already had every card rebuilt by it, and everything that could not reach the corpus at
+    /// all has changed nothing a card is built from — so a <see cref="Render"/> after either was
+    /// always a redraw for nothing, and after this control started keeping somebody's place it
+    /// would be their focus taken away and handed back a second time as well. The two calls left
+    /// that really do owe a rebuild are the ones where a card's own facts moved:
+    /// <see cref="ReadWhatSurvived"/> learning what a recording is worth, and a keep starting.
+    /// </remarks>
+    private void SaysWhatItIsShowing()
+    {
+        // Nothing about how many there are when the corpus would not open or would not be read:
+        // an empty list is not the same fact as no meetings, and "there is none here yet" over a
+        // corpus nobody reached is the lie Read refuses to tell one line further up.
+        CountText.Text = _status is not null
+            ? string.Empty
+            : _meetings.Count == 0 && _waiting.Count == 0
+                ? In(UiTexts.NoMeetingsHereYet)
+                : UiTexts.SomeAreWaitingToBeTold.In(
+                    _language,
+                    _meetings.Count(entry => entry.Owed.IsOwed)
+                        + _waiting.Count(row => row.WaitsOnSomebody));
+
+        MeetingsStatusText.Text = _status?.In(_language) ?? string.Empty;
+    }
+
+    /// <summary>The press somebody was on when this list was last drawn, and how they got to it.</summary>
+    /// <param name="Press">
+    /// The id of the press, or null for every draw where the keyboard was somewhere else.
+    /// </param>
+    /// <param name="How">
+    /// How it was reached, carried back rather than settled at the restore so that somebody who
+    /// tabbed there keeps the focus rectangle they had and somebody who clicked there does not
+    /// gain one. Only ever read when a press was captured, which means it was the focused element.
+    /// </param>
+    private readonly record struct TheirPlace(string? Press, FocusState How);
+
+    /// <summary>Which press on this list has the keyboard, if the keyboard is on this list at all.</summary>
+    /// <remarks>
+    /// <para>
+    /// Three things have to hold before there is a place to keep, and each of them is a way the
+    /// answer is nothing. The focus manager answers for the whole window rather than for this
+    /// control, so being a key in <see cref="_presses"/> is what says the keyboard was on this
+    /// list. A control the manager names that says it is not focused is not somebody's place
+    /// either, and the value it would carry back is the one <see cref="Control.Focus"/> refuses.
+    /// </para>
+    /// <para>
+    /// And the press has to be where somebody can still see it, which is the one of the three that
+    /// is about what a redraw costs rather than about what it can find. Giving the keyboard to a
+    /// control inside a scrolling list brings that control into view, so a press somebody has
+    /// scrolled away from would drag the whole list back to it every time the corpus changed — the
+    /// list moving under its reader, on a timer, which is the sentence this card exists against. A
+    /// press nobody can see is one they have already left, so it is left.
+    /// </para>
+    /// </remarks>
+    private TheirPlace WhereTheyWere()
+    {
+        // Null while the window is still being built, which is what the first draw is: MainWindow
+        // hands this control its corpus before it activates the window.
+        if (XamlRoot is null || FocusManager.GetFocusedElement(XamlRoot) is not Control focused)
+        {
+            return default;
+        }
+
+        var id = AutomationProperties.GetAutomationId(focused);
+
+        return _presses.ContainsKey(id)
+            && focused.FocusState is not FocusState.Unfocused
+            && WhereItCanBeSeen(focused)
+                ? new TheirPlace(id, focused.FocusState)
+                : default;
+    }
+
+    /// <summary>Whether this press is inside the room this control has on the window.</summary>
+    /// <remarks>
+    /// The drawer's own bounds and not the scrolling area's, because the two differ by a header
+    /// that is always there and the difference costs at most a press half under it — while asking
+    /// the scroller would mean naming a control in the markup for a question about this one. A
+    /// drawer that is <see cref="Visibility.Collapsed"/> behind the meeting screen or the
+    /// classifier measures nothing, so every press on it reads as unseeable, which is the right
+    /// answer twice over: it goes on drawing there, and the keyboard is on the screen that has the
+    /// room.
+    /// </remarks>
+    private bool WhereItCanBeSeen(FrameworkElement press)
+    {
+        if (ActualWidth <= 0 || ActualHeight <= 0)
+        {
+            return false;
+        }
+
+        var sits = press
+            .TransformToVisual(this)
+            .TransformBounds(new Rect(0, 0, press.ActualWidth, press.ActualHeight));
+
+        sits.Intersect(new Rect(0, 0, ActualWidth, ActualHeight));
+
+        return !sits.IsEmpty;
+    }
+
+    /// <summary>Gives the keyboard back to the press it was taken from, or to nothing.</summary>
+    /// <remarks>
+    /// <para>
+    /// Only ever to the same press on the same row. Never to a neighbour and never to the row's
+    /// other button: the presses on this list spend money, and a focus that landed one control
+    /// over would turn somebody's next Enter into a charge they did not choose. A press that is no
+    /// longer drawn — the act it buys changed, a keep started, the meeting left the list — is a
+    /// press that has genuinely gone, so nothing takes its place.
+    /// </para>
+    /// <para>
+    /// It asks twice because the answer to the first ask is the one thing here no probe a build
+    /// agent runs can settle: this press was constructed a few lines above, and whether WinUI will
+    /// focus a control that is in the tree and has not been loaded yet is the framework's to say.
+    /// <see cref="Control.Focus"/> says which it did, so the second ask is the frame the press
+    /// becomes focusable on and costs nothing when the first one landed. Through this method again
+    /// rather than over the button, so that a draw that has already replaced it hands the keyboard
+    /// to what is drawn now — or, when the press has gone with it, to nothing.
+    /// </para>
+    /// </remarks>
+    private void PutThemBack(TheirPlace place)
+    {
+        if (place.Press is not { } id || !_presses.TryGetValue(id, out var press))
+        {
+            return;
+        }
+
+        if (press.Focus(place.How))
+        {
+            return;
+        }
+
+        void WhenItIsThere(object sender, RoutedEventArgs e)
+        {
+            press.Loaded -= WhenItIsThere;
+            PutThemBack(place);
+        }
+
+        press.Loaded += WhenItIsThere;
     }
 
     /// <summary>One recording nobody got to stop, as the row it is offered in.</summary>
@@ -908,6 +1082,7 @@ public sealed partial class MeetingsDrawer : UserControl
                 Style = Chrome("ItLosesSomething"),
             };
 
+            KnownAs(discard, RowPresses.ToAnswer(row.Recording.Folder.Name, WaitingAnswer.Discard));
             discard.Click += (_, _) => Decide(row, WaitingAnswer.Discard);
             answers.Children.Add(discard);
         }
@@ -915,6 +1090,7 @@ public sealed partial class MeetingsDrawer : UserControl
         if (kept)
         {
             var keep = new Button { Content = In(UiTexts.Keep), Style = Chrome("TakeTheStage") };
+            KnownAs(keep, RowPresses.ToAnswer(row.Recording.Folder.Name, WaitingAnswer.Keep));
             keep.Click += (_, _) => Decide(row, WaitingAnswer.Keep);
             answers.Children.Add(keep);
         }
@@ -981,8 +1157,8 @@ public sealed partial class MeetingsDrawer : UserControl
         // every meeting nobody has named reads the same two words, and nothing on the screen can
         // then be told from anything else. The id says which meeting, in every language and for
         // as long as the meeting exists, which is what a tool driving this window needs to press
-        // one of twelve rows.
-        AutomationProperties.SetAutomationId(open, entry.Meeting.Id.ToString());
+        // one of twelve rows — and what a redraw needs to find this press again afterwards.
+        KnownAs(open, RowPresses.ToOpen(entry.Meeting.Id));
 
         open.Click += (_, _) => MeetingChosen?.Invoke(this, entry.Meeting.Id);
         lines.Children.Add(open);
@@ -1040,6 +1216,27 @@ public sealed partial class MeetingsDrawer : UserControl
     private Style Chrome(string named) => (Style)Root.Resources[named];
 
     /// <summary>
+    /// Puts an id on a press and remembers it under that id, which is one act and never two.
+    /// </summary>
+    /// <remarks>
+    /// Every button this list draws goes through here. An id set without the press being
+    /// remembered is one a tool can press and a redraw cannot give back, which reads as working
+    /// right up to the tick that drops somebody's place.
+    /// <para>
+    /// Called <c>KnownAs</c> and not <c>Named</c> because this screen already tells the two apart:
+    /// a name is read out and is in the reader's language, an id is the same in every language and
+    /// nobody hears it. The indexer and not <c>Add</c>: two rows sharing an id needs the list to
+    /// draw one row twice, and throwing on a draw made while a meeting is being recorded is a
+    /// worse answer than focus landing on the second of two identical cards.
+    /// </para>
+    /// </remarks>
+    private void KnownAs(Button press, string id)
+    {
+        AutomationProperties.SetAutomationId(press, id);
+        _presses[id] = press;
+    }
+
+    /// <summary>
     /// The stage's two answers, each on screen only when it is one somebody may give.
     /// </summary>
     /// <remarks>
@@ -1063,6 +1260,7 @@ public sealed partial class MeetingsDrawer : UserControl
         if (owed.MayBeLeft)
         {
             var leave = new Button { Content = In(UiTexts.Ignore), Style = Chrome("TheNeutralOne") };
+            KnownAs(leave, RowPresses.ToLeave(meeting));
             leave.Click += (_, _) => Answer(meeting, decline: true);
             row.Children.Add(leave);
         }
@@ -1070,6 +1268,8 @@ public sealed partial class MeetingsDrawer : UserControl
         if (owed.MayBeTaken)
         {
             var take = new Button { Content = In(MeetingWords.Action(next)), Style = Chrome("TakeTheStage") };
+
+            KnownAs(take, RowPresses.ToTake(meeting, next));
             take.Click += (_, _) => Answer(meeting, decline: false);
             row.Children.Add(take);
         }
@@ -1089,7 +1289,7 @@ public sealed partial class MeetingsDrawer : UserControl
             // Said, not swallowed. A button that visibly does nothing is worse than one that says
             // the corpus is not reachable, which is what the list already says.
             _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
-            Render();
+            SaysWhatItIsShowing();
             return;
         }
 
@@ -1130,7 +1330,7 @@ public sealed partial class MeetingsDrawer : UserControl
         // with nothing wrong in it.
         Read();
         _status ??= said;
-        Render();
+        SaysWhatItIsShowing();
     }
 
     /// <summary>
@@ -1176,7 +1376,7 @@ public sealed partial class MeetingsDrawer : UserControl
         {
             // Said, not swallowed, for the reason the presses above say it.
             _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
-            Render();
+            SaysWhatItIsShowing();
             return;
         }
 
@@ -1209,7 +1409,7 @@ public sealed partial class MeetingsDrawer : UserControl
             // re-read itself had to say still wins over both, for the reason the presses above
             // give.
             _status ??= _keeping is null ? said : TextLine.Says(UiTexts.TheRecordingIsBeingKept);
-            Render();
+            SaysWhatItIsShowing();
             return;
         }
 
@@ -1266,7 +1466,7 @@ public sealed partial class MeetingsDrawer : UserControl
 
         Read();
         _status ??= said;
-        Render();
+        SaysWhatItIsShowing();
     }
 
     /// <summary>
