@@ -168,6 +168,87 @@ public sealed class MeetingRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// A finish commits the row describing the meeting's audio and the meeting's length together, so
+    /// no reader looking while it runs is ever handed a meeting that was recorded and has no length.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The two used to be two commits, which was latent until the meetings list started looking every
+    /// two seconds (#205 / PR #281) — every read of that list used to be a moment the window chose.
+    /// What is asserted is the shape of every state a reader could be handed rather than one state at
+    /// one moment, which is why the assertion is a loop over readings and an equality rather than a
+    /// one-way implication: a length over no audio is the other half of the same wrongness.
+    /// </para>
+    /// <para>
+    /// <c>SavingChanges</c> and <c>SavedChanges</c> are plain CLR events raised immediately before the
+    /// batch and at the end of <c>SaveChanges</c>, after any implicit transaction has committed, so a
+    /// read taken in either one is the state an outside reader is handed at that moment. Both are
+    /// hooked and not only the second: committing a transaction is not a <c>SaveChanges</c> and raises
+    /// nothing, so a gap opened between the commit and the next save is visible only from the near
+    /// side of that next save. Nothing is unsubscribed because the context is disposed here.
+    /// </para>
+    /// <para>
+    /// Each reading is taken through <see cref="CorpusDatabase.OpenReadOnly"/> — a second connection,
+    /// opened the way the watch opens its own — so what is read is the database rather than this
+    /// context's tracker, and the arrangement is the one the product runs every two seconds. Reading
+    /// while a writer is live is the point here, so <c>CorpusSchemaTests</c>'s warning about clearing
+    /// the pools and closing the writer first does not reach this: that one is about a reader arriving
+    /// after the writer has gone. The precedent for this arrangement is
+    /// <c>MeetingsWatchTests.A_stage_that_moved_behind_the_application_is_told_about</c>, which runs a
+    /// live watch — and so <see cref="CorpusDatabase.OpenReadOnly"/> on a timer — while a migrated
+    /// context is open and a second one writes.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void No_reader_is_ever_handed_a_meeting_recorded_with_no_length()
+    {
+        using var context = corpus.OpenMigrated();
+        var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
+
+        var card = Fabricated.CardFor(prepared.MeetingId, now);
+        SpoolManifest.Write(prepared.Spool, card);
+        MeetingRecordings.Began(context, card);
+
+        // Attached after the setup saves, so what is collected is the finish and nothing before it.
+        var handed = new List<(bool Audio, Duration? Length)>();
+        context.SavingChanges += (_, _) => handed.Add(WhatAnOutsideReaderSees());
+        context.SavedChanges += (_, _) => handed.Add(WhatAnOutsideReaderSees());
+
+        MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(2));
+
+        // The window really spans the change, so an assertion over an empty list or over one taken
+        // entirely after the finish had landed cannot pass by saying nothing.
+        // `HasValue` and not `is null`: Shouldly takes these as expression trees, which have no
+        // patterns in them.
+        handed.ShouldContain(seen => !seen.Audio && !seen.Length.HasValue);
+        handed.ShouldContain(seen => seen.Audio && seen.Length.HasValue);
+
+        foreach (var (audio, length) in handed)
+        {
+            // The half the card is about is a meeting recorded with no length, and the other half is
+            // a length over no recording. Either both or neither, at every one of these moments.
+            audio.ShouldBe(length is not null);
+        }
+
+        // And the finished one is what is there at the end, so the readings above are of a commit
+        // that happened rather than of one that rolled back.
+        using var reopened = corpus.Open();
+        reopened.Artifacts.ShouldContain(row => row.Kind == ArtifactKind.Audio);
+        reopened.Meetings.Single().Duration.ShouldNotBeNull();
+
+        (bool Audio, Duration? Length) WhatAnOutsideReaderSees()
+        {
+            using var reading = CorpusDatabase.OpenReadOnly(corpus.Root);
+
+            return (
+                reading.Artifacts.Any(row =>
+                    row.MeetingId == prepared.MeetingId && row.Kind == ArtifactKind.Audio),
+                reading.Meetings.Single(row => row.Id == prepared.MeetingId).Duration);
+        }
+    }
+
+    /// <summary>
     /// ISC-165.1. A meeting somebody recorded and never named comes out of the whole path with no
     /// name at all, so what a screen has to show is that nobody named it.
     /// </summary>
