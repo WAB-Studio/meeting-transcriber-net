@@ -57,6 +57,14 @@ When the work belongs to no claim — dependencies, cleanup, a formatting adjust
 **Done when:** <what has to be true, and how you know>
 ```
 
+- **An issue is about the product, and the repository's own machinery never gets one.** The ISA
+  file's prose and its gate constants, an agent's or a skill's wording, the board's automation, the
+  UI probe, a CI job, a test bench, `CLAUDE.md`'s own budget: none of those is something somebody
+  recording a meeting would notice, so none of them is a card. That work rides on the next pull
+  request that touches the file, or it is a comment on the one that surfaced it — and where it is
+  genuinely too big for either, it is **a line on the standing machinery card**, never a card of its
+  own. Twenty-two of them were folded away on 2026-09-03 for having been opened one at a time, each
+  correctly refused by the PR it came out of and each labelled the way product work is labelled.
 - **The issue points at the ISA, it does not copy it.** Cite the ID and nothing more; the text lives
   where it can change. If what has to be achieved should be a claim and is not, it gets written in
   `ISA.md` first — through the `isa` skill, never by hand. The ISA never points back: no issue
