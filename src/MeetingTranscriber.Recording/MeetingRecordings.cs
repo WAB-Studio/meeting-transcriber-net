@@ -176,6 +176,16 @@ public static class MeetingRecordings
     /// to a spool is somebody's, never a side effect of stopping.
     /// </para>
     /// <para>
+    /// The row describing that audio and the meeting's length arrive in one commit, so no reader is
+    /// ever handed a meeting that was recorded and has no length. They used to arrive in two, and
+    /// what made that reachable is a list that looks every two seconds rather than when somebody
+    /// asks. Inside the commit the length is written first and the audio row last, because the audio
+    /// row's save is the one that renames the file into place and that is the only step here nothing
+    /// can undo. The recovery card is written after the commit and deliberately outside it — the
+    /// comment above <see cref="MeetingManifest.Write"/> below says what that costs and what holding
+    /// it inside would cost instead.
+    /// </para>
+    /// <para>
     /// <paramref name="told"/> is somebody watching it happen and is never anything else. It comes
     /// before every step of the save and reads nothing, so what is filed cannot depend on whether
     /// anybody is watching — which is what makes a meeting stopped on a screen and one stopped at a
@@ -259,18 +269,52 @@ public static class MeetingRecordings
         var made = MeetingAudio.Materialise(spool);
         var path = CorpusFiles.PathFor(meeting.Id, MeetingAudio.FileName);
 
-        var audio = Filed(corpus, meeting.Id, path, made)
-            ?? DurableArtifact.Write(
+        var filed = Filed(corpus, meeting.Id, path, made);
+
+        // Staged outside the transaction, and only its commit is inside. Writing the copy, flushing
+        // it to the disk, hashing what was meant and hashing what came back off a fresh handle are
+        // minutes for a long meeting; EF issues `BEGIN IMMEDIATE`, so the corpus's only write lock
+        // is taken at the `BeginTransaction` line rather than at the first write, and
+        // `CorpusDatabase.BusyTimeoutMilliseconds` is five seconds. Staged inside, stopping an hour
+        // of meeting would refuse every other writer in the application — somebody being named on
+        // another meeting, a classification being filed, a job finishing — for as long as the copy
+        // took. Staged outside, the lock is held for two saves.
+        using var staging = filed is null
+            ? StagedArtifact.Stage(
                 corpus,
                 meeting.Id,
                 ArtifactKind.Audio,
                 path,
-                now,
                 into =>
                 {
                     using var recording = made.File.OpenRead();
                     recording.CopyTo(into);
-                });
+                })
+            : null;
+
+        // The row describing the audio and the meeting's length are one commit and not two. Between
+        // two commits the corpus holds a meeting `MeetingStage.Of` answers `Recorded` for with no
+        // length on it, and the meetings list reads the corpus every two seconds, so that is a wrong
+        // sentence about somebody's meeting rather than a state only a test could catch.
+        //
+        // A bare `BeginTransaction()` and not the `CurrentTransaction is null ? … : null` the other
+        // writers over this corpus spell, so a caller holding one is refused here and loudly. It
+        // would be the wrong thing to join: joining means `filing` is null, so the commit below is a
+        // no-op, the card is written inside the caller's transaction — the trap the comment above
+        // that call names — and the caller's write lock has already been held across `Materialise`
+        // and the copy, which is what staging outside this line exists to avoid. Composing over a
+        // finish is not something this method can do safely, so it says so at the first attempt
+        // rather than by stranding a meeting later.
+        //
+        // What it covers is the write and not the lookup: `Filed` above read the `artifacts` table
+        // before this line. Nothing else may write an `Audio` row for a meeting being finished —
+        // `SavingMark.Take` holds the folder for the whole of this — so the two cannot disagree.
+        //
+        // A finish that threw hands back a context nobody may save again: rolling the transaction
+        // back does not undo EF's tracker, so `meeting.Duration` and `run.FinishedAt` are still
+        // pending on it and a second save would write a length over no audio row. Every caller
+        // today either disposes the context or lets the throw straight out.
+        using var filing = corpus.Database.BeginTransaction();
 
         meeting.Duration = made.Length;
         meeting.UpdatedAt = now;
@@ -287,11 +331,41 @@ public static class MeetingRecordings
 
         corpus.SaveChanges();
 
-        // Last, after the save above, because this call saves too and everything it would carry
-        // into a second write is already down. Not because of the length: the card carries the
-        // meeting, when it started, the profile, the language and the title, and says nothing about
-        // how long it is — which is what the sentence here used to claim. Nothing about ordering is
-        // a rule for the other three writers, which each hold a transaction open across this call.
+        // The audio row is committed after the length and not before it — the reverse of the order
+        // these two lines used to sit in, and the same order `MeetingIntake.Record` and
+        // `AudioIntake.Filed` already write in. This save is the one that renames `audio.wav` into
+        // place, and that is the only step in this method nothing can undo, so it goes last:
+        // everything that can still be refused for free has been asked and accepted before anything
+        // irreversible happens. A save that throws above this line rolls back over a folder nothing
+        // was moved into, the recording is still on the waiting list because the length went back to
+        // null, and the next attempt finishes cleanly.
+        //
+        // Written the other way round it would not be a preference but a trap:
+        // `StagedArtifact.Refusals` asks about the destination file and not about the row, and an
+        // `ArtifactKind.Audio` is never rewritten — so a rollback that took the row back out from
+        // under a file already renamed into place would leave a meeting the application refuses to
+        // finish, every attempt answered with `AlreadyThere`, until somebody deletes that file.
+        // Nothing an outside reader can see tells the two orders apart, so what pins this is
+        // `MeetingRecordingsTests.No_reader_is_ever_handed_a_meeting_recorded_with_no_length`
+        // asserting that `audio.wav` is not yet on disk when the length is saved.
+        var audio = filed ?? staging!.Commit(now);
+
+        filing.Commit();
+
+        // After the commit and outside it, which is the answer `MeetingIntake.Record` already
+        // reached for a paid response and for the same reason — its own comment says a transaction
+        // over both "would have rolled the response's row back and left the file behind as something
+        // nothing may adopt". The card is a derivative the corpus writes again from the row just
+        // committed, so a refused card leaves a meeting that is recorded, has its length and plays,
+        // with one file `ArtifactReconciler.Check` names and a rebuild replaces. Inside, the same
+        // refusal would roll the audio row back over a file already renamed into place — the trap
+        // above — and the meeting could then never be finished without somebody deleting that file
+        // by hand. `AudioIntake.Filed` is the writer that still holds its card inside a transaction
+        // over an `ArtifactKind.Audio`, and it has the window this does not.
+        //
+        // Not because of the length: the card carries the meeting, when it started, the profile, the
+        // language and the title, and says nothing about how long it is — which is what the sentence
+        // here used to claim.
         MeetingManifest.Write(corpus, meeting.Id, now);
 
         var queued = WhatStoppingStarts.For(meeting);
@@ -315,12 +389,34 @@ public static class MeetingRecordings
     /// </summary>
     /// <remarks>
     /// <para>
-    /// What this is for is a finish that was cut off between its two commits. The audio row lands
-    /// first and the meeting's length second, so a machine that dies in between leaves a meeting
-    /// with its audio filed and no length — and finishing it again is the only thing that puts
-    /// that right. An <see cref="ArtifactKind.Audio"/> is never rewritten, so without this the
-    /// second attempt would be refused by the one rule that exists to stop a paid or unrepeatable
-    /// file being destroyed.
+    /// What this answers for is a finish run a second time over a meeting whose audio the corpus
+    /// already holds. The finish committed and then the machine died, or the card was refused,
+    /// before <see cref="MeetingManifest.Write"/> — the meeting has its audio and its length and no
+    /// recovery card, and finishing it again is what puts the card there. Or a corpus that arrived
+    /// at audio-without-length by some other route, a row edited by hand or a restore, which the
+    /// recovery path still has to complete. An <see cref="ArtifactKind.Audio"/> is never rewritten,
+    /// so without this either second attempt would be refused by the one rule that exists to stop a
+    /// paid or unrepeatable file being destroyed.
+    /// </para>
+    /// <para>
+    /// It asks the corpus and not the disk, which is worth saying out loud: a row whose file has
+    /// gone — a restore that dropped it, somebody deleting it — is answered here as filed, and the
+    /// finish then reports a meeting that will not play. That is what
+    /// <c>ArtifactReconciler.Check</c> reports as missing, and putting it back is a restore rather
+    /// than a finish, so this is not the place that notices. Said because the paragraph reads like
+    /// an account of every way in and is not one.
+    /// </para>
+    /// <para>
+    /// It is no longer a recovery from a half-written corpus this method's own caller produces: the
+    /// audio row and the length are one commit, and a rollback takes both. That is why
+    /// <c>WaitingRecordingsTests.A_finish_that_was_cut_off_after_filing_the_audio_is_still_waiting_and_completes</c>
+    /// builds its state by hand. What it still does not answer for is a finish cut off between
+    /// <c>StagedArtifact.Move</c> renaming the file into place and the commit landing: there is no
+    /// row for this to find then, and the destination standing there is refused by the same rule.
+    /// That window is a rename, one save of one row and the <c>COMMIT</c>; it was the first two of
+    /// those before the length joined the commit; and closing it means letting a finish adopt a file
+    /// hashing to what it just made, which is a change to what the corpus may adopt with nobody
+    /// watching.
     /// </para>
     /// <para>
     /// Only when the bytes are the same, and the hash is what says so. The recording is read out of

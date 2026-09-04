@@ -56,8 +56,11 @@ namespace MeetingTranscriber.App;
 /// One press outlives the handler that made it, and it is the same minutes of work stopping a
 /// meeting is: keeping a recording. What is not here is the recorder's own protection for that —
 /// the window refuses to let go of anything while its own press is in flight, and it has no such
-/// state for this one. A process that goes during a keep leaves whatever of the finish committed,
-/// which is the audio filed and possibly a capture run never marked as recovered.
+/// state for this one. A process that goes during a keep leaves nothing of the finish or the whole
+/// of it — its audio row, its length and its run's end are one commit — and possibly a capture run
+/// never marked as recovered, which is a save of its own after the finish. The one exception is a
+/// rename that outran that commit, which leaves the audio file in the folder with no row naming it
+/// and a meeting the application then refuses to finish.
 /// </para>
 /// <para>
 /// The one thing it owns beyond the list is which of its two positions it is in. That is one fact

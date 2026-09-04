@@ -422,17 +422,24 @@ public static class WaitingRecordings
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The meeting's length is what says finished, and it is the last thing a finish writes — after
-    /// the audio is filed, in the same commit that closes the run off. A finish is three durable
-    /// steps and a machine can die between any two of them, so the question has to be asked of the
-    /// step that comes last: a recording judged done on the audio row alone would disappear off
-    /// this list the moment that row landed, leaving a meeting with no length and an open run that
-    /// nothing would ever come back to.
+    /// The meeting's length is what says finished, and what makes that the right question is that it
+    /// is a fact about the meeting rather than about a file. A finish is two durable steps: one
+    /// commit carrying the audio row, the length and the run's end together, and then the recovery
+    /// card. A machine that dies before that commit leaves blocks and no length, and this list is the
+    /// only thing that will ever come back to them. One that dies after it leaves a meeting that is
+    /// finished with a card missing, which is <c>ArtifactReconciler</c>'s to name and not this
+    /// list's. Judging a recording on the audio row instead would answer those two the same way and
+    /// be wrong about both — the first would disappear off this list the moment the row landed, and
+    /// there is a moment in a finish where the file is in place and the row is not.
     /// </para>
     /// <para>
-    /// Finishing again from the same blocks is what puts that right, and it is always allowed —
-    /// the blocks are the recording and the file is read out of them, so it produces the same
-    /// bytes every time.
+    /// Finishing again from the same blocks is what puts that right, and it is allowed for every
+    /// state a commit can leave — the blocks are the recording and the file is read out of them, so
+    /// it produces the same bytes every time. The one state it is not allowed from is the moment
+    /// named above: a rename that outran its commit leaves <c>audio.wav</c> in the meeting's folder
+    /// with no row naming it, and every later finish is refused for writing over audio that is never
+    /// rewritten. This list keeps offering that recording and cannot complete it, and the way out is
+    /// somebody deleting that file — which the refusal says by name.
     /// </para>
     /// </remarks>
     private static bool StillWaiting(WaitingRecording recording) =>
