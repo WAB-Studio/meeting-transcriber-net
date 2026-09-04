@@ -68,7 +68,10 @@ whether a two-channel file is a meeting's two sources is decided from both — t
 and the recovery card beside it. The watch that tells a list of meetings it has stopped saying what
 the corpus says is here for that reason again, and it is the only thing in the product that polls
 the corpus: what that list draws is the corpus's meetings *and* the spool folder's recordings, and
-this is the only project that can see both. The closed list of what a read of the corpus throws
+this is the only project that can see both. `RowPresses` is here for that reason once more: the ids
+it builds tell one press on one row of that list from the same press on another row — which is what
+a re-read needs to hand somebody's keyboard back — and what they name is a row, so half of them are
+a meeting and half a spool folder. The closed list of what a read of the corpus throws
 that a screen says rather than stops over is here for the same reason once more: the watch reads
 the corpus from the thread a window is being built on, so that list stopped being only the
 screens' — and every exception it names, the audio engine's and the recording's and the
