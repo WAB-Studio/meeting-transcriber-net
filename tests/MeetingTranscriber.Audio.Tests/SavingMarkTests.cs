@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Text;
 
 namespace MeetingTranscriber.Audio.Tests;
 
@@ -154,7 +156,9 @@ public sealed class SavingMarkTests : IDisposable
     /// letting nothing else write — and what is being read is Windows closing a dead process's
     /// handles, which is the only thing that lifts this mark and the reason the mark is a handle
     /// rather than a record. The kill runs in a <c>finally</c>: a probe that failed early and left
-    /// a process asleep on somebody's machine would be worse than the defect.
+    /// a process asleep on somebody's machine would be worse than the defect. How that process is
+    /// made to take the mark, and why asking it to every 25 ms was what kept it from taking it at
+    /// all, is on <see cref="Holding"/>.
     /// </remarks>
     [Fact]
     public void A_save_the_process_died_in_the_middle_of_leaves_the_recording_decidable_again()
@@ -166,7 +170,7 @@ public sealed class SavingMarkTests : IDisposable
         using var holder = Holding(mark);
         try
         {
-            Until(() => SavingMark.IsHeldIn(folder), "the other process to take the mark");
+            HasTakenTheMark(holder);
             SavingMark.IsHeldIn(folder).ShouldBeTrue();
 
             // And nothing in this process may start a save over it while that one has it.
@@ -174,16 +178,39 @@ public sealed class SavingMarkTests : IDisposable
         }
         finally
         {
-            holder.Kill(entireProcessTree: true);
+            try
+            {
+                if (!holder.HasExited)
+                {
+                    holder.Kill(entireProcessTree: true);
+                }
+            }
+            catch (Exception ending) when (
+                ending is InvalidOperationException or Win32Exception or AggregateException)
+            {
+                // Every way a kill can refuse: it ended between the question and the kill, which is
+                // what the kill was for; Windows would not have it; a child of it would not go. A
+                // throw from a finally would bury the sentence saying what really failed, and what
+                // is left behind either way ends itself when its own sleep runs out.
+            }
+
             holder.WaitForExit();
         }
 
-        Until(() => !SavingMark.IsHeldIn(folder), "the dead process's handle to be closed");
-
         // The mark is still there — nobody cleared it and nothing will — and it holds nothing.
+        // Asked straight after WaitForExit rather than waited for: Windows tears a process's handle
+        // table down during rundown, before the process object is signalled, so there is nothing
+        // left to wait on and a clock here would re-import the defect this probe just had removed.
         mark.Refresh();
         mark.Exists.ShouldBeTrue();
-        SavingMark.IsHeldIn(folder).ShouldBeFalse();
+
+        // Said in full because the answer is also the answer a broken SavingMark gives, and this is
+        // the probe whose whole complaint was a red run nobody could read.
+        SavingMark.IsHeldIn(folder).ShouldBeFalse(
+            "the mark still reads as held after the only process holding it is gone. Either the "
+            + "mark means its existence rather than a handle, which is what this test is here to "
+            + "refuse, or something else on this machine had the file open for the one instant "
+            + "this was asked — IsHeldIn answers 'held' to any IOException, deliberately.");
 
         // Which is what makes the recording somebody's again: the next save takes the folder.
         SavingMark.Take(folder).Dispose();
@@ -205,37 +232,137 @@ public sealed class SavingMarkTests : IDisposable
     private static FileInfo Mark(DirectoryInfo folder) =>
         new(Path.Combine(folder.FullName, SavingMark.FileName));
 
+    /// <summary>Where the mark's path reaches the other process, so nothing has to quote it.</summary>
+    private const string MarkVariable = "MEETING_TRANSCRIBER_MARK";
+
+    /// <summary>What the other process says on stdout the moment it has the mark.</summary>
+    /// <remarks>
+    /// Seven-bit ASCII on purpose. <c>powershell.exe</c> writes a redirected stdout in its own
+    /// output encoding and this process decodes in its own, so anything outside ASCII could arrive
+    /// mangled. The diagnostic below may; the sentinel may not.
+    /// </remarks>
+    private const string TookIt = "held";
+
+    /// <summary>
+    /// How long a host that has neither written a line nor ended is given before the probe decides
+    /// the host is what failed.
+    /// </summary>
+    /// <remarks>
+    /// A number that asserts nothing, in the sense <see cref="Deadlines.Patience"/> means it — and
+    /// not that number, because that one is the application's own deadline, kept so that a test is
+    /// never less patient than what it drives, and nothing here drives the application. What is
+    /// waited on is another operating system process reaching its first statement, which on a
+    /// loaded agent is seconds; so more of this is strictly better and none of it bounds the
+    /// handover. It exists at all because an unbounded read answers a host that never runs a line
+    /// with silence until the job is cancelled, naming no test — the same dishonesty at the same
+    /// gate as the one it replaced, in a rarer case.
+    /// </remarks>
+    private static readonly TimeSpan WedgedHost = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// What the other process runs: take the mark, say so, and then hold it until it is killed.
+    /// </summary>
+    /// <remarks>
+    /// The two seconds are a claim's own, and they are the one bound on this handover: anything
+    /// other than this process holding the mark for longer than a claim would wait turns the probe
+    /// red saying so. Waiting it out rather than dying on it is what a save does, which is what
+    /// this is meant to look like — it opens the mark with the share mode a claim opens it with,
+    /// and <c>Open</c> rather than <c>Create</c> so that a mark which is not there is a loud
+    /// failure rather than a file this probe made. Nothing but the sentinel and that one sentence
+    /// may reach stdout, because the read on the other side takes the first line it is given.
+    /// </remarks>
+    private static readonly string Script = $$"""
+        $ErrorActionPreference = 'Stop'
+        $mark = $env:{{MarkVariable}}
+        $waiting = [Diagnostics.Stopwatch]::StartNew()
+        $held = $null
+        while ($null -eq $held) {
+            try {
+                $held = [System.IO.File]::Open($mark, 'Open', 'Write', 'Read')
+            }
+            catch {
+                if ($waiting.Elapsed.TotalSeconds -ge 2) {
+                    [Console]::Out.WriteLine(($_.Exception.Message -replace '\r?\n', ' '))
+                    exit 1
+                }
+                Start-Sleep -Milliseconds 25
+            }
+        }
+        [Console]::Out.WriteLine('{{TookIt}}')
+        Start-Sleep -Seconds 300
+        """;
+
     /// <summary>
     /// Another process holding the mark the way a save holds it, and doing nothing else. It never
     /// closes the handle itself: the only way out of it is being killed, which is the point.
     /// </summary>
     /// <remarks>
-    /// The path is quoted for PowerShell by doubling the one character that would end the literal,
-    /// because a temp folder sits under a user name somebody may have an apostrophe in.
+    /// <para>
+    /// The handover is a line on stdout, and it may not be a clock, because the clock is what this
+    /// used to get wrong. It used to be a poll: this process asking
+    /// <see cref="SavingMark.IsHeldIn"/> every 25 ms until the answer came back true. That question
+    /// opens the mark <c>FileAccess.Read</c>, <c>FileShare.Read</c>, and <see cref="Script"/>'s
+    /// open asks for <c>FileAccess.Write</c> — which <c>FileShare.Read</c> does not permit — so an
+    /// open landing inside one of the poll's own opens is refused, <c>0x80070020</c>. The thing
+    /// waiting for the mark to be taken was therefore the one thing that could stop it being taken,
+    /// and the open it refused had nothing behind it: no retry, and nothing turning the refusal
+    /// into an ending, so that process went on to its sleep holding nothing and the wait spent
+    /// thirty seconds on a question whose answer could no longer change. A longer wait was never
+    /// what that needed — and neither was asking whether the process was still alive, because it
+    /// was. Alive and empty is what losing this race looks like from here.
+    /// </para>
+    /// <para>
+    /// Which is the reading and not a reconstruction of any particular red run: the collision is
+    /// real and was reproduced on purpose, but the window is one open — 66 µs on the machine this
+    /// was written on, against a 25 ms period — so meeting it takes a process that reaches its own
+    /// open late, which is what a loaded two-core agent makes of <c>powershell.exe</c>. A process
+    /// merely too slow to arrive inside thirty seconds prints the same sentence and is not excluded. Both end here: the handshake means this
+    /// process does not open the mark at all until the other one says it has it, so the collider is
+    /// gone rather than rare, and being slow now costs only the time it costs. Widening the
+    /// question's own share would also end the collision, by ending the detection with it — see
+    /// <see cref="A_save_that_is_running_holds_the_folder_and_refuses_a_second_one"/>, which is
+    /// what goes red for that.
+    /// </para>
     /// </remarks>
-    private static Process Holding(FileInfo mark) => Process.Start(new ProcessStartInfo(
-        "powershell.exe",
-        "-NoProfile -NonInteractive -Command "
-        + $"\"$held = [System.IO.File]::Open('{mark.FullName.Replace("'", "''", StringComparison.Ordinal)}', "
-        + "'Open', 'Write', 'Read'); Start-Sleep -Seconds 300\"")
+    private static Process Holding(FileInfo mark)
     {
-        UseShellExecute = false,
-        CreateNoWindow = true,
-    })!;
+        var start = new ProcessStartInfo(
+            "powershell.exe",
+            "-NoProfile -NonInteractive -EncodedCommand "
+                + Convert.ToBase64String(Encoding.Unicode.GetBytes(Script)))
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        };
+
+        start.Environment[MarkVariable] = mark.FullName;
+
+        return Process.Start(start)
+            ?? throw new InvalidOperationException("powershell.exe did not start.");
+    }
 
     /// <summary>
-    /// Waits for something another process is doing, and fails saying what never happened rather
-    /// than asserting into a race.
+    /// Blocks until the other process says it has the mark, and fails saying what it said instead —
+    /// or that it said nothing and ended — rather than asserting into a race.
     /// </summary>
-    private static void Until(Func<bool> settled, string what)
+    private static void HasTakenTheMark(Process holder)
     {
-        var giveUpAt = DateTime.UtcNow.AddSeconds(30);
+        var reading = Task.Run(holder.StandardOutput.ReadLine);
 
-        while (!settled() && DateTime.UtcNow < giveUpAt)
+        reading.Wait(WedgedHost, TestContext.Current.CancellationToken).ShouldBeTrue(
+            "the process meant to hold the mark neither took it nor ended, and said nothing at all.");
+
+        var said = reading.Result;
+
+        if (said is null)
         {
-            Thread.Sleep(25);
+            // Its stdout reached the end without a word, which is that process being gone. Waiting
+            // is what makes the exit code readable, and it returns at once on one already ended.
+            holder.WaitForExit();
+            said = $"nothing at all before it ended, exit code {holder.ExitCode}";
         }
 
-        settled().ShouldBeTrue($"waited 30 s for {what} and it never did.");
+        said.ShouldBe(TookIt, "the process meant to hold the mark did not take it.");
     }
 }
