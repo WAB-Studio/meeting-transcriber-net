@@ -44,7 +44,11 @@ public partial class ScreenTextsTests
     /// <remarks>
     /// This is the one list. Markup is held to it by name and code-behind by the assignment and the
     /// setter built out of it, so a property added here is caught in both places or in neither —
-    /// which is what the second, hand-written copy of these names could not promise.
+    /// which is what the second, hand-written copy of these names could not promise. It is
+    /// <c>internal</c> for the same reason and not for a wider one:
+    /// <see cref="OlivoTests.The_dictionary_settles_no_word_a_person_reads_through_a_style"/> holds
+    /// the <c>Setter</c> route out of Olivo.xaml to these same names, and borrowing the list is what
+    /// keeps a name added here from being caught on the screens and missed in the dictionary.
     /// <para>
     /// The attached ones are every automation property that carries a string, because a screen
     /// reader says every one of them out loud — which is this class's whole definition of a word a
@@ -76,8 +80,8 @@ public partial class ScreenTextsTests
     /// language, which is the silent failure of the two.
     /// </para>
     /// </remarks>
-    private static readonly HashSet<string> Reads =
-    [
+    internal static readonly IReadOnlySet<string> Reads = new HashSet<string>
+    {
         "AutomationProperties.AcceleratorKey",
         "AutomationProperties.AccessKey",
         "AutomationProperties.FullDescription",
@@ -97,7 +101,7 @@ public partial class ScreenTextsTests
         "Text",
         "Title",
         "ToolTipService.ToolTip",
-    ];
+    };
 
     /// <summary>
     /// The screens. A <c>ResourceDictionary</c> is not one of them and is left out: it holds
@@ -110,12 +114,24 @@ public partial class ScreenTextsTests
     /// indirection away — and <c>OlivoTests</c> refuses to let a sentence be written in there as a
     /// <c>String</c> or a <c>TextBlock</c> at all.
     /// <para>
-    /// The route neither of them closes is a <c>Setter</c>: <c>&lt;Setter Property="Text"
-    /// Value="Sin nombre" /&gt;</c> inside a style in Olivo.xaml reaches every screen wearing that
-    /// style, and <c>OlivoTests</c> reads the <c>Setter</c> shape only for the colours, sizes and
-    /// corners of ISC-173.1. Closing it belongs to that class, which already has the shape to do it
-    /// with, and it is #182's <c>left_out</c>. What is closed here is the same shape in a screen's
-    /// own resources, which the check below does read.
+    /// The <c>Setter</c> route out of the dictionary is closed by
+    /// <see cref="OlivoTests.The_dictionary_settles_no_word_a_person_reads_through_a_style"/>, which
+    /// reads every <c>Setter</c> in Olivo.xaml naming one of <see cref="Reads"/> through its
+    /// <c>Property</c> attribute — qualified or not, with the value written as an attribute or as a
+    /// <c>&lt;Setter.Value&gt;</c>. The same shape in a screen's own resources is
+    /// <see cref="SetsAWordAPersonReads"/>'s, which matches the property the same way and reads the
+    /// value as an attribute; the <c>&lt;Setter.Value&gt;</c> spelling on a screen is words between
+    /// tags and belongs to <see cref="No_screen_writes_words_between_its_tags"/>, which reads them
+    /// for every element. Three readers, and no property spelling reaches all three unseen.
+    /// </para>
+    /// <para>
+    /// What neither closes is the other spelling. Inside <c>&lt;VisualState.Setters&gt;</c> a
+    /// <c>Setter</c> names a part and a property together as
+    /// <c>Target="PlaceholderTextBlock.Text"</c> and carries no <c>Property</c> attribute at all, so
+    /// both readers walk past it. Olivo.xaml writes ten of those today and every one of them names a
+    /// key; on a screen the first would arrive with an adaptive breakpoint, which is a
+    /// <c>&lt;VisualStateManager.VisualStateGroups&gt;</c> on the page's own root and needs no
+    /// template. It is ISC-152's <em>Not reached</em>.
     /// </para>
     /// </remarks>
     public static TheoryData<string> Screens() =>
@@ -182,6 +198,14 @@ public partial class ScreenTextsTests
     /// back with each, because what the prefix in a binding resolves to is decided where the
     /// binding stands.
     /// </summary>
+    /// <remarks>
+    /// The <c>Setter</c>'s property is matched through <see cref="OlivoTests.IsOneOf"/> and not by a
+    /// plain <c>Contains</c>, so <c>Property="TextBlock.Text"</c> is reached here exactly as it is in
+    /// the dictionary. That spelling is legal, is the required one for an attached property, and
+    /// sets what <c>Property="Text"</c> sets — an exact match against the set is a hole with a
+    /// qualifier in front of it, and one assembly holding two spellings of one rule is how the
+    /// qualifier stays reachable on a screen after the dictionary has closed it.
+    /// </remarks>
     private static IEnumerable<(XElement On, string Property, string Value)> SetsAWordAPersonReads(XElement element)
     {
         foreach (var attribute in element.Attributes().Where(a => Reads.Contains(a.Name.LocalName)))
@@ -191,7 +215,7 @@ public partial class ScreenTextsTests
 
         if (element.Name.LocalName == "Setter"
             && (string?)element.Attribute("Property") is { } property
-            && Reads.Contains(property)
+            && OlivoTests.IsOneOf(property, Reads)
             && (string?)element.Attribute("Value") is { } value)
         {
             yield return (element, property, value);
@@ -313,8 +337,10 @@ public partial class ScreenTextsTests
     /// with a brace, so the second row is a literal that reads as the good form for its first two
     /// characters. The seventh points a well-spelt prefix at another namespace and the eighth
     /// shadows a good outer declaration with a bad inner one, which are the two shapes resolving
-    /// the prefix exists to tell apart. The last is a <c>Setter</c>, which reaches a screen through
-    /// a style rather than through an attribute.
+    /// the prefix exists to tell apart. The last two are a <c>Setter</c>, which reaches a screen
+    /// through a style rather than through an attribute, written unqualified and qualified — and the
+    /// qualified one is the row that was green while the dictionary's own guard had already closed
+    /// that spelling, which is <see cref="SetsAWordAPersonReads"/>'s remark.
     /// </remarks>
     public static TheoryData<string> SaysSomethingElse() =>
     [
@@ -330,6 +356,7 @@ public partial class ScreenTextsTests
         @"<TextBlock Text=""{x:Bind In(loc:UiTexts.Record)}"" />",
         @"<TextBlock xmlns:loc=""using:MeetingTranscriber.Presentation"" Text=""{x:Bind In(loc:UiTexts.Record), Mode=OneWay}"" />",
         @"<Setter xmlns:loc=""using:MeetingTranscriber.Presentation"" Property=""Text"" Value=""Sin nombre"" />",
+        @"<Setter xmlns:loc=""using:MeetingTranscriber.Presentation"" Property=""TextBlock.Text"" Value=""Sin nombre"" />",
     ];
 
     [Theory]
