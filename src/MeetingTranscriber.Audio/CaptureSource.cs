@@ -61,16 +61,6 @@ public sealed class CaptureSource : IDisposable
     private long openedAt;
 
     /// <summary>
-    /// What the stream ended with, or nothing when it ended without one. Written on the draining
-    /// thread the moment the device lets go of it, and read on the thread that stops this source —
-    /// <see cref="Finish"/>, which is what turns it into the exception the caller hears — and
-    /// cleared again on the thread that hands the source a different stream. Volatile because
-    /// those threads share no lock over it: the one that writes it is inside the device and is
-    /// gone by the time anybody asks.
-    /// </summary>
-    private volatile Exception? failure;
-
-    /// <summary>
     /// The move this source is on, or nothing before it has ever been moved. Read on the draining
     /// thread of every stream this source has had and written on the thread that moves it, which
     /// is what makes a stream ending long after the channel left it tell the right move — and the
@@ -231,8 +221,8 @@ public sealed class CaptureSource : IDisposable
     // a screen could print it while the meeting ran — and what a person got was a COMException, or
     // this file's own sentence, or the filesystem's, all of it framework English on a screen every
     // word of which is owed in two languages. A channel that died is said in words the catalogue
-    // owns; the machine's own text is put in the sentence Finish throws, where it is read by
-    // whoever is diagnosing a meeting rather than by whoever is recording one.
+    // owns, and that is the whole answer: the machine's own text is not kept anywhere now, because
+    // the only thing that ever read it turned it into a refusal to stop the meeting.
 
     /// <summary>The loudest block since this was last asked, which is what a meter shows.</summary>
     public LevelReading Level() => meter.Read();
@@ -370,10 +360,8 @@ public sealed class CaptureSource : IDisposable
         // source having ended, which stops the recording and says so. The other order loses a new
         // stream that died on its first block, and a meeting recording nothing while everything
         // says it is fine is the failure this codebase is built against. What this clearing would
-        // itself erase is `handover`'s, and is put back on top of it below.
-        failure = null;
-
-        // Cleared with the gate, and it does not matter which of the two goes first: nothing reads
+        // itself erase is `handover`'s, and is put back on top of it below. The moment and the gate
+        // are cleared together and it does not matter which of the two goes first: nothing reads
         // the pair. What asks whether this source died reads the moment alone, and what waits for
         // it to stop reads the gate alone — which is the whole reason the moment is not stored
         // behind the gate. See EndedAt.
@@ -429,8 +417,11 @@ public sealed class CaptureSource : IDisposable
 
     /// <summary>
     /// Waits for the stream to be over and hands the last blocks on. A stream that had already
-    /// ended by itself throws here, carrying the reason it ended, and so does one that will not end
-    /// at all — which is the only thing anybody gets to do about that one.
+    /// ended by itself is finished like any other: there is nothing left to wait for and nothing
+    /// left that will write another block, and what is still owed of that source is the meeting it
+    /// is part of. The one ending that refuses is a stream still inside its device, and it refuses
+    /// because it is still the thread that would write the next block into the spool this recording
+    /// is about to be read out of.
     /// </summary>
     internal void Finish()
     {
@@ -455,12 +446,6 @@ public sealed class CaptureSource : IDisposable
         }
 
         spool.Flush();
-
-        if (failure is not null)
-        {
-            throw new AudioCaptureException(
-                $"The {Channel} stream on '{Listening.Name}' ended by itself: {failure.Message}", failure);
-        }
     }
 
     /// <summary>
@@ -566,8 +551,9 @@ public sealed class CaptureSource : IDisposable
         }
         catch (Exception letGo) when (letGo is IOException or UnauthorizedAccessException or COMException)
         {
-            // Swallowed on purpose, and only here: see the summary. What a source has to say
-            // about how it ended is said by Finish, which the session calls before this.
+            // Swallowed on purpose, and only here: see the summary. The one thing a source has to
+            // say about how it stopped — a stream still inside its device — is said by Finish,
+            // which the session calls before this.
         }
     }
 
@@ -779,9 +765,16 @@ public sealed class CaptureSource : IDisposable
         spool.Write(heard);
     }
 
-    private void Ended(Exception? stopped)
+    private void Ended(Exception? endedWith)
     {
-        failure = stopped;
+        // What the stream ended with is not kept, and the only thing that ever read it turned it
+        // into a refusal to stop — which is the thing this recording no longer does over a source
+        // that died. What is left of that source is what somebody is actually given: the moment it
+        // was cut, which EndedAt carries and the screen says while the meeting is still running,
+        // and the silence from there on in the recording itself. The driver's own English had
+        // nowhere else to go, and nobody ever acted on it.
+        _ = endedWith;
+
         Volatile.Write(
             ref endedAt, TimeProvider.System.GetUtcNow().ToUnixTimeMilliseconds());
         ended.Set();
