@@ -676,10 +676,9 @@ public partial class ScreenTextsTests
     /// tells <c>Text</c> from <c>PlaceholderText</c> for free.
     /// <para>
     /// <see cref="LiteralOnScreen"/> and not <see cref="WhatATypeSaysAboutItself"/>, which is built
-    /// out of the same set and is unpinned the same way — five of nineteen properties have a row in
-    /// <see cref="WhatATypeSaysForItself"/>. That is the same defect over the other pattern and is
-    /// this card's <c>left_out</c>; what stops it being hidden is this name saying which pattern it
-    /// holds.
+    /// out of the same set and was unpinned the same way. That is
+    /// <see cref="Every_property_a_type_can_speak_into_is_caught_by_a_row"/>'s, and the two names
+    /// each saying which pattern they hold is what keeps one from covering for the other.
     /// </para>
     /// </remarks>
     [Fact]
@@ -757,19 +756,52 @@ public partial class ScreenTextsTests
     /// without these it would be a guard with nothing to find, which reads the same as a guard
     /// that works.
     /// </summary>
-    public static TheoryData<string> WhatATypeSaysForItself() =>
+    /// <remarks>
+    /// One row per property the pattern reads at least — the nineteen of <see cref="Reads"/> and
+    /// <see cref="PickedFrom"/> beside them, twenty in all — which is what
+    /// <see cref="Every_property_a_type_can_speak_into_is_caught_by_a_row"/> holds this to. Fifteen
+    /// of the nineteen <see cref="Reads"/> entries had none: the pattern is built out of that same
+    /// set, so taking <c>Header</c> or <c>Title</c> back out of it stopped both halves seeing them
+    /// and reddened nothing. The rest of the rows are the shapes an assignment wears — a lambda,
+    /// several lines, <c>+=</c>, <c>??=</c> — which is a second axis over the same list and why
+    /// there are more rows than properties.
+    /// </remarks>
+    public static TheoryData<string> WhatATypeSaysForItself() => [.. SaidByATypeOnScreen];
+
+    /// <summary>These as a list, so that the <c>Fact</c> below can ask what they catch.</summary>
+    private static readonly string[] SaidByATypeOnScreen =
     [
         @"MicrophonePicker.ItemsSource = _microphones.Select(device => device.ToString()).ToArray();",
         "MicrophonePicker.ItemsSource = _microphones\n            .Select(device => device.ToString())\n            .ToArray();",
         @"StatusText.Text = chosen.ToString();",
+        @"StatusText.Text += chosen.ToString();",
         @"Foo.Header = program?.ToString() ?? string.Empty;",
+        @"Foo.Header ??= device.ToString();",
+        @"Title = meeting.ToString();",
+        @"Save.Content = device.ToString();",
+        @"Microphone.Description = device.ToString();",
+        @"Search.PlaceholderText = chosen.ToString();",
+        @"Confirm.PrimaryButtonText = chosen.ToString();",
+        @"Confirm.SecondaryButtonText = chosen.ToString();",
+        @"Confirm.CloseButtonText = chosen.ToString();",
         @"AutomationProperties.SetName(box, device.ToString());",
+        @"AutomationProperties.SetHelpText(box, device.ToString());",
+        @"AutomationProperties.SetFullDescription(box, device.ToString());",
+        @"AutomationProperties.SetItemStatus(list, state.ToString());",
+        @"AutomationProperties.SetItemType(row, meeting.ToString());",
+        @"AutomationProperties.SetLocalizedControlType(box, kind.ToString());",
+        @"AutomationProperties.SetLocalizedLandmarkType(panel, kind.ToString());",
+        @"AutomationProperties.SetAcceleratorKey(button, chord.ToString());",
+        @"AutomationProperties.SetAccessKey(button, key.ToString());",
         @"ToolTipService.SetToolTip(row, meeting.ToString());",
     ];
 
     /// <summary>
-    /// A rendering the reader's own language decides, which is data written the way that language
-    /// writes it and is exactly what a screen is supposed to do with a number.
+    /// What this check has to leave alone and is not out of reach. The main case is a rendering the
+    /// reader's own language decides, which is data written the way that language writes it and is
+    /// exactly what a screen is supposed to do with a number; a comparison, an id nobody hears and
+    /// a rendering that never reaches a screen are the others. A guard that goes red over one of
+    /// these is a guard somebody edits around, so these are as load-bearing as the must-catch rows.
     /// </summary>
     public static TheoryData<string> WhatTheReadersLanguageDecides() =>
     [
@@ -778,6 +810,7 @@ public partial class ScreenTextsTests
         @"AutomationProperties.SetAutomationId(open, entry.Meeting.Id.ToString());",
         @"Dump(wouldNotSay.ToString());",
         @"var spelt = device.ToString();",
+        @"if (line.Text == device.ToString())",
         @"        // MicrophonePicker.ItemsSource = _microphones.Select(device => device.ToString()).ToArray();",
     ];
 
@@ -794,11 +827,18 @@ public partial class ScreenTextsTests
     /// <c>(pid …)</c> is a word this application chose or a token Windows spells the same in both
     /// languages is a question nobody has answered, and it is issue #84's `left_out` rather than
     /// something to decide inside a guard.
+    /// <para>
+    /// The third row is the other shape <see cref="OutOfReachOnPurpose"/> names: an
+    /// expression-bodied member. Its <c>=&gt;</c> is refused by the same lookahead that refuses
+    /// <c>==</c>, so it is out of reach by the written boundary and not by accident — and this row
+    /// is what says the boundary and the pattern still agree.
+    /// </para>
     /// </remarks>
     public static TheoryData<string> SaidThroughAMethodAndOutOfReach() =>
     [
         @"SourcePicker.ItemsSource = _sources.Select(NameOf).ToArray();",
         @"private string NameOf(RecorderSource source) => source.Follow!.ToString();",
+        @"public string Title => meeting.ToString();",
     ];
 
     [Theory]
@@ -819,6 +859,51 @@ public partial class ScreenTextsTests
         SaidByATypeIn(written).ShouldBeEmpty(
             "this row says the check does not reach this, and it did, so the row and the check "
             + "no longer agree: " + written);
+
+    /// <summary>
+    /// Every property <see cref="WhatATypeSaysAboutItself"/> reads is caught by a row above — the
+    /// nineteen of <see cref="Reads"/> and <see cref="PickedFrom"/> beside them, twenty in all.
+    /// Without this the coverage is a list somebody keeps in step by hand, and it was not in step:
+    /// fifteen of the nineteen <see cref="Reads"/> entries had no row, so narrowing the set back
+    /// out again left the suite green.
+    /// </summary>
+    /// <remarks>
+    /// Its own <c>Fact</c> and not a widening of
+    /// <see cref="Every_property_a_person_reads_is_caught_by_a_literal_row"/>, which holds the same
+    /// set over <see cref="LiteralOnScreen"/>. Two patterns are built out of that one set and each
+    /// has to be held to it separately; a second pattern hiding behind the first one's coverage is
+    /// exactly how this gap was made.
+    /// <para>
+    /// A match and not the row it came from, and where the match <em>begins</em> and not what is
+    /// anywhere inside it, for the reason the sibling gives: both halves open on the property name
+    /// behind a zero-width lookbehind, so a match always starts with the property it is about, and
+    /// <c>Text</c> is told from <c>PlaceholderText</c> for free. Widening either half to open on
+    /// something before the property name — a receiver, an optional <c>this.</c> — turns this into
+    /// a check that passes on nothing.
+    /// </para>
+    /// <para>
+    /// <see cref="PickedFrom"/> is in the set and is not in <see cref="Reads"/>. It is a property
+    /// this pattern reads, which is the question being asked here, and dropping
+    /// <c>+ "|" + PickedFrom</c> from the pattern has to redden something.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Every_property_a_type_can_speak_into_is_caught_by_a_row()
+    {
+        var caught = SaidByATypeOnScreen
+            .SelectMany(row => WhatATypeSaysAboutItself.Matches(row).Select(match => match.Value))
+            .ToArray();
+
+        var unpinned = Reads
+            .Append(PickedFrom)
+            .Where(name => !caught.Any(match => match.StartsWith(SpeltInCode(name), StringComparison.Ordinal)))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        unpinned.ShouldBeEmpty(
+            "these are properties a type's own rendering can reach and no row would catch, so taking "
+            + "one back out of the pattern leaves this suite green: " + string.Join("; ", unpinned));
+    }
 
     /// <summary>
     /// ISC-152's other half on a screen that prints what a machine said. A path, a device's own
