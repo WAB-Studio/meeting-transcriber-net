@@ -278,9 +278,11 @@ public sealed class WaitingRecordingsTests : IDisposable
     }
 
     /// <summary>
-    /// A finish that was cut off between filing the audio and writing the meeting's length. The
-    /// audio row is there and the length is not, so the recording is still waiting — and finishing
-    /// it again completes it rather than being refused for rewriting audio that is never rewritten.
+    /// A corpus holding an audio row and no length: a state a finish no longer produces, since it
+    /// commits the row and the length together, and one the recovery path must still complete. The
+    /// recording is still waiting because what says finished is the meeting's length and not its
+    /// audio row, and finishing it again completes it rather than being refused for rewriting audio
+    /// that is never rewritten.
     /// </summary>
     [Fact]
     public void A_finish_that_was_cut_off_after_filing_the_audio_is_still_waiting_and_completes()
@@ -291,8 +293,8 @@ public sealed class WaitingRecordingsTests : IDisposable
             recorded = Killed(recording, seconds: 2).MeetingId;
             WaitingRecordings.Recover(recording, WaitingRecordings.In(recording).Single(), openedAgainAt);
 
-            // The corpus as a machine that died in the window would have left it: the audio filed,
-            // the length never written, the run never closed.
+            // The corpus as a machine that died in the window a finish used to have would have left
+            // it: the audio filed, the length never written, the run never closed.
             var meeting = recording.Meetings.Single();
             var run = recording.CaptureRuns.Single();
             meeting.Duration = null;
