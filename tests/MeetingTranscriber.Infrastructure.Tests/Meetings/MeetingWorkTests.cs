@@ -12,12 +12,29 @@ namespace MeetingTranscriber.Infrastructure.Tests.Meetings;
 /// ISC-82, ISC-147 and ISC-148 against a corpus on disk. What the rule says is
 /// `MeetingStageTests`; what this adds is the half no pure test can reach — that the answer comes
 /// back the same through a connection that never saw the one that wrote it, which is what closing
-/// and reopening the application is.
+/// and reopening the application is — and the order it comes back in, which is a promise about
+/// something SQLite is otherwise free to decide either way.
 /// </summary>
 public class MeetingWorkTests
 {
     private static readonly UtcTimestamp Recorded =
         UtcTimestamp.From(new DateTimeOffset(2026, 8, 19, 9, 0, 0, TimeSpan.Zero));
+
+    /// <summary>An hour after <see cref="Recorded"/>, and the only instant on the list that differs.</summary>
+    private static readonly UtcTimestamp Later =
+        UtcTimestamp.From(new DateTimeOffset(2026, 8, 19, 10, 0, 0, TimeSpan.Zero));
+
+    /// <summary>
+    /// Two meetings that started in the same millisecond, in ascending id, and one that started an
+    /// hour later whose id sorts after both. Fixed rather than <see cref="Guid.NewGuid"/>, because
+    /// what is claimed about them is an order and a random id has none — and the later meeting's
+    /// id sorting last is what keeps a list that lost the instant from being accidentally right.
+    /// </summary>
+    private static readonly Guid Tied = Guid.Parse("11111111-1111-1111-1111-111111111111");
+
+    private static readonly Guid AlsoTied = Guid.Parse("22222222-2222-2222-2222-222222222222");
+
+    private static readonly Guid Newest = Guid.Parse("33333333-3333-3333-3333-333333333333");
 
     private static readonly TimeProvider Clock =
         new FakeClock(new DateTimeOffset(2026, 8, 19, 12, 0, 0, TimeSpan.Zero));
@@ -53,6 +70,50 @@ public class MeetingWorkTests
         listed.Count.ShouldBe(1);
         listed[0].Owed.Stage.ShouldBe(MeetingStage.Recording);
         listed[0].Owed.MayBeTaken.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Meetings_are_listed_newest_first_and_ties_by_id_however_they_were_written(
+        bool newestWrittenFirst)
+    {
+        // The order `MeetingsWatch` depends on, said the only way SQLite cannot pass by accident.
+        // Two meetings that started in the same millisecond leave the engine free to answer in
+        // either order, and what it does is read off the file: `ORDER BY started_at DESC` over
+        // `ix_meetings_started_at` is cheapest as a reverse scan of that index, which — being
+        // non-unique on a rowid table, so carrying the rowid as its implicit last key column —
+        // hands ties back in descending insertion order. A sorter over a full scan hands them
+        // back ascending instead. So the claim is made twice over two corpora that differ in
+        // nothing but the order the rows were written: whichever way the engine leans, one of the
+        // two is the way round that only the tie-breaker corrects.
+        //
+        // Those two corpora are two different files only because `Add` below commits one row per
+        // call. Batching the three into a single `SaveChanges` would hand the insert order to EF,
+        // which orders by entity type rather than by call, and would collapse both cases onto one
+        // physical order — leaving a theory that is green whether or not the tie-breaker is there.
+        //
+        // `Newest` is here for the other half: with `.OrderByDescending` gone, id alone puts it
+        // last instead of first and both cases fall.
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        if (newestWrittenFirst)
+        {
+            Add(context, NewMeeting(Newest, Later));
+            Add(context, NewMeeting(AlsoTied, Recorded));
+            Add(context, NewMeeting(Tied, Recorded));
+        }
+        else
+        {
+            Add(context, NewMeeting(Tied, Recorded));
+            Add(context, NewMeeting(AlsoTied, Recorded));
+            Add(context, NewMeeting(Newest, Later));
+        }
+
+        new MeetingWork(context, Clock).Listed()
+            .Select(listed => listed.Meeting.Id)
+            .ShouldBe([Newest, Tied, AlsoTied]);
     }
 
     [Fact]
@@ -372,10 +433,12 @@ public class MeetingWorkTests
         context.SaveChanges();
     }
 
-    private static Meeting NewMeeting(Guid id) => new()
+    private static Meeting NewMeeting(Guid id) => NewMeeting(id, Recorded);
+
+    private static Meeting NewMeeting(Guid id, UtcTimestamp startedAt) => new()
     {
         Id = id,
-        StartedAt = Recorded,
+        StartedAt = startedAt,
         SourceProfile = SourceProfile.Multichannel,
         Language = "es",
         CreatedAt = Recorded,

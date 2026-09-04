@@ -104,7 +104,8 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
             // millisecond leave SQLite free to answer in either order, and what asks this question
             // over and over is `MeetingsWatch`: an order that moved between two looks would read as
             // the corpus having changed, and the list would rebuild every card of itself for as
-            // long as the window stayed open.
+            // long as the window stayed open. `MeetingWorkTests` pins it, over two corpora that
+            // differ only in the order the rows were written.
             .ThenBy(meeting => meeting.Id)
             .ToList();
 
