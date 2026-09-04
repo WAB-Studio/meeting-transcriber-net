@@ -169,7 +169,8 @@ public sealed class MeetingRecordingsTests : IDisposable
 
     /// <summary>
     /// A finish commits the row describing the meeting's audio and the meeting's length together, so
-    /// no reader looking while it runs is ever handed a meeting that was recorded and has no length.
+    /// no reader looking while it runs is ever handed a meeting that was recorded and has no length —
+    /// and nothing irreversible has happened yet when the length goes down.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -180,12 +181,23 @@ public sealed class MeetingRecordingsTests : IDisposable
     /// one-way implication: a length over no audio is the other half of the same wrongness.
     /// </para>
     /// <para>
+    /// The second assertion is about the order of the two saves inside the transaction, which no
+    /// reader can see — both orders are invisible until the commit, and both leave the same corpus.
+    /// What tells them apart is the disk: the audio row's save is the one that renames
+    /// <c>audio.wav</c> into place, so if it ran first the file would already be there when the
+    /// length went down, and a throw from that save would roll a row back out from under a file the
+    /// corpus may never write over again. Asserting the file is absent at that moment is what makes
+    /// the order a rule rather than the way the lines happen to sit.
+    /// </para>
+    /// <para>
     /// <c>SavingChanges</c> and <c>SavedChanges</c> are plain CLR events raised immediately before the
     /// batch and at the end of <c>SaveChanges</c>, after any implicit transaction has committed, so a
     /// read taken in either one is the state an outside reader is handed at that moment. Both are
     /// hooked and not only the second: committing a transaction is not a <c>SaveChanges</c> and raises
     /// nothing, so a gap opened between the commit and the next save is visible only from the near
-    /// side of that next save. Nothing is unsubscribed because the context is disposed here.
+    /// side of that next save. The last reading is taken here rather than left to the card's save, so
+    /// what proves the window spans the change is the finished meeting and not a save that happens to
+    /// come after the commit. Nothing is unsubscribed because the context is disposed here.
     /// </para>
     /// <para>
     /// Each reading is taken through <see cref="CorpusDatabase.OpenReadOnly"/> — a second connection,
@@ -210,17 +222,37 @@ public sealed class MeetingRecordingsTests : IDisposable
         SpoolManifest.Write(prepared.Spool, card);
         MeetingRecordings.Began(context, card);
 
+        var audioFile = CorpusFiles.Locate(
+            corpus.Root, CorpusFiles.PathFor(prepared.MeetingId, MeetingAudio.FileName));
+
         // Attached after the setup saves, so what is collected is the finish and nothing before it.
         var handed = new List<(bool Audio, Duration? Length)>();
-        context.SavingChanges += (_, _) => handed.Add(WhatAnOutsideReaderSees());
+        var lengthWentDownOverTheFile = new List<bool>();
+
+        context.SavingChanges += (_, _) =>
+        {
+            handed.Add(WhatAnOutsideReaderSees());
+
+            // Asked of the save itself rather than counted off, so the assertion below names the
+            // save that writes `meetings.duration_ms` and not the third one along.
+            if (context.ChangeTracker.Entries<Meeting>().Any(entry =>
+                    entry.State is EntityState.Modified
+                    && entry.Property(row => row.Duration).IsModified))
+            {
+                audioFile.Refresh();
+                lengthWentDownOverTheFile.Add(audioFile.Exists);
+            }
+        };
+
         context.SavedChanges += (_, _) => handed.Add(WhatAnOutsideReaderSees());
 
         MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(2));
 
+        handed.Add(WhatAnOutsideReaderSees());
+
         // The window really spans the change, so an assertion over an empty list or over one taken
-        // entirely after the finish had landed cannot pass by saying nothing.
-        // `HasValue` and not `is null`: Shouldly takes these as expression trees, which have no
-        // patterns in them.
+        // entirely after the finish had landed cannot pass by saying nothing. `HasValue` and not
+        // `is null`: Shouldly takes these as expression trees, which have no patterns in them.
         handed.ShouldContain(seen => !seen.Audio && !seen.Length.HasValue);
         handed.ShouldContain(seen => seen.Audio && seen.Length.HasValue);
 
@@ -231,20 +263,29 @@ public sealed class MeetingRecordingsTests : IDisposable
             audio.ShouldBe(length is not null);
         }
 
-        // And the finished one is what is there at the end, so the readings above are of a commit
-        // that happened rather than of one that rolled back.
-        using var reopened = corpus.Open();
-        reopened.Artifacts.ShouldContain(row => row.Kind == ArtifactKind.Audio);
-        reopened.Meetings.Single().Duration.ShouldNotBeNull();
+        // One save writes the length, and when it does the rename that puts `audio.wav` in the
+        // meeting's folder has not happened — so a throw from it rolls back over a folder nothing was
+        // moved into, and the recording is still on the waiting list for a clean second attempt.
+        lengthWentDownOverTheFile.ShouldHaveSingleItem().ShouldBeFalse();
 
         (bool Audio, Duration? Length) WhatAnOutsideReaderSees()
         {
             using var reading = CorpusDatabase.OpenReadOnly(corpus.Root);
 
-            return (
-                reading.Artifacts.Any(row =>
-                    row.MeetingId == prepared.MeetingId && row.Kind == ArtifactKind.Audio),
-                reading.Meetings.Single(row => row.Id == prepared.MeetingId).Duration);
+            // One query and not two. Two would be two statements, each in an autocommit read of its
+            // own on a pooled connection, so the pair would be two moments stitched together rather
+            // than the single state a reader is handed — which is the whole of what this asserts.
+            var seen = reading.Meetings
+                .Where(row => row.Id == prepared.MeetingId)
+                .Select(row => new
+                {
+                    Audio = reading.Artifacts.Any(artifact =>
+                        artifact.MeetingId == row.Id && artifact.Kind == ArtifactKind.Audio),
+                    row.Duration,
+                })
+                .Single();
+
+            return (seen.Audio, seen.Duration);
         }
     }
 

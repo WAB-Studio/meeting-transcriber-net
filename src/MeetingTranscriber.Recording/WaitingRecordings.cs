@@ -433,9 +433,13 @@ public static class WaitingRecordings
     /// there is a moment in a finish where the file is in place and the row is not.
     /// </para>
     /// <para>
-    /// Finishing again from the same blocks is what puts that right, and it is always allowed —
-    /// the blocks are the recording and the file is read out of them, so it produces the same
-    /// bytes every time.
+    /// Finishing again from the same blocks is what puts that right, and it is allowed for every
+    /// state a commit can leave — the blocks are the recording and the file is read out of them, so
+    /// it produces the same bytes every time. The one state it is not allowed from is the moment
+    /// named above: a rename that outran its commit leaves <c>audio.wav</c> in the meeting's folder
+    /// with no row naming it, and every later finish is refused for writing over audio that is never
+    /// rewritten. This list keeps offering that recording and cannot complete it, and the way out is
+    /// somebody deleting that file — which the refusal says by name.
     /// </para>
     /// </remarks>
     private static bool StillWaiting(WaitingRecording recording) =>
