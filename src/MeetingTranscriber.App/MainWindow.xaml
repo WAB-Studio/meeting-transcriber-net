@@ -397,11 +397,8 @@
                  language.
 
                  Stop and not the three. It is the one press ISC-172 is about and the one that
-                 cannot wait for somebody to lower the list; pausing can. `MainAbierto` draws the
-                 strip with no press on it at all — this screen and that drawing disagree there,
-                 because a strip somebody cannot stop a meeting from is what the claim forbids. The
-                 drawing stands as drawn and the disagreement is on the PR; nothing here corrects
-                 it. -->
+                 cannot wait for somebody to lower the list; pausing can. `MainAbierto` draws
+                 *Detener* on the strip and no other press, which is what this is. -->
             <!-- The word it says is the meeting's own state and is deliberately not disabled with
                  the press beside it: the press goes dead the moment stop is pressed and the word
                  keeps saying what the save is doing, which is the whole of why it is there. -->
@@ -490,11 +487,11 @@
                  nothing on the one frame it exists for. Nothing may stand between one of these
                  lines and the row, and LiveRegionTests now fails if anything does.
 
-                 *Reintentar* and not *Cambiar*, which `docs/design.md` §Fallo decides in as many
-                 words: a source that is alive and silent is answered by pointing somewhere else,
-                 and a device that stopped responding is answered by trying that same device again.
-                 The artboard draws *Cambiar* beside it; the page and the drawing disagree there,
-                 the page won, and the drawing stands as drawn. -->
+                 *Reintentar* is the act, which `docs/design.md` §Fallo decides in as many words: a
+                 source that is alive and silent is answered by pointing somewhere else, and a
+                 device that stopped responding is answered by trying that same device again.
+                 *Cambiar* is on that page too, as the neutral press on the left rather than the
+                 answer, which is what the artboard draws beside this one. -->
             <Button
                 x:Name="MineTryAgainButton"
                 HorizontalAlignment="Left"
