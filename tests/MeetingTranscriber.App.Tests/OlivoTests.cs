@@ -1,11 +1,14 @@
 using System.Text.RegularExpressions;
+using System.Xml;
 using System.Xml.Linq;
 
 namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
 /// ISC-173 and ISC-173.1, over the screens: every colour, text size and corner a screen uses is one
-/// of the system's named few, and never a value chosen on the screen itself.
+/// of the system's named few, and never a value chosen on the screen itself. And the dictionary's
+/// half of ISC-152: no word a person reads is written in Olivo.xaml, as an element that says
+/// something or as a property a style settles onto every screen wearing it.
 /// </summary>
 /// <remarks>
 /// It reads source rather than a running window, for the reason <see cref="ScreenTextsTests"/>
@@ -111,12 +114,23 @@ public partial class OlivoTests
     /// a <c>ControlTemplate</c>, which lives in the dictionary <see cref="Screens"/> leaves out, so
     /// the day a screen writes one is the day a template moved out of Olivo.
     /// <para>
-    /// It reads what <see cref="Values"/> gives it — attributes and the <c>Setter</c> shape — so a
-    /// colour nested as <c>&lt;Border.Background&gt;&lt;SolidColorBrush Color="…" /&gt;</c> is caught
-    /// through the brush's own <c>Color</c> attribute, and the other property elements are not. None
-    /// is written anywhere today, and a reader general enough for them would report
+    /// It reads what <see cref="Values"/> gives it — attributes and the <c>Setter</c> shape, whose
+    /// value may be written as an attribute or as a <c>&lt;Setter.Value&gt;</c>. So a colour nested
+    /// as <c>&lt;Border.Background&gt;&lt;SolidColorBrush Color="…" /&gt;</c> is caught through the
+    /// brush's own <c>Color</c> attribute, and the property elements that are <em>not</em>
+    /// <c>&lt;Setter.Value&gt;</c> are not caught at all. None is written anywhere today, and a
+    /// reader general enough for them would report
     /// <c>&lt;Border.Background&gt;&lt;StaticResource ResourceKey="OliveBrush" /&gt;</c>, the one
-    /// legitimate spelling of the shape.
+    /// legitimate spelling of the shape — which is why <see cref="ValueOf"/> reads a
+    /// <c>&lt;Setter.Value&gt;</c> as its text and answers nothing when it holds an element instead.
+    /// A <c>Setter</c> earns the exception because it reaches every element wearing the style, where
+    /// a property element reaches one.
+    /// </para>
+    /// <para>
+    /// The other spelling of a <c>Setter</c> — <c>Target="Chevron.Stroke"</c> inside a
+    /// <c>&lt;VisualState.Setters&gt;</c>, which carries no <c>Property</c> attribute — is not
+    /// reached either, and reaches a screen the day one writes an adaptive breakpoint. That sentence
+    /// is <see cref="ScreenTextsTests.Screens"/>'s remarks', which own it for both halves.
     /// </para>
     /// </remarks>
     private static string[] ChosenOn(XDocument screen) =>
@@ -196,6 +210,8 @@ public partial class OlivoTests
         { @"<Grid Background=""#FCFCFB"" />", true },
         { @"<Style TargetType=""Button""><Setter Property=""Foreground"" Value=""#1C1B19"" /></Style>", true },
         { @"<Style TargetType=""Border""><Setter Property=""Border.Background"" Value=""#FCFCFB"" /></Style>", true },
+        { @"<Style TargetType=""Button""><Setter Property=""Background""><Setter.Value>#FF112233</Setter.Value></Setter></Style>", true },
+        { @"<Style TargetType=""Button""><Setter Property=""Background""><Setter.Value><StaticResource ResourceKey=""OliveBrush"" /></Setter.Value></Setter></Style>", false },
         { @"<Border><Border.Background><SolidColorBrush Color=""#FF445566"" /></Border.Background></Border>", true },
         { @"<Grid.Resources><SolidColorBrush x:Key=""MyOwnGrey"" Color=""#B9B5AC"" /></Grid.Resources>", true },
         { @"<Grid Background=""{x:Bind SomeBrushProperty}"" />", true },
@@ -679,12 +695,18 @@ public partial class OlivoTests
         // naming an entry of the catalogue on every one of them. This is the other half: it cannot
         // be put here in the first place.
         //
-        // One route is open and this is the half that would close it. A `Setter` over one of the
-        // properties a person reads — `<Setter Property="Text" Value="Sin nombre" />` — reaches
-        // every screen wearing the style, and the words below look at `String` and `TextBlock`
-        // elements while `Values` reads the `Setter` shape only for the colours, sizes and corners
-        // of ISC-173.1. `ScreenTextsTests` closed that shape in a screen's own resources and named
-        // this as the half it did not touch, which is #182's `left_out`.
+        // The `Setter` route is `The_dictionary_settles_no_word_a_person_reads_through_a_style`'s,
+        // and the two are split by subject rather than by spelling: this one refuses a `String` or a
+        // `TextBlock` in here that says something, that one refuses a property this file settles
+        // onto every screen wearing a style. A `Setter` is neither of those elements and a keyed
+        // `<x:String>` has no property, so neither check is a second owner of the other's finding.
+        //
+        // Two shapes are outside both, and naming them is what stops the pair reading as exhaustive.
+        // A `Setter` inside a `VisualState.Setters` names its property as
+        // `Target="PlaceholderTextBlock.Text"` and carries no `Property` attribute at all. And a word
+        // written straight onto a template part as an attribute — `<ContentPresenter Content="Guardar" />`
+        // — is a property a person reads on an element that is neither a `String` nor a `TextBlock`,
+        // so the filter above stops short of it. Both are green today and neither is reached.
         //
         // The subject is the words and not the element. It was the element, which was right while
         // the dictionary held only styles — and a control template has to be able to carry a
@@ -716,6 +738,7 @@ public partial class OlivoTests
         { """<TextBlock Text="Elegí un idioma" />""", true },
         { """<TextBlock>Elegí un idioma</TextBlock>""", true },
         { """<TextBlock><Run Text="Elegí un idioma" /></TextBlock>""", true },
+        { """<TextBlock Text="{}Elegí un idioma" />""", true },
         { """<TextBlock Text="{TemplateBinding PlaceholderText}" />""", false },
         { """<TextBlock><Run Text="{TemplateBinding PlaceholderText}" /></TextBlock>""", false },
     };
@@ -724,6 +747,168 @@ public partial class OlivoTests
     [MemberData(nameof(WordsOrValues))]
     public void A_word_is_told_from_a_value_however_it_was_written(string written, bool isAWord) =>
         Says(XElement.Parse(written)).ShouldBe(isAWord, written);
+
+    [Fact]
+    public void The_dictionary_settles_no_word_a_person_reads_through_a_style()
+    {
+        // The sibling of the check above, and the other half of what pays for `ScreenTextsTests`
+        // leaving a ResourceDictionary alone. A word does not have to be an element in here to
+        // reach somebody: a `Setter` over a property a person reads settles it onto every screen
+        // wearing the style, and the screens themselves are held to the catalogue by a check that
+        // never opens this file.
+        var settled = SettledIn(Olivo());
+
+        settled.ShouldBeEmpty(
+            "Olivo.xaml settles these onto every screen wearing the style, so whatever they say is in "
+            + "one language: " + string.Join("; ", settled));
+    }
+
+    /// <summary>
+    /// Every word <paramref name="dictionary"/> settles onto a property a person reads through a
+    /// <c>Setter</c>'s <c>Property</c> attribute, as <c>Property="Value"</c>.
+    /// </summary>
+    /// <remarks>
+    /// <c>Descendants()</c> and not <see cref="SettersOf"/>. That helper exists so a style does not
+    /// answer for a style nested in its own <c>Resources</c>; this starts from the document, so it
+    /// reaches a <c>Setter</c> written as a child of the <c>Style</c> and one written inside
+    /// <c>&lt;Style.Setters&gt;</c> alike.
+    /// <para>
+    /// A <c>Setter</c> inside a <c>&lt;VisualState.Setters&gt;</c> names its property with
+    /// <c>Target</c> instead and is not reached — see <see cref="ScreenTextsTests.Screens"/>'s
+    /// remarks, which own that sentence.
+    /// </para>
+    /// </remarks>
+    private static string[] SettledIn(XDocument dictionary) =>
+    [
+        .. dictionary
+            .Descendants()
+            .SelectMany(element => SetBy(element, ScreenTextsTests.Reads)
+                .Select(set => (On: element, set.Property, set.Value)))
+            .Where(found => !PassesThrough(found.Value))
+            .Select(found => $"{At(found.On)}{found.Property}=\"{found.Value}\""),
+    ];
+
+    /// <summary>
+    /// Every shape <see cref="SettledIn"/> has to find, on two axes: one row per property
+    /// <see cref="ScreenTextsTests.Reads"/> names, and then the spellings a <c>Setter</c> wears.
+    /// </summary>
+    /// <remarks>
+    /// Kept as a list rather than only as a <c>TheoryData</c> so that
+    /// <see cref="Every_property_a_person_reads_is_caught_by_a_setter_row"/> can ask the same rows
+    /// the theory runs which properties they reach. A row per property is what stops the check from
+    /// being narrowed to the one property the card that wrote it came in through.
+    /// <para>
+    /// The rows after the nineteen are the second axis — the spellings a <c>Setter</c> wears: a
+    /// qualified property name, the <c>&lt;Style.Setters&gt;</c> spelling of the content property,
+    /// the property element as a bare text node and as the idiomatic <c>&lt;x:String&gt;</c>, the
+    /// <c>{}</c> escape, and the two bindings that are markup extensions a dictionary may not hand a
+    /// word on through.
+    /// </para>
+    /// </remarks>
+    private static readonly string[] WordsSettledThroughAStyle =
+    [
+        @"<Style TargetType=""TextBlock""><Setter Property=""Text"" Value=""Sin nombre"" /></Style>",
+        @"<Style TargetType=""Button""><Setter Property=""Content"" Value=""Guardar"" /></Style>",
+        @"<Style TargetType=""ComboBox""><Setter Property=""Header"" Value=""Micrófono"" /></Style>",
+        @"<Style TargetType=""ComboBox""><Setter Property=""Description"" Value=""El micrófono que graba tu voz"" /></Style>",
+        @"<Style TargetType=""ComboBox""><Setter Property=""PlaceholderText"" Value=""Elegí un micrófono"" /></Style>",
+        @"<Style TargetType=""ContentDialog""><Setter Property=""Title"" Value=""Reuniones"" /></Style>",
+        @"<Style TargetType=""ContentDialog""><Setter Property=""PrimaryButtonText"" Value=""Sí, borrar"" /></Style>",
+        @"<Style TargetType=""ContentDialog""><Setter Property=""SecondaryButtonText"" Value=""Cancelar"" /></Style>",
+        @"<Style TargetType=""ContentDialog""><Setter Property=""CloseButtonText"" Value=""Cerrar"" /></Style>",
+        @"<Style TargetType=""Button""><Setter Property=""ToolTipService.ToolTip"" Value=""Grabar"" /></Style>",
+        @"<Style TargetType=""Button""><Setter Property=""AutomationProperties.Name"" Value=""Grabar"" /></Style>",
+        @"<Style TargetType=""Button""><Setter Property=""AutomationProperties.HelpText"" Value=""Empieza a grabar"" /></Style>",
+        @"<Style TargetType=""Button""><Setter Property=""AutomationProperties.FullDescription"" Value=""Empieza a grabar la reunión"" /></Style>",
+        @"<Style TargetType=""ListView""><Setter Property=""AutomationProperties.ItemStatus"" Value=""Grabando"" /></Style>",
+        @"<Style TargetType=""ListView""><Setter Property=""AutomationProperties.ItemType"" Value=""Reunión"" /></Style>",
+        @"<Style TargetType=""Button""><Setter Property=""AutomationProperties.LocalizedControlType"" Value=""botón"" /></Style>",
+        @"<Style TargetType=""Grid""><Setter Property=""AutomationProperties.LocalizedLandmarkType"" Value=""barra"" /></Style>",
+        @"<Style TargetType=""Button""><Setter Property=""AutomationProperties.AcceleratorKey"" Value=""Control+G"" /></Style>",
+        @"<Style TargetType=""Button""><Setter Property=""AutomationProperties.AccessKey"" Value=""G"" /></Style>",
+        @"<Style TargetType=""TextBlock""><Setter Property=""TextBlock.Text"" Value=""Sin nombre"" /></Style>",
+        @"<Style TargetType=""TextBlock""><Style.Setters><Setter Property=""Text"" Value=""Sin nombre"" /></Style.Setters></Style>",
+        @"<Style TargetType=""TextBlock""><Setter Property=""Text""><Setter.Value>Sin nombre</Setter.Value></Setter></Style>",
+        @"<Style TargetType=""TextBlock""><Setter Property=""Text""><Setter.Value><x:String>Sin nombre</x:String></Setter.Value></Setter></Style>",
+        @"<Style TargetType=""TextBlock""><Setter Property=""Text"" Value=""{}{TemplateBinding PlaceholderText}"" /></Style>",
+        @"<Style TargetType=""TextBlock""><Setter Property=""Text"" Value=""{Binding TheirName}"" /></Style>",
+        @"<Style TargetType=""TextBlock""><Setter Property=""Text"" Value=""{x:Bind TheOtherSide}"" /></Style>",
+    ];
+
+    /// <inheritdoc cref="WordsSettledThroughAStyle"/>
+    public static TheoryData<string> AWordSettledThroughAStyle() => [.. WordsSettledThroughAStyle];
+
+    /// <summary>
+    /// Every shape <see cref="SettledIn"/> has to leave alone, each of which earns its place
+    /// separately.
+    /// </summary>
+    /// <remarks>
+    /// <c>{TemplateBinding PlaceholderText}</c> is the shape the dictionary is <em>for</em> — it is
+    /// how a placeholder reaches the screen through the template part named
+    /// <c>PlaceholderTextBlock</c> — and a check reporting it would be a check forbidding the
+    /// design. <c>{StaticResource Greeting}</c> and its <c>ThemeResource</c> twin pass because the
+    /// words at the other end are <see cref="The_dictionary_names_no_word_anybody_reads"/>'s to
+    /// refuse as an <c>x:String</c>, and a second refusal here would be a second owner.
+    /// <c>CornerRadius</c> passes by never reaching the property filter, so it cannot go red for any
+    /// edit to <see cref="PassesThrough"/>. The <c>&lt;Border /&gt;</c> row is
+    /// <see cref="ValueOf"/>'s empty guard and <c>Value="   "</c> is its whitespace half — that one
+    /// reddens when the guard narrows back to <c>IsNullOrEmpty</c>, which was measured. Its
+    /// property-element twin does not redden for that edit, and is here saying why rather than
+    /// looking like coverage it is not: the parser drops insignificant whitespace, so
+    /// <see cref="ValueOf"/> is handed an empty string and never sees the spaces. The two spellings
+    /// answer alike by two mechanisms and only one of them is this file's. The bare
+    /// <c>TextBlock</c> is the boundary: it is a word, it is caught by the check above, and this one
+    /// must not be a second owner of it.
+    /// </remarks>
+    public static TheoryData<string> AValueAStylePassesThrough() =>
+    [
+        @"<Style TargetType=""TextBlock""><Setter Property=""Text"" Value=""{TemplateBinding PlaceholderText}"" /></Style>",
+        @"<Style TargetType=""TextBlock""><Setter Property=""Text"" Value=""{StaticResource Greeting}"" /></Style>",
+        @"<Style TargetType=""Button""><Setter Property=""CornerRadius"" Value=""4"" /></Style>",
+        @"<Style TargetType=""Button""><Setter Property=""Content""><Setter.Value><Border /></Setter.Value></Setter></Style>",
+        @"<Style TargetType=""TextBlock""><Setter Property=""Text"" Value=""{ThemeResource Greeting}"" /></Style>",
+        @"<Style TargetType=""TextBlock""><Setter Property=""Text"" Value=""   "" /></Style>",
+        @"<Style TargetType=""TextBlock""><Setter Property=""Text""><Setter.Value>   </Setter.Value></Setter></Style>",
+        @"<TextBlock Text=""Sin nombre"" />",
+    ];
+
+    [Theory]
+    [MemberData(nameof(AWordSettledThroughAStyle))]
+    public void A_word_settled_through_a_style_is_found_however_it_was_written(string row) =>
+        SettledIn(Screen(row)).ShouldNotBeEmpty(
+            "this puts a word on every screen wearing the style and nothing found it: " + row);
+
+    [Theory]
+    [MemberData(nameof(AValueAStylePassesThrough))]
+    public void A_value_a_style_passes_through_is_left_alone(string row) =>
+        SettledIn(Screen(row)).ShouldBeEmpty(
+            "this settles no word of its own and it was reported anyway: " + row);
+
+    [Fact]
+    public void Every_property_a_person_reads_is_caught_by_a_setter_row()
+    {
+        // Not the direction the rows already hold. Narrowing `SetBy` reddens the theory above on
+        // every row whose property it drops — measured, thirteen of them — so the rows are their own
+        // guard against that. What nothing else catches is the other direction: a twentieth name
+        // added to `Reads` is read by `SetBy` immediately and pinned by no row, so the set could
+        // grow past its coverage and the suite would stay green. This is what says the two move
+        // together, and it is named for the reader it holds because the sibling coverage Fact in
+        // `ScreenTextsTests` holds a different one.
+        var caught = WordsSettledThroughAStyle
+            .SelectMany(row => Screen(row).Descendants())
+            .SelectMany(element => SetBy(element, ScreenTextsTests.Reads))
+            .Select(set => set.Property)
+            .ToHashSet(StringComparer.Ordinal);
+
+        var unpinned = ScreenTextsTests.Reads
+            .Where(name => !caught.Contains(name))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        unpinned.ShouldBeEmpty(
+            "these are properties a person reads and no row above settles one, so this check could "
+            + "stop reading it and the suite would stay green: " + string.Join("; ", unpinned));
+    }
 
     [Fact]
     public void Both_fonts_are_in_the_package_with_the_licence_that_lets_them_be()
@@ -902,7 +1087,148 @@ public partial class OlivoTests
         || element.DescendantsAndSelf()
             .Select(inline => (string?)inline.Attribute("Text"))
             .OfType<string>()
-            .Any(said => !said.TrimStart().StartsWith('{'));
+            .Any(said => !PassesThrough(said));
+
+    /// <summary>
+    /// Whether <paramref name="value"/> is a value this file hands on rather than one it settles —
+    /// one of the three markup extensions a dictionary legitimately reaches a screen through.
+    /// </summary>
+    /// <remarks>
+    /// Not <see cref="NamesAKey"/>, and the two must not be unified though both know about
+    /// <c>{}</c>. They answer different questions. On a screen every markup extension but a key is
+    /// refused, because a binding hands the value to code this class cannot follow. Inside the
+    /// dictionary <c>{TemplateBinding …}</c> is the whole point of a control template, so a key is
+    /// not the only legitimate answer here. Collapsing them either lets a binding onto a screen or
+    /// forbids a template binding in the file templates live in.
+    /// <para>
+    /// Three named extensions and not "anything in braces", which is what this was first written as
+    /// and what let <c>&lt;Setter Property="Text" Value="{Binding TheirName}" /&gt;</c> settle a data
+    /// object's words onto every screen wearing the style — the same value that
+    /// <see cref="ScreenTextsTests.SaysSomethingElse"/> holds as a must-find row on a screen. A
+    /// dictionary is allowed more than a screen, and it is not allowed that.
+    /// </para>
+    /// <para>
+    /// The <c>{}</c> escape is a literal opening on a brace and passes through nothing: it is why
+    /// this asks what the extension is called rather than whether the value starts with a brace.
+    /// An empty value is not passed through either — <c>Text=""</c> goes on being reported exactly
+    /// as it was before this existed. No emptiness rule is added here.
+    /// </para>
+    /// <para>
+    /// What it cannot answer is whether a key it passes exists. <c>{StaticResource NoKeyLikeThis}</c>
+    /// in here reaches <see cref="Every_resource_a_screen_names_is_one_that_exists"/> only through
+    /// <see cref="Reached"/>, which reads every file, so an undefined key is caught as a name nobody
+    /// defined and not as a word — and a key that is defined and holds a Spanish sentence is
+    /// <see cref="The_dictionary_names_no_word_anybody_reads"/>'s to refuse where it is written.
+    /// </para>
+    /// </remarks>
+    private static bool PassesThrough(string value)
+    {
+        var said = value.Trim();
+
+        return said.StartsWith('{')
+            && HandedOn().Match(said) is { Success: true } found
+            && found.Index == 0
+            && found.Length == said.Length;
+    }
+
+    /// <summary>
+    /// The whole of a markup extension a dictionary may hand a value on through: a template binding,
+    /// or a key resolved either way.
+    /// </summary>
+    /// <remarks>
+    /// The whole value and not a match inside it, for <see cref="NamesAKey"/>'s reason:
+    /// <c>{}{TemplateBinding PlaceholderText}</c> is a literal that reads as the sanctioned form from
+    /// its third character on.
+    /// </remarks>
+    [GeneratedRegex(@"\{(?:TemplateBinding|StaticResource|ThemeResource)\s+[^}]+\}")]
+    private static partial Regex HandedOn();
+
+    /// <summary>
+    /// The value a <c>Setter</c> carries, however it is spelt, or nothing when it writes none.
+    /// </summary>
+    /// <remarks>
+    /// The property element is read as the text under it and not as whatever element it holds, which
+    /// is what keeps <c>&lt;Setter.Value&gt;&lt;StaticResource ResourceKey="OliveBrush" /&gt;</c> —
+    /// the one legitimate element spelling of a key — silent, and with it a <c>&lt;Border /&gt;</c>
+    /// or any other control put there by property-element syntax. A brush declared under one is
+    /// still caught, through its own <c>Color</c> attribute, exactly as a brush under a
+    /// <c>&lt;Border.Background&gt;</c> is.
+    /// <para>
+    /// Whitespace answers nothing whichever way it is spelt. <c>Value="   "</c> and
+    /// <c>&lt;Setter.Value&gt;   &lt;/Setter.Value&gt;</c> settle the same nothing, and one of them
+    /// reporting while the other stayed silent would be the two-spellings-of-one-shape defect this
+    /// reader exists to remove.
+    /// </para>
+    /// <para>
+    /// A <c>Setter</c> carrying both spellings at once is not legal XAML and does not reach a
+    /// screen, so nothing here has to choose between them on the merits; the attribute wins because
+    /// it is asked first.
+    /// </para>
+    /// </remarks>
+    private static string? ValueOf(XElement setter)
+    {
+        var written = (string?)setter.Attribute("Value")
+            ?? setter.Elements()
+                .FirstOrDefault(child => child.Name.LocalName == "Setter.Value")
+                ?.Value;
+
+        return string.IsNullOrWhiteSpace(written) ? null : written.Trim();
+    }
+
+    /// <summary>
+    /// Whether <paramref name="property"/>, as a <c>Setter</c> spells it, is one of
+    /// <paramref name="properties"/>.
+    /// </summary>
+    /// <remarks>
+    /// The whole string first and the part after the last dot second, and that order is
+    /// load-bearing. <c>Property="Border.Background"</c> is legal, is the required spelling for an
+    /// attached property, and sets exactly what <c>Property="Background"</c> sets — so a plain
+    /// string comparison against the set is a hole with a qualifier in front of it. But
+    /// <see cref="ScreenTextsTests.Reads"/> holds <c>AutomationProperties.Name</c> and
+    /// <c>ToolTipService.ToolTip</c> as dotted names of their own, and eleven of its nineteen
+    /// entries are dotted that way, so a last-dot match alone would reduce them to <c>Name</c> and
+    /// <c>ToolTip</c> and lose all eleven.
+    /// <para>
+    /// <c>internal</c> because <see cref="ScreenTextsTests.SetsAWordAPersonReads"/> asks the same
+    /// question of a <c>Setter</c> on a screen, and an exact match there while this one resolves the
+    /// qualifier is two spellings of one rule in one assembly — the shape a qualified property would
+    /// have slipped through. That makes the lending two-directional: this class borrows
+    /// <see cref="ScreenTextsTests.Reads"/> and lends this back. Two shared pieces travelling both
+    /// ways is the point at which they belong in a class of their own beside <c>AppSources</c> and
+    /// <c>SourceLines</c>, which is a move this card did not make and the next reader of either
+    /// class should.
+    /// </para>
+    /// </remarks>
+    internal static bool IsOneOf(string property, IReadOnlySet<string> properties) =>
+        properties.Contains(property)
+        || properties.Contains(property[(property.LastIndexOf('.') + 1)..]);
+
+    /// <summary>
+    /// What a <c>Setter</c> puts on one of <paramref name="properties"/>, and nothing when it sets
+    /// none.
+    /// </summary>
+    /// <remarks>
+    /// The property set is an argument because two checks ask this same question of two different
+    /// sets: <see cref="Values"/> asks it about the colours, sizes and corners of ISC-173.1, and
+    /// <see cref="SettledIn"/> about the words a person reads. One <c>Setter</c> shape, read once.
+    /// <para>
+    /// The set is tested <em>before</em> <see cref="ValueOf"/> is asked, and reordering those two
+    /// conditions would have this read a whole <c>ControlTemplate</c>'s text as a colour —
+    /// Olivo.xaml holds three <c>&lt;Setter.Value&gt;</c> elements and every one of them wraps a
+    /// template or a panel, under a property in neither set.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<(string Property, string Value)> SetBy(
+        XElement element, IReadOnlySet<string> properties)
+    {
+        if (element.Name.LocalName == "Setter"
+            && (string?)element.Attribute("Property") is { } property
+            && IsOneOf(property, properties)
+            && ValueOf(element) is { } value)
+        {
+            yield return (property, value);
+        }
+    }
 
     /// <summary>Every key a dictionary or a screen's own resources define.</summary>
     private static HashSet<string> Keys(XDocument document) =>
@@ -919,10 +1245,10 @@ public partial class OlivoTests
     /// <c>Setter</c> shape that says the same thing inside a style.
     /// </summary>
     /// <remarks>
-    /// A <c>Setter</c>'s <c>Property</c> is matched on the part after the last dot.
-    /// <c>Property="Border.Background"</c> is legal, is the required spelling for an attached
-    /// property, and sets exactly what <c>Property="Background"</c> sets — so a plain string
-    /// comparison against the set is a hole with a qualifier in front of it.
+    /// The <c>Setter</c> shape is <see cref="SetBy"/>'s, so the property is matched
+    /// <see cref="IsOneOf"/>'s way and the value read <see cref="ValueOf"/>'s way — which is what
+    /// makes <c>&lt;Setter Property="Background"&gt;&lt;Setter.Value&gt;#FF112233&lt;/Setter.Value&gt;&lt;/Setter&gt;</c>
+    /// a colour a screen chose rather than a colour nothing reads.
     /// </remarks>
     private static IEnumerable<(string Property, string Value)> Values(XElement element)
     {
@@ -931,20 +1257,30 @@ public partial class OlivoTests
             yield return (attribute.Name.LocalName, attribute.Value);
         }
 
-        if (element.Name.LocalName == "Setter"
-            && (string?)element.Attribute("Property") is { } property
-            && CarriesAValue.Contains(property[(property.LastIndexOf('.') + 1)..])
-            && (string?)element.Attribute("Value") is { } value)
+        foreach (var set in SetBy(element, CarriesAValue))
         {
-            yield return (property, value);
+            yield return set;
         }
     }
 
     private static bool IsTheDictionary(FileInfo file) =>
         file.Name.Equals("Olivo.xaml", StringComparison.Ordinal);
 
+    /// <summary>The dictionary, carrying the line each element stands on.</summary>
+    /// <remarks>
+    /// <see cref="LoadOptions.SetLineInfo"/> for <see cref="SettledIn"/>'s sake: Olivo.xaml is
+    /// hundreds of lines of <c>Setter</c>s, and two of the spellings that check must find report a
+    /// string that does not occur in the file at all — the words under a
+    /// <c>&lt;Setter.Value&gt;</c> come back as <c>Text="Sin nombre"</c>, which is not greppable.
+    /// It costs the option on one loader and changes no reader's verdict.
+    /// </remarks>
     private static XDocument Olivo() => XDocument.Load(
-        AppSources.With(".xaml").Single(IsTheDictionary).FullName);
+        AppSources.With(".xaml").Single(IsTheDictionary).FullName, LoadOptions.SetLineInfo);
+
+    /// <summary>The line <paramref name="element"/> stands on, or nothing when it was parsed from a
+    /// row rather than loaded from the file.</summary>
+    private static string At(XElement element) =>
+        ((IXmlLineInfo)element).HasLineInfo() ? $"line {((IXmlLineInfo)element).LineNumber}: " : string.Empty;
 
     private static string Project() => File.ReadAllText(
         AppSources.At(Path.Combine("MeetingTranscriber.App", "MeetingTranscriber.App.csproj")).FullName);
