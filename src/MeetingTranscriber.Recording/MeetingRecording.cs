@@ -104,20 +104,7 @@ public sealed class MeetingRecording : IDisposable
             // Both devices are recording by now, so the meeting is happening: it is not thrown away
             // over the row that describes the run, which the card beside the blocks can be used to
             // write again. Letting go stops the devices rather than erasing what they caught.
-            //
-            // Whatever letting go throws is swallowed, and only here: what the caller has to hear is
-            // why the recording could not be started, and a device that then refused to close would
-            // otherwise replace that with a message about the device. The devices are released
-            // either way, which is the part that matters, and a wedged one is already something
-            // CaptureSession reports through its own deadline rather than through this path.
-            try
-            {
-                session.Dispose();
-            }
-            catch (AudioCaptureException)
-            {
-            }
-
+            LetGoOf(session);
             throw;
         }
 
@@ -176,9 +163,20 @@ public sealed class MeetingRecording : IDisposable
     /// <para>
     /// The devices are released before any of that, so nothing is being recorded while it runs and
     /// somebody who closed the application in the middle has a spool that recovery already handles.
-    /// If finishing does throw, the recording is over and the meeting can be finished again from
-    /// the blocks with <see cref="MeetingRecordings.Finish"/> — this object is done either way,
-    /// which is why the flag goes up before the work rather than after it.
+    /// They are released <b>however the stop itself went</b>, and with them the block files and the
+    /// mark over the folder, because <see cref="CaptureSession.Dispose"/> is the only thing that
+    /// lets any of the three go. A session nobody disposes holds all three until this process ends,
+    /// and the one that costs somebody something before then is the blocks: a spool still open is
+    /// one <see cref="MeetingRecordings.Finish"/> cannot read, so the meeting the paragraph below
+    /// says can be finished again could not be, until the application was restarted.
+    /// </para>
+    /// <para>
+    /// If finishing throws, the recording is over and the meeting can be finished again from the
+    /// blocks with <see cref="MeetingRecordings.Finish"/>. If <b>stopping</b> throws, that is true
+    /// of a stream that ended by itself and not of one that was given up on: that one keeps its
+    /// block file open while a thread may still be writing through it, which is
+    /// <see cref="CaptureSource.Dispose"/>'s rule and not this method's to break. Either way this
+    /// object is done, which is why the flag goes up before the work rather than after it.
     /// </para>
     /// </remarks>
     /// <param name="now">When stop was pressed.</param>
@@ -200,13 +198,35 @@ public sealed class MeetingRecording : IDisposable
 
         told?.Report(SavingWork.LettingTheSourcesGo);
 
-        session.Stop();
+        try
+        {
+            session.Stop();
+        }
+        catch
+        {
+            // The recording is over whatever the devices did. The flag goes up first so a second
+            // stop meets the sentence about MeetingRecordings.Finish rather than re-entering a
+            // session whose sources are already finished and let go, and so that this object is
+            // done even if letting go were ever to throw its way out of here.
+            stopped = true;
+            LetGoOf(session);
+            throw;
+        }
 
         // The devices are let go of before the spools are read: a recording still being written is
         // a file this build refuses to read, which is the same refusal that keeps somebody from
-        // being told a meeting still going on had ended.
-        session.Dispose();
+        // being told a meeting still going on had ended. Not folded into a finally around the stop:
+        // a failure to let go on the way out of a stop that worked is the caller's own news, and
+        // there is nothing above it for it to drown out.
+        //
+        // The flag goes up before it for the same reason it goes up first in the catch. Letting go
+        // can throw here too — the same IOException out of the mark's own handle LetGoOf is written
+        // around — and by then the sources are finished and the recording is over whether or not
+        // the last handle closed. Set after the call, that throw would leave this object saying it
+        // was still going, and a second stop would re-enter a session whose sources are already
+        // finished rather than meeting the sentence about MeetingRecordings.Finish.
         stopped = true;
+        session.Dispose();
 
         return MeetingRecordings.Finish(corpus, MeetingId, now, told);
     }
@@ -216,6 +236,13 @@ public sealed class MeetingRecording : IDisposable
     /// back as a recording somebody has to decide about — which is what happens to a meeting the
     /// application was closed in the middle of.
     /// </summary>
+    /// <remarks>
+    /// The flag goes up before the work, as it does in <see cref="Stop"/> and for the same reason:
+    /// letting go can throw, and a second call meeting a flag that never went up would ask a
+    /// session that is already finished to let go again. This one reports what it throws rather
+    /// than swallowing it — it is the deliberate exit path, where a handle that would not close is
+    /// the news and there is nothing above it for that news to drown out.
+    /// </remarks>
     public void Dispose()
     {
         if (stopped)
@@ -223,7 +250,45 @@ public sealed class MeetingRecording : IDisposable
             return;
         }
 
-        session.Dispose();
         stopped = true;
+        session.Dispose();
+    }
+
+    /// <summary>
+    /// Lets go of <paramref name="session"/> while a failure is already on its way up, and keeps a
+    /// handle that would not close from replacing it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both ways a recording fails run through here — a start whose row could not be written, and a
+    /// stop a device refused — and both owe the same thing.
+    /// <see cref="CaptureSession.Dispose"/> asks every source to stop, lets each go, and releases
+    /// the mark over the folder in a <c>finally</c>, so the mark goes however the devices went. It
+    /// is the only thing that lets any of them go, so a session nobody disposes holds two devices,
+    /// its block files and its mark until this process ends — and a meeting whose blocks are still
+    /// held is one <see cref="MeetingRecordings.Finish"/> cannot read back, so the recording that
+    /// just failed could not be salvaged either until the application was restarted.
+    /// </para>
+    /// <para>
+    /// Everything it throws is swallowed, and broadly rather than by name on purpose. A source
+    /// letting go already swallows what a device does, so the throw that actually arrives here is
+    /// an <see cref="IOException"/> out of the mark's own handle — and an
+    /// <see cref="AudioCaptureException"/> is the one thing this can never be, because that is what
+    /// taking a mark throws and never what letting one go throws. A catch naming it would read like
+    /// a guarantee and hold nothing, and what it let through would be a sentence about cleanup
+    /// standing where the caller needed to hear why the meeting could not be started or stopped.
+    /// </para>
+    /// </remarks>
+    /// <param name="session">The session to let go of, however it ended.</param>
+    private static void LetGoOf(CaptureSession session)
+    {
+        try
+        {
+            session.Dispose();
+        }
+        catch
+        {
+            // Swallowed on purpose: see the remarks.
+        }
     }
 }
