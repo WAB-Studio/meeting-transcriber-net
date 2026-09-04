@@ -634,10 +634,13 @@ first screen of an application is not where somebody enumerates their jobs.
 window. The same screen, not another one: the recording card is still above and slides out of the
 way. The list scrolls whole — no paging, and no search field until the index behind it exists.
 
-**A meeting being recorded keeps a strip while the list is raised**, because the press that stops it
-is never off screen. The strip carries the elapsed time and *Detener*, and nothing else: the meters
-and the name belong to the card that slid away. Elapsed time is spelled the way it is spelled
-everywhere, through `ScreenNumbers.Long`, so it reads `0:08:12` and not `08:12`.
+**A meeting being recorded keeps a strip while the list is raised**, because what it is doing and
+the press that stops it are never off screen. The strip carries three things: the state word in
+olivo, one line of data — how long the meeting has been running, what channel 0 is following and
+which microphone is on it — and *Detener*. Not the meters, not the stopwatch and not *Pausar*: those
+belong to the card that slid away, and pausing is the one press that can wait for somebody to lower
+the list, which is why the strip has one press and not three. Elapsed time is spelled the way it is
+spelled everywhere, through `ScreenNumbers.Long`, so it reads `0:08:12` and not `08:12`.
 
 **`Persona`** · Adding somebody, over whatever screen asked. The second of the two dialogues, and
 the last: name, and optionally an organization and since when. It adds an affiliation and never
