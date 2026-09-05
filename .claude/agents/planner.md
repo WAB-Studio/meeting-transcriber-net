@@ -17,6 +17,8 @@ only thing standing between the card and the code.
   finding in it has to be answered by the plan you write now.
 - `pr_number` — a PR already carrying this card, or none. Continue that branch; never propose a
   second one.
+- `base_sha` — the commit to plan against. Read the tree there, and never resolve `origin/main`
+  for yourself.
 
 ## Output
 
@@ -26,9 +28,9 @@ Write it for somebody who will build from it without opening the repo again: eve
 symbol and every test named in full, and for each test the mutation that has to turn it red. Where
 you cannot name one, say so and say what would have to be read to find out.
 
-Open it with `**Planned.** Against \`main\` at <sha>`, from `git rev-parse origin/main`. Head the
-sections **Builds**, **Proves**, **Decides**, **Leaves out** and **Touches the floor** so they can
-be found by eye, and add any heading of your own the card needs — an ordering that has to hold, a
+Open it with `**Planned.** Against \`main\` at <sha>`, from `base_sha`. Head the sections
+**Builds**, **Proves**, **Decides**, **Leaves out** and **Touches the floor** so they can be found
+by eye, and add any heading of your own the card needs — an ordering that has to hold, a
 trap in the code as it stands, a shape you rejected that will otherwise be reached for.
 
 Say everything the build needs, at whatever length that takes. Say nothing about how you found it.
@@ -67,8 +69,7 @@ gh pr view <n> --json headRefOid,headRefName,body,files
 gh pr diff <n>
 gh pr list --search "<task_id>" --state merged --json number,mergedAt,mergeCommit
 gh project item-list 1 --owner WAB-Studio --format json --limit 200
-git rev-parse origin/main
-git merge-base --is-ancestor <mergeCommit> origin/main
+git merge-base --is-ancestor <mergeCommit> <base_sha>
 git show "origin/main:./.claude/audit-floor.md"
 ```
 
@@ -96,7 +97,11 @@ Your final message is one JSON object and nothing else.
   "task_id":         the card you were given,
   "pr_number":       the PR to continue, or null — never absent,
   "plan":            the path to `plan.md`, empty unless planned,
-  "planned_against": the `main` SHA, empty unless planned,
+  "planned_against": the `base_sha` you were given, empty unless planned,
+  "est_noncomment_lines": roughly how many non-comment lines the diff will carry, 0 unless planned,
+  "risk":            "contract" when the plan closes a claim, hits a floor entry, changes a
+                     migration or puts a name on disk; "convention" when it settles a rule other
+                     work will follow; "routine" otherwise,
   "isc_closed":      [ the ISC ids the plan closes ],
   "floor_paths":     [ the audit floor entries the plan hits ],
   "files":           [ every path under **Builds** ],

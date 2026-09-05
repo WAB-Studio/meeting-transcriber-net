@@ -32,7 +32,9 @@ track:  issue   →  ...  →  closed when the thing it describes stopped being 
    its own line. One pass at the end, over the whole diff, before the PR opens and before every
    update to it. `/adversarial-review` comes before that pass, same shape. A PR is never opened red.
    Nobody waits on CI or chases it — that run is read at merge.
-4. **One PR, one issue.** If it would close two, either the issue was split wrong or the PR was.
+4. **One PR, one batch, one commit per issue.** A PR may close several issues; each carries its own
+   commit, so an audit can attribute a hunk and a revert takes one card. Two issues sharing a commit
+   is the thing that is wrong.
 5. **Merge commit**, always, and the branch goes with it — `--delete-branch`, because the repo does
    not delete it on its own. `main` is the only long-lived branch. There is no `develop`.
 
@@ -116,7 +118,7 @@ the repository, not in the project.
 
 Drag two cards, ever: `Ready → In progress` and `In review → Testing`. The rest moves itself.
 
-Put `Closes #N` in every PR that has an issue.
+Put a `Closes #N` line in every PR for every issue it closes.
 
 Never move a card to `Done` for merging. Move it to `Testing`, confirm it works, then close the
 issue. Nothing has shipped and there is no deploy, so confirming is running the built app, or
@@ -204,9 +206,9 @@ The door into the app was a panel built to debug capture, so the first thing a p
 something nobody outside this repo can read.
 ```
 
-- **Two different lines.** `Closes #N` is the issue, and it only appears when the issue existed
-  before the branch — no issue, no line. `Claims:` is the ISA, and is `none` when the PR closed no
-  claim. Neither ever names something that is not there.
+- **Two different lines.** `Closes #N` is the issue, one line per issue the PR closes, and it only
+  appears when the issue existed before the branch — no issue, no line. `Claims:` is the ISA, and
+  is `none` when the PR closed no claim. Neither ever names something that is not there.
 - A claim closes on its probe, recorded in `## Verification` through the `isa` skill, **in the same
   PR**. An ISA updated afterwards never gets updated.
 - **Optional section:** `## Additional notes` — the riskiest part, what was left out, what has to
