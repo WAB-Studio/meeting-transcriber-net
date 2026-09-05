@@ -234,22 +234,53 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
     }
 
     /// <summary>
-    /// The listing is a listing. It reads the card and the size of each spool and touches nothing,
-    /// so a start after a crash costs the same whether somebody decides anything or not.
+    /// A listing decides nothing and removes nothing, so a start after a crash leaves a person
+    /// exactly what they had whether they decide anything or not.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Compared by content and not by length, which is strictly stronger and is what
+    /// <c>WaitingRecordingsTests.OnDisk</c> already does for this job.
+    /// </para>
+    /// <para>
+    /// <c>reading.mark</c> is left out of the comparison, and the two marks beside it deliberately
+    /// are not: a <c>saving.mark</c> or a <c>capture.mark</c> appearing under a listing would be a
+    /// serious defect and this is where it would show. The listing really does produce the reading
+    /// mark — it reads every block of every waiting recording, and that is what the mark says. What
+    /// it is not is a decision: it holds no bytes, nothing reads whether it is there, and
+    /// <c>docs/corpus.md</c> calls it neither a source nor a derivative. Every byte a person could
+    /// lose is still compared.
+    /// </para>
+    /// </remarks>
     [Fact]
     public void Listing_what_is_waiting_decides_nothing_and_removes_nothing()
     {
         var meeting = Killed();
         var folder = CorpusFiles.SpoolFolderFor(corpus.Root, meeting);
-        var before = folder.GetFiles().Select(file => $"{file.Name} {file.Length}").Order().ToArray();
+
+        var before = Contents(folder);
 
         CommandLine.Of("recovery", "--corpus", Root).Code.ShouldBe(Cli.Ok);
         CommandLine.Of("recovery", "--corpus", Root).Code.ShouldBe(Cli.Ok);
 
-        folder.Refresh();
-        folder.GetFiles().Select(file => $"{file.Name} {file.Length}").Order().ShouldBe(before);
+        Contents(folder).ShouldBe(before);
+        ReadingMark.IsHeldIn(folder).ShouldBeFalse("the listing let the folder go");
         MeetingAudio.In(folder).Exists.ShouldBeFalse();
+    }
+
+    /// <summary>Every file a listing could lose somebody, by name and by content.</summary>
+    private static string[] Contents(DirectoryInfo folder)
+    {
+        folder.Refresh();
+
+        return
+        [
+            .. folder.GetFiles()
+                .Where(file => !string.Equals(
+                    file.Name, ReadingMark.FileName, StringComparison.OrdinalIgnoreCase))
+                .Select(file => $"{file.Name} {CorpusFiles.Sha256Of(file)}")
+                .Order(StringComparer.Ordinal),
+        ];
     }
 
     [Fact]
