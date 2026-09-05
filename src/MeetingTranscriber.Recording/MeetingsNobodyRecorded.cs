@@ -29,10 +29,11 @@ public sealed record MeetingsSwept(IReadOnlyList<Guid> Swept, IReadOnlyList<stri
 /// <remarks>
 /// <para>
 /// Somebody presses record and the microphone is refused, or the machine dies while the devices are
-/// opening. The meeting's row and its folder are written before any device is opened — that ordering
-/// is <see cref="MeetingRecordings.Open"/>'s and it is deliberate — so what is left behind when the
-/// devices never record is a meeting of nothing: a row that sits in the list saying it has no audio
-/// yet, and a folder holding nothing but a header beside every real recording. Nothing ever took
+/// opening. The meeting's row, then its folder, then the claim over that folder are written before
+/// any device is opened — that ordering is <see cref="MeetingRecordings.Open"/>'s, all three steps
+/// of it, and it is deliberate — so what is left behind when the devices never record is a meeting
+/// of nothing: a row that sits in the list saying it has no audio yet, and a folder holding nothing
+/// but a <see cref="CaptureMark"/> nobody is holding, beside every real recording. Nothing ever took
 /// either away, because every other path in this product is careful never to remove a recording,
 /// and this one is not about a recording at all.
 /// </para>
@@ -46,11 +47,15 @@ public sealed record MeetingsSwept(IReadOnlyList<Guid> Swept, IReadOnlyList<stri
 /// meeting that happened.
 /// </para>
 /// <para>
-/// The folder goes first and the row second, and that order is the whole safety of it. A capture
-/// that claimed the folder holds <see cref="CaptureMark"/> in a share mode that forbids unlinking,
-/// so a press arriving at any point before the delete makes the delete throw and this stops having
-/// changed nothing — where a row removed first would leave a recording that is about to start with
-/// no meeting to be finished into. What it costs is the other order's guarantee: a corpus that
+/// The folder goes first and the row second, and that order is the whole safety of it. The press
+/// itself holds <see cref="CaptureMark"/> over the folder — taken with the folder in
+/// <see cref="MeetingRecordings.Open"/> and handed on to the session, so what is left unheld is the
+/// two adjacent syscalls that make the folder and claim it, and a sweep landing in those still
+/// takes the meeting — in a share mode that forbids unlinking, so a press arriving at any point
+/// after them and before the delete
+/// makes the delete throw and this stops having changed nothing — where a row removed first would
+/// leave a recording that is about to start with no meeting to be finished into. What it costs is
+/// the other order's guarantee: a corpus that
 /// refuses the write after the folder is gone leaves a row nothing will look at again, which is one
 /// meeting in a list rather than one meeting lost.
 /// </para>

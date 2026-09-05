@@ -657,7 +657,7 @@ public sealed class MeetingsWatchTests : IDisposable
     /// </summary>
     private static SpoolCard Killed(CorpusDbContext context, double seconds)
     {
-        var prepared = MeetingRecordings.Open(context, "es", Recorded);
+        using var prepared = MeetingRecordings.Open(context, "es", Recorded);
         var card = Fabricated.CardFor(prepared.MeetingId, Recorded);
 
         SpoolManifest.Write(prepared.Spool, card);

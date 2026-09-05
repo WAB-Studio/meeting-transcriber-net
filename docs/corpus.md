@@ -24,7 +24,7 @@ spool/<meeting_id>/
   manifest.json          source     what the recording said about itself when it started
   changes.jsonl          source     what somebody moved while it was recording, if anything
   <channel>.blocks       source     while the blocks are the only recoverable copy
-  capture.mark           neither    held while a capture is writing this folder, and empty
+  capture.mark           neither    held from the folder being claimed until the last device goes, and empty
   reading.mark           neither    held while a list, a keep or an export reads these blocks through, and empty
   saving.mark            neither    held while a finish is writing the meeting down, and empty
 spool/.removing-<meeting_id>/
@@ -49,10 +49,12 @@ a delete that stayed refused. It holds whatever the delete had not reached yet, 
 whole recording or a part of one. **Nothing in the product ever cleans it**: the sweep of folders
 nothing was recorded into names it and removes nothing, and no second discard of that recording is
 reachable, because the recording is no longer under a name anything offers. Deleting it by hand is
-safe, and nothing volunteers that it is there — `recovery --sweep` lists it among what it left, and
-otherwise it is visible only to somebody looking at the folder.
+safe, and nothing volunteers that it is there — `check` lists what is in it among the corpus's
+spooled files, and otherwise it is visible only to somebody looking at the folder.
 
-`capture.mark` is taken before the first device is opened and let go of with the last one, and it
+`capture.mark` is taken by whatever makes the folder — in `MeetingRecordings.Open` for a meeting
+recorded into a corpus, and in `CaptureSession.Start` for a capture into a folder somebody named at
+a prompt — and let go of with the last device, the press handing it on to the session in between. It
 covers the one stretch a folder holding a recording is indistinguishable from a folder holding
 nothing: between the folder being made and the first spool file landing in it, there is nothing in
 it at all. After that the blocks say it themselves. It is what lets a start sweep away the meeting a

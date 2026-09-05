@@ -244,8 +244,11 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
     /// </para>
     /// <para>
     /// <c>reading.mark</c> is left out of the comparison, and the two marks beside it deliberately
-    /// are not: a <c>saving.mark</c> or a <c>capture.mark</c> appearing under a listing would be a
-    /// serious defect and this is where it would show. The listing really does produce the reading
+    /// are not: a <c>saving.mark</c> appearing under a listing, or the <c>capture.mark</c>
+    /// <see cref="Killed"/> left behind changing under one, would be a serious defect and this is
+    /// where it would show. That mark is the press's own, stranded when the press let it go, which
+    /// is what a machine that died mid-recording really leaves — so it is in both halves of the
+    /// comparison rather than in neither. The listing really does produce the reading
     /// mark — it reads every block of every waiting recording, and that is what the mark says. What
     /// it is not is a decision: it holds no bytes, nothing reads whether it is there, and
     /// <c>docs/corpus.md</c> calls it neither a source nor a derivative. Every byte a person could
@@ -335,7 +338,7 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
         folder.Refresh();
         folder.Exists.ShouldBeTrue();
         folder.EnumerateFiles().Select(file => file.Name).Order(StringComparer.Ordinal)
-            .ShouldBe(["loopback.blocks", "manifest.json", "microphone.blocks"]);
+            .ShouldBe(["capture.mark", "loopback.blocks", "manifest.json", "microphone.blocks"]);
 
         // Still offered, and nothing left beside it.
         CommandLine.Of("recovery", "--corpus", Root).Value("meeting").ShouldBe(meeting.ToString());
@@ -451,7 +454,7 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
     {
         using var context = corpus.OpenMigrated();
 
-        var prepared = MeetingRecordings.Open(context, "es", startedAt);
+        using var prepared = MeetingRecordings.Open(context, "es", startedAt);
         var card = new SpoolCard(
             prepared.MeetingId,
             Guid.NewGuid(),

@@ -11,8 +11,8 @@ namespace MeetingTranscriber.Recording.Tests;
 /// <para>
 /// A tripwire and not a proof, and worth being exact about which. Pressing stop on a real session
 /// and having it throw needs a device: <c>MeetingRecording</c>'s only door is <c>Start</c>, whose
-/// only door is <c>CaptureSession.Start</c>, whose only door is a WASAPI endpoint, and no test in
-/// this repository has ever opened one. So this reads the source and checks the shape, which
+/// only door is <c>CaptureSession.StartUnder</c>, whose only door is a WASAPI endpoint, and no
+/// test in this repository has ever opened one. So this reads the source and checks the shape, which
 /// catches the line somebody deletes and not the rewrite somebody argues for.
 /// </para>
 /// <para>

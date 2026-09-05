@@ -63,7 +63,7 @@ public static class RecordingCommands
             context, language, microphone, follow, Clock.Now());
 
         Report.Line(output, "meeting", recording.MeetingId.ToString());
-        Report.Line(output, "spool", recording.Prepared.Spool.FullName);
+        Report.Line(output, "spool", recording.Spool.FullName);
         Report.Line(output, "channel 0", recording.Card.Mode.ToString());
 
         foreach (var source in recording.Sources)
