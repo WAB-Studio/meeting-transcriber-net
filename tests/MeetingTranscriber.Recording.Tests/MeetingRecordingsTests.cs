@@ -26,8 +26,9 @@ public sealed class MeetingRecordingsTests : IDisposable
     private readonly UtcTimestamp now = UtcTimestamp.Parse("2026-08-18T09:30:00.000Z");
 
     /// <summary>
-    /// ISC-156. The identity, the row and the folder are all there before a device is opened, so a
-    /// recording is something the corpus already knows about by the time it holds a sample.
+    /// ISC-156. The identity, the row, the folder and the claim over it are all there before a
+    /// device is opened, so a recording is something the corpus already knows about by the time it
+    /// holds a sample.
     /// </summary>
     [Fact]
     public void A_meeting_and_its_folder_exist_before_any_of_it_is_captured()
@@ -61,16 +62,15 @@ public sealed class MeetingRecordingsTests : IDisposable
     }
 
     /// <summary>
-    /// The press holds the folder from the moment it makes it, so there is no instant in which a
-    /// meeting's folder is there and nothing claims it.
+    /// The press holds the folder it made, from one statement after making it until it hands the
+    /// claim on or lets it go.
     /// </summary>
     /// <remarks>
-    /// The unit statement of what card 277 fixed. The folder was made here and the claim over it
-    /// was taken there, one statement later, and a start's sweep of the meetings nobody recorded
-    /// runs through the folders under <c>spool/</c> at every launch — so a press that made a folder
-    /// and claimed nothing had its meeting deleted out from under it and was refused for a folder
-    /// it had just made. A claim taken and released inside <c>Open</c>, or taken lazily on first
-    /// use, fails here.
+    /// The unit statement of the ordering; the sweep tests in <c>MeetingsNobodyRecordedTests</c>
+    /// are its consequence. A start's sweep of the meetings nobody recorded runs through the
+    /// folders under <c>spool/</c> at every launch, so a press holding nothing is a press whose
+    /// meeting a sweep can take out from under it. A claim taken and released inside <c>Open</c>,
+    /// or taken lazily on first use, fails here.
     /// </remarks>
     [Fact]
     public void A_press_holds_the_folder_it_just_made()
@@ -109,6 +109,9 @@ public sealed class MeetingRecordingsTests : IDisposable
     /// <remarks>
     /// Two owners of one handle, where the first to let go unclaims the folder underneath the
     /// second — and the second is the one still recording into it.
+    /// <see cref="InvalidOperationException"/> and not <see cref="RecordingException"/>, because
+    /// <c>ScreenFailures.Reportable</c> names the second and leaves the first out: a defect has to
+    /// reach the dispatcher rather than be shown to somebody as a recording that would not start.
     /// </remarks>
     [Fact]
     public void A_claim_is_handed_on_once_and_never_twice()
@@ -118,7 +121,7 @@ public sealed class MeetingRecordingsTests : IDisposable
 
         using var claim = prepared.HandTheClaimOn();
 
-        Should.Throw<RecordingException>(() => prepared.HandTheClaimOn());
+        Should.Throw<InvalidOperationException>(() => prepared.HandTheClaimOn());
     }
 
     /// <summary>

@@ -1,9 +1,9 @@
 namespace MeetingTranscriber.Audio.Tests;
 
 /// <summary>
-/// The mark a capture holds over the folder it is recording into: what it says while a recording
-/// is being started, what it says once whatever was holding it is gone, and that a capture is what
-/// takes it.
+/// The mark held over the folder a recording is being written into: what it says while a recording
+/// is being started, what it says once whatever was holding it is gone, who takes it, and that a
+/// session handed one lets it go on every way out that is not a recording.
 /// </summary>
 /// <remarks>
 /// The middle one is the whole bet, and it costs more here than it does for a save. A capture runs
@@ -154,6 +154,65 @@ public sealed class CaptureMarkTests : IDisposable
         // Nothing was opened and nothing was written: no spool for either channel, and no card.
         folder.GetFiles().Select(file => file.Name)
             .ShouldBe([CaptureMark.FileName], ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// A session handed a claim and refused before it opens anything lets the claim go, so the
+    /// folder is the sweep's again.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The half of the handoff that stops the fix being worse than the defect.
+    /// <c>MeetingRecordings.Open</c> claims a meeting's folder and hands the claim to
+    /// <see cref="CaptureSession.StartUnder"/>, which owns it from its first line — so every press
+    /// that fails, which is the ordinary one where a microphone is refused, has to leave the folder
+    /// unheld. A claim held by a session that never started keeps its meeting in the list forever,
+    /// and no start can ever take it away.
+    /// </para>
+    /// <para>
+    /// Refused on the argument rather than on a device, because a device is what a build agent does
+    /// not have — and because the argument checks sit inside the <c>try</c> for exactly this
+    /// reason. A build that moved them back above it, which is where they were and is the obvious
+    /// tidy-up, fails here and nowhere else.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_session_refused_the_claim_it_was_handed_lets_the_folder_go()
+    {
+        var folder = root.CreateSubdirectory(Guid.NewGuid().ToString());
+
+        Should.Throw<ArgumentNullException>(() => CaptureSession.StartUnder(
+            CaptureMark.Take(folder), Guid.NewGuid(), microphone: null!));
+
+        CaptureMark.IsHeldIn(folder).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A session handed a claim over a folder that already holds a recording is refused, and the
+    /// claim goes with the refusal.
+    /// </summary>
+    /// <remarks>
+    /// "A recording is not written over another one" is decided in one place —
+    /// <see cref="BlockSpool.EnsureNothingRecordedIn"/> — and both doors into
+    /// <see cref="CaptureSession"/> ask it. On the one path anybody reaches
+    /// <see cref="CaptureSession.StartUnder"/> by, the folder is a fresh <c>Guid</c> made
+    /// microseconds earlier and this can never fire; it is asserted because the door is public, and
+    /// a rule held by one caller's habit is not held at all.
+    /// </remarks>
+    [Fact]
+    public void A_session_handed_a_claim_over_somebody_elses_recording_is_refused()
+    {
+        var folder = root.CreateSubdirectory(Guid.NewGuid().ToString());
+
+        System.IO.File.WriteAllBytes(Path.Combine(folder.FullName, "loopback.blocks"), [1, 2, 3]);
+
+        Should.Throw<AudioCaptureException>(() => CaptureSession.StartUnder(
+                CaptureMark.Take(folder),
+                Guid.NewGuid(),
+                new AudioDevice("{no-such-endpoint}", "A microphone no machine has", IsDefault: false)))
+            .Message.ShouldContain("loopback.blocks");
+
+        CaptureMark.IsHeldIn(folder).ShouldBeFalse();
     }
 
     public void Dispose()

@@ -146,7 +146,7 @@ public sealed class CaptureSession : IDisposable
         // Before the first device and after the folder is there, which is the whole of what it is
         // for: from here until the session is disposed, the folder says a recording is happening in
         // it even while there is nothing in it to say so.
-        return StartUnder(CaptureMark.Take(folder), folder, meetingId, microphone, follow);
+        return StartUnder(CaptureMark.Take(folder), meetingId, microphone, follow);
     }
 
     /// <summary>
@@ -164,17 +164,16 @@ public sealed class CaptureSession : IDisposable
     /// </para>
     /// <para>
     /// <b>Anybody with a folder and no claim wants <see cref="Start"/>.</b> That one makes the
-    /// folder, refuses one that already holds a recording, and takes the mark itself. This one
-    /// asks neither question: on the one path that reaches it the folder is
-    /// <c>spool/&lt;new Guid&gt;</c>, made microseconds earlier, so there is nothing in it to have
-    /// been recorded and nothing to refuse.
+    /// folder and takes the mark itself. Which folder this records into is not asked for: it is
+    /// <see cref="CaptureMark.Folder"/>, so a session cannot be opened into one folder under a
+    /// claim over another — the one state the mark exists to make unreachable, and one two
+    /// arguments could have disagreed about.
     /// </para>
     /// </remarks>
     /// <param name="claimed">
-    /// The mark over <paramref name="folder"/>, taken by whoever made it. Owned from here: it goes
+    /// The mark over the folder to record into, taken by whoever made it. Owned from here: it goes
     /// with the devices if a session comes back, and is let go of on every other way out.
     /// </param>
-    /// <param name="folder">Where the two spools and the card go. Already there and already held.</param>
     /// <param name="meetingId">The meeting being recorded, fixed before any of this is called.</param>
     /// <param name="microphone">The device channel 1 listens to.</param>
     /// <param name="follow">
@@ -182,7 +181,6 @@ public sealed class CaptureSession : IDisposable
     /// </param>
     public static CaptureSession StartUnder(
         CaptureMark claimed,
-        DirectoryInfo folder,
         Guid meetingId,
         AudioDevice microphone,
         AudioProcess? follow = null)
@@ -190,14 +188,22 @@ public sealed class CaptureSession : IDisposable
         ArgumentNullException.ThrowIfNull(claimed);
 
         // The try opens on the line after the claim arrives, so every other refusal — the argument
-        // checks included — leaves through the catch that lets it go. A capture that never started
-        // is exactly the folder the sweep is looking for, and a mark left held would keep it.
+        // check and the question below included — leaves through the catch that lets it go. A
+        // capture that never started is exactly the folder the sweep is looking for, and a mark
+        // left held would keep it.
         try
         {
-            ArgumentNullException.ThrowIfNull(folder);
             ArgumentNullException.ThrowIfNull(microphone);
 
-            return Opening(folder, meetingId, microphone, follow, claimed);
+            // Asked here as well as in `Start`, because this is a public door too and "a recording
+            // is not written over another one" is decided in one place for every caller or in none.
+            // What kept it above the claim in `Start` — that `HeldMark.Take` would leave a mark
+            // behind in a refused folder — cannot apply here: the mark is already taken, so this
+            // leaves nothing that was not already there. On the one path anybody actually reaches
+            // it by, the folder is `spool/<new Guid>` and this can never fire.
+            BlockSpool.EnsureNothingRecordedIn(claimed.Folder);
+
+            return Opening(claimed.Folder, meetingId, microphone, follow, claimed);
         }
         catch
         {
@@ -210,10 +216,10 @@ public sealed class CaptureSession : IDisposable
     /// Opening the two sources and writing the card, with the folder already claimed.
     /// </summary>
     /// <remarks>
-    /// A method rather than a block inside <see cref="Start"/> so that taking the claim and letting
-    /// it go on the way out are three lines beside each other instead of a hundred-line body
-    /// indented under a try. Nothing here needs the claim; it takes it as an argument only because
-    /// the session it builds owns it from that point on.
+    /// A method rather than a block inside <see cref="StartUnder"/> so that owning the claim and
+    /// letting it go on the way out are three lines beside each other instead of a hundred-line
+    /// body indented under a try. Nothing here needs the claim; it takes it as an argument only
+    /// because the session it builds owns it from that point on.
     /// </remarks>
     private static CaptureSession Opening(
         DirectoryInfo folder,

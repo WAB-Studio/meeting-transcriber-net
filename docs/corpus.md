@@ -24,7 +24,7 @@ spool/<meeting_id>/
   manifest.json          source     what the recording said about itself when it started
   changes.jsonl          source     what somebody moved while it was recording, if anything
   <channel>.blocks       source     while the blocks are the only recoverable copy
-  capture.mark           neither    held from the press until the last device is let go of, and empty
+  capture.mark           neither    held from the folder being claimed until the last device goes, and empty
   reading.mark           neither    held while a list, a keep or an export reads these blocks through, and empty
   saving.mark            neither    held while a finish is writing the meeting down, and empty
 spool/.removing-<meeting_id>/

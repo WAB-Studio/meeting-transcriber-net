@@ -231,8 +231,7 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
             folder = prepared.Spool;
         }
 
-        // A capture that took the folder and whose process is gone. Nothing clears this file.
-        CaptureMark.Take(folder).Dispose();
+        // The press took the folder and its process is gone. Nothing clears this file.
         File.Exists(Path.Combine(folder.FullName, CaptureMark.FileName)).ShouldBeTrue(
             "the stranded mark is what this test is about, and it has to be on disk");
 

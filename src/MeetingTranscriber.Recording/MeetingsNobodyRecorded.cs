@@ -49,9 +49,10 @@ public sealed record MeetingsSwept(IReadOnlyList<Guid> Swept, IReadOnlyList<stri
 /// <para>
 /// The folder goes first and the row second, and that order is the whole safety of it. The press
 /// itself holds <see cref="CaptureMark"/> over the folder — taken with the folder in
-/// <see cref="MeetingRecordings.Open"/> and handed on to the session, so there is no instant in
-/// which a folder exists under <c>spool/</c> for a meeting somebody is starting and nothing holds
-/// it — in a share mode that forbids unlinking, so a press arriving at any point before the delete
+/// <see cref="MeetingRecordings.Open"/> and handed on to the session, so what is left unheld is the
+/// two adjacent syscalls that make the folder and claim it, and a sweep landing in those still
+/// takes the meeting — in a share mode that forbids unlinking, so a press arriving at any point
+/// after them and before the delete
 /// makes the delete throw and this stops having changed nothing — where a row removed first would
 /// leave a recording that is about to start with no meeting to be finished into. What it costs is
 /// the other order's guarantee: a corpus that

@@ -648,8 +648,7 @@ public static class UnfinishedRecordings
     /// The claimant is the press and not the capture, which is what makes that hold. A meeting's
     /// folder is claimed where it is made, in <c>MeetingRecordings.Open</c>, and the claim is
     /// handed on to the session — so this runs into a mark from the moment the folder exists,
-    /// rather than from the moment a device is opened. Before that, a press one second old was a
-    /// folder holding nothing that nothing held, and this took it away.
+    /// rather than from the moment a device is opened.
     /// </para>
     /// <para>
     /// This file holds two different answers to the same hazard and they are not in competition.

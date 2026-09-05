@@ -27,8 +27,9 @@ namespace MeetingTranscriber.Recording;
 /// So whoever holds one either hands the claim to a session with <see cref="HandTheClaimOn"/> —
 /// after which there is nothing left in it to release — or lets it go with
 /// <see cref="Dispose"/>, which is what says the press was abandoned and the folder is the
-/// sweep's again. A press nobody does either to holds its folder for the life of the process,
-/// which is a meeting of nothing no start can ever take away.
+/// sweep's again. A press nobody does either to holds its folder until the handle underneath it is
+/// finalised, which is whenever the garbage collector gets to it — so a meeting of nothing that no
+/// start can take away, for a length of time nothing decides.
 /// </para>
 /// </remarks>
 public sealed class PreparedRecording : IDisposable
@@ -57,15 +58,29 @@ public sealed class PreparedRecording : IDisposable
     /// holding it here.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The field is nulled rather than the disposal being made idempotent, so there is exactly one
     /// owner of the handle at every instant: after this, <see cref="Dispose"/> has nothing to
     /// release and a later tidy-up cannot unclaim the folder of a meeting being recorded.
+    /// </para>
+    /// <para>
+    /// <see cref="InvalidOperationException"/> on a second call, and not
+    /// <see cref="RecordingException"/>, because this is a defect in the caller rather than
+    /// something to tell somebody: <see cref="ScreenFailures.Reportable"/> deliberately leaves
+    /// <see cref="InvalidOperationException"/> out so a defect reaches the dispatcher instead of
+    /// being shown as a recording that would not start.
+    /// </para>
+    /// <para>
+    /// Public rather than internal only because the tests that hold it to this are in another
+    /// assembly and this repository has no <c>InternalsVisibleTo</c>. Its one production caller,
+    /// <see cref="MeetingRecording.Start"/>, is in this one.
+    /// </para>
     /// </remarks>
-    /// <exception cref="RecordingException">The claim was handed on already.</exception>
+    /// <exception cref="InvalidOperationException">The claim was handed on already.</exception>
     public CaptureMark HandTheClaimOn()
     {
         var handed = claim
-            ?? throw new RecordingException(
+            ?? throw new InvalidOperationException(
                 $"The claim over the folder of meeting {MeetingId} was handed on already. It is "
                 + "held by whatever is recording into that folder, and handing it on twice would "
                 + "be two owners of one handle, the first of which unclaims the folder underneath "
@@ -143,12 +158,12 @@ public static class MeetingRecordings
     /// </para>
     /// <para>
     /// The claim is the third step, taken with the folder and not after it. Between those two the
-    /// folder is the only thing on disk saying this meeting is being recorded, and until this
-    /// claim existed nothing held it: a launch's sweep of the meetings nobody recorded, landing in
-    /// that gap, took the folder and the row of a press one second old and the press was refused
-    /// for a folder it had just made. So nothing goes between <c>spool.Create()</c> and
-    /// <see cref="CaptureMark.Take"/> — every line there widens that window — and what comes back
-    /// is a handle somebody has to hand on or let go of.
+    /// folder is the only thing on disk saying this meeting is being recorded and nothing holds it,
+    /// and a launch's sweep of the meetings nobody recorded is enumerating folders exactly like it.
+    /// So nothing goes between <c>spool.Create()</c> and <see cref="CaptureMark.Take"/> — every
+    /// line there widens that window, and what is left of it is two adjacent syscalls, which is as
+    /// narrow as Windows allows and not nothing. What comes back is a handle somebody has to hand
+    /// on or let go of.
     /// </para>
     /// <para>
     /// A claim that is refused does not take the row or the folder back. That is the same cost
@@ -201,37 +216,34 @@ public static class MeetingRecordings
         return new PreparedRecording(meeting.Id, spool, claim);
     }
 
-    /// <summary>
-    /// Why the folder this press just made would not be claimed, said as the two things it can
-    /// actually be.
-    /// </summary>
+    /// <summary>Why the folder this press just made would not be claimed.</summary>
     /// <remarks>
     /// <para>
     /// <see cref="CaptureMark.Take"/>'s own words are right where it is called over a folder
-    /// somebody named at a prompt, and wrong here. Its second refusal is not a second recording —
-    /// it is every <see cref="IOException"/> the mark's own two-second wait let out: a full disk, a
-    /// path that came out too long, a scanner holding the file. This folder is
-    /// <c>spool/&lt;new Guid&gt;</c>, made one statement earlier by this same call, so nothing else
-    /// on the machine has ever seen it and a second capture is not one of the things this can be.
-    /// Saying it was would be this card's own defect moved one line down.
+    /// somebody named at a prompt, and wrong here. Its refusals name a second capture, and this
+    /// folder is <c>spool/&lt;new Guid&gt;</c> made one statement earlier by this same call, so
+    /// nothing else on the machine has ever seen it and a second capture is not one of the things
+    /// this can be. Saying it was would be the defect this ordering exists to fix, one line down.
     /// </para>
     /// <para>
-    /// The inner exception's message is carried through rather than the refusal's own, because the
-    /// refusal's own is the sentence about a second recording and it is the one that must not
-    /// reach a person from here.
+    /// One sentence and not a branch per cause, because none of them is knowable from here. The
+    /// folder can have gone to the launch sweep, to a second copy of this application, to a backup
+    /// or a scanner, or to somebody deleting it by hand; the mark can have been refused by a full
+    /// disk, a path that came out too long, or a scanner outlasting
+    /// <see cref="HeldMark"/>'s wait. What is known is what this method watched happen — the folder
+    /// was made here and would not be claimed a moment later — and Windows' own words for it,
+    /// carried through from the inner exception rather than from the refusal, which is the one
+    /// sentence that must not reach a person from here.
     /// </para>
     /// </remarks>
     private static string WhyItCouldNotBeClaimed(
         Guid meetingId, DirectoryInfo spool, AudioCaptureException refused) =>
-        refused.InnerException is DirectoryNotFoundException
-            ? $"The folder '{spool.FullName}' for meeting {meetingId} was made by this press and "
-              + "taken away before it could be claimed, which is the start's sweep of meetings "
-              + "nobody recorded having reached it in that instant. Nothing was recorded, and "
-              + "pressing record again starts a meeting of its own."
-            : $"The folder '{spool.FullName}' for meeting {meetingId} was made by this press and "
-              + $"then would not be claimed: {refused.InnerException?.Message ?? refused.Message} "
-              + "Nothing else has ever recorded into this folder, so what refused the mark is the "
-              + "disk. Nothing was recorded.";
+        $"The folder '{spool.FullName}' for meeting {meetingId} was made by this press and would "
+        + $"not be claimed a moment later: {refused.InnerException?.Message ?? refused.Message} "
+        + "Nothing else has ever recorded into it, so this is not a second recording — most often "
+        + "it is the start's sweep of the meetings nobody recorded having reached the folder in "
+        + "that instant. Nothing was recorded, and pressing record again starts a meeting of its "
+        + "own.";
 
     /// <summary>
     /// Writes the row describing the run that has just opened, from what the recording wrote about
@@ -601,4 +613,3 @@ public static class MeetingRecordings
         return runs.Count == 1 ? runs[0] : null;
     }
 }
-
