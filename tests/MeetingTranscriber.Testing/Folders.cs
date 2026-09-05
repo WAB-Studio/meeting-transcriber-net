@@ -17,9 +17,18 @@ namespace MeetingTranscriber.Testing;
 /// <para>
 /// <see cref="TemporaryCorpus"/> meets the same rule on the way out and answers it by shrugging:
 /// a temporary folder that outlived a test is not worth a red. An operation a test is relying on
-/// cannot shrug, and there is no handle of ours to close, so this one waits. Nothing in
-/// <c>src/</c> renames a folder — a corpus one or the legacy one the importer's tests build — so
-/// this is a fact about writing tests rather than a retry the product needs.
+/// cannot shrug, and there is no handle of ours to close, so this one waits.
+/// </para>
+/// <para>
+/// <b>There is a second copy of this loop in <c>src/</c> and it is deliberate.</b>
+/// <c>UnfinishedRecordings.Remove</c> renames a recording's folder out of the way before it takes
+/// it away, over the same Windows fact, with its own patience, its own sentences and an
+/// <c>AudioCaptureException</c> where this one throws an <see cref="IOException"/>. The two cannot
+/// be one: <c>MeetingTranscriber.Audio</c> targets a Windows framework, this project targets plain
+/// <c>net10.0</c> and is referenced by <c>Domain.Tests</c>, so sharing it either way is a
+/// <c>src/</c> → <c>tests/</c> reference or a Windows target framework under a domain test. DRY and
+/// the project boundary pull apart here and the boundary wins — which is said here so the next
+/// reader finds the duplication and leaves it rather than deleting one of the two.
 /// </para>
 /// <para>
 /// It is a rule about renaming a <em>directory</em>, and does not carry over to a file. A file

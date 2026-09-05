@@ -269,6 +269,49 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
         CommandLine.Of("recovery", "--corpus", Root).Value("meeting").ShouldBe(meeting.ToString());
     }
 
+    /// <summary>
+    /// The same guarantee at the prompt the card names, through <c>WaitingRecordings</c> — the path
+    /// the drawer takes too. A second window keeping this recording, or a prompt exporting it,
+    /// holds a block file open; a discard typed while it does used to take the card and the first
+    /// block file before the refusal landed on the second. What is left has to be the recording.
+    /// </summary>
+    /// <remarks>
+    /// The exit code discriminates nothing here and is pinned only because pinning a command's exit
+    /// code is the right thing to do at a prompt: <c>Cli.IsRefusal</c> already lists
+    /// <see cref="IOException"/>, so a raw one exits <c>Cli.Refused</c> too. The three assertions
+    /// carrying the proof are the file set, <c>"Nothing was removed"</c> — the old path printed
+    /// Windows' own <em>The process cannot access the file…</em> — and the absence of a file name in
+    /// it, which Windows' message carries. Do not trim any of the three.
+    /// </remarks>
+    [Fact]
+    public void A_discard_something_is_reading_leaves_the_recording_whole()
+    {
+        var meeting = Killed();
+        var folder = CorpusFiles.SpoolFolderFor(corpus.Root, meeting);
+
+        // A reader and not StillRecording, which opens for writing and would be caught as a capture
+        // long before anything is removed. Nothing in the engine can see this one.
+        using var reading = BlockSpool.FileFor(folder, AudioChannel.Microphone)
+            .Open(FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        var run = CommandLine.Of(
+            "recovery", "--corpus", Root, "--meeting", meeting.ToString(), "--discard");
+
+        run.Code.ShouldBe(Cli.Refused, run.Output);
+        run.Error.ShouldContain("Nothing was removed");
+        run.Error.ShouldNotContain(".blocks");
+
+        folder.Refresh();
+        folder.Exists.ShouldBeTrue();
+        folder.EnumerateFiles().Select(file => file.Name).Order(StringComparer.Ordinal)
+            .ShouldBe(["loopback.blocks", "manifest.json", "microphone.blocks"]);
+
+        // Still offered, and nothing left beside it.
+        CommandLine.Of("recovery", "--corpus", Root).Value("meeting").ShouldBe(meeting.ToString());
+        CorpusFiles.SpoolRootIn(corpus.Root).EnumerateDirectories().Select(one => one.Name)
+            .ShouldBe([meeting.ToString()]);
+    }
+
     [Fact]
     public void Throwing_one_away_removes_that_recording_and_leaves_the_others()
     {

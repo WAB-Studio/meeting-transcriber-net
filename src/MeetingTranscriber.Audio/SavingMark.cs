@@ -10,9 +10,11 @@ namespace MeetingTranscriber.Audio;
 /// reader does, so nothing holds them the way a capture does; the meeting has no length until the
 /// save's last write, so the corpus still calls it waiting. A second reader — another window, a
 /// prompt, the next start — therefore offers keep, export and discard over a meeting that is being
-/// written down, reads a length off blocks that are being poured, and on a discard empties the
-/// folder as far as the first file something is holding: the card and the changes beside it are
-/// sources, they sort before the blocks, and they are gone before the refusal lands.
+/// written down, and reads a length off blocks that are being poured. What a discard costs is now a
+/// refusal rather than a recording: <see cref="UnfinishedRecordings.Remove"/> moves the folder aside
+/// before it takes anything away, so a save this could not see leaves somebody told to wait instead
+/// of somebody told nothing. What the mark buys is the sentence, and a second save kept off the
+/// same blocks.
 /// </para>
 /// <para>
 /// <b>What says a save is running is that this file is held, and never that it is there.</b> That
