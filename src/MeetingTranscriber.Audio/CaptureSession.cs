@@ -73,8 +73,10 @@ public sealed class CaptureSession : IDisposable
 
     /// <summary>
     /// What says this folder is being recorded into, for as long as the session lasts. Taken
-    /// before the first device is opened and let go of with them, so the one stretch a folder is
-    /// empty and claimed is covered — see <see cref="CaptureMark"/>, which is what that is for.
+    /// before the first device is opened — here in <see cref="Start"/>, or by whoever made the
+    /// folder and handed it in through <see cref="StartUnder"/> — and let go of with the devices
+    /// either way, so the one stretch a folder is empty and claimed is covered. See
+    /// <see cref="CaptureMark"/>, which is what that is for.
     /// </summary>
     private readonly CaptureMark capturing;
 
@@ -133,22 +135,73 @@ public sealed class CaptureSession : IDisposable
         ArgumentNullException.ThrowIfNull(microphone);
 
         folder.Create();
+
+        // Ahead of the claim, and not moved below it. This is the door somebody reaches with a
+        // folder they named, so a folder that already holds a recording has to be refused leaving
+        // that folder exactly as it was — and `HeldMark.Take` opens the mark `FileMode.Create`,
+        // which would leave a `capture.mark` lying in it. The claim buys nothing ahead of a
+        // question answered from names on disk, with no device and no handle.
         BlockSpool.EnsureNothingRecordedIn(folder);
 
         // Before the first device and after the folder is there, which is the whole of what it is
         // for: from here until the session is disposed, the folder says a recording is happening in
-        // it even while there is nothing in it to say so. Let go of on every way out of the opening
-        // below, because a capture that never started is exactly the folder the sweep is looking
-        // for and a mark left held would keep it.
-        var capturing = CaptureMark.Take(folder);
+        // it even while there is nothing in it to say so.
+        return StartUnder(CaptureMark.Take(folder), folder, meetingId, microphone, follow);
+    }
 
+    /// <summary>
+    /// The same opening, over a folder somebody else already made and is already holding: the
+    /// claim comes in rather than being taken here, and is let go of on every way out that is not
+    /// a session.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It exists because a claim over a corpus's spool folder has to be taken where the folder is
+    /// made. A meeting's folder is made by <c>MeetingRecordings.Open</c>, before either device is
+    /// opened and before this is called at all, and between those two the launch sweep of the
+    /// meetings nobody recorded is enumerating folders exactly like it — so the press takes the
+    /// mark with the folder and hands it in here. Its only caller is <c>MeetingRecording.Start</c>.
+    /// </para>
+    /// <para>
+    /// <b>Anybody with a folder and no claim wants <see cref="Start"/>.</b> That one makes the
+    /// folder, refuses one that already holds a recording, and takes the mark itself. This one
+    /// asks neither question: on the one path that reaches it the folder is
+    /// <c>spool/&lt;new Guid&gt;</c>, made microseconds earlier, so there is nothing in it to have
+    /// been recorded and nothing to refuse.
+    /// </para>
+    /// </remarks>
+    /// <param name="claimed">
+    /// The mark over <paramref name="folder"/>, taken by whoever made it. Owned from here: it goes
+    /// with the devices if a session comes back, and is let go of on every other way out.
+    /// </param>
+    /// <param name="folder">Where the two spools and the card go. Already there and already held.</param>
+    /// <param name="meetingId">The meeting being recorded, fixed before any of this is called.</param>
+    /// <param name="microphone">The device channel 1 listens to.</param>
+    /// <param name="follow">
+    /// The program channel 0 should follow, or nothing to record the whole machine.
+    /// </param>
+    public static CaptureSession StartUnder(
+        CaptureMark claimed,
+        DirectoryInfo folder,
+        Guid meetingId,
+        AudioDevice microphone,
+        AudioProcess? follow = null)
+    {
+        ArgumentNullException.ThrowIfNull(claimed);
+
+        // The try opens on the line after the claim arrives, so every other refusal — the argument
+        // checks included — leaves through the catch that lets it go. A capture that never started
+        // is exactly the folder the sweep is looking for, and a mark left held would keep it.
         try
         {
-            return Opening(folder, meetingId, microphone, follow, capturing);
+            ArgumentNullException.ThrowIfNull(folder);
+            ArgumentNullException.ThrowIfNull(microphone);
+
+            return Opening(folder, meetingId, microphone, follow, claimed);
         }
         catch
         {
-            capturing.Dispose();
+            claimed.Dispose();
             throw;
         }
     }

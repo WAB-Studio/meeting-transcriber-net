@@ -638,11 +638,18 @@ public static class UnfinishedRecordings
     /// end is the file system saying there was nothing else.
     /// </para>
     /// <para>
-    /// <b>The delete is the authority and the question above it is only the sentence.</b> A capture
+    /// <b>The delete is the authority and the question above it is only the sentence.</b> A press
     /// that claimed this folder between the two holds <see cref="CaptureMark"/> in a share mode that
     /// forbids unlinking, so the first delete throws and the folder stands with its meeting — which
     /// is why nothing here asks whether a mark is held. What Windows answers cannot be out of date;
     /// what a listing answered a moment ago can.
+    /// </para>
+    /// <para>
+    /// The claimant is the press and not the capture, which is what makes that hold. A meeting's
+    /// folder is claimed where it is made, in <c>MeetingRecordings.Open</c>, and the claim is
+    /// handed on to the session — so this runs into a mark from the moment the folder exists,
+    /// rather than from the moment a device is opened. Before that, a press one second old was a
+    /// folder holding nothing that nothing held, and this took it away.
     /// </para>
     /// <para>
     /// This file holds two different answers to the same hazard and they are not in competition.

@@ -14,6 +14,14 @@ namespace MeetingTranscriber.Audio;
 /// <see cref="BlockSpool.IsStillBeingWritten"/>. This is what says it before them.
 /// </para>
 /// <para>
+/// That stretch has no head to it, because the mark is taken by whatever makes the folder rather
+/// than by whatever opens the first device — in <see cref="CaptureSession.Start"/> for a folder
+/// somebody named, and in <c>MeetingRecordings.Open</c> for a meeting recorded into a corpus,
+/// which hands the claim on to <see cref="CaptureSession.StartUnder"/>. There is no instant in
+/// which a folder exists under <c>spool/</c> for a recording somebody is starting and nothing
+/// holds it.
+/// </para>
+/// <para>
 /// What it buys is that the folder cannot be taken away underneath a capture that is starting.
 /// <see cref="UnfinishedRecordings.EraseWhereNothingWasRecorded"/> removes a folder nothing was
 /// recorded into, and the mark is what it runs into: it is held in a share mode that forbids

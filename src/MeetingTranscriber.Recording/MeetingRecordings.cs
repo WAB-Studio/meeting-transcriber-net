@@ -11,10 +11,81 @@ using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Recording;
 
-/// <summary>A meeting that exists and has somewhere to record into, before anything is recorded.</summary>
-/// <param name="MeetingId">The meeting, settled before any audio of it exists.</param>
-/// <param name="Spool">The folder its blocks and the card beside them go in.</param>
-public sealed record PreparedRecording(Guid MeetingId, DirectoryInfo Spool);
+/// <summary>
+/// A meeting that exists, has somewhere to record into, and is holding that somewhere — before
+/// anything is recorded.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>The press owns the claim until it hands it on, and after that the session does.</b> That is
+/// the one thing a caller of <see cref="MeetingRecordings.Open"/> can get wrong, and it is why
+/// this is a handle rather than a pair of values: the folder under <c>spool/</c> is the only thing
+/// on disk saying this meeting is being recorded until the first device writes into it, and
+/// <see cref="MeetingsNobodyRecorded"/> is sweeping folders exactly like it at every launch.
+/// </para>
+/// <para>
+/// So whoever holds one either hands the claim to a session with <see cref="HandTheClaimOn"/> —
+/// after which there is nothing left in it to release — or lets it go with
+/// <see cref="Dispose"/>, which is what says the press was abandoned and the folder is the
+/// sweep's again. A press nobody does either to holds its folder for the life of the process,
+/// which is a meeting of nothing no start can ever take away.
+/// </para>
+/// </remarks>
+public sealed class PreparedRecording : IDisposable
+{
+    private CaptureMark? claim;
+
+    /// <remarks>
+    /// Internal, so the only way to hold one is to have pressed record. Handing a folder to
+    /// somebody along with a live claim over it is not something a caller gets to arrange.
+    /// </remarks>
+    internal PreparedRecording(Guid meetingId, DirectoryInfo spool, CaptureMark claim)
+    {
+        MeetingId = meetingId;
+        Spool = spool;
+        this.claim = claim;
+    }
+
+    /// <summary>The meeting, settled before any audio of it exists.</summary>
+    public Guid MeetingId { get; }
+
+    /// <summary>The folder its blocks and the card beside them go in.</summary>
+    public DirectoryInfo Spool { get; }
+
+    /// <summary>
+    /// Gives the claim over <see cref="Spool"/> to whoever is going to record into it, and stops
+    /// holding it here.
+    /// </summary>
+    /// <remarks>
+    /// The field is nulled rather than the disposal being made idempotent, so there is exactly one
+    /// owner of the handle at every instant: after this, <see cref="Dispose"/> has nothing to
+    /// release and a later tidy-up cannot unclaim the folder of a meeting being recorded.
+    /// </remarks>
+    /// <exception cref="RecordingException">The claim was handed on already.</exception>
+    public CaptureMark HandTheClaimOn()
+    {
+        var handed = claim
+            ?? throw new RecordingException(
+                $"The claim over the folder of meeting {MeetingId} was handed on already. It is "
+                + "held by whatever is recording into that folder, and handing it on twice would "
+                + "be two owners of one handle, the first of which unclaims the folder underneath "
+                + "the second.");
+
+        claim = null;
+
+        return handed;
+    }
+
+    /// <summary>
+    /// Lets the folder go, which is what says nothing came of this press. A no-op once the claim
+    /// was handed on.
+    /// </summary>
+    public void Dispose()
+    {
+        claim?.Dispose();
+        claim = null;
+    }
+}
 
 /// <summary>What a recording became once somebody stopped it.</summary>
 /// <param name="MeetingId">The meeting.</param>
@@ -53,7 +124,7 @@ public static class MeetingRecordings
 {
     /// <summary>
     /// Everything that has to be true before the first sample: the meeting exists, the corpus says
-    /// so, and the folder its audio goes into is there.
+    /// so, the folder its audio goes into is there, and this press is holding it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -69,6 +140,22 @@ public static class MeetingRecordings
     /// row is what the reconciler calls a spooled recording and recovery already knows how to
     /// offer; a row with no folder is a meeting with nothing in it, which is what pressing record
     /// and having the disk refuse actually is.
+    /// </para>
+    /// <para>
+    /// The claim is the third step, taken with the folder and not after it. Between those two the
+    /// folder is the only thing on disk saying this meeting is being recorded, and until this
+    /// claim existed nothing held it: a launch's sweep of the meetings nobody recorded, landing in
+    /// that gap, took the folder and the row of a press one second old and the press was refused
+    /// for a folder it had just made. So nothing goes between <c>spool.Create()</c> and
+    /// <see cref="CaptureMark.Take"/> — every line there widens that window — and what comes back
+    /// is a handle somebody has to hand on or let go of.
+    /// </para>
+    /// <para>
+    /// A claim that is refused does not take the row or the folder back. That is the same cost
+    /// this method already accepts for saving the row before making the folder: what is left is a
+    /// meeting with no audio, which the list and the sweep both already know what to do with, and
+    /// taking a row back here would be this method deleting from the corpus on a path where
+    /// nothing went wrong with the corpus.
     /// </para>
     /// </remarks>
     /// <param name="corpus">The corpus the meeting is being recorded into.</param>
@@ -100,8 +187,51 @@ public static class MeetingRecordings
         var spool = CorpusFiles.SpoolFolderFor(corpus.Root, meeting.Id);
         spool.Create();
 
-        return new PreparedRecording(meeting.Id, spool);
+        CaptureMark claim;
+
+        try
+        {
+            claim = CaptureMark.Take(spool);
+        }
+        catch (AudioCaptureException refused)
+        {
+            throw new RecordingException(WhyItCouldNotBeClaimed(meeting.Id, spool, refused), refused);
+        }
+
+        return new PreparedRecording(meeting.Id, spool, claim);
     }
+
+    /// <summary>
+    /// Why the folder this press just made would not be claimed, said as the two things it can
+    /// actually be.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="CaptureMark.Take"/>'s own words are right where it is called over a folder
+    /// somebody named at a prompt, and wrong here. Its second refusal is not a second recording —
+    /// it is every <see cref="IOException"/> the mark's own two-second wait let out: a full disk, a
+    /// path that came out too long, a scanner holding the file. This folder is
+    /// <c>spool/&lt;new Guid&gt;</c>, made one statement earlier by this same call, so nothing else
+    /// on the machine has ever seen it and a second capture is not one of the things this can be.
+    /// Saying it was would be this card's own defect moved one line down.
+    /// </para>
+    /// <para>
+    /// The inner exception's message is carried through rather than the refusal's own, because the
+    /// refusal's own is the sentence about a second recording and it is the one that must not
+    /// reach a person from here.
+    /// </para>
+    /// </remarks>
+    private static string WhyItCouldNotBeClaimed(
+        Guid meetingId, DirectoryInfo spool, AudioCaptureException refused) =>
+        refused.InnerException is DirectoryNotFoundException
+            ? $"The folder '{spool.FullName}' for meeting {meetingId} was made by this press and "
+              + "taken away before it could be claimed, which is the start's sweep of meetings "
+              + "nobody recorded having reached it in that instant. Nothing was recorded, and "
+              + "pressing record again starts a meeting of its own."
+            : $"The folder '{spool.FullName}' for meeting {meetingId} was made by this press and "
+              + $"then would not be claimed: {refused.InnerException?.Message ?? refused.Message} "
+              + "Nothing else has ever recorded into this folder, so what refused the mark is the "
+              + "disk. Nothing was recorded.";
 
     /// <summary>
     /// Writes the row describing the run that has just opened, from what the recording wrote about
@@ -471,3 +601,4 @@ public static class MeetingRecordings
         return runs.Count == 1 ? runs[0] : null;
     }
 }
+

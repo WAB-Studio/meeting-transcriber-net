@@ -78,17 +78,18 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Takes the meetings a press left behind off the corpus this session opened: a row and an
-    /// empty folder for a recording that never started.
+    /// Takes the meetings a press left behind off the corpus this session opened: a row and a
+    /// folder holding nothing but a mark nobody is holding, for a recording that never started.
     /// </summary>
     /// <remarks>
     /// <para>
     /// At launch, because a start is where the folders left by every press before this one are
     /// sitting, and because hanging it on the meetings list would tie it to how often somebody
     /// looks. It is not because a launch is quiet: the window is already up and somebody can press
-    /// record while this runs. What keeps that safe is the mark a capture holds over its folder,
-    /// which the sweep's delete runs into rather than asks about — <c>MeetingsNobodyRecorded</c>
-    /// says how, and it is the sweep's rule and not this one's.
+    /// record while this runs. What keeps that safe is the mark the press holds over its folder,
+    /// from the moment the folder is made rather than from the moment a device opens, which the
+    /// sweep's delete runs into rather than asks about — <c>MeetingsNobodyRecorded</c> says how,
+    /// and it is the sweep's rule and not this one's.
     /// </para>
     /// <para>
     /// Off the thread the window draws on, for the reason the renders are: it opens the corpus and
