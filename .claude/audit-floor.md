@@ -1,6 +1,6 @@
 ---
 contract-sha: 5daa595f5833
-entries: 16
+entries: 17
 ---
 
 # The audit floor
@@ -108,6 +108,9 @@ somebody's job.
   diff against, so what this file stops demanding is what no later audit can find.
 - `.claude/agents/validator.md` — what holds a plan back before any code exists. The only gate that
   runs while a wrong decision is still free to undo.
+- `.claude/agents/integrator.md` — the four commands, run once over a whole batch, and the one PR
+  that carries it. Nothing else stands between a batch of finished branches and a merge, so what
+  this stops running is what nothing runs.
 
 ## Read by
 

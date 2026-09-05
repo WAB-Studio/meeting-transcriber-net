@@ -15,10 +15,11 @@ table exists.
 | --- | --- | --- | --- |
 | pick | `picker` | a ceiling | the batch, and which cards may run together |
 | recover | `recoverer` | card id, its card dir, PR number | a briefing on what was already done |
-| plan | `planner` | card id, its card dir, PR number | a plan written to that card dir |
-| validate | `validator` | the batch dir, the cards | `pass`, `revise` or `ask` per card, and collisions |
-| work | `worker` | card id, its card dir, PR number | a record, and an open PR |
-| audit | `auditor` | PR number, its card dir | `pass`, `pass_with_followup`, `ask` or `hold` |
+| plan | `planner` | card id, its card dir, PR number, the base | a plan in that card dir, its size and its risk |
+| validate | `validator` | the batch dir, the cards, the base | `pass`, `revise` or `ask` per card, and collisions |
+| work | `worker` | card id, its card dir, PR number, the base | a record, and a pushed branch |
+| integrate | `integrator` | the base, the batch dir, the branches | one PR carrying the batch |
+| audit | `auditor` | PR number, its card dirs, what carries each | a verdict per card, and one for the PR |
 
 Pass each agent what its column says and nothing more: never who produced it, never what happens to
 it next, never where the day stands.
@@ -37,8 +38,9 @@ Absolute paths, under the primary checkout, ignored by git. The batch dir is the
 card dir is the folder named for a card. Create each before the stage that writes into it, and pass
 the right one — a stage given the wrong depth reads nothing and says nothing about it.
 
-A card dir holds `briefing.md`, `plan.md`, `review.md` and `record.json` — four files, each written
-by one stage and read by the next. A stage whose answer has a reader on GitHub writes no file: the
+The batch dir holds `base`, the commit every stage in this batch is given. A card dir holds
+`briefing.md`, `plan.md`, `review.md`, `pr.md` and `record.json` — each written by one stage and
+read by the next. A stage whose answer has a reader on GitHub writes no file: the
 verdict is the comment on the PR, and a second copy on disk is a copy nobody reads.
 
 It is scratch. What survives a day is the card's status and comments, the branch and its commits,
@@ -58,27 +60,44 @@ the cards, the PRs and the commits carry that already.
 
 ## 2 · The cycle
 
-1. **Pick.** Spawn `picker` with a ceiling — one unless this machine has room for more.
+**Pin the base first.** `git rev-parse origin/main` once, into `<batch dir>/base`, and hand that
+sha to every stage. Nothing in the batch resolves `origin/main` to decide what it is building
+against; the audit floor is still read at the trunk.
+
+1. **Pick.** Spawn `picker` with a ceiling of candidates — four unless this machine has room for
+   more.
    - `no_tasks` or `blocked` → end the day. Say why.
    - Move each `skipped` card to `Backlog` with its reason, and each `finished` card to `In review`.
      **Leave `held_over` where it is** — those cards are still `Ready` and still in the user's order.
    - Say the cards and the `why` in one line before you spawn anything else.
-2. **Plan.** Spawn one `planner` per card, in parallel, each with its own card dir. A card that is
-   `In progress` or has an open PR gets a `recoverer` into that dir first.
+2. **Plan.** Spawn one `planner` per candidate, in parallel, each with its own card dir and the
+   base. A card that is `In progress` or has an open PR gets a `recoverer` into that dir first.
    - `already_done` → that card closed itself. Drop it from the batch.
    - `needs_grill` or `blocked` → §4. Drop it from the batch.
-3. **Validate, or don't.** Spawn `validator` once over the batch when more than one card survived,
+3. **Form the batch.** Take the lead, then each surviving card in the picker's order while the batch
+   stays under 200 `est_noncomment_lines` and under four cards. A `risk` of `contract`, a lead the
+   picker returned `alone`, or a card already carrying an open PR, takes the batch by itself. What does not fit goes back to `Ready`
+   unbuilt; say which, and why.
+4. **Validate, or don't.** Spawn `validator` once over the formed batch when it holds more than one
+   card,
    when any plan returned `floor_paths`, or when a plan carries a decision that holds up other parts
    of the application for months. One card, no floor path, nothing structural → skip it and say so.
    - `revise` → spawn that card's `planner` again, on the same card dir. It reads `review.md` there
-     and answers every finding. **Once.** A second `revise` → §4.
-   - `ask` → §4.
+     and answers every finding. **Once.** A second `revise` drops the card.
+   - `ask` → §4. Drop the card.
    - A collision → drop the card that waits; it is `Ready` and the next pick finds it.
-4. **Work.** Spawn one `worker` per surviving card, in parallel, each in its own worktree under
+
+   A card dropped here does not stop the rest.
+5. **Work.** Spawn one `worker` per card in the batch, in parallel, each in its own worktree under
    `C:\Users\pc\Documents\GitHub\Personal\worktrees`, never inside the checkout, deleted when the
-   card is done and never reused. Give each its card dir by absolute path. Tell each which folders
-   its card owns and which it may not enter; say other cards are running and never which.
-5. **Audit, or don't.** Only `pr_opened` reaches here. Decide on whether the work carries a decision
+   card is done and never reused. Give each its card dir by absolute path and the base. Tell each
+   which folders its card owns and which it may not enter; say other cards are running and never
+   which. Anything you hand a worker past its plan, tell it to declare — undeclared, an audit reads
+   it as drift.
+   - Anything but `built` drops that card. No card is left `In progress` by a batch that moved on.
+6. **Integrate.** Spawn `integrator` with the base, the batch dir, the branches that built and the
+   PR number when one already carries this batch. A card it drops is `Ready` again.
+7. **Audit, or don't.** Only an open PR reaches here. Decide on whether the work carries a decision
    that holds up other parts of the application for months — a contract, a convention, a name that
    reaches disk, what proves a piece of work done. Which folder the diff touched is not the test.
    - **A path `.claude/audit-floor.md` names is audited whatever you think of it.** Check the PR's
@@ -87,16 +106,18 @@ the cards, the PRs and the commits carry that already.
    - A long `departures`, or a PR that ticks a claim, earns an audit more than a big diff does.
    - Say which way you went, and why, in one line on the PR before you spawn anything or merge.
    - **One audit per PR.** It does not run again after a fix.
-6. **Act.** Yours, with no subagent, one PR at a time.
+8. **Act.** Yours, with no subagent, one PR at a time.
    - **Merge only green and only finished.** Bring the branch up to the `main` you are merging onto
      before you read its checks — two independently green PRs land a red trunk otherwise. `gh pr
      checks <n> --watch` red or unfinished is a `hold`, and so is a record declaring
      `blocks_the_pr` or a `left_out` the card asked for.
    - Not audited, `pass` or `pass_with_followup` → `gh pr merge <n> --merge --delete-branch`. The
      card stays in `In review`.
-   - `hold` → the PR stays open. Fix it in one line yourself, in that card's worktree: make it,
+   - `hold` → the PR stays open. Fix it in one line yourself, on the PR's own branch: make it,
      commit, push, say so on the PR, merge on green. More than one line → spawn `worker` once with
-     the verdict, then read the hold's reason against the diff before you merge. Still there → send
+     the verdict, then `integrator` again with that PR number to carry the fix onto the same branch.
+     A hold the cards do not divide is the batch's, and it is fixed the same way. Then read the
+     hold's reason against the diff before you merge. Still there → send
      the card where the verdict says, with the verdict's own body as a comment, and move on.
    - A `hold` over documentation, wording, a step that did not run or a merely poor line is not one.
      Merge, and leave it as a comment.
@@ -148,5 +169,5 @@ leave with `[Day]`, and leave one only where §2 says to.
 
 ## 7 · Do not touch the repo
 
-Edit no file, make no commit, switch no branch between cycles. Two exceptions, both in §2.6: the
+Edit no file, make no commit, switch no branch between cycles. Two exceptions, both in §2.8: the
 merge, and the one-line fix in that card's worktree.

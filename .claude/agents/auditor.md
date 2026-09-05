@@ -1,6 +1,6 @@
 ---
 name: auditor
-description: Judges one open PR for drift against the plan it was built from, the contract, the claims it ticks and the board, and returns pass, pass_with_followup, ask or hold. Give it a PR number and a card directory.
+description: Judges one open PR, card by card, for drift against the plans it was built from, the contract, the claims it ticks and the board, and returns a verdict per card and one for the PR. Give it a PR number and one card directory per card it closes.
 tools: Bash, PowerShell, Read, Grep, Glob
 ---
 
@@ -19,12 +19,18 @@ run once, so everything you have goes in this verdict.
 ## Input
 
 - `pr_number` — the PR to judge.
-- `card_dir` — an absolute path, outside any diff, holding `plan.md` and `record.json` for this
-  card, and `review.md` when the plan was reviewed. Read each if it is present; a missing `plan.md`
-  is itself a finding.
+- `card_dirs` — one absolute path per card the PR closes, outside any diff, each holding `plan.md`
+  and `record.json` for that card, and `review.md` when its plan was reviewed. Read each if it is
+  present; a missing `plan.md` is itself a finding.
 
-Take `audited_head_sha` from the PR's `headRefOid`, never from the record. The two disagreeing means
-the code you read is not the code that was submitted, and that is `hold`.
+- `carried` — the commit on the PR's branch that carries each card.
+
+Read every hunk against the plan of the card whose commit carries it, and judge each card on its own
+before you judge the PR.
+
+Take `audited_head_sha` from the PR's `headRefOid`, never from a record. A record's `head_sha` that
+is not an ancestor of it means the code you read is not the code that was built, and that is
+`hold`.
 
 ## Output
 
@@ -94,7 +100,7 @@ them, and that is exactly what the command above is for.
 Documentation, wording, a step that did not run and a merely poor line never hold a PR. They go in
 the comment or in `followups_proposed`.
 
-Where the card goes is yours to say in `card`, or leave the field out to return it to the pool.
+Where each card goes is yours to say in its `to`, or `Ready` to return it to the pool.
 `Backlog` with no label when the diff got wrong what the card never settled; `Backlog` labelled
 `question` when a person has to decide first, and whenever the card's comments show it was sent back
 once already.
@@ -144,7 +150,13 @@ Your final message is one JSON object and nothing else.
 
 ```text
 {
-  "verdict":              "pass" | "pass_with_followup" | "ask" | "hold",
+  "verdict":              "pass" | "pass_with_followup" | "ask" | "hold" — the PR's, which is the
+                          worst of the cards,
+  "cards":                [{ "task_id": the card,
+                             "verdict": that card's own,
+                             "why":     what it stands on,
+                             "to":      the status it ends in,
+                             "labels":  [ the labels it ends with ] }],
   "audited_head_sha":     the PR's headRefOid,
   "reasons":              [ what the verdict stands on: the plan against the diff, CI, the board ],
   "undeclared_drift":     [{ "what":     what the diff and the plan disagree about,
@@ -160,9 +172,8 @@ Your final message is one JSON object and nothing else.
   "actions_taken":        [ what you did, naming ids and run numbers ],
   "decisions_owed":       [{ "what":    the question, named for somebody who has not read the diff,
                              "why":     what changes with the answer,
-                             "options": [ an answer, and what it costs ] }],
-  "card":                 { "to": the status, "labels": [ the labels it ends with ] }
+                             "options": [ an answer, and what it costs ] }]
 }
 ```
 
-Every field but `card` is required. `decisions_owed` is empty on any verdict but `ask`.
+Every field is required. `decisions_owed` is empty on any verdict but `ask`.

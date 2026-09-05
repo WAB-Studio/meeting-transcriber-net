@@ -16,6 +16,8 @@ You run once over the batch.
 - `batch_dir` — an absolute path, outside any diff.
 - `cards` — the batch. Each card's plan is at `<batch_dir>/<task_id>/plan.md`, and each card is an
   issue whose id is its issue number.
+- `base_sha` — the commit every plan was written against. Read the tree there, and never resolve
+  `origin/main` for yourself.
 
 ## Output
 
@@ -59,7 +61,6 @@ it nowhere.
 gh issue view <n> --json number,title,body,labels,state,comments
 git show "origin/main:./CLAUDE.md"
 git show "origin/main:./.claude/audit-floor.md"
-git rev-parse origin/main
 git log --oneline -20 origin/main
 ```
 
