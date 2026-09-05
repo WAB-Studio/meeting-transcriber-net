@@ -374,6 +374,33 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// The other end of the same race: this window is the one that lost. A recording read a moment
+    /// ago and thrown away by somebody else since is a sentence about the meeting, not Windows
+    /// saying it could not find part of a path ending in <c>loopback.blocks</c>.
+    /// </summary>
+    /// <remarks>
+    /// Reachable from two windows, or a window and a prompt, over one recording — the same pair the
+    /// rest of this file is about. Nothing is at risk on this path, because the recording both of
+    /// them were told to throw away is gone; what is at risk is the sentence, which is the whole of
+    /// what <c>EnsureRemovable</c> is still for.
+    /// </remarks>
+    [Fact]
+    public void A_recording_somebody_else_threw_away_first_is_said_to_be_gone_rather_than_unfindable()
+    {
+        Recorded("daily", both: true);
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        // What the other window did between the read above and the decision below.
+        Folder("daily").Delete(recursive: true);
+
+        var refused = Should.Throw<AudioCaptureException>(recording.Discard);
+
+        refused.Message.ShouldContain(Folder("daily").FullName);
+        refused.Message.ShouldContain("Nothing was removed");
+        refused.Message.ShouldNotContain(".blocks");
+    }
+
+    /// <summary>
     /// A machine that died between the move and the delete leaves a recording under the removal's
     /// own name, and nothing offers it any more. Finishing that removal here would be a second
     /// half-emptied one at a path nobody was told about, which is the defect this whole shape
@@ -418,6 +445,35 @@ public sealed class UnfinishedRecordingsTests : IDisposable
         UnfinishedRecordings.At(Folder("daily")).Discard();
 
         root.EnumerateDirectories().ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// What the sweep of folders nothing was recorded into sees when a discard did not finish, and
+    /// the engine half of what <c>docs/corpus.md</c> promises about that folder: it is named, and
+    /// nothing takes it away.
+    /// </summary>
+    /// <remarks>
+    /// The sweep asks these two and nothing else about a folder under <c>spool/</c>, so pinning
+    /// them here is pinning what the sweep does. A page saying a recording somebody threw away sits
+    /// safely on disk until a person deletes it, with nothing holding the engine to that, is a page
+    /// that goes quietly wrong the day one of these answers changes.
+    /// </remarks>
+    [Fact]
+    public void A_removal_that_did_not_finish_is_named_by_the_sweep_and_taken_away_by_nothing()
+    {
+        var leftOver = Folder(".removing-daily");
+        var inside = leftOver.CreateSubdirectory("daily");
+        Spool(inside, AudioChannel.Loopback, StereoFloat);
+
+        UnfinishedRecordings.WhatSaysARecordingHappenedIn(leftOver)
+            .ShouldNotBeNull()
+            .ShouldContain("daily");
+
+        Should.Throw<AudioCaptureException>(
+            () => UnfinishedRecordings.EraseWhereNothingWasRecorded(leftOver));
+
+        leftOver.EnumerateDirectories().ShouldHaveSingleItem();
+        inside.EnumerateFiles().ShouldHaveSingleItem();
     }
 
     /// <summary>
@@ -618,24 +674,39 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     [Fact]
     public void Nothing_but_a_decision_about_one_recording_removes_a_folder()
     {
-        var allowed = Path.Combine("MeetingTranscriber.Audio", "UnfinishedRecordings.cs");
+        string[] allowed =
+        [
+            // The one decision that removes a recording, and the only place either spelling of a
+            // folder rename belongs.
+            Path.Combine("MeetingTranscriber.Audio", "UnfinishedRecordings.cs"),
+
+            // Not a folder rename at all: `CaptureSource.MoveTo` moves a capture from one device to
+            // another. This sweep reads text and cannot see what a receiver's type is, so the one
+            // collision is named here rather than the pattern being narrowed until it misses the
+            // spelling somebody would actually reach for.
+            Path.Combine("MeetingTranscriber.Audio", "CaptureSession.cs"),
+        ];
 
         var offenders = Sources()
             .Where(file => File.ReadAllText(file.FullName) is var text
                 && (text.Contains("Directory.Delete", StringComparison.Ordinal)
                     || text.Contains("Delete(recursive", StringComparison.Ordinal)
-                    || text.Contains("Directory.Move", StringComparison.Ordinal)))
+                    || text.Contains("Directory.Move", StringComparison.Ordinal)
+                    || text.Contains(".MoveTo(", StringComparison.Ordinal)))
             .Select(file => Path.GetRelativePath(Tree().FullName, file.FullName))
-            .Where(path => !path.EndsWith(allowed, StringComparison.Ordinal))
+            .Where(path => !Array.Exists(allowed, one => path.EndsWith(one, StringComparison.Ordinal)))
             .Order(StringComparer.Ordinal)
             .ToList();
 
         offenders.ShouldBeEmpty(
             "These remove a folder, and a recording's folder is one. Throwing a recording away is "
-            + "somebody's decision about one recording, and there is one place it happens. A "
-            + "rename is on this list because a recording's folder moved to a name nothing looks "
-            + "in has disappeared as surely as one deleted, and the rename is now half of how a "
-            + "removal happens.");
+            + "somebody's decision about one recording, and there is one place it happens. Both "
+            + "spellings of a rename are on this list because a recording's folder moved to a name "
+            + "nothing looks in has disappeared as surely as one deleted, and the rename is now "
+            + "half of how a removal happens. The ban is deliberately wider than the rule: it "
+            + "catches every directory rename in src/ rather than only a recording's, because a "
+            + "sweep over text cannot tell which folder a path is, and a rename that is not a "
+            + "recording's is cheap to argue for here.");
     }
 
     /// <summary>

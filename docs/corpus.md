@@ -36,18 +36,20 @@ a backup that restored one would restore a fact that stopped being true when tha
 one that dropped it loses nothing. Nothing clears the one a crashed save or a crashed capture
 leaves, because a file nothing holds already reads as no save and no capture.
 
-**`spool/.removing-<meeting_id>/<meeting_id>/` is the recording itself, mid-removal, and is neither
-too.** Throwing a recording away renames its folder into that one and then removes the copy, so that
-a discard something is still reading is refused with the recording exactly as it was rather than
-emptied as far as the first held file. For the instant between those two steps the blocks are under
-that path, which is what a backup sweeping `spool/` would find and what somebody looking at their
-disk would see. A backup that skipped it loses nothing: what is in it is a recording whose owner
-already said to throw it away.
+**`spool/.removing-<meeting_id>/<meeting_id>/` is a recording somebody threw away, part-way out, and
+is neither too.** Throwing a recording away renames its folder into that one and then removes the
+copy, so a discard something is still reading is refused with the recording exactly as it was rather
+than emptied as far as the first held file. For the instant between those two steps the whole
+recording is under that path, which is what a backup sweeping `spool/` would find. A backup that
+skipped it loses nothing: what is in it is a recording whose owner already said to throw it away.
 
-One still there after a start is a machine that died inside a discard. **Nothing in the product ever
-cleans it** — the sweep of folders nothing was recorded into names it and removes nothing, and no
-second discard of that recording is reachable, because the recording is no longer under a name
-anything offers. Deleting it by hand is safe.
+One still there after a start is a discard that did not finish — a machine that died inside one, or
+a delete that stayed refused. It holds whatever the delete had not reached yet, so it may be the
+whole recording or a part of one. **Nothing in the product ever cleans it**: the sweep of folders
+nothing was recorded into names it and removes nothing, and no second discard of that recording is
+reachable, because the recording is no longer under a name anything offers. Deleting it by hand is
+safe, and nothing volunteers that it is there — `recovery --sweep` lists it among what it left, and
+otherwise it is visible only to somebody looking at the folder.
 
 `capture.mark` is taken before the first device is opened and let go of with the last one, and it
 covers the one stretch a folder holding a recording is indistinguishable from a folder holding

@@ -21,14 +21,10 @@ namespace MeetingTranscriber.Testing;
 /// </para>
 /// <para>
 /// <b>There is a second copy of this loop in <c>src/</c> and it is deliberate.</b>
-/// <c>UnfinishedRecordings.Remove</c> renames a recording's folder out of the way before it takes
-/// it away, over the same Windows fact, with its own patience, its own sentences and an
-/// <c>AudioCaptureException</c> where this one throws an <see cref="IOException"/>. The two cannot
-/// be one: <c>MeetingTranscriber.Audio</c> targets a Windows framework, this project targets plain
-/// <c>net10.0</c> and is referenced by <c>Domain.Tests</c>, so sharing it either way is a
-/// <c>src/</c> → <c>tests/</c> reference or a Windows target framework under a domain test. DRY and
-/// the project boundary pull apart here and the boundary wins — which is said here so the next
-/// reader finds the duplication and leaves it rather than deleting one of the two.
+/// <c>UnfinishedRecordings.WaitingOutWhoeverIsStillReading</c> waits out the same Windows fact so
+/// that throwing a recording away is whole or nothing, with its own patience and its own
+/// sentences. Why the two are not one is argued there, where the product's copy is; this is the
+/// pointer, so neither is deleted as an oversight.
 /// </para>
 /// <para>
 /// It is a rule about renaming a <em>directory</em>, and does not carry over to a file. A file

@@ -248,13 +248,14 @@ public sealed record UnfinishedRecording(
     /// it buys.
     /// </para>
     /// <para>
-    /// <b>It blocks, and on the failing path it blocks for a while.</b> Throwing a recording away
-    /// is a rename that waits out whatever still has a file in the folder open, so this can take up
-    /// to <see cref="UnfinishedRecordings.RemovalPatienceMilliseconds"/> — a quarter of a second —
-    /// to come back, and it comes back at once when nothing is holding the folder. The one caller
-    /// on a window's thread is <c>MeetingsDrawer.Decide</c>, where that ceiling was priced and
-    /// accepted: it is under what reads as a hung window, and it is only reached on the path that
-    /// ends in a refusal anyway.
+    /// <b>Do not call this on a thread somebody is looking at.</b> Removing a recording is removing
+    /// its files, which for a two-hour meeting is a few hundred megabytes per source and takes as
+    /// long as the disk takes — that was always true here and has not changed. What this change
+    /// adds on top is bounded and lands only where a removal is being refused: each of the two
+    /// halves waits out a holder for up to
+    /// <see cref="UnfinishedRecordings.RemovalPatienceMilliseconds"/>, so a discard that fails
+    /// costs at most two of those beyond the work it did. Nothing is waited out when nothing is
+    /// holding the folder.
     /// </para>
     /// </remarks>
     public void Discard()
@@ -356,10 +357,9 @@ public static class UnfinishedRecordings
     /// must not wait out a person keeping the same recording in another window.
     /// </para>
     /// <para>
-    /// Milliseconds as an <c>int</c> rather than a <see cref="TimeSpan"/>, because the loop
-    /// compares it against <see cref="Stopwatch.ElapsedMilliseconds"/> and because it is a copy of
-    /// <c>Folders</c>, whose budget is an <c>int</c>. Internal because nothing outside this file
-    /// has a product reason to read it.
+    /// Both halves of a removal spend it, so a discard that is refused costs at most two of these
+    /// on top of whatever work it did. Internal because nothing outside this file has a product
+    /// reason to read it.
     /// </para>
     /// </remarks>
     internal const int RemovalPatienceMilliseconds = 250;
@@ -444,6 +444,15 @@ public static class UnfinishedRecordings
     /// file named like a spool that is not one is something no rename can tell apart, so this is
     /// still what stands between <c>--discard</c> and the wrong directory.
     /// </para>
+    /// <para>
+    /// The spool opens are wrapped for the one refusal <see cref="SpoolReader.Open"/> cannot phrase
+    /// on its own: the folder having gone between the listing and this line, which is a second
+    /// window or a prompt having discarded the same recording while this one was being decided
+    /// about. Windows answers that with <em>Could not find a part of the path
+    /// '…\loopback.blocks'</em> — a sentence about a block file, which is the shape every refusal
+    /// in this engine is held not to have, arriving on exactly the race a removal exists to
+    /// survive.
+    /// </para>
     /// </remarks>
     internal static void EnsureRemovable(UnfinishedRecording recording)
     {
@@ -458,7 +467,18 @@ public static class UnfinishedRecordings
 
         foreach (var source in recording.Sources)
         {
-            SpoolReader.Open(source.Blocks).Dispose();
+            try
+            {
+                SpoolReader.Open(source.Blocks).Dispose();
+            }
+            catch (DirectoryNotFoundException gone)
+            {
+                throw new AudioCaptureException(
+                    $"Nothing was removed: there is no longer a recording in "
+                    + $"'{recording.Folder.FullName}'. Something else threw it away while this was "
+                    + "being decided about — another window, or an answer typed at a prompt.",
+                    gone);
+            }
         }
     }
 
@@ -485,11 +505,14 @@ public static class UnfinishedRecordings
     /// what a recording is.
     /// </para>
     /// <para>
-    /// Internal, because a public one beside <see cref="UnfinishedRecording.Discard"/> would be a
-    /// second way to remove a recording with neither
+    /// Internal until something outside this project has a product reason to remove a recording.
+    /// A public one beside <see cref="UnfinishedRecording.Discard"/> would today be a second way to
+    /// remove a recording with neither
     /// <see cref="UnfinishedRecording.EnsureThereIsSomethingToDecide"/> nor
-    /// <see cref="EnsureRemovable"/> in front of it, and the sweep that holds this rule greps for
-    /// spellings rather than for visibility, so nothing would object.
+    /// <see cref="EnsureRemovable"/> in front of it — and the sweep that holds this rule greps for
+    /// spellings rather than for visibility, so the modifier is what holds it and nothing else
+    /// would object. Widening it is one line, and whoever does has to say what stands in front of
+    /// it instead.
     /// </para>
     /// <para>
     /// Every way out of it is an <see cref="AudioCaptureException"/>. A raw <see cref="IOException"/>
@@ -503,9 +526,8 @@ public static class UnfinishedRecordings
         var folder = recording.Folder;
         var above = folder.Parent
             ?? throw new AudioCaptureException(
-                $"There is nothing above '{folder.FullName}', so there is nowhere to move it aside "
-                + "to and nothing was removed. A recording is thrown away by moving its folder out "
-                + "of the way first.");
+                $"Nothing was removed: there is nothing above '{folder.FullName}', so there is "
+                + "nowhere to move it aside to.");
 
         var aside = new DirectoryInfo(Path.Combine(above.FullName, BeingRemoved + folder.Name));
 
@@ -518,8 +540,8 @@ public static class UnfinishedRecordings
         }
         catch
         {
-            // This call's own and empty, so it goes back rather than being left as a folder every
-            // start after a refusal has to have an opinion about.
+            // Empty, whether this call made it or found it that way, so it goes back rather than
+            // being left as a folder every start after a refusal has to have an opinion about.
             EraseIfItIsStillEmpty(aside);
             throw;
         }
@@ -675,17 +697,16 @@ public static class UnfinishedRecordings
     }
 
     /// <summary>
-    /// Renames <paramref name="from"/> to <paramref name="to"/>, waiting out whatever still has a
-    /// file under it open.
+    /// Runs <paramref name="attempt"/> until Windows stops saying somebody else still has a file
+    /// open, and hands back the refusal it gave up on, or nothing when it went through.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The loop <c>tests/MeetingTranscriber.Testing/Folders.cs</c> holds for the same Windows fact,
-    /// with this project's patience and its own sentences. The two cannot be one:
-    /// <c>MeetingTranscriber.Audio</c> targets a Windows framework and that project targets plain
-    /// <c>net10.0</c> and is referenced by the domain's tests, so sharing it either way is a
-    /// <c>src/</c> → <c>tests/</c> reference or a Windows target framework under a domain test. DRY
-    /// and the project boundary pull apart here and the boundary wins.
+    /// Both halves of a removal use it, and that is the point: a rename and a delete meet the same
+    /// holder in the same window, so a wait that only one of them got would be waiting where it was
+    /// cheapest rather than where it was worth most. It hands the refusal back rather than throwing
+    /// because what each half has to say about giving up is different, and that sentence belongs
+    /// where the half is.
     /// </para>
     /// <para>
     /// The wait is not insurance against a rare machine. <see cref="EnsureRemovable"/> opens and
@@ -695,64 +716,93 @@ public static class UnfinishedRecordings
     /// real machines and never on a build agent.
     /// </para>
     /// <para>
-    /// Catch order is load-bearing: the first filter that passes wins, so a refusal that is
-    /// somebody reading never reaches the second clause. The second clause is what makes every
-    /// remaining exit a sentence about the recording — a destination already there, a parent that
+    /// A refusal that is <em>not</em> somebody reading is not caught here at all: it is the answer,
+    /// so it goes straight out to the caller's own wrap. A destination already there, a parent that
     /// is not, another volume, a denied ACL, and <see cref="PathTooLongException"/>, which the two
     /// extra levels of path can produce and which nothing was ever going to fix by waiting.
     /// </para>
+    /// <para>
+    /// <c>tests/MeetingTranscriber.Testing/Folders.cs</c> holds a second copy of this loop for the
+    /// same Windows fact, and the duplication is deliberate. The two projects share
+    /// <c>MeetingTranscriber.Domain</c>, which is plain <c>net10.0</c> and could hold it without a
+    /// new project reference or a target framework change anywhere — so the boundary does not
+    /// forbid sharing, and saying it did would be a false impossibility. What decides it is that
+    /// <c>Domain</c> holds no filesystem code at all: it is the audio contract, time and jobs, and
+    /// an NTFS rename-retry put there would make the one project with no I/O in it depend on how
+    /// Windows behaves when a scanner reopens a file. DRY and that pull apart, and keeping
+    /// <c>Domain</c> clean wins. Each copy names the other so neither is deleted as an oversight.
+    /// </para>
     /// </remarks>
-    private static void MoveWaitingOutWhoeverHasIt(DirectoryInfo from, DirectoryInfo to)
+    private static IOException? WaitingOutWhoeverIsStillReading(Action attempt)
     {
         var clock = Stopwatch.StartNew();
-        var refusals = 0;
 
         while (true)
         {
             try
             {
-                Directory.Move(from.FullName, to.FullName);
-                return;
+                attempt();
+                return null;
             }
             catch (IOException refused) when (SomebodyIsStillReading(refused))
             {
-                refusals++;
-
                 if (clock.ElapsedMilliseconds >= RemovalPatienceMilliseconds)
                 {
-                    throw new AudioCaptureException(
-                        $"Nothing was removed from '{from.FullName}': something on this machine "
-                        + "still has a file in it open, and it was still refusing after "
-                        + $"{refusals} tries over {clock.ElapsedMilliseconds} ms. A recording is "
-                        + "thrown away by moving its folder aside first, so a refusal leaves it "
-                        + "exactly as it was — every block, the card and the changes beside them "
-                        + "are still where they were. Once whatever is reading it lets go, throwing "
-                        + "it away is open again.",
-                        refused);
+                    return refused;
                 }
 
                 // A sleep rather than a spin, so waiting does not take the core off whoever is
                 // reading. How long it actually is, is the platform's timer resolution.
                 Thread.Sleep(1);
             }
-            catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
-            {
-                throw new AudioCaptureException(
-                    $"'{from.FullName}' was not moved aside, so nothing was removed and the "
-                    + $"recording is exactly as it was: {refused.Message}",
-                    refused);
-            }
         }
     }
 
     /// <summary>
-    /// Takes back the folder a removal made, when the move into it was refused. It does not throw:
-    /// it runs while something is already failing, and what the caller has to hear is that refusal.
+    /// Renames <paramref name="from"/> to <paramref name="to"/>, waiting out whatever still has a
+    /// file under it open. Nothing is removed when it refuses, and the recording is untouched.
+    /// </summary>
+    private static void MoveWaitingOutWhoeverHasIt(DirectoryInfo from, DirectoryInfo to)
+    {
+        try
+        {
+            if (WaitingOutWhoeverIsStillReading(() => Directory.Move(from.FullName, to.FullName))
+                is { } refused)
+            {
+                throw new AudioCaptureException(
+                    $"Nothing was removed from '{from.FullName}': something on this machine still "
+                    + "has a file in it open, and it was still refusing "
+                    + $"{RemovalPatienceMilliseconds} ms later. A recording is thrown away by "
+                    + "moving its folder aside first, so a refusal leaves it exactly as it was — "
+                    + "every block, the card and the changes beside them are still where they "
+                    + "were. Once whatever is reading it lets go, throwing it away is open again.",
+                    refused);
+            }
+        }
+        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
+        {
+            // What was attempted, and never a claim about the recording: this also catches the
+            // folder having gone, which is another discard of the same recording having won, and
+            // that recording is removed rather than as it was.
+            throw new AudioCaptureException(
+                $"'{from.FullName}' was not moved aside and nothing here removed anything: "
+                + refused.Message,
+                refused);
+        }
+    }
+
+    /// <summary>
+    /// Takes back the folder a removal was going to move into, when the move was refused. It does
+    /// not throw: it runs while something is already failing, and what the caller has to hear is
+    /// that refusal.
     /// </summary>
     /// <remarks>
     /// Non-recursive, which is what makes the silence safe — the only thing this can ever take is a
-    /// directory that is empty, and a refused move leaves exactly that.
-    /// <see cref="BlockSpool.Erase"/> is the same shape for the same reason.
+    /// directory that is empty. <see cref="BlockSpool.Erase"/> is the same shape for the same
+    /// reason. It is one half of a pair and neither half is redundant: this keeps the common
+    /// refusal from leaving a folder behind, and <see cref="MakeTheAsideReady"/> waving an existing
+    /// empty one through is what keeps a refusal <em>here</em> from leaving a recording nobody can
+    /// ever discard. Deleting either half re-opens the case the other one covers.
     /// </remarks>
     private static void EraseIfItIsStillEmpty(DirectoryInfo aside)
     {
@@ -779,27 +829,34 @@ public static class UnfinishedRecordings
     /// <see cref="WhatSaysARecordingHappenedIn"/> exists to keep to one place.
     /// </para>
     /// <para>
-    /// One attempt and no patience budget, unlike the move — the trade is what a refusal costs at
-    /// each point. The recording is out of the way by now and nothing offers it any more, so what a
-    /// refusal here leaves is bytes nothing points at, said loudly and with the path. A second
-    /// budget would double the worst case of a call that runs on a window's thread for a failure
-    /// that is already loud and accurate.
+    /// It waits out a holder exactly as the move does, and the reason is what a refusal costs
+    /// rather than symmetry. A refused move is recoverable — the recording is still offered, and
+    /// pressing Discard again is the whole of the remedy. A refusal here is not: the recording is
+    /// already out from under every name the product looks in, so nothing offers it a second time
+    /// and what is left waits for somebody to read a page and delete a folder by hand. The
+    /// unrecoverable half is the last one to leave without a wait.
     /// </para>
     /// </remarks>
     private static void ThrowAwayTheCopy(DirectoryInfo aside, DirectoryInfo folder)
     {
         try
         {
-            Directory.Delete(aside.FullName, recursive: true);
+            if (WaitingOutWhoeverIsStillReading(
+                () => Directory.Delete(aside.FullName, recursive: true)) is { } refused)
+            {
+                throw SomeOfItIsStillThere(refused);
+            }
         }
         catch (Exception left) when (left is IOException or UnauthorizedAccessException)
         {
-            throw new AudioCaptureException(
-                $"The recording that was in '{folder.FullName}' is out of the way and nothing "
-                + $"offers it any more, but some of its files are still on disk in "
-                + $"'{aside.FullName}': {left.Message} Removing that folder by hand is safe.",
-                left);
+            throw SomeOfItIsStillThere(left);
         }
+
+        AudioCaptureException SomeOfItIsStillThere(Exception left) => new(
+            $"The recording that was in '{folder.FullName}' is out of the way and nothing offers "
+            + $"it any more, but some of its files are still on disk in '{aside.FullName}': "
+            + $"{left.Message} Removing that folder by hand is safe.",
+            left);
     }
 
     /// <summary>
