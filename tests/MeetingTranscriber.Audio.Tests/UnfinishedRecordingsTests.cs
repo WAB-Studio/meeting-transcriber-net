@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Security.Cryptography;
 
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
@@ -448,6 +450,272 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// The card's proof, at the engine, with two real processes: one standing over a folder it is
+    /// reading and one discarding it, and the folder survives with everything in it.
+    /// </summary>
+    /// <remarks>
+    /// Two processes because that is the situation — one window at a prompt, another typing the
+    /// discard — and because nothing inside one process reaches it: the reading mark is shared, so
+    /// a hold taken here would be joined rather than met. The kill runs in a <c>finally</c> for the
+    /// reason <c>SavingMarkTests</c> gives.
+    /// </remarks>
+    [Fact]
+    public void A_recording_somebody_else_is_reading_is_not_thrown_away_under_them()
+    {
+        Recorded("daily", both: true);
+
+        // The other process opens with `Open` and never `Create`, so the mark has to be on disk
+        // before it starts — and on both sides of the snapshot below, so this is not what the
+        // comparison catches.
+        ReadingMark.Take(Folder("daily")).Dispose();
+
+        var mark = new FileInfo(
+            Path.Combine(Folder("daily").FullName, ReadingMark.FileName));
+        var before = Snapshot(Folder("daily"));
+
+        using var holder = AnotherProcess.Holding(mark, FileShare.ReadWrite);
+        try
+        {
+            AnotherProcess.HasTakenIt(holder);
+            ReadingMark.IsHeldIn(Folder("daily")).ShouldBeTrue();
+
+            var refused = Should.Throw<AudioCaptureException>(
+                () => UnfinishedRecordings.At(Folder("daily")).Discard());
+
+            refused.Message.ShouldContain("reading the recording");
+            refused.Message.ShouldContain(Folder("daily").FullName);
+            refused.Message.ShouldNotContain(".blocks");
+
+            // Every byte of it, and nothing left beside it either.
+            Snapshot(Folder("daily")).ShouldBe(before);
+            root.EnumerateDirectories().Select(one => one.Name).ShouldBe(["daily"]);
+        }
+        finally
+        {
+            try
+            {
+                if (!holder.HasExited)
+                {
+                    holder.Kill(entireProcessTree: true);
+                }
+            }
+            catch (Exception ending) when (
+                ending is InvalidOperationException or Win32Exception or AggregateException)
+            {
+                // Every way a kill can refuse: it ended between the question and the kill, which is
+                // what the kill was for; Windows would not have it; a child of it would not go. A
+                // throw from a finally would bury the sentence saying what really failed, and what
+                // is left behind either way ends itself when its own sleep runs out.
+            }
+
+            holder.WaitForExit();
+        }
+
+        // Said in full because the answer is also the answer a broken ReadingMark gives, and the
+        // mark the dead process left is still on disk holding nothing.
+        ReadingMark.IsHeldIn(Folder("daily")).ShouldBeFalse(
+            "the mark still reads as held after the only process holding it is gone. Either the "
+            + "mark means its existence rather than a handle, which is what this refuses, or "
+            + "something else on this machine had the file open for the one instant this was "
+            + "asked — IsHeldIn answers 'held' to any IOException, deliberately.");
+
+        UnfinishedRecordings.At(Folder("daily")).Discard();
+        Folder("daily").Refresh();
+        Folder("daily").Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The same fact in one process, which is what makes it cheap enough to be the one that stays
+    /// sharp: a recording being read is refused a discard, and is still keepable and exportable
+    /// while it is read.
+    /// </summary>
+    [Fact]
+    public void A_recording_being_read_is_not_thrown_away_under_the_reader()
+    {
+        Recorded("daily", both: true);
+        using var reading = ReadingMark.Take(Folder("daily"));
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        // A read does not make a recording undecidable, and this is what stops somebody later
+        // folding it into that property: only the discard waits, and it waits when it is pressed.
+        recording.NothingToDecideYet.ShouldBeNull();
+        recording.Keep().Count.ShouldBe(2);
+        recording.Export(Folder("out")).Count.ShouldBe(2);
+
+        var refused = Should.Throw<AudioCaptureException>(recording.Discard);
+        refused.Message.ShouldContain("reading the recording");
+        refused.Message.ShouldContain(Folder("daily").FullName);
+        refused.Message.ShouldNotContain(".blocks");
+
+        Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+
+        // The card is asserted by name because it is what no reader ever holds, and so what a
+        // rename losing this race would have taken first.
+        SpoolManifest.Find(Folder("daily")).ShouldNotBeNull();
+
+        // And the refused move took its own folder back, leaving only this read's destination.
+        root.EnumerateDirectories().Select(one => one.Name).Order(StringComparer.Ordinal)
+            .ShouldBe(["daily", "out"]);
+
+        reading.Dispose();
+        recording.Discard();
+        Folder("daily").Refresh();
+        Folder("daily").Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The deterministic half of taking the mark and releasing it: both reads take it before they
+    /// touch a source and let it go on the way out, including the way out through a refusal.
+    /// </summary>
+    [Fact]
+    public void A_read_that_ends_leaves_its_mark_behind_holding_nothing()
+    {
+        Recorded("daily", both: true);
+        MarkedAsRead(Folder("daily")).ShouldBeFalse();
+
+        UnfinishedRecordings.At(Folder("daily")).Keep();
+
+        MarkedAsRead(Folder("daily")).ShouldBeTrue();
+        ReadingMark.IsHeldIn(Folder("daily")).ShouldBeFalse();
+
+        // Each of the two is held to it on its own rather than one covering for the other.
+        Recorded("weekly", both: true);
+        MarkedAsRead(Folder("weekly")).ShouldBeFalse();
+
+        UnfinishedRecordings.At(Folder("weekly")).Export(Folder("out"));
+
+        MarkedAsRead(Folder("weekly")).ShouldBeTrue();
+        ReadingMark.IsHeldIn(Folder("weekly")).ShouldBeFalse();
+
+        // And the way out through a refusal: the destination already holds one of the two names,
+        // so the export is refused after the mark was taken and before any audio was poured.
+        Recorded("monthly", both: true);
+
+        Should.Throw<AudioCaptureException>(
+            () => UnfinishedRecordings.At(Folder("monthly")).Export(Folder("out")));
+
+        MarkedAsRead(Folder("monthly")).ShouldBeTrue();
+        ReadingMark.IsHeldIn(Folder("monthly")).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// ISC-126.2's shape arriving through the new mark. A read that died left its mark lying in
+    /// the folder, and every one of the three is open over it again.
+    /// </summary>
+    [Fact]
+    public void A_mark_left_by_a_read_that_died_leaves_the_recording_decidable()
+    {
+        Recorded("daily", both: true);
+        ReadingMark.Take(Folder("daily")).Dispose();
+        MarkedAsRead(Folder("daily"))
+            .ShouldBeTrue("the folder has to be carrying the mark for this to be about one");
+
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        recording.NothingToDecideYet.ShouldBeNull();
+        recording.Keep().Count.ShouldBe(2);
+        recording.Export(Folder("out")).Count.ShouldBe(2);
+
+        // And the stale mark goes with the folder through the rename and the delete.
+        recording.Discard();
+        Folder("daily").Refresh();
+        Folder("daily").Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A recording in a folder that will not take the mark is read through exactly as it was before
+    /// the mark existed, and all three outcomes stay open over it.
+    /// </summary>
+    /// <remarks>
+    /// This is the one that would go red on a build that made the mark a precondition for reading.
+    /// A spool folder needed only read access until this file existed, and the drawer's background
+    /// pass reads every waiting recording through — so a claim that threw would put a meeting whose
+    /// blocks are all there in front of somebody as <em>the blocks of this one would not read</em>,
+    /// with throwing it away as the only thing offered. The folder is made unwritable at the one
+    /// name that matters by putting a directory where the mark goes, which stands in for the real
+    /// ways it happens: no room on the disk, an access this process does not have.
+    /// </remarks>
+    [Fact]
+    public void A_recording_whose_folder_will_not_take_the_mark_is_still_read_and_still_decidable()
+    {
+        Recorded("daily", both: true);
+        Directory.CreateDirectory(
+            Path.Combine(Folder("daily").FullName, ReadingMark.FileName));
+
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        recording.NothingToDecideYet.ShouldBeNull();
+        recording.Keep().Count.ShouldBe(2);
+        recording.Export(Folder("out")).Count.ShouldBe(2);
+
+        // Nothing is held, so nothing refuses the discard either — which is what there was to lose
+        // in this folder, and it is what there was to lose before this mark existed.
+        ReadingMark.IsHeldIn(Folder("daily")).ShouldBeFalse();
+        recording.Discard();
+        Folder("daily").Refresh();
+        Folder("daily").Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The other thing the mark is allowed to refuse, and the reason it is: a folder thrown away
+    /// between the listing and the read is a sentence about the recording rather than the one the
+    /// first block file would throw — and a refused export leaves no destination folder behind,
+    /// which is what taking the mark before <c>into.Create()</c> is for.
+    /// </summary>
+    [Fact]
+    public void A_recording_thrown_away_under_a_reader_refuses_by_naming_the_folder()
+    {
+        Recorded("daily", both: true);
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        // Exactly the race a removal exists to survive: another window discarded it while this one
+        // was being decided about.
+        Folder("daily").Delete(recursive: true);
+
+        var refused = Should.Throw<AudioCaptureException>(() => recording.Export(Folder("out")));
+
+        refused.Message.ShouldContain(Folder("daily").FullName);
+        refused.Message.ShouldNotContain(".blocks");
+        Folder("out").Refresh();
+        Folder("out").Exists.ShouldBeFalse();
+
+        Should.Throw<AudioCaptureException>(() => recording.Keep())
+            .Message.ShouldContain(Folder("daily").FullName);
+    }
+
+    /// <summary>
+    /// A folder a read marked and nothing was ever recorded into is still swept away. One list
+    /// feeds the question and the delete, so teaching it the third mark covers both.
+    /// </summary>
+    /// <remarks>
+    /// The invariant and not a state the product reaches: a folder with no spool in it was never
+    /// read, so nothing puts a mark in one — this drives <c>NamesAPressLeaves</c> past the sweep's
+    /// own entry point on purpose, the way the leftover-removal probe does. What it holds is that
+    /// the question and the delete cannot come to disagree, which is the property that stops the
+    /// question naming a file the delete would then choke on.
+    /// </remarks>
+    [Fact]
+    public void A_folder_a_read_marked_and_nothing_recorded_into_is_still_swept()
+    {
+        var folder = Folder("daily");
+        folder.Create();
+
+        SpoolWriter.Create(
+            BlockSpool.FileFor(folder, AudioChannel.Loopback),
+            AudioChannel.Loopback,
+            StereoFloat).Dispose();
+
+        ReadingMark.Take(folder).Dispose();
+
+        UnfinishedRecordings.WhatSaysARecordingHappenedIn(folder).ShouldBeNull();
+
+        UnfinishedRecordings.EraseWhereNothingWasRecorded(folder);
+
+        folder.Refresh();
+        folder.Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
     /// What the sweep of folders nothing was recorded into sees when a discard did not finish, and
     /// the engine half of what <c>docs/corpus.md</c> promises about that folder: it is named, and
     /// nothing takes it away.
@@ -861,5 +1129,36 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     /// </summary>
     private static bool Marked(DirectoryInfo folder) =>
         File.Exists(Path.Combine(folder.FullName, SavingMark.FileName));
+
+    /// <summary>
+    /// Whether the mark a read writes is lying in this folder. Built here rather than asked of
+    /// <see cref="ReadingMark"/>, which deliberately answers nothing about the file being there.
+    /// </summary>
+    private static bool MarkedAsRead(DirectoryInfo folder) =>
+        File.Exists(Path.Combine(folder.FullName, ReadingMark.FileName));
+
+    /// <summary>
+    /// Every file in the folder by name and by content, which is what "the folder survives with
+    /// everything in it" means. A length would pass over a file emptied and refilled.
+    /// </summary>
+    /// <remarks>
+    /// Opened the way a backup opens a file rather than the way <c>File.ReadAllBytes</c> does: one
+    /// of these files is a mark something is holding for writing, and a read sharing less than that
+    /// would be refused by the very holder the comparison is here to survive.
+    /// </remarks>
+    private static string[] Snapshot(DirectoryInfo folder) =>
+    [
+        .. folder.GetFiles()
+            .Select(file => $"{file.Name} {Convert.ToHexString(Hashed(file))}")
+            .Order(StringComparer.Ordinal),
+    ];
+
+    private static byte[] Hashed(FileInfo file)
+    {
+        using var content = file.Open(
+            FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+        return SHA256.HashData(content);
+    }
 
 }

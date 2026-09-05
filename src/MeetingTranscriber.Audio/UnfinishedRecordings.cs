@@ -167,12 +167,17 @@ public sealed record UnfinishedRecording(
     }
 
     /// <summary>
-    /// Reads every source through and says what survived, changing nothing. The recording is still
-    /// there afterwards, which is what keeping it means.
+    /// Reads every source through and says what survived. Every block is still there afterwards,
+    /// which is what keeping it means — what this does write is the mark saying it is being read.
     /// </summary>
     public IReadOnlyList<SurvivingSource> Keep()
     {
+        // Asked before the mark, so that a folder whose save is running or whose capture is still
+        // writing does not get a file dropped into it by something that is about to be refused
+        // anyway. Both refusals reach their own sentence either way; what the order buys is that
+        // nothing is left behind on the way to one.
         EnsureThereIsSomethingToDecide();
+        using var reading = ReadingMark.Take(Folder);
 
         return [.. Sources.Select(Survived)];
     }
@@ -199,6 +204,12 @@ public sealed record UnfinishedRecording(
     {
         ArgumentNullException.ThrowIfNull(into);
         EnsureThereIsSomethingToDecide();
+
+        // Before `into.Create()`, because the one thing a claim still refuses is the recording
+        // having been thrown away since this was found, and that refusal must not leave an empty
+        // destination folder behind. Outside the `try`, so the catch that erases what was claimed
+        // runs before the mark is let go of.
+        using var reading = ReadingMark.Take(Folder);
 
         into.Create();
         var claimed = new List<FileInfo>();
@@ -261,8 +272,9 @@ public sealed record UnfinishedRecording(
     public void Discard()
     {
         // Both, and in this order, and neither of them is what makes this safe. The move below is
-        // the authority and these two are only the sentence — a save that starts between the check
-        // and the rename is refused by Windows on the rename, with the folder exactly as it was.
+        // the authority and these two are only the sentence — a save or a read that starts between
+        // the check and the rename is refused by Windows on the rename, with the folder exactly as
+        // it was.
         // They are here because somebody deciding about a meeting is owed a sentence about the
         // meeting rather than one about a rename.
         EnsureThereIsSomethingToDecide();
@@ -424,8 +436,8 @@ public static class UnfinishedRecordings
     }
 
     /// <summary>
-    /// Throws unless every one of this recording's files is a spool nobody is writing and nothing
-    /// is saving it.
+    /// Throws unless every one of this recording's files is a spool nobody is writing, and nothing
+    /// is saving it and nothing is reading it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -437,8 +449,8 @@ public static class UnfinishedRecordings
     /// </para>
     /// <para>
     /// This is asked for the sentence and not for the safety. What actually removes a recording is
-    /// a rename — <see cref="Remove"/> — and a rename either happens or does not, so a save that
-    /// starts after this line is refused with the folder exactly as it was. What that refusal
+    /// a rename — <see cref="Remove"/> — and a rename either happens or does not, so a save or a
+    /// read that starts after this line is refused with the folder exactly as it was. What that refusal
     /// cannot say is <em>which</em> of the things it is; that is what this is for, said while it is
     /// still possible to say it. The one thing here that is not a sentence is the spool opens: a
     /// file named like a spool that is not one is something no rename can tell apart, so this is
@@ -463,6 +475,17 @@ public static class UnfinishedRecordings
                 + "blocks it is reading are not something to throw away while it does. Once the "
                 + "save is over — or once the process running it is gone — throwing it away is "
                 + "open again.");
+        }
+
+        // Second, because a save is also a read of these blocks and has the more specific thing to
+        // tell somebody about what they are waiting for.
+        if (ReadingMark.IsHeldIn(recording.Folder))
+        {
+            throw new AudioCaptureException(
+                $"Something on this machine is reading the recording in '{recording.Folder.FullName}' "
+                + "right now — a list of what is waiting, a keep, or an export — and blocks somebody is "
+                + "reading are not something to throw away underneath them. Once the read is over — or "
+                + "once whatever is running it is gone — throwing it away is open again.");
         }
 
         foreach (var source in recording.Sources)
@@ -493,6 +516,9 @@ public static class UnfinishedRecordings
     /// in this engine wrote — another window reading the same recording, a prompt exporting it,
     /// something on the machine — stops it half way: the card and the changes are gone, and what
     /// survives is the file that caused the refusal. A rename either happens or does not.
+    /// <see cref="ReadingMark"/> now covers the first two of those three, which is what lets a
+    /// refusal name a reader; the rename stays the authority, and it is the only one for the holders
+    /// nothing here wrote — a scanner, a backup, a file manager.
     /// </para>
     /// <para>
     /// The folder moves one level down, into <c>.removing-&lt;its name&gt;</c> beside where it was.
@@ -557,9 +583,9 @@ public static class UnfinishedRecordings
     /// <para>
     /// The question a sweep asks before it decides anything, and it is here rather than where the
     /// sweeping is because every name in it is written from this project. A folder a recording never
-    /// filled holds only files this engine makes before there is anything to record — the two marks,
-    /// a spool carrying its header and nothing else, the card, and the note of a channel somebody
-    /// moved — and anything else in it is either a recording or somebody's.
+    /// filled holds only files this engine makes before there is anything to record — the three
+    /// marks, a spool carrying its header and nothing else, the card, and the note of a channel
+    /// somebody moved — and anything else in it is either a recording or somebody's.
     /// </para>
     /// <para>
     /// It says what it found rather than yes or no, because whoever asks has to tell a person which
@@ -871,7 +897,8 @@ public static class UnfinishedRecordings
     /// </summary>
     /// <remarks>
     /// One list, read by the question and by the delete, so that the two cannot come to disagree
-    /// about what an empty folder is allowed to hold — and so that a third mark is one edit.
+    /// about what an empty folder is allowed to hold — and so that a fourth mark is one edit, the
+    /// way the third was.
     /// </remarks>
     private static FileInfo[] NamesAPressLeaves(DirectoryInfo folder) =>
     [
@@ -879,6 +906,7 @@ public static class UnfinishedRecordings
         SpoolManifest.In(folder),
         SpoolChanges.In(folder),
         new FileInfo(Path.Combine(folder.FullName, CaptureMark.FileName)),
+        new FileInfo(Path.Combine(folder.FullName, ReadingMark.FileName)),
         new FileInfo(Path.Combine(folder.FullName, SavingMark.FileName)),
     ];
 

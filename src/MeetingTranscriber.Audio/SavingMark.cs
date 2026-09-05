@@ -40,9 +40,9 @@ public sealed class SavingMark : IDisposable
     /// <remarks>
     /// Named for the save rather than for the folder being in use. What a capture holds is
     /// <see cref="CaptureMark"/> and the blocks themselves, and a reader tells that apart by the
-    /// share mode a writer took — see <see cref="BlockSpool.IsStillBeingWritten"/>. Two facts, two
-    /// names: a folder that is being captured into and one that is being read out of are different
-    /// things to say to somebody.
+    /// share mode a writer took — see <see cref="BlockSpool.IsStillBeingWritten"/>. Three facts,
+    /// three names: a folder being captured into, one being read out of — <see cref="ReadingMark"/>
+    /// — and one being written down into a meeting are different things to say to somebody.
     /// </remarks>
     public const string FileName = "saving.mark";
 
