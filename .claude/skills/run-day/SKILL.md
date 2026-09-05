@@ -19,7 +19,7 @@ table exists.
 | validate | `validator` | the batch dir, the cards, the base | `pass`, `revise` or `ask` per card, and collisions |
 | work | `worker` | card id, its card dir, PR number, the base | a record, and a pushed branch |
 | integrate | `integrator` | the base, the batch dir, the branches | one PR carrying the batch |
-| audit | `auditor` | PR number, its card dirs | a verdict per card, and one for the PR |
+| audit | `auditor` | PR number, its card dirs, what carries each | a verdict per card, and one for the PR |
 
 Pass each agent what its column says and nothing more: never who produced it, never what happens to
 it next, never where the day stands.
@@ -61,7 +61,8 @@ the cards, the PRs and the commits carry that already.
 ## 2 · The cycle
 
 **Pin the base first.** `git rev-parse origin/main` once, into `<batch dir>/base`, and hand that
-sha to every stage. Nothing in the batch resolves `origin/main` for itself.
+sha to every stage. Nothing in the batch resolves `origin/main` to decide what it is building
+against; the audit floor is still read at the trunk.
 
 1. **Pick.** Spawn `picker` with a ceiling of candidates — four unless this machine has room for
    more.

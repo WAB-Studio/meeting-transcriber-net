@@ -11,7 +11,8 @@ Put finished work together and prove it together. You build nothing and you fix 
 ## Input
 
 - `base_sha` — the commit every branch was cut from, and yours too.
-- `batch_dir` — one directory per card, each holding that card's `record.json` and `pr.md`.
+- `batch_dir` — the batch's own directory, holding one directory per card, each with that card's
+  `record.json` and `pr.md`.
 - `branches` — the pushed branch of each card, in the order they land.
 - `pr_number` — a PR already carrying this batch, or none.
 

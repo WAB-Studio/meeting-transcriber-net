@@ -23,11 +23,14 @@ run once, so everything you have goes in this verdict.
   and `record.json` for that card, and `review.md` when its plan was reviewed. Read each if it is
   present; a missing `plan.md` is itself a finding.
 
-A PR carries one commit per card. Read every hunk against the plan of the card whose commit carries
-it, and judge each card on its own before you judge the PR.
+- `carried` — the commit on the PR's branch that carries each card.
 
-Take `audited_head_sha` from the PR's `headRefOid`, never from the record. The two disagreeing means
-the code you read is not the code that was submitted, and that is `hold`.
+Read every hunk against the plan of the card whose commit carries it, and judge each card on its own
+before you judge the PR.
+
+Take `audited_head_sha` from the PR's `headRefOid`, never from a record. A record's `head_sha` that
+is not an ancestor of it means the code you read is not the code that was built, and that is
+`hold`.
 
 ## Output
 

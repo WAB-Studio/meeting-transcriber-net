@@ -30,7 +30,8 @@ track:  issue   →  ...  →  closed when the thing it describes stopped being 
 3. **The four commands green before the PR, once a push** — `dotnet restore`, `dotnet format
    --verify-no-changes`, `dotnet build --no-restore -warnaserror`, `dotnet test --no-build`, each on
    its own line. One pass at the end, over the whole diff, before the PR opens and before every
-   update to it. `/adversarial-review` comes before that pass, same shape. A PR is never opened red.
+   update to it. `/adversarial-review` runs over the work of one card, by whoever built it, before
+   that pass. A PR is never opened red.
    Nobody waits on CI or chases it — that run is read at merge.
 4. **One PR, one batch, one commit per issue.** A PR may close several issues; each carries its own
    commit, so an audit can attribute a hunk and a revert takes one card. Two issues sharing a commit
