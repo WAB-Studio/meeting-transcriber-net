@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
@@ -13,6 +15,21 @@ namespace MeetingTranscriber.Audio.Tests;
 /// </remarks>
 public sealed class UnfinishedRecordingsTests : IDisposable
 {
+    /// <summary>
+    /// How long the handle is held once a discard has started, in the one test that asserts the
+    /// waiting.
+    /// </summary>
+    /// <remarks>
+    /// Set against <c>UnfinishedRecordings.RemovalPatienceMilliseconds</c>, which is 250 and is
+    /// internal with no <c>InternalsVisibleTo</c> anywhere in this repository — so it cannot be
+    /// divided down from here and this number carries the relationship instead. Twenty against two
+    /// hundred and fifty is a twelfth of the budget: long enough that the first rename cannot find
+    /// the folder already free, which the probe on the line above it proves outright, and short
+    /// enough that a scheduling stall would have to run most of a quarter second to turn it red. If
+    /// that constant is ever lowered below about a hundred, this number moves with it.
+    /// </remarks>
+    private const int HoldForMilliseconds = 20;
+
     private static readonly StreamFormat StereoFloat = new(48_000, 2, 32, SampleEncoding.IeeeFloat);
     private static readonly StreamFormat CheapMicrophone = new(44_100, 1, 16, SampleEncoding.Pcm);
 
@@ -240,6 +257,223 @@ public sealed class UnfinishedRecordingsTests : IDisposable
 
         Folder("daily").Exists.ShouldBeFalse();
         UnfinishedRecordings.In(root).ShouldBeEmpty();
+
+        // Gone with everything in it includes nothing left beside it: the folder the removal moves
+        // the recording into is removed too, rather than left holding a meeting's blocks under a
+        // name nothing in the product ever looks in.
+        root.EnumerateDirectories().ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The card this file exists to answer. A second reader — another window keeping the same
+    /// recording, a prompt exporting it — holds a block file open, and a discard pressed while it
+    /// does used to empty the folder as far as that file: the card and the changes were already
+    /// gone by the time the refusal landed. What is left has to be the recording or nothing.
+    /// </summary>
+    /// <remarks>
+    /// The handle is a <em>reader</em>, which is the whole point. Nothing in this engine can see it
+    /// — <c>BlockSpool.IsStillBeingWritten</c> asks about writers — so the recording reaches the
+    /// removal with <c>Running</c> false, <c>BeingSaved</c> false and <c>EnsureRemovable</c>
+    /// content, which is exactly what a keep or an export in another window looks like from here.
+    /// NTFS still refuses to rename the folder over it.
+    /// </remarks>
+    [Fact]
+    public void A_recording_a_second_reader_is_holding_is_left_whole_rather_than_half_emptied()
+    {
+        Recorded("daily", both: true);
+        SpoolChanges.Append(Folder("daily"), new SourceChanged(
+            UtcTimestamp.Parse("2026-08-15T10:11:00.000Z"),
+            AudioChannel.Loopback,
+            "everything this machine plays",
+            "teams (pid 8124)"));
+
+        using var reading = Reading(AudioChannel.Microphone);
+
+        var refused = Should.Throw<AudioCaptureException>(
+            () => UnfinishedRecordings.At(Folder("daily")).Discard());
+
+        refused.Message.ShouldContain(Folder("daily").FullName);
+        refused.Message.ShouldContain("Nothing was removed");
+        refused.Message.ShouldNotContain(".blocks");
+
+        Folder("daily").EnumerateFiles().Select(file => file.Name).Order(StringComparer.Ordinal)
+            .ShouldBe(["changes.jsonl", "loopback.blocks", "manifest.json", "microphone.blocks"]);
+
+        var still = UnfinishedRecordings.In(root).ShouldHaveSingleItem();
+        still.Sources.Count.ShouldBe(2);
+        still.Card.ShouldNotBeNull();
+
+        // And nothing beside it: the folder the refused move made was taken back.
+        root.EnumerateDirectories().Select(one => one.Name).ShouldBe(["daily"]);
+    }
+
+    /// <summary>
+    /// That the waiting is a wait and not a pause before the same refusal. Whatever opens a file
+    /// the instant it is closed — a real-time scanner is the usual explanation — is the likeliest
+    /// holder of all, because <c>EnsureRemovable</c> closes every spool a millisecond before the
+    /// rename is attempted. A removal that gave up on the first refusal would fail intermittently
+    /// on real machines and never on a build agent.
+    /// </summary>
+    [Fact]
+    public void A_recording_somebody_lets_go_of_is_thrown_away_once_they_do()
+    {
+        Recorded("daily", both: true);
+
+        // Disposed from two places on purpose: the thread below is the one under test, and the
+        // using is what guarantees the handle is gone when the test leaves however it leaves,
+        // including the path where Discard throws and every line after it is skipped.
+        using var reading = Reading(AudioChannel.Microphone);
+
+        // That the handle really does refuse the rename right now, so what follows is the waiting
+        // working rather than a folder nothing was ever holding.
+        Should.Throw<IOException>(
+            () => Directory.Move(Folder("daily").FullName, Folder("never").FullName));
+
+        // Guarded because this thread is the process's and not xunit's: an exception out of it is
+        // unhandled and takes the test host down, and the run then says the host died rather than
+        // saying which test did.
+        Exception? lettingGoFailed = null;
+        var letting = new Thread(() =>
+        {
+            Thread.Sleep(HoldForMilliseconds);
+
+            try
+            {
+                reading.Dispose();
+            }
+            catch (Exception failed)
+            {
+                lettingGoFailed = failed;
+            }
+        });
+
+        var clock = Stopwatch.StartNew();
+        letting.Start();
+
+        try
+        {
+            UnfinishedRecordings.At(Folder("daily")).Discard();
+        }
+        finally
+        {
+            letting.Join();
+        }
+
+        lettingGoFailed.ShouldBeNull();
+
+        // The assertion this test exists for, and the one a green run cannot give on its own.
+        // Thread.Sleep never returns early, so the handle cannot have closed before that much
+        // clock time; a Discard that came back sooner is one whose first rename walked straight
+        // through, which proves nothing. It is what FoldersTests buys with its refusal count,
+        // bought without a return value Discard's signature could carry.
+        clock.ElapsedMilliseconds.ShouldBeGreaterThanOrEqualTo(HoldForMilliseconds);
+
+        Folder("daily").Refresh();
+        Folder("daily").Exists.ShouldBeFalse();
+        root.EnumerateDirectories().ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The other end of the same race: this window is the one that lost. A recording read a moment
+    /// ago and thrown away by somebody else since is a sentence about the meeting, not Windows
+    /// saying it could not find part of a path ending in <c>loopback.blocks</c>.
+    /// </summary>
+    /// <remarks>
+    /// Reachable from two windows, or a window and a prompt, over one recording — the same pair the
+    /// rest of this file is about. Nothing is at risk on this path, because the recording both of
+    /// them were told to throw away is gone; what is at risk is the sentence, which is the whole of
+    /// what <c>EnsureRemovable</c> is still for.
+    /// </remarks>
+    [Fact]
+    public void A_recording_somebody_else_threw_away_first_is_said_to_be_gone_rather_than_unfindable()
+    {
+        Recorded("daily", both: true);
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        // What the other window did between the read above and the decision below.
+        Folder("daily").Delete(recursive: true);
+
+        var refused = Should.Throw<AudioCaptureException>(recording.Discard);
+
+        refused.Message.ShouldContain(Folder("daily").FullName);
+        refused.Message.ShouldContain("Nothing was removed");
+        refused.Message.ShouldNotContain(".blocks");
+    }
+
+    /// <summary>
+    /// A machine that died between the move and the delete leaves a recording under the removal's
+    /// own name, and nothing offers it any more. Finishing that removal here would be a second
+    /// half-emptied one at a path nobody was told about, which is the defect this whole shape
+    /// exists to end — so it is refused, loudly, with both folders untouched.
+    /// </summary>
+    [Fact]
+    public void A_folder_left_over_from_a_removal_that_was_cut_off_is_refused_rather_than_destroyed()
+    {
+        Recorded("daily", both: true);
+
+        // Shaped exactly as a machine dying between the move and the delete leaves it: a directory
+        // and no files at the top level.
+        var leftOver = Folder(".removing-daily");
+        var inside = leftOver.CreateSubdirectory("daily");
+        File.WriteAllText(Path.Combine(inside.FullName, SpoolManifest.FileName), "{}");
+
+        var refused = Should.Throw<AudioCaptureException>(
+            () => UnfinishedRecordings.At(Folder("daily")).Discard());
+
+        refused.Message.ShouldContain(leftOver.FullName);
+        refused.Message.ShouldContain("by hand");
+
+        Folder("daily").EnumerateFiles().Select(file => file.Name).Order(StringComparer.Ordinal)
+            .ShouldBe(["loopback.blocks", "manifest.json", "microphone.blocks"]);
+
+        leftOver.EnumerateDirectories().Select(one => one.Name).ShouldBe(["daily"]);
+        inside.EnumerateFiles().ShouldHaveSingleItem();
+    }
+
+    /// <summary>
+    /// The other side of the same line, and the only leftover actually reachable: a move that was
+    /// refused and whose own cleanup could not run either. Refusing on the name existing rather
+    /// than on it holding something would leave the retry a person makes next refused for good,
+    /// with no way out but a file manager.
+    /// </summary>
+    [Fact]
+    public void An_empty_folder_a_refused_removal_left_does_not_stop_the_next_one()
+    {
+        Recorded("daily", both: true);
+        Folder(".removing-daily").Create();
+
+        UnfinishedRecordings.At(Folder("daily")).Discard();
+
+        root.EnumerateDirectories().ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// What the sweep of folders nothing was recorded into sees when a discard did not finish, and
+    /// the engine half of what <c>docs/corpus.md</c> promises about that folder: it is named, and
+    /// nothing takes it away.
+    /// </summary>
+    /// <remarks>
+    /// The sweep asks these two and nothing else about a folder under <c>spool/</c>, so pinning
+    /// them here is pinning what the sweep does. A page saying a recording somebody threw away sits
+    /// safely on disk until a person deletes it, with nothing holding the engine to that, is a page
+    /// that goes quietly wrong the day one of these answers changes.
+    /// </remarks>
+    [Fact]
+    public void A_removal_that_did_not_finish_is_named_by_the_sweep_and_taken_away_by_nothing()
+    {
+        var leftOver = Folder(".removing-daily");
+        var inside = leftOver.CreateSubdirectory("daily");
+        Spool(inside, AudioChannel.Loopback, StereoFloat);
+
+        UnfinishedRecordings.WhatSaysARecordingHappenedIn(leftOver)
+            .ShouldNotBeNull()
+            .ShouldContain("daily");
+
+        Should.Throw<AudioCaptureException>(
+            () => UnfinishedRecordings.EraseWhereNothingWasRecorded(leftOver));
+
+        leftOver.EnumerateDirectories().ShouldHaveSingleItem();
+        inside.EnumerateFiles().ShouldHaveSingleItem();
     }
 
     /// <summary>
@@ -440,20 +674,39 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     [Fact]
     public void Nothing_but_a_decision_about_one_recording_removes_a_folder()
     {
-        var allowed = Path.Combine("MeetingTranscriber.Audio", "UnfinishedRecordings.cs");
+        string[] allowed =
+        [
+            // The one decision that removes a recording, and the only place either spelling of a
+            // folder rename belongs.
+            Path.Combine("MeetingTranscriber.Audio", "UnfinishedRecordings.cs"),
+
+            // Not a folder rename at all: `CaptureSource.MoveTo` moves a capture from one device to
+            // another. This sweep reads text and cannot see what a receiver's type is, so the one
+            // collision is named here rather than the pattern being narrowed until it misses the
+            // spelling somebody would actually reach for.
+            Path.Combine("MeetingTranscriber.Audio", "CaptureSession.cs"),
+        ];
 
         var offenders = Sources()
             .Where(file => File.ReadAllText(file.FullName) is var text
                 && (text.Contains("Directory.Delete", StringComparison.Ordinal)
-                    || text.Contains("Delete(recursive", StringComparison.Ordinal)))
+                    || text.Contains("Delete(recursive", StringComparison.Ordinal)
+                    || text.Contains("Directory.Move", StringComparison.Ordinal)
+                    || text.Contains(".MoveTo(", StringComparison.Ordinal)))
             .Select(file => Path.GetRelativePath(Tree().FullName, file.FullName))
-            .Where(path => !path.EndsWith(allowed, StringComparison.Ordinal))
+            .Where(path => !Array.Exists(allowed, one => path.EndsWith(one, StringComparison.Ordinal)))
             .Order(StringComparer.Ordinal)
             .ToList();
 
         offenders.ShouldBeEmpty(
             "These remove a folder, and a recording's folder is one. Throwing a recording away is "
-            + "somebody's decision about one recording, and there is one place it happens.");
+            + "somebody's decision about one recording, and there is one place it happens. Both "
+            + "spellings of a rename are on this list because a recording's folder moved to a name "
+            + "nothing looks in has disappeared as surely as one deleted, and the rename is now "
+            + "half of how a removal happens. The ban is deliberately wider than the rule: it "
+            + "catches every directory rename in src/ rather than only a recording's, because a "
+            + "sweep over text cannot tell which folder a path is, and a rename that is not a "
+            + "recording's is cheap to argue for here.");
     }
 
     /// <summary>
@@ -542,6 +795,24 @@ public sealed class UnfinishedRecordingsTests : IDisposable
         BlockSpool.FileFor(Folder("daily"), channel).FullName,
         FileMode.Open,
         FileAccess.Write,
+        FileShare.Read);
+
+    /// <summary>
+    /// The handle a second window keeps on a recording it is reading: another one keeping it, a
+    /// prompt exporting it, the same folder open twice.
+    /// </summary>
+    /// <remarks>
+    /// Opened the way <c>SpoolReader.Open</c> opens a spool and the way
+    /// <c>BlockSpool.IsStillBeingWritten</c> asks about one, so nothing in this engine can see it —
+    /// which is the point, because the removal has to survive a holder it was never told about.
+    /// NTFS still refuses to rename the folder over it. Do not reuse
+    /// <see cref="Recording(AudioChannel)"/> for this: that one is a writer, and a writer is caught
+    /// by <c>EnsureThereIsSomethingToDecide</c> long before anything is removed.
+    /// </remarks>
+    private FileStream Reading(AudioChannel channel) => new(
+        BlockSpool.FileFor(Folder("daily"), channel).FullName,
+        FileMode.Open,
+        FileAccess.Read,
         FileShare.Read);
 
     /// <summary>A recording left exactly as killing the process during one leaves it.</summary>
