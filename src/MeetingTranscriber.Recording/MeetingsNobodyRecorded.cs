@@ -3,6 +3,8 @@ using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace MeetingTranscriber.Recording;
 
 /// <summary>
@@ -19,7 +21,11 @@ namespace MeetingTranscriber.Recording;
 /// an id is here only once both did. A folder naming a meeting this corpus never held is one of
 /// these too — it is the half of a sweep a machine died in the middle of, finished.
 /// </param>
-/// <param name="Left">One line per folder that was looked at and not swept, and why it was not.</param>
+/// <param name="Left">
+/// One line per folder that was looked at and not swept, and why it was not — plus the one case
+/// that reaches here after the folder has already gone: a meeting somebody wrote on while the sweep
+/// was running keeps its row, so its empty folder went and it did not.
+/// </param>
 public sealed record MeetingsSwept(IReadOnlyList<Guid> Swept, IReadOnlyList<string> Left);
 
 /// <summary>
@@ -57,7 +63,13 @@ public sealed record MeetingsSwept(IReadOnlyList<Guid> Swept, IReadOnlyList<stri
 /// leave a recording that is about to start with no meeting to be finished into. What it costs is
 /// the other order's guarantee: a corpus that
 /// refuses the write after the folder is gone leaves a row nothing will look at again, which is one
-/// meeting in a list rather than one meeting lost.
+/// meeting in a list rather than one meeting lost. The two halves are not guarded alike, and
+/// deliberately: the folder is decided once, on an unguarded read, because it holds nothing and
+/// costs nothing to have spent; the row is decided again, inside a write transaction of its own
+/// opened after the folder has gone, because it holds what somebody may have just typed.
+/// <see cref="RemoveTheRowUnlessSomethingCameOfIt"/> is where that asymmetry is argued, and the
+/// outcome it buys — a folder gone with its meeting kept — is a line in
+/// <see cref="MeetingsSwept.Left"/> rather than a state anybody has to look at.
 /// </para>
 /// <para>
 /// Nothing here is done by time and nothing waits. A folder is swept on the evidence that nothing
@@ -186,6 +198,10 @@ public static class MeetingsNobodyRecorded
 
         var meeting = corpus.Meetings.FirstOrDefault(row => row.Id == named);
 
+        // The corpus's answer, and this asks it twice for the same reason the disk question above
+        // is asked twice: here it licences the folder, and again under the write lock where it is
+        // the one that licences the row. This one decides nothing about the row — a meeting written
+        // on between the two is what the second ask is for.
         if (meeting is not null && SomethingCameOfIt(corpus, meeting) is { } what)
         {
             left.Add($"{folder.Name}: {what}");
@@ -196,18 +212,117 @@ public static class MeetingsNobodyRecorded
         // throws rather than answering, and what it throws lands in `Left` with the row untouched.
         UnfinishedRecordings.EraseWhereNothingWasRecorded(folder);
 
-        if (meeting is not null)
+        // The delete, and it is this line rather than the name that says so: an answer here is the
+        // row having been kept.
+        if (meeting is not null
+            && RemoveTheRowUnlessSomethingCameOfIt(corpus, meeting) is { } outlived)
         {
-            // Read again rather than reused. What was read above was read before a delete that can
-            // take a second, and the drawer is open to somebody the whole time: a title typed on
-            // this meeting in that stretch is somebody having had it, and the row they typed on is
-            // the one being removed.
-            corpus.Entry(meeting).Reload();
-            corpus.Meetings.Remove(meeting);
-            corpus.SaveChanges();
+            // Written for "somebody wrote on it.", which is the one of the four answers a person
+            // can produce inside this window. The other three would each be this sweep saying
+            // calmly that it had erased the folder of a meeting that was recorded, and none is
+            // reachable: a finish holds the spool for the whole of `MeetingRecordings.Save`, so the
+            // erase throws before this line, and the same holds for anything that files an
+            // artifact. One arriving here is a defect upstream and reads like one.
+            left.Add(
+                $"{folder.Name}: {outlived} That happened while the sweep was running, so the "
+                + "meeting stays and the empty folder it had does not.");
+            return;
         }
 
         swept.Add(named);
+    }
+
+    /// <summary>
+    /// Takes the meeting's row off the corpus, or leaves it and answers with what the corpus turned
+    /// out to hold of it after all — which is a meeting that outlived the folder it was swept with.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The transaction is the whole method. EF issues <c>BEGIN IMMEDIATE</c>, so SQLite's one write
+    /// lock is taken at that line rather than at the delete, and from there to the commit no other
+    /// connection can commit a write to this corpus. That is what makes the reload worth doing:
+    /// what it reads cannot go stale before the delete acts on it. Without it the reload is dead
+    /// weight, because a delete by key with no concurrency token consults none of the values it
+    /// fetched — and the row read up in <see cref="Sweep"/> was read before a folder delete that
+    /// can take a second, with the meetings list open to somebody the whole time.
+    /// </para>
+    /// <para>
+    /// It starts after the folder has gone and not before. Holding the corpus's only write lock
+    /// across a disk delete would refuse every other writer in the application for as long as the
+    /// disk took — somebody being named on another meeting, a classification being filed, a job
+    /// finishing — which is the trade <c>MeetingRecordings.Save</c> argues at length one project
+    /// over. The delete is short but not bounded by anything this code owns:
+    /// <c>EraseWhereNothingWasRecorded</c> stats every entry in the folder and unlinks what a press
+    /// leaves, and each of those is a syscall Windows can sit on when a scanner has the mark open or
+    /// the corpus is on a network volume. <see cref="CorpusDatabase.BusyTimeoutMilliseconds"/> is
+    /// five seconds, so a writer that waited out a slow delete is not a slow writer, it is a press
+    /// somebody made that came back refused. The lock is worth taking for the row and not for the
+    /// folder.
+    /// </para>
+    /// <para>
+    /// What that costs is the one outcome neither of <see cref="MeetingsSwept"/>'s lists was
+    /// written for: the folder is gone and the meeting is not. It is the right way round. The
+    /// folder held nothing — that is why it was reached at all — and the row holds what somebody
+    /// has just typed, so the empty folder is what gets spent and the typing is what gets kept.
+    /// Nothing reads an empty spool folder: recovery walks the spool for recordings and finds none,
+    /// the meetings list reads rows, and the next press makes its own.
+    /// </para>
+    /// <para>
+    /// <b>One ordering of the two is what this closes.</b> Somebody who writes before the sweep
+    /// reaches this line keeps their meeting, which is the window the class's own comment used to
+    /// claim and did not have. Somebody who starts writing after the commit is writing on a row
+    /// that has gone, and their save reports having changed nothing — the sweep was right, the
+    /// meeting held nothing, and what is lost is a title typed a moment ago onto a meeting with no
+    /// audio. That half is accepted rather than closed: shutting it means the corpus refusing a
+    /// delete on a row somebody has open, which is a concurrency token on <c>Meeting</c> and every
+    /// writer of that row across the application learning to answer for one.
+    /// </para>
+    /// <para>
+    /// The span the corpus can refuse in is wider than the single <c>DELETE</c> it replaced — a
+    /// <c>BEGIN IMMEDIATE</c>, two reads, the delete and a commit — and this runs at the launch
+    /// where <c>OwedRenders</c> is holding the same write lock across whole-file renders. A refusal
+    /// there strands the row: its folder has gone, and <see cref="NoRecordingIn"/> finds folders, so
+    /// no later sweep reaches it. That is the cost the class's third paragraph already names, one
+    /// meeting standing in a list rather than one meeting lost, and the wider span is where it got
+    /// slightly likelier.
+    /// </para>
+    /// </remarks>
+    private static string? RemoveTheRowUnlessSomethingCameOfIt(
+        CorpusDbContext corpus, Meeting meeting)
+    {
+        using var removing = corpus.Database.BeginTransaction();
+
+        corpus.Entry(meeting).Reload();
+
+        if (SomethingCameOfIt(corpus, meeting) is { } wrote)
+        {
+            return wrote;
+        }
+
+        try
+        {
+            corpus.Meetings.Remove(meeting);
+            corpus.SaveChanges();
+        }
+        catch
+        {
+            // Rolling the transaction back does not undo the tracker, which is
+            // <c>MeetingRecordings.Save</c>'s rule one project over: a context whose save threw is
+            // one nobody may save again, and every caller there either disposes it or lets the
+            // throw straight out. `SweepIn` is the first that does neither — it absorbs per folder
+            // and carries on over the same context — so the delete has to be taken off the tracker
+            // here or the next folder's save re-sends it. That is worse than a wrong sentence: the
+            // re-sent delete rides inside the next folder's transaction, where no reload and no
+            // re-ask guard it, and it is this class's own defect committed one folder later.
+            // Detached and not rolled forward, because the transaction has gone back: the row is
+            // still there, and the tracker now says so.
+            corpus.Entry(meeting).State = EntityState.Detached;
+            throw;
+        }
+
+        removing.Commit();
+
+        return null;
     }
 
     /// <summary>
