@@ -145,7 +145,7 @@ public sealed class WaitingRecordingsTests : IDisposable
         WaitingRecordings.In(context).Select(recording => recording.MeetingId).ShouldBe([first, second], ignoreOrder: true);
 
         // A whole meeting, start to finish, while both of those are waiting for somebody.
-        var fresh = MeetingRecordings.Open(context, "es", openedAgainAt);
+        using var fresh = MeetingRecordings.Open(context, "es", openedAgainAt);
         Fabricated.Spools(fresh.Spool, seconds: 2);
         var finished = MeetingRecordings.Finish(context, fresh.MeetingId, openedAgainAt);
 
@@ -168,7 +168,7 @@ public sealed class WaitingRecordingsTests : IDisposable
     {
         using var context = corpus.OpenMigrated();
 
-        var stopped = MeetingRecordings.Open(context, "es", recordedAt);
+        using var stopped = MeetingRecordings.Open(context, "es", recordedAt);
         Fabricated.Spools(stopped.Spool, seconds: 2);
         MeetingRecordings.Finish(context, stopped.MeetingId, recordedAt);
 
@@ -190,7 +190,7 @@ public sealed class WaitingRecordingsTests : IDisposable
     public void A_recording_still_going_on_is_listed_and_refuses_to_be_decided_about()
     {
         using var context = corpus.OpenMigrated();
-        var prepared = MeetingRecordings.Open(context, "es", recordedAt);
+        using var prepared = MeetingRecordings.Open(context, "es", recordedAt);
         Fabricated.Spools(prepared.Spool, seconds: 1);
 
         // The handle a capture holds on its own spool for as long as the meeting lasts, in the
@@ -595,7 +595,7 @@ public sealed class WaitingRecordingsTests : IDisposable
     /// </summary>
     private SpoolCard Killed(CorpusDbContext context, double seconds, bool tellTheCorpusItBegan = true)
     {
-        var prepared = MeetingRecordings.Open(context, "es", recordedAt);
+        using var prepared = MeetingRecordings.Open(context, "es", recordedAt);
         var card = Fabricated.CardFor(prepared.MeetingId, recordedAt);
 
         SpoolManifest.Write(prepared.Spool, card);

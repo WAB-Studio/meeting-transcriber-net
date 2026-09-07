@@ -26,23 +26,26 @@ public sealed class MeetingRecordingsTests : IDisposable
     private readonly UtcTimestamp now = UtcTimestamp.Parse("2026-08-18T09:30:00.000Z");
 
     /// <summary>
-    /// ISC-156. The identity, the row and the folder are all there before a device is opened, so a
-    /// recording is something the corpus already knows about by the time it holds a sample.
+    /// ISC-156. The identity, the row, the folder and the claim over it are all there before a
+    /// device is opened, so a recording is something the corpus already knows about by the time it
+    /// holds a sample.
     /// </summary>
     [Fact]
     public void A_meeting_and_its_folder_exist_before_any_of_it_is_captured()
     {
         using var context = corpus.OpenMigrated();
 
-        var prepared = MeetingRecordings.Open(context, "es", now);
+        using var prepared = MeetingRecordings.Open(context, "es", now);
 
         prepared.MeetingId.ShouldNotBe(Guid.Empty);
         prepared.Spool.Exists.ShouldBeTrue();
 
-        // Nothing has been recorded into it. This is the whole of "before the first sample": the
-        // folder is there and empty, so anything that arrives next has somewhere that already
-        // belongs to a meeting to arrive in.
-        prepared.Spool.GetFiles().ShouldBeEmpty();
+        // Nothing has been *recorded* into it. This is the whole of "before the first sample": the
+        // folder is there and holds one file, which is the claim this press has over it, so
+        // anything that arrives next has somewhere that already belongs to a meeting to arrive in.
+        // Named rather than counted, so a build that wrote a spool or a card at the press fails
+        // here.
+        prepared.Spool.GetFiles().Select(file => file.Name).ShouldBe([CaptureMark.FileName]);
 
         // Read back through a second connection, so what is asserted is the database and not the
         // object still sitting in the context's tracker.
@@ -59,6 +62,69 @@ public sealed class MeetingRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// The press holds the folder it made, from one statement after making it until it hands the
+    /// claim on or lets it go.
+    /// </summary>
+    /// <remarks>
+    /// The unit statement of the ordering; the sweep tests in <c>MeetingsNobodyRecordedTests</c>
+    /// are its consequence. A start's sweep of the meetings nobody recorded runs through the
+    /// folders under <c>spool/</c> at every launch, so a press holding nothing is a press whose
+    /// meeting a sweep can take out from under it. A claim taken and released inside <c>Open</c>,
+    /// or taken lazily on first use, fails here.
+    /// </remarks>
+    [Fact]
+    public void A_press_holds_the_folder_it_just_made()
+    {
+        using var context = corpus.OpenMigrated();
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+
+        CaptureMark.IsHeldIn(prepared.Spool).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The claim outlives the press once it has been handed on: what holds the folder from then on
+    /// is whatever is recording into it.
+    /// </summary>
+    /// <remarks>
+    /// One owner at every instant is the whole of it. A <c>HandTheClaimOn</c> that handed the mark
+    /// out without letting go of it here leaves a later tidy-up — a <c>using</c> on the press, in
+    /// production or in a test — unclaiming the folder of a meeting that is being recorded, which
+    /// puts the sweep straight back where the card found it.
+    /// </remarks>
+    [Fact]
+    public void A_claim_handed_on_outlives_the_press_that_made_it()
+    {
+        using var context = corpus.OpenMigrated();
+        var prepared = MeetingRecordings.Open(context, "es", now);
+
+        using var claim = prepared.HandTheClaimOn();
+        prepared.Dispose();
+
+        CaptureMark.IsHeldIn(prepared.Spool).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// A claim is handed on once. Asking twice is a defect in the caller and is said so, loudly.
+    /// </summary>
+    /// <remarks>
+    /// Two owners of one handle, where the first to let go unclaims the folder underneath the
+    /// second — and the second is the one still recording into it.
+    /// <see cref="InvalidOperationException"/> and not <see cref="RecordingException"/>, because
+    /// <c>ScreenFailures.Reportable</c> names the second and leaves the first out: a defect has to
+    /// reach the dispatcher rather than be shown to somebody as a recording that would not start.
+    /// </remarks>
+    [Fact]
+    public void A_claim_is_handed_on_once_and_never_twice()
+    {
+        using var context = corpus.OpenMigrated();
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+
+        using var claim = prepared.HandTheClaimOn();
+
+        Should.Throw<InvalidOperationException>(() => prepared.HandTheClaimOn());
+    }
+
+    /// <summary>
     /// The identity is the application's own and comes from nothing else — not a title, not a file
     /// name, not anything a provider says. Two meetings started with everything else identical are
     /// two meetings.
@@ -68,8 +134,8 @@ public sealed class MeetingRecordingsTests : IDisposable
     {
         using var context = corpus.OpenMigrated();
 
-        var first = MeetingRecordings.Open(context, "es", now);
-        var second = MeetingRecordings.Open(context, "es", now);
+        using var first = MeetingRecordings.Open(context, "es", now);
+        using var second = MeetingRecordings.Open(context, "es", now);
 
         second.MeetingId.ShouldNotBe(first.MeetingId);
         second.Spool.FullName.ShouldNotBe(first.Spool.FullName);
@@ -86,7 +152,7 @@ public sealed class MeetingRecordingsTests : IDisposable
     public void The_run_says_what_the_recording_said_fed_each_channel(bool followedAProgram)
     {
         using var context = corpus.OpenMigrated();
-        var prepared = MeetingRecordings.Open(context, "en", now);
+        using var prepared = MeetingRecordings.Open(context, "en", now);
 
         var card = new SpoolCard(
             prepared.MeetingId,
@@ -136,7 +202,7 @@ public sealed class MeetingRecordingsTests : IDisposable
     public void Stopping_leaves_the_meeting_with_its_audio_and_its_length()
     {
         using var context = corpus.OpenMigrated();
-        var prepared = MeetingRecordings.Open(context, "es", now);
+        using var prepared = MeetingRecordings.Open(context, "es", now);
         Fabricated.Spools(prepared.Spool, seconds: 3);
 
         // The card beside the blocks and the row describing the run, the way a capture leaves them
@@ -215,7 +281,7 @@ public sealed class MeetingRecordingsTests : IDisposable
     public void No_reader_is_ever_handed_a_meeting_recorded_with_no_length()
     {
         using var context = corpus.OpenMigrated();
-        var prepared = MeetingRecordings.Open(context, "es", now);
+        using var prepared = MeetingRecordings.Open(context, "es", now);
         Fabricated.Spools(prepared.Spool, seconds: 2);
 
         var card = Fabricated.CardFor(prepared.MeetingId, now);
@@ -309,7 +375,7 @@ public sealed class MeetingRecordingsTests : IDisposable
     public void A_meeting_nobody_named_comes_out_of_recording_with_no_name()
     {
         using var context = corpus.OpenMigrated();
-        var prepared = MeetingRecordings.Open(context, "es", now);
+        using var prepared = MeetingRecordings.Open(context, "es", now);
         Fabricated.Spools(prepared.Spool, seconds: 2);
 
         var card = Fabricated.CardFor(prepared.MeetingId, now);
@@ -336,7 +402,7 @@ public sealed class MeetingRecordingsTests : IDisposable
     public void Stopping_a_recording_queues_no_work_on_the_meeting()
     {
         using var context = corpus.OpenMigrated();
-        var prepared = MeetingRecordings.Open(context, "es", now);
+        using var prepared = MeetingRecordings.Open(context, "es", now);
         Fabricated.Spools(prepared.Spool, seconds: 2);
 
         var finished = MeetingRecordings.Finish(context, prepared.MeetingId, now);
@@ -357,7 +423,7 @@ public sealed class MeetingRecordingsTests : IDisposable
         Guid recorded;
         using (var context = corpus.OpenMigrated())
         {
-            var prepared = MeetingRecordings.Open(context, "es", now);
+            using var prepared = MeetingRecordings.Open(context, "es", now);
             recorded = prepared.MeetingId;
             Fabricated.Spools(prepared.Spool, seconds: 2);
             MeetingRecordings.Finish(context, prepared.MeetingId, now);
@@ -397,8 +463,8 @@ public sealed class MeetingRecordingsTests : IDisposable
     public void A_folder_holding_another_meetings_recording_is_refused()
     {
         using var context = corpus.OpenMigrated();
-        var mine = MeetingRecordings.Open(context, "es", now);
-        var yours = MeetingRecordings.Open(context, "es", now);
+        using var mine = MeetingRecordings.Open(context, "es", now);
+        using var yours = MeetingRecordings.Open(context, "es", now);
 
         // Somebody else's recording, blocks and card, sitting where mine would be.
         Fabricated.Spools(mine.Spool, seconds: 2);

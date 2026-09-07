@@ -26,9 +26,19 @@ namespace MeetingTranscriber.Recording.Tests;
 /// build that tidied a recording away would fail on the file rather than on a count.
 /// </para>
 /// <para>
-/// Nothing here opens a device: what a press leaves behind is a row and an empty folder, and both
-/// are written by the corpus side of recording, which needs no sound card. What still needs a
-/// machine is the hand probe in the card's evidence.
+/// Nothing here opens a device: what a press leaves behind is a row and a folder holding a
+/// <see cref="CaptureMark"/> nobody is holding, and both are written by the corpus side of
+/// recording, which needs no sound card. What still needs a machine is the hand probe in the card's
+/// evidence.
+/// </para>
+/// <para>
+/// <b>A press is a handle now, so every one below is in a <c>using</c>.</b> The claim
+/// <c>MeetingRecordings.Open</c> takes over the folder is what stops a sweep landing on a press
+/// that is still starting, so a press this file means to be swept has to have let it go first —
+/// which is what the <c>using</c> inside each <c>using (var recording …)</c> block does, ahead of
+/// every <c>SweepIn</c> and every <see cref="OnDisk"/>. One forgotten reads as an empty
+/// <c>Swept</c> with no exception, or as an <see cref="IOException"/> naming <c>capture.mark</c>
+/// where a folder is being hashed.
 /// </para>
 /// </remarks>
 public sealed class MeetingsNobodyRecordedTests : IDisposable
@@ -49,14 +59,15 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
 
         using (var recording = corpus.OpenMigrated())
         {
-            var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
+            using var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
             pressed = prepared.MeetingId;
             folder = prepared.Spool;
 
-            // What the corpus holds a moment after the press: the meeting, and a folder with
-            // nothing in it. This is the defect, asserted before it is fixed.
+            // What the corpus holds a moment after the press: the meeting, and a folder holding
+            // nothing but the claim the press has over it. Nothing was recorded, and the row is
+            // what the sweep is for.
             folder.Exists.ShouldBeTrue();
-            folder.GetFiles().ShouldBeEmpty();
+            folder.GetFiles().Select(file => file.Name).ShouldBe([CaptureMark.FileName]);
             recording.Meetings.Single(meeting => meeting.Id == pressed).Duration.ShouldBeNull();
         }
 
@@ -93,7 +104,7 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
 
         using (var recording = corpus.OpenMigrated())
         {
-            var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
+            using var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
             pressed = prepared.MeetingId;
             folder = prepared.Spool;
 
@@ -137,7 +148,7 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
 
         using (var recording = corpus.OpenMigrated())
         {
-            var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
+            using var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
             recorded = prepared.MeetingId;
             folder = prepared.Spool;
 
@@ -165,10 +176,12 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
     /// folder, the sweep leaves it and says which of the two it was.
     /// </summary>
     /// <remarks>
-    /// This is the window the mark exists for and the only one that cannot be seen on disk: the
-    /// folder is made before a device is opened, so a press a moment old and a press that failed an
-    /// hour ago are the same empty folder. A build that swept on the folder alone deletes the
-    /// meeting somebody is starting, and it deletes it every time two things look at one corpus.
+    /// This is the window the mark exists for and the only one that cannot be seen on disk: a press
+    /// a moment old and a press that failed an hour ago are the same folder holding the same file,
+    /// and the only thing that tells them apart is a handle. A build that swept on the folder alone
+    /// deletes the meeting somebody is starting, and it deletes it every time two things look at
+    /// one corpus. The claim is taken by hand here, after the press let its own go, so that what is
+    /// asserted is the sweep's side of it rather than the press's.
     /// </remarks>
     [Fact]
     public void A_folder_a_capture_is_holding_is_left_and_so_is_its_meeting()
@@ -178,7 +191,7 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
 
         using (var recording = corpus.OpenMigrated())
         {
-            var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
+            using var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
             starting = prepared.MeetingId;
             folder = prepared.Spool;
         }
@@ -213,13 +226,12 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
 
         using (var recording = corpus.OpenMigrated())
         {
-            var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
+            using var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
             pressed = prepared.MeetingId;
             folder = prepared.Spool;
         }
 
-        // A capture that took the folder and whose process is gone. Nothing clears this file.
-        CaptureMark.Take(folder).Dispose();
+        // The press took the folder and its process is gone. Nothing clears this file.
         File.Exists(Path.Combine(folder.FullName, CaptureMark.FileName)).ShouldBeTrue(
             "the stranded mark is what this test is about, and it has to be on disk");
 
@@ -250,7 +262,7 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
 
         using (var recording = corpus.OpenMigrated())
         {
-            var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
+            using var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
             saved = prepared.MeetingId;
             folder = prepared.Spool;
 
@@ -291,7 +303,7 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
 
         using (var recording = corpus.OpenMigrated())
         {
-            var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
+            using var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
             pressed = prepared.MeetingId;
             folder = prepared.Spool;
 
@@ -410,7 +422,8 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
     /// rather than the case it has to expect: what it is standing in for is anything that appeared
     /// between the sweep looking and the sweep acting. A recursive delete unlinks in enumeration
     /// order and would take the marks with it on the way to failing; this asserts the folder is
-    /// exactly as it was, marks included.
+    /// exactly as it was, marks included — and the mark in it is the press's own, left stranded
+    /// when the press let it go, rather than one arranged here.
     /// </remarks>
     [Fact]
     public void A_folder_that_holds_something_else_is_left_whole()
@@ -420,12 +433,11 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
 
         using (var recording = corpus.OpenMigrated())
         {
-            var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
+            using var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
             pressed = prepared.MeetingId;
             folder = prepared.Spool;
         }
 
-        CaptureMark.Take(folder).Dispose();
         File.WriteAllText(Path.Combine(folder.FullName, "notes-somebody-dropped-here.txt"), "hello");
 
         var before = OnDisk(folder);
@@ -459,7 +471,7 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
         {
             // A corpus is needed for the sweep to run at all, and this is the meeting that makes
             // one: it holds a recording, so it is never a candidate.
-            var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
+            using var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
             Fabricated.Spools(prepared.Spool, seconds: 0.05);
         }
 
@@ -495,6 +507,70 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
     }
 
     /// <summary>
+    /// Somebody presses record while the start's sweep is running, and the sweep leaves the folder
+    /// it just made and the meeting it is for.
+    /// </summary>
+    /// <remarks>
+    /// The card's own scenario, and the one the mark was being taken too late for. The press here
+    /// arranges nothing by hand: the claim it is holding is the one <c>MeetingRecordings.Open</c>
+    /// took with the folder, which is the whole of the fix. A build that made the folder and took
+    /// no claim sweeps the row and the folder out from under a press one second old, and the person
+    /// who pressed record is told there is no folder to record into.
+    /// </remarks>
+    [Fact]
+    public void A_press_the_sweep_reaches_before_its_devices_open_keeps_its_folder_and_its_meeting()
+    {
+        PreparedRecording pressed;
+
+        using (var recording = corpus.OpenMigrated())
+        {
+            pressed = MeetingRecordings.Open(recording, "es", pressedAt);
+        }
+
+        using (pressed)
+        {
+            var swept = MeetingsNobodyRecorded.SweepIn(corpus.Root);
+
+            // The delete reaches `capture.mark` and Windows refuses it, so the folder stands and
+            // the sweep says which one it did not take.
+            swept.Swept.ShouldBeEmpty();
+            swept.Left.ShouldHaveSingleItem().ShouldContain(pressed.Spool.Name);
+
+            using var started = corpus.Open();
+            started.Meetings.Any(meeting => meeting.Id == pressed.MeetingId).ShouldBeTrue();
+            Directory.Exists(pressed.Spool.FullName).ShouldBeTrue();
+        }
+    }
+
+    /// <summary>
+    /// A press somebody walked away from is swept like any other: letting the claim go is what says
+    /// nothing came of it.
+    /// </summary>
+    /// <remarks>
+    /// The other half of the one above, and the half that keeps the fix from being worse than the
+    /// defect. A claim that is never released turns every abandoned press into a phantom meeting no
+    /// start can ever take away, which is a crash making a row permanent.
+    /// </remarks>
+    [Fact]
+    public void A_press_that_let_its_folder_go_without_recording_is_swept_like_any_other()
+    {
+        PreparedRecording pressed;
+
+        using (var recording = corpus.OpenMigrated())
+        {
+            pressed = MeetingRecordings.Open(recording, "es", pressedAt);
+        }
+
+        pressed.Dispose();
+
+        MeetingsNobodyRecorded.SweepIn(corpus.Root).Swept.ShouldBe([pressed.MeetingId]);
+
+        using var started = corpus.Open();
+        started.Meetings.ShouldBeEmpty();
+        Directory.Exists(pressed.Spool.FullName).ShouldBeFalse();
+    }
+
+    /// <summary>
     /// Two starts in a row: what the first swept stays swept, and what it left is left again for
     /// the same reason. Nothing here is done by time.
     /// </summary>
@@ -506,9 +582,10 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
 
         using (var recording = corpus.OpenMigrated())
         {
-            pressed = MeetingRecordings.Open(recording, "es", pressedAt).MeetingId;
+            using var abandoned = MeetingRecordings.Open(recording, "es", pressedAt);
+            pressed = abandoned.MeetingId;
 
-            var kept = MeetingRecordings.Open(recording, "es", openedAgainAt);
+            using var kept = MeetingRecordings.Open(recording, "es", openedAgainAt);
             recorded = kept.MeetingId;
             Fabricated.Spools(kept.Spool, seconds: 0.05);
         }

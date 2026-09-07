@@ -1,8 +1,8 @@
 namespace MeetingTranscriber.Audio;
 
 /// <summary>
-/// The mark a capture holds over the folder it is recording into, from before its devices are
-/// opened until they are let go of.
+/// The mark held over the folder a recording is being written into, from the moment the folder is
+/// made until the devices are let go of.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -12,6 +12,16 @@ namespace MeetingTranscriber.Audio;
 /// same empty folder to anything looking. Once the spools are there the blocks themselves say it:
 /// a capture holds them in a share mode nothing else can write, which is
 /// <see cref="BlockSpool.IsStillBeingWritten"/>. This is what says it before them.
+/// </para>
+/// <para>
+/// That stretch is as short as Windows lets it be, because the mark is taken by whatever makes the
+/// folder rather than by whatever opens the first device — in <see cref="CaptureSession.Start"/>
+/// for a folder somebody named, and in <c>MeetingRecordings.Open</c> for a meeting recorded into a
+/// corpus, which hands the claim on to <see cref="CaptureSession.StartUnder"/>. What is left
+/// unheld is the two adjacent syscalls that make the folder and claim it, and no more: there is no
+/// atomic create-directory-and-file, so that residue cannot be closed, only narrowed. A folder
+/// taken away inside it loses its meeting, and what the person gets is
+/// <c>MeetingRecordings.Open</c>'s own sentence rather than one about a second recording.
 /// </para>
 /// <para>
 /// What it buys is that the folder cannot be taken away underneath a capture that is starting.
@@ -48,11 +58,26 @@ public sealed class CaptureMark : IDisposable
 
     private readonly FileStream held;
 
-    private CaptureMark(FileStream held) => this.held = held;
+    private CaptureMark(FileStream held, DirectoryInfo folder)
+    {
+        this.held = held;
+        Folder = folder;
+    }
+
+    /// <summary>What this is a claim over.</summary>
+    /// <remarks>
+    /// Carried rather than left to the caller to remember, because the claim and the folder
+    /// travel together — out of <c>MeetingRecordings.Open</c> and back into
+    /// <see cref="CaptureSession.StartUnder"/> — and a session opened into one folder under a mark
+    /// over another would be a recording nothing holds, which is the one state this type exists to
+    /// make unreachable. Two arguments could disagree; one cannot.
+    /// </remarks>
+    public DirectoryInfo Folder { get; }
 
     /// <summary>
-    /// Whether a capture is recording into <paramref name="folder"/> right now, which is whether
-    /// something still living is holding its mark.
+    /// Whether something is recording into <paramref name="folder"/>, or about to be, which is
+    /// whether something still living is holding its mark. True from the moment the folder is
+    /// claimed, which is before any device is opened.
     /// </summary>
     public static bool IsHeldIn(DirectoryInfo folder) => HeldMark.IsHeldIn(MarkIn(folder));
 
@@ -69,7 +94,7 @@ public sealed class CaptureMark : IDisposable
 
         try
         {
-            return new CaptureMark(HeldMark.Take(mark));
+            return new CaptureMark(HeldMark.Take(mark), folder);
         }
         catch (DirectoryNotFoundException gone)
         {

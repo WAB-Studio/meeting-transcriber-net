@@ -75,7 +75,7 @@ public sealed class SavingTheMeetingTests : IDisposable
     public void Writing_the_meeting_down_is_announced_before_it_is_done()
     {
         using var context = corpus.OpenMigrated();
-        var prepared = MeetingRecordings.Open(context, "es", now);
+        using var prepared = MeetingRecordings.Open(context, "es", now);
         Fabricated.Spools(prepared.Spool, seconds: 2);
 
         var said = new List<SavingWork>();
@@ -146,7 +146,7 @@ public sealed class SavingTheMeetingTests : IDisposable
 
         Guid Recorded()
         {
-            var prepared = MeetingRecordings.Open(context, "es", now);
+            using var prepared = MeetingRecordings.Open(context, "es", now);
             Fabricated.Spools(prepared.Spool, seconds: 2);
 
             var card = Fabricated.CardFor(prepared.MeetingId, now);
