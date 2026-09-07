@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
@@ -452,6 +454,187 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
     }
 
     /// <summary>
+    /// The window between the sweep deciding and the sweep deleting. A title typed on the phantom
+    /// meeting while its folder is going keeps the meeting, and the sweep says so.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The write is put inside the window by SQLite rather than by timing. A second connection
+    /// holds the corpus's only write lock with the title written and uncommitted, so the sweep's
+    /// own transaction — EF issues <c>BEGIN IMMEDIATE</c> — cannot start until this thread commits;
+    /// and this thread does not commit until the spool folder has gone, which is the sweep past its
+    /// first answer. Reads never block in WAL, so everything the sweep does before that line runs
+    /// unimpeded.
+    /// </para>
+    /// <para>
+    /// The folder really is gone at the end and that is asserted rather than tolerated: an empty
+    /// folder for a meeting nobody recorded is what this trade spends, and a build that started
+    /// keeping it has changed the bargain and should have to say so here.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_title_typed_while_the_sweep_runs_keeps_the_meeting_it_was_typed_on()
+    {
+        const string Typed = "The one somebody named while it was being swept";
+
+        Guid pressed;
+        DirectoryInfo folder;
+
+        using (var recording = corpus.OpenMigrated())
+        {
+            using var prepared = MeetingRecordings.Open(recording, "es", pressedAt);
+            pressed = prepared.MeetingId;
+            folder = prepared.Spool;
+        }
+
+        // The other window on this corpus: the title is written and the write lock is held, so
+        // nothing can commit over this corpus until the line below says so.
+        using var typing = corpus.Open();
+        using var naming = typing.Database.BeginTransaction();
+        typing.Meetings.Single(row => row.Id == pressed).Title = Typed;
+        typing.SaveChanges();
+
+        MeetingsSwept? swept = null;
+        Exception? sweepFailed = null;
+
+        // Guarded because this thread is the process's and not xunit's: an exception out of it is
+        // unhandled and takes the test host down, and the run then says the host died rather than
+        // saying which test did.
+        var sweeping = new Thread(() =>
+        {
+            try
+            {
+                swept = MeetingsNobodyRecorded.SweepIn(corpus.Root);
+            }
+            catch (Exception failed)
+            {
+                sweepFailed = failed;
+            }
+        });
+
+        sweeping.Start();
+
+        try
+        {
+            WaitFor(
+                () => !Directory.Exists(folder.FullName),
+                "the sweep had not erased the folder, so the window this test is about was never "
+                + "entered");
+        }
+        finally
+        {
+            // In a finally because a sweep waiting on this lock is one that never joins.
+            naming.Commit();
+            sweeping.Join();
+        }
+
+        sweepFailed.ShouldBeNull();
+
+        var reported = swept.ShouldNotBeNull();
+        reported.Swept.ShouldBeEmpty();
+        reported.Left.ShouldHaveSingleItem().ShouldContain("while the sweep was running");
+
+        using var started = corpus.Open();
+        started.Meetings.Single(row => row.Id == pressed).Title.ShouldBe(Typed);
+        Directory.Exists(folder.FullName).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// One folder whose row delete fails costs that folder and no other. The folder after it is
+    /// swept on its own answer, rather than on a delete left over from the one before.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>SweepIn</c> opens one context and reuses it for every folder, absorbing a failure per
+    /// folder and carrying on. Rolling a transaction back does not undo EF's change tracker, so a
+    /// delete that failed stays pending on the context and the next folder's save re-sends it —
+    /// inside the next folder's transaction, where no reload and no re-ask guard it. That is this
+    /// class's own defect committed one folder later, and it is the thing the detach in
+    /// <c>RemoveTheRowUnlessSomethingCameOfIt</c> exists to stop. Without the detach the second
+    /// folder here loses its folder and keeps its row, which is the assertion at the end.
+    /// </para>
+    /// <para>
+    /// The failure is arranged the way this corpus really produces one: the row goes out from under
+    /// the sweep after it has read it, so the delete finds nothing to delete. It is held on the
+    /// write lock exactly as the test above holds a title, which is what puts it inside the window
+    /// rather than near it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_row_that_went_out_from_under_one_folder_does_not_cost_the_next_one_its_own()
+    {
+        (Guid Id, DirectoryInfo Spool) one;
+        (Guid Id, DirectoryInfo Spool) two;
+
+        using (var recording = corpus.OpenMigrated())
+        {
+            using var first = MeetingRecordings.Open(recording, "es", pressedAt);
+            one = (first.MeetingId, first.Spool);
+
+            using var second = MeetingRecordings.Open(recording, "es", openedAgainAt);
+            two = (second.MeetingId, second.Spool);
+        }
+
+        // The order the sweep walks them in is the folder name ordinally, which is the meeting id,
+        // so which press is which here is not something a test gets to assume.
+        var ordered = new[] { one, two }
+            .OrderBy(pressed => pressed.Spool.Name, StringComparer.Ordinal)
+            .ToArray();
+
+        var fails = ordered[0];
+        var follows = ordered[1];
+
+        // The row taken out from under the first folder, written and uncommitted, so the sweep's
+        // own transaction cannot start until this thread lets go.
+        using var taking = corpus.Open();
+        using var takingItOut = taking.Database.BeginTransaction();
+        taking.Meetings.Where(row => row.Id == fails.Id).ExecuteDelete();
+
+        MeetingsSwept? swept = null;
+        Exception? sweepFailed = null;
+
+        var sweeping = new Thread(() =>
+        {
+            try
+            {
+                swept = MeetingsNobodyRecorded.SweepIn(corpus.Root);
+            }
+            catch (Exception failed)
+            {
+                sweepFailed = failed;
+            }
+        });
+
+        sweeping.Start();
+
+        try
+        {
+            WaitFor(
+                () => !Directory.Exists(fails.Spool.FullName),
+                "the sweep had not erased the first folder, so its delete never failed and the "
+                + "second folder was never the thing under test");
+        }
+        finally
+        {
+            takingItOut.Commit();
+            sweeping.Join();
+        }
+
+        sweepFailed.ShouldBeNull();
+
+        var reported = swept.ShouldNotBeNull();
+
+        // One line for the folder whose row had gone, and the folder behind it swept on its own
+        // answer. A second line here is the failed delete having been re-sent.
+        reported.Left.ShouldHaveSingleItem().ShouldContain(fails.Spool.Name);
+        reported.Swept.ShouldBe([follows.Id]);
+
+        using var started = corpus.Open();
+        started.Meetings.ShouldBeEmpty();
+        Directory.Exists(follows.Spool.FullName).ShouldBeFalse();
+    }
+
+    /// <summary>
     /// A folder left over by a sweep that was cut off between the row and the folder is finished by
     /// the next one, and a folder that is not named after a meeting at all is never touched.
     /// </summary>
@@ -609,4 +792,30 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
             .OrderBy(file => file.FullName, StringComparer.Ordinal)
             .Select(file => $"{file.Name} {CorpusFiles.Sha256Of(file)}"),
     ];
+
+    /// <summary>
+    /// Waits for something the sweep does on a thread of its own, so a write can be put inside a
+    /// window rather than before or after it.
+    /// </summary>
+    /// <remarks>
+    /// The budget is derived from <see cref="CorpusDatabase.BusyTimeoutMilliseconds"/> rather than
+    /// written down beside it, because the two have to move together. From the moment this returns,
+    /// the sweep is waiting on a write lock this thread is holding, and that constant is how long it
+    /// waits before giving up — so a wait that could outlast it would turn a loaded agent into a
+    /// sweep that reported a locked corpus, which is not what these assert. Half of it leaves the
+    /// same margin on either side.
+    /// </remarks>
+    private static void WaitFor(Func<bool> happened, string what)
+    {
+        var budget = TimeSpan.FromMilliseconds(CorpusDatabase.BusyTimeoutMilliseconds / 2.0);
+        var clock = Stopwatch.StartNew();
+
+        while (!happened())
+        {
+            // The message says the wait ran out, and not what that means, because this cannot tell
+            // a sweep that never got there from one a loaded agent has not got to yet.
+            clock.Elapsed.ShouldBeLessThan(budget, $"{budget.TotalSeconds:0.#}s went by and {what}");
+            Thread.Sleep(5);
+        }
+    }
 }
