@@ -1,3 +1,5 @@
+using MeetingTranscriber.Domain.Artifacts;
+
 namespace MeetingTranscriber.Audio;
 
 /// <summary>
@@ -54,7 +56,7 @@ public sealed class CaptureMark : IDisposable
     /// one being read out of are different things to say to somebody, and a machine can die in
     /// either.
     /// </remarks>
-    public const string FileName = "capture.mark";
+    public const string FileName = RecordingFiles.CaptureMark;
 
     private readonly FileStream held;
 

@@ -134,6 +134,16 @@ it references nothing, so it is where a thing about the UI goes when it has to b
 window. A project of its own for three numbers would be a folder and a `.csproj` holding a lookup
 table.
 
+**Where a name two projects both write and read goes.** `Audio` and `Infrastructure` may not
+reference each other, for the reasons the `MeetingTranscriber.Recording` paragraph above gives, so a
+string both of them have to spell goes in `Domain`, which is the only project either can see, and
+each side defines its own constant from that one so the compiler proves they agree. `RecordingFiles`
+in `Domain/Artifacts/` is the case that settled it, and says on itself what it cost to find out.
+`Domain/Artifacts/` and not `Domain/Audio/`, because the question a file name answers here — what
+the file is, and whether losing it costs anything — is the one that folder already holds, and
+because `Domain/Audio/` is on the audit floor for the channel contract and the profile rule, which
+`.claude/audit-floor.md` is the place to read.
+
 `Processing` references `Infrastructure`, and only that way round: rendering reads the paid
 response out of the corpus and puts the derivatives back, so it sits above storage. The opposite
 edge would make SQLite depend on how a Deepgram response is parsed.

@@ -59,6 +59,14 @@ public sealed record MeetingCard(
 public static class MeetingManifest
 {
     /// <summary>The name the card is stored under, which docs/corpus.md fixes.</summary>
+    /// <remarks>
+    /// <c>RecordingFiles.Card</c> is this same string and is <em>not</em> this one, and it is now in
+    /// scope here. Do not define this from it. The spool's card is written once when the devices
+    /// open and is the only record of which meeting a folder of blocks belongs to; this one is
+    /// produced from the corpus every time and may be replaced. Welding them together would compile,
+    /// pass, and make a rename of either silently rename the other. docs/corpus.md states the
+    /// distinction under a heading of its own.
+    /// </remarks>
     public const string FileName = "manifest.json";
 
     /// <summary>

@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 
 using NAudio.Wave;
@@ -41,7 +42,7 @@ namespace MeetingTranscriber.Audio;
 public static class BlockSpool
 {
     /// <summary>What a source's blocks are stored under, beside the other source's.</summary>
-    public const string Extension = ".blocks";
+    public const string Extension = RecordingFiles.BlocksExtension;
 
     /// <summary>
     /// The shape of this file. A reader refuses a version it was not written for rather than
@@ -139,7 +140,7 @@ public static class BlockSpool
     {
         ArgumentNullException.ThrowIfNull(blocks);
 
-        return new FileInfo(Path.ChangeExtension(blocks.FullName, ".wav"));
+        return new FileInfo(Path.ChangeExtension(blocks.FullName, RecordingFiles.PlaybackExtension));
     }
 
     /// <summary>

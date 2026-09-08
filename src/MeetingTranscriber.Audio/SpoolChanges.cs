@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
@@ -56,7 +57,7 @@ public sealed record SourceChanged(
 public static class SpoolChanges
 {
     /// <summary>The name the changes are stored under, beside the card.</summary>
-    public const string FileName = "changes.jsonl";
+    public const string FileName = RecordingFiles.Changes;
 
     /// <summary>Accents left alone, for the reason the card leaves them alone: a person reads this.</summary>
     private static readonly JsonSerializerOptions OneLine = new()

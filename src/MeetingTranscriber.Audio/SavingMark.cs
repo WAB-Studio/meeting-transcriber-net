@@ -1,3 +1,5 @@
+using MeetingTranscriber.Domain.Artifacts;
+
 namespace MeetingTranscriber.Audio;
 
 /// <summary>
@@ -44,7 +46,7 @@ public sealed class SavingMark : IDisposable
     /// three names: a folder being captured into, one being read out of — <see cref="ReadingMark"/>
     /// — and one being written down into a meeting are different things to say to somebody.
     /// </remarks>
-    public const string FileName = "saving.mark";
+    public const string FileName = RecordingFiles.SavingMark;
 
     private readonly FileStream held;
 

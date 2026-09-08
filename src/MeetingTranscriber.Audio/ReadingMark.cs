@@ -1,3 +1,5 @@
+using MeetingTranscriber.Domain.Artifacts;
+
 namespace MeetingTranscriber.Audio;
 
 /// <summary>
@@ -62,7 +64,7 @@ public sealed class ReadingMark : IDisposable
     /// <see cref="CaptureMark.FileName"/> and <see cref="SavingMark.FileName"/> are named for what
     /// is happening.
     /// </remarks>
-    public const string FileName = "reading.mark";
+    public const string FileName = RecordingFiles.ReadingMark;
 
     /// <summary>
     /// The claim, or nothing when the folder would not take one — see the last paragraph on this

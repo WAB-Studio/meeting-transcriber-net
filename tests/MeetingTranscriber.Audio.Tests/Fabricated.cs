@@ -224,6 +224,24 @@ internal static class Fabricated
     /// <summary>Silence, for a source a test is only running so that the other one has a partner.</summary>
     internal static Func<double, float> Quiet => _ => 0f;
 
+    /// <summary>One source's spool, written the way a capture writes one.</summary>
+    /// <remarks>
+    /// Here rather than in each suite because more than one of them needs a real spool on disk and
+    /// a second copy of four lines is how two of them come to write a folder differently.
+    /// </remarks>
+    internal static void Spool(
+        DirectoryInfo into,
+        AudioChannel channel,
+        StreamFormat format,
+        IEnumerable<CapturePacket> packets)
+    {
+        using var writer = SpoolWriter.Create(BlockSpool.FileFor(into, channel), channel, format);
+        foreach (var packet in packets)
+        {
+            writer.Write(packet);
+        }
+    }
+
     /// <summary>Lays one mono sample out across every channel the device claims to interleave.</summary>
     private static byte[] Encode(ReadOnlySpan<float> mono, StreamFormat format)
     {

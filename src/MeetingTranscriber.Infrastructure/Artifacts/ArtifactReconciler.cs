@@ -1,3 +1,4 @@
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.EntityFrameworkCore;
@@ -31,9 +32,11 @@ public enum ArtifactState
     Changed = 4,
 
     /// <summary>
-    /// Blocks of a recording that was never turned into a WAV. They are the only copy of that
-    /// audio, so recovery is a person's decision and this is only the report that there is one to
-    /// make.
+    /// A file of a recording still in the spool that no artifact row points at. One state and three
+    /// things to do about it, so the finding says which: blocks may be the only copy of that audio,
+    /// and recovering it is a person's decision; the card and the changes beside them hold no audio
+    /// and are what says what the recording was; and what was poured back out of the blocks is
+    /// poured again from them.
     /// </summary>
     Spooled = 5,
 
@@ -111,9 +114,17 @@ public sealed record SweptFiles(IReadOnlyList<string> Removed, IReadOnlyList<str
 public static class ArtifactReconciler
 {
     /// <summary>
-    /// Everything the corpus and the disk disagree about, in a stable order and empty when there
-    /// is nothing.
+    /// Everything the corpus and the disk disagree about that somebody could still do something
+    /// about, in a stable order and empty when there is nothing.
     /// </summary>
+    /// <remarks>
+    /// Two things under <see cref="CorpusFiles.Spool"/> are deliberately not in it, so a caller does
+    /// not read empty as an empty spool: a mark, which holds no bytes and which nothing ever clears,
+    /// and everything inside a recording a discard moved aside, which nothing offers again and
+    /// nothing cleans. A write that never finished or a copy a replace set aside is still reported
+    /// wherever it is, including inside one of those folders, because a sweep still takes it and the
+    /// two may not disagree about a file. docs/corpus.md says the same where a person looks.
+    /// </remarks>
     /// <param name="verifyContents">
     /// Whether to hash every recorded file. Off by default: a corpus keeps hours of WAV, and a
     /// start-up whose cost grows with the corpus is one the user learns to skip. Size is compared
@@ -284,17 +295,103 @@ public static class ArtifactReconciler
                 continue;
             }
 
-            yield return relativePath.StartsWith($"{CorpusFiles.Spool}/", StringComparison.Ordinal)
-                ? new ArtifactFinding(
-                    ArtifactState.Spooled,
-                    relativePath,
-                    "a block of a recording that was never materialised; recovering it is a decision")
-                : new ArtifactFinding(
-                    ArtifactState.Unrecorded,
-                    relativePath,
-                    "the file is there and the corpus has no row for it; it may be the only copy");
+            // Nothing about the recording a discard moved in here. Its owner pressed Discard and
+            // a delete did not reach it; nothing in the product offers it again —
+            // UnfinishedRecordings.In enumerates one level of directories under the spool root, so a
+            // recording at .removing-<id>/<id>/ is a level further down than anything Found can see
+            // — and nothing in the product cleans it. So a finding about it is a line that never
+            // goes away however anybody acts on it, and a check that stands red stops being read.
+            // Deliberately below the two branches above and not over them: what those name is a
+            // write that never finished or a copy set aside, which the sweep takes wherever it is,
+            // and check going quiet about a file sweep still deletes is the two disagreeing.
+            // docs/corpus.md says both halves of this where a person looks.
+            if (CorpusFiles.IsBeingRemoved(relativePath))
+            {
+                continue;
+            }
+
+            if (CorpusFiles.NameInASpoolFolder(relativePath) is { } name)
+            {
+                var what = RecordingFiles.WhatIsInASpoolFolder(name);
+
+                // Silence, and not a finding of its own, for the same reason. A mark holds no
+                // bytes, nothing ever reads whether it is there, and docs/corpus.md says nothing
+                // clears the one a crashed save, capture or read leaves.
+                if (what is SpoolFile.Mark)
+                {
+                    continue;
+                }
+
+                if (SpooledFinding(what, relativePath) is { } spooled)
+                {
+                    yield return spooled;
+                    continue;
+                }
+
+                // SpoolFile.Unknown falls out of here to the file-with-no-row below.
+            }
+
+            yield return new ArtifactFinding(
+                ArtifactState.Unrecorded,
+                relativePath,
+                "the file is there and the corpus has no row for it; it may be the only copy");
         }
     }
+
+    /// <summary>
+    /// What to say about a file in a spool folder no artifact row points at, and null for a name no
+    /// recording of this application writes — which falls to <see cref="ArtifactState.Unrecorded"/>,
+    /// the same move <see cref="CorpusFiles.DestinationOfSuperseded"/> already makes for the same
+    /// reason: a name this application did not write gets the honest, safe answer rather than a
+    /// sentence about a recording it is not part of.
+    /// </summary>
+    /// <remarks>
+    /// Every sentence here is written over the one thing this knows, which is that no artifact row
+    /// points at <em>this file</em>. It does not know whether the recording was filed as a meeting —
+    /// a saved meeting's spool folder is still on disk with its blocks in it — and it has not looked
+    /// to see what else is beside the file, so nothing here promises either.
+    /// </remarks>
+    private static ArtifactFinding? SpooledFinding(SpoolFile what, string relativePath) => what switch
+    {
+        SpoolFile.Blocks => new ArtifactFinding(
+            ArtifactState.Spooled,
+            relativePath,
+            "blocks of a recording in the spool, and no artifact row points at this file; if they "
+            + "are the only copy of that audio, recovering it is a decision"),
+
+        SpoolFile.Card => new ArtifactFinding(
+            ArtifactState.Spooled,
+            relativePath,
+            "what a recording in the spool wrote down about itself when it started — which meeting "
+            + "its blocks are, and what was on each channel; it holds no audio, and no artifact row "
+            + "points at it"),
+
+        SpoolFile.Changes => new ArtifactFinding(
+            ArtifactState.Spooled,
+            relativePath,
+            "what somebody moved while a recording in the spool was running; it holds no audio, and "
+            + "no artifact row points at it"),
+
+        // Says what the file is rather than what deleting it would cost, and says it
+        // conditionally. audio.wav is what MeetingAudio.Materialise wrote from the blocks in this
+        // same folder and <channel>.wav is what BlockSpool.ToWav pours one source into — but this
+        // matched an extension, and it has not looked to see whether any blocks are beside it, so
+        // neither half may be promised: not that they are there, and not that this came from them.
+        SpoolFile.Poured => new ArtifactFinding(
+            ArtifactState.Spooled,
+            relativePath,
+            "a playable copy in the spool, and no artifact row points at this file; if it was "
+            + "poured out of this folder's blocks, a recovery is about them and not about this"),
+
+        SpoolFile.Unknown => null,
+
+        // Total over the vocabulary, the way Artifacts.OriginOf is over ArtifactKind, so that a
+        // member added to SpoolFile and not given a sentence here fails loudly instead of being
+        // described to somebody as a file that may be the only copy of something.
+        SpoolFile.Mark => throw new ArgumentOutOfRangeException(
+            nameof(what), what, "A mark is answered by not being reported at all, before this."),
+        _ => throw new ArgumentOutOfRangeException(nameof(what), what, "Unknown kind of spool file."),
+    };
 
     /// <summary>
     /// Every file of the corpus, in a stable order. Only the two folders the layout puts artifacts
