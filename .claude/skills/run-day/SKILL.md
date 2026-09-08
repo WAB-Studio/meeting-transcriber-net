@@ -71,8 +71,13 @@ the cards, the PRs and the commits carry that already.
    when any plan returned `floor_paths`, or when a plan carries a decision that holds up other parts
    of the application for months. One card, no floor path, nothing structural → skip it and say so.
    - `revise` → spawn that card's `planner` again, on the same card dir. It reads `review.md` there
-     and answers every finding. **Once.** A second `revise` → §4.
-   - `ask` → §4.
+     and answers every finding. Validate again. **Two revisions at the outside**, then work starts on
+     the plan as it stands and the open findings go on the card for the worker.
+   - **A plan is never parked, and a count of rounds is not a verdict.** Whatever a planner can
+     answer is a revision, however many rounds it takes to answer it.
+   - `ask`, or a finding only the owner can settle — what the product does, what a card is for, a
+     cost somebody has to accept → **put the question to the user and wait for the answer**, then go
+     on with it. Nothing else reaches them, and most days nothing does.
    - A collision → drop the card that waits; it is `Ready` and the next pick finds it.
 4. **Work.** Spawn one `worker` per surviving card, in parallel, each in its own worktree under
    `C:\Users\pc\Documents\GitHub\Personal\worktrees`, never inside the checkout, deleted when the
@@ -118,6 +123,8 @@ Twice on one stage in one cycle → stop. Leave the card in `In progress`, say s
 Do not protect work already done at any price. Say what was lost and move on.
 
 ## 4 · Park, never wait
+
+Reached from §2.2 and §2.6. A plan never arrives here: §2.3 asks instead.
 
 A decision no stage may make: label the card `question`, send it to `Backlog`, take the next card.
 
