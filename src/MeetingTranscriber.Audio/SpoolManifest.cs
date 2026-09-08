@@ -2,6 +2,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
@@ -82,7 +83,7 @@ public sealed record SpoolCard(
 public static class SpoolManifest
 {
     /// <summary>The name the card is stored under, beside the blocks it describes.</summary>
-    public const string FileName = "manifest.json";
+    public const string FileName = RecordingFiles.Card;
 
     /// <summary>
     /// Indented and with accents left alone: this file is read by a person looking at a folder

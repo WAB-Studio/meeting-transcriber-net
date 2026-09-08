@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 
+using MeetingTranscriber.Domain.Artifacts;
+
 namespace MeetingTranscriber.Infrastructure.Artifacts;
 
 /// <summary>
@@ -154,6 +156,45 @@ public static class CorpusFiles
     public static bool IsSuperseded(string relativePath) =>
         relativePath is not null
         && relativePath.EndsWith(SupersededSuffix, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Whether this stored path is inside a recording a discard moved aside.</summary>
+    /// <remarks>
+    /// <para>
+    /// Here rather than beside <see cref="RecordingFiles.BeingRemovedPrefix"/> because the prefix is
+    /// a name and this is the shape of the path it sits in, which is the stored-path form this type
+    /// owns. Two segments and not one: a removal renames the recording's folder into
+    /// <c>.removing-&lt;id&gt;</c> beside where it was and then moves the folder inside it, so the
+    /// stored path is <c>spool/.removing-&lt;id&gt;/&lt;id&gt;/…</c>. No artifact row can be under
+    /// one — <see cref="EnsureBelongsTo"/> requires <c>spool/{meetingId}/</c>, and
+    /// <c>.removing-{id}</c> is not <c>{id}</c>.
+    /// </para>
+    /// <para>
+    /// Two comparisons and two answers, on purpose. <see cref="StringComparison.Ordinal"/> on the
+    /// <see cref="Spool"/> segment, which this type composes and nobody types;
+    /// <see cref="StringComparison.OrdinalIgnoreCase"/> on the prefix, which is a folder name on a
+    /// Windows filesystem where two spellings are one folder, for the reason
+    /// <see cref="PathComparer"/> gives.
+    /// </para>
+    /// <para>
+    /// What it reads is the stored form a scan produces — <see cref="RelativePathOf"/>, which is
+    /// <see cref="Path.GetRelativePath"/> with the separators fixed. It is <em>not</em> a path
+    /// <see cref="EnsureBelongsTo"/> has vetted; nothing on the scan path calls that, which is only
+    /// called on paths a write composes. It is safe anyway because a walk of a real directory tree
+    /// cannot produce a <c>..</c> segment, and not because of a guarantee that does not apply here.
+    /// </para>
+    /// </remarks>
+    internal static bool IsBeingRemoved(string relativePath)
+    {
+        if (relativePath is null)
+        {
+            return false;
+        }
+
+        var parts = relativePath.Split('/');
+        return parts.Length >= 2
+            && string.Equals(parts[0], Spool, StringComparison.Ordinal)
+            && parts[1].StartsWith(RecordingFiles.BeingRemovedPrefix, StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// A name for a write on its way to <paramref name="destination"/>, beside it on the same

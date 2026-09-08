@@ -1,5 +1,6 @@
 using System.Diagnostics;
 
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
@@ -376,17 +377,6 @@ public static class UnfinishedRecordings
     /// </remarks>
     internal const int RemovalPatienceMilliseconds = 250;
 
-    /// <summary>
-    /// What a removal calls the folder it moves a recording into before it takes it away, in front
-    /// of the recording's own folder name.
-    /// </summary>
-    /// <remarks>
-    /// A name and not a <see cref="Guid"/>, deliberately: a unique one would be impossible to find
-    /// again, which is what would turn a machine dying inside a discard into rubbish nobody can
-    /// identify rather than something a person can see and delete.
-    /// </remarks>
-    private const string BeingRemoved = ".removing-";
-
     /// <summary>The two refusals that are somebody else still reading, and not an answer.</summary>
     private const int AccessDenied = unchecked((int)0x80070005);
     private const int SharingViolation = unchecked((int)0x80070020);
@@ -555,7 +545,7 @@ public static class UnfinishedRecordings
                 $"Nothing was removed: there is nothing above '{folder.FullName}', so there is "
                 + "nowhere to move it aside to.");
 
-        var aside = new DirectoryInfo(Path.Combine(above.FullName, BeingRemoved + folder.Name));
+        var aside = new DirectoryInfo(Path.Combine(above.FullName, RecordingFiles.BeingRemovedPrefix + folder.Name));
 
         MakeTheAsideReady(aside, folder);
 
@@ -904,8 +894,10 @@ public static class UnfinishedRecordings
     /// </summary>
     /// <remarks>
     /// One list, read by the question and by the delete, so that the two cannot come to disagree
-    /// about what an empty folder is allowed to hold — and so that a fourth mark is one edit, the
-    /// way the third was.
+    /// about what an empty folder is allowed to hold. A fourth mark is three edits now rather than
+    /// the one the third was: a type of its own, a name in
+    /// <see cref="MeetingTranscriber.Domain.Artifacts.RecordingFiles"/> — which is where the names
+    /// these read come from — and a line here.
     /// </remarks>
     private static FileInfo[] NamesAPressLeaves(DirectoryInfo folder) =>
     [

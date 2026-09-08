@@ -1,3 +1,4 @@
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.EntityFrameworkCore;
@@ -31,9 +32,11 @@ public enum ArtifactState
     Changed = 4,
 
     /// <summary>
-    /// Blocks of a recording that was never turned into a WAV. They are the only copy of that
-    /// audio, so recovery is a person's decision and this is only the report that there is one to
-    /// make.
+    /// A file of a recording still in the spool that no artifact row points at. One state and three
+    /// things to do about it, so the finding says which: blocks may be the only copy of that audio,
+    /// and recovering it is a person's decision; the card and the changes beside them hold no audio
+    /// and are what says what the recording was; and what was poured back out of the blocks is
+    /// poured again from them.
     /// </summary>
     Spooled = 5,
 
@@ -284,17 +287,93 @@ public static class ArtifactReconciler
                 continue;
             }
 
-            yield return relativePath.StartsWith($"{CorpusFiles.Spool}/", StringComparison.Ordinal)
-                ? new ArtifactFinding(
-                    ArtifactState.Spooled,
-                    relativePath,
-                    "a block of a recording that was never materialised; recovering it is a decision")
-                : new ArtifactFinding(
-                    ArtifactState.Unrecorded,
-                    relativePath,
-                    "the file is there and the corpus has no row for it; it may be the only copy");
+            // Nothing at all about a recording somebody threw away. What is under here had its
+            // owner press Discard and a delete that did not reach it; nothing in the product offers
+            // it again — UnfinishedRecordings.In enumerates one level of directories under the
+            // spool root, so a recording at .removing-<id>/<id>/ is a level further down than
+            // anything Found can see — and nothing in the product cleans it either. So every
+            // sentence available here is a line nobody can act on that never goes away, and a check
+            // that stands red stops being read. docs/corpus.md says deleting the folder by hand is
+            // safe and says this silence is deliberate.
+            if (CorpusFiles.IsBeingRemoved(relativePath))
+            {
+                continue;
+            }
+
+            if (relativePath.StartsWith($"{CorpusFiles.Spool}/", StringComparison.Ordinal))
+            {
+                var what = RecordingFiles.WhatIsInASpoolFolder(file.Name);
+
+                // Silence, and not a finding of its own, for the same reason. A mark holds no
+                // bytes, nothing ever reads whether it is there, and docs/corpus.md says nothing
+                // clears the one a crashed save, capture or read leaves.
+                if (what is SpoolFile.Mark)
+                {
+                    continue;
+                }
+
+                if (SpooledFinding(what, relativePath) is { } spooled)
+                {
+                    yield return spooled;
+                    continue;
+                }
+
+                // SpoolFile.Unknown falls out of here to the file-with-no-row below.
+            }
+
+            yield return new ArtifactFinding(
+                ArtifactState.Unrecorded,
+                relativePath,
+                "the file is there and the corpus has no row for it; it may be the only copy");
         }
     }
+
+    /// <summary>
+    /// What to say about a file in a spool folder no artifact row points at, and null for a name no
+    /// recording of this application writes — which falls to <see cref="ArtifactState.Unrecorded"/>,
+    /// the same move <see cref="CorpusFiles.DestinationOfSuperseded"/> already makes for the same
+    /// reason: a name this application did not write gets the honest, safe answer rather than a
+    /// sentence about a recording it is not part of.
+    /// </summary>
+    /// <remarks>
+    /// Every sentence here is written over the one thing this knows, which is that no artifact row
+    /// points at <em>this file</em>. It does not know whether the recording was filed as a meeting —
+    /// a saved meeting's spool folder is still on disk with its blocks in it — and it has not looked
+    /// to see what else is beside the file, so nothing here promises either.
+    /// </remarks>
+    private static ArtifactFinding? SpooledFinding(SpoolFile what, string relativePath) => what switch
+    {
+        SpoolFile.Blocks => new ArtifactFinding(
+            ArtifactState.Spooled,
+            relativePath,
+            "blocks of a recording in the spool, and no artifact row points at this file; if they "
+            + "are the only copy of that audio, recovering it is a decision"),
+
+        SpoolFile.Card => new ArtifactFinding(
+            ArtifactState.Spooled,
+            relativePath,
+            "what a recording in the spool wrote down about itself when it started — which meeting "
+            + "its blocks are, and what was on each channel; it holds no audio, and no artifact row "
+            + "points at it"),
+
+        SpoolFile.Changes => new ArtifactFinding(
+            ArtifactState.Spooled,
+            relativePath,
+            "what somebody moved while a recording in the spool was running; it holds no audio, and "
+            + "no artifact row points at it"),
+
+        // Says what the file is rather than what deleting it would cost. audio.wav is what
+        // MeetingAudio.Materialise wrote from the blocks in this same folder and <channel>.wav is
+        // what BlockSpool.ToWav pours one source into — but nothing here has looked to see whether
+        // those blocks are still beside it, so this must not promise that they are.
+        SpoolFile.Poured => new ArtifactFinding(
+            ArtifactState.Spooled,
+            relativePath,
+            "the playable copy poured out of this folder's blocks; a recovery is about the blocks "
+            + "and not about this"),
+
+        _ => null,
+    };
 
     /// <summary>
     /// Every file of the corpus, in a stable order. Only the two folders the layout puts artifacts

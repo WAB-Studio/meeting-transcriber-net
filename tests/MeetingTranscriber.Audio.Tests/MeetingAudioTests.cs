@@ -175,12 +175,12 @@ public sealed class MeetingAudioTests : IDisposable
     [Fact]
     public void A_recording_that_could_not_be_made_leaves_no_file_pretending_to_be_one()
     {
-        Write(
+        Fabricated.Spool(
             folder,
             AudioChannel.Loopback,
             StereoFloat,
             Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 1, Fabricated.Quiet));
-        Write(folder, AudioChannel.Microphone, CheapMicrophone, CountersDisagree());
+        Fabricated.Spool(folder, AudioChannel.Microphone, CheapMicrophone, CountersDisagree());
 
         Should.Throw<AudioCaptureException>(() => MeetingAudio.Materialise(folder))
             .Message.ShouldContain("44100 Hz");
@@ -199,12 +199,12 @@ public sealed class MeetingAudioTests : IDisposable
     [Fact]
     public void A_microphone_that_numbers_its_frames_at_its_own_rate_becomes_the_meetings_file()
     {
-        Write(
+        Fabricated.Spool(
             folder,
             AudioChannel.Loopback,
             StereoFloat,
             Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 4, Fabricated.Bursts(1)));
-        Write(
+        Fabricated.Spool(
             folder,
             AudioChannel.Microphone,
             StereoFloat,
@@ -320,13 +320,13 @@ public sealed class MeetingAudioTests : IDisposable
     {
         var into = folder.CreateSubdirectory(Guid.NewGuid().ToString("n"));
 
-        Write(
+        Fabricated.Spool(
             into,
             AudioChannel.Loopback,
             StereoFloat,
             Fabricated.Packets(
                 AudioChannel.Loopback, StereoFloat, 48_000, 0, LongEnoughToBeGivenUp, Fabricated.Bursts(5)));
-        Write(into, AudioChannel.Microphone, CheapMicrophone, microphone);
+        Fabricated.Spool(into, AudioChannel.Microphone, CheapMicrophone, microphone);
 
         var recording = MeetingAudio.Materialise(into);
         return (recording.Length, File.ReadAllBytes(recording.File.FullName));
@@ -335,12 +335,12 @@ public sealed class MeetingAudioTests : IDisposable
     /// <summary>Both spools of one recording, each source hearing what it is given.</summary>
     private void Record(Func<double, float> loopback, Func<double, float> microphone, double seconds)
     {
-        Write(
+        Fabricated.Spool(
             folder,
             AudioChannel.Loopback,
             StereoFloat,
             Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, seconds, loopback));
-        Write(
+        Fabricated.Spool(
             folder,
             AudioChannel.Microphone,
             CheapMicrophone,
@@ -357,19 +357,6 @@ public sealed class MeetingAudioTests : IDisposable
         File.Move(loopback, aside);
         File.Move(microphone, loopback);
         File.Move(aside, microphone);
-    }
-
-    private void Write(
-        DirectoryInfo into,
-        AudioChannel channel,
-        StreamFormat format,
-        IEnumerable<CapturePacket> packets)
-    {
-        using var writer = SpoolWriter.Create(BlockSpool.FileFor(into, channel), channel, format);
-        foreach (var packet in packets)
-        {
-            writer.Write(packet);
-        }
     }
 
     /// <summary>Takes the tail off the way a process being killed mid write takes it off.</summary>

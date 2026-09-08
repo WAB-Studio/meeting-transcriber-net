@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
@@ -35,7 +36,7 @@ namespace MeetingTranscriber.Audio;
 public static class MeetingAudio
 {
     /// <summary>What the recording is called, beside the spools it was made from.</summary>
-    public const string FileName = "audio.wav";
+    public const string FileName = RecordingFiles.Recording;
 
     /// <summary>
     /// What every recording comes out as, in the terms a stream is read in, so that what the file
