@@ -200,9 +200,10 @@ public static class CorpusFiles
     /// <remarks>
     /// It is what makes <see cref="RecordingFiles.WhatIsInASpoolFolder"/>'s precondition true at the
     /// call site: that question is only answerable about a file beside a recording's blocks, and the
-    /// scan walks every folder under <see cref="Spool"/> to any depth. Exactly the shape
-    /// <see cref="EnsureBelongsTo"/> allows a row to be stored at, so what a walk classifies and what
-    /// a write may compose are one rule rather than two that agree today. Anything deeper — a folder
+    /// scan walks every folder under <see cref="Spool"/> to any depth. It is narrower than
+    /// <see cref="EnsureBelongsTo"/>, which admits a row at any depth below a recording's folder:
+    /// what holds the two together is <see cref="SpoolPathFor"/> being the only thing that composes a
+    /// spool row's path, and it composes exactly this shape. Anything deeper — a folder
     /// somebody restored inside a recording's, a copy made before a reinstall — is a file with no
     /// row and gets told that, rather than being told it came out of blocks that are not there.
     /// </remarks>
