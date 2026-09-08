@@ -36,6 +36,10 @@ namespace MeetingTranscriber.Audio;
 public static class MeetingAudio
 {
     /// <summary>What the recording is called, beside the spools it was made from.</summary>
+    /// <remarks>
+    /// <see cref="RecordingFiles.Recording"/> says the rest of it, which is that this same name is
+    /// also the meeting's copy once one is filed, and what tells the two apart.
+    /// </remarks>
     public const string FileName = RecordingFiles.Recording;
 
     /// <summary>
@@ -51,14 +55,13 @@ public static class MeetingAudio
 
     /// <summary>What a recording is called while it is being written and has not been checked.</summary>
     /// <remarks>
-    /// It has to stay equal to <c>CorpusFiles.UnfinishedSuffix</c>, which is this same string in
-    /// the infrastructure project and is what the reconciler's sweep deletes on sight. A recording
-    /// is materialised into a folder that sweep walks, so the two are one rule; this project sits
-    /// under that one and cannot see it, so they are spelled twice and nothing checks that they
-    /// agree. Change one and the sweep either stops recognising what is written here or starts
-    /// deleting what it should not.
+    /// The same string the reconciler's sweep deletes on sight, and it has to stay that way: a
+    /// recording is materialised into a folder that sweep walks, so the two are one rule. They were
+    /// spelled twice with nothing checking they agreed until <see cref="RecordingFiles"/> gave both
+    /// sides a definition they can see, and this reads it — so the compiler is now what holds them
+    /// equal rather than two comments asking to be.
     /// </remarks>
-    private const string Unfinished = ".partial";
+    private const string Unfinished = RecordingFiles.UnfinishedSuffix;
 
     /// <summary>Where a folder's recording is, once there is one.</summary>
     public static FileInfo In(DirectoryInfo folder)

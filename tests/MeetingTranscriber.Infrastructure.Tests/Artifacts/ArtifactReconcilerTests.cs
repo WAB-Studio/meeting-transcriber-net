@@ -330,7 +330,6 @@ public class ArtifactReconcilerTests
 
         findings.Select(finding => finding.RelativePath).ShouldBe(carrying, ignoreOrder: true);
         findings.ShouldAllBe(finding => finding.State == ArtifactState.Spooled);
-        findings.ShouldNotContain(finding => finding.RelativePath.EndsWith(".mark", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -433,9 +432,11 @@ public class ArtifactReconcilerTests
     }
 
     /// <summary>
-    /// The boundary of that silence. A write that never finished is swept wherever it is, so
-    /// <c>check</c> has to go on naming it — the two disagreeing about one file is a sweep taking
-    /// something nothing ever reported.
+    /// The boundary of that silence, and both of the two states that cross it. A write that never
+    /// finished and a copy a replace set aside are swept wherever they are, so <c>check</c> has to
+    /// go on naming them — a sweep taking a file nothing ever reported is the two disagreeing. Both
+    /// arms are here because the skip has to sit below <em>both</em> branches, and one of them alone
+    /// leaves the other free to move.
     /// </summary>
     [Fact]
     public void A_write_that_never_finished_under_a_discard_is_still_swept()
@@ -443,17 +444,51 @@ public class ArtifactReconcilerTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context);
-        var half = Drop(
+        var thrown = $"spool/.removing-{meeting}/{meeting}";
+        var half = Drop(corpus, $"{thrown}/audio.wav{CorpusFiles.UnfinishedSuffix}", "half");
+
+        // A copy of a file a replace of this corpus set aside, whose destination is back, which is
+        // what makes a sweep take it.
+        var back = Drop(corpus, $"{thrown}/loopback.blocks", "pcm");
+        var aside = Drop(
             corpus,
-            $"spool/.removing-{meeting}/{meeting}/audio.wav{CorpusFiles.UnfinishedSuffix}",
-            "half");
+            $"{thrown}/loopback.blocks.{Guid.NewGuid():n}{CorpusFiles.SupersededSuffix}",
+            "the copy before this one");
 
-        var finding = ArtifactReconciler.Check(context).ShouldHaveSingleItem();
-        finding.State.ShouldBe(ArtifactState.Unfinished);
-        finding.RelativePath.ShouldBe(half);
+        var findings = ArtifactReconciler.Check(context);
 
-        ArtifactReconciler.Sweep(context).Removed.ShouldHaveSingleItem().ShouldBe(half);
+        findings.Single(finding => finding.RelativePath == half)
+            .State.ShouldBe(ArtifactState.Unfinished);
+        findings.Single(finding => finding.RelativePath == aside)
+            .State.ShouldBe(ArtifactState.Superseded);
+
+        // And the blocks beside them stay silent, which is what says the skip is still under both.
+        findings.ShouldNotContain(finding => finding.RelativePath == back);
+
+        ArtifactReconciler.Sweep(context).Removed.ShouldBe([half, aside], ignoreOrder: true);
         CorpusFiles.Locate(corpus.Root, half).Exists.ShouldBeFalse();
+        CorpusFiles.Locate(corpus.Root, aside).Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Being under the spool is not what makes a file part of a recording, and neither is being
+    /// under it somewhere. A recording's files sit directly in its own folder, which is the only
+    /// shape a row may be stored at, so anything deeper is a file with no row and is told that
+    /// rather than that it came out of blocks that are not there.
+    /// </summary>
+    [Fact]
+    public void A_file_further_down_than_a_recordings_folder_is_not_one_of_its_files()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var restored = Drop(corpus, $"spool/{meeting}/before-the-reinstall/loopback.blocks", "pcm");
+        var loose = Drop(corpus, "spool/audio.wav", "riff");
+
+        var findings = ArtifactReconciler.Check(context);
+
+        findings.Select(finding => finding.RelativePath).ShouldBe([loose, restored], ignoreOrder: true);
+        findings.ShouldAllBe(finding => finding.State == ArtifactState.Unrecorded);
     }
 
     [Fact]

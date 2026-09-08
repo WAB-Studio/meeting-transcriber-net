@@ -894,10 +894,15 @@ public static class UnfinishedRecordings
     /// </summary>
     /// <remarks>
     /// One list, read by the question and by the delete, so that the two cannot come to disagree
-    /// about what an empty folder is allowed to hold. A fourth mark is three edits now rather than
-    /// the one the third was: a type of its own, a name in
+    /// about what an empty folder is allowed to hold. A fourth mark is no longer the one edit the
+    /// third was: the type, a name in
     /// <see cref="MeetingTranscriber.Domain.Artifacts.RecordingFiles"/> — which is where the names
-    /// these read come from — and a line here.
+    /// these read come from — an arm in
+    /// <see cref="MeetingTranscriber.Domain.Artifacts.RecordingFiles.WhatIsInASpoolFolder"/>, and a
+    /// line here. Skipping the third is what put the second and third marks into <c>corpus check</c>
+    /// as recordings to recover, so it is not left to a count in a comment:
+    /// <c>RecordingFileNamesTests</c> fails on a name the engine declares and that method cannot
+    /// place.
     /// </remarks>
     private static FileInfo[] NamesAPressLeaves(DirectoryInfo folder) =>
     [

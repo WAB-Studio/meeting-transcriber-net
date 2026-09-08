@@ -5,15 +5,22 @@ namespace MeetingTranscriber.Domain.Artifacts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the question asked of a file <em>inside a spool folder</em>, and it is not
-/// <see cref="ArtifactOrigin"/>. <see cref="ArtifactOrigin"/> is what the corpus stores about an
-/// artifact it holds; this is what a scan of the spool can tell from a name. The two disagree
-/// about <c>audio.wav</c> on purpose and both are right: the meeting's copy is a source because
-/// nothing on the machine can make it again, and the spool's copy sits beside the blocks it was
-/// poured out of.
+/// The question asked of a file <em>inside a spool folder</em>, and it answers for nothing under
+/// <c>meetings/</c>. <see cref="ArtifactKind"/> is the same folder's other vocabulary and is not
+/// this one: it names a file the corpus holds a row for, so <see cref="Blocks"/>,
+/// <see cref="Poured"/> and <see cref="Card"/> are <see cref="ArtifactKind.SpoolBlock"/>,
+/// <see cref="ArtifactKind.Audio"/> and <see cref="ArtifactKind.Manifest"/> seen from the disk side,
+/// and <see cref="Changes"/> and <see cref="Mark"/> have no kind at all because they are never rows.
+/// A file role that can be a row has to be added to both.
 /// </para>
 /// <para>
-/// It answers for nothing under <c>meetings/</c>.
+/// The two disagree about <c>audio.wav</c> on purpose, and the disagreement is the reason these
+/// members are not called <c>Source</c> and <c>Derived</c>:
+/// <c>Artifacts.OriginOf(ArtifactKind.Audio)</c> is <see cref="ArtifactOrigin.Source"/> because
+/// nothing on the machine can make the meeting's copy again, while the spool's copy sits beside the
+/// blocks it was poured out of. Both are right for their own question, and one pair of words over
+/// two enums a file apart is a trap no doc reaches, because a doc does not show up in a completion
+/// list.
 /// </para>
 /// </remarks>
 public enum SpoolFile
@@ -36,11 +43,10 @@ public enum SpoolFile
     /// opened.
     /// </summary>
     /// <remarks>
-    /// Not the meeting's. <c>MeetingManifest.FileName</c> in the infrastructure project is the same
-    /// string and a different file — one is produced from the corpus every time and may be
-    /// replaced, this one is written once and is the only record of which meeting a folder of
-    /// blocks belongs to. docs/corpus.md says so under a heading of its own, and the two are
-    /// deliberately not unified.
+    /// Not the meeting's. <c>MeetingManifest.FileName</c> is the same string and a different file,
+    /// and the two are deliberately not unified — docs/corpus.md says why under a heading of its
+    /// own, and <c>MeetingManifest.FileName</c> carries the warning where the wrong edit would be
+    /// typed.
     /// </remarks>
     Card = 2,
 
@@ -79,7 +85,9 @@ public enum SpoolFile
 /// </para>
 /// <para>
 /// Spelling them twice is what put <c>saving.mark</c> and then <c>capture.mark</c> into
-/// <c>corpus check</c> as recordings to recover.
+/// <c>corpus check</c> as recordings to recover, once each and a day apart. A name added here and
+/// nowhere else is still that defect, which is what
+/// <c>RecordingFileNamesTests.Every_name_the_engine_declares_is_one_the_corpus_can_place</c> is for.
 /// </para>
 /// </remarks>
 public static class RecordingFiles
@@ -112,14 +120,26 @@ public static class RecordingFiles
     /// <remarks>By extension for the reason <see cref="BlocksExtension"/> gives.</remarks>
     public const string PlaybackExtension = ".wav";
 
-    /// <summary>What the mark held from the folder being claimed until the last device goes is called.</summary>
+    /// <summary>What <c>CaptureMark</c> is called. What it means is on that type.</summary>
     public const string CaptureMark = "capture.mark";
 
-    /// <summary>What the mark held while a list, a keep or an export reads the blocks through is called.</summary>
+    /// <summary>What <c>ReadingMark</c> is called. What it means is on that type.</summary>
     public const string ReadingMark = "reading.mark";
 
-    /// <summary>What the mark held while a finish writes the meeting down is called.</summary>
+    /// <summary>What <c>SavingMark</c> is called. What it means is on that type.</summary>
     public const string SavingMark = "saving.mark";
+
+    /// <summary>What a write that has not been confirmed yet is called, while it is being made.</summary>
+    /// <remarks>
+    /// The one name here that is not confined to a spool folder: the corpus writes every artifact
+    /// through it. It is here because a recording is materialised into the folder the reconciler's
+    /// sweep walks, so the engine writing the name and the sweep deleting on sight of it are one
+    /// rule that used to be two spellings with nothing checking they agreed — and that one deletes
+    /// audio when it drifts. What the suffix <em>claims</em>, and why the copy a replace sets aside
+    /// may never wear it, stays on <c>CorpusFiles.UnfinishedSuffix</c>, which is the rule about
+    /// stored paths and is the infrastructure's.
+    /// </remarks>
+    public const string UnfinishedSuffix = ".partial";
 
     /// <summary>
     /// What a removal calls the folder it moves a recording into before it takes it away, in front
@@ -144,8 +164,12 @@ public static class RecordingFiles
 
         if (Named(fileName, Recording))
         {
-            // Above the PlaybackExtension arm, and load-bearing: audio.wav would answer through
-            // that arm too, with the same answer today and no reason it has to stay the same one.
+            // Answers for the constant and not for how it happens to be spelled. Today Recording
+            // ends in PlaybackExtension, so the arm below would give the same answer — but the
+            // engine writes whatever this constant says, and matched only by extension the day it
+            // stops ending in .wav the recording a folder's blocks were poured into would be
+            // reported as a file with no row that may be the only copy of something. That is this
+            // card's own defect, and the test that reads the constant is what holds it.
             return SpoolFile.Poured;
         }
 

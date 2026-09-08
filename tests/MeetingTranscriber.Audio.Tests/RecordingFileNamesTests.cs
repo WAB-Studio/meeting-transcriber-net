@@ -1,3 +1,5 @@
+using System.Reflection;
+
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
@@ -8,12 +10,20 @@ namespace MeetingTranscriber.Audio.Tests;
 /// The tripwire between what a recording really writes and what the corpus can name.
 /// </summary>
 /// <remarks>
-/// The division of labour with the reconciler's own suite: this one drives the real engine and pins
-/// the set of names a recording leaves behind, so a name the engine gains and
-/// <see cref="RecordingFiles"/> does not carry shows up here. The reconciler's tests build files
-/// with those names and no bytes, because <c>corpus check</c> never opens one — what it says is
-/// decided by the name alone. That gap is how <c>saving.mark</c> and then <c>capture.mark</c> each
-/// arrived unnamed and were reported to somebody as recordings to recover.
+/// <para>
+/// Two tests and two different holds. The first reads every name the engine <em>declares</em>
+/// straight off the assembly, so a name added to it and not to <see cref="RecordingFiles"/> fails
+/// here whether or not anybody remembered to call the thing that writes it — which is the gap
+/// <c>saving.mark</c> and then <c>capture.mark</c> each came through, a day apart. The second runs a
+/// real recording and reads the folder back, which is the only thing that can catch a name no
+/// constant declares at all: a temporary a write forgot to move, an index something started
+/// keeping.
+/// </para>
+/// <para>
+/// The reconciler's own tests build files with these names and no bytes, because <c>corpus
+/// check</c> never opens one — what it says is decided by the name alone, and the names are what
+/// this suite is for.
+/// </para>
 /// </remarks>
 public sealed class RecordingFileNamesTests : IDisposable
 {
@@ -24,6 +34,34 @@ public sealed class RecordingFileNamesTests : IDisposable
         Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
 
     public RecordingFileNamesTests() => folder.Create();
+
+    /// <summary>
+    /// Every file name the audio engine publishes as a constant, asked of the corpus's own answer.
+    /// Read off the assembly rather than listed, because a list is the thing that goes stale: the
+    /// two defects this suite exists for were both a name added to the engine and to nothing else.
+    /// </summary>
+    [Fact]
+    public void Every_name_the_engine_declares_is_one_the_corpus_can_place()
+    {
+        var declared = typeof(BlockSpool).Assembly.GetTypes()
+            .Where(type => type.IsPublic)
+            .SelectMany(type => type.GetFields(BindingFlags.Public | BindingFlags.Static))
+            .Where(field => field is { IsLiteral: true, FieldType: { } kind } && kind == typeof(string))
+            .Where(field => field.Name is "FileName" or "Extension")
+            .Select(field => (Owner: $"{field.DeclaringType!.Name}.{field.Name}", Name: (string)field.GetRawConstantValue()!))
+            .ToArray();
+
+        // A guard on the guard: a rename of either field would silently empty the list above and
+        // leave this test green over nothing.
+        declared.Length.ShouldBeGreaterThanOrEqualTo(7);
+
+        foreach (var (owner, name) in declared)
+        {
+            // An extension is not a file name, so it is asked as one a recording would really write.
+            var asWritten = name.StartsWith('.') ? $"loopback{name}" : name;
+            RecordingFiles.WhatIsInASpoolFolder(asWritten).ShouldNotBe(SpoolFile.Unknown, owner);
+        }
+    }
 
     [Fact]
     public void A_folder_a_recording_wrote_holds_only_files_the_corpus_can_name()

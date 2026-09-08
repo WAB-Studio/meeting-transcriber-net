@@ -45,13 +45,43 @@ public class RecordingFilesTests
     public void A_name_no_recording_writes_is_not_one_of_its_files(string name) =>
         RecordingFiles.WhatIsInASpoolFolder(name).ShouldBe(SpoolFile.Unknown);
 
+    /// <summary>
+    /// One row per comparison that can be seen from outside. The exact-<c>Recording</c> arm is not
+    /// among them: <c>audio.wav</c> reaches the same answer through the extension arm however that
+    /// one is compared, so no case here can tell whether it ran.
+    /// </summary>
     [Theory]
     [InlineData("SAVING.MARK", SpoolFile.Mark)]
     [InlineData("Loopback.Blocks", SpoolFile.Blocks)]
     [InlineData("Audio.WAV", SpoolFile.Poured)]
     [InlineData("Manifest.JSON", SpoolFile.Card)]
+    [InlineData("Changes.JSONL", SpoolFile.Changes)]
     public void Case_is_not_what_tells_two_of_these_apart(string name, SpoolFile what) =>
         RecordingFiles.WhatIsInASpoolFolder(name).ShouldBe(what);
+
+    /// <summary>
+    /// A write that never finished is not one of a recording's files. The reconciler answers it
+    /// before it ever asks this — <c>CorpusFiles.IsUnfinished</c> is the first branch of the walk —
+    /// so what matters here is only that this does not claim it as something else.
+    /// </summary>
+    [Fact]
+    public void A_write_that_never_finished_is_not_a_file_a_recording_left() =>
+        RecordingFiles
+            .WhatIsInASpoolFolder(RecordingFiles.Recording + RecordingFiles.UnfinishedSuffix)
+            .ShouldBe(SpoolFile.Unknown);
+
+    /// <summary>
+    /// The disagreement the member names rest on, pinned rather than only documented. One file is
+    /// called <c>audio.wav</c> in two places and the two answers are opposite on purpose: under
+    /// <c>meetings/</c> nothing on the machine can make it again, and in the spool it sits beside
+    /// the blocks it was poured out of. Somebody tidying the two into agreement breaks this.
+    /// </summary>
+    [Fact]
+    public void The_meetings_copy_and_the_spools_copy_of_one_name_answer_opposite_ways()
+    {
+        RecordingFiles.WhatIsInASpoolFolder(RecordingFiles.Recording).ShouldBe(SpoolFile.Poured);
+        ArtifactKind.Audio.OriginOf().ShouldBe(ArtifactOrigin.Source);
+    }
 
     [Fact]
     public void Nothing_is_not_a_file_name()
