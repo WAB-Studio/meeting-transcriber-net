@@ -48,7 +48,7 @@ public sealed class CaptureSource : IDisposable
     /// following a program is moved to the whole machine's audio when somebody chooses it, and a
     /// channel whose endpoint went away is moved onto whatever replaced it. What makes either one
     /// recording rather than two is that the spool and the meter carry straight on. Whether the
-    /// frame counter does is what tells the two handovers apart, and <see cref="MoveTo"/> reads
+    /// frame counter does is what tells the two handovers apart, and <see cref="ListenTo"/> reads
     /// that off the stream rather than off the destination.
     /// </summary>
     private WasapiStream stream;
@@ -228,8 +228,10 @@ public sealed class CaptureSource : IDisposable
     public LevelReading Level() => meter.Read();
 
     /// <summary>
-    /// Moves this source onto <paramref name="destination"/> without ending it: the same spool,
-    /// the same tally, the same meter, and packets laid out where the ones before them left off.
+    /// Puts this source on <paramref name="destination"/> without ending it: the same spool, the
+    /// same tally, the same meter, and packets laid out where the ones before them left off. Named
+    /// for what it leaves true — <see cref="Listening"/> is the destination once it returns —
+    /// because the channel is what moves and this is what the channel comes to be on.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -274,7 +276,7 @@ public sealed class CaptureSource : IDisposable
     /// somebody reads that as their notifications being there when they are not. The other way
     /// round is the same sentence with the truth in it, and it is the one this exists to prevent.
     /// </param>
-    internal void MoveTo(CaptureTarget destination, Action sayingSo)
+    internal void ListenTo(CaptureTarget destination, Action sayingSo)
     {
         ArgumentNullException.ThrowIfNull(destination);
         ArgumentNullException.ThrowIfNull(sayingSo);

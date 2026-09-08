@@ -325,7 +325,7 @@ public sealed class CaptureSession : IDisposable
     /// What the two devices number their frames in has nothing in common, so this is a stretch and
     /// not a continuation: the channel comes to name two devices over one meeting, and what stands
     /// between them is the audio nobody was handed while the changeover happened, recorded as the
-    /// gap it really was. <see cref="CaptureSource.MoveTo"/> is where that is decided.
+    /// gap it really was. <see cref="CaptureSource.ListenTo"/> is where that is decided.
     /// </para>
     /// <para>
     /// <b>Not on a thread somebody is looking at</b>, for the reason
@@ -495,7 +495,7 @@ public sealed class CaptureSession : IDisposable
     /// deadline of its own, and a folder saying a channel changed seconds before it did is a folder
     /// that is wrong about the one thing it was written to be right about.
     /// <para>
-    /// Nothing is caught. <see cref="CaptureSource.MoveTo"/> leaves the channel exactly where it
+    /// Nothing is caught. <see cref="CaptureSource.ListenTo"/> leaves the channel exactly where it
     /// was whatever went wrong, and there is nothing else here to put back: a move opens one device
     /// and starts nothing else, so a refusal is a recording still on what it was on and an ask that
     /// can be made again.
@@ -506,7 +506,7 @@ public sealed class CaptureSession : IDisposable
         var source = On(channel);
         var was = source.Listening.Name;
 
-        source.MoveTo(destination, () => SpoolChanges.Append(
+        source.ListenTo(destination, () => SpoolChanges.Append(
             folder,
             new SourceChanged(
                 UtcTimestamp.From(TimeProvider.System.GetUtcNow()),

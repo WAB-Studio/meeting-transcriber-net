@@ -673,12 +673,13 @@ public static class UnfinishedRecordings
 
         foreach (var file in NamesAPressLeaves(folder))
         {
-            file.Delete();
+            File.Delete(file.FullName);
         }
 
-        // Spelled through `Directory` rather than the handle already in hand, and never recursively:
-        // this is the spelling `UnfinishedRecordingsTests` greps for, and a folder removal this
-        // repository cannot grep for is one nobody is holding to the rule above.
+        // Both removals name the type they take, which is the convention `UnfinishedRecordingsTests`
+        // rests on: it reads text, and a handle already in hand says nothing about whether what is
+        // under it is a file or a folder. The folder still goes non-recursively, for the reason the
+        // refusal above gives.
         Directory.Delete(folder.FullName);
     }
 

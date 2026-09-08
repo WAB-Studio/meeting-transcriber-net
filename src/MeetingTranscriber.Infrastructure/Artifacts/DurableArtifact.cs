@@ -719,7 +719,7 @@ public sealed class StagedArtifact : IDisposable
                 // does not care about and this delete does. Taking it off is the same stance the
                 // vacate takes: what the corpus can produce again, the corpus removes.
                 file.IsReadOnly = false;
-                file.Delete();
+                File.Delete(file.FullName);
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
