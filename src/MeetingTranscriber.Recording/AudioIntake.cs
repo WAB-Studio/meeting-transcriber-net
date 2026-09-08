@@ -351,9 +351,20 @@ public static class AudioIntake
     /// Takes back the folder made for a mix down when nothing was filed into it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// It swallows what it cannot do, for the reason <see cref="BlockSpool.Erase"/> does: it runs
     /// on the way out of a filing that may already be failing, and what the caller has to hear is
     /// why that happened rather than that a directory would not go.
+    /// </para>
+    /// <para>
+    /// This is the second file named in
+    /// <c>UnfinishedRecordingsTests.Nothing_but_a_decision_about_one_recording_removes_a_folder</c>,
+    /// and this paragraph is what that entry rests on. What is taken back is the corpus meeting
+    /// folder <see cref="Bring"/> made for a mix down an instant earlier, under an id it minted
+    /// itself, and only while it holds nothing at all. Never a folder under <c>spool/</c>, so never
+    /// a recording somebody is still owed a decision about. A removal here that could reach one
+    /// takes this method off that list, not the list off this method.
+    /// </para>
     /// </remarks>
     private static void RemoveIfNothingLanded(DirectoryInfo folder)
     {
@@ -362,7 +373,7 @@ public static class AudioIntake
             folder.Refresh();
             if (folder.Exists && !folder.EnumerateFileSystemInfos().Any())
             {
-                folder.Delete();
+                Directory.Delete(folder.FullName);
             }
         }
         catch (Exception left) when (left is IOException or UnauthorizedAccessException)

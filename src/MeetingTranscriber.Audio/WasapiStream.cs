@@ -269,7 +269,7 @@ internal sealed class WasapiStream : IDisposable
 
             // The virtual device numbers nothing: every packet comes back at frame zero, measured
             // on this machine over ten seconds of a program playing a tone. See FramePositions for
-            // what stands in, and CaptureSource.MoveTo for why one is ever handed in.
+            // what stands in, and CaptureSource.ListenTo for why one is ever handed in.
             return Ready(
                 AudioChannel.Loopback,
                 activate(),

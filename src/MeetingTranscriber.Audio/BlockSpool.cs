@@ -319,7 +319,7 @@ public static class BlockSpool
             file.Refresh();
             if (file.Exists)
             {
-                file.Delete();
+                File.Delete(file.FullName);
             }
         }
         catch (Exception left) when (left is IOException or UnauthorizedAccessException)

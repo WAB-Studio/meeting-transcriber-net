@@ -214,7 +214,7 @@ public static class ArtifactReconciler
                 // refuses the delete the same way a live handle does, and a person reading "run
                 // this again once it has finished" would be running it forever.
                 file.IsReadOnly = false;
-                file.Delete();
+                File.Delete(file.FullName);
                 removed.Add(relativePath);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
