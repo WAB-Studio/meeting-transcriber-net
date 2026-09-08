@@ -357,13 +357,13 @@ public static class AudioIntake
     /// why that happened rather than that a directory would not go.
     /// </para>
     /// <para>
-    /// This is the second file named in
-    /// <c>UnfinishedRecordingsTests.Nothing_but_a_decision_about_one_recording_removes_a_folder</c>,
-    /// and this paragraph is what that entry rests on. What is taken back is the corpus meeting
-    /// folder <see cref="Bring"/> made for a mix down an instant earlier, under an id it minted
-    /// itself, and only while it holds nothing at all. Never a folder under <c>spool/</c>, so never
-    /// a recording somebody is still owed a decision about. A removal here that could reach one
-    /// takes this method off that list, not the list off this method.
+    /// What it takes back is the corpus meeting folder <see cref="Bring"/> made for a mix down an
+    /// instant earlier, under an id it minted itself, and only while it holds nothing at all. Never
+    /// a folder under <c>spool/</c>, so never a recording somebody is still owed a decision about.
+    /// That sentence is what the folder-removal guard in <c>UnfinishedRecordingsTests</c> allows
+    /// this file on, and it is the half of the allowance no sweep over text can check: the guard
+    /// sees which way a folder goes and never which folder. A removal here that could reach one
+    /// takes this method off that list rather than the list off this method.
     /// </para>
     /// </remarks>
     private static void RemoveIfNothingLanded(DirectoryInfo folder)

@@ -946,7 +946,11 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     /// A third entry, or a second way on an entry already here, is a folder removal somebody has to
     /// argue for. So is an entry that outlives its reason: a file allowed a way it no longer holds
     /// is named as an offender of its own, because an allow list can otherwise only ever go too
-    /// wide silently.
+    /// wide silently. That rule reaches exactly as far as the sweep does, and the sweep reads
+    /// comments — <c>UnfinishedRecordings.cs</c> holds <c>Directory.Move</c> as a real call and
+    /// again as a <c>see cref</c>, so retiring the call would leave the entry looking held by the
+    /// mention. What it catches is a file that stopped removing that way at all, which is the shape
+    /// a stale exemption actually arrives in; a last call that became a mention is not one it sees.
     /// </para>
     /// <para>
     /// The other half of a removal is not read here. A folder taken or renamed through a handle is
@@ -1003,7 +1007,8 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
             + "every directory removal and rename in src/ rather than only a recording's, because a "
             + "sweep over text cannot tell which folder a path is, and one that is not a recording's "
             + "is cheap to argue for. An entry allowed a way its file no longer holds is named too, "
-            + "so an exemption cannot outlive the line that earned it.");
+            + "so an exemption cannot outlive the line that earned it — if that is what you are "
+            + "reading, the answer is to delete the entry rather than to put a removal back.");
     }
 
     /// <summary>
@@ -1011,15 +1016,45 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     /// it takes. Nothing calls <c>Delete</c> or <c>MoveTo</c> on a handle.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// No allowed list, deliberately. A case for one is a case somebody argues for here in writing,
     /// and there is nothing in <c>src/</c> for this to trip over: the collision that used to cost
     /// <c>CaptureSession.cs</c> a file-level exemption across every spelling was a
     /// <c>CaptureSource</c> handover, and it is named <c>ListenTo</c> now.
+    /// </para>
+    /// <para>
+    /// What is banned is a <em>spelling</em>, not a receiver type, because text is all this reads.
+    /// So the ban is wider than the sentence above it in two directions worth knowing before the
+    /// day it goes red. A method of this codebase's own named <c>Delete</c> or <c>MoveTo</c>, called
+    /// on anything at all, is refused — <c>ProcessingJob</c>'s state transition sits inside the ban
+    /// today and survives on being called with no receiver — and the answer there is to rename it,
+    /// which is exactly what this change did to <c>CaptureSource</c>. And prose is refused on the
+    /// same terms: the sweep reads comments, so a doc comment under <c>src/</c> naming a handle
+    /// spelling with its parentheses is an offence like any other. Cite one without them.
+    /// </para>
+    /// <para>
+    /// What it cannot reach, all four by decision: P/Invoke, which could remove a folder past any
+    /// sweep over C#; <c>tests/</c>, which is outside <see cref="Tree"/> and takes its own temporary
+    /// folders down through handles on purpose; a method group or a <c>using static</c> plus a bare
+    /// call, neither of which puts a type and a parenthesis around the primitive where text can see
+    /// them; and the difference between a recursive folder delete and a plain one, which the ways
+    /// collapse into one. Nothing in <c>src/</c> writes any of them.
+    /// </para>
     /// </remarks>
     [Fact]
     public void Nothing_removes_or_renames_through_a_handle()
     {
-        var offenders = RemovalsInSources()
+        var removals = RemovalsInSources();
+
+        removals.ShouldContain(
+            found => found.Path.EndsWith("UnfinishedRecordings.cs", StringComparison.Ordinal),
+            "This test has no allowed list, so it is green over a clean tree and green over a sweep "
+            + "that read nothing, and it cannot tell the two apart on its own. The one decision that "
+            + "removes a recording is what it is held against: a sweep that cannot find that file "
+            + "has not found src/ either, and every removal guard here is passing over an empty "
+            + "list rather than over a repository.");
+
+        var offenders = removals
             .SelectMany(found => found.Ways
                 .Where(way => way is HandleDelete or HandleMoveTo)
                 .Select(way => $"{found.Path}: {way}"))
@@ -1032,7 +1067,11 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
             + "one this repository does not use — and the sweep above, which is what stands between "
             + "a person and a deleted recording, is only as good as that. Spell it "
             + "File.Delete(path), File.Move(from, to), Directory.Delete(path) or "
-            + "Directory.Move(from, to), with the type bare at the head of the expression.");
+            + "Directory.Move(from, to), with the type bare at the head of the expression. What is "
+            + "banned is the spelling and not the receiver, because text is all this reads: if what "
+            + "tripped it is a method of your own named Delete or MoveTo, or a doc comment citing "
+            + "one of these with its parentheses, the answer is to rename it or to cite it without "
+            + "them, not to widen this.");
     }
 
     /// <summary>
@@ -1040,16 +1079,28 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     /// rather than quietly narrowing what the two guards above see.
     /// </summary>
     /// <remarks>
-    /// The rows are the whole of the BCL's directory-removal surface — <c>Directory.Delete</c> in
-    /// both overloads, <c>Directory.Move</c>, <c>DirectoryInfo.Delete</c> in both,
-    /// <c>DirectoryInfo.MoveTo</c> — plus the four ways text can dress one up: a <c>new</c>
-    /// expression, a null-forgiven property, a plain property, and a fully qualified name. The last
-    /// is why the lookbehind is there: <c>System.IO.Directory.Delete(</c> reads as a handle call and
-    /// is therefore an offence, because the convention is the bare type name or nothing.
-    /// <b>Leaves out</b>, all three by decision rather than oversight: P/Invoke, which could remove
-    /// a folder past any sweep over C#; <c>tests/</c>, which removes its own temporary folders
-    /// through handles and is meant to; and a method group, which needs no parenthesis and so
-    /// matches neither arm.
+    /// <para>
+    /// The rows are the whole of the BCL's directory-removal surface — <c>Directory.Delete</c> and
+    /// <c>Directory.Move</c>, and the same two through a handle — plus the four ways text can dress
+    /// one up: a <c>new</c> expression, a null-forgiven property, a plain property, and a fully
+    /// qualified name. Both overloads of each delete are here, not because the pattern tells them
+    /// apart — it stops at the parenthesis and cannot — but because the sweep this replaced read
+    /// <c>Delete(recursive</c> as a spelling of its own, and these rows are what says the argument
+    /// list stopped mattering rather than leaving somebody to find out.
+    /// </para>
+    /// <para>
+    /// The last dressing is why the lookbehind is there: <c>System.IO.Directory.Delete(</c> reads as
+    /// a handle call and is therefore an offence, because the convention is the bare type name or
+    /// nothing. The plain property row is the other half of its work — <c>src/</c> reaches for
+    /// <c>FileInfo.Directory</c> in nine places today, all of them null-forgiven or matched out of a
+    /// pattern rather than called through, and without the lookbehind the first one written plainly
+    /// would read as the sanctioned static call and be waved into whatever file it sat in.
+    /// </para>
+    /// <para>
+    /// <b>Leaves out</b>, all by decision rather than oversight and all named in
+    /// <see cref="Nothing_removes_or_renames_through_a_handle"/>'s remarks: P/Invoke, <c>tests/</c>,
+    /// a method group, a <c>using static</c> plus a bare call, and the recursive flag.
+    /// </para>
     /// </remarks>
     [Theory]
     [InlineData("Directory.Delete(folder.FullName);", DirectoryDelete)]
@@ -1074,8 +1125,9 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     /// Every row exists in <c>src/</c> or is one spelling away from a line that does.
     /// <c>.OnDelete(DeleteBehavior.…)</c> is the near miss the sweep meets in bulk — forty-odd times
     /// in <c>CorpusDbContext.cs</c> — and it survives because the character before <c>Delete</c> is
-    /// <c>n</c>. The last two rows are what used to cost <c>CaptureSession.cs</c> a file-level
-    /// exemption.
+    /// <c>n</c>. The last row is what used to cost <c>CaptureSession.cs</c> a file-level exemption
+    /// across every spelling, and it is the one row here that asserts something the rename bought
+    /// rather than something the pattern never reached.
     /// </remarks>
     [Theory]
     [InlineData("File.Delete(file.FullName);", FileDelete)]
@@ -1083,10 +1135,8 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     [InlineData("one.Move();", "")]
     [InlineData("from.CanMoveTo(to);", "")]
     [InlineData("MoveTo(JobState.Running);", "")]
-    [InlineData("State.EnsureCanMoveTo(next);", "")]
     [InlineData(".OnDelete(DeleteBehavior.Cascade);", "")]
     [InlineData("source.ListenTo(destination, sayingSo);", "")]
-    [InlineData(@"<see cref=""CaptureSource.ListenTo""/>", "")]
     public void A_call_that_is_not_a_folder_removal_is_read_as_what_it_is(string line, string way)
     {
         string[] expected = way.Length == 0 ? [] : [way];
@@ -1158,45 +1208,36 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     /// </summary>
     /// <remarks>
     /// The <c>(?&lt;![.\w])</c> is load-bearing twice over. It is what tells
-    /// <c>Directory.Delete(path)</c> from a delete through a <c>FileInfo.Directory</c> property,
-    /// which this codebase reaches for in nine places today — without it a genuine handle call
-    /// through one of them would read as the sanctioned static call and be waved into an allowed
-    /// file. And
-    /// it is what makes "the bare type name, or nothing" a rule rather than a preference: a fully
-    /// qualified call reads as a handle call and is refused. The alternation is ordered and
-    /// <c>Matches</c> does not overlap, so a sanctioned call is consumed by the first arm and never
-    /// re-read by the second.
+    /// <c>Directory.Delete(path)</c> from a delete through a <c>FileInfo.Directory</c> property, so
+    /// a handle call written through one of those is not read as the sanctioned static call and
+    /// waved into an allowed file. And it is what makes "the bare type name, or nothing" a rule
+    /// rather than a preference: a fully qualified call reads as a handle call and is refused. The
+    /// alternation is ordered and <c>Matches</c> does not overlap, so a sanctioned call is consumed
+    /// by the first arm and never re-read by the second.
     /// </remarks>
     [GeneratedRegex(@"(?<![.\w])(?<type>File|Directory)\.(?<way>Delete|Move)\(|\.(?<handle>Delete|MoveTo)\(")]
     private static partial Regex Removals();
 
     /// <summary>
-    /// The distinct ways a removal is spelled in one piece of text, in the order they first appear.
-    /// Distinct, because a file holding three <c>Directory.Delete</c> calls is one answer.
+    /// The distinct ways a removal is spelled in one piece of text. Distinct, because a file holding
+    /// three <c>Directory.Delete</c> calls is one answer.
     /// </summary>
-    private static IReadOnlyList<string> WaysARemovalIsSpelledIn(string text)
-    {
-        var ways = new List<string>();
-
-        foreach (Match match in Removals().Matches(text))
-        {
-            var way = match.Groups["type"].Success
-                ? $"{match.Groups["type"].Value}.{match.Groups["way"].Value}"
-                : match.Groups["handle"].Value == "Delete" ? HandleDelete : HandleMoveTo;
-
-            if (!ways.Contains(way, StringComparer.Ordinal))
-            {
-                ways.Add(way);
-            }
-        }
-
-        return ways;
-    }
+    private static IReadOnlyList<string> WaysARemovalIsSpelledIn(string text) => Removals()
+        .Matches(text)
+        .Select(match => match.Groups["type"].Success
+            ? $"{match.Groups["type"].Value}.{match.Groups["way"].Value}"
+            : match.Groups["handle"].Value == "Delete" ? HandleDelete : HandleMoveTo)
+        .Distinct(StringComparer.Ordinal)
+        .ToList();
 
     /// <summary>
-    /// The one sweep both removal guards read: every source file that removes or renames anything,
+    /// The one sweep the two folder guards read: every source file that removes or renames anything,
     /// with the ways it does. The tree is classified once by one rule, and a guard only decides
-    /// which of the ways are its business — which is what stops the two from drifting apart.
+    /// which of the ways are its business — which is what stops the two from drifting apart the way
+    /// four substrings did. <see cref="Nothing_in_the_audio_engine_removes_a_file_it_did_not_just_create"/>
+    /// is not on it: its rule is a bare <c>Delete(</c> over one project, wider than any way here
+    /// because it catches a removal reached through a helper of the same class, and moving it onto
+    /// these ways would narrow it. That is a change to a guard this one did not come to touch.
     /// </summary>
     private static IReadOnlyList<(string Path, IReadOnlyList<string> Ways)> RemovalsInSources()
     {

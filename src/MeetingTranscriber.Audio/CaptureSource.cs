@@ -228,8 +228,10 @@ public sealed class CaptureSource : IDisposable
     public LevelReading Level() => meter.Read();
 
     /// <summary>
-    /// Moves this source onto <paramref name="destination"/> without ending it: the same spool,
-    /// the same tally, the same meter, and packets laid out where the ones before them left off.
+    /// Puts this source on <paramref name="destination"/> without ending it: the same spool, the
+    /// same tally, the same meter, and packets laid out where the ones before them left off. Named
+    /// for what it leaves true — <see cref="Listening"/> is the destination once it returns —
+    /// because the channel is what moves and this is what the channel comes to be on.
     /// </summary>
     /// <remarks>
     /// <para>
