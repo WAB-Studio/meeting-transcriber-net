@@ -1,6 +1,6 @@
 ---
 name: picker
-description: Chooses which cards go to the planner next, out of everything the user has marked buildable. Give it a ceiling on how many to return.
+description: Chooses which cards go to the planner next, out of every open issue that is defined and not waiting on a decision. Give it a ceiling on how many to return.
 tools: Bash, PowerShell, Read, Grep, Glob
 ---
 
@@ -19,13 +19,14 @@ The object at the end of this file, and nothing on disk.
 
 ## What the pool is
 
-**Every open issue labelled `grilled`.** That label is the user's word that the card is settled and
-can be built without asking anybody, and it is the only thing that puts a card in the pool. Nobody
-but the user puts it on.
+**Every open issue that is defined**, whatever labels it carries. Most work needs no permission: a
+card that settles nothing structural goes straight through.
 
-Out of the pool, whatever the label says:
+Out of the pool:
 
-- **Labelled `question`** — it waits on a decision that has not been made.
+- **Labelled `question`** — it names a decision the user has not made, and it stays out until they
+  make it. `grilled` is them making it. Only a card that needs a decision ever passes through those
+  two labels; the rest never sees either.
 - **Carrying an open pull request**, unless you were sent to continue it.
 - **`**Depends on:** #N` where `#N` is open.** The dependency is what decides, never the column.
 
@@ -68,7 +69,7 @@ finished.
 ## Commands
 
 ```powershell
-gh issue list --label grilled --state open --limit 200 --json number,title,labels,body
+gh issue list --state open --limit 300 --json number,title,labels,body
 gh issue view <n> --json number,title,body,labels,state,comments
 gh pr list --state open --json number,title,headRefName,body
 gh pr list --search "<task_id>" --state merged --json number,mergedAt,mergeCommit

@@ -32,6 +32,11 @@ A plan is not an instruction you follow past the point it stops being true. A pr
 falsifies, a test that pins something unreachable, a justification that is simply wrong: say so,
 build the right thing, and declare it.
 
+**Leaving the plan is not a fault; building the wrong thing is.** Nobody is measuring the diff
+against the plan. Write the `why` anyway, as the argument and not the trigger — what the plan
+assumed, what in the code says otherwise, why what you built is the answer — because it is what
+saves the next reader working it out.
+
 ## Output
 
 `<card_dir>/record.json` for each card, the object at the end of this file, written on every outcome
@@ -117,7 +122,8 @@ nothing else:
   "probes":             [{ "command": what you ran, verbatim, "passed": true | false }],
   "departures":         [{ "planned": what the plan said,
                            "did":     what you built,
-                           "why":     what forced it }],
+                           "why":     what the plan assumed, what in the code says otherwise, and
+                                      why what you built is the answer }],
   "decisions_deferred": [{ "what":          the fork,
                            "chose":         the answer,
                            "blocks_the_pr": true | false }],

@@ -86,15 +86,15 @@ When the work belongs to no claim — dependencies, cleanup, a formatting adjust
 
 ### Labels
 
-**Two say what it is, and two say whether it moves.** An issue is labelled by what is asked for, not
+**Two say what it is; the other two appear only on a card that needs a decision.** An issue is labelled by what is asked for, not
 by the diff that will come out: the `feat:`/`fix:` prefix belongs to the branch and the PR.
 
 | Label                               | When                                                      |
 | ----------------------------------- | --------------------------------------------------------- |
 | `enhancement` `bug` `documentation` | Type — exactly one                                        |
 | `F0` … `F8`                         | The ISA feature it belongs to — exactly one               |
-| `grilled`                           | The user's word that it can be built. Only they set it    |
-| `question`                          | Waits on a decision. Out of the pool until it is made     |
+| `question`                          | Names a decision the user has not made. Out of the pool   |
+| `grilled`                           | They made it. Only they set it, and only on such a card   |
 | `help wanted`                       | Depends on somebody outside. Say who                      |
 
 The `F` labels mirror `## Features` in `ISA.md` and are the only ones invented here; everything else
@@ -106,18 +106,22 @@ explaining the close matters more than the label.
 
 ## What is buildable
 
-Issues say what the work is. **`grilled` says what can be built** — the user puts it on when the
-card is settled, and it means: take this without asking anybody. **No agent puts it on and no agent
-takes it off.**
+**Most work needs no permission.** An issue that is defined is in the pool: a card that settles
+nothing structural — no contract, no schema, no name on disk, nothing a person using the app would
+experience differently — goes straight to a planner without anybody blessing it.
 
-The pool is every open issue carrying it, less three:
+Two labels, and a card only ever meets them when it does carry such a decision:
 
-- labelled `question` — it waits on a decision nobody has made
-- carrying an open pull request
-- `**Depends on:** #N` where `#N` is open
+- **`question`** — this card names a decision the user has not made. Out of the pool until they make
+  it. Whoever finds the decision puts it on, and puts the question where the user actually reads it.
+- **`grilled`** — the user has made it. That is the whole meaning: **only they set it**, and it is
+  needed on nothing else.
+
+The pool is every open issue less those, less any carrying an open pull request, less any whose
+`**Depends on:** #N` is still open.
 
 ```powershell
-gh issue list --label grilled --state open --limit 200 --json number,title,labels,body
+gh issue list --state open --limit 300 --json number,title,labels,body
 ```
 
 That runs over REST, so it answers when the project API does not — which is the reason nothing reads
@@ -137,6 +141,10 @@ Put a `Closes #N` line in every PR for every issue it closes.
 
 Never close an issue for merging. Merged is not confirmed: somebody runs the built app, or reads the
 probe that ran, and the evidence that closes the issue is the evidence that ticks its claim.
+
+**A merge is not the end of what a card owes.** Work that runs is merged and what is wrong with it
+is written line by line into `private/owed.md`, which the next planner reads and builds. Only code
+that does not run, or a fix of about fifteen lines, keeps a branch alive.
 
 **The cost is paid on the way in.** An issue starts as a title. `grilled` is this template filled
 in, replacing the body rather than stacking under it.
@@ -167,8 +175,9 @@ two of them. Never invent a screen to fill the line. A card missing one is not b
 label it carries, and the picker sends it back.
 
 **A card comes back when it turns out not to be defined** — whoever takes it finds a structural
-decision nobody made, or information the card does not carry. `grilled` comes off, its `Delivers` is
-replaced by what is missing, and it gets `question` when the decision is the user's. **The branch
+decision nobody made, or information the card does not carry. It gets `question`, its `Delivers` is
+replaced by what is missing, and the question goes where the user reads it rather than sitting on
+the card waiting to be found. **The branch
 survives with whatever landed on it**, and the card names it, so the work is not redone when the
 decision arrives. Coming back is the queue correcting itself; working around the
 gap is not.

@@ -23,6 +23,11 @@ Read `<batch_dir>/<task_id>/briefing.md` where it is present, and `review.md` wh
 means that plan already exists and is wrong, and every finding in it has to be answered by the plan
 you write now.
 
+**Read `private/owed.md` first.** It is what earlier batches merged and left wrong, written line by
+line by whoever found it. Every entry for a card you are planning goes into that card's plan as work
+to build, and every entry for a card you are not goes in `still_owed` untouched. Take nothing on
+trust: an entry written against a tree that has since moved is said in `decisions` and not built.
+
 ## Output
 
 `<batch_dir>/<task_id>/plan.md` for each card you planned, and `<batch_dir>/split.md`. Write them
@@ -131,6 +136,7 @@ Your final message is one JSON object and nothing else.
                         "answered":              [ each `review.md` finding, and how ],
                         "decisions":             [{ "what": the fork, "chose": the answer }],
                         "leaves_out":            [ each **Leaves out** line ] }],
+  "still_owed":      [ the `private/owed.md` entries no plan in this batch takes ],
   "dropped":         [{ "task_id": the card,
                         "outcome": "already_done" | "needs_grill" | "blocked" | "does_not_fit",
                         "why":     what it waits on, or what carried it }],
