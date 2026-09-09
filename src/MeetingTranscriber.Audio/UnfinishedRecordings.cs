@@ -37,6 +37,25 @@ public sealed record SurvivingSource(
 /// <param name="Discarded">Bytes at the end of the spool that were not a whole block.</param>
 public sealed record ExportedSource(AudioChannel Channel, FileInfo Wav, int Blocks, long Discarded);
 
+/// <summary>One source whose audio has no single playable file, and why it has none.</summary>
+/// <param name="Channel">Which of the two channels it fed.</param>
+/// <param name="Why">
+/// What <see cref="NoSinglePlaybackException"/> said: which two formats the source came to hold,
+/// that both stretches are still in its blocks, and what holds them as one recording.
+/// </param>
+public sealed record SourceWithNoPlayback(AudioChannel Channel, string Why);
+
+/// <summary>What taking a recording's audio out came to: what landed, and what could not.</summary>
+/// <param name="Exported">One per source that poured, in channel order.</param>
+/// <param name="NotMade">
+/// One per source that changed to a device handing over another format, in channel order. A source
+/// here is a source that is entirely fine — a WAV is one format all the way down and this one is
+/// two — so it is reported beside what landed rather than instead of it.
+/// </param>
+public sealed record TakenOut(
+    IReadOnlyList<ExportedSource> Exported,
+    IReadOnlyList<SourceWithNoPlayback> NotMade);
+
 /// <summary>
 /// A recording sitting in the folder recordings are written into, and the three things that may
 /// happen to it.
@@ -196,12 +215,23 @@ public sealed record UnfinishedRecording(
     /// </para>
     /// <para>
     /// Every destination is claimed from the file system before any audio is poured, and anything
-    /// that goes wrong afterwards takes back what this call made. Half of a recording somebody
-    /// asked for is worse than a refusal — worse still because the half that landed is what makes
-    /// the second attempt refuse the folder.
+    /// that goes wrong afterwards takes back what this call made — poured files included. Half of
+    /// a recording somebody asked for is worse than a refusal, worse still because the half that
+    /// landed is what makes the second attempt refuse the folder.
+    /// </para>
+    /// <para>
+    /// A source that came to hold two formats is the one thing that is not something going wrong,
+    /// so it is said in <see cref="TakenOut.NotMade"/> and what already landed stays. The rule
+    /// above would otherwise erase a channel 0 file that poured perfectly over a channel 1 device
+    /// somebody swapped headsets on, and that recording's audio could then not be taken out at
+    /// all. The refused source's half-poured file is taken back by
+    /// <see cref="BlockSpool.ToWav"/>, which is the one place that erases what it just wrote; what
+    /// that costs is one best-effort removal where the all-or-nothing path made two, and it is
+    /// accepted because the pour and the erase sit in the same method with nothing between them
+    /// that can fail.
     /// </para>
     /// </remarks>
-    public IReadOnlyList<ExportedSource> Export(DirectoryInfo into)
+    public TakenOut Export(DirectoryInfo into)
     {
         ArgumentNullException.ThrowIfNull(into);
         EnsureThereIsSomethingToDecide();
@@ -214,6 +244,8 @@ public sealed record UnfinishedRecording(
 
         into.Create();
         var claimed = new List<FileInfo>();
+        var exported = new List<ExportedSource>();
+        var notMade = new List<SourceWithNoPlayback>();
         try
         {
             foreach (var source in Sources)
@@ -225,18 +257,31 @@ public sealed record UnfinishedRecording(
                 claimed.Add(wav);
             }
 
-            return
-            [
-                .. Sources.Zip(claimed, (source, wav) =>
+            foreach (var (source, wav) in Sources.Zip(claimed))
+            {
+                try
                 {
                     var replayed = BlockSpool.ToWav(source.Blocks, wav);
 
                     // The handle answered whether the file was there before it held anything, and
                     // that answer is the one a caller would read off what came back.
                     wav.Refresh();
-                    return new ExportedSource(source.Channel, wav, replayed.Blocks, replayed.Discarded);
-                }),
-            ];
+                    exported.Add(
+                        new ExportedSource(source.Channel, wav, replayed.Blocks, replayed.Discarded));
+                }
+                catch (NoSinglePlaybackException cannot)
+                {
+                    // The one refusal that is not a failure of this call. The source is whole, the
+                    // name it claimed has already been taken back by the pour that stopped at the
+                    // seam, and every other source is still somebody's to have — so this is
+                    // reported and the rest of the export goes on. A spool that would not open at
+                    // all is the opposite and is deliberately not caught here: it takes everything
+                    // back below, because a torn artifact is not something to hand back half of.
+                    notMade.Add(new SourceWithNoPlayback(source.Channel, cannot.Message));
+                }
+            }
+
+            return new TakenOut(exported, notMade);
         }
         catch
         {

@@ -251,8 +251,8 @@ public sealed class WaitingRecordingsTests : IDisposable
 
         // The audio is still somebody's to take out, which is the whole reason it is on the list.
         var taken = waiting.Spooled.Export(new DirectoryInfo(Path.Combine(corpus.Root.FullName, "taken-out")));
-        taken.Count.ShouldBe(CapturedAudio.ChannelCount);
-        taken.ShouldAllBe(source => source.Wav.Exists && source.Blocks > 0);
+        taken.Exported.Count.ShouldBe(CapturedAudio.ChannelCount);
+        taken.Exported.ShouldAllBe(source => source.Wav.Exists && source.Blocks > 0);
     }
 
     /// <summary>
@@ -538,7 +538,7 @@ public sealed class WaitingRecordingsTests : IDisposable
 
         // And it is still somebody's to take out or throw away, which is why it is on the list.
         waiting.Spooled.Export(new DirectoryInfo(Path.Combine(corpus.Root.FullName, "taken-out")))
-            .Count.ShouldBe(CapturedAudio.ChannelCount);
+            .Exported.Count.ShouldBe(CapturedAudio.ChannelCount);
     }
 
     /// <summary>

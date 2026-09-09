@@ -205,14 +205,68 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
         Recorded("daily", both: true);
         var into = new DirectoryInfo(Path.Combine(root.FullName, "somewhere else"));
 
-        var exported = UnfinishedRecordings.At(Folder("daily")).Export(into);
+        var taken = UnfinishedRecordings.At(Folder("daily")).Export(into);
 
-        exported.Select(source => source.Wav.Name).ShouldBe(["loopback.wav", "microphone.wav"]);
-        exported.ShouldAllBe(source => source.Wav.Exists && source.Blocks > 0);
+        taken.Exported.Select(source => source.Wav.Name).ShouldBe(["loopback.wav", "microphone.wav"]);
+        taken.Exported.ShouldAllBe(source => source.Wav.Exists && source.Blocks > 0);
         into.EnumerateFiles("*.blocks").ShouldBeEmpty();
 
         Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
         SpoolManifest.Find(Folder("daily")).ShouldNotBeNull();
+    }
+
+    /// <summary>
+    /// ISC-124, over the recording this used to lose entirely. A microphone somebody swapped mid
+    /// meeting is one spool holding two formats and no single playable file — and that is a fact
+    /// about that source and about nothing else in the folder, so the loopback still comes out and
+    /// what came out stays out.
+    /// </summary>
+    [Fact]
+    public void A_source_that_changed_format_says_so_and_the_other_one_still_comes_out()
+    {
+        Recorded("daily", both: false);
+        SpoolThatChangedFormat(Folder("daily"), AudioChannel.Microphone);
+        var into = Folder("taken out");
+
+        var taken = UnfinishedRecordings.At(Folder("daily")).Export(into);
+
+        taken.Exported.Select(source => source.Channel).ShouldBe([AudioChannel.Loopback]);
+        taken.Exported[0].Wav.Exists.ShouldBeTrue();
+        taken.Exported[0].Blocks.ShouldBeGreaterThan(0);
+
+        taken.NotMade.Select(source => source.Channel).ShouldBe([AudioChannel.Microphone]);
+        taken.NotMade[0].Why.ShouldContain("microphone.blocks");
+
+        // The file that poured is still there, and nothing stands under the name that did not.
+        new FileInfo(Path.Combine(into.FullName, "loopback.wav")).Exists.ShouldBeTrue();
+        new FileInfo(Path.Combine(into.FullName, "microphone.wav")).Exists.ShouldBeFalse();
+
+        // And the recording is where it was, which is what taking one out means.
+        Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+        SpoolManifest.Find(Folder("daily")).ShouldNotBeNull();
+    }
+
+    /// <summary>
+    /// The same recording where every source changed device. Nothing came out, every source said
+    /// why, and the run is not a failure — an exit code that depended on how many of the two
+    /// happened to be two-format would make the same source red alone and green beside a good one.
+    /// The destination is still created, because the export ran; it just produced nothing.
+    /// </summary>
+    [Fact]
+    public void A_recording_whose_every_source_changed_format_comes_out_as_two_sentences()
+    {
+        Folder("daily").Create();
+        SpoolThatChangedFormat(Folder("daily"), AudioChannel.Loopback);
+        SpoolThatChangedFormat(Folder("daily"), AudioChannel.Microphone);
+        var into = Folder("taken out");
+
+        var taken = UnfinishedRecordings.At(Folder("daily")).Export(into);
+
+        taken.Exported.ShouldBeEmpty();
+        taken.NotMade.Select(source => source.Channel)
+            .ShouldBe([AudioChannel.Loopback, AudioChannel.Microphone]);
+        into.Exists.ShouldBeTrue();
+        into.EnumerateFiles().ShouldBeEmpty();
     }
 
     /// <summary>
@@ -541,7 +595,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
         // folding it into that property: only the discard waits, and it waits when it is pressed.
         recording.NothingToDecideYet.ShouldBeNull();
         recording.Keep().Count.ShouldBe(2);
-        recording.Export(Folder("out")).Count.ShouldBe(2);
+        recording.Export(Folder("out")).Exported.Count.ShouldBe(2);
 
         var refused = Should.Throw<AudioCaptureException>(recording.Discard);
         refused.Message.ShouldContain("reading the recording");
@@ -615,7 +669,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
 
         recording.NothingToDecideYet.ShouldBeNull();
         recording.Keep().Count.ShouldBe(2);
-        recording.Export(Folder("out")).Count.ShouldBe(2);
+        recording.Export(Folder("out")).Exported.Count.ShouldBe(2);
 
         // And the stale mark goes with the folder through the rename and the delete.
         recording.Discard();
@@ -647,7 +701,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
 
         recording.NothingToDecideYet.ShouldBeNull();
         recording.Keep().Count.ShouldBe(2);
-        recording.Export(Folder("out")).Count.ShouldBe(2);
+        recording.Export(Folder("out")).Exported.Count.ShouldBe(2);
 
         // Nothing is held, so nothing refuses the discard either — which is what there was to lose
         // in this folder, and it is what there was to lose before this mark existed.
@@ -906,7 +960,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
         recording.BeingSaved.ShouldBeFalse();
         recording.NothingToDecideYet.ShouldBeNull();
         recording.Keep().Count.ShouldBe(2);
-        recording.Export(Folder("out")).Count.ShouldBe(2);
+        recording.Export(Folder("out")).Exported.Count.ShouldBe(2);
 
         recording.Discard();
         Folder("daily").Exists.ShouldBeFalse();
@@ -1336,6 +1390,23 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
 
         return meeting;
     }
+
+    /// <summary>
+    /// A source whose device was replaced mid meeting by one handing over another format — one
+    /// spool, two stretches, which is what a channel somebody moved really is on disk.
+    /// </summary>
+    private static void SpoolThatChangedFormat(DirectoryInfo folder, AudioChannel channel) =>
+        Fabricated.Spool(
+            folder,
+            channel,
+            CheapMicrophone,
+            Fabricated
+                .Packets(
+                    channel, CheapMicrophone, CheapMicrophone.SampleRate, 0, 0.5, Fabricated.Bursts(0.25))
+                .Concat(Fabricated.TakingOver(
+                    StereoFloat,
+                    Fabricated.Packets(
+                        channel, StereoFloat, StereoFloat.SampleRate, 0.5, 1, Fabricated.Bursts(0.25)))));
 
     private void Spool(DirectoryInfo folder, AudioChannel channel, StreamFormat format)
     {
