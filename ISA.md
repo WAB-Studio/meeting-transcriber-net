@@ -1,7 +1,7 @@
 ﻿---
 phase: climbing
-progress: 152/217
-updated: 2026-09-03
+progress: 152/218
+updated: 2026-09-09
 ---
 
 # ISA — meeting-transcriber-net
@@ -152,6 +152,7 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-121: A recording whose channel 0 stopped following the program it was asked to says so in its own folder, and says when.
 - [ ] ISC-161: [DROPPED 2026-08-20: written and marked closed in the same pass as the code under it, over a folder contract no card decided, and what it said is not what its probe reached; the behaviour and its test stay.]
 - [x] ISC-122: Anti: what a recording's folder says about it is what was true when it started, and nothing that happens while it records rewrites it.
+- [ ] ISC-184: What a meeting's channel stopped following mid-recording, and from when, is in the corpus once the recording's own folder is gone.
 - [x] ISC-123: Every recording sitting in the folder recordings are written into is found again, each saying which meeting it is and what each of its sources holds.
 - [x] ISC-124: A recording waiting in that folder is kept, has its audio taken out, or is thrown away — and which of the three happens is somebody's choice every time.
 - [x] ISC-125: Anti: a recording waiting in that folder is removed by nothing but somebody choosing to remove it.
