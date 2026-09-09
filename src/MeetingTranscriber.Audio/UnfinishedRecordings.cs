@@ -1,5 +1,6 @@
 using System.Diagnostics;
 
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
@@ -35,6 +36,25 @@ public sealed record SurvivingSource(
 /// <param name="Blocks">Whole blocks poured into it.</param>
 /// <param name="Discarded">Bytes at the end of the spool that were not a whole block.</param>
 public sealed record ExportedSource(AudioChannel Channel, FileInfo Wav, int Blocks, long Discarded);
+
+/// <summary>One source whose audio has no single playable file, and why it has none.</summary>
+/// <param name="Channel">Which of the two channels it fed.</param>
+/// <param name="Why">
+/// What <see cref="NoSinglePlaybackException"/> said: which two formats the source came to hold,
+/// that both stretches are still in its blocks, and what holds them as one recording.
+/// </param>
+public sealed record SourceWithNoPlayback(AudioChannel Channel, string Why);
+
+/// <summary>What taking a recording's audio out came to: what landed, and what could not.</summary>
+/// <param name="Exported">One per source that poured, in channel order.</param>
+/// <param name="NotMade">
+/// One per source that changed to a device handing over another format, in channel order. A source
+/// here is a source that is entirely fine — a WAV is one format all the way down and this one is
+/// two — so it is reported beside what landed rather than instead of it.
+/// </param>
+public sealed record TakenOut(
+    IReadOnlyList<ExportedSource> Exported,
+    IReadOnlyList<SourceWithNoPlayback> NotMade);
 
 /// <summary>
 /// A recording sitting in the folder recordings are written into, and the three things that may
@@ -167,12 +187,17 @@ public sealed record UnfinishedRecording(
     }
 
     /// <summary>
-    /// Reads every source through and says what survived, changing nothing. The recording is still
-    /// there afterwards, which is what keeping it means.
+    /// Reads every source through and says what survived. Every block is still there afterwards,
+    /// which is what keeping it means — what this does write is the mark saying it is being read.
     /// </summary>
     public IReadOnlyList<SurvivingSource> Keep()
     {
+        // Asked before the mark, so that a folder whose save is running or whose capture is still
+        // writing does not get a file dropped into it by something that is about to be refused
+        // anyway. Both refusals reach their own sentence either way; what the order buys is that
+        // nothing is left behind on the way to one.
         EnsureThereIsSomethingToDecide();
+        using var reading = ReadingMark.Take(Folder);
 
         return [.. Sources.Select(Survived)];
     }
@@ -190,20 +215,40 @@ public sealed record UnfinishedRecording(
     /// </para>
     /// <para>
     /// Every destination is claimed from the file system before any audio is poured, and anything
-    /// that goes wrong afterwards takes back what this call made. Half of a recording somebody
-    /// asked for is worse than a refusal — worse still because the half that landed is what makes
-    /// the second attempt refuse the folder.
+    /// that goes wrong afterwards takes back what this call made — poured files included. Half of
+    /// a recording somebody asked for is worse than a refusal, worse still because the half that
+    /// landed is what makes the second attempt refuse the folder.
+    /// </para>
+    /// <para>
+    /// A source that came to hold two formats is the one thing that is not something going wrong,
+    /// so it is said in <see cref="TakenOut.NotMade"/> rather than thrown, and what landed for the
+    /// other sources stays. Nothing in this method erases the refused source's half-poured file:
+    /// <see cref="BlockSpool.ToWav"/> has already taken it back on its way out, and that is checked
+    /// here rather than trusted, because <see cref="BlockSpool.Erase"/> is best effort and a
+    /// truncated WAV standing beside a line saying it was not made is the one outcome worse than
+    /// refusing the whole call. A destination this leaves partly full is a destination the next
+    /// attempt refuses by name, which is the paragraph above and is why somebody asking again names
+    /// a folder of their own.
     /// </para>
     /// </remarks>
-    public IReadOnlyList<ExportedSource> Export(DirectoryInfo into)
+    public TakenOut Export(DirectoryInfo into)
     {
         ArgumentNullException.ThrowIfNull(into);
         EnsureThereIsSomethingToDecide();
+
+        // Before `into.Create()`, because the one thing a claim still refuses is the recording
+        // having been thrown away since this was found, and that refusal must not leave an empty
+        // destination folder behind. Outside the `try`, so the catch that erases what was claimed
+        // runs before the mark is let go of.
+        using var reading = ReadingMark.Take(Folder);
 
         into.Create();
         var claimed = new List<FileInfo>();
         try
         {
+            var exported = new List<ExportedSource>();
+            var notMade = new List<SourceWithNoPlayback>();
+
             foreach (var source in Sources)
             {
                 var wav = new FileInfo(Path.Combine(
@@ -213,18 +258,39 @@ public sealed record UnfinishedRecording(
                 claimed.Add(wav);
             }
 
-            return
-            [
-                .. Sources.Zip(claimed, (source, wav) =>
+            foreach (var (source, wav) in Sources.Zip(claimed))
+            {
+                try
                 {
                     var replayed = BlockSpool.ToWav(source.Blocks, wav);
 
                     // The handle answered whether the file was there before it held anything, and
                     // that answer is the one a caller would read off what came back.
                     wav.Refresh();
-                    return new ExportedSource(source.Channel, wav, replayed.Blocks, replayed.Discarded);
-                }),
-            ];
+                    exported.Add(
+                        new ExportedSource(source.Channel, wav, replayed.Blocks, replayed.Discarded));
+                }
+                catch (NoSinglePlaybackException cannot)
+                {
+                    // Narrow on purpose. A spool that would not open at all reaches the catch
+                    // below and takes everything back, because a torn artifact is not something to
+                    // hand back half of.
+                    wav.Refresh();
+                    if (wav.Exists)
+                    {
+                        throw new AudioCaptureException(
+                            $"The pour into '{wav.FullName}' stopped where the source changed "
+                            + "format, and what it had written is still there. A part of a source "
+                            + "under the name of the whole one is worse than no file at all, so "
+                            + "nothing of this export is left standing.",
+                            cannot);
+                    }
+
+                    notMade.Add(new SourceWithNoPlayback(source.Channel, cannot.Message));
+                }
+            }
+
+            return new TakenOut(exported, notMade);
         }
         catch
         {
@@ -261,8 +327,9 @@ public sealed record UnfinishedRecording(
     public void Discard()
     {
         // Both, and in this order, and neither of them is what makes this safe. The move below is
-        // the authority and these two are only the sentence — a save that starts between the check
-        // and the rename is refused by Windows on the rename, with the folder exactly as it was.
+        // the authority and these two are only the sentence — a save or a read that starts between
+        // the check and the rename is refused by Windows on the rename, with the folder exactly as
+        // it was.
         // They are here because somebody deciding about a meeting is owed a sentence about the
         // meeting rather than one about a rename.
         EnsureThereIsSomethingToDecide();
@@ -364,17 +431,6 @@ public static class UnfinishedRecordings
     /// </remarks>
     internal const int RemovalPatienceMilliseconds = 250;
 
-    /// <summary>
-    /// What a removal calls the folder it moves a recording into before it takes it away, in front
-    /// of the recording's own folder name.
-    /// </summary>
-    /// <remarks>
-    /// A name and not a <see cref="Guid"/>, deliberately: a unique one would be impossible to find
-    /// again, which is what would turn a machine dying inside a discard into rubbish nobody can
-    /// identify rather than something a person can see and delete.
-    /// </remarks>
-    private const string BeingRemoved = ".removing-";
-
     /// <summary>The two refusals that are somebody else still reading, and not an answer.</summary>
     private const int AccessDenied = unchecked((int)0x80070005);
     private const int SharingViolation = unchecked((int)0x80070020);
@@ -424,8 +480,8 @@ public static class UnfinishedRecordings
     }
 
     /// <summary>
-    /// Throws unless every one of this recording's files is a spool nobody is writing and nothing
-    /// is saving it.
+    /// Throws unless every one of this recording's files is a spool nobody is writing, and nothing
+    /// is saving it and nothing is reading it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -437,8 +493,8 @@ public static class UnfinishedRecordings
     /// </para>
     /// <para>
     /// This is asked for the sentence and not for the safety. What actually removes a recording is
-    /// a rename — <see cref="Remove"/> — and a rename either happens or does not, so a save that
-    /// starts after this line is refused with the folder exactly as it was. What that refusal
+    /// a rename — <see cref="Remove"/> — and a rename either happens or does not, so a save or a
+    /// read that starts after this line is refused with the folder exactly as it was. What that refusal
     /// cannot say is <em>which</em> of the things it is; that is what this is for, said while it is
     /// still possible to say it. The one thing here that is not a sentence is the spool opens: a
     /// file named like a spool that is not one is something no rename can tell apart, so this is
@@ -463,6 +519,17 @@ public static class UnfinishedRecordings
                 + "blocks it is reading are not something to throw away while it does. Once the "
                 + "save is over — or once the process running it is gone — throwing it away is "
                 + "open again.");
+        }
+
+        // Second, because a save is also a read of these blocks and has the more specific thing to
+        // tell somebody about what they are waiting for.
+        if (ReadingMark.IsHeldIn(recording.Folder))
+        {
+            throw new AudioCaptureException(
+                $"Something on this machine is reading the recording in '{recording.Folder.FullName}' "
+                + "right now — a list of what is waiting, a keep, or an export — and blocks somebody is "
+                + "reading are not something to throw away underneath them. Once the read is over — or "
+                + "once whatever is running it is gone — throwing it away is open again.");
         }
 
         foreach (var source in recording.Sources)
@@ -493,6 +560,9 @@ public static class UnfinishedRecordings
     /// in this engine wrote — another window reading the same recording, a prompt exporting it,
     /// something on the machine — stops it half way: the card and the changes are gone, and what
     /// survives is the file that caused the refusal. A rename either happens or does not.
+    /// <see cref="ReadingMark"/> now covers the first two of those three, which is what lets a
+    /// refusal name a reader; the rename stays the authority, and it is the only one for the holders
+    /// nothing here wrote — a scanner, a backup, a file manager.
     /// </para>
     /// <para>
     /// The folder moves one level down, into <c>.removing-&lt;its name&gt;</c> beside where it was.
@@ -529,7 +599,7 @@ public static class UnfinishedRecordings
                 $"Nothing was removed: there is nothing above '{folder.FullName}', so there is "
                 + "nowhere to move it aside to.");
 
-        var aside = new DirectoryInfo(Path.Combine(above.FullName, BeingRemoved + folder.Name));
+        var aside = new DirectoryInfo(Path.Combine(above.FullName, RecordingFiles.BeingRemovedPrefix + folder.Name));
 
         MakeTheAsideReady(aside, folder);
 
@@ -557,9 +627,9 @@ public static class UnfinishedRecordings
     /// <para>
     /// The question a sweep asks before it decides anything, and it is here rather than where the
     /// sweeping is because every name in it is written from this project. A folder a recording never
-    /// filled holds only files this engine makes before there is anything to record — the two marks,
-    /// a spool carrying its header and nothing else, the card, and the note of a channel somebody
-    /// moved — and anything else in it is either a recording or somebody's.
+    /// filled holds only files this engine makes before there is anything to record — the three
+    /// marks, a spool carrying its header and nothing else, the card, and the note of a channel
+    /// somebody moved — and anything else in it is either a recording or somebody's.
     /// </para>
     /// <para>
     /// It says what it found rather than yes or no, because whoever asks has to tell a person which
@@ -612,11 +682,17 @@ public static class UnfinishedRecordings
     /// end is the file system saying there was nothing else.
     /// </para>
     /// <para>
-    /// <b>The delete is the authority and the question above it is only the sentence.</b> A capture
+    /// <b>The delete is the authority and the question above it is only the sentence.</b> A press
     /// that claimed this folder between the two holds <see cref="CaptureMark"/> in a share mode that
     /// forbids unlinking, so the first delete throws and the folder stands with its meeting — which
     /// is why nothing here asks whether a mark is held. What Windows answers cannot be out of date;
     /// what a listing answered a moment ago can.
+    /// </para>
+    /// <para>
+    /// The claimant is the press and not the capture, which is what makes that hold. A meeting's
+    /// folder is claimed where it is made, in <c>MeetingRecordings.Open</c>, and the claim is
+    /// handed on to the session — so this runs into a mark from the moment the folder exists,
+    /// rather than from the moment a device is opened.
     /// </para>
     /// <para>
     /// This file holds two different answers to the same hazard and they are not in competition.
@@ -641,12 +717,13 @@ public static class UnfinishedRecordings
 
         foreach (var file in NamesAPressLeaves(folder))
         {
-            file.Delete();
+            File.Delete(file.FullName);
         }
 
-        // Spelled through `Directory` rather than the handle already in hand, and never recursively:
-        // this is the spelling `UnfinishedRecordingsTests` greps for, and a folder removal this
-        // repository cannot grep for is one nobody is holding to the rule above.
+        // Both removals name the type they take, which is the convention `UnfinishedRecordingsTests`
+        // rests on: it reads text, and a handle already in hand says nothing about whether what is
+        // under it is a file or a folder. The folder still goes non-recursively, for the reason the
+        // refusal above gives.
         Directory.Delete(folder.FullName);
     }
 
@@ -871,7 +948,15 @@ public static class UnfinishedRecordings
     /// </summary>
     /// <remarks>
     /// One list, read by the question and by the delete, so that the two cannot come to disagree
-    /// about what an empty folder is allowed to hold — and so that a third mark is one edit.
+    /// about what an empty folder is allowed to hold. A fourth mark is no longer the one edit the
+    /// third was: the type, a name in
+    /// <see cref="MeetingTranscriber.Domain.Artifacts.RecordingFiles"/> — which is where the names
+    /// these read come from — an arm in
+    /// <see cref="MeetingTranscriber.Domain.Artifacts.RecordingFiles.WhatIsInASpoolFolder"/>, and a
+    /// line here. Skipping the third is what put the second and third marks into <c>corpus check</c>
+    /// as recordings to recover, so it is not left to a count in a comment:
+    /// <c>RecordingFileNamesTests</c> fails on a name the engine declares and that method cannot
+    /// place.
     /// </remarks>
     private static FileInfo[] NamesAPressLeaves(DirectoryInfo folder) =>
     [
@@ -879,6 +964,7 @@ public static class UnfinishedRecordings
         SpoolManifest.In(folder),
         SpoolChanges.In(folder),
         new FileInfo(Path.Combine(folder.FullName, CaptureMark.FileName)),
+        new FileInfo(Path.Combine(folder.FullName, ReadingMark.FileName)),
         new FileInfo(Path.Combine(folder.FullName, SavingMark.FileName)),
     ];
 

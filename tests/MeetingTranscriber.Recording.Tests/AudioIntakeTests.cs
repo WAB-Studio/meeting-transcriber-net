@@ -354,7 +354,7 @@ public sealed class AudioIntakeTests : IDisposable
     {
         using var context = corpus.OpenMigrated();
 
-        var prepared = MeetingRecordings.Open(context, "es", now);
+        using var prepared = MeetingRecordings.Open(context, "es", now);
         Fabricated.Spools(prepared.Spool, seconds: 1);
         var playback = MeetingAudio.Materialise(prepared.Spool).File;
 
@@ -583,7 +583,7 @@ public sealed class AudioIntakeTests : IDisposable
         using var other = new TemporaryCorpus();
         using var context = other.OpenMigrated();
 
-        var prepared = MeetingRecordings.Open(context, "es", now);
+        using var prepared = MeetingRecordings.Open(context, "es", now);
         Fabricated.Spools(prepared.Spool, seconds: 1);
         MeetingRecordings.Finish(context, prepared.MeetingId, now);
 

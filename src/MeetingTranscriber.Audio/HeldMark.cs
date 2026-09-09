@@ -6,10 +6,13 @@ namespace MeetingTranscriber.Audio;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Two marks are made of this, so the mechanism is here and the meanings are theirs.
-/// <see cref="SavingMark"/> says a finish is reading a folder; <see cref="CaptureMark"/> says a
-/// capture is writing one. They differ in what they are called, in what a refusal has to say to
-/// somebody, and in nothing else — and the part they share is the part it would be dangerous to
+/// Three marks are made of this, so the mechanism is here and the meanings are theirs.
+/// <see cref="SavingMark"/> says a finish is writing a folder down into a meeting;
+/// <see cref="CaptureMark"/> says a capture is writing one; <see cref="ReadingMark"/> says a read
+/// of a spool folder is under way.
+/// They differ in what they are called, in what a refusal has to say to somebody, and in whether a
+/// second claimant is refused — which is <see cref="Take"/> against <see cref="Join"/> and nothing
+/// else. The part they share is the part it would be dangerous to
 /// have two of. <b>Held-ness, not existence</b>, is one decision: a mark that meant
 /// something by being there is one a process that died leaves behind for good, and the folder it
 /// names is then out of reach of every answer, permanently, because of a crash. Windows closes the
@@ -38,6 +41,14 @@ internal static class HeldMark
     /// is the length of a save or the length of a meeting, which is minutes or hours. Refusing one
     /// of those because somebody was looking at the list in that microsecond would cost the press
     /// rather than the meeting, and there is nothing to tell the person to do about it.
+    /// <para>
+    /// Still right for <see cref="Join"/>, where what it is waiting out is narrower: no
+    /// <see cref="Join"/> ever waits for another, so the handles it can collide with are
+    /// <see cref="IsHeldIn"/>'s own open — one open long — and whatever on the machine reads a file
+    /// without sharing writes, which is a scanner or a backup passing over a mark it has no reason
+    /// to hold. Neither of those is a holder worth failing a read over, which is why what
+    /// <see cref="ReadingMark"/> does after this wait runs out is go on reading rather than refuse.
+    /// </para>
     /// </remarks>
     private static readonly TimeSpan WaitsOutAQuestion = TimeSpan.FromSeconds(2);
 
@@ -47,7 +58,10 @@ internal static class HeldMark
     /// <remarks>
     /// The same shape <see cref="BlockSpool.IsStillBeingWritten"/> asks of a spool, and for the
     /// same reason: it asks for the file the way a reader does, so what refuses it is a holder that
-    /// will not let anything write — which is <see cref="Take"/> and nothing else. Two of these
+    /// will not let anything write — which is <see cref="Take"/> and <see cref="Join"/> and nothing
+    /// else. Both flavours hold <see cref="FileAccess.Write"/>, which this open's own
+    /// <see cref="FileShare.Read"/> does not permit, so widening what a claim shares did not widen
+    /// what this question sees. Two of these
     /// arriving together do not refuse each other, and a scanner or a backup passing over the file
     /// is not read as a holder.
     /// </remarks>
@@ -95,7 +109,30 @@ internal static class HeldMark
     /// </remarks>
     /// <exception cref="DirectoryNotFoundException">There is no folder to put the mark in.</exception>
     /// <exception cref="IOException">Something held it open throughout.</exception>
-    internal static FileStream Take(FileInfo mark)
+    internal static FileStream Take(FileInfo mark) => Claim(mark, FileShare.Read);
+
+    /// <summary>
+    /// Takes <paramref name="mark"/> beside anything else already holding it, and holds it until
+    /// the stream is let go of.
+    /// </summary>
+    /// <remarks>
+    /// For a mark whose meaning is that <em>somebody</em> is doing a thing rather than that exactly
+    /// one somebody is — which is <see cref="ReadingMark"/>, and which says why a read is that and a
+    /// save is not. Two holders each ask <see cref="FileAccess.Write"/> with
+    /// <see cref="FileShare.ReadWrite"/>, so each one's share permits the other's access and they
+    /// coexist. Windows applies a share mode per handle and not per process, so two claims taken
+    /// inside one process coexist the same way — which is what lets one command hold this across a
+    /// call that claims it again.
+    /// </remarks>
+    /// <exception cref="DirectoryNotFoundException">There is no folder to put the mark in.</exception>
+    internal static FileStream Join(FileInfo mark) => Claim(mark, FileShare.ReadWrite);
+
+    /// <summary>
+    /// The one mechanism both claims are, with <paramref name="besideIt"/> carrying the whole of
+    /// the difference between them: what a second claimant is allowed to ask for.
+    /// </summary>
+    /// <exception cref="DirectoryNotFoundException">There is no folder to put the mark in.</exception>
+    private static FileStream Claim(FileInfo mark, FileShare besideIt)
     {
         var waitingSince = Environment.TickCount64;
 
@@ -107,7 +144,7 @@ internal static class HeldMark
                 // process that died left, and that one says nothing about anybody. A live one is
                 // refused by the share mode and never by the name.
                 return new FileStream(
-                    mark.FullName, FileMode.Create, FileAccess.Write, FileShare.Read, bufferSize: 1);
+                    mark.FullName, FileMode.Create, FileAccess.Write, besideIt, bufferSize: 1);
             }
 
             // Before the wait and not inside it, because this one is an <see cref="IOException"/>

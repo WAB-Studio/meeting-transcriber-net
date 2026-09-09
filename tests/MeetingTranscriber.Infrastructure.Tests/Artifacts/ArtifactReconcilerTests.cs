@@ -263,16 +263,18 @@ public class ArtifactReconcilerTests
     }
 
     /// <summary>
-    /// Spool blocks are the only copy of audio that was never materialised. They are reported so
-    /// somebody decides, and nothing here deletes them or counts them as an artifact.
+    /// Blocks with no row may be the only copy of that audio. They are reported so somebody
+    /// decides, and nothing here deletes them or counts them as an artifact. What the finding may
+    /// not say is that the recording was never materialised or never filed — the reconciler knows
+    /// neither, and a saved meeting's spool folder is where both are false.
     /// </summary>
     [Fact]
-    public void Blocks_of_a_recording_that_was_never_materialised_are_reported_and_left_alone()
+    public void Blocks_in_the_spool_with_no_row_are_reported_and_left_alone()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context);
-        var block = Drop(corpus, $"spool/{meeting}/000001.block", "pcm");
+        var block = Drop(corpus, $"spool/{meeting}/loopback.blocks", "pcm");
 
         var finding = ArtifactReconciler.Check(context).ShouldHaveSingleItem();
         finding.State.ShouldBe(ArtifactState.Spooled);
@@ -302,6 +304,191 @@ public class ArtifactReconcilerTests
             "pcm");
 
         ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The card. A spool folder holds the blocks and the working files a recording writes beside
+    /// them, and only some of those are audio somebody could lose.
+    /// </summary>
+    [Fact]
+    public void A_spool_folders_own_working_files_are_not_a_recording_to_recover()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+
+        var carrying = new[] { "loopback.blocks", "microphone.blocks", "manifest.json", "changes.jsonl" }
+            .Select(name => Drop(corpus, $"spool/{meeting}/{name}", "written"))
+            .ToArray();
+
+        foreach (var mark in new[] { "capture.mark", "reading.mark", "saving.mark" })
+        {
+            Drop(corpus, $"spool/{meeting}/{mark}", string.Empty);
+        }
+
+        var findings = ArtifactReconciler.Check(context);
+
+        findings.Select(finding => finding.RelativePath).ShouldBe(carrying, ignoreOrder: true);
+        findings.ShouldAllBe(finding => finding.State == ArtifactState.Spooled);
+    }
+
+    /// <summary>
+    /// <c>audio.wav</c> beside its blocks is the recording those blocks were already poured into,
+    /// which is the exact opposite of one that was never made. Two files, two sentences.
+    /// </summary>
+    [Fact]
+    public void The_recording_poured_out_of_the_blocks_is_not_called_one_that_was_never_made()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var blocks = Drop(corpus, $"spool/{meeting}/loopback.blocks", "pcm");
+        var poured = Drop(corpus, $"spool/{meeting}/audio.wav", "riff");
+
+        var findings = ArtifactReconciler.Check(context);
+
+        findings.ShouldAllBe(finding => finding.State == ArtifactState.Spooled);
+        var aboutBlocks = findings.Single(finding => finding.RelativePath == blocks).Detail;
+        var aboutPoured = findings.Single(finding => finding.RelativePath == poured).Detail;
+
+        aboutPoured.ShouldNotBe(aboutBlocks);
+        aboutPoured.ShouldContain("poured out of");
+        aboutPoured.ShouldNotContain("only copy");
+        aboutBlocks.ShouldContain("only copy of that audio");
+    }
+
+    /// <summary>
+    /// The card says which meeting the blocks are and the changes file cannot: its records carry an
+    /// instant, a channel and a device and no meeting id at all. One sentence over both would be
+    /// false of one of them.
+    /// </summary>
+    [Fact]
+    public void What_a_recording_wrote_about_itself_is_not_called_its_audio()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var card = Drop(corpus, $"spool/{meeting}/manifest.json", "{}");
+        var changes = Drop(corpus, $"spool/{meeting}/changes.jsonl", "{}");
+
+        var findings = ArtifactReconciler.Check(context);
+
+        findings.ShouldAllBe(finding => finding.State == ArtifactState.Spooled);
+        var aboutCard = findings.Single(finding => finding.RelativePath == card).Detail;
+        var aboutChanges = findings.Single(finding => finding.RelativePath == changes).Detail;
+
+        aboutCard.ShouldContain("holds no audio");
+        aboutChanges.ShouldContain("holds no audio");
+        aboutCard.ShouldNotContain("only copy");
+        aboutChanges.ShouldNotContain("only copy");
+        aboutCard.ShouldContain("which meeting");
+        aboutChanges.ShouldNotContain("which meeting");
+        aboutChanges.ShouldContain("what somebody moved");
+    }
+
+    /// <summary>
+    /// Somebody else's file under the spool is somebody else's file. Being under that folder is not
+    /// what makes something part of a recording; the name is.
+    /// </summary>
+    [Fact]
+    public void A_file_nothing_recorded_is_still_a_file_with_no_row_under_the_spool()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var stray = Drop(corpus, $"spool/{meeting}/notes.txt", "what I have to ask about");
+
+        var finding = ArtifactReconciler.Check(context).ShouldHaveSingleItem();
+        finding.State.ShouldBe(ArtifactState.Unrecorded);
+        finding.RelativePath.ShouldBe(stray);
+        finding.Detail.ShouldContain("it may be the only copy");
+    }
+
+    /// <summary>
+    /// What the silence is and is not. It is not the product cleaning the folder up: nothing does,
+    /// docs/corpus.md says so, and deleting it by hand stays the only thing that ends it. What
+    /// changed is that <c>check</c> no longer offers a decision about a recording whose owner
+    /// pressed Discard and which nothing offers again.
+    /// </summary>
+    [Fact]
+    public void A_recording_somebody_threw_away_is_not_reported_at_all()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var thrownBlocks = Drop(corpus, $"spool/.removing-{meeting}/{meeting}/loopback.blocks", "pcm");
+        var thrownCard = Drop(corpus, $"spool/.removing-{meeting}/{meeting}/manifest.json", "{}");
+        var waiting = Drop(corpus, $"spool/{meeting}/loopback.blocks", "pcm");
+
+        var findings = ArtifactReconciler.Check(context);
+
+        findings.ShouldHaveSingleItem().RelativePath.ShouldBe(waiting);
+        findings.ShouldNotContain(
+            finding => finding.RelativePath.Contains(".removing-", StringComparison.Ordinal));
+
+        ArtifactReconciler.Sweep(context).Removed.ShouldBeEmpty();
+        CorpusFiles.Locate(corpus.Root, thrownBlocks).Exists.ShouldBeTrue();
+        CorpusFiles.Locate(corpus.Root, thrownCard).Exists.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The boundary of that silence, and both of the two states that cross it. A write that never
+    /// finished and a copy a replace set aside are swept wherever they are, so <c>check</c> has to
+    /// go on naming them — a sweep taking a file nothing ever reported is the two disagreeing. Both
+    /// arms are here because the skip has to sit below <em>both</em> branches, and one of them alone
+    /// leaves the other free to move.
+    /// </summary>
+    [Fact]
+    public void A_write_that_never_finished_under_a_discard_is_still_swept()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var thrown = $"spool/.removing-{meeting}/{meeting}";
+        var half = Drop(corpus, $"{thrown}/audio.wav{CorpusFiles.UnfinishedSuffix}", "half");
+
+        // A copy of a file a replace of this corpus set aside, whose destination is back, which is
+        // what makes a sweep take it.
+        var back = Drop(corpus, $"{thrown}/loopback.blocks", "pcm");
+        var aside = Drop(
+            corpus,
+            $"{thrown}/loopback.blocks.{Guid.NewGuid():n}{CorpusFiles.SupersededSuffix}",
+            "the copy before this one");
+
+        var findings = ArtifactReconciler.Check(context);
+
+        findings.Single(finding => finding.RelativePath == half)
+            .State.ShouldBe(ArtifactState.Unfinished);
+        findings.Single(finding => finding.RelativePath == aside)
+            .State.ShouldBe(ArtifactState.Superseded);
+
+        // And the blocks beside them stay silent, which is what says the skip is still under both.
+        findings.ShouldNotContain(finding => finding.RelativePath == back);
+
+        ArtifactReconciler.Sweep(context).Removed.ShouldBe([half, aside], ignoreOrder: true);
+        CorpusFiles.Locate(corpus.Root, half).Exists.ShouldBeFalse();
+        CorpusFiles.Locate(corpus.Root, aside).Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Being under the spool is not what makes a file part of a recording, and neither is being
+    /// under it somewhere. A recording's files sit directly in its own folder, which is the only
+    /// shape a row may be stored at, so anything deeper is a file with no row and is told that
+    /// rather than that it came out of blocks that are not there.
+    /// </summary>
+    [Fact]
+    public void A_file_further_down_than_a_recordings_folder_is_not_one_of_its_files()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var restored = Drop(corpus, $"spool/{meeting}/before-the-reinstall/loopback.blocks", "pcm");
+        var loose = Drop(corpus, "spool/audio.wav", "riff");
+
+        var findings = ArtifactReconciler.Check(context);
+
+        findings.Select(finding => finding.RelativePath).ShouldBe([loose, restored], ignoreOrder: true);
+        findings.ShouldAllBe(finding => finding.State == ArtifactState.Unrecorded);
     }
 
     [Fact]

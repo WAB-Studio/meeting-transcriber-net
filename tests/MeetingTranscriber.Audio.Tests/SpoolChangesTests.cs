@@ -214,6 +214,128 @@ public sealed class SpoolChangesTests : IDisposable
             .Message.ShouldContain(SpoolChanges.FileName);
     }
 
+    /// <summary>
+    /// The card's Delivers. A write that landed in part leaves bytes no line break follows, and
+    /// the retry that its failure provokes settles them instead of landing its JSON on their back,
+    /// so what is on disk is never the one shape the reader throws a whole folder away over — a
+    /// complete line that will not read with whole lines behind it.
+    /// </summary>
+    [Fact]
+    public void An_append_behind_a_torn_write_does_not_glue_itself_onto_it()
+    {
+        SpoolChanges.Append(folder, Moving());
+        File.AppendAllText(SpoolChanges.In(folder).FullName, "{\"at\":\"2026-08-15T10:1");
+
+        SpoolChanges.Append(folder, Moving() with
+        {
+            At = Moved + Duration.FromSeconds(90),
+            WasHearing = "msedge (pid 1000)",
+        });
+
+        var read = SpoolChanges.Find(folder);
+        read.Count.ShouldBe(2);
+        read[0].WasHearing.ShouldBe("teams (pid 8124)");
+        read[1].WasHearing.ShouldBe("msedge (pid 1000)");
+    }
+
+    /// <summary>
+    /// A tail that lost only its line break is dropped as readily as one cut through the middle,
+    /// because the same thing put both there: an append that threw. The write goes before the
+    /// channel hands over, so its failure is a move that did not happen — and terminating what it
+    /// left would make the folder name a move nobody made, permanently, with the retry's line
+    /// underneath saying the channel was still on the source the line above claims it had left.
+    /// </summary>
+    [Fact]
+    public void A_torn_write_is_dropped_even_when_all_but_its_line_break_landed()
+    {
+        SpoolChanges.Append(folder, Moving());
+        using (var trimming = SpoolChanges.In(folder).Open(FileMode.Open, FileAccess.Write))
+        {
+            trimming.SetLength(trimming.Length - Environment.NewLine.Length);
+        }
+
+        SpoolChanges.Append(folder, Moving() with
+        {
+            At = Moved + Duration.FromSeconds(90),
+            WasHearing = "msedge (pid 1000)",
+        });
+
+        SpoolChanges.Find(folder).ShouldHaveSingleItem()
+            .WasHearing.ShouldBe("msedge (pid 1000)");
+    }
+
+    /// <summary>
+    /// ISC-122 under the handle this needed. Opening in append mode was Windows refusing the seek;
+    /// what refuses it now is arithmetic, so this pins the arithmetic: with two changes already
+    /// down and a torn write behind them, settling the tail leaves every byte up to the last line
+    /// break exactly as it was. It is also what a search from the front of the file instead of the
+    /// back turns red — that mutation deletes every change but the first and every other fact here
+    /// stays green.
+    /// </summary>
+    [Fact]
+    public void Settling_a_tail_leaves_every_line_already_written_byte_for_byte()
+    {
+        SpoolChanges.Append(folder, Moving());
+        SpoolChanges.Append(folder, Moving() with
+        {
+            At = Moved + Duration.FromSeconds(90),
+            WasHearing = "msedge (pid 1000)",
+        });
+
+        var already = File.ReadAllBytes(SpoolChanges.In(folder).FullName);
+        File.AppendAllText(SpoolChanges.In(folder).FullName, "{\"at\":\"2026-08-15T10:1");
+
+        SpoolChanges.Append(folder, Moving() with
+        {
+            At = Moved + Duration.FromSeconds(180),
+            WasHearing = "zoom (pid 4400)",
+        });
+
+        var settled = File.ReadAllBytes(SpoolChanges.In(folder).FullName);
+        settled.Length.ShouldBeGreaterThan(already.Length);
+        settled[..already.Length].ShouldBe(already);
+
+        var read = SpoolChanges.Find(folder);
+        read.Count.ShouldBe(3);
+        read[0].WasHearing.ShouldBe("teams (pid 8124)");
+        read[1].WasHearing.ShouldBe("msedge (pid 1000)");
+        read[2].WasHearing.ShouldBe("zoom (pid 4400)");
+    }
+
+    /// <summary>
+    /// The likeliest tear of all, since most folders only ever hold one line: the first change was
+    /// the one cut in half, so there is no line break anywhere and the whole file is the fragment.
+    /// It is dropped and the next change starts the file again — the branch that truncates to
+    /// nothing, which a guard on "no line break found" would skip straight past.
+    /// </summary>
+    [Fact]
+    public void A_folder_whose_only_line_never_landed_starts_again_from_the_next_change()
+    {
+        File.WriteAllText(SpoolChanges.In(folder).FullName, "{\"at\":\"2026-08-15T10:1");
+
+        SpoolChanges.Append(folder, Moving());
+
+        SpoolChanges.Find(folder).ShouldHaveSingleItem()
+            .WasHearing.ShouldBe("teams (pid 8124)");
+    }
+
+    /// <summary>
+    /// Guarding the shape of the file rather than proving new behaviour. Settling the tail must
+    /// cost nothing when there is no tail to settle: a terminator written unconditionally would
+    /// leave a blank line between every pair of changes, in a file whose second job is being read
+    /// by a person holding nothing but the folder. It is also the only thing that says the
+    /// serializer never puts a line break inside a record, which both the writer and the reader
+    /// are built on and neither of them checks.
+    /// </summary>
+    [Fact]
+    public void An_ordinary_append_adds_one_line_and_nothing_else()
+    {
+        SpoolChanges.Append(folder, Moving());
+        SpoolChanges.Append(folder, Moving() with { At = Moved + Duration.FromSeconds(90) });
+
+        File.ReadAllLines(SpoolChanges.In(folder).FullName).Length.ShouldBe(2);
+    }
+
     public void Dispose()
     {
         try

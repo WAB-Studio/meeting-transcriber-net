@@ -191,6 +191,13 @@ public static class AudioCommands
             }
         }
 
+        // Everything below is a read of a folder the capture has just let go of, which is exactly a
+        // waiting recording: `Materialise` and then one `ToWav` per source, each holding one file
+        // and none of them holding the card. A discard typed in another window between two of them
+        // would rename the folder out from under this. The capture's own mark went with the session
+        // above, so this is what covers the stretch after it.
+        using var reading = ReadingMark.Take(folder);
+
         // Before the files to listen to, and that order is not cosmetic: those hold every sample at
         // the rate its device ran, so two of them are several times the recording itself. A machine
         // with room for the meeting and not for the diagnostics beside it must end up with the
@@ -299,13 +306,26 @@ public static class AudioCommands
 
         if (into is not null)
         {
-            foreach (var exported in recording.Export(new DirectoryInfo(into)))
+            var taken = recording.Export(new DirectoryInfo(into));
+
+            foreach (var exported in taken.Exported)
             {
                 Report.Line(output, $"{Name(exported.Channel)} taken out", Says(exported));
             }
 
+            foreach (var cannot in taken.NotMade)
+            {
+                Report.Line(output, $"{Name(cannot.Channel)} taken out", $"not made: {cannot.Why}");
+            }
+
             return Cli.Ok;
         }
+
+        // One hold over both halves. Making the recording the two sources become and reading each
+        // source through are one read at this prompt, and `Keep` joining this same mark rather than
+        // taking one of its own is what leaves no gap between them for a discard typed in another
+        // window to land in.
+        using var reading = ReadingMark.Take(recording.Folder);
 
         // A meeting is two sources on one timeline, so half of one is a folder somebody has to look
         // at rather than a recording to make half of. Either way every source that is there is

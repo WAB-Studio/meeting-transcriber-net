@@ -35,20 +35,33 @@ public sealed class MeetingRecording : IDisposable
 {
     private readonly CorpusDbContext corpus;
     private readonly CaptureSession session;
+
+    /// <summary>
+    /// The press this recording came out of, kept for what it says about the meeting and never for
+    /// its claim, which was handed to <see cref="session"/> before either device opened.
+    /// </summary>
+    /// <remarks>
+    /// Private, and what it holds is read out one answer at a time. It is an
+    /// <see cref="IDisposable"/> with nothing left in it to release, so handing it out would offer
+    /// a caller a <c>Dispose</c> that quietly does nothing and a <c>HandTheClaimOn</c> that throws
+    /// in the middle of a meeting — an affordance for a state nobody should be able to reach.
+    /// </remarks>
+    private readonly PreparedRecording prepared;
+
     private bool stopped;
 
     private MeetingRecording(CorpusDbContext corpus, CaptureSession session, PreparedRecording prepared)
     {
         this.corpus = corpus;
         this.session = session;
-        Prepared = prepared;
+        this.prepared = prepared;
     }
 
-    /// <summary>The meeting and the folder it is being recorded into.</summary>
-    public PreparedRecording Prepared { get; }
+    /// <summary>The folder this meeting is being recorded into.</summary>
+    public DirectoryInfo Spool => prepared.Spool;
 
     /// <summary>The meeting being recorded, settled before any audio of it existed.</summary>
-    public Guid MeetingId => Prepared.MeetingId;
+    public Guid MeetingId => prepared.MeetingId;
 
     /// <summary>What the recording wrote about itself when its devices opened.</summary>
     public SpoolCard Card => session.Card;
@@ -88,12 +101,22 @@ public sealed class MeetingRecording : IDisposable
 
         var prepared = MeetingRecordings.Open(corpus, language, now);
 
+        // The claim `Open` took over the folder is handed straight on, so the folder is held
+        // continuously from the press until the last device is let go of, with no instant in
+        // between for a launch's sweep to find it in. A local rather than an argument expression:
+        // the ownership of a file handle should not rest on argument evaluation order in a method
+        // whose whole job is an ordering. `prepared` is not disposed after this and must not be —
+        // there is nothing left in it to release, and reaching for it again would be a second owner
+        // of the handle the session is recording under.
+        var claimed = prepared.HandTheClaimOn();
+
         // Nothing catches this. A recording that could not open its devices leaves the meeting row
         // where it is: the row is the only thing that would say the attempt happened at all, and
         // taking it back here would be this type deleting from the corpus on a path where nothing
         // went wrong with the corpus. What it leaves is a meeting with no audio, which the meeting
-        // list and recovery both already have to be able to show.
-        var session = CaptureSession.Start(prepared.Spool, prepared.MeetingId, microphone, follow);
+        // list and recovery both already have to be able to show — and `StartUnder` let the claim
+        // go on its way out, so the folder is the sweep's again.
+        var session = CaptureSession.StartUnder(claimed, prepared.MeetingId, microphone, follow);
 
         try
         {

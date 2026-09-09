@@ -118,7 +118,7 @@ public sealed class Corpus
         var file = new FileInfo(DatabasePath);
         if (file.Exists && file.Length == 0)
         {
-            file.Delete();
+            File.Delete(file.FullName);
         }
     }
 

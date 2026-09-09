@@ -63,7 +63,7 @@ public static class RecordingCommands
             context, language, microphone, follow, Clock.Now());
 
         Report.Line(output, "meeting", recording.MeetingId.ToString());
-        Report.Line(output, "spool", recording.Prepared.Spool.FullName);
+        Report.Line(output, "spool", recording.Spool.FullName);
         Report.Line(output, "channel 0", recording.Card.Mode.ToString());
 
         foreach (var source in recording.Sources)
@@ -168,9 +168,16 @@ public static class RecordingCommands
 
         if (into is not null)
         {
-            foreach (var exported in recording.Spooled.Export(new DirectoryInfo(into)))
+            var taken = recording.Spooled.Export(new DirectoryInfo(into));
+
+            foreach (var exported in taken.Exported)
             {
                 Report.Line(output, $"{Name(exported.Channel)} taken out", exported.Wav.FullName);
+            }
+
+            foreach (var cannot in taken.NotMade)
+            {
+                Report.Line(output, $"{Name(cannot.Channel)} taken out", $"not made: {cannot.Why}");
             }
 
             return Cli.Ok;

@@ -343,7 +343,7 @@ public sealed class WaitingRowsTests : IDisposable
     /// </summary>
     private SpoolCard Killed(CorpusDbContext context, UtcTimestamp startedAt)
     {
-        var prepared = MeetingRecordings.Open(context, "es", startedAt);
+        using var prepared = MeetingRecordings.Open(context, "es", startedAt);
         var card = Fabricated.CardFor(prepared.MeetingId, startedAt);
 
         SpoolManifest.Write(prepared.Spool, card);

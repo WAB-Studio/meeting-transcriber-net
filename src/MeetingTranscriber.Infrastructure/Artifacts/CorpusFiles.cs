@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 
+using MeetingTranscriber.Domain.Artifacts;
+
 namespace MeetingTranscriber.Infrastructure.Artifacts;
 
 /// <summary>
@@ -40,10 +42,11 @@ public static class CorpusFiles
     /// copy of a file being replaced carries <see cref="SupersededSuffix"/> instead. Both wore this
     /// one until 2026-09-02, and what that cost was a sweep taking the last copy of a derived file
     /// out from under a replace — which is the argument against ever folding them back into one.
-    /// <c>MeetingAudio</c> spells this same string a second time, for the reason its own comment
-    /// gives.
+    /// The string itself is <see cref="RecordingFiles.UnfinishedSuffix"/>, because the audio engine
+    /// writes one of these into a folder this sweep walks and the two may not drift; what the
+    /// suffix claims, and that nothing else may end a file with it, is this type's and stays here.
     /// </remarks>
-    public const string UnfinishedSuffix = ".partial";
+    public const string UnfinishedSuffix = RecordingFiles.UnfinishedSuffix;
 
     /// <summary>
     /// What the old copy of a derived file is called while its destination stands empty, so a set
@@ -154,6 +157,63 @@ public static class CorpusFiles
     public static bool IsSuperseded(string relativePath) =>
         relativePath is not null
         && relativePath.EndsWith(SupersededSuffix, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Whether this stored path is inside a recording a discard moved aside.</summary>
+    /// <remarks>
+    /// <para>
+    /// Here rather than beside <see cref="RecordingFiles.BeingRemovedPrefix"/> because the prefix is
+    /// a name and this is the shape of the path it sits in, which is the stored-path form this type
+    /// owns. A removal renames the recording's folder into <c>.removing-&lt;id&gt;</c> beside where
+    /// it was and then moves the folder inside it, so the shortest path this holds of is
+    /// <c>spool/.removing-&lt;id&gt;/&lt;id&gt;/…</c> — three segments, which is why two is not
+    /// enough: a <em>file</em> called <c>.removing-something</c> dropped in the spool root is
+    /// somebody else's file and gets the answer somebody else's file gets.
+    /// </para>
+    /// <para>
+    /// Two comparisons and two answers. <see cref="StringComparison.Ordinal"/> on the
+    /// <see cref="Spool"/> segment, so that it agrees with <see cref="NameInASpoolFolder"/> rather
+    /// than half-agreeing: this is a spelling read back off the disk and not one this type composed,
+    /// so a corpus whose spool folder is cased differently turns both of them off together and
+    /// reports every file under it as one with no row, which is the safe answer, instead of
+    /// silencing a discarded recording while classifying the rest.
+    /// <see cref="StringComparison.OrdinalIgnoreCase"/> on the prefix, which is a folder name on a
+    /// Windows filesystem where two spellings are one folder, for the reason
+    /// <see cref="PathComparer"/> gives.
+    /// </para>
+    /// <para>
+    /// No artifact row can be under one: <see cref="EnsureBelongsTo"/> requires
+    /// <c>spool/{meetingId}/</c>, and <c>.removing-{id}</c> is not <c>{id}</c>.
+    /// </para>
+    /// </remarks>
+    internal static bool IsBeingRemoved(string relativePath)
+    {
+        var parts = Segments(relativePath);
+        return parts.Length >= 3
+            && string.Equals(parts[0], Spool, StringComparison.Ordinal)
+            && parts[1].StartsWith(RecordingFiles.BeingRemovedPrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The file's own name when this stored path is a file sitting directly in one recording's
+    /// spool folder, and null when it is anything else.
+    /// </summary>
+    /// <remarks>
+    /// It is what makes <see cref="RecordingFiles.WhatIsInASpoolFolder"/>'s precondition true at the
+    /// call site: that question is only answerable about a file beside a recording's blocks, and the
+    /// scan walks every folder under <see cref="Spool"/> to any depth. It is narrower than
+    /// <see cref="EnsureBelongsTo"/>, which admits a row at any depth below a recording's folder:
+    /// what holds the two together is <see cref="SpoolPathFor"/> being the only thing that composes a
+    /// spool row's path, and it composes exactly this shape. Anything deeper — a folder
+    /// somebody restored inside a recording's, a copy made before a reinstall — is a file with no
+    /// row and gets told that, rather than being told it came out of blocks that are not there.
+    /// </remarks>
+    internal static string? NameInASpoolFolder(string relativePath)
+    {
+        var parts = Segments(relativePath);
+        return parts.Length == 3 && string.Equals(parts[0], Spool, StringComparison.Ordinal)
+            ? parts[2]
+            : null;
+    }
 
     /// <summary>
     /// A name for a write on its way to <paramref name="destination"/>, beside it on the same
@@ -279,6 +339,9 @@ public static class CorpusFiles
 
         return Convert.ToHexStringLower(SHA256.HashData(content));
     }
+
+    /// <summary>A stored path in the parts the layout is made of.</summary>
+    private static string[] Segments(string relativePath) => relativePath.Split('/');
 
     private static string Named(string name)
     {

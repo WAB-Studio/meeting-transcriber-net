@@ -24,17 +24,32 @@ spool/<meeting_id>/
   manifest.json          source     what the recording said about itself when it started
   changes.jsonl          source     what somebody moved while it was recording, if anything
   <channel>.blocks       source     while the blocks are the only recoverable copy
-  capture.mark           neither    held while a capture is writing this folder, and empty
-  saving.mark            neither    held while a finish is reading this folder, and empty
+  audio.wav              derived    the recording these blocks were poured into, until the spool goes
+  <channel>.wav          derived    one source on its own, for listening to; poured again on demand
+  capture.mark           neither    held from the folder being claimed until the last device goes, and empty
+  reading.mark           neither    held while a list, a keep or an export reads these blocks through, and empty
+  saving.mark            neither    held while a finish is writing the meeting down, and empty
 spool/.removing-<meeting_id>/
   <meeting_id>/          neither    a recording somebody threw away, between the move and the delete
 ```
 
-**The two marks are neither, and that is not a mistake in the table.** Both hold no bytes and
+**The three marks are neither, and that is not a mistake in the table.** All three hold no bytes and
 nothing ever reads whether one is there. What each means is carried by a process having it open, so
 a backup that restored one would restore a fact that stopped being true when that process ended, and
-one that dropped it loses nothing. Nothing clears the one a crashed save or a crashed capture
-leaves, because a file nothing holds already reads as no save and no capture.
+one that dropped it loses nothing. Nothing clears the one a crashed save, a crashed capture or a
+crashed read leaves, because a file nothing holds already reads as no save, no capture and no read.
+
+**`audio.wav` is a source under `meetings/` and a derivative under `spool/`, and that is not a
+contradiction in the table.** What differs is what is beside each of them: in the spool folder the
+blocks it was poured out of are right there, and under `meetings/<meeting_id>/` there is no spool to
+pour it from again — which is why `Artifacts.OriginOf(ArtifactKind.Audio)` is `ArtifactOrigin.Source`
+and why the retention policy is about that copy.
+
+**What a backup of a spool folder carries is the blocks**, and both poured files come back from
+them. The three rows read against each other otherwise: the blocks are the only recoverable copy
+only while nothing has been poured out of them, and the poured files are derivatives only while the
+blocks are still beside them. Carrying the blocks resolves both. Carrying a poured file instead is
+keeping the audio and losing the source.
 
 **`spool/.removing-<meeting_id>/<meeting_id>/` is a recording somebody threw away, part-way out, and
 is neither too.** Throwing a recording away renames its folder into that one and then removes the
@@ -48,14 +63,28 @@ a delete that stayed refused. It holds whatever the delete had not reached yet, 
 whole recording or a part of one. **Nothing in the product ever cleans it**: the sweep of folders
 nothing was recorded into names it and removes nothing, and no second discard of that recording is
 reachable, because the recording is no longer under a name anything offers. Deleting it by hand is
-safe, and nothing volunteers that it is there — `recovery --sweep` lists it among what it left, and
-otherwise it is visible only to somebody looking at the folder.
+safe. `check` says nothing about the recording in it, on purpose: what is in it is a recording whose
+owner already said to throw it away, nothing offers it again and nothing cleans it, so a line about
+it never goes away however anybody acts on it, and a check that stands red stops being read. The two
+things it still reports from in there are a write that never finished and a copy a replace set
+aside, because `sweep` takes those wherever they are and the two commands may not disagree about a
+file.
 
-`capture.mark` is taken before the first device is opened and let go of with the last one, and it
+`capture.mark` is taken by whatever makes the folder — in `MeetingRecordings.Open` for a meeting
+recorded into a corpus, and in `CaptureSession.Start` for a capture into a folder somebody named at
+a prompt — and let go of with the last device, the press handing it on to the session in between. It
 covers the one stretch a folder holding a recording is indistinguishable from a folder holding
 nothing: between the folder being made and the first spool file landing in it, there is nothing in
 it at all. After that the blocks say it themselves. It is what lets a start sweep away the meeting a
 press left behind when the recording never started, without ever sweeping one that is starting.
+
+`reading.mark` is held for the whole of a read and covers the window the file system cannot see on
+its own. Reading a recording through is one source at a time, and the card and the changes are held
+by nobody, so between the two sources there is an instant in which somebody is reading and nothing
+in the folder is open at all — long enough for a discard typed in another window to rename the
+folder out from under the read. One file held across the whole pass closes that, and it is what
+turns a discard arriving during a read into a refusal that says somebody is reading the recording.
+A listing takes it too, because a listing reads every block of every waiting recording.
 
 `changes.jsonl` is a source for the reason the card beside it is, and it is the half the card
 cannot hold: the card is written once and says what each channel opened on, so a channel somebody

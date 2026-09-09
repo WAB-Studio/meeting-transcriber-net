@@ -1,5 +1,6 @@
 using System.Reflection;
 
+using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
@@ -498,6 +499,62 @@ public class CommandLineTests
         // exception they have no way of seeing. It is the sentence the unwrapped path prints.
         Inside("Said").Invoke(null, [wrapped]).ShouldBe("SQLite Error 5: 'database is locked'.");
     }
+
+    /// <summary>
+    /// The card's proof, end to end. A spool folder holds working files beside the blocks, and
+    /// <c>check</c> used to call every one of them a block of a recording that was never
+    /// materialised — advice to recover something, printed over a mark that holds no bytes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>held: true</c> is a save in flight; <c>held: false</c> is a save that died and left the
+    /// file behind, which nothing ever clears. To <c>check</c> those are one file — it never opens
+    /// one — and the theory says so rather than leaving somebody to work it out. The files are
+    /// written as plain text for that same reason: the name is the whole input, and the names
+    /// themselves are pinned against the real engine by <c>RecordingFileNamesTests</c>.
+    /// </para>
+    /// <para>
+    /// The blocks and the card are still reported and the command still exits
+    /// <see cref="Cli.Refused"/>, and that is asserted rather than hidden: nothing removes a spool
+    /// folder once the meeting is filed, so a corpus that has ever saved a meeting stands red until
+    /// #90 ends it. What this card is about is that the mark is not one of the lines and that every
+    /// line there is true.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_mark_a_save_is_holding_is_not_named_as_a_recording_to_recover(bool held)
+    {
+        using var corpus = new TemporaryCorpus();
+        var root = corpus.Root.FullName;
+        CommandLine.Of("migrate", "--corpus", root);
+
+        var meeting = Guid.NewGuid();
+        var folder = CorpusFiles.SpoolFolderFor(corpus.Root, meeting);
+        folder.Create();
+        Spooled(folder, BlockSpool.FileFor(folder, AudioChannel.Loopback).Name, "blocks");
+        Spooled(folder, BlockSpool.FileFor(folder, AudioChannel.Microphone).Name, "blocks");
+        Spooled(folder, SpoolManifest.FileName, "{}");
+
+        using var saving = held ? SavingMark.Take(folder) : null;
+        if (!held)
+        {
+            Spooled(folder, SavingMark.FileName, string.Empty);
+        }
+
+        var run = CommandLine.Of("check", "--corpus", root);
+
+        run.Code.ShouldBe(Cli.Refused);
+        run.Output.ShouldNotContain(SavingMark.FileName);
+        run.Output.ShouldContain($"{ArtifactState.Spooled}");
+        run.Output.ShouldContain(BlockSpool.FileFor(folder, AudioChannel.Loopback).Name);
+        run.Output.ShouldNotContain("never materialised");
+    }
+
+    /// <summary>A file beside a recording's blocks, put there without the engine.</summary>
+    private static void Spooled(DirectoryInfo folder, string name, string text) =>
+        File.WriteAllText(Path.Combine(folder.FullName, name), text);
 
     /// <summary>
     /// One of the two the refusal contract is made of. They are private because nothing outside

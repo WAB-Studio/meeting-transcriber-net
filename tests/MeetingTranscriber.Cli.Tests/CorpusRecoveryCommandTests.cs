@@ -23,8 +23,6 @@ namespace MeetingTranscriber.Cli.Tests;
 /// </remarks>
 public sealed class CorpusRecoveryCommandTests : IDisposable
 {
-    private static readonly StreamFormat Format = new(48_000, 1, 16, SampleEncoding.Pcm);
-
     private readonly TemporaryCorpus corpus = new();
     private readonly UtcTimestamp startedAt = UtcTimestamp.Parse("2026-08-18T09:41:07.250Z");
 
@@ -234,22 +232,56 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
     }
 
     /// <summary>
-    /// The listing is a listing. It reads the card and the size of each spool and touches nothing,
-    /// so a start after a crash costs the same whether somebody decides anything or not.
+    /// A listing decides nothing and removes nothing, so a start after a crash leaves a person
+    /// exactly what they had whether they decide anything or not.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Compared by content and not by length, which is strictly stronger and is what
+    /// <c>WaitingRecordingsTests.OnDisk</c> already does for this job.
+    /// </para>
+    /// <para>
+    /// <c>reading.mark</c> is left out of the comparison, and the two marks beside it deliberately
+    /// are not: a <c>saving.mark</c> appearing under a listing, or the <c>capture.mark</c>
+    /// <see cref="Killed"/> left behind changing under one, would be a serious defect and this is
+    /// where it would show. That mark is the press's own, stranded when the press let it go, which
+    /// is what a machine that died mid-recording really leaves — so it is in both halves of the
+    /// comparison rather than in neither. The listing really does produce the reading
+    /// mark — it reads every block of every waiting recording, and that is what the mark says. What
+    /// it is not is a decision: it holds no bytes, nothing reads whether it is there, and
+    /// <c>docs/corpus.md</c> calls it neither a source nor a derivative. Every byte a person could
+    /// lose is still compared.
+    /// </para>
+    /// </remarks>
     [Fact]
     public void Listing_what_is_waiting_decides_nothing_and_removes_nothing()
     {
         var meeting = Killed();
         var folder = CorpusFiles.SpoolFolderFor(corpus.Root, meeting);
-        var before = folder.GetFiles().Select(file => $"{file.Name} {file.Length}").Order().ToArray();
+
+        var before = Contents(folder);
 
         CommandLine.Of("recovery", "--corpus", Root).Code.ShouldBe(Cli.Ok);
         CommandLine.Of("recovery", "--corpus", Root).Code.ShouldBe(Cli.Ok);
 
-        folder.Refresh();
-        folder.GetFiles().Select(file => $"{file.Name} {file.Length}").Order().ShouldBe(before);
+        Contents(folder).ShouldBe(before);
+        ReadingMark.IsHeldIn(folder).ShouldBeFalse("the listing let the folder go");
         MeetingAudio.In(folder).Exists.ShouldBeFalse();
+    }
+
+    /// <summary>Every file a listing could lose somebody, by name and by content.</summary>
+    private static string[] Contents(DirectoryInfo folder)
+    {
+        folder.Refresh();
+
+        return
+        [
+            .. folder.GetFiles()
+                .Where(file => !string.Equals(
+                    file.Name, ReadingMark.FileName, StringComparison.OrdinalIgnoreCase))
+                .Select(file => $"{file.Name} {CorpusFiles.Sha256Of(file)}")
+                .Order(StringComparer.Ordinal),
+        ];
     }
 
     [Fact]
@@ -266,6 +298,29 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
         new FileInfo(Path.Combine(into, "microphone.wav")).Exists.ShouldBeTrue();
 
         // Taking it out is not deciding about it: it is still there for somebody to keep.
+        CommandLine.Of("recovery", "--corpus", Root).Value("meeting").ShouldBe(meeting.ToString());
+    }
+
+    /// <summary>
+    /// A microphone somebody swapped mid meeting used to cost the whole export, channel 0's file
+    /// included. It costs its own file and a sentence, and the recording is still waiting.
+    /// </summary>
+    [Fact]
+    public void A_source_that_changed_format_costs_its_own_file_and_nothing_else()
+    {
+        var meeting = Killed(microphoneChangedFormat: true);
+        var into = Path.Combine(Root, "taken out");
+
+        var run = CommandLine.Of(
+            "recovery", "--corpus", Root, "--meeting", meeting.ToString(), "--export", into);
+
+        run.Code.ShouldBe(Cli.Ok, run.Error);
+        run.Value("others taken out").ShouldContain("loopback.wav");
+        run.Value("me taken out").ShouldStartWith("not made: ");
+        new FileInfo(Path.Combine(into, "loopback.wav")).Exists.ShouldBeTrue();
+        new FileInfo(Path.Combine(into, "microphone.wav")).Exists.ShouldBeFalse();
+
+        // Taking it out is still not deciding about it.
         CommandLine.Of("recovery", "--corpus", Root).Value("meeting").ShouldBe(meeting.ToString());
     }
 
@@ -304,7 +359,7 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
         folder.Refresh();
         folder.Exists.ShouldBeTrue();
         folder.EnumerateFiles().Select(file => file.Name).Order(StringComparer.Ordinal)
-            .ShouldBe(["loopback.blocks", "manifest.json", "microphone.blocks"]);
+            .ShouldBe(["capture.mark", "loopback.blocks", "manifest.json", "microphone.blocks"]);
 
         // Still offered, and nothing left beside it.
         CommandLine.Of("recovery", "--corpus", Root).Value("meeting").ShouldBe(meeting.ToString());
@@ -416,11 +471,16 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
     /// A meeting recorded up to the moment the machine died: the row, the folder, the card, the
     /// row describing the run, whole blocks, and a last one cut off inside itself.
     /// </summary>
-    private Guid Killed()
+    /// <param name="microphoneChangedFormat">
+    /// Whether the microphone was replaced mid meeting by a device handing over another format,
+    /// which is one spool holding two stretches and no single file it can be poured into. The
+    /// ordinary recording is the other one: whole blocks and a last one cut off inside itself.
+    /// </param>
+    private Guid Killed(bool microphoneChangedFormat = false)
     {
         using var context = corpus.OpenMigrated();
 
-        var prepared = MeetingRecordings.Open(context, "es", startedAt);
+        using var prepared = MeetingRecordings.Open(context, "es", startedAt);
         var card = new SpoolCard(
             prepared.MeetingId,
             Guid.NewGuid(),
@@ -436,8 +496,15 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
         MeetingRecordings.Began(context, card);
 
         Spool(prepared.Spool, AudioChannel.Loopback);
-        Spool(prepared.Spool, AudioChannel.Microphone);
-        CutOffMidBlock(BlockSpool.FileFor(prepared.Spool, AudioChannel.Microphone));
+        if (microphoneChangedFormat)
+        {
+            Spools.ThatChangedFormat(prepared.Spool, AudioChannel.Microphone);
+        }
+        else
+        {
+            Spool(prepared.Spool, AudioChannel.Microphone);
+            CutOffMidBlock(BlockSpool.FileFor(prepared.Spool, AudioChannel.Microphone));
+        }
 
         return prepared.MeetingId;
     }
@@ -457,14 +524,14 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
 
     private static void Spool(DirectoryInfo folder, AudioChannel channel)
     {
-        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Format);
+        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Spools.Format);
         for (var block = 0; block < 10; block++)
         {
             writer.Write(new CapturePacket(
                 channel,
                 block * 480L,
                 MonotonicInstant.FromMilliseconds(block * 10d),
-                new byte[480 * Format.BytesPerSample]));
+                new byte[480 * Spools.Format.BytesPerSample]));
         }
     }
 

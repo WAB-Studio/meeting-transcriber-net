@@ -1,4 +1,7 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
@@ -13,7 +16,7 @@ namespace MeetingTranscriber.Audio.Tests;
 /// the process leaves. No device is opened: what is being probed is the decision, and a decision
 /// that needed hardware to test would be one nobody could hold to.
 /// </remarks>
-public sealed class UnfinishedRecordingsTests : IDisposable
+public sealed partial class UnfinishedRecordingsTests : IDisposable
 {
     /// <summary>
     /// How long the handle is held once a discard has started, in the one test that asserts the
@@ -202,12 +205,44 @@ public sealed class UnfinishedRecordingsTests : IDisposable
         Recorded("daily", both: true);
         var into = new DirectoryInfo(Path.Combine(root.FullName, "somewhere else"));
 
-        var exported = UnfinishedRecordings.At(Folder("daily")).Export(into);
+        var taken = UnfinishedRecordings.At(Folder("daily")).Export(into);
 
-        exported.Select(source => source.Wav.Name).ShouldBe(["loopback.wav", "microphone.wav"]);
-        exported.ShouldAllBe(source => source.Wav.Exists && source.Blocks > 0);
+        taken.Exported.Select(source => source.Wav.Name).ShouldBe(["loopback.wav", "microphone.wav"]);
+        taken.Exported.ShouldAllBe(source => source.Wav.Exists && source.Blocks > 0);
+        taken.NotMade.ShouldBeEmpty();
         into.EnumerateFiles("*.blocks").ShouldBeEmpty();
 
+        Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+        SpoolManifest.Find(Folder("daily")).ShouldNotBeNull();
+    }
+
+    /// <summary>
+    /// ISC-124, over the recording this used to lose entirely. A microphone somebody swapped mid
+    /// meeting is one spool holding two formats and no single playable file — and that is a fact
+    /// about that source and about nothing else in the folder, so the loopback still comes out and
+    /// what came out stays out.
+    /// </summary>
+    [Fact]
+    public void A_source_that_changed_format_says_so_and_the_other_one_still_comes_out()
+    {
+        Recorded("daily", both: false);
+        SpoolThatChangedFormat(Folder("daily"), AudioChannel.Microphone);
+        var into = Folder("taken out");
+
+        var taken = UnfinishedRecordings.At(Folder("daily")).Export(into);
+
+        taken.Exported.Select(source => source.Channel).ShouldBe([AudioChannel.Loopback]);
+        taken.Exported[0].Wav.Exists.ShouldBeTrue();
+        taken.Exported[0].Blocks.ShouldBeGreaterThan(0);
+
+        taken.NotMade.Select(source => source.Channel).ShouldBe([AudioChannel.Microphone]);
+        taken.NotMade[0].Why.ShouldContain("microphone.blocks");
+
+        // The file that poured is still there, and nothing stands under the name that did not.
+        new FileInfo(Path.Combine(into.FullName, "loopback.wav")).Exists.ShouldBeTrue();
+        new FileInfo(Path.Combine(into.FullName, "microphone.wav")).Exists.ShouldBeFalse();
+
+        // And the recording is where it was, which is what taking one out means.
         Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
         SpoolManifest.Find(Folder("daily")).ShouldNotBeNull();
     }
@@ -448,6 +483,272 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// The card's proof, at the engine, with two real processes: one standing over a folder it is
+    /// reading and one discarding it, and the folder survives with everything in it.
+    /// </summary>
+    /// <remarks>
+    /// Two processes because that is the situation — one window at a prompt, another typing the
+    /// discard — and because nothing inside one process reaches it: the reading mark is shared, so
+    /// a hold taken here would be joined rather than met. The kill runs in a <c>finally</c> for the
+    /// reason <c>SavingMarkTests</c> gives.
+    /// </remarks>
+    [Fact]
+    public void A_recording_somebody_else_is_reading_is_not_thrown_away_under_them()
+    {
+        Recorded("daily", both: true);
+
+        // The other process opens with `Open` and never `Create`, so the mark has to be on disk
+        // before it starts — and on both sides of the snapshot below, so this is not what the
+        // comparison catches.
+        ReadingMark.Take(Folder("daily")).Dispose();
+
+        var mark = new FileInfo(
+            Path.Combine(Folder("daily").FullName, ReadingMark.FileName));
+        var before = Snapshot(Folder("daily"));
+
+        using var holder = AnotherProcess.Holding(mark, FileShare.ReadWrite);
+        try
+        {
+            AnotherProcess.HasTakenIt(holder);
+            ReadingMark.IsHeldIn(Folder("daily")).ShouldBeTrue();
+
+            var refused = Should.Throw<AudioCaptureException>(
+                () => UnfinishedRecordings.At(Folder("daily")).Discard());
+
+            refused.Message.ShouldContain("reading the recording");
+            refused.Message.ShouldContain(Folder("daily").FullName);
+            refused.Message.ShouldNotContain(".blocks");
+
+            // Every byte of it, and nothing left beside it either.
+            Snapshot(Folder("daily")).ShouldBe(before);
+            root.EnumerateDirectories().Select(one => one.Name).ShouldBe(["daily"]);
+        }
+        finally
+        {
+            try
+            {
+                if (!holder.HasExited)
+                {
+                    holder.Kill(entireProcessTree: true);
+                }
+            }
+            catch (Exception ending) when (
+                ending is InvalidOperationException or Win32Exception or AggregateException)
+            {
+                // Every way a kill can refuse: it ended between the question and the kill, which is
+                // what the kill was for; Windows would not have it; a child of it would not go. A
+                // throw from a finally would bury the sentence saying what really failed, and what
+                // is left behind either way ends itself when its own sleep runs out.
+            }
+
+            holder.WaitForExit();
+        }
+
+        // Said in full because the answer is also the answer a broken ReadingMark gives, and the
+        // mark the dead process left is still on disk holding nothing.
+        ReadingMark.IsHeldIn(Folder("daily")).ShouldBeFalse(
+            "the mark still reads as held after the only process holding it is gone. Either the "
+            + "mark means its existence rather than a handle, which is what this refuses, or "
+            + "something else on this machine had the file open for the one instant this was "
+            + "asked — IsHeldIn answers 'held' to any IOException, deliberately.");
+
+        UnfinishedRecordings.At(Folder("daily")).Discard();
+        Folder("daily").Refresh();
+        Folder("daily").Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The same fact in one process, which is what makes it cheap enough to be the one that stays
+    /// sharp: a recording being read is refused a discard, and is still keepable and exportable
+    /// while it is read.
+    /// </summary>
+    [Fact]
+    public void A_recording_being_read_is_not_thrown_away_under_the_reader()
+    {
+        Recorded("daily", both: true);
+        using var reading = ReadingMark.Take(Folder("daily"));
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        // A read does not make a recording undecidable, and this is what stops somebody later
+        // folding it into that property: only the discard waits, and it waits when it is pressed.
+        recording.NothingToDecideYet.ShouldBeNull();
+        recording.Keep().Count.ShouldBe(2);
+        recording.Export(Folder("out")).Exported.Count.ShouldBe(2);
+
+        var refused = Should.Throw<AudioCaptureException>(recording.Discard);
+        refused.Message.ShouldContain("reading the recording");
+        refused.Message.ShouldContain(Folder("daily").FullName);
+        refused.Message.ShouldNotContain(".blocks");
+
+        Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+
+        // The card is asserted by name because it is what no reader ever holds, and so what a
+        // rename losing this race would have taken first.
+        SpoolManifest.Find(Folder("daily")).ShouldNotBeNull();
+
+        // And the refused move took its own folder back, leaving only this read's destination.
+        root.EnumerateDirectories().Select(one => one.Name).Order(StringComparer.Ordinal)
+            .ShouldBe(["daily", "out"]);
+
+        reading.Dispose();
+        recording.Discard();
+        Folder("daily").Refresh();
+        Folder("daily").Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The deterministic half of taking the mark and releasing it: both reads take it before they
+    /// touch a source and let it go on the way out, including the way out through a refusal.
+    /// </summary>
+    [Fact]
+    public void A_read_that_ends_leaves_its_mark_behind_holding_nothing()
+    {
+        Recorded("daily", both: true);
+        MarkedAsRead(Folder("daily")).ShouldBeFalse();
+
+        UnfinishedRecordings.At(Folder("daily")).Keep();
+
+        MarkedAsRead(Folder("daily")).ShouldBeTrue();
+        ReadingMark.IsHeldIn(Folder("daily")).ShouldBeFalse();
+
+        // Each of the two is held to it on its own rather than one covering for the other.
+        Recorded("weekly", both: true);
+        MarkedAsRead(Folder("weekly")).ShouldBeFalse();
+
+        UnfinishedRecordings.At(Folder("weekly")).Export(Folder("out"));
+
+        MarkedAsRead(Folder("weekly")).ShouldBeTrue();
+        ReadingMark.IsHeldIn(Folder("weekly")).ShouldBeFalse();
+
+        // And the way out through a refusal: the destination already holds one of the two names,
+        // so the export is refused after the mark was taken and before any audio was poured.
+        Recorded("monthly", both: true);
+
+        Should.Throw<AudioCaptureException>(
+            () => UnfinishedRecordings.At(Folder("monthly")).Export(Folder("out")));
+
+        MarkedAsRead(Folder("monthly")).ShouldBeTrue();
+        ReadingMark.IsHeldIn(Folder("monthly")).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// ISC-126.2's shape arriving through the new mark. A read that died left its mark lying in
+    /// the folder, and every one of the three is open over it again.
+    /// </summary>
+    [Fact]
+    public void A_mark_left_by_a_read_that_died_leaves_the_recording_decidable()
+    {
+        Recorded("daily", both: true);
+        ReadingMark.Take(Folder("daily")).Dispose();
+        MarkedAsRead(Folder("daily"))
+            .ShouldBeTrue("the folder has to be carrying the mark for this to be about one");
+
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        recording.NothingToDecideYet.ShouldBeNull();
+        recording.Keep().Count.ShouldBe(2);
+        recording.Export(Folder("out")).Exported.Count.ShouldBe(2);
+
+        // And the stale mark goes with the folder through the rename and the delete.
+        recording.Discard();
+        Folder("daily").Refresh();
+        Folder("daily").Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A recording in a folder that will not take the mark is read through exactly as it was before
+    /// the mark existed, and all three outcomes stay open over it.
+    /// </summary>
+    /// <remarks>
+    /// This is the one that would go red on a build that made the mark a precondition for reading.
+    /// A spool folder needed only read access until this file existed, and the drawer's background
+    /// pass reads every waiting recording through — so a claim that threw would put a meeting whose
+    /// blocks are all there in front of somebody as <em>the blocks of this one would not read</em>,
+    /// with throwing it away as the only thing offered. The folder is made unwritable at the one
+    /// name that matters by putting a directory where the mark goes, which stands in for the real
+    /// ways it happens: no room on the disk, an access this process does not have.
+    /// </remarks>
+    [Fact]
+    public void A_recording_whose_folder_will_not_take_the_mark_is_still_read_and_still_decidable()
+    {
+        Recorded("daily", both: true);
+        Directory.CreateDirectory(
+            Path.Combine(Folder("daily").FullName, ReadingMark.FileName));
+
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        recording.NothingToDecideYet.ShouldBeNull();
+        recording.Keep().Count.ShouldBe(2);
+        recording.Export(Folder("out")).Exported.Count.ShouldBe(2);
+
+        // Nothing is held, so nothing refuses the discard either — which is what there was to lose
+        // in this folder, and it is what there was to lose before this mark existed.
+        ReadingMark.IsHeldIn(Folder("daily")).ShouldBeFalse();
+        recording.Discard();
+        Folder("daily").Refresh();
+        Folder("daily").Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The other thing the mark is allowed to refuse, and the reason it is: a folder thrown away
+    /// between the listing and the read is a sentence about the recording rather than the one the
+    /// first block file would throw — and a refused export leaves no destination folder behind,
+    /// which is what taking the mark before <c>into.Create()</c> is for.
+    /// </summary>
+    [Fact]
+    public void A_recording_thrown_away_under_a_reader_refuses_by_naming_the_folder()
+    {
+        Recorded("daily", both: true);
+        var recording = UnfinishedRecordings.At(Folder("daily"));
+
+        // Exactly the race a removal exists to survive: another window discarded it while this one
+        // was being decided about.
+        Folder("daily").Delete(recursive: true);
+
+        var refused = Should.Throw<AudioCaptureException>(() => recording.Export(Folder("out")));
+
+        refused.Message.ShouldContain(Folder("daily").FullName);
+        refused.Message.ShouldNotContain(".blocks");
+        Folder("out").Refresh();
+        Folder("out").Exists.ShouldBeFalse();
+
+        Should.Throw<AudioCaptureException>(() => recording.Keep())
+            .Message.ShouldContain(Folder("daily").FullName);
+    }
+
+    /// <summary>
+    /// A folder a read marked and nothing was ever recorded into is still swept away. One list
+    /// feeds the question and the delete, so teaching it the third mark covers both.
+    /// </summary>
+    /// <remarks>
+    /// The invariant and not a state the product reaches: a folder with no spool in it was never
+    /// read, so nothing puts a mark in one — this drives <c>NamesAPressLeaves</c> past the sweep's
+    /// own entry point on purpose, the way the leftover-removal probe does. What it holds is that
+    /// the question and the delete cannot come to disagree, which is the property that stops the
+    /// question naming a file the delete would then choke on.
+    /// </remarks>
+    [Fact]
+    public void A_folder_a_read_marked_and_nothing_recorded_into_is_still_swept()
+    {
+        var folder = Folder("daily");
+        folder.Create();
+
+        SpoolWriter.Create(
+            BlockSpool.FileFor(folder, AudioChannel.Loopback),
+            AudioChannel.Loopback,
+            StereoFloat).Dispose();
+
+        ReadingMark.Take(folder).Dispose();
+
+        UnfinishedRecordings.WhatSaysARecordingHappenedIn(folder).ShouldBeNull();
+
+        UnfinishedRecordings.EraseWhereNothingWasRecorded(folder);
+
+        folder.Refresh();
+        folder.Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
     /// What the sweep of folders nothing was recorded into sees when a discard did not finish, and
     /// the engine half of what <c>docs/corpus.md</c> promises about that folder: it is named, and
     /// nothing takes it away.
@@ -637,7 +938,7 @@ public sealed class UnfinishedRecordingsTests : IDisposable
         recording.BeingSaved.ShouldBeFalse();
         recording.NothingToDecideYet.ShouldBeNull();
         recording.Keep().Count.ShouldBe(2);
-        recording.Export(Folder("out")).Count.ShouldBe(2);
+        recording.Export(Folder("out")).Exported.Count.ShouldBe(2);
 
         recording.Discard();
         Folder("daily").Exists.ShouldBeFalse();
@@ -664,49 +965,215 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     /// fifth one costing a red test on the day it is written.
     /// </summary>
     /// <remarks>
-    /// Still one entry after the sweep of folders nothing was recorded into landed, and that is the
-    /// point of where it was put: both ways a folder under <c>spool/</c> goes are in this file, so
-    /// the rule stays one place rather than a list that grows. <c>Discard</c> takes away a recording
-    /// because somebody said to; <c>EraseWhereNothingWasRecorded</c> takes away a folder that never
-    /// held one, and refuses on anything that says otherwise. A second entry here is a folder
-    /// removal somebody has to argue for.
+    /// <para>
+    /// Two entries, and the list is per file <em>and</em> per way: a file is allowed the ways it is
+    /// named with and no others. <c>UnfinishedRecordings.cs</c> holds <c>Directory.Delete</c> and
+    /// <c>Directory.Move</c> — <c>Discard</c> takes away a recording because somebody said to, and
+    /// <c>EraseWhereNothingWasRecorded</c> takes away a folder that never held one and refuses on
+    /// anything saying otherwise. <c>AudioIntake.cs</c> holds <c>Directory.Delete</c> alone, and
+    /// what it takes back is a corpus meeting folder made moments earlier and still empty, never a
+    /// folder under <c>spool/</c>.
+    /// </para>
+    /// <para>
+    /// A third entry, or a second way on an entry already here, is a folder removal somebody has to
+    /// argue for. So is an entry that outlives its reason: a file allowed a way it no longer holds
+    /// is named as an offender of its own, because an allow list can otherwise only ever go too
+    /// wide silently. That rule reaches exactly as far as the sweep does, and the sweep reads
+    /// comments — <c>UnfinishedRecordings.cs</c> holds <c>Directory.Move</c> as a real call and
+    /// again as a <c>see cref</c>, so retiring the call would leave the entry looking held by the
+    /// mention. What it catches is a file that stopped removing that way at all, which is the shape
+    /// a stale exemption actually arrives in; a last call that became a mention is not one it sees.
+    /// </para>
+    /// <para>
+    /// The other half of a removal is not read here. A folder taken or renamed through a handle is
+    /// <see cref="Nothing_removes_or_renames_through_a_handle"/>'s, which bans that spelling
+    /// outright rather than allowing it anywhere; this test reads only the ways that name the type
+    /// they take.
+    /// </para>
     /// </remarks>
     [Fact]
     public void Nothing_but_a_decision_about_one_recording_removes_a_folder()
     {
-        string[] allowed =
+        (string File, string[] Ways)[] allowed =
         [
-            // The one decision that removes a recording, and the only place either spelling of a
-            // folder rename belongs.
-            Path.Combine("MeetingTranscriber.Audio", "UnfinishedRecordings.cs"),
+            // The one decision that removes a recording, and the only place either way a folder
+            // under `spool/` goes belongs.
+            (Path.Combine("MeetingTranscriber.Audio", "UnfinishedRecordings.cs"),
+                [DirectoryDelete, DirectoryMove]),
 
-            // Not a folder rename at all: `CaptureSource.MoveTo` moves a capture from one device to
-            // another. This sweep reads text and cannot see what a receiver's type is, so the one
-            // collision is named here rather than the pattern being narrowed until it misses the
-            // spelling somebody would actually reach for.
-            Path.Combine("MeetingTranscriber.Audio", "CaptureSession.cs"),
+            // `RemoveIfNothingLanded` gives back the corpus meeting folder it made for a mix down an
+            // instant earlier, and only while it holds nothing at all. Never a folder under
+            // `spool/`, so never a recording somebody is still owed a decision about.
+            (Path.Combine("MeetingTranscriber.Recording", "AudioIntake.cs"),
+                [DirectoryDelete]),
         ];
 
-        var offenders = Sources()
-            .Where(file => File.ReadAllText(file.FullName) is var text
-                && (text.Contains("Directory.Delete", StringComparison.Ordinal)
-                    || text.Contains("Delete(recursive", StringComparison.Ordinal)
-                    || text.Contains("Directory.Move", StringComparison.Ordinal)
-                    || text.Contains(".MoveTo(", StringComparison.Ordinal)))
-            .Select(file => Path.GetRelativePath(Tree().FullName, file.FullName))
-            .Where(path => !Array.Exists(allowed, one => path.EndsWith(one, StringComparison.Ordinal)))
+        var removals = RemovalsInSources();
+
+        var offenders = removals
+            .SelectMany(found => found.Ways
+                .Where(way => way is DirectoryDelete or DirectoryMove)
+                .Where(way => !Array.Exists(
+                    allowed,
+                    entry => found.Path.EndsWith(entry.File, StringComparison.Ordinal)
+                        && entry.Ways.Contains(way, StringComparer.Ordinal)))
+                .Select(way => $"{found.Path}: {way}"))
             .Order(StringComparer.Ordinal)
+            .Concat(allowed
+                .SelectMany(entry => entry.Ways
+                    .Where(way => !removals.Any(
+                        found => found.Path.EndsWith(entry.File, StringComparison.Ordinal)
+                            && found.Ways.Contains(way, StringComparer.Ordinal)))
+                    .Select(way => $"{entry.File}: allowed {way} and holds none"))
+                .Order(StringComparer.Ordinal))
             .ToList();
 
         offenders.ShouldBeEmpty(
             "These remove a folder, and a recording's folder is one. Throwing a recording away is "
-            + "somebody's decision about one recording, and there is one place it happens. Both "
-            + "spellings of a rename are on this list because a recording's folder moved to a name "
-            + "nothing looks in has disappeared as surely as one deleted, and the rename is now "
-            + "half of how a removal happens. The ban is deliberately wider than the rule: it "
-            + "catches every directory rename in src/ rather than only a recording's, because a "
-            + "sweep over text cannot tell which folder a path is, and a rename that is not a "
-            + "recording's is cheap to argue for here.");
+            + "somebody's decision about one recording, and there is one place it happens. "
+            + "Directory.Move is on this list because a recording's folder moved to a name nothing "
+            + "looks in has disappeared as surely as one deleted. The other half of a removal is a "
+            + "handle — a folder taken or renamed through a DirectoryInfo — and that half is "
+            + "Nothing_removes_or_renames_through_a_handle's, which bans it outright rather than "
+            + "allowing it anywhere. The ban here is deliberately wider than the rule: it catches "
+            + "every directory removal and rename in src/ rather than only a recording's, because a "
+            + "sweep over text cannot tell which folder a path is, and one that is not a recording's "
+            + "is cheap to argue for. An entry allowed a way its file no longer holds is named too, "
+            + "so an exemption cannot outlive the line that earned it — if that is what you are "
+            + "reading, the answer is to delete the entry rather than to put a removal back.");
+    }
+
+    /// <summary>
+    /// The convention the sweep above rests on: in <c>src/</c>, a removal or a rename names the type
+    /// it takes. Nothing calls <c>Delete</c> or <c>MoveTo</c> on a handle.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// No allowed list, deliberately. A case for one is a case somebody argues for here in writing,
+    /// and there is nothing in <c>src/</c> for this to trip over: the collision that used to cost
+    /// <c>CaptureSession.cs</c> a file-level exemption across every spelling was a
+    /// <c>CaptureSource</c> handover, and it is named <c>ListenTo</c> now.
+    /// </para>
+    /// <para>
+    /// What is banned is a <em>spelling</em>, not a receiver type, because text is all this reads.
+    /// So the ban is wider than the sentence above it in two directions worth knowing before the
+    /// day it goes red. A method of this codebase's own named <c>Delete</c> or <c>MoveTo</c>, called
+    /// on anything at all, is refused — <c>ProcessingJob</c>'s state transition sits inside the ban
+    /// today and survives on being called with no receiver — and the answer there is to rename it,
+    /// which is exactly what this change did to <c>CaptureSource</c>. And prose is refused on the
+    /// same terms: the sweep reads comments, so a doc comment under <c>src/</c> naming a handle
+    /// spelling with its parentheses is an offence like any other. Cite one without them.
+    /// </para>
+    /// <para>
+    /// What it cannot reach, all four by decision: P/Invoke, which could remove a folder past any
+    /// sweep over C#; <c>tests/</c>, which is outside <see cref="Tree"/> and takes its own temporary
+    /// folders down through handles on purpose; a method group or a <c>using static</c> plus a bare
+    /// call, neither of which puts a type and a parenthesis around the primitive where text can see
+    /// them; and the difference between a recursive folder delete and a plain one, which the ways
+    /// collapse into one. Nothing in <c>src/</c> writes any of them.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Nothing_removes_or_renames_through_a_handle()
+    {
+        var removals = RemovalsInSources();
+
+        removals.ShouldContain(
+            found => found.Path.EndsWith("UnfinishedRecordings.cs", StringComparison.Ordinal),
+            "This test has no allowed list, so it is green over a clean tree and green over a sweep "
+            + "that read nothing, and it cannot tell the two apart on its own. The one decision that "
+            + "removes a recording is what it is held against: a sweep that cannot find that file "
+            + "has not found src/ either, and every removal guard here is passing over an empty "
+            + "list rather than over a repository.");
+
+        var offenders = removals
+            .SelectMany(found => found.Ways
+                .Where(way => way is HandleDelete or HandleMoveTo)
+                .Select(way => $"{found.Path}: {way}"))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        offenders.ShouldBeEmpty(
+            "Delete and MoveTo are never called on a FileInfo or a DirectoryInfo here. A sweep over "
+            + "text cannot tell which of the two a handle is, so the spelling that hides it is the "
+            + "one this repository does not use — and the sweep above, which is what stands between "
+            + "a person and a deleted recording, is only as good as that. Spell it "
+            + "File.Delete(path), File.Move(from, to), Directory.Delete(path) or "
+            + "Directory.Move(from, to), with the type bare at the head of the expression. What is "
+            + "banned is the spelling and not the receiver, because text is all this reads: if what "
+            + "tripped it is a method of your own named Delete or MoveTo, or a doc comment citing "
+            + "one of these with its parentheses, the answer is to rename it or to cite it without "
+            + "them, not to widen this.");
+    }
+
+    /// <summary>
+    /// Every way a folder goes is read as the way it is, so dropping one from the pattern reddens
+    /// rather than quietly narrowing what the two guards above see.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The rows are the whole of the BCL's directory-removal surface — <c>Directory.Delete</c> and
+    /// <c>Directory.Move</c>, and the same two through a handle — plus the four ways text can dress
+    /// one up: a <c>new</c> expression, a null-forgiven property, a plain property, and a fully
+    /// qualified name. Both overloads of each delete are here, not because the pattern tells them
+    /// apart — it stops at the parenthesis and cannot — but because the sweep this replaced read
+    /// <c>Delete(recursive</c> as a spelling of its own, and these rows are what says the argument
+    /// list stopped mattering rather than leaving somebody to find out.
+    /// </para>
+    /// <para>
+    /// The last dressing is why the lookbehind is there: <c>System.IO.Directory.Delete(</c> reads as
+    /// a handle call and is therefore an offence, because the convention is the bare type name or
+    /// nothing. The plain property row is the other half of its work — <c>src/</c> reaches for
+    /// <c>FileInfo.Directory</c> in nine places today, all of them null-forgiven or matched out of a
+    /// pattern rather than called through, and without the lookbehind the first one written plainly
+    /// would read as the sanctioned static call and be waved into whatever file it sat in.
+    /// </para>
+    /// <para>
+    /// <b>Leaves out</b>, all by decision rather than oversight and all named in
+    /// <see cref="Nothing_removes_or_renames_through_a_handle"/>'s remarks: P/Invoke, <c>tests/</c>,
+    /// a method group, a <c>using static</c> plus a bare call, and the recursive flag.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("Directory.Delete(folder.FullName);", DirectoryDelete)]
+    [InlineData("Directory.Delete(aside.FullName, recursive: true);", DirectoryDelete)]
+    [InlineData("Directory.Move(from.FullName, to.FullName);", DirectoryMove)]
+    [InlineData(@"<see cref=""Directory.Move(string, string)""/>", DirectoryMove)]
+    [InlineData("folder.Delete();", HandleDelete)]
+    [InlineData("folder.Delete(recursive: true);", HandleDelete)]
+    [InlineData("folder.MoveTo(aside.FullName);", HandleMoveTo)]
+    [InlineData("new DirectoryInfo(path).Delete();", HandleDelete)]
+    [InlineData("destination.Directory!.Delete();", HandleDelete)]
+    [InlineData("audio.Directory.Delete();", HandleDelete)]
+    [InlineData("System.IO.Directory.Delete(path);", HandleDelete)]
+    public void Every_way_a_folder_goes_is_read_as_the_way_it_is(string line, string way) =>
+        WaysARemovalIsSpelledIn(line).ShouldBe([way]);
+
+    /// <summary>
+    /// What the sweep must not read as a folder removal: a file operation is read as the file
+    /// operation it is, and the near misses are read as nothing at all.
+    /// </summary>
+    /// <remarks>
+    /// Every row exists in <c>src/</c> or is one spelling away from a line that does.
+    /// <c>.OnDelete(DeleteBehavior.…)</c> is the near miss the sweep meets in bulk — forty-odd times
+    /// in <c>CorpusDbContext.cs</c> — and it survives because the character before <c>Delete</c> is
+    /// <c>n</c>. The last row is what used to cost <c>CaptureSession.cs</c> a file-level exemption
+    /// across every spelling, and it is the one row here that asserts something the rename bought
+    /// rather than something the pattern never reached.
+    /// </remarks>
+    [Theory]
+    [InlineData("File.Delete(file.FullName);", FileDelete)]
+    [InlineData("File.Move(unfinished.FullName, recording.FullName, overwrite: true);", FileMove)]
+    [InlineData("one.Move();", "")]
+    [InlineData("from.CanMoveTo(to);", "")]
+    [InlineData("MoveTo(JobState.Running);", "")]
+    [InlineData(".OnDelete(DeleteBehavior.Cascade);", "")]
+    [InlineData("source.ListenTo(destination, sayingSo);", "")]
+    public void A_call_that_is_not_a_folder_removal_is_read_as_what_it_is(string line, string way)
+    {
+        string[] expected = way.Length == 0 ? [] : [way];
+
+        WaysARemovalIsSpelledIn(line).ShouldBe(expected);
     }
 
     /// <summary>
@@ -753,11 +1220,68 @@ public sealed class UnfinishedRecordingsTests : IDisposable
         }
     }
 
-    /// <summary>Every source file of the product, which is what the two sweeps are over.</summary>
+    /// <summary>Every source file of the product, which is what the sweeps are over.</summary>
     private static IEnumerable<FileInfo> Sources() => Tree()
         .EnumerateFiles("*.cs", SearchOption.AllDirectories)
         .Where(file => !file.FullName.Contains(
             $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
+
+    private const string DirectoryDelete = "Directory.Delete";
+    private const string DirectoryMove = "Directory.Move";
+    private const string FileDelete = "File.Delete";
+    private const string FileMove = "File.Move";
+    private const string HandleDelete = "a handle's Delete";
+    private const string HandleMoveTo = "a handle's MoveTo";
+
+    /// <summary>
+    /// Every way a file or a folder is taken away or renamed, in the two shapes text can tell
+    /// apart: one that names the type at the head of the expression, and one that goes through a
+    /// handle and says nothing about what is under it.
+    /// </summary>
+    /// <remarks>
+    /// The <c>(?&lt;![.\w])</c> is load-bearing twice over. It is what tells
+    /// <c>Directory.Delete(path)</c> from a delete through a <c>FileInfo.Directory</c> property, so
+    /// a handle call written through one of those is not read as the sanctioned static call and
+    /// waved into an allowed file. And it is what makes "the bare type name, or nothing" a rule
+    /// rather than a preference: a fully qualified call reads as a handle call and is refused. The
+    /// alternation is ordered and <c>Matches</c> does not overlap, so a sanctioned call is consumed
+    /// by the first arm and never re-read by the second.
+    /// </remarks>
+    [GeneratedRegex(@"(?<![.\w])(?<type>File|Directory)\.(?<way>Delete|Move)\(|\.(?<handle>Delete|MoveTo)\(")]
+    private static partial Regex Removals();
+
+    /// <summary>
+    /// The distinct ways a removal is spelled in one piece of text. Distinct, because a file holding
+    /// three <c>Directory.Delete</c> calls is one answer.
+    /// </summary>
+    private static IReadOnlyList<string> WaysARemovalIsSpelledIn(string text) => Removals()
+        .Matches(text)
+        .Select(match => match.Groups["type"].Success
+            ? $"{match.Groups["type"].Value}.{match.Groups["way"].Value}"
+            : match.Groups["handle"].Value == "Delete" ? HandleDelete : HandleMoveTo)
+        .Distinct(StringComparer.Ordinal)
+        .ToList();
+
+    /// <summary>
+    /// The one sweep the two folder guards read: every source file that removes or renames anything,
+    /// with the ways it does. The tree is classified once by one rule, and a guard only decides
+    /// which of the ways are its business — which is what stops the two from drifting apart the way
+    /// four substrings did. <see cref="Nothing_in_the_audio_engine_removes_a_file_it_did_not_just_create"/>
+    /// is not on it: its rule is a bare <c>Delete(</c> over one project, wider than any way here
+    /// because it catches a removal reached through a helper of the same class, and moving it onto
+    /// these ways would narrow it. That is a change to a guard this one did not come to touch.
+    /// </summary>
+    private static IReadOnlyList<(string Path, IReadOnlyList<string> Ways)> RemovalsInSources()
+    {
+        var tree = Tree().FullName;
+
+        return Sources()
+            .Select(file => (
+                Path: System.IO.Path.GetRelativePath(tree, file.FullName),
+                Ways: WaysARemovalIsSpelledIn(File.ReadAllText(file.FullName))))
+            .Where(found => found.Ways.Count > 0)
+            .ToList();
+    }
 
     /// <summary>
     /// The product's source tree, from where this file was compiled rather than from the working
@@ -845,6 +1369,23 @@ public sealed class UnfinishedRecordingsTests : IDisposable
         return meeting;
     }
 
+    /// <summary>
+    /// A source whose device was replaced mid meeting by one handing over another format — one
+    /// spool, two stretches, which is what a channel somebody moved really is on disk.
+    /// </summary>
+    private static void SpoolThatChangedFormat(DirectoryInfo folder, AudioChannel channel) =>
+        Fabricated.Spool(
+            folder,
+            channel,
+            CheapMicrophone,
+            Fabricated
+                .Packets(
+                    channel, CheapMicrophone, CheapMicrophone.SampleRate, 0, 0.5, Fabricated.Bursts(0.25))
+                .Concat(Fabricated.TakingOver(
+                    StereoFloat,
+                    Fabricated.Packets(
+                        channel, StereoFloat, StereoFloat.SampleRate, 0.5, 1, Fabricated.Bursts(0.25)))));
+
     private void Spool(DirectoryInfo folder, AudioChannel channel, StreamFormat format)
     {
         using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, format);
@@ -861,5 +1402,36 @@ public sealed class UnfinishedRecordingsTests : IDisposable
     /// </summary>
     private static bool Marked(DirectoryInfo folder) =>
         File.Exists(Path.Combine(folder.FullName, SavingMark.FileName));
+
+    /// <summary>
+    /// Whether the mark a read writes is lying in this folder. Built here rather than asked of
+    /// <see cref="ReadingMark"/>, which deliberately answers nothing about the file being there.
+    /// </summary>
+    private static bool MarkedAsRead(DirectoryInfo folder) =>
+        File.Exists(Path.Combine(folder.FullName, ReadingMark.FileName));
+
+    /// <summary>
+    /// Every file in the folder by name and by content, which is what "the folder survives with
+    /// everything in it" means. A length would pass over a file emptied and refilled.
+    /// </summary>
+    /// <remarks>
+    /// Opened the way a backup opens a file rather than the way <c>File.ReadAllBytes</c> does: one
+    /// of these files is a mark something is holding for writing, and a read sharing less than that
+    /// would be refused by the very holder the comparison is here to survive.
+    /// </remarks>
+    private static string[] Snapshot(DirectoryInfo folder) =>
+    [
+        .. folder.GetFiles()
+            .Select(file => $"{file.Name} {Convert.ToHexString(Hashed(file))}")
+            .Order(StringComparer.Ordinal),
+    ];
+
+    private static byte[] Hashed(FileInfo file)
+    {
+        using var content = file.Open(
+            FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+        return SHA256.HashData(content);
+    }
 
 }

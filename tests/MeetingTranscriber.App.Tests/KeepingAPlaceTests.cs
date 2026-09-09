@@ -163,18 +163,8 @@ public sealed partial class KeepingAPlaceTests
     }
 
     /// <summary>Where <paramref name="what"/> stands in the drawer, ignoring prose about it.</summary>
-    private static IEnumerable<int> Occurrences(string what)
-    {
-        for (var at = Drawer.IndexOf(what, StringComparison.Ordinal);
-            at >= 0;
-            at = Drawer.IndexOf(what, at + what.Length, StringComparison.Ordinal))
-        {
-            if (!SourceLines.StandsInACommentedLine(Drawer, at))
-            {
-                yield return at;
-            }
-        }
-    }
+    private static IEnumerable<int> Occurrences(string what) =>
+        SourceLines.Occurrences(Drawer, what);
 
     /// <summary>What one member of the drawer is made of, from its signature to its last line.</summary>
     /// <remarks>

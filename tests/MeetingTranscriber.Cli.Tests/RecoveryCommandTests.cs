@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
@@ -16,8 +18,6 @@ namespace MeetingTranscriber.Cli.Tests;
 /// </remarks>
 public sealed class RecoveryCommandTests : IDisposable
 {
-    private static readonly StreamFormat Format = new(48_000, 1, 16, SampleEncoding.Pcm);
-
     private readonly DirectoryInfo root = new(Path.Combine(
         Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
 
@@ -205,6 +205,115 @@ public sealed class RecoveryCommandTests : IDisposable
     }
 
     /// <summary>
+    /// The sentence a person reads when they type <c>--discard</c> over a recording something is
+    /// reading, and the recording being exactly where it was afterwards.
+    /// </summary>
+    /// <remarks>
+    /// The hold is taken in this process where the engine's own probe uses two, because
+    /// <c>ReadingMark.IsHeldIn</c> cannot tell them apart — share modes are per handle — and what
+    /// is being probed here is the exit code and the sentence rather than the cross-process fact.
+    /// The exit code discriminates nothing on its own: <c>Cli.IsRefusal</c> already lists
+    /// <see cref="IOException"/>, so the rename refusing would exit <c>Cli.Refused</c> too. The
+    /// assertion carrying the proof is <c>"reading the recording"</c>, and it must not be trimmed.
+    /// </remarks>
+    [Fact]
+    public void A_folder_somebody_is_reading_is_not_thrown_away_at_the_prompt()
+    {
+        Recorded("daily", both: true);
+        using var reading = ReadingMark.Take(Folder("daily"));
+        var before = Snapshot(Folder("daily"));
+
+        var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--discard");
+
+        run.Code.ShouldBe(Cli.Refused, run.Output);
+        run.Error.ShouldContain("reading the recording");
+        run.Error.ShouldNotContain(".blocks");
+
+        Snapshot(Folder("daily")).ShouldBe(before);
+        Folder("daily").Refresh();
+        Folder("daily").Exists.ShouldBeTrue();
+
+        // And let go of, the same command goes through.
+        reading.Dispose();
+
+        var again = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--discard");
+
+        again.Code.ShouldBe(Cli.Ok, again.Error);
+        Folder("daily").Refresh();
+        Folder("daily").Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The outer hold the keep branch takes, which covers both of its passes — making the recording
+    /// the two sources become, and reading each source through — with no gap between them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What discriminates is the failing run, and it must not be trimmed.</b> A run that goes
+    /// through leaves the mark whether the outer hold is there or not, because <c>Keep</c> takes one
+    /// of its own on the second pass — so the only way to see the first pass being covered is to
+    /// stop the command between them. A folder holding a directory where the recording's own name
+    /// goes does exactly that: the pour and the check both run, the move at the end of them cannot,
+    /// and <c>Keep</c> is never reached. With the outer hold the folder carries the mark afterwards;
+    /// without it nothing marked the folder at all.
+    /// </para>
+    /// <para>
+    /// The second run is about the nesting instead: a hold already up in this process does not make
+    /// the command wait for itself, because <c>Keep</c> joins the same mark rather than taking one
+    /// of its own.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Keeping_a_recording_at_the_prompt_holds_it_across_the_recording_it_makes()
+    {
+        Recorded("daily", both: true);
+
+        var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--keep");
+
+        run.Code.ShouldBe(Cli.Ok, run.Error);
+        MeetingAudio.In(Folder("daily")).Exists.ShouldBeTrue();
+        MarkedAsRead(Folder("daily")).ShouldBeTrue();
+        ReadingMark.IsHeldIn(Folder("daily")).ShouldBeFalse();
+
+        using var reading = ReadingMark.Take(Folder("daily"));
+
+        // `MeetingAudio.Materialise` writes through a partial and moves it over, so a second run
+        // over a folder that already has the recording is fine.
+        var again = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--keep");
+
+        again.Code.ShouldBe(Cli.Ok, again.Error);
+    }
+
+    /// <summary>
+    /// The half of that hold nothing else reaches: the first pass is covered even when the command
+    /// never gets to the second, which is the only shape in which the outer hold is the thing being
+    /// observed rather than <c>Keep</c>'s own.
+    /// </summary>
+    [Fact]
+    public void A_keep_that_could_not_make_the_recording_still_held_the_folder_while_it_tried()
+    {
+        Recorded("weekly", both: true);
+
+        // Where the recording's own file goes, so the move that finishes it cannot happen and
+        // nothing past it runs.
+        Directory.CreateDirectory(
+            Path.Combine(Folder("weekly").FullName, MeetingAudio.FileName));
+
+        var run = CommandLine.Of("recover", "--in", Folder("weekly").FullName, "--keep");
+
+        run.Code.ShouldBe(Cli.Refused, run.Output);
+        MeetingAudio.In(Folder("weekly")).Exists.ShouldBeFalse();
+
+        MarkedAsRead(Folder("weekly")).ShouldBeTrue(
+            "the command failed before it reached Keep, so a mark in the folder can only be the "
+            + "outer hold the keep branch takes over both of its passes");
+        ReadingMark.IsHeldIn(Folder("weekly")).ShouldBeFalse();
+
+        // And every block is still there, which is what the person still has.
+        Folder("weekly").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+    }
+
+    /// <summary>
     /// A recording the machine died in the middle of is worth every block that landed, and keeping
     /// it says what the last one cost — and leaves the meeting those blocks are, which is the whole
     /// of what a person came to the folder for.
@@ -222,7 +331,7 @@ public sealed class RecoveryCommandTests : IDisposable
         run.Value("ch0 kept").ShouldNotContain("discarded");
         run.Value("ch1 kept").ShouldStartWith("9 blocks");
         run.Value("ch1 kept").ShouldContain("discarded");
-        run.Value("ch1 format").ShouldBe(Format.ToString());
+        run.Value("ch1 format").ShouldBe(Spools.Format.ToString());
         run.Value("recording").ShouldStartWith($"{MeetingAudio.FileName}, ");
 
         // The blocks are all still there, and the one file beside them is the recording itself:
@@ -269,6 +378,27 @@ public sealed class RecoveryCommandTests : IDisposable
         // Taking the sources out is not finishing the recording: what lands is one file per device,
         // where somebody asked for it, and the meeting is still a folder nobody has decided about.
         MeetingAudio.In(Folder("daily")).Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The refusal line, at the prompt somebody meets it at. A source that changed device gets a
+    /// line of its own saying why there is no file for it, and it costs the other source nothing.
+    /// </summary>
+    [Fact]
+    public void A_source_that_changed_format_says_so_on_its_own_line_and_the_other_still_comes_out()
+    {
+        Recorded("daily", both: false);
+        Spools.ThatChangedFormat(Folder("daily"), AudioChannel.Microphone);
+        var into = Path.Combine(root.FullName, "taken out");
+
+        var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--export", into);
+
+        run.Code.ShouldBe(Cli.Ok, run.Error);
+        run.Value("ch0 taken out").ShouldContain("loopback.wav");
+        run.Value("ch1 taken out").ShouldStartWith("not made: ");
+        run.Value("ch1 taken out").ShouldContain("microphone.blocks");
+        new FileInfo(Path.Combine(into, "loopback.wav")).Exists.ShouldBeTrue();
+        new FileInfo(Path.Combine(into, "microphone.wav")).Exists.ShouldBeFalse();
     }
 
     /// <summary>
@@ -426,7 +556,7 @@ public sealed class RecoveryCommandTests : IDisposable
 
     private void Spool(DirectoryInfo folder, AudioChannel channel, int countsBy)
     {
-        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Format);
+        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Spools.Format);
         for (var block = 0; block < 10; block++)
         {
             // Always 480 frames handed over; the counter beside them advances by whatever this
@@ -435,7 +565,7 @@ public sealed class RecoveryCommandTests : IDisposable
                 channel,
                 block * (long)countsBy,
                 MonotonicInstant.FromMilliseconds(block * 10d),
-                new byte[480 * Format.BytesPerSample]));
+                new byte[480 * Spools.Format.BytesPerSample]));
         }
     }
 
@@ -453,5 +583,32 @@ public sealed class RecoveryCommandTests : IDisposable
     /// </summary>
     private static bool Marked(DirectoryInfo folder) =>
         File.Exists(Path.Combine(folder.FullName, SavingMark.FileName));
+
+    /// <summary>
+    /// Whether the mark a read writes is lying in this folder. Built here rather than asked of
+    /// <see cref="ReadingMark"/>, which deliberately answers nothing about the file being there.
+    /// </summary>
+    private static bool MarkedAsRead(DirectoryInfo folder) =>
+        File.Exists(Path.Combine(folder.FullName, ReadingMark.FileName));
+
+    /// <summary>
+    /// Every file in the folder by name and by content, which is what a recording being exactly
+    /// where it was means. Opened the way a backup opens a file: one of these is a mark this
+    /// process is holding for writing, and a read sharing less would be refused by it.
+    /// </summary>
+    private static string[] Snapshot(DirectoryInfo folder) =>
+    [
+        .. folder.GetFiles()
+            .Select(file => $"{file.Name} {Convert.ToHexString(Hashed(file))}")
+            .Order(StringComparer.Ordinal),
+    ];
+
+    private static byte[] Hashed(FileInfo file)
+    {
+        using var content = file.Open(
+            FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+        return SHA256.HashData(content);
+    }
 
 }

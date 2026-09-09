@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 
@@ -44,9 +45,11 @@ public sealed record SourceChanged(
 /// </para>
 /// <para>
 /// So it is a file of its own, appended to and never rewritten: one line per change, each line
-/// whole on its own, in the order they happened. It is the card's rule applied to something that
-/// happens more than once rather than an exception to it — a line that never landed costs the
-/// account of one change, and every line before it still reads.
+/// whole on its own, in the order they happened. A line that is written down is never touched
+/// again, and the one thing an append may take away is the unfinished tail an append that failed
+/// left behind it. It is the card's rule applied to something that happens more than once rather
+/// than an exception to it — a line that never landed costs the account of one change, and every
+/// line before it still reads.
 /// </para>
 /// <para>
 /// Absent is the ordinary answer. Most recordings change nothing, and this file is not written
@@ -56,7 +59,7 @@ public sealed record SourceChanged(
 public static class SpoolChanges
 {
     /// <summary>The name the changes are stored under, beside the card.</summary>
-    public const string FileName = "changes.jsonl";
+    public const string FileName = RecordingFiles.Changes;
 
     /// <summary>Accents left alone, for the reason the card leaves them alone: a person reads this.</summary>
     private static readonly JsonSerializerOptions OneLine = new()
@@ -76,11 +79,22 @@ public static class SpoolChanges
     /// Writes down that a channel moved, behind everything already written down.
     /// </summary>
     /// <remarks>
-    /// One line, in one write, for the reason a block is written in one: what a power cut may cost
-    /// is the line being written and never a line already there. It is called before the channel
-    /// hands over — the new device is running by then and its blocks are going nowhere — so a
-    /// failure here is a move that does not happen, and that is what it says. The other order would
-    /// leave a folder claiming audio a file does not hold, which is the lie worth preventing.
+    /// <para>
+    /// One line per write, for the reason a block is written in one: what a power cut may cost is
+    /// the line being written and never a line already there. It is called before the channel hands
+    /// over — the new device is running by then and its blocks are going nowhere — so a failure
+    /// here is a move that does not happen, and that is what it says. The other order would leave a
+    /// folder claiming audio a file does not hold, which is the lie worth preventing.
+    /// </para>
+    /// <para>
+    /// One write is not enough on its own, because the failure is what makes somebody ask again. A
+    /// write that landed in part and then threw leaves bytes no line break follows, and the retry
+    /// used to land its JSON on the back of them as one complete line that will not read — the one
+    /// shape <see cref="Find"/> refuses a whole folder over, so a disk that filled for two bytes
+    /// cost every change the folder had. An append now drops what the one before it left unfinished
+    /// before adding to it, which is what the file is opened for reading as well as writing for.
+    /// What is lost is still at most the line being written, and it is a line nothing happened for.
+    /// </para>
     /// </remarks>
     public static void Append(DirectoryInfo folder, SourceChanged change)
     {
@@ -95,7 +109,9 @@ public static class SpoolChanges
         try
         {
             using var stream = new FileStream(
-                file.FullName, FileMode.Append, FileAccess.Write, FileShare.Read);
+                file.FullName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
+
+            Settle(stream);
             stream.Write(line);
         }
         catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
@@ -108,6 +124,54 @@ public static class SpoolChanges
                 + $"{refused.Message}",
                 refused);
         }
+    }
+
+    /// <summary>
+    /// Leaves <paramref name="stream"/> at the end of the last line that finished landing, so that
+    /// what is written next begins a line of its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Bytes with no line break behind them are dropped rather than finished, because of what put
+    /// them there. An append is called before the channel hands over, so an append that threw is a
+    /// move that did not happen: the channel is still on what it was on, and the tail is the
+    /// account of a move this application refused. Terminating it would make the folder claim
+    /// audio the file does not hold, and would leave the retry's line naming a source the line
+    /// above it says the channel had already left.
+    /// </para>
+    /// <para>
+    /// It is the only tail that reaches here. A folder torn by a machine dying is never appended
+    /// to again — <see cref="BlockSpool.EnsureNothingRecordedIn"/> refuses a folder that already
+    /// holds this file — so the reader goes on being the one that judges that one, and goes on
+    /// keeping a last line that landed whole. The two rules differ because the two situations do:
+    /// there, nobody refused the move.
+    /// </para>
+    /// <para>
+    /// Only the tail. Everything at or before the last line break was whole before the next line
+    /// was begun, and is never rewritten, moved or read back into the file.
+    /// </para>
+    /// </remarks>
+    private static void Settle(FileStream stream)
+    {
+        var written = new byte[stream.Length];
+        stream.ReadExactly(written);
+
+        // -1 when there is no line break anywhere, which makes the whole file the tail. That is the
+        // likeliest shape of all, since most folders only ever hold one line, and a guard returning
+        // early on -1 would leave exactly that one glued to the retry that follows it.
+        var lastBreak = Array.LastIndexOf(written, (byte)'\n');
+        if (lastBreak + 1 == written.Length)
+        {
+            // The ordinary case, and an empty file: it ends where a line ends, so nothing is
+            // settled and an append adds one line rather than a blank one and a line.
+            return;
+        }
+
+        // The position is set as well as the length, rather than left to SetLength's own clamp,
+        // because what is written next lands wherever this leaves it and a position of 0 would put
+        // a change on top of a change already written down.
+        stream.SetLength(lastBreak + 1);
+        stream.Position = stream.Length;
     }
 
     /// <summary>
