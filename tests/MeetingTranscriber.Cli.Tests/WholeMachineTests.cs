@@ -99,6 +99,53 @@ public class WholeMachineTests
         run.Moves.ShouldBe(1);
     }
 
+    /// <summary>
+    /// The rule says when the offer is worth <em>making</em>, never how long it is good for. A
+    /// program that plays a notification half an hour after going silent has not answered the
+    /// question somebody was asked, and the key they press afterwards is the same answer it would
+    /// have been at the time. The offer is a sentence somebody read; it does not go stale because
+    /// the thing it was about started making noise again.
+    /// </summary>
+    [Fact]
+    public void The_offer_stands_after_the_program_starts_playing_again()
+    {
+        var run = new Prompt();
+        run.Gate.Consider(heardNothing: true, run.Output);
+
+        for (var second = 0; second < 30; second++)
+        {
+            run.Gate.Consider(heardNothing: false, run.Output);
+        }
+
+        run.Gate.Offered.ShouldBeTrue();
+
+        run.Types("w");
+        run.Gate.Consider(heardNothing: false, run.Output);
+
+        run.Moves.ShouldBe(1);
+        run.Times(Offer).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// The other half of the same fact, and the one an unbroken run of silent seconds cannot
+    /// reach. An offer withdrawn the moment the program was heard would be said again over the top
+    /// of the levels as soon as it went quiet — with somebody's keyboard now answering a second
+    /// offer they never read, which is the drain window
+    /// <see cref="A_key_typed_before_the_offer_appeared_is_not_an_answer_to_it"/> closes re-opened.
+    /// </summary>
+    [Fact]
+    public void The_offer_is_not_said_a_second_time_when_the_program_goes_quiet_again()
+    {
+        var run = new Prompt();
+
+        run.Gate.Consider(heardNothing: true, run.Output);
+        run.Gate.Consider(heardNothing: false, run.Output);
+        run.Gate.Consider(heardNothing: true, run.Output);
+
+        run.Times(Offer).ShouldBe(1);
+        run.Moves.ShouldBe(0);
+    }
+
     [Fact]
     public void The_key_is_the_same_key_with_shift_held()
     {
