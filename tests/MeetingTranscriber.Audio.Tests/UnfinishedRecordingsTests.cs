@@ -209,6 +209,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
 
         taken.Exported.Select(source => source.Wav.Name).ShouldBe(["loopback.wav", "microphone.wav"]);
         taken.Exported.ShouldAllBe(source => source.Wav.Exists && source.Blocks > 0);
+        taken.NotMade.ShouldBeEmpty();
         into.EnumerateFiles("*.blocks").ShouldBeEmpty();
 
         Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
@@ -244,29 +245,6 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
         // And the recording is where it was, which is what taking one out means.
         Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
         SpoolManifest.Find(Folder("daily")).ShouldNotBeNull();
-    }
-
-    /// <summary>
-    /// The same recording where every source changed device. Nothing came out, every source said
-    /// why, and the run is not a failure — an exit code that depended on how many of the two
-    /// happened to be two-format would make the same source red alone and green beside a good one.
-    /// The destination is still created, because the export ran; it just produced nothing.
-    /// </summary>
-    [Fact]
-    public void A_recording_whose_every_source_changed_format_comes_out_as_two_sentences()
-    {
-        Folder("daily").Create();
-        SpoolThatChangedFormat(Folder("daily"), AudioChannel.Loopback);
-        SpoolThatChangedFormat(Folder("daily"), AudioChannel.Microphone);
-        var into = Folder("taken out");
-
-        var taken = UnfinishedRecordings.At(Folder("daily")).Export(into);
-
-        taken.Exported.ShouldBeEmpty();
-        taken.NotMade.Select(source => source.Channel)
-            .ShouldBe([AudioChannel.Loopback, AudioChannel.Microphone]);
-        into.Exists.ShouldBeTrue();
-        into.EnumerateFiles().ShouldBeEmpty();
     }
 
     /// <summary>

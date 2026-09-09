@@ -23,8 +23,6 @@ namespace MeetingTranscriber.Cli.Tests;
 /// </remarks>
 public sealed class CorpusRecoveryCommandTests : IDisposable
 {
-    private static readonly StreamFormat Format = new(48_000, 1, 16, SampleEncoding.Pcm);
-
     private readonly TemporaryCorpus corpus = new();
     private readonly UtcTimestamp startedAt = UtcTimestamp.Parse("2026-08-18T09:41:07.250Z");
 
@@ -500,7 +498,7 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
         Spool(prepared.Spool, AudioChannel.Loopback);
         if (microphoneChangedFormat)
         {
-            SpoolThatChangedFormat(prepared.Spool, AudioChannel.Microphone);
+            Spools.ThatChangedFormat(prepared.Spool, AudioChannel.Microphone);
         }
         else
         {
@@ -526,45 +524,14 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
 
     private static void Spool(DirectoryInfo folder, AudioChannel channel)
     {
-        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Format);
+        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Spools.Format);
         for (var block = 0; block < 10; block++)
         {
             writer.Write(new CapturePacket(
                 channel,
                 block * 480L,
                 MonotonicInstant.FromMilliseconds(block * 10d),
-                new byte[480 * Format.BytesPerSample]));
-        }
-    }
-
-    /// <summary>
-    /// The same source after the device feeding it was replaced by one handing over another
-    /// format: one spool, two stretches, and no single file it can be poured into.
-    /// </summary>
-    private static void SpoolThatChangedFormat(DirectoryInfo folder, AudioChannel channel)
-    {
-        var tookOver = new StreamFormat(44_100, 1, 16, SampleEncoding.Pcm);
-
-        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Format);
-        for (var block = 0; block < 10; block++)
-        {
-            writer.Write(new CapturePacket(
-                channel,
-                block * 480L,
-                MonotonicInstant.FromMilliseconds(block * 10d),
-                new byte[480 * Format.BytesPerSample]));
-        }
-
-        // The seam, said on the first packet of the second stretch and on no other — which is what
-        // a device change is, and what makes the two halves two formats rather than one.
-        for (var block = 0; block < 10; block++)
-        {
-            writer.Write(new CapturePacket(
-                channel,
-                block * 480L,
-                MonotonicInstant.FromMilliseconds(100 + (block * 10d)),
-                new byte[480 * tookOver.BytesPerSample],
-                Opening: block == 0 ? tookOver : null));
+                new byte[480 * Spools.Format.BytesPerSample]));
         }
     }
 

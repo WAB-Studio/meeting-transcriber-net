@@ -221,14 +221,14 @@ public sealed record UnfinishedRecording(
     /// </para>
     /// <para>
     /// A source that came to hold two formats is the one thing that is not something going wrong,
-    /// so it is said in <see cref="TakenOut.NotMade"/> and what already landed stays. The rule
-    /// above would otherwise erase a channel 0 file that poured perfectly over a channel 1 device
-    /// somebody swapped headsets on, and that recording's audio could then not be taken out at
-    /// all. The refused source's half-poured file is taken back by
-    /// <see cref="BlockSpool.ToWav"/>, which is the one place that erases what it just wrote; what
-    /// that costs is one best-effort removal where the all-or-nothing path made two, and it is
-    /// accepted because the pour and the erase sit in the same method with nothing between them
-    /// that can fail.
+    /// so it is said in <see cref="TakenOut.NotMade"/> rather than thrown, and what landed for the
+    /// other sources stays. Nothing in this method erases the refused source's half-poured file:
+    /// <see cref="BlockSpool.ToWav"/> has already taken it back on its way out, and that is checked
+    /// here rather than trusted, because <see cref="BlockSpool.Erase"/> is best effort and a
+    /// truncated WAV standing beside a line saying it was not made is the one outcome worse than
+    /// refusing the whole call. A destination this leaves partly full is a destination the next
+    /// attempt refuses by name, which is the paragraph above and is why somebody asking again names
+    /// a folder of their own.
     /// </para>
     /// </remarks>
     public TakenOut Export(DirectoryInfo into)
@@ -244,10 +244,11 @@ public sealed record UnfinishedRecording(
 
         into.Create();
         var claimed = new List<FileInfo>();
-        var exported = new List<ExportedSource>();
-        var notMade = new List<SourceWithNoPlayback>();
         try
         {
+            var exported = new List<ExportedSource>();
+            var notMade = new List<SourceWithNoPlayback>();
+
             foreach (var source in Sources)
             {
                 var wav = new FileInfo(Path.Combine(
@@ -271,12 +272,20 @@ public sealed record UnfinishedRecording(
                 }
                 catch (NoSinglePlaybackException cannot)
                 {
-                    // The one refusal that is not a failure of this call. The source is whole, the
-                    // name it claimed has already been taken back by the pour that stopped at the
-                    // seam, and every other source is still somebody's to have — so this is
-                    // reported and the rest of the export goes on. A spool that would not open at
-                    // all is the opposite and is deliberately not caught here: it takes everything
-                    // back below, because a torn artifact is not something to hand back half of.
+                    // Narrow on purpose. A spool that would not open at all reaches the catch
+                    // below and takes everything back, because a torn artifact is not something to
+                    // hand back half of.
+                    wav.Refresh();
+                    if (wav.Exists)
+                    {
+                        throw new AudioCaptureException(
+                            $"The pour into '{wav.FullName}' stopped where the source changed "
+                            + "format, and what it had written is still there. A part of a source "
+                            + "under the name of the whole one is worse than no file at all, so "
+                            + "nothing of this export is left standing.",
+                            cannot);
+                    }
+
                     notMade.Add(new SourceWithNoPlayback(source.Channel, cannot.Message));
                 }
             }
