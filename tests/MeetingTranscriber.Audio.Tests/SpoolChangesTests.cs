@@ -214,6 +214,113 @@ public sealed class SpoolChangesTests : IDisposable
             .Message.ShouldContain(SpoolChanges.FileName);
     }
 
+    /// <summary>
+    /// The card's Delivers. A write cut in half leaves bytes no line break follows; the next
+    /// append settles them instead of landing its JSON on their back, so what is on disk is never
+    /// the one shape the reader throws a whole folder away over — a complete line that will not
+    /// read with whole lines behind it.
+    /// </summary>
+    [Fact]
+    public void An_append_behind_a_torn_write_does_not_glue_itself_onto_it()
+    {
+        SpoolChanges.Append(folder, Moving());
+        File.AppendAllText(SpoolChanges.In(folder).FullName, "{\"at\":\"2026-08-15T10:1");
+
+        SpoolChanges.Append(folder, Moving() with
+        {
+            At = Moved + Duration.FromSeconds(90),
+            WasHearing = "msedge (pid 1000)",
+        });
+
+        var read = SpoolChanges.Find(folder);
+        read.Count.ShouldBe(2);
+        read[0].WasHearing.ShouldBe("teams (pid 8124)");
+        read[1].WasHearing.ShouldBe("msedge (pid 1000)");
+    }
+
+    /// <summary>
+    /// A tear that took only the terminator left a change that fully landed, and it keeps it: the
+    /// move it names did happen, and truncating every unterminated tail would leave the folder
+    /// naming a program the channel had already left — the failure this file exists against.
+    /// </summary>
+    [Fact]
+    public void A_torn_write_that_had_landed_whole_keeps_its_change()
+    {
+        SpoolChanges.Append(folder, Moving());
+        using (var trimming = SpoolChanges.In(folder).Open(FileMode.Open, FileAccess.Write))
+        {
+            trimming.SetLength(trimming.Length - Environment.NewLine.Length);
+        }
+
+        SpoolChanges.Append(folder, Moving() with
+        {
+            At = Moved + Duration.FromSeconds(90),
+            WasHearing = "msedge (pid 1000)",
+        });
+
+        var read = SpoolChanges.Find(folder);
+        read.Count.ShouldBe(2);
+        read[0].WasHearing.ShouldBe("teams (pid 8124)");
+        read[1].WasHearing.ShouldBe("msedge (pid 1000)");
+    }
+
+    /// <summary>
+    /// The one tail on which a carriage return is written behind something that is not byte for
+    /// byte a finished line. JSON reads a trailing carriage return as whitespace, so the tail
+    /// counts as whole, and the reader trims every carriage return off the end of a line, so the
+    /// two it ends up with read back as the change it always was.
+    /// </summary>
+    [Fact]
+    public void A_write_torn_between_the_carriage_return_and_the_line_feed_keeps_its_change()
+    {
+        SpoolChanges.Append(folder, Moving());
+        var whole = File.ReadAllText(SpoolChanges.In(folder).FullName).TrimEnd('\r', '\n');
+        File.WriteAllText(SpoolChanges.In(folder).FullName, whole + '\r');
+
+        SpoolChanges.Append(folder, Moving() with
+        {
+            At = Moved + Duration.FromSeconds(90),
+            WasHearing = "msedge (pid 1000)",
+        });
+
+        var read = SpoolChanges.Find(folder);
+        read.Count.ShouldBe(2);
+        read[0].WasHearing.ShouldBe("teams (pid 8124)");
+        read[1].WasHearing.ShouldBe("msedge (pid 1000)");
+    }
+
+    /// <summary>
+    /// The likeliest tear of all, since most folders only ever hold one line: the first change was
+    /// the one cut in half, so there is no line break anywhere and the whole file is the fragment.
+    /// It is dropped and the next change starts the file again — the branch that truncates to
+    /// nothing, which a guard on "no line break found" would skip straight past.
+    /// </summary>
+    [Fact]
+    public void A_folder_whose_only_line_never_landed_starts_again_from_the_next_change()
+    {
+        File.WriteAllText(SpoolChanges.In(folder).FullName, "{\"at\":\"2026-08-15T10:1");
+
+        SpoolChanges.Append(folder, Moving());
+
+        SpoolChanges.Find(folder).ShouldHaveSingleItem()
+            .WasHearing.ShouldBe("teams (pid 8124)");
+    }
+
+    /// <summary>
+    /// Guarding the shape of the file rather than proving new behaviour. Settling the tail must
+    /// cost nothing when there is no tail to settle: a terminator written unconditionally would
+    /// leave a blank line between every pair of changes, in a file whose second job is being read
+    /// by a person holding nothing but the folder.
+    /// </summary>
+    [Fact]
+    public void An_ordinary_append_adds_one_line_and_nothing_else()
+    {
+        SpoolChanges.Append(folder, Moving());
+        SpoolChanges.Append(folder, Moving() with { At = Moved + Duration.FromSeconds(90) });
+
+        File.ReadAllLines(SpoolChanges.In(folder).FullName).Length.ShouldBe(2);
+    }
+
     public void Dispose()
     {
         try

@@ -553,11 +553,15 @@ fuente que llevan y cada uno declara el suyo.
 
 Lo único que alguien puede cambiar con la reunión en curso —mover el canal 0 al
 loopback completo— va en `changes.jsonl`, al lado de la ficha: una línea por
-cambio, escrita entera de una vez y nunca reescrita, diciendo cuándo fue, qué
-escucha desde ahí y qué escuchaba antes. La ficha dice con qué abrió cada canal y
-esto dice con qué terminó, de modo que una carpeta recuperada tras un cierre
-abrupto no afirma que las notificaciones de la máquina quedaron fuera del archivo
-cuando entraron a mitad de la reunión.
+cambio, escrita de una vez y nunca reescrita, diciendo cuándo fue, qué escucha
+desde ahí y qué escuchaba antes. La ficha dice con qué abrió cada canal y esto
+dice con qué terminó, de modo que una carpeta recuperada tras un cierre abrupto
+no afirma que las notificaciones de la máquina quedaron fuera del archivo cuando
+entraron a mitad de la reunión. Antes de escribir una línea se resuelve lo que
+una escritura cortada haya dejado sin terminar: se cierra si alcanzó a llegar
+entera —el salto de línea lo pone entonces la escritura siguiente— y se descarta
+si no, de modo que dos escrituras nunca se peguen en una sola línea completa e
+ilegible.
 
 La identidad no depende del título, el nombre de un archivo ni la conexión a un
 proveedor.
