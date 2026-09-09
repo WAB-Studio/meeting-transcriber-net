@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
@@ -36,20 +36,30 @@ public class CommandLineTests
         run.Output.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// Off the command table itself, and not off a list somebody keeps beside it. The list was the
+    /// test: fifteen literals over seventeen commands, green while it covered neither `record` nor
+    /// `recovery`, and it would have stayed green with `key` left out.
+    /// </summary>
+    /// <remarks>
+    /// A whole word and not a substring. `ShouldContain("record")` passes on the line for
+    /// `recordings`, and `ShouldContain("recover")` on the line for `recovery`, so the two names
+    /// this test was missing would have gone on being covered by accident once they were added.
+    /// </remarks>
     [Fact]
     public void Asking_for_help_names_every_command()
     {
         var run = CommandLine.Of("--help");
+        var lines = run.Output.Split(Environment.NewLine).Select(line => line.Trim()).ToArray();
 
         run.Code.ShouldBe(Cli.Ok);
-        foreach (var command in new[]
+        Cli.CommandNames().ShouldNotBeEmpty();
+
+        foreach (var command in Cli.CommandNames())
         {
-            "migrate", "status", "check", "sweep", "restore", "compact", "import-response",
-            "import-audio", "render", "rebuild", "devices", "capture", "recordings", "recover",
-            "search",
-        })
-        {
-            run.Output.ShouldContain(command);
+            lines.ShouldContain(
+                line => line == command || line.StartsWith($"{command} ", StringComparison.Ordinal),
+                $"the usage has no line of its own for '{command}'.");
         }
     }
 

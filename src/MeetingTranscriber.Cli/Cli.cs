@@ -142,6 +142,12 @@ public static class Cli
             $"search <query> {Corpus.Option} <directory> [--limit <n>]",
             "ask the corpus, in the index's own query syntax",
             MeetingCommands.Search),
+        new(
+            "key",
+            "key [--set | --forget]",
+            "whether this machine holds a Deepgram key, and putting one there or taking it away",
+            KeyCommands.Key,
+            KeyCommands.TypedAtThePrompt),
     ];
 
     /// <summary>Runs one command line and answers with the exit code it earned.</summary>
@@ -169,7 +175,8 @@ public static class Cli
             var command = Array.Find(Commands, candidate => candidate.Name == name)
                 ?? throw new UsageException($"'{name}' is not a command.");
 
-            return command.Run(Arguments.Parse(arguments.Skip(1)), output);
+            return command.Run(
+                Arguments.Parse(arguments.Skip(1), command.InsteadOfRepeatingWhatWasTyped), output);
         }
         catch (UsageException misused)
         {
@@ -184,6 +191,16 @@ public static class Cli
             return Refused;
         }
     }
+
+    /// <summary>Every command this program has, in the order the usage lists them.</summary>
+    /// <remarks>
+    /// The table stays private — what runs a command is nobody else's business — but which commands
+    /// exist is already public in <see cref="Usage"/>, a line each. Saying it as a list is what lets
+    /// a test hold <em>the usage names every command</em> against the table instead of against a
+    /// copy somebody keeps by hand, which is how that test came to be silently missing two of them.
+    /// </remarks>
+    public static IReadOnlyList<string> CommandNames() =>
+        [.. Commands.Select(command => command.Name)];
 
     /// <summary>
     /// What this program does, built from the command table so a command cannot be added without
@@ -202,8 +219,8 @@ public static class Cli
     /// The failures that are answers rather than defects: a corpus that is not there or not sound,
     /// a response that cannot be read, a meeting that cannot be rendered, a query the index
     /// refuses, a machine with no microphone to give, a disk that will not give the file up, a
-    /// recording that names a meeting this corpus does not have.
-    /// Anything else is a bug and comes out as one.
+    /// recording that names a meeting this corpus does not have, a machine with no Deepgram key on
+    /// it. Anything else is a bug and comes out as one.
     /// </summary>
     /// <remarks>
     /// <see cref="DbUpdateException"/> is the same corpus failure as <see cref="SqliteException"/>
@@ -225,6 +242,7 @@ public static class Cli
         or IntakeException
         or RenderException
         or DeepgramResponseException
+        or DeepgramKeyException
         or AudioContractException
         or ArtifactWriteException
         or ArtifactRestoreException
@@ -244,9 +262,16 @@ public static class Cli
         refused is DbUpdateException { InnerException: { } cause } ? cause.Message : refused.Message;
 
     /// <summary>One command: how it is typed, what it does, and what runs it.</summary>
+    /// <param name="InsteadOfRepeatingWhatWasTyped">
+    /// What every refusal about this command's line says instead of quoting what it was handed, for
+    /// a command whose line could be carrying a secret, and nothing for the rest. It is a property
+    /// of the command and not of one reader, because the leak is any message that repeats a token —
+    /// see <see cref="Arguments.Parse"/>.
+    /// </param>
     private sealed record Command(
         string Name,
         string Usage,
         string Summary,
-        Func<Arguments, TextWriter, int> Run);
+        Func<Arguments, TextWriter, int> Run,
+        string? InsteadOfRepeatingWhatWasTyped = null);
 }

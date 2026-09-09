@@ -6,6 +6,12 @@
   <!-- Package versions live here. A .csproj carries
        <PackageReference Include="..." /> with no Version. -->
   <ItemGroup>
+    <!-- Windows credentials, which docs/packages.md settles. Two ways a bump breaks and only one
+         of them is loud: an asset that stops covering plain net10.0 fails the restore outright,
+         while a change to what its surface annotates warns CA1416 at DeepgramKey's call sites,
+         which is a failed build in CI and not on the machine it was written on. Why the type is
+         annotated the way it is, is on the type. -->
+    <PackageVersion Include="Meziantou.Framework.Win32.CredentialManager" Version="3.0.3" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
