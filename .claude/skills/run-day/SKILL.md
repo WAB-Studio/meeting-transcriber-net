@@ -103,6 +103,10 @@ against; the audit floor is still read at the trunk.
    - Bring the branch up to the `main` you are merging onto before you read its checks.
    - `pass`, `pass_with_followup` or `ask` → `gh pr merge <n> --merge --delete-branch`, whatever is
      owed. A verdict is not a reason to keep a branch alive.
+   - **Nothing this batch cut is left on the remote.** `--delete-branch` reaches the batch's branch
+     and no other, and a worker's branch was carried by cherry-pick, so its commits are on `main`
+     under different shas and nothing will ever call it merged. The auditor deletes what it carried;
+     check that it did, and delete what it says it dropped once you have settled that card.
    - `hold` → the code does not run, or the fix is roughly fifteen lines. Under a line, make it
      yourself on the PR's own branch and merge on green. Otherwise spawn `worker` once with the
      verdict as its followup, then merge. A `hold` for anything else is one you read as
