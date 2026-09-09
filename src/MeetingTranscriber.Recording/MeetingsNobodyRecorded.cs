@@ -89,9 +89,11 @@ public static class MeetingsNobodyRecorded
     /// It answers instead of throwing, because the one caller is a launch nobody is waiting on: a
     /// corpus that will not open owes nobody a sweep, and a phantom meeting standing for one more
     /// start is not something to stop an application over. What it absorbs is everything but running
-    /// out of memory, which is the shape <c>OwedRenders</c> settled on at the same launch and for
-    /// the same reason — the exceptions a file system and SQLite can raise are not a list anybody
-    /// can keep complete, and a sweep that threw would take the launch's background work with it.
+    /// out of memory, for the reason every other background seam in this product absorbs the same
+    /// way — the exceptions a file system and SQLite can raise are not a list anybody can keep
+    /// complete. <see cref="WhatALaunchOwes"/> would catch a sweep that threw anyway, and would go
+    /// on to the rest of what the launch owes; answering here is what keeps a folder this declined
+    /// distinguishable from a sweep that fell over.
     /// The cost is stated rather than hidden: a defect in this code comes back as a line in
     /// <see cref="MeetingsSwept.Left"/> like any refusal, so the tests below are what has to catch
     /// one.
@@ -279,12 +281,14 @@ public static class MeetingsNobodyRecorded
     /// </para>
     /// <para>
     /// The span the corpus can refuse in is wider than the single <c>DELETE</c> it replaced — a
-    /// <c>BEGIN IMMEDIATE</c>, two reads, the delete and a commit — and this runs at the launch
-    /// where <c>OwedRenders</c> is holding the same write lock across whole-file renders. A refusal
-    /// there strands the row: its folder has gone, and <see cref="NoRecordingIn"/> finds folders, so
-    /// no later sweep reaches it. That is the cost the class's third paragraph already names, one
+    /// <c>BEGIN IMMEDIATE</c>, two reads, the delete and a commit — and a refusal anywhere in it
+    /// strands the row: its folder has gone, and <see cref="NoRecordingIn"/> finds folders, so no
+    /// later sweep reaches it. That is the cost the class's third paragraph already names, one
     /// meeting standing in a list rather than one meeting lost, and the wider span is where it got
-    /// slightly likelier.
+    /// slightly likelier. What can refuse in it is the rest of the running application — a press
+    /// being saved, a classification being filed — and never the launch's own other work:
+    /// <see cref="WhatALaunchOwes"/> runs a launch's chores one after another, so the render
+    /// catch-up is not holding the write lock while this runs.
     /// </para>
     /// </remarks>
     private static string? RemoveTheRowUnlessSomethingCameOfIt(
@@ -377,11 +381,12 @@ public static class MeetingsNobodyRecorded
     /// refuse — and, deliberately, a defect here too.
     /// </summary>
     /// <remarks>
-    /// The same rule <c>OwedRenders</c> uses at the same launch. A list of the exceptions a file
-    /// system and SQLite can produce is one that is wrong the first time a path is a junction or a
-    /// volume is a network share, and narrowing it far enough to let a defect through would mean
-    /// naming them. So it is wide, and what pays for that is that nothing here acts on what it
-    /// caught: a folder that threw is a folder left where it was.
+    /// The same rule every background seam in this product settles on, spelled where it applies
+    /// rather than shared, because the argument for it differs at each one. A list of the
+    /// exceptions a file system and SQLite can produce is one that is wrong the first time a path
+    /// is a junction or a volume is a network share, and narrowing it far enough to let a defect
+    /// through would mean naming them. So it is wide, and what pays for that is that nothing here
+    /// acts on what it caught: a folder that threw is a folder left where it was.
     /// </remarks>
     private static bool Absorbable(Exception thrown) => thrown is not OutOfMemoryException;
 }
