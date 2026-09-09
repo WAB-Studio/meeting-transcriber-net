@@ -19,6 +19,10 @@ You run once over the batch.
 - `base_sha` — the commit every plan was written against. Read the tree there, and never resolve
   `origin/main` for yourself.
 
+`<batch_dir>/split.md` says which worker builds which cards and what paths each owns. A path two
+shares both own, or a path a plan touches that no share owns, is a collision: the workers run in
+parallel and neither will see the other.
+
 ## Output
 
 `<batch_dir>/<task_id>/review.md`, one per card, written before you return — including for a card

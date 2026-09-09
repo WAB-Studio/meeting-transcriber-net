@@ -60,13 +60,17 @@ When the work belongs to no claim — dependencies, cleanup, a formatting adjust
 **Done when:** <what has to be true, and how you know>
 ```
 
+- **No agent opens an issue.** One an agent wants opened is a proposal in
+  `private/proposed-issues.md` — English, and the body an issue would carry — which only the
+  user opens or deletes. This is the whole of it: not a smaller issue, not a draft, not a card
+  somebody tidies later.
 - **An issue is about the product, and the repository's own machinery never gets one.** The ISA
   file's prose and its gate constants, an agent's or a skill's wording, the board's automation, the
   UI probe, a CI job, a test bench, `CLAUDE.md`'s own budget: none of those is something somebody
   recording a meeting would notice, so none of them is a card. That work rides on the next pull
   request that touches the file, or it is a comment on the one that surfaced it — and where it is
-  genuinely too big for either, it is **a line on the standing machinery card**, never a card of its
-  own. Twenty-two of them were folded away on 2026-09-03 for having been opened one at a time, each
+  genuinely too big for either, it is **a line on the standing machinery card, #301**, never a card of
+  its own. Twenty-two of them were folded away on 2026-09-03 for having been opened one at a time, each
   correctly refused by the PR it came out of and each labelled the way product work is labelled.
 - **The issue points at the ISA, it does not copy it.** Cite the ID and nothing more; the text lives
   where it can change. If what has to be achieved should be a claim and is not, it gets written in
@@ -82,14 +86,15 @@ When the work belongs to no claim — dependencies, cleanup, a formatting adjust
 
 ### Labels
 
-**Two labels, and they answer different questions.** An issue is labelled by what is asked for, not
+**Two say what it is, and two say whether it moves.** An issue is labelled by what is asked for, not
 by the diff that will come out: the `feat:`/`fix:` prefix belongs to the branch and the PR.
 
 | Label                               | When                                                      |
 | ----------------------------------- | --------------------------------------------------------- |
 | `enhancement` `bug` `documentation` | Type — exactly one                                        |
 | `F0` … `F8`                         | The ISA feature it belongs to — exactly one               |
-| `question`                          | Does not move until somebody decides. Usually this is fog |
+| `grilled`                           | The user's word that it can be built. Only they set it    |
+| `question`                          | Waits on a decision. Out of the pool until it is made     |
 | `help wanted`                       | Depends on somebody outside. Say who                      |
 
 The `F` labels mirror `## Features` in `ISA.md` and are the only ones invented here; everything else
@@ -99,34 +104,42 @@ an issue with no claim takes the feature its work lands in.
 `duplicate`, `invalid` and `wontfix` go on at close, never on an open issue, and the comment
 explaining the close matters more than the label.
 
-## The board
+## What is buildable
 
-Issues say what the work is. **The board says what order it goes in** — `WAB-Studio` project **1**,
-`Meeting Transcriber`. What it shows is `Status` and the labels; the feature and the claim live on
-the issue, not in a field that can drift from it.
+Issues say what the work is. **`grilled` says what can be built** — the user puts it on when the
+card is settled, and it means: take this without asking anybody. **No agent puts it on and no agent
+takes it off.**
 
-Only issues are items. Never add a PR to the board. `Closes #N` couples them, and that link lives in
-the repository, not in the project.
+The pool is every open issue carrying it, less three:
 
-| Status        | Means                                      | Moves                          |
-| ------------- | ------------------------------------------ | ------------------------------ |
-| `Backlog`     | Exists so it is not forgotten. Not defined | Auto, when the issue is opened |
-| `Ready`       | Defined. Taken from the top                | You, when you define it        |
-| `In progress` | Has a branch, no PR yet                    | **You, when you branch**       |
-| `In review`   | Has an open PR                             | Auto, on `Closes #N`           |
-| `Testing`     | Merged. Nobody has run it and confirmed    | **You, when it merges**        |
-| `Done`        | Confirmed by a person                      | Auto, when you close the issue |
+- labelled `question` — it waits on a decision nobody has made
+- carrying an open pull request
+- `**Depends on:** #N` where `#N` is open
 
-Drag two cards, ever: `Ready → In progress` and `In review → Testing`. The rest moves itself.
+```powershell
+gh issue list --label grilled --state open --limit 200 --json number,title,labels,body
+```
+
+That runs over REST, so it answers when the project API does not — which is the reason nothing reads
+the board to decide anything.
+
+**The pool is a set and has no order.** What runs beside what is decided by the files the work
+touches, not by where a card sits, so several cards are taken at once whenever their paths do not
+meet. When the user wants something first they say so; no agent invents an order or slips a card
+ahead.
+
+**The project board is a view for people** — `WAB-Studio` project **1**, `Meeting Transcriber`.
+Statuses are moved so somebody can see where work stands, and nothing reads one to decide. A status
+that disagrees with the issues is the board being stale, never the pool being wrong. Only issues are
+items; never add a PR.
 
 Put a `Closes #N` line in every PR for every issue it closes.
 
-Never move a card to `Done` for merging. Move it to `Testing`, confirm it works, then close the
-issue. Nothing has shipped and there is no deploy, so confirming is running the built app, or
-reading the probe that ran. The evidence that closes the card is the evidence that ticks its claim.
+Never close an issue for merging. Merged is not confirmed: somebody runs the built app, or reads the
+probe that ran, and the evidence that closes the issue is the evidence that ticks its claim.
 
-**The cost is paid on the way in.** `Backlog` is a title. `Ready` is this template filled in,
-replacing the body rather than stacking under it.
+**The cost is paid on the way in.** An issue starts as a title. `grilled` is this template filled
+in, replacing the body rather than stacking under it.
 
 ```markdown
 <what is wrong today, in a line or two>
@@ -150,35 +163,23 @@ replacing the body rather than stacking under it.
 ```
 
 Those four — `Claim`, `Delivers`, `Screen`, `Proof` — are required, and `none` is a whole answer for
-two of them. Never invent a screen to fill the line. A card missing one is not `Ready`, and the
-picker sends it back.
-
-**A block does not hold a card out of `Ready`.** `Ready` means defined and nothing else. What is
-waiting rides on the card as `**Depends on:** #N`, and whoever takes it looks then at whether that
-issue is closed — a block lifted last week should not have cost the card a column move nobody made.
-
-**The order inside `Ready` is the user's judgment.** No agent invents it or slips a card ahead. An
-agent may _propose_ an order with the context the user lacks — a dependency, a claim already closed
-— and writes it once they give the word.
-
-**Column moves follow a verifiable fact**, never an opinion: branch → `In progress`, PR → `In
-review`, merge → `Testing`, a person confirming → `Done`. A PR closed without merging sends the card
-back, out loud.
+two of them. Never invent a screen to fill the line. A card missing one is not buildable whatever
+label it carries, and the picker sends it back.
 
 **A card comes back when it turns out not to be defined** — whoever takes it finds a structural
-decision nobody made, or information the card does not carry. It returns to the top of `Backlog`,
-its `Delivers` is replaced by what is missing, and it gets `question` if that is the user's
-decision. **The branch survives with whatever landed on it**, and the card names it, so the work is
-not redone when the decision arrives. Coming back is the queue correcting itself; working around the
+decision nobody made, or information the card does not carry. `grilled` comes off, its `Delivers` is
+replaced by what is missing, and it gets `question` when the decision is the user's. **The branch
+survives with whatever landed on it**, and the card names it, so the work is not redone when the
+decision arrives. Coming back is the queue correcting itself; working around the
 gap is not.
 
-One call gives the queue in order, each card with its `status`, its `labels` and its issue number.
-Moving one is two: find the item, set the field.
+Moving a card on the view, when somebody wants to see it move, is two calls — and the item id comes
+from the issue rather than from a listing of two hundred, which is what exhausts the project API:
 
 ```powershell
-gh project item-list 1 --owner WAB-Studio --format json --limit 200
-$item = (gh project item-list 1 --owner WAB-Studio --format json --limit 200 | ConvertFrom-Json).items |
-        Where-Object { $_.content.number -eq <n> } | Select-Object -ExpandProperty id
+$item = (gh api graphql -f query='{repository(owner:"WAB-Studio",name:"meeting-transcriber-net")
+         {issue(number:<n>){projectItems(first:5){nodes{id project{number}}}}}}' `
+         --jq '.data.repository.issue.projectItems.nodes[]|select(.project.number==1)|.id')
 gh project item-edit --id $item --project-id PVT_kwDOCo2sl84BhFA- `
   --field-id PVTSSF_lADOCo2sl84BhFA-zhgCKFM --single-select-option-id <option>
 ```

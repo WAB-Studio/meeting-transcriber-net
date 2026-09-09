@@ -91,8 +91,7 @@ whoever merges and never to the worker, who neither waits on it nor reads it.
 
 ## How work starts and ends
 
-Every line here says **when** to reach for something, so it cannot live in the skill it points at:
-that rule would only be read by whoever already decided. The *how* is the skill's, and is not here.
+Every line says **when** to reach for something; the *how* is the skill's and is not here.
 
 **Issues, the board, branches, the PR and the review are the `github` skill's alone.**
 
@@ -106,8 +105,9 @@ skill. **A claim closes on a probe that ran, never on a task moving.**
    count disagrees.
 4. A diff over 50 lines that are not comments runs `/adversarial-review` once, before that pass, so
    what the verdict confirms is fixed inside what the four prove.
-5. A session ends on the PR opened and never merged, standing on a clean `main`. A red command or
-   an unfixed finding stops the PR, and the session's last words say so, and why.
+5. A session ends on the PR **merged**, standing on a clean `main`. A red command or an unfixed
+   finding stops the PR; one that cannot be merged is a question put to the user before the session
+   ends, never a thing left open for somebody to notice later.
 
 ## The contract
 

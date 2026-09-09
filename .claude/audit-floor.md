@@ -1,6 +1,6 @@
 ---
 contract-sha: 5daa595f5833
-entries: 17
+entries: 16
 ---
 
 # The audit floor
@@ -99,8 +99,10 @@ somebody's job.
   the work is a person's, and so is whether the evidence under a tick proves the claim at all.
 - `.claude/audit-floor.md` — this file. What decides which changes are audited is itself audited,
   or the floor is one unwitnessed edit away from naming less than it used to.
-- `.claude/agents/auditor.md` — what an audit reads, and what makes a verdict `hold`. The floor
-  overrides judgement only for as long as this says so.
+- `.claude/agents/auditor.md` — what an audit reads, and what makes a verdict `hold`, and the four
+  commands run once over a whole batch before the one PR that carries it. The floor overrides
+  judgement only for as long as this says so, and nothing else stands between a batch of finished
+  branches and a merge.
 - `.claude/skills/run-day/SKILL.md` — §2, where the floor overrides the day's judgement about which
   PRs are worth a second read. The day is the one being overridden, so it does not get to edit it
   unwatched.
@@ -108,9 +110,6 @@ somebody's job.
   diff against, so what this file stops demanding is what no later audit can find.
 - `.claude/agents/validator.md` — what holds a plan back before any code exists. The only gate that
   runs while a wrong decision is still free to undo.
-- `.claude/agents/integrator.md` — the four commands, run once over a whole batch, and the one PR
-  that carries it. Nothing else stands between a batch of finished branches and a merge, so what
-  this stops running is what nothing runs.
 
 ## Read by
 
