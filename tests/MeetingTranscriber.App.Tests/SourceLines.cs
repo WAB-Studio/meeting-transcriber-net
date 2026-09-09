@@ -16,6 +16,28 @@ internal static class SourceLines
     /// <summary>Which line of <paramref name="source"/> the character at <paramref name="at"/> is on.</summary>
     public static int LineOf(string source, int at) => source.AsSpan(0, at).Count('\n') + 1;
 
+    /// <summary>
+    /// Where <paramref name="what"/> stands in <paramref name="source"/> as code, ignoring the
+    /// prose about it.
+    /// </summary>
+    /// <remarks>
+    /// Here for the reason the class says. Every guard in this project that counts something in the
+    /// application's own source wants this exact loop, and the second copy of it was written before
+    /// anybody noticed the first.
+    /// </remarks>
+    public static IEnumerable<int> Occurrences(string source, string what)
+    {
+        for (var at = source.IndexOf(what, StringComparison.Ordinal);
+            at >= 0;
+            at = source.IndexOf(what, at + what.Length, StringComparison.Ordinal))
+        {
+            if (!StandsInACommentedLine(source, at))
+            {
+                yield return at;
+            }
+        }
+    }
+
     /// <summary>Whether what was found at <paramref name="at"/> stands on a line that is all comment.</summary>
     /// <remarks>
     /// What it reads is the line, not the language: a line that opens a comment, and not a comment

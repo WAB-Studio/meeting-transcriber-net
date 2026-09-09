@@ -33,6 +33,13 @@ public sealed class WhatALaunchOwesTests
     /// The point of the card: one piece at a time, on one thread, in the order the list states.
     /// Two writers over one SQLite corpus is what this replaced.
     /// </summary>
+    /// <remarks>
+    /// The thread id is the assertion that does the work, and it is deterministic: any dispatch
+    /// that hands a chore to the pool fails it, including the ones that would happen not to overlap
+    /// on a quiet machine. The bracketed log catches the other shape, an interleave on this thread.
+    /// An in-flight counter was tried on top of both and removed — it is probabilistic where these
+    /// two are not, and a third guard over a proved fact is one somebody later has to understand.
+    /// </remarks>
     [Fact]
     public void The_work_a_launch_owes_runs_one_piece_at_a_time_in_the_order_it_is_stated()
     {
@@ -40,23 +47,18 @@ public sealed class WhatALaunchOwesTests
 
         var log = new List<string>();
         var threads = new List<int>();
-        var counts = new List<int>();
-        var inFlight = 0;
 
         LaunchChore Watched(string name) => new(name, _ =>
         {
-            counts.Add(Interlocked.Increment(ref inFlight));
             threads.Add(Environment.CurrentManagedThreadId);
             log.Add($"{name} in");
             log.Add($"{name} out");
-            Interlocked.Decrement(ref inFlight);
             return [];
         });
 
         var done = WhatALaunchOwes.RunIn(corpus.Root, [Watched("a"), Watched("b")]);
 
         log.ShouldBe(["a in", "a out", "b in", "b out"]);
-        counts.ShouldBe([1, 1]);
         threads.ShouldAllBe(id => id == Environment.CurrentManagedThreadId);
         done.Ran.ShouldBe(["a", "b"]);
         done.Left.ShouldBeEmpty();
@@ -107,9 +109,7 @@ public sealed class WhatALaunchOwesTests
         var done = WhatALaunchOwes.RunIn(corpus.Root, [broken, behind]);
 
         done.Ran.ShouldBe(["b"]);
-        done.Left.ShouldHaveSingleItem();
-        done.Left[0].ShouldContain("a");
-        done.Left[0].ShouldContain("there is no clock here");
+        done.Left.ShouldBe(["a: there is no clock here"]);
     }
 
     /// <summary>

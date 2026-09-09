@@ -93,9 +93,15 @@ public partial class App : Application
     /// </para>
     /// <para>
     /// Discarding the task is an accepted silence and not a second one. <c>RunIn</c> answers with
-    /// what happened instead of throwing about it, so what is dropped here is the report and never
-    /// the work. What that report would be worth saying out loud is argued where the work is, and
-    /// nothing on this side could act on it.
+    /// what happened instead of throwing about it, for everything a disk or a corpus can refuse, so
+    /// what is dropped here is the report and never the work. What that report would be worth
+    /// saying out loud is argued where the work is, and nothing on this side could act on it.
+    /// </para>
+    /// <para>
+    /// The one thing it does not answer with is running out of memory, which leaves <c>RunIn</c> so
+    /// that the chores behind the one that met it are not attempted. That is dropped here too, and
+    /// it has to be: a heap that is gone is not something a window can be asked about, and this
+    /// application does not get to end itself over work a launch owed a corpus.
     /// </para>
     /// </remarks>
     private static void StartWhatThisLaunchOwesTheCorpus(CorpusFolder corpus)

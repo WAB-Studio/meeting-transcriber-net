@@ -11,7 +11,7 @@ src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
 src/MeetingTranscriber.Presentation/      what the application says, and what language it says it in
 src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
-src/MeetingTranscriber.Recording/         a meeting recorded into a corpus: where the audio engine and the corpus meet
+src/MeetingTranscriber.Recording/         a meeting recorded into a corpus, and what a launch owes one: where the sides meet
 tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
 tools/MeetingTranscriber.CorpusImport/    reads a Python corpus in, then gets deleted
 tools/MeetingTranscriber.UiProbe/         starts the application, reads its window, presses what is on it and
@@ -56,10 +56,10 @@ and it is the half of the alias that exists: nothing packages it yet, so an inst
 `MeetingTranscriber.Recording` is where the rules that need more than one of `Audio`,
 `Infrastructure` and `Processing` live, and it is what the application composes through. The prompt
 reaches each of those directly and holds no rule of its own, which is the paragraph above. Neither
-of `Audio` and `Infrastructure` may reference the
-other: an edge from `Infrastructure` to `Audio` would put WASAPI behind rendering a transcript and
-force `Processing` onto a Windows target framework, and an edge the other way would stop the audio
-engine being provable on a machine with no corpus. So the composition sits above both. What is in
+of `Audio` and `Infrastructure` may reference the other: an edge from `Infrastructure` to `Audio`
+would put WASAPI behind rendering a transcript and force `Processing` onto a Windows target
+framework, and an edge the other way would stop the audio engine being provable on a machine with
+no corpus. So the composition sits above both. What is in
 it is the corpus side of recording — the meeting row and its folder before the first sample, the
 run written from the card the recording wrote about itself, what stopping makes of the spools, and
 what a start after a crash finds waiting and makes of one of them — all of which runs with no
@@ -75,9 +75,9 @@ it builds tell one press on one row of that list from the same press on another 
 a re-read needs to hand somebody's keyboard back — and what they name is a row, so half of them are
 a meeting and half a spool folder. `WhatALaunchOwes` is here for that reason once more: what a
 launch owes the corpus is one ordered list because two of it were two background writers over one
-corpus, and this is the only project the sweep and the renders can both be seen from — the
-application cannot hold it, and `Processing` may not see `Recording`.
-The closed list of what a read of the corpus throws
+corpus, and this is the only project that may hold a rule and can see both the sweep and the
+renders — the prompt sees both and holds no rule, the application has no probe a build agent could
+run, and `Processing` may not see this side. The closed list of what a read of the corpus throws
 that a screen says rather than stops over is here for the same reason once more: the watch reads
 the corpus from the thread a window is being built on, so that list stopped being only the
 screens' — and every exception it names, the audio engine's and the recording's and the
@@ -155,16 +155,20 @@ response out of the corpus and puts the derivatives back, so it sits above stora
 edge would make SQLite depend on how a Deepgram response is parsed.
 
 `Recording` references `Processing`, and rendering reaches the application only through it: the
-application has one edge, to `Recording`. The rendered files are the one thing a person is never
-asked about — they cost nothing and can be produced again, so no screen offers them and nothing at
-a prompt is supposed to be needed for them to exist. Something therefore has to produce them
-without being asked, and that is work a launch owes the corpus, which is one ordered list because
-two of it were two writers over one SQLite corpus at the same launch. `Recording` is where that
-list can live: it is the only project that sees both the sweep and the renders without pushing
-WASAPI under `Processing`. The rule for which meetings are owed a render still lives on the
-`Processing` side, where a build agent runs it; what the application holds is the call and the
-thread it goes on. The edge is narrow on purpose and the reason it can be is the direction:
-`Processing` knows nothing about a window, so nothing came back the other way.
+application names two projects, `Presentation` for the words and `Recording` for everything else,
+and it is the second of those the whole corpus stack arrives on. The rendered files are the one
+thing a person is never asked about — they cost nothing and can be produced again, so no screen
+offers them and nothing at a prompt is supposed to be needed for them to exist. Something
+therefore has to produce them without being asked, and that is work a launch owes the corpus,
+which is one ordered list because two of it were two writers over one SQLite corpus at the same
+launch. `Recording` is where that list can live: it is the only project that may hold a rule and
+can see both the sweep and the renders — `Cli` sees both and holds no rule of its own, the
+application has no probe a build agent could run, and the opposite edge would push WASAPI under
+`Processing`. The rule for which meetings are owed a render still lives on the `Processing` side,
+where a build agent runs it; what the application holds is the call and the thread it goes on. The
+edge is narrow on purpose — it is there for `WhatALaunchOwes` and nothing else — and the reason it
+can be is the direction: `Processing` knows nothing about a window, so nothing came back the other
+way.
 
 `MeetingTranscriber.Presentation` holds every word a person reads and nothing else — the
 catalogue, the rule that picks a language, and the choice on disk. It references nothing and

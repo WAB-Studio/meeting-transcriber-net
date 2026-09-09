@@ -91,9 +91,9 @@ public static class MeetingsNobodyRecorded
     /// start is not something to stop an application over. What it absorbs is everything but running
     /// out of memory, for the reason every other background seam in this product absorbs the same
     /// way — the exceptions a file system and SQLite can raise are not a list anybody can keep
-    /// complete. <see cref="WhatALaunchOwes"/> would catch a sweep that threw anyway, and would go
-    /// on to the rest of what the launch owes; answering here is what keeps a folder this declined
-    /// distinguishable from a sweep that fell over.
+    /// complete. Answering rather than throwing is also what keeps a folder this declined
+    /// distinguishable from a sweep that fell over, which a caller catching both could not tell
+    /// apart.
     /// The cost is stated rather than hidden: a defect in this code comes back as a line in
     /// <see cref="MeetingsSwept.Left"/> like any refusal, so the tests below are what has to catch
     /// one.
@@ -285,10 +285,14 @@ public static class MeetingsNobodyRecorded
     /// strands the row: its folder has gone, and <see cref="NoRecordingIn"/> finds folders, so no
     /// later sweep reaches it. That is the cost the class's third paragraph already names, one
     /// meeting standing in a list rather than one meeting lost, and the wider span is where it got
-    /// slightly likelier. What can refuse in it is the rest of the running application — a press
-    /// being saved, a classification being filed — and never the launch's own other work:
+    /// slightly likelier. Anything else writing to this corpus can refuse it — and that is
+    /// deliberately not a list, because a list of writers goes stale the next time one appears. The
+    /// one writer this is no longer racing is the other half of its own launch:
     /// <see cref="WhatALaunchOwes"/> runs a launch's chores one after another, so the render
-    /// catch-up is not holding the write lock while this runs.
+    /// catch-up is not holding the write lock while this runs. That closed one way in and not the
+    /// failure — a second instance of the application is a second launch over the same corpus, and
+    /// the prompt writes to it too. Closing it means the folder going only after this commit, which
+    /// is a change to the order above and not to what starts it.
     /// </para>
     /// </remarks>
     private static string? RemoveTheRowUnlessSomethingCameOfIt(

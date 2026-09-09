@@ -623,9 +623,10 @@ public sealed partial class MeetingsDrawer : UserControl
                     // need, and the standing below is what says it.
                     //
                     // Not `Absorbable(thrown) => thrown is not OutOfMemoryException`, which is the
-                    // rule at the two per-item sweeps in `Processing`, and the difference is what
-                    // an escape costs rather than what the exception means. There an escape ends
-                    // one sweep, reaches a caller and is retried on the next launch. Here `_asked`
+                    // rule every other background seam in this product settles on, and the
+                    // difference is what an escape costs rather than what the exception means.
+                    // There an escape ends one sweep, reaches a caller and is retried on the next
+                    // launch. Here `_asked`
                     // claims every folder before this loop starts and the task is nobody's to
                     // observe, so an escape strands every row behind it, silently, for the rest of
                     // the session — with no length and no answers, which is the state this whole
