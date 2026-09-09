@@ -557,7 +557,11 @@ cambio, escrita entera de una vez y nunca reescrita, diciendo cuándo fue, qué
 escucha desde ahí y qué escuchaba antes. La ficha dice con qué abrió cada canal y
 esto dice con qué terminó, de modo que una carpeta recuperada tras un cierre
 abrupto no afirma que las notificaciones de la máquina quedaron fuera del archivo
-cuando entraron a mitad de la reunión.
+cuando entraron a mitad de la reunión. Lo único que un cambio puede borrar es la
+cola sin terminar que dejó el cambio anterior al fallar: se escribe antes del
+relevo, así que una escritura que falla es un movimiento que no ocurrió, y lo que
+alcanzó a caer no cuenta nada. Se descarta antes de escribir encima, de modo que
+dos escrituras nunca se peguen en una sola línea completa e ilegible.
 
 La identidad no depende del título, el nombre de un archivo ni la conexión a un
 proveedor.
