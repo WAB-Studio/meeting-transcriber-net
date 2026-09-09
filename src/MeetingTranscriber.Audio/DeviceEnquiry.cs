@@ -23,24 +23,26 @@ namespace MeetingTranscriber.Audio;
 /// </para>
 /// <para>
 /// What is here and nowhere else is that a question the machine has not come back from is not put
-/// to it again. Both callers look on a timer: a screen redrawing its meters asks what the machine
-/// plays through once a second, and the watcher lists the microphones every two for as long as a
-/// channel's device is gone. A deadline alone would leave either of them waiting five seconds out
-/// of every six and starting one abandoned thread per go, which is the freeze this exists to end,
-/// spelled with pauses in it. So a question given up on is remembered until its body comes back,
-/// and while it is out there it is refused at once.
+/// to it again. One caller looks on a timer: the watcher lists the microphones every two seconds
+/// for as long as a channel's device is gone. A deadline alone would leave it waiting five seconds
+/// out of every six and starting one abandoned thread per go, which is the freeze this exists to
+/// end, spelled with pauses in it. So a question given up on is remembered until its body comes
+/// back, and while it is out there it is refused at once. The other caller, the screen, asks what
+/// the machine plays through when a meeting starts and when Windows says the default endpoint
+/// moved; it is remembered on the same terms, because a stuck audio service turns a burst of those
+/// notifications into a deadline apiece.
 /// </para>
 /// <para>
 /// That question and no other, which is the whole of what the memory is for and the whole of what
 /// it may cost. A caller that looks on a timer asks one thing, so refusing what is already out
 /// there is what turns its every look into one deadline; a different question is a different
 /// caller, with its own deadline to pay once. Refusing that one too would tie the two callers this
-/// application has together, and the tie runs the wrong way — the screen's once-a-second look at
-/// what the machine plays through says whether a room is hearing the other side twice, while the
-/// watcher's list of the microphones is how a meeting follows a microphone somebody unplugged
-/// while it was recording. One memory over both means the cosmetic one wedging stops the recovery
-/// for as long as its body is out, which for a body that never comes back is the rest of the
-/// meeting. A stuck audio service is a fair guess that the next question sticks too, and that
+/// application has together, and the tie runs the wrong way — the screen's look at what the machine
+/// plays through says whether a room is hearing the other side twice, while the watcher's list of
+/// the microphones is how a meeting follows a microphone somebody unplugged while it was recording.
+/// One memory over both means the cosmetic one wedging stops the recovery for as long as its body
+/// is out, which for a body that never comes back is the rest of the meeting. A stuck audio
+/// service is a fair guess that the next question sticks too, and that
 /// guess is worth a deadline paid once per question rather than a meeting that stops following its
 /// microphone on the evidence of a meter.
 /// </para>

@@ -40,8 +40,10 @@ public static class AudioDevices
     /// endpoint, so what this is for is what an endpoint can still say about a meeting: whether
     /// what is played comes out into the room, where the microphone hears it a second time.
     /// <para>
-    /// Bounded like the list of microphones, and it is the one asked most often: a meeting on
-    /// screen asks it once a second, which is what <see cref="DeviceEnquiry"/> is written against.
+    /// Bounded like the list of microphones: a meeting on screen asks it when the meeting starts
+    /// and again whenever Windows says the default endpoint moved, and either ask can sit inside a
+    /// stuck audio service for as long as that service likes — which is what
+    /// <see cref="DeviceEnquiry"/> is written against.
     /// </para>
     /// </remarks>
     public static AudioDevice Playback() =>
