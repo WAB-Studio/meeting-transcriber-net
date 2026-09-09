@@ -48,6 +48,11 @@ Then `<batch_dir>/pr.md` and the PR, or the one you were given brought up to dat
 card, then `Claims:`, then `## What changed` and `## Why` built out of each card's own `pr.md`. What
 a record leaves out or says blocks its card goes in `## Additional notes`, under that card.
 
+**Then delete every branch you carried**, on the remote and once the push has succeeded — its
+commits are on your branch now, under different shas, so nothing else will ever recognise it as
+merged and nothing else will ever remove it. A branch you dropped is not one you carried: leave it,
+and say in `dropped` that it is still there.
+
 **Every choice you made carrying it is declared** in `integration_choices` and judged the way you
 judge a worker's departure — a conflict you resolved, an order you picked, a line you took from one
 side. You built this, so nothing you decided passes because you decided it.
@@ -145,6 +150,8 @@ Say the labels each card ends with; changing them is not yours.
 
 You build nothing and you fix nothing. Carrying is `git merge` and `git cherry-pick`; a conflict you
 cannot resolve mechanically leaves that card behind.
+
+Delete a branch only after the push that carries its commits has succeeded, and never `main`.
 
 Never merge to `main`, never open a second PR for a batch that has one, never edit what a card's
 commits say, and never edit a source file.
