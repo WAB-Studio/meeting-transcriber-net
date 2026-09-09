@@ -1,6 +1,5 @@
-using MeetingTranscriber.Infrastructure.Storage;
+﻿using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
-using MeetingTranscriber.Processing.Rendering;
 using MeetingTranscriber.Recording;
 
 using Microsoft.UI.Xaml;
@@ -73,87 +72,43 @@ public partial class App : Application
         _main = window;
         _main.Activate();
 
-        SweepTheMeetingsNobodyRecorded(_corpus);
-        CatchUpOnTheRenders(_corpus);
+        StartWhatThisLaunchOwesTheCorpus(_corpus);
     }
 
     /// <summary>
-    /// Takes the meetings a press left behind off the corpus this session opened: a row and a
-    /// folder holding nothing but a mark nobody is holding, for a recording that never started.
+    /// Starts everything this launch owes the corpus it just opened.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// At launch, because a start is where the folders left by every press before this one are
-    /// sitting, and because hanging it on the meetings list would tie it to how often somebody
-    /// looks. It is not because a launch is quiet: the window is already up and somebody can press
-    /// record while this runs. What keeps that safe is the mark the press holds over its folder,
-    /// from the moment the folder is made rather than from the moment a device opens, which the
-    /// sweep's delete runs into rather than asks about — <c>MeetingsNobodyRecorded</c> says how,
-    /// and it is the sweep's rule and not this one's.
+    /// What that work is, and what order it runs in, is <see cref="WhatALaunchOwes.InOrder"/>'s and
+    /// is not restated here. What this holds is the application's half: that it happens at all, on
+    /// a thread that is not the one the window draws on, after the window is up. A launch used to
+    /// start two of these side by side, and the list is what replaced them — anything a launch
+    /// comes to owe belongs in it rather than beside this call.
     /// </para>
     /// <para>
-    /// Off the thread the window draws on, for the reason the renders are: it opens the corpus and
-    /// writes to it. It runs beside them rather than before them — two background tasks over one
-    /// corpus, held apart by touching disjoint meetings and by SQLite's own <c>busy_timeout</c> —
-    /// and nothing on screen waits for either. A drawer opened inside the second it takes reads one
-    /// phantom meeting that is gone by the next start, which is the list this fixes rather than a
-    /// new defect.
+    /// Off the thread the window draws on because the work opens the corpus and holds a write
+    /// transaction while it runs, which is not something a window should be inside. Nothing on
+    /// screen waits for it either.
     /// </para>
     /// <para>
-    /// Nobody is told how it went, and unlike the renders that is not a decision left owed: what a
-    /// sweep declines to touch is a folder it was right to leave, and there is nothing in it for a
-    /// person to answer. <c>SweepIn</c> answers with what happened instead of throwing, so what is
-    /// dropped here is the report and never the sweep.
+    /// Discarding the task is an accepted silence and not a second one. <c>RunIn</c> answers with
+    /// what happened instead of throwing about it, for everything a disk or a corpus can refuse, so
+    /// what is dropped here is the report and never the work. What that report would be worth
+    /// saying out loud is argued where the work is, and nothing on this side could act on it.
+    /// </para>
+    /// <para>
+    /// The one thing it does not answer with is running out of memory, which leaves <c>RunIn</c> so
+    /// that the chores behind the one that met it are not attempted. That is dropped here too, and
+    /// it has to be: a heap that is gone is not something a window can be asked about, and this
+    /// application does not get to end itself over work a launch owed a corpus.
     /// </para>
     /// </remarks>
-    private static void SweepTheMeetingsNobodyRecorded(CorpusFolder corpus)
+    private static void StartWhatThisLaunchOwesTheCorpus(CorpusFolder corpus)
     {
         if (corpus.Folder is { } folder)
         {
-            _ = Task.Run(() => MeetingsNobodyRecorded.SweepIn(folder));
-        }
-    }
-
-    /// <summary>
-    /// Produces the files of every meeting whose transcription has arrived and whose transcript
-    /// and jsonl have not, in the corpus this session opened.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Here, and not on the meetings screen opening. The response arriving is what puts a meeting
-    /// in this state, and launch is where the application learns of one that arrived while it was
-    /// closed — today it is the only place it can learn of one at all, because nothing in this
-    /// application runs a transcription: taking a stage queues a job and starts nothing, so there
-    /// is no completion to hang this off yet. Hanging it on the screen instead would tie the work
-    /// to how often somebody looks at a list, which is not what decides the files.
-    /// </para>
-    /// <para>
-    /// Off the thread the window draws on, after the window is up, and nothing waits for it: it
-    /// writes to the corpus and holds a write transaction while it does, which is not something a
-    /// window should be inside. Nothing on screen is waiting on it either — a rendered file says
-    /// nothing about the stage a meeting is at, so no card changes when one lands.
-    /// </para>
-    /// <para>
-    /// Nobody is told how it went, and that is the decision: the files cost nothing and can be
-    /// produced again, so a render that failed is one the next launch tries again and there is
-    /// nothing in it for a person to answer. Saying it out loud instead would need a line on the
-    /// window and words in the catalogue, which is a screen decision and not this one's — and it
-    /// is owed for the failure that is not transient, a response the parser can never read, which
-    /// this retries and drops again on every launch.
-    /// </para>
-    /// <para>
-    /// Discarding the task is an accepted silence and not a second one. <c>CatchUpOn</c> answers
-    /// with what happened instead of throwing about it, so what is dropped here is the report and
-    /// never the sweep: no meeting is lost by nobody reading it, and the only thing that can leave
-    /// it is what nothing on this side could have done anything with anyway. What is accepted is
-    /// the paragraph above — the line naming the meeting goes with the report.
-    /// </para>
-    /// </remarks>
-    private static void CatchUpOnTheRenders(CorpusFolder corpus)
-    {
-        if (corpus.Folder is { } folder)
-        {
-            _ = Task.Run(() => OwedRenders.CatchUpOn(folder, TimeProvider.System));
+            _ = Task.Run(() => WhatALaunchOwes.RunIn(folder));
         }
     }
 

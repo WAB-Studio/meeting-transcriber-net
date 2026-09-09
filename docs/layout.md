@@ -11,7 +11,7 @@ src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
 src/MeetingTranscriber.Presentation/      what the application says, and what language it says it in
 src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
-src/MeetingTranscriber.Recording/         a meeting recorded into a corpus: where the audio engine and the corpus meet
+src/MeetingTranscriber.Recording/         a meeting recorded into a corpus, and what a launch owes one: where the sides meet
 tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
 tools/MeetingTranscriber.CorpusImport/    reads a Python corpus in, then gets deleted
 tools/MeetingTranscriber.UiProbe/         starts the application, reads its window, presses what is on it and
@@ -53,11 +53,13 @@ can be exercised without automating a window — `tests/MeetingTranscriber.Cli.T
 and it is the half of the alias that exists: nothing packages it yet, so an installed build has no
 `meeting-transcriber` on the PATH until ISC-113 is closed.
 
-`MeetingTranscriber.Recording` is the only project that references both `Audio` and
-`Infrastructure`, and that is the whole of what it is for. Neither of those two may reference the
-other: an edge from `Infrastructure` to `Audio` would put WASAPI behind rendering a transcript and
-force `Processing` onto a Windows target framework, and an edge the other way would stop the audio
-engine being provable on a machine with no corpus. So the composition sits above both. What is in
+`MeetingTranscriber.Recording` is where the rules that need more than one of `Audio`,
+`Infrastructure` and `Processing` live, and it is what the application composes through. The prompt
+reaches each of those directly and holds no rule of its own, which is the paragraph above. Neither
+of `Audio` and `Infrastructure` may reference the other: an edge from `Infrastructure` to `Audio`
+would put WASAPI behind rendering a transcript and force `Processing` onto a Windows target
+framework, and an edge the other way would stop the audio engine being provable on a machine with
+no corpus. So the composition sits above both. What is in
 it is the corpus side of recording — the meeting row and its folder before the first sample, the
 run written from the card the recording wrote about itself, what stopping makes of the spools, and
 what a start after a crash finds waiting and makes of one of them — all of which runs with no
@@ -71,7 +73,11 @@ the corpus: what that list draws is the corpus's meetings *and* the spool folder
 this is the only project that can see both. `RowPresses` is here for that reason once more: the ids
 it builds tell one press on one row of that list from the same press on another row — which is what
 a re-read needs to hand somebody's keyboard back — and what they name is a row, so half of them are
-a meeting and half a spool folder. The closed list of what a read of the corpus throws
+a meeting and half a spool folder. `WhatALaunchOwes` is here for that reason once more: what a
+launch owes the corpus is one ordered list because two of it were two background writers over one
+corpus, and this is the only project that may hold a rule and can see both the sweep and the
+renders — the prompt sees both and holds no rule, the application has no probe a build agent could
+run, and `Processing` may not see this side. The closed list of what a read of the corpus throws
 that a screen says rather than stops over is here for the same reason once more: the watch reads
 the corpus from the thread a window is being built on, so that list stopped being only the
 screens' — and every exception it names, the audio engine's and the recording's and the
@@ -89,8 +95,8 @@ half is the projection off two open devices that no build agent can run.
 The window sets every control from one of those and asks it again inside each handler, so the half
 of a screen that has rules is the half a build agent runs, and the half that needs a microphone is
 the half a person presses. `MeetingTranscriber.App` references this project for all of that:
-`Audio`, `Infrastructure` and `Domain` arrive through it, which is the same composition the command
-line goes through.
+`Audio`, `Infrastructure`, `Domain` and `Processing` arrive through it, which is the same
+composition the command line goes through.
 
 The same split, in the same two places, is what the screen a meeting is read from is made of, and
 the halves land in different projects because the two questions are different. What that screen
@@ -148,14 +154,21 @@ because `Domain/Audio/` is on the audit floor for the channel contract and the p
 response out of the corpus and puts the derivatives back, so it sits above storage. The opposite
 edge would make SQLite depend on how a Deepgram response is parsed.
 
-`MeetingTranscriber.App` references `Processing` too, and that is the second and last edge out of
-the application. It is there because the rendered files are the one thing a person is never asked
-about — they cost nothing and can be produced again, so no screen offers them and nothing at a
-prompt is supposed to be needed for them to exist. Something inside the application therefore has
-to produce them, and the rule for which meetings are owed one lives on the `Processing` side, where
-a build agent runs it; what the application holds is the call and the thread it goes on. The edge
-is narrow on purpose and the reason it can be is the direction: `Processing` knows nothing about a
-window, so nothing came back the other way.
+`Recording` references `Processing`, and rendering reaches the application only through it: the
+application names two projects, `Presentation` for the words and `Recording` for everything else,
+and it is the second of those the whole corpus stack arrives on. The rendered files are the one
+thing a person is never asked about — they cost nothing and can be produced again, so no screen
+offers them and nothing at a prompt is supposed to be needed for them to exist. Something
+therefore has to produce them without being asked, and that is work a launch owes the corpus,
+which is one ordered list because two of it were two writers over one SQLite corpus at the same
+launch. `Recording` is where that list can live: it is the only project that may hold a rule and
+can see both the sweep and the renders — `Cli` sees both and holds no rule of its own, the
+application has no probe a build agent could run, and the opposite edge would push WASAPI under
+`Processing`. The rule for which meetings are owed a render still lives on the `Processing` side,
+where a build agent runs it; what the application holds is the call and the thread it goes on. The
+edge is narrow on purpose — it is there for `WhatALaunchOwes` and nothing else — and the reason it
+can be is the direction: `Processing` knows nothing about a window, so nothing came back the other
+way.
 
 `MeetingTranscriber.Presentation` holds every word a person reads and nothing else — the
 catalogue, the rule that picks a language, and the choice on disk. It references nothing and
@@ -164,8 +177,9 @@ App SDK compiles a module initializer into every assembly that references it, an
 type from `MeetingTranscriber.App` fires it and throws outside a packaged host. Anything about
 the UI that has to be provable lives here rather than beside a window.
 
-`tests/MeetingTranscriber.App.Tests/` follows from that: it references no project either — not
-even the ones the app itself references — and reads the app's `.xaml` and `.xaml.cs` as source to hold every screen to naming an entry in the
+`tests/MeetingTranscriber.App.Tests/` follows from that: it cannot reference the application at
+all, for the reason the sentence above gives, so it references `Presentation` and nothing else, and
+reads the app's `.xaml` and `.xaml.cs` as source to hold every screen to naming an entry in the
 catalogue instead of carrying words of its own. Running a WinUI tree would need a UI thread and
 a packaged host, neither of which a build agent has — so the check that needed one is the check
 that would never run there. It runs somewhere: `tools/MeetingTranscriber.UiProbe` starts the

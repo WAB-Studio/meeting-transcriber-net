@@ -320,8 +320,9 @@ public sealed class MeetingsWatch : IDisposable
     /// <summary>
     /// True when carrying on is the lesser harm. The one that is not is a heap that is gone, where
     /// the next look would be built out of the same exhaustion — the same rule, spelled the same
-    /// way, as the two per-item sweeps in <c>Processing</c> and the one in
-    /// <see cref="MeetingsNobodyRecorded"/>.
+    /// way, as every other seam in this product that absorbs so a background pass can carry on.
+    /// Which ones those are is deliberately not listed: a census in a comment goes stale the next
+    /// time one appears, which is how this sentence went stale once already.
     /// </summary>
     private static bool Absorbable(Exception thrown) => thrown is not OutOfMemoryException;
 
