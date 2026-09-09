@@ -9,6 +9,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Meziantou.Framework.Win32.CredentialManager" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <!-- Needed by `dotnet ef migrations add`, which builds the model from this project. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">

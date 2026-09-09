@@ -197,12 +197,12 @@ public sealed partial class MainWindow : Window
     private IReadOnlyList<ChannelReading> _channels = [];
 
     /// <summary>
-    /// The endpoint the machine is playing through, as of the last time it moved. Asked when a
-    /// meeting starts and again when Windows says the default changed, which is the only thing
-    /// that moves it — so a machine that will not answer leaves the line where it was rather than
-    /// flickering, and a machine that answers is not asked sixty times a minute for one answer.
+    /// What this machine is playing through, as of the last time it moved. Asked when a meeting
+    /// starts and again when Windows says the default changed, which is the only thing that moves
+    /// it — so a machine that answers is not asked sixty times a minute for one answer. What a
+    /// refusal does is <see cref="WhatTheMachinePlaysThrough"/>'s and is not decided here.
     /// </summary>
-    private AudioDevice? _playback;
+    private readonly WhatTheMachinePlaysThrough _playback = new();
 
     private RecorderChoices _chosen = RecorderChoices.Nothing;
 
@@ -377,7 +377,7 @@ public sealed partial class MainWindow : Window
     /// down because <see cref="Screen"/> is built by nine handlers that have no meters in hand.
     /// </remarks>
     private RecordingMeters Meters(RecorderState state) =>
-        RecordingMeters.Of(state, _playback, _channels);
+        RecordingMeters.Of(state, _playback.Standing, _channels);
 
     /// <summary>
     /// Sets every control from the one answer. Nothing here decides anything: it is the reading of
@@ -609,22 +609,12 @@ public sealed partial class MainWindow : Window
     /// application not being told; being told is the same warning, sooner, for one question per
     /// headset.
     /// <para>
-    /// A refusal leaves the answer where it was and writes nothing. What is being decided is a
-    /// line beside a meter, and a machine that would not say is not worth a sentence in the report
-    /// about a warning that did not appear.
+    /// What a machine that will not say costs is <see cref="WhatTheMachinePlaysThrough"/>'s and not
+    /// this window's, which is the whole reason that type exists: the rule is one a build agent can
+    /// run, and nothing in this file decides it.
     /// </para>
     /// </remarks>
-    private void ReadWhatTheMachinePlaysThrough()
-    {
-        try
-        {
-            _playback = AudioDevices.Playback();
-        }
-        catch (AudioCaptureException)
-        {
-            // Left as it was, deliberately.
-        }
-    }
+    private void ReadWhatTheMachinePlaysThrough() => _playback.Ask(AudioDevices.Playback);
 
     /// <summary>
     /// Sets the meters from what was last read: what each channel is capturing, how loud it has
@@ -1780,6 +1770,11 @@ public sealed partial class MainWindow : Window
         // the previous meeting's devices and levels under the new one for as long as the first tick
         // takes to arrive.
         _channels = [];
+
+        // The same fact about what this machine plays through. It holds an answer across a machine
+        // that hiccuped inside a meeting, and has no business carrying one between two — the
+        // method says why.
+        _playback.ForgetTheLastMeeting();
 
         // And the one thing on this screen that outlives a tick. A meter's retained peak does not
         // decay — that is what makes it a memory rather than a reading — so the mark left standing

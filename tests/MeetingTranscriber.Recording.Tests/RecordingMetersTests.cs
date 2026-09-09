@@ -131,6 +131,95 @@ public class RecordingMetersTests
             .TheOthersAreHeardTwice.ShouldBeFalse();
 
     /// <summary>
+    /// ISC-150.1. Before the machine has answered once there is no last answer to stand, so the
+    /// line is empty — which is this rule having nothing yet rather than this rule failing.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="RecordingMeters.Of"/> directly rather than through <see cref="Metered"/>, which
+    /// takes a device the compiler insists on. This is the one test whose whole subject is the
+    /// answer being nothing, and widening <see cref="Metered"/> for it would cost the three tests
+    /// that read better for having to name a device.
+    /// </remarks>
+    [Fact]
+    public void Nothing_is_said_about_the_speakers_before_the_machine_has_answered()
+    {
+        var playback = new WhatTheMachinePlaysThrough();
+
+        playback.Standing.ShouldBeNull();
+        playback.Ask(Refusing());
+        playback.Standing.ShouldBeNull();
+
+        RecordingMeters.Of(
+                RecorderState.Recording,
+                playback.Standing,
+                [Reading(AudioChannel.Loopback, Speech), Reading(AudioChannel.Microphone, Speech)])
+            .TheOthersAreHeardTwice.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// ISC-150.1, read literally: with the machine answering the line says what it says, and with
+    /// the machine then refusing it goes on saying it. Asked twice because a rule that holds for
+    /// one refused read and not the next is the same defect, and one refusal of each kind because
+    /// both are the machine not saying and the rule does not tell them apart.
+    /// </summary>
+    [Fact]
+    public void What_the_machine_last_said_about_the_speakers_stands_when_it_stops_answering()
+    {
+        var playback = new WhatTheMachinePlaysThrough();
+        playback.Ask(() => Speakers);
+
+        playback.Ask(Refusing());
+        playback.Ask(Silent());
+
+        playback.Standing.ShouldBe(Speakers);
+        Metered(RecorderState.Recording, playback.Standing!, others: Speech, mine: Speech)
+            .TheOthersAreHeardTwice.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The other direction, and the one that says <em>keeps the last answer</em> is not <em>keeps
+    /// the first answer</em>. Somebody plugging a headset in is the whole reason the question is
+    /// asked again at all, and a rule that stopped at the first answer would tell that person the
+    /// room could hear them for the rest of the hour.
+    /// </summary>
+    [Fact]
+    public void A_machine_that_answers_again_replaces_what_was_standing()
+    {
+        var playback = new WhatTheMachinePlaysThrough();
+        playback.Ask(() => Speakers);
+        playback.Ask(Refusing());
+
+        playback.Ask(() => AHeadset);
+
+        playback.Standing.ShouldBe(AHeadset);
+        Metered(RecorderState.Recording, playback.Standing!, others: Speech, mine: Speech)
+            .TheOthersAreHeardTwice.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// What the last meeting was told does not carry into the next one. The rule above holds an
+    /// answer across a machine that hiccuped inside a meeting; between two meetings nothing is
+    /// watching the endpoint move, so an answer carried over would warn about a room on the
+    /// strength of a question asked about a different meeting.
+    /// </summary>
+    [Fact]
+    public void What_the_last_meeting_was_told_does_not_stand_for_the_next_one()
+    {
+        var playback = new WhatTheMachinePlaysThrough();
+        playback.Ask(() => Speakers);
+
+        playback.ForgetTheLastMeeting();
+        playback.Ask(Refusing());
+
+        playback.Standing.ShouldBeNull();
+        RecordingMeters.Of(
+                RecorderState.Recording,
+                playback.Standing,
+                [Reading(AudioChannel.Loopback, Speech), Reading(AudioChannel.Microphone, Speech)])
+            .TheOthersAreHeardTwice.ShouldBeFalse();
+    }
+
+    /// <summary>
     /// The warning is about a microphone that is open, so it goes when the microphone does. It is
     /// worse than a meter left standing: a line about the room hearing somebody, on a screen where
     /// nothing is being recorded, is a sentence about a meeting that is not happening.
@@ -404,6 +493,23 @@ public class RecordingMetersTests
     }
 
     private static RecorderState[] States() => Enum.GetValues<RecorderState>();
+
+    /// <summary>
+    /// A machine that did not answer inside the deadline — the refusal <c>DeviceEnquiry.Answering</c>
+    /// really makes, built by the factory that really makes it, so what is fabricated here is the
+    /// machine and never the sentence.
+    /// </summary>
+    private static Func<AudioDevice> Refusing() =>
+        () => throw AudioDeviceWedgedException.NoAnswerAbout(DeviceQuestion.PlaybackDevice.Asked);
+
+    /// <summary>
+    /// A machine that answered and named nothing, which is the other refusal
+    /// <c>AudioDevices.Playback</c> produces. It is a plain <see cref="AudioCaptureException"/>, and
+    /// the rule treats the two the same on purpose.
+    /// </summary>
+    private static Func<AudioDevice> Silent() =>
+        () => throw new AudioCaptureException(
+            "Windows names no playback device, so there is nothing for channel 0 to listen to.");
 
     private static RecordingMeters Metered(
         RecorderState state,

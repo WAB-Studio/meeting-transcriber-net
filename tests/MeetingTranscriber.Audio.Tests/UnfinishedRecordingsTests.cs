@@ -212,6 +212,13 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
         taken.NotMade.ShouldBeEmpty();
         into.EnumerateFiles("*.blocks").ShouldBeEmpty();
 
+        // A folder this call made, and the undo that takes such a folder back runs on the way out
+        // of every export including this one. What stops it here is the recording standing in it,
+        // which is the only thing that ever stops it.
+        into.Refresh();
+        into.Exists.ShouldBeTrue();
+        into.GetFiles().Length.ShouldBe(2);
+
         Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
         SpoolManifest.Find(Folder("daily")).ShouldNotBeNull();
     }
@@ -269,6 +276,12 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     /// half that landed is what makes the second attempt refuse the folder. So a source that
     /// cannot be read takes back what the sources before it wrote, and asking again is a thing
     /// somebody can do.
+    /// <para>
+    /// Nothing behind is the folder too, which somebody did not have before they typed the command.
+    /// The corrupt spool is what stands in here for the file system refusing the export — a full
+    /// disk, a read-only path, a denied permission — because none of those can be produced on a
+    /// build agent and all of them arrive at this same <c>catch</c> by the same route.
+    /// </para>
     /// </summary>
     [Fact]
     public void Audio_taken_out_leaves_nothing_behind_when_a_later_source_cannot_be_read()
@@ -279,7 +292,107 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
 
         Should.Throw<AudioCaptureException>(() => UnfinishedRecordings.At(Folder("daily")).Export(into));
 
-        into.EnumerateFiles().ShouldBeEmpty();
+        into.Refresh();
+        into.Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The other half of it: a destination somebody already had is left exactly as it was, because
+    /// deleting a folder they had would be worse than leaving behind one this call made. It is
+    /// empty on purpose — a destination with anything in it would be held by the non-recursive
+    /// delete itself and would prove nothing about remembering.
+    /// </summary>
+    [Fact]
+    public void An_export_that_was_refused_leaves_an_empty_destination_somebody_already_had()
+    {
+        Recorded("daily", both: true);
+        Corrupt(BlockSpool.FileFor(Folder("daily"), AudioChannel.Microphone), at: 16);
+        var into = root.CreateSubdirectory("taken out");
+
+        Should.Throw<AudioCaptureException>(() => UnfinishedRecordings.At(Folder("daily")).Export(into));
+
+        into.Refresh();
+        into.Exists.ShouldBeTrue();
+        into.GetFiles().ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A destination whose parent does not exist yet is the ordinary thing to type, and one call
+    /// makes all three levels. Taking back only the leaf would keep the promise for a destination
+    /// beside a folder that was there and break it for one two levels down.
+    /// </summary>
+    [Fact]
+    public void An_export_that_was_refused_leaves_no_folder_it_had_to_make_on_the_way()
+    {
+        Recorded("daily", both: true);
+        Corrupt(BlockSpool.FileFor(Folder("daily"), AudioChannel.Microphone), at: 16);
+        var into = new DirectoryInfo(Path.Combine(root.FullName, "one", "two", "taken out"));
+
+        Should.Throw<AudioCaptureException>(() => UnfinishedRecordings.At(Folder("daily")).Export(into));
+
+        new DirectoryInfo(Path.Combine(root.FullName, "one")).Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The file system refusing the destination itself is what this card was opened for, and it is
+    /// the one shape where the refusal arrives before the export has a list of levels to take back.
+    /// A component over 255 characters is the only refusal of that family reachable on a build
+    /// agent — a full disk, a read-only volume and a denied ACL are the same event and none of them
+    /// can be produced here — and it is the harder one, because Windows makes the levels above the
+    /// leaf before it refuses the leaf.
+    /// <para>
+    /// The premise is asserted rather than assumed, and that is the whole reason the first half is
+    /// here: <c>root/one</c> not being there afterwards is equally what somebody sees when nothing
+    /// was ever made, so a runtime that stopped making the levels above a refused leaf would leave
+    /// this green while it stopped testing anything. Asked of a sibling path, it fails instead.
+    /// </para>
+    /// <para>
+    /// What comes out is the file system's own <see cref="IOException"/> rather than this engine's
+    /// sentence, which is what <c>Export</c> has always done with a destination it could not make.
+    /// That is recorded here, not endorsed: every other way out of the three outcomes is an
+    /// <c>AudioCaptureException</c>, and which one a person should read is its own question.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void A_destination_the_file_system_refused_partway_leaves_no_level_it_had_made()
+    {
+        var sibling = Path.Combine(root.FullName, "premise", "held", new string('n', 300));
+        Should.Throw<IOException>(() => Directory.CreateDirectory(sibling));
+        Directory.Exists(Path.Combine(root.FullName, "premise", "held")).ShouldBeTrue();
+
+        Recorded("daily", both: true);
+        var into = new DirectoryInfo(
+            Path.Combine(root.FullName, "one", "two", new string('n', 300)));
+
+        Should.Throw<IOException>(() => UnfinishedRecordings.At(Folder("daily")).Export(into));
+
+        // Both levels were made before the leaf was refused, so both are the export's to take back.
+        new DirectoryInfo(Path.Combine(root.FullName, "one")).Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Every source refusing is not something going wrong — one source that changed format is a
+    /// fact about that source and so are two — so the call comes back rather than throwing. What it
+    /// must not leave is the folder: a destination holding no file is the same empty folder a
+    /// refusal would have left, and it is the only trace of an attempt that made nothing.
+    /// </summary>
+    [Fact]
+    public void An_export_no_source_could_be_made_from_leaves_no_destination_folder_behind()
+    {
+        // Built by hand rather than through `Recorded`, which always writes a loopback spool: what
+        // is wanted here is a recording whose every source refuses, so it has exactly one.
+        var folder = Folder("only a microphone");
+        folder.Create();
+        SpoolThatChangedFormat(folder, AudioChannel.Microphone);
+        var into = Folder("taken out");
+
+        var taken = UnfinishedRecordings.At(folder).Export(into);
+
+        taken.Exported.ShouldBeEmpty();
+        taken.NotMade.Select(source => source.Channel).ShouldBe([AudioChannel.Microphone]);
+
+        into.Refresh();
+        into.Exists.ShouldBeFalse();
     }
 
     /// <summary>ISC-124, the third, and the only one of them that takes anything away.</summary>
@@ -801,6 +914,17 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     /// <summary>
     /// The other half of ISC-126: saying so is not enough on its own, because what is offered is
     /// what somebody acts on. All three outcomes refuse a meeting that is still being recorded.
+    /// <para>
+    /// The recording is read before the capture takes hold of it, so <c>Running</c> is false on the
+    /// record all three are called on and none of them is refused by
+    /// <c>EnsureThereIsSomethingToDecide</c>. What refuses them is the handle itself, in
+    /// <c>SpoolReader.Open</c>, which is deeper in than the destination folder — so the export has
+    /// already made <c>out</c> and claimed its files by the time it is told no, and
+    /// <c>Folder("out").Exists.ShouldBeFalse()</c> is held by the undo rather than by the ordering.
+    /// That is the point of asking it that way round: a folder somebody's command left standing is
+    /// what this asserts against, and enumerating a folder that should not be there is a question
+    /// with two answers.
+    /// </para>
     /// </summary>
     [Fact]
     public void None_of_the_three_outcomes_lands_on_a_meeting_that_is_still_being_recorded()
@@ -815,7 +939,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
         Should.Throw<AudioCaptureException>(recording.Discard).Message.ShouldContain("still running");
 
         Folder("daily").Exists.ShouldBeTrue();
-        Folder("out").EnumerateFiles().ShouldBeEmpty();
+        Folder("out").Exists.ShouldBeFalse();
     }
 
     /// <summary>

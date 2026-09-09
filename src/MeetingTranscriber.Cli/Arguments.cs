@@ -33,20 +33,40 @@ public sealed class Arguments
     private readonly Dictionary<string, string?> options = new(StringComparer.Ordinal);
     private readonly HashSet<string> read = new(StringComparer.Ordinal);
     private readonly List<string> values = [];
+    private readonly string? insteadOfRepeating;
     private bool valuesRead;
 
-    private Arguments()
-    {
-    }
+    private Arguments(string? insteadOfRepeating) => this.insteadOfRepeating = insteadOfRepeating;
 
     /// <summary>What was typed that is not a flag, in the order it was typed.</summary>
     public IReadOnlyList<string> Values => values;
 
-    public static Arguments Parse(IEnumerable<string> arguments)
+    /// <summary>
+    /// Reads a command line, where <paramref name="insteadOfRepeating"/> is what every refusal says
+    /// in place of quoting what it was handed.
+    /// </summary>
+    /// <param name="arguments">What was typed after the command name.</param>
+    /// <param name="insteadOfRepeating">
+    /// The sentence a command whose line could be carrying a secret supplies, and nothing for every
+    /// other command. Quoting the offending text is what makes a misspelled line readable, and it is
+    /// also what would put a key somebody typed on the screen and into whatever is capturing this
+    /// program's error stream.
+    /// </param>
+    /// <remarks>
+    /// A property of the whole line rather than of one reader, and that is the point of it. The leak
+    /// is not a flag with a value after it, it is any message that repeats a token. A guard on one
+    /// reader closes the spellings somebody thought of — <c>--set &lt;key&gt;</c> and
+    /// <c>&lt;key&gt;</c> — and leaves <c>--set=&lt;key&gt;</c>, which this grammar reads as an
+    /// option <em>named</em> <c>--set=&lt;key&gt;</c> carrying no value, coming back out of
+    /// <see cref="EnsureNothingLeftOver"/> with the key in it. Every refusal below asks this one
+    /// question instead, so the spellings nobody thought of are covered, and so is the next refusal
+    /// somebody writes.
+    /// </remarks>
+    public static Arguments Parse(IEnumerable<string> arguments, string? insteadOfRepeating = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
 
-        var parsed = new Arguments();
+        var parsed = new Arguments(insteadOfRepeating);
         var tokens = arguments.ToArray();
 
         for (var index = 0; index < tokens.Length; index++)
@@ -60,7 +80,7 @@ public sealed class Arguments
 
             if (parsed.options.ContainsKey(token))
             {
-                throw new UsageException($"'{token}' was given twice.");
+                throw parsed.Refusing($"'{token}' was given twice.");
             }
 
             var next = index + 1 < tokens.Length ? tokens[index + 1] : null;
@@ -105,7 +125,9 @@ public sealed class Arguments
             return false;
         }
 
-        return value is null ? true : throw new UsageException($"{name} takes no value, and got '{value}'.");
+        return value is null
+            ? true
+            : throw Refusing($"{name} takes no value, and got '{value}'.");
     }
 
     /// <summary>A whole number an option carries, or <paramref name="fallback"/> without it.</summary>
@@ -118,7 +140,7 @@ public sealed class Arguments
 
         return int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var value) && value > 0
             ? value
-            : throw new UsageException($"{name} takes a whole number above zero, and got '{text}'.");
+            : throw Refusing($"{name} takes a whole number above zero, and got '{text}'.");
     }
 
     /// <summary>The one thing this command is about, named so the refusal can say what is missing.</summary>
@@ -133,7 +155,7 @@ public sealed class Arguments
 
         return values.Count == 1
             ? values[0]
-            : throw new UsageException(
+            : throw Refusing(
                 $"{what} is one thing, and {values.Count} were given: {string.Join(", ", values)}.");
     }
 
@@ -143,12 +165,12 @@ public sealed class Arguments
         var unread = options.Keys.Where(name => !read.Contains(name)).Order(StringComparer.Ordinal).ToArray();
         if (unread.Length > 0)
         {
-            throw new UsageException($"This command takes no {string.Join(", ", unread)}.");
+            throw Refusing($"This command takes no {string.Join(", ", unread)}.");
         }
 
         if (!valuesRead && values.Count > 0)
         {
-            throw new UsageException(
+            throw Refusing(
                 $"This command takes no arguments of its own, and got {string.Join(", ", values)}.");
         }
     }
@@ -167,7 +189,7 @@ public sealed class Arguments
                 DateTimeStyles.AllowWhiteSpaces,
                 out var value)
             ? UtcTimestamp.From(value)
-            : throw new UsageException(
+            : throw Refusing(
                 $"{name} takes an instant, and got '{text}'. '2026-03-04T14:00:00Z' or "
                 + "'2026-03-04 14:00' both read.");
     }
@@ -206,9 +228,21 @@ public sealed class Arguments
         catch (AudioContractException)
         {
             var known = Enum.GetValues<SourceProfile>().Select(profile => profile.ToWireName());
-            throw new UsageException($"{name} is {string.Join(" or ", known)}, and got '{text}'.");
+            throw Refusing($"{name} is {string.Join(" or ", known)}, and got '{text}'.");
         }
     }
+
+    /// <summary>
+    /// A refusal that would repeat something somebody typed, or the command's own sentence in its
+    /// place when this line could be carrying a secret.
+    /// </summary>
+    /// <remarks>
+    /// Every message in this type that interpolates a token goes through here. The two that name
+    /// only a flag this program declares — <see cref="Optional"/>'s and <see cref="Required"/>'s —
+    /// do not, because a flag name is this program's own word and never somebody's key.
+    /// </remarks>
+    private UsageException Refusing(string quotingWhatItGot) =>
+        new(insteadOfRepeating ?? quotingWhatItGot);
 
     /// <summary>A meeting id as the corpus and every report spell one.</summary>
     public static Guid Meeting(string text) =>

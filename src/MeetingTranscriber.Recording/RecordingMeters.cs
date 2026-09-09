@@ -210,6 +210,87 @@ public sealed record ChannelReading
 }
 
 /// <summary>
+/// What this machine is playing through, as of the last time it said — and the rule that a machine
+/// which stops answering does not change what a person is being told.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The subject is how the room is set up, and a room does not change because the audio service
+/// hiccuped. Emptying the line takes a warning away at the moment least able to justify taking it
+/// away, and empty reads the same as <em>nothing is wrong</em>. A third state — the last answer
+/// greyed while it is stale — was refused on 2026-09-03: it is a visual rank inside a one-line
+/// label, for a moment almost nobody reaches. Do not add one here.
+/// </para>
+/// <para>
+/// Before the machine has answered once there is nothing to stand, so <see cref="Standing"/> is
+/// nothing and the line is empty. That is not this rule failing, it is this rule having nothing
+/// yet. What shrinks it to one moment is that the window is told when the default endpoint moves
+/// rather than asking on a timer: without that, every refused second-by-second read would land here
+/// and an empty line would be the ordinary case rather than the first instant of a meeting.
+/// </para>
+/// <para>
+/// Mutable, where every other record in this file is not, and the difference is the point of it.
+/// <see cref="RecordingMeters"/> is built and not updated because it is what was true at one
+/// instant; this is the opposite kind of thing — the one answer that outlives the instant it was
+/// given. It is the shape <c>MainWindow._channels</c> already is: a field the tick moves and every
+/// redraw reads.
+/// </para>
+/// <para>
+/// <see cref="AudioCaptureException"/> and not the narrower type.
+/// <see cref="AudioDeviceWedgedException"/> is the machine not answering inside the deadline, and
+/// <em>Windows names no playback device</em> is a plain <see cref="AudioCaptureException"/> from
+/// <c>AudioDevices.Playback</c>. Both are the machine not saying, both leave the answer where it
+/// was, and telling them apart here would be a distinction with nothing behind it.
+/// </para>
+/// </remarks>
+public sealed class WhatTheMachinePlaysThrough
+{
+    /// <summary>
+    /// The last endpoint this machine said it was playing through, or nothing when it has never
+    /// said. Never cleared by a refusal.
+    /// </summary>
+    public AudioDevice? Standing { get; private set; }
+
+    /// <summary>
+    /// Puts the question to <paramref name="machine"/>, leaving <see cref="Standing"/> as the new
+    /// answer when one arrived and as the one before it when none did.
+    /// </summary>
+    /// <param name="machine">
+    /// The whole of what touches the audio stack. A delegate rather than an interface so that this
+    /// rule is one a build agent runs: reaching <c>AudioDevices.Playback</c> from here would put the
+    /// rule back behind a device.
+    /// </param>
+    public void Ask(Func<AudioDevice> machine)
+    {
+        ArgumentNullException.ThrowIfNull(machine);
+
+        try
+        {
+            Standing = machine();
+        }
+        catch (AudioCaptureException)
+        {
+            // Nothing is written and nothing is cleared, which is the whole of the rule.
+        }
+    }
+
+    /// <summary>
+    /// Drops what the last meeting was told, so the next one starts with nothing standing.
+    /// </summary>
+    /// <remarks>
+    /// The rule above holds an answer across a machine that hiccuped <em>inside one meeting</em>,
+    /// which is what it is for: the last thing this machine said about what <em>the meeting</em> is
+    /// playing through. Between two meetings that reason is gone. Somebody plugs a headset in while
+    /// nothing is being recorded, and nothing is watching the default endpoint move, because that
+    /// is only watched while a recording runs. Carried over, an hour-old answer about a device that
+    /// is no longer the default would warn the next meeting about a room on the strength of a
+    /// question asked about a different one. Nothing standing is the honest state until this
+    /// meeting has asked.
+    /// </remarks>
+    public void ForgetTheLastMeeting() => Standing = null;
+}
+
+/// <summary>
 /// What the recording screen shows beside the buttons while a meeting is being recorded: a meter
 /// per channel, and the one warning about this machine that costs nothing to be sure of.
 /// </summary>
@@ -300,7 +381,9 @@ public sealed record RecordingMeters
     /// <param name="state">What the screen is doing.</param>
     /// <param name="playback">
     /// The endpoint the meeting is coming out of now, or nothing when the machine would not say —
-    /// which warns about nothing, the same as an endpoint that did not say what it is.
+    /// which warns about nothing, the same as an endpoint that did not say what it is. What is
+    /// handed in is what <see cref="WhatTheMachinePlaysThrough"/> last had, so <em>would not
+    /// say</em> here means the machine has never said, and not that it stopped saying.
     /// </param>
     /// <param name="channels">What each channel last read as, in channel order.</param>
     public static RecordingMeters Of(

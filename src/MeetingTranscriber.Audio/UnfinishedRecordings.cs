@@ -215,9 +215,20 @@ public sealed record UnfinishedRecording(
     /// </para>
     /// <para>
     /// Every destination is claimed from the file system before any audio is poured, and anything
-    /// that goes wrong afterwards takes back what this call made — poured files included. Half of
-    /// a recording somebody asked for is worse than a refusal, worse still because the half that
-    /// landed is what makes the second attempt refuse the folder.
+    /// that goes wrong afterwards takes back what this call made — the poured files, and the
+    /// destination folder itself along with every level of it this call had to make on the way.
+    /// Half of a recording somebody asked for is worse than a refusal, worse still because the half
+    /// that landed is what makes the second attempt refuse the folder. Both halves of that undo are
+    /// best effort and silent, so what it promises is that nothing here leaves a folder behind on
+    /// purpose, not that a disk holding one open will let go of it.
+    /// </para>
+    /// <para>
+    /// What bounds the undo is the word <em>made</em>: a destination that was already there is left
+    /// exactly as it was, empty or not, because deleting a folder somebody had is worse than
+    /// leaving behind one this call made. That bound is the reason the folder is remembered on the
+    /// way in rather than judged on the way out, and it is why a successful call can end by asking
+    /// the file system to remove its own destination and being refused — which is what a folder
+    /// with a recording in it does.
     /// </para>
     /// <para>
     /// A source that came to hold two formats is the one thing that is not something going wrong,
@@ -230,19 +241,30 @@ public sealed record UnfinishedRecording(
     /// attempt refuses by name, which is the paragraph above and is why somebody asking again names
     /// a folder of their own.
     /// </para>
+    /// <para>
+    /// When <em>every</em> source is in <see cref="TakenOut.NotMade"/> this still comes back rather
+    /// than throwing — one source that changed format is a fact about that source, and so are two —
+    /// and what it leaves behind is nothing this call made. A destination holding no file is the
+    /// same empty folder a refusal would have left, and it is the only trace an attempt that made
+    /// nothing has, so it goes back the same way. That needs no rule of its own: the undo runs on
+    /// every way out and asks only whether the folder is empty, which after every source refused it
+    /// is.
+    /// </para>
     /// </remarks>
     public TakenOut Export(DirectoryInfo into)
     {
         ArgumentNullException.ThrowIfNull(into);
         EnsureThereIsSomethingToDecide();
 
-        // Before `into.Create()`, because the one thing a claim still refuses is the recording
-        // having been thrown away since this was found, and that refusal must not leave an empty
-        // destination folder behind. Outside the `try`, so the catch that erases what was claimed
-        // runs before the mark is let go of.
+        // Before the destination is made, because the one thing a claim still refuses is the
+        // recording having been thrown away since this was found, and that refusal must not leave
+        // an empty destination folder behind. Outside the `try`, so the catch that erases what was
+        // claimed runs before the mark is let go of.
         using var reading = ReadingMark.Take(Folder);
 
-        into.Create();
+        // What this made is remembered rather than derived afterwards, because `Create` does not
+        // tell a folder it made from one it found, and only what it made is ever taken back.
+        var made = UnfinishedRecordings.MakeTheDestination(into);
         var claimed = new List<FileInfo>();
         try
         {
@@ -300,6 +322,19 @@ public sealed record UnfinishedRecording(
             }
 
             throw;
+        }
+        finally
+        {
+            // Unconditional, and the emptiness of the folder is what decides rather than a second
+            // opinion held here: a destination with a file in it is refused by the non-recursive
+            // delete, whether that file is one that poured or one somebody else put there. Asking
+            // `exported.Count` as well would be a second authority on a question the disk already
+            // answers, and it would leave the every-source-refused case and the throwing case
+            // spelled two different ways.
+            // `finally` rather than the end of the `catch` for the ordering: it runs after the loop
+            // above, and a folder is not empty until what was claimed in it has gone — `Claim`
+            // leaves a zero-byte file standing under every name it took.
+            UnfinishedRecordings.TakeBackWhatWasMade(made);
         }
     }
 
@@ -869,27 +904,147 @@ public static class UnfinishedRecordings
     }
 
     /// <summary>
-    /// Takes back the folder a removal was going to move into, when the move was refused. It does
-    /// not throw: it runs while something is already failing, and what the caller has to hear is
-    /// that refusal.
+    /// Takes back an empty folder this class has no further use for. It does not throw: both of its
+    /// callers run while something is already failing, and what the caller has to hear is that
+    /// refusal.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Non-recursive, which is what makes the silence safe — the only thing this can ever take is a
     /// directory that is empty. <see cref="BlockSpool.Erase"/> is the same shape for the same
     /// reason. It is one half of a pair and neither half is redundant: this keeps the common
     /// refusal from leaving a folder behind, and <see cref="MakeTheAsideReady"/> waving an existing
     /// empty one through is what keeps a refusal <em>here</em> from leaving a recording nobody can
     /// ever discard. Deleting either half re-opens the case the other one covers.
+    /// </para>
+    /// <para>
+    /// Its two callers hold <em>opposite</em> bounds and this method holds neither: <see cref="Remove"/>
+    /// hands over an aside deliberately whether this call made it or found it that way, and
+    /// <see cref="TakeBackWhatWasMade"/> hands over only levels its own call created, because an
+    /// export must never take a destination the person already had. Which folders may be offered is
+    /// the caller's question and the emptiness of one is this method's, so it stays
+    /// <see langword="private"/>: <see cref="Remove"/>'s remarks say the sweep behind ISC-125 greps
+    /// for spellings rather than for visibility, and an <see langword="internal"/> door into
+    /// <see cref="Directory.Delete"/> is one nothing in that sweep would object to.
+    /// </para>
     /// </remarks>
-    private static void EraseIfItIsStillEmpty(DirectoryInfo aside)
+    private static void EraseIfItIsStillEmpty(DirectoryInfo folder)
     {
         try
         {
-            Directory.Delete(aside.FullName);
+            Directory.Delete(folder.FullName);
         }
         catch (Exception left) when (left is IOException or UnauthorizedAccessException)
         {
             // Swallowed on purpose: see the summary.
+        }
+    }
+
+    /// <summary>
+    /// Makes <paramref name="into"/> and every level above it that is missing, and hands back
+    /// exactly the levels this call created, leaf first, for <see cref="TakeBackWhatWasMade"/> to
+    /// take back when what they were made for does not happen.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The answer is taken before the call rather than derived after it, because
+    /// <see cref="DirectoryInfo.Create"/> is <see cref="Directory.CreateDirectory"/> and does not
+    /// tell creating from finding: afterwards every level is simply there, and nothing says which
+    /// of them were not a moment ago. So the walk up from the leaf happens first and stops at the
+    /// first level that is already there — a folder somebody already had is never in the list and
+    /// is therefore never taken back. Deleting one somebody had would be worse than leaving an
+    /// empty one behind, and that is the whole reason this remembers rather than asking afterwards.
+    /// </para>
+    /// <para>
+    /// That remembering is a snapshot, not a lock, and it is not the last word. Nothing serialises
+    /// the walk against the <see cref="DirectoryInfo.Create"/> that follows it, so a level somebody
+    /// else made in between is one this call will believe it made. What holds when the snapshot is
+    /// wrong is the other end: <see cref="EraseIfItIsStillEmpty"/> is non-recursive, so a level that
+    /// turns out to be somebody's stays the moment anything is in it. The remembering is what keeps
+    /// an <em>empty</em> folder somebody had, which nothing else would.
+    /// </para>
+    /// <para>
+    /// It sits here rather than beside <see cref="UnfinishedRecording.Export"/>, its only caller,
+    /// because <see cref="EraseIfItIsStillEmpty"/> is what the undo is made of and that is private
+    /// to this class. Reaching it from the other type in this file would mean widening it, and the
+    /// paragraph on it says what that costs.
+    /// </para>
+    /// <para>
+    /// It is the chain and not the leaf because one call makes every missing level. A destination
+    /// two levels below anything that existed would otherwise leave the level above it standing,
+    /// which is the same empty folder under a shorter name.
+    /// </para>
+    /// <para>
+    /// A create that is refused partway is undone here rather than left to the caller, and it is
+    /// the failure this pair exists for: a denied path, a read-only volume, a disk that filled.
+    /// <c>CreateDirectory</c> may have made two levels before the third is refused, and this is the
+    /// one shape where the caller never receives a list to take back, because the throw comes out
+    /// in place of the assignment. So the undo happens on the way out of this method, where the
+    /// list is already in hand, and what the caller sees is the file system's own refusal with
+    /// nothing of this attempt left standing under it.
+    /// </para>
+    /// </remarks>
+    internal static IReadOnlyList<DirectoryInfo> MakeTheDestination(DirectoryInfo into)
+    {
+        var missing = new List<DirectoryInfo>();
+
+        for (var level = into; level is not null; level = level.Parent)
+        {
+            // Asked of the disk rather than of the handle: a `DirectoryInfo` answers from whenever
+            // it last looked, and `into` is one the caller built before any of this ran.
+            level.Refresh();
+            if (level.Exists)
+            {
+                break;
+            }
+
+            missing.Add(level);
+        }
+
+        try
+        {
+            into.Create();
+        }
+        catch
+        {
+            TakeBackWhatWasMade(missing);
+            throw;
+        }
+
+        return missing;
+    }
+
+    /// <summary>
+    /// Takes back whichever of the levels <see cref="MakeTheDestination"/> made are still empty. It
+    /// is best effort and silent, exactly as <see cref="EraseIfItIsStillEmpty"/> is, so a level it
+    /// could not take is one nobody hears about.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Leaf first, and that ordering is the whole of it: a parent is not empty until its child has
+    /// gone. It does not stop when a level survives and does not need to — <paramref name="made"/>
+    /// is a parent chain, so a level something else put a file into keeps every level above it
+    /// non-empty and each delete after it is refused on its own. That containment is what holds the
+    /// walk, not the loop; reversing the order would break it while leaving every line intact.
+    /// A level that is not there at all — the leaf of a create that was refused on it — is the same
+    /// silence.
+    /// </para>
+    /// <para>
+    /// It inherits exactly <see cref="EraseIfItIsStillEmpty"/>'s swallow, <see cref="IOException"/>
+    /// and <see cref="UnauthorizedAccessException"/> and nothing wider, and both of its callers are
+    /// on their way to throwing something else: <see cref="MakeTheDestination"/>'s own <c>catch</c>,
+    /// which is about to rethrow the file system's refusal, and the <c>finally</c> in
+    /// <see cref="UnfinishedRecording.Export"/>, which on the failing path runs while an
+    /// <see cref="AudioCaptureException"/> is in flight. Anything escaping here replaces the
+    /// sentence the person was about to read with one about a folder. Whoever widens that clause is
+    /// choosing which of two failures somebody hears about, and the answer is not obviously this one.
+    /// </para>
+    /// </remarks>
+    internal static void TakeBackWhatWasMade(IReadOnlyList<DirectoryInfo> made)
+    {
+        foreach (var folder in made)
+        {
+            EraseIfItIsStillEmpty(folder);
         }
     }
 
