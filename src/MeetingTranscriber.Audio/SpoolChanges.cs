@@ -45,9 +45,11 @@ public sealed record SourceChanged(
 /// </para>
 /// <para>
 /// So it is a file of its own, appended to and never rewritten: one line per change, each line
-/// whole on its own, in the order they happened. It is the card's rule applied to something that
-/// happens more than once rather than an exception to it — a line that never landed costs the
-/// account of one change, and every line before it still reads.
+/// whole on its own, in the order they happened. A line that is written down is never touched
+/// again, and the one thing an append may take away is the unfinished tail an append that failed
+/// left behind it. It is the card's rule applied to something that happens more than once rather
+/// than an exception to it — a line that never landed costs the account of one change, and every
+/// line before it still reads.
 /// </para>
 /// <para>
 /// Absent is the ordinary answer. Most recordings change nothing, and this file is not written
@@ -85,12 +87,13 @@ public static class SpoolChanges
     /// folder claiming audio a file does not hold, which is the lie worth preventing.
     /// </para>
     /// <para>
-    /// One write is not enough on its own. A write cut in half leaves bytes no line break follows,
-    /// and an append behind them would land its JSON on the back of the fragment as a single
-    /// complete line that will not read — the one shape <see cref="Find"/> refuses a whole folder
-    /// over. So an append settles what the one before it left before adding to it, which is why the
-    /// break that ends a line is sometimes supplied by the write after the one that wrote the line.
-    /// What is lost is still at most the line being written.
+    /// One write is not enough on its own, because the failure is what makes somebody ask again. A
+    /// write that landed in part and then threw leaves bytes no line break follows, and the retry
+    /// used to land its JSON on the back of them as one complete line that will not read — the one
+    /// shape <see cref="Find"/> refuses a whole folder over, so a disk that filled for two bytes
+    /// cost every change the folder had. An append now drops what the one before it left unfinished
+    /// before adding to it, which is what the file is opened for reading as well as writing for.
+    /// What is lost is still at most the line being written, and it is a line nothing happened for.
     /// </para>
     /// </remarks>
     public static void Append(DirectoryInfo folder, SourceChanged change)
@@ -128,68 +131,47 @@ public static class SpoolChanges
     /// what is written next begins a line of its own.
     /// </summary>
     /// <remarks>
-    /// Bytes with no line break behind them are what a cut write leaves, and they are judged on
-    /// framing alone: bytes that read as a change are a line whose break was what got lost, and
-    /// they get their break; bytes that do not are the account of a change that was never finished,
-    /// which <see cref="Find"/> already drops while it is last, and are dropped here rather than
-    /// buried mid-file where nothing may drop them any more. Whether a change is one this
-    /// application could have made is not asked here and stays <see cref="Sound"/>'s.
+    /// <para>
+    /// Bytes with no line break behind them are dropped rather than finished, because of what put
+    /// them there. An append is called before the channel hands over, so an append that threw is a
+    /// move that did not happen: the channel is still on what it was on, and the tail is the
+    /// account of a move this application refused. Terminating it would make the folder claim
+    /// audio the file does not hold, and would leave the retry's line naming a source the line
+    /// above it says the channel had already left.
+    /// </para>
+    /// <para>
+    /// It is the only tail that reaches here. A folder torn by a machine dying is never appended
+    /// to again — <see cref="BlockSpool.EnsureNothingRecordedIn"/> refuses a folder that already
+    /// holds this file — so the reader goes on being the one that judges that one, and goes on
+    /// keeping a last line that landed whole. The two rules differ because the two situations do:
+    /// there, nobody refused the move.
+    /// </para>
+    /// <para>
+    /// Only the tail. Everything at or before the last line break was whole before the next line
+    /// was begun, and is never rewritten, moved or read back into the file.
+    /// </para>
     /// </remarks>
     private static void Settle(FileStream stream)
     {
         var written = new byte[stream.Length];
         stream.ReadExactly(written);
 
-        // No line break anywhere means the whole file is one unfinished fragment, and -1 is what
-        // makes that fall out: everything is unfinished and the truncation below is to nothing.
-        // Returning early on -1 instead would be the off-by-one that leaves the first-ever change
-        // torn and glues the retry onto it. A brand-new or empty file lands here as well, and so
-        // does one that ends its last line: both give no unfinished bytes and are left alone,
-        // which is what keeps an ordinary append from adding a blank line.
+        // -1 when there is no line break anywhere, which makes the whole file the tail. That is the
+        // likeliest shape of all, since most folders only ever hold one line, and a guard returning
+        // early on -1 would leave exactly that one glued to the retry that follows it.
         var lastBreak = Array.LastIndexOf(written, (byte)'\n');
-        var unfinished = written.Length - lastBreak - 1;
-        if (unfinished == 0)
+        if (lastBreak + 1 == written.Length)
         {
+            // The ordinary case, and an empty file: it ends where a line ends, so nothing is
+            // settled and an append adds one line rather than a blank one and a line.
             return;
         }
 
-        if (LandedWhole(written.AsSpan(lastBreak + 1)))
-        {
-            // A tear between the carriage return and the line feed behind it leaves the JSON
-            // with a carriage return on the end, which reads whole because JSON allows trailing
-            // whitespace. It is terminated like any other whole tail, and Find trims every
-            // carriage return off the end of a line, so it reads the two back as one.
-            stream.Write(Encoding.UTF8.GetBytes(Environment.NewLine));
-            return;
-        }
-
+        // The position is set as well as the length, rather than left to SetLength's own clamp,
+        // because what is written next lands wherever this leaves it and a position of 0 would put
+        // a change on top of a change already written down.
         stream.SetLength(lastBreak + 1);
         stream.Position = stream.Length;
-    }
-
-    /// <summary>
-    /// Whether <paramref name="line"/> is everything the write that left it was going to say. The
-    /// guarantee holds over this writer's own output and nothing else: the serializer emits one
-    /// fixed shape whose closing brace goes last, and no proper prefix of it parses, so a tail that
-    /// reads is a whole line that lost only its terminator. It answers framing, never soundness —
-    /// bytes carrying some other JSON object would read as whole here and be refused by
-    /// <see cref="Find"/> afterwards, as they are today.
-    /// </summary>
-    /// <remarks>
-    /// Over UTF-8 bytes rather than a decoded string: a tear can split a multi-byte sequence, and
-    /// the byte overload answers that with a <see cref="JsonException"/> instead of quietly turning
-    /// the broken bytes into U+FFFD. Either way the answer wanted is <c>false</c>.
-    /// </remarks>
-    private static bool LandedWhole(ReadOnlySpan<byte> line)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<Change>(line, OneLine) is not null;
-        }
-        catch (JsonException)
-        {
-            return false;
-        }
     }
 
     /// <summary>
