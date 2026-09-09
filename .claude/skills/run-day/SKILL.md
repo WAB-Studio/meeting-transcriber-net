@@ -88,10 +88,11 @@ against; the audit floor is still read at the trunk.
 5. **Work.** Spawn one `worker` per share, in parallel, each in its own worktree under
    `C:\Users\pc\Documents\GitHub\Personal\worktrees`, never inside the checkout, deleted when the
    share is done and never reused. Give each its card dir by absolute path, its share and the base.
-   Tell each which folders it owns and which it may not enter; say other shares are running and
-   never which. Anything you hand a worker past its plan, tell it to declare, so the audit reads the
-   reason rather than working it out.
-   - Anything but `built` drops that share.
+   Tell each which paths it owns and which belong to another share — to read and not to write, never
+   to stay out of. Say other shares are running and never which. Anything you hand a worker past its
+   plan, tell it to declare, so the audit reads the reason rather than working it out.
+   - Anything but `built` drops that share. A worker that wanted a path another share owns is not
+     one of those: it finishes, and what it wanted is a `followups_proposed` entry for the audit.
 6. **Audit.** Spawn `auditor` with the base, the batch dir, the branches that built, and the PR
    number when one already carries this batch. It carries the branches onto one, proves the whole
    diff once, opens the PR, and then judges what it built — every card against its plan through its
