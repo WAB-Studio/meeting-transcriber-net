@@ -18,8 +18,6 @@ namespace MeetingTranscriber.Cli.Tests;
 /// </remarks>
 public sealed class RecoveryCommandTests : IDisposable
 {
-    private static readonly StreamFormat Format = new(48_000, 1, 16, SampleEncoding.Pcm);
-
     private readonly DirectoryInfo root = new(Path.Combine(
         Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
 
@@ -333,7 +331,7 @@ public sealed class RecoveryCommandTests : IDisposable
         run.Value("ch0 kept").ShouldNotContain("discarded");
         run.Value("ch1 kept").ShouldStartWith("9 blocks");
         run.Value("ch1 kept").ShouldContain("discarded");
-        run.Value("ch1 format").ShouldBe(Format.ToString());
+        run.Value("ch1 format").ShouldBe(Spools.Format.ToString());
         run.Value("recording").ShouldStartWith($"{MeetingAudio.FileName}, ");
 
         // The blocks are all still there, and the one file beside them is the recording itself:
@@ -380,6 +378,27 @@ public sealed class RecoveryCommandTests : IDisposable
         // Taking the sources out is not finishing the recording: what lands is one file per device,
         // where somebody asked for it, and the meeting is still a folder nobody has decided about.
         MeetingAudio.In(Folder("daily")).Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The refusal line, at the prompt somebody meets it at. A source that changed device gets a
+    /// line of its own saying why there is no file for it, and it costs the other source nothing.
+    /// </summary>
+    [Fact]
+    public void A_source_that_changed_format_says_so_on_its_own_line_and_the_other_still_comes_out()
+    {
+        Recorded("daily", both: false);
+        Spools.ThatChangedFormat(Folder("daily"), AudioChannel.Microphone);
+        var into = Path.Combine(root.FullName, "taken out");
+
+        var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--export", into);
+
+        run.Code.ShouldBe(Cli.Ok, run.Error);
+        run.Value("ch0 taken out").ShouldContain("loopback.wav");
+        run.Value("ch1 taken out").ShouldStartWith("not made: ");
+        run.Value("ch1 taken out").ShouldContain("microphone.blocks");
+        new FileInfo(Path.Combine(into, "loopback.wav")).Exists.ShouldBeTrue();
+        new FileInfo(Path.Combine(into, "microphone.wav")).Exists.ShouldBeFalse();
     }
 
     /// <summary>
@@ -537,7 +556,7 @@ public sealed class RecoveryCommandTests : IDisposable
 
     private void Spool(DirectoryInfo folder, AudioChannel channel, int countsBy)
     {
-        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Format);
+        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Spools.Format);
         for (var block = 0; block < 10; block++)
         {
             // Always 480 frames handed over; the counter beside them advances by whatever this
@@ -546,7 +565,7 @@ public sealed class RecoveryCommandTests : IDisposable
                 channel,
                 block * (long)countsBy,
                 MonotonicInstant.FromMilliseconds(block * 10d),
-                new byte[480 * Format.BytesPerSample]));
+                new byte[480 * Spools.Format.BytesPerSample]));
         }
     }
 

@@ -306,9 +306,16 @@ public static class AudioCommands
 
         if (into is not null)
         {
-            foreach (var exported in recording.Export(new DirectoryInfo(into)))
+            var taken = recording.Export(new DirectoryInfo(into));
+
+            foreach (var exported in taken.Exported)
             {
                 Report.Line(output, $"{Name(exported.Channel)} taken out", Says(exported));
+            }
+
+            foreach (var cannot in taken.NotMade)
+            {
+                Report.Line(output, $"{Name(cannot.Channel)} taken out", $"not made: {cannot.Why}");
             }
 
             return Cli.Ok;

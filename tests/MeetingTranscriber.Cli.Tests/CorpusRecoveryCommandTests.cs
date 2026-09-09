@@ -23,8 +23,6 @@ namespace MeetingTranscriber.Cli.Tests;
 /// </remarks>
 public sealed class CorpusRecoveryCommandTests : IDisposable
 {
-    private static readonly StreamFormat Format = new(48_000, 1, 16, SampleEncoding.Pcm);
-
     private readonly TemporaryCorpus corpus = new();
     private readonly UtcTimestamp startedAt = UtcTimestamp.Parse("2026-08-18T09:41:07.250Z");
 
@@ -304,6 +302,29 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
     }
 
     /// <summary>
+    /// A microphone somebody swapped mid meeting used to cost the whole export, channel 0's file
+    /// included. It costs its own file and a sentence, and the recording is still waiting.
+    /// </summary>
+    [Fact]
+    public void A_source_that_changed_format_costs_its_own_file_and_nothing_else()
+    {
+        var meeting = Killed(microphoneChangedFormat: true);
+        var into = Path.Combine(Root, "taken out");
+
+        var run = CommandLine.Of(
+            "recovery", "--corpus", Root, "--meeting", meeting.ToString(), "--export", into);
+
+        run.Code.ShouldBe(Cli.Ok, run.Error);
+        run.Value("others taken out").ShouldContain("loopback.wav");
+        run.Value("me taken out").ShouldStartWith("not made: ");
+        new FileInfo(Path.Combine(into, "loopback.wav")).Exists.ShouldBeTrue();
+        new FileInfo(Path.Combine(into, "microphone.wav")).Exists.ShouldBeFalse();
+
+        // Taking it out is still not deciding about it.
+        CommandLine.Of("recovery", "--corpus", Root).Value("meeting").ShouldBe(meeting.ToString());
+    }
+
+    /// <summary>
     /// The same guarantee at the prompt the card names, through <c>WaitingRecordings</c> — the path
     /// the drawer takes too. A second window keeping this recording, or a prompt exporting it,
     /// holds a block file open; a discard typed while it does used to take the card and the first
@@ -450,7 +471,12 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
     /// A meeting recorded up to the moment the machine died: the row, the folder, the card, the
     /// row describing the run, whole blocks, and a last one cut off inside itself.
     /// </summary>
-    private Guid Killed()
+    /// <param name="microphoneChangedFormat">
+    /// Whether the microphone was replaced mid meeting by a device handing over another format,
+    /// which is one spool holding two stretches and no single file it can be poured into. The
+    /// ordinary recording is the other one: whole blocks and a last one cut off inside itself.
+    /// </param>
+    private Guid Killed(bool microphoneChangedFormat = false)
     {
         using var context = corpus.OpenMigrated();
 
@@ -470,8 +496,15 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
         MeetingRecordings.Began(context, card);
 
         Spool(prepared.Spool, AudioChannel.Loopback);
-        Spool(prepared.Spool, AudioChannel.Microphone);
-        CutOffMidBlock(BlockSpool.FileFor(prepared.Spool, AudioChannel.Microphone));
+        if (microphoneChangedFormat)
+        {
+            Spools.ThatChangedFormat(prepared.Spool, AudioChannel.Microphone);
+        }
+        else
+        {
+            Spool(prepared.Spool, AudioChannel.Microphone);
+            CutOffMidBlock(BlockSpool.FileFor(prepared.Spool, AudioChannel.Microphone));
+        }
 
         return prepared.MeetingId;
     }
@@ -491,14 +524,14 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
 
     private static void Spool(DirectoryInfo folder, AudioChannel channel)
     {
-        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Format);
+        using var writer = SpoolWriter.Create(BlockSpool.FileFor(folder, channel), channel, Spools.Format);
         for (var block = 0; block < 10; block++)
         {
             writer.Write(new CapturePacket(
                 channel,
                 block * 480L,
                 MonotonicInstant.FromMilliseconds(block * 10d),
-                new byte[480 * Format.BytesPerSample]));
+                new byte[480 * Spools.Format.BytesPerSample]));
         }
     }
 
