@@ -55,13 +55,36 @@ public abstract record CaptureTarget
     /// channel whose device numbers no frames of its own, or nothing when it is starting one.
     /// </param>
     /// <remarks>
-    /// Every way in answers it, and two of the three answer by refusing — each in its own words,
-    /// because they refuse for different reasons and one sentence covering both would send whoever
-    /// meets it looking in the wrong place. What that leaves is the whole machine's audio, which is
-    /// the one thing a channel already being recorded is ever carried on to, and a fourth way in
-    /// has to say which of the two it is to compile.
+    /// <para>
+    /// <see cref="ReopenedSource"/> is what says whether a channel already being recorded may go on
+    /// being laid out by the sequence it was being laid out by, and it carries the words each
+    /// refusal is made in. What that leaves is the whole machine's audio, which is the one thing a
+    /// channel already being recorded is ever carried on to.
+    /// </para>
+    /// <para>
+    /// <b>It is asked here and not in the ways in, so that none of them can forget.</b> This method
+    /// is not the one a shape overrides — <see cref="Opening"/> is — so a fourth way in reaches
+    /// <see cref="ReopenedSource"/> whether or not whoever wrote it knew the rule existed, and has
+    /// to be given an answer there to take a sequence at all. Three overrides that each remembered
+    /// to call it would be three copies of a call where there used to be three copies of a rule.
+    /// </para>
     /// </remarks>
-    internal abstract WasapiStream Open(FramePositions? carryingOn);
+    internal WasapiStream Open(FramePositions? carryingOn)
+    {
+        ReopenedSource.EnsureMayCarryOn(this, carryingOn);
+
+        return Opening(carryingOn);
+    }
+
+    /// <summary>
+    /// Opens the stream itself, once <see cref="Open"/> has settled whether this source may take
+    /// the sequence it is being handed.
+    /// </summary>
+    /// <remarks>
+    /// The only thing a way in writes. It never sees a sequence it may not have, so it has no
+    /// refusal of its own and cannot grow one that disagrees with the rule.
+    /// </remarks>
+    private protected abstract WasapiStream Opening(FramePositions? carryingOn);
 
     /// <summary>A device Windows names, which is the microphone and only ever the microphone.</summary>
     /// <remarks>
@@ -83,23 +106,12 @@ public abstract record CaptureTarget
         public override AudioChannel Channel => AudioChannel.Microphone;
 
         /// <remarks>
-        /// A sequence is refused because a microphone numbers its own frames: its packets would
-        /// then be placed by a clock while its counter is the one thing that can say where they
-        /// really belong. What it opens is a stretch of its own, at its own zero.
+        /// Always a stretch of its own, at its own zero, because a microphone numbers its own
+        /// frames. A channel is moved onto one — that is what re-opening the microphone is — and it
+        /// arrives here with no sequence to carry, which is why nothing about that move is refused.
         /// </remarks>
-        internal override WasapiStream Open(FramePositions? carryingOn)
-        {
-            if (carryingOn is not null)
-            {
-                throw new AudioCaptureException(
-                    $"'{Name}' numbers its own frames, so it cannot carry on placing a channel by "
-                    + "instants the way the device before it was placed: what says where its audio "
-                    + "belongs is its own counter, and that counter starts again at its own zero. "
-                    + "What it opens is a stretch of its own.");
-            }
-
-            return WasapiStream.On(Device, Channel);
-        }
+        private protected override WasapiStream Opening(FramePositions? carryingOn) =>
+            WasapiStream.On(Device, Channel);
     }
 
     /// <summary>
@@ -118,26 +130,13 @@ public abstract record CaptureTarget
         public override AudioChannel Channel => AudioChannel.Loopback;
 
         /// <remarks>
-        /// Refused for a reason of its own, and it is not the reason a microphone is refused: a
-        /// program's audio numbers no frames either, and carrying a channel onto one would work.
-        /// What says no is that nothing moves a recording onto a program — choosing which program
-        /// to record is choosing what the recording is, and that is where one starts rather than
-        /// something it becomes. Said here, in its own words, because the day somebody decides a
-        /// running channel may be pointed at another program this is the line they delete, and a
-        /// sentence about frame numbering would send them somewhere else entirely.
+        /// A program's audio numbers no frames either, so carrying a channel onto one would work —
+        /// what says no is that nothing moves a recording onto a program. Both the answer and the
+        /// sentence are <see cref="ReopenedSource"/>'s, so the day somebody decides a running
+        /// channel may be pointed at another program, that is the one file they open.
         /// </remarks>
-        internal override WasapiStream Open(FramePositions? carryingOn)
-        {
-            if (carryingOn is not null)
-            {
-                throw new AudioCaptureException(
-                    $"A channel already being recorded is not moved onto '{Name}'. Which program a "
-                    + "recording follows is what the recording is, so it is chosen when one starts "
-                    + "rather than while it runs.");
-            }
-
-            return WasapiStream.Following(Process);
-        }
+        private protected override WasapiStream Opening(FramePositions? carryingOn) =>
+            WasapiStream.Following(Process);
     }
 
     /// <summary>
@@ -167,14 +166,12 @@ public abstract record CaptureTarget
         public override AudioChannel Channel => AudioChannel.Loopback;
 
         /// <remarks>
-        /// The one way in that takes a sequence to carry on from, and it is not an accident of what
-        /// it is: this is the thing a channel already being recorded is ever carried on to, and it
-        /// comes off a virtual device that numbers nothing — so the channel goes on being laid out
-        /// by the instants it was already being laid out by, and there is no seam to reconcile. A
-        /// channel moved onto an endpoint is the other handover, and what it opens is a stretch of
-        /// its own.
+        /// The one way in that takes a sequence to carry on from, which is
+        /// <see cref="ReopenedSource.CarriesTheSequenceOn"/>'s answer and not this method's: it
+        /// comes off a virtual device that numbers nothing, so the channel goes on being laid out
+        /// by the instants it was already being laid out by and there is no seam to reconcile.
         /// </remarks>
-        internal override WasapiStream Open(FramePositions? carryingOn) =>
+        private protected override WasapiStream Opening(FramePositions? carryingOn) =>
             WasapiStream.TheWholeMachine(carryingOn);
     }
 }
