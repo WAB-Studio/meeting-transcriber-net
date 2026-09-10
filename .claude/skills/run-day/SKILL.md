@@ -19,7 +19,6 @@ table exists.
 | validate | `validator` | the batch dir, the cards, the base | `pass`, `revise` or `ask` per card, and collisions |
 | work | `worker` | its share, its card dir, the base, a followup where there is one | a record, and a pushed branch |
 | audit | `auditor` | the base, the batch dir, the branches, the PR number when one exists | one PR carrying the batch, a verdict per card and one for the PR |
-| curate | `curator` | the proposals file | the cards it closed and why, the cards it opened, what it threw away, and what it left for the user |
 
 Pass each agent what its column says and nothing more: never who produced it, never what happens to
 it next, never where the day stands.
@@ -123,12 +122,12 @@ against; the audit floor is still read at the trunk.
        that card's `worker` again with the followup, its card dir and that PR number.
      - Somebody has to decide it → §4.
      - `product` → a proposal in `private/proposed-issues.md`, quoting the followup's own words.
-       Whether it becomes a card is the `curator`'s at the close, never yours.
+       Whether it becomes a card is settled by the `curate` skill at the close, not here.
      - The rest → an `owed` entry, or a line on the standing machinery card the `github` skill names.
-8. **Curate.** At the close of the day, before the handoff, spawn `curator` over
-   `private/proposed-issues.md`. It closes open cards that should never have been opened, opens what
-   a proposal earns, and leaves only what turns on the user's taste. It is the only stage that opens
-   or closes a card. Report what it closed and what it opened, in its words.
+8. **Curate.** At the close of the day, before the handoff, read the `curate` skill and do what it
+   says over `private/proposed-issues.md`. It is yours and not a subagent's: what a proposal is
+   worth turns on what happened today, which you have and nothing spawned cold does. Nothing else
+   opens or closes a card.
 9. **Leave nothing open.** A PR this day opened is merged this day. One you cannot merge is a
    question you put to the user under §4, named as what is waiting and on whom — never a thing left
    standing for somebody to notice.
@@ -174,7 +173,7 @@ Speak when a batch is picked, when a cycle closes, when a rule fires, and when t
 - **A pick** — the cards, their names, the `why`, before you spawn the next stage.
 - **A cycle closing** — the cards, the PR, the verdict, what happened to it.
 - **A permission denied to an agent** — quote it exactly, naming the tool and what it tried.
-- **The curate** — every card it closed and why, and every card it opened.
+- **The curate** — every card closed and why, and every card opened.
 
 Quote a stage's own words for what it found. Summarise only what you did.
 
@@ -183,6 +182,7 @@ leave with `[Day]`, and leave one only where §2 says to.
 
 ## 7 · Do not touch the repo
 
-Edit no file, make no commit, switch no branch between cycles. Three exceptions, all in §2: the
-merge, the one-line fix on the PR's own branch, and the proposal you add to
-`private/proposed-issues.md`.
+Edit no file, make no commit, switch no branch between cycles. Four exceptions, all in §2: the
+merge, the one-line fix on the PR's own branch, the proposal you add to
+`private/proposed-issues.md`, and the curate, which rewrites that file and is the one place you
+decide rather than route.
