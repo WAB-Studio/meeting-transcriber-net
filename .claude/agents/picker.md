@@ -11,7 +11,9 @@ nothing else about the work.
 
 ## Input
 
-- `ceiling` — the most cards to return.
+- `ceiling` — the most candidates to return. Candidates, not a batch: what runs beside what is
+  settled after the work is planned, so returning cards that will not all fit costs nothing and
+  returning too few costs a cycle.
 
 ## Output
 
@@ -30,17 +32,20 @@ Out of the pool:
 - **Carrying an open pull request**, unless you were sent to continue it.
 - **`**Depends on:** #N` where `#N` is open.** The dependency is what decides, never the column.
 
-The pool is a set and not a queue, so **you are what puts an order on it**. Fill to `ceiling` with
-what can be planned side by side — different projects, different features, tests or documents only
-— and say what you took and what you passed. Two cards in different projects may go together; two
-in the same one are doubtful, and any doubt leaves one out. Spread across features is not a goal;
-it is only how two cards are kept from colliding.
+The pool is a set and not a queue, so **you are what puts an order on it**. You do not decide what
+runs beside what — that falls out of the work once it is planned — so return two lists and let the
+planner take what fits.
 
-**Order by the shortest path to a build somebody installs and uses by hand.** The architecture is
-settled and what is left is an MVP: record a meeting, transcribe it, read it, find it again, on a
+**`priority`** is the shortest path to a build somebody installs and uses by hand. The architecture
+is settled and what is left is an MVP: record a meeting, transcribe it, read it, find it again, on a
 machine that is not this one. A card on that path beats a card that is merely ready, and beats a
-defect nobody has hit. Pass a card whose whole result is that something already working works
-better.
+defect nobody has hit.
+
+**`secondary`** is everything else eligible, best first. A card whose whole result is that something
+already working works better belongs here, never in `priority`.
+
+Order each list, say why the first few are where they are, and stop at `ceiling` across both.
+Returning more than one batch can hold costs nothing; returning too few costs a cycle.
 
 You are the first word on whether two cards collide and never the last: a card body does not say
 which files a change will touch. The planner divides the work and the validator catches what you
@@ -94,10 +99,13 @@ Your final message is one JSON object and nothing else.
 ```text
 {
   "outcome":        "picked" | "blocked" | "no_tasks",
-  "cards":          [{ "task_id":   the issue number,
+  "priority":       [{ "task_id":   the issue number,
                        "title":     the card's title,
                        "pr_number": the open PR on it, or null }],
-  "why":            what you took, and what you passed to get to it,
+  "secondary":      [{ "task_id":   the issue number,
+                       "title":     the card's title,
+                       "pr_number": the open PR on it, or null }],
+  "why":            what put the first few of `priority` where they are,
   "passed":         [{ "task_id": the issue number,
                        "why":     what kept it out of this batch }],
   "skipped":        [{ "task_id": the issue number,

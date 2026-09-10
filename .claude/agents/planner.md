@@ -61,22 +61,48 @@ Size the plan to the card: one file changed is a short plan.
 
 ### The split
 
-`split.md` says which worker builds what. One line per share, each naming its cards, the paths it
-owns, the paths it may not enter, and the model that builds it.
+**You decide how much of the batch gets built.** You are given more candidates than one batch holds,
+in two lists: take all of `priority` that the work lets you, then fill from `secondary` while there
+is room. What you do not take goes in `dropped` as not reached, unplanned, and the next pick finds
+it — that is not a failure, it is what the lists are for.
+
+**Know what you are filling.** `max_workers` workers run at once, each an `opus` with a million
+tokens of context: one holds a plan, every file it changes, the files around them and its whole test
+run without choosing what to read. Size a share to that and not below it — the cost of a batch is
+the slowest share, so four shares of one file each waste three workers, and one share carrying
+everything wastes the other three. Aim for shares that finish together.
+
+**Divide the work, not the cards.** A card is where somebody wrote the work down; it is not a unit
+of building. What one worker can hold is a body of work whose files sit together — which is as often
+part of one card, or two cards and four `owed.md` entries, as it is a card whole.
+
+`split.md` says which worker builds what. One line per share, each naming the work it carries — by
+card, and which part of that card where it is not the whole of it, and which `owed.md` entries — the
+paths it owns, the paths it may not enter, and the model that builds it.
 
 The criteria are yours, and these hold whatever you choose:
 
 - **A share is whole files.** Two shares never open the same file, and no share is half of one.
-- **A share is worth a worker.** Roughly a hundred non-comment lines is the floor; below that,
-  fold it into the share it is nearest, even when that means one worker takes three cards. A share
-  of one line does not exist.
-- **A card is never split.** Its plan is one worker's, so that one worker owns what it decides.
+- **A share is worth a worker, and no more than one.** Roughly a hundred non-comment lines is the
+  floor; below that, fold it into the share it is nearest. Above, the ceiling is what one worker can
+  hold and still prove: today's evidence is that seventeen hundred non-comment lines across a
+  project deletion was carried by one worker and was near the top of it.
+- **A card is split only where its parts decide nothing in common.** The reason a plan went to one
+  worker is that the worker owns what it decides, and workers earn their keep by contradicting a
+  plan whose premise the code falsifies — two of them contradicting halves of one decision is the
+  failure this guards. So: where what one part settles is not something the other part touches,
+  split it and say so. Where both parts bear on one contract, one name, one convention, it stays
+  whole, whatever that costs in balance.
+- **A card only closes when every part of it lands.** Say in `split.md` which shares a split card
+  needs, so an audit that loses one of them knows the card did not close and what is missing is
+  owed.
 - **Never more shares than `max_workers`**, and fewer where the work does not divide.
 - **`sonnet`** where the plan leaves nothing to decide: every symbol named, every call site listed,
   every test written out. **`opus`** where the share needs judgement the plan could not settle for
   it — a contract moving, a convention being set, a premise the code may falsify.
 
-A card you cannot fit goes in `dropped` with why, and the rest of the batch goes on.
+Work you cannot fit goes in `dropped` with why, and the rest of the batch goes on. A card whose work
+divides is not one you drop for not fitting whole.
 
 ## Bounds
 

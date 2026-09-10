@@ -13,7 +13,7 @@ table exists.
 
 | Stage | `subagent_type` | Give it | It returns |
 | --- | --- | --- | --- |
-| pick | `picker` | a ceiling | the candidates, in the order they are to be planned |
+| pick | `picker` | a ceiling | the candidates, as `priority` and `secondary` |
 | recover | `recoverer` | card id, its card dir, PR number | a briefing on what was already done |
 | plan | `planner` | the batch dir, the cards, the base, how many workers may run at once | a plan per card, and the split saying which worker builds what and on which model |
 | validate | `validator` | the batch dir, the cards, the base | `pass`, `revise` or `ask` per card, and collisions |
@@ -66,12 +66,15 @@ landing. Never what happened: the issues, the PRs and the commits carry that alr
 sha to every stage. Nothing in the batch resolves `origin/main` to decide what it is building
 against; the audit floor is still read at the trunk.
 
-1. **Pick.** Spawn `picker` with a ceiling of candidates — six unless this machine has less room.
+1. **Pick.** Spawn `picker` with a ceiling of candidates — eight. It is candidates and not a batch:
+   the planner divides the work, so how many cards a batch holds falls out of how the work divides
+   and is as often two split between three workers as it is eight.
    - `no_tasks` or `blocked` → end the day. Say why.
-   - Say the cards and the `why` in one line before you spawn anything else.
+   - Say the cards and the `why` in one line before you spawn anything else. Hand the planner both
+     lists whole; which of them becomes this batch is its call, not yours.
 2. **Recover.** A card already being worked, or carrying an open PR, gets a `recoverer` into its
    card dir before anything is planned.
-3. **Plan.** Spawn **one** `planner` over every candidate, with the batch dir, the base, and how
+3. **Plan.** Spawn **one** `planner` over both lists, with the batch dir, the base, and how
    many workers may run at once — four. Not a ceiling anybody has hit: both cycles that have run
    used three, because what limits a batch is two cards reaching the same files, never a slot. Five
    is what the memory on this machine will not carry, not what the work does not want. It plans each
