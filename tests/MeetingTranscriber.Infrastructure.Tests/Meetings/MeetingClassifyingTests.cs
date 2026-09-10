@@ -367,6 +367,113 @@ public class MeetingClassifyingTests
     }
 
     /// <summary>
+    /// The card's Proof, corpus side: a name typed wrong is corrected in place, and the meeting
+    /// filed under it is still filed under it and reads the new name. A node keeps its identity
+    /// through a rename, so nothing has to be filed again.
+    /// </summary>
+    [Fact]
+    public void A_meeting_filed_under_a_misspelt_node_reads_the_corrected_name()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid daily;
+        Guid techsed;
+        Guid coati;
+
+        using (var editing = corpus.OpenMigrated())
+        {
+            var stories = Stories.WriteWithNothingFiled(editing);
+            daily = stories.MeetingId(Stories.Daily);
+            techsed = stories.NodeId("TechSed");
+            coati = stories.NodeId("Coati");
+
+            new MeetingClassifying(editing, TimeProvider.System)
+                .Save(daily, MeetingFiling.Nothing with { WorkOf = [new ChosenPath([coati])] });
+
+            new HumanLayer(editing, TimeProvider.System)
+                .Rename(editing.Nodes.Single(node => node.Id == coati), "Coatí")
+                .ShouldNotBeNull();
+        }
+
+        using var reading = corpus.Open();
+        var read = new MeetingClassifying(reading, TimeProvider.System).Of(daily);
+
+        read.Chosen.WorkOf.Single().Nodes.ShouldBe([techsed, coati]);
+        read.Tree.Single(node => node.Id == coati).Name.ShouldBe("Coatí");
+    }
+
+    /// <summary>
+    /// Which person a meeting names, and which way, is changed after the fact by saving again —
+    /// which is the whole of it, because <c>Save</c> writes the difference both ways.
+    /// </summary>
+    [Fact]
+    public void Which_person_a_meeting_names_and_which_way_is_changed_after_the_fact()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid daily;
+        Guid vikram;
+
+        using (var editing = corpus.OpenMigrated())
+        {
+            var stories = Stories.WriteWithNothingFiled(editing);
+            daily = stories.MeetingId(Stories.Daily);
+            vikram = stories.PersonId("Vikram");
+
+            var classifying = new MeetingClassifying(editing, TimeProvider.System);
+
+            classifying.Save(daily, MeetingFiling.Nothing with
+            {
+                Somebody = [new ChosenPerson(vikram, Attended: true, Subject: false)],
+            });
+
+            classifying.Save(daily, MeetingFiling.Nothing with
+            {
+                Somebody = [new ChosenPerson(vikram, Attended: false, Subject: true)],
+            });
+        }
+
+        using var reading = corpus.Open();
+        var named = new MeetingClassifying(reading, TimeProvider.System).Of(daily).Chosen.Somebody.Single();
+
+        named.PersonId.ShouldBe(vikram);
+        named.Attended.ShouldBeFalse();
+        named.Subject.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// A body of work belonging to nobody in particular stands at the top of a tree of its own, and
+    /// a meeting files under it in one pill.
+    /// </summary>
+    /// <remarks>
+    /// The corpus always allowed it and nothing could produce one: until the second entry at the top
+    /// of the tree existed, every root the application could write was an organization. This is the
+    /// corpus end of what that entry now reaches, and it is here rather than beside the tree's own
+    /// rules because what it asserts is a meeting filed under such a root reading back whole.
+    /// </remarks>
+    [Fact]
+    public void An_initiative_stands_as_a_root()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid daily;
+        Guid coati;
+
+        using (var editing = corpus.OpenMigrated())
+        {
+            var stories = Stories.WriteWithNothingFiled(editing);
+            daily = stories.MeetingId(Stories.Daily);
+            coati = new HumanLayer(editing, TimeProvider.System).Root(NodeKind.Initiative, "Coatí suelto").Id;
+
+            new MeetingClassifying(editing, TimeProvider.System)
+                .Save(daily, MeetingFiling.Nothing with { WorkOf = [new ChosenPath([coati])] });
+        }
+
+        using var reading = corpus.Open();
+        var read = new MeetingClassifying(reading, TimeProvider.System).Of(daily);
+
+        read.Chosen.WorkOf.Single().Nodes.ShouldBe([coati]);
+        read.Tree.Single(node => node.Id == coati).Kind.ShouldBe(NodeKind.Initiative);
+    }
+
+    /// <summary>
     /// A corpus holding the thirteen, every one of them filed through the screen's own save rather
     /// than written in.
     /// </summary>

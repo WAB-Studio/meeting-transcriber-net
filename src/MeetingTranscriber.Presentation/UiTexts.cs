@@ -831,6 +831,25 @@ public static class UiTexts
 
     public static UiText NameANewOne { get; } = new("Nombrar uno nuevo…", "Name a new one…");
 
+    // What every picker on that screen offers for whatever already stands in it — a pill over the
+    // tree and a row of people alike, because it is one act and one act reads as one entry. The
+    // ellipsis says it asks a question rather than answering one, the way *Nombrar uno nuevo…* does.
+    public static UiText CorrectThisName { get; } = new("Corregir este nombre…", "Correct this name…");
+
+    // Two entries and not a question with a noun in it. What stands at the top of the tree is either
+    // an organization or a body of work belonging to nobody in particular, and #105's rule is that
+    // no technical name appears on this screen — so the two are offered as the two things they are,
+    // in the words somebody would use for them.
+    public static UiText ANewOrganization { get; } = new("Una organización nueva…", "A new organization…");
+
+    public static UiText WorkThatIsNobodysInParticular { get; } =
+        new("Un trabajo que no es de nadie en particular…", "Work that is nobody's in particular…");
+
+    // The title of the notice that adds a person, when it is opened over somebody who is already
+    // there. A title only, which is why it has no ellipsis: what was pressed to get here said
+    // *Corregir este nombre…*, and this says what the form in front of somebody is about.
+    public static UiText AboutThisPerson { get; } = new("Sobre esta persona", "About this person");
+
     // What the dialogue that adds a person asks. An organization and a year are optional: a person
     // carries as many affiliations as they have, and a corpus that never learned the date has none.
     public static UiText NameOfAPerson { get; } = new("Nombre", "Name");

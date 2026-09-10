@@ -4,6 +4,7 @@ using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
+using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.EntityFrameworkCore;
@@ -12,8 +13,8 @@ namespace MeetingTranscriber.Infrastructure.Tests.Storage;
 
 /// <summary>
 /// The write path for the part of the corpus nothing can produce again. Until this existed the
-/// human layer had tables, constraints and a backup policy, and no code that put a row in any of
-/// them outside the legacy importer — so every rule about it was a rule about a shape nobody filled.
+/// human layer had tables, constraints and a backup policy, and nothing in the application that put
+/// a row in any of them — so every rule about it was a rule about a shape nobody filled.
 /// </summary>
 /// <remarks>
 /// Most of what is asserted here the database would refuse on its own, and those assertions are
@@ -652,44 +653,143 @@ public class HumanLayerTests
     }
 
     /// <summary>
-    /// Forgetting somebody takes what hung off them and nothing else. The organization they were at
-    /// stays: it is not theirs, and other people are at it.
+    /// A node keeps its identity through a rename, which is what makes every meeting filed under it
+    /// stay filed and read the new name without anything being filed again.
     /// </summary>
     [Fact]
-    public void Forgetting_somebody_takes_what_hung_off_them_and_leaves_the_rest()
+    public void Renaming_a_node_leaves_every_meeting_filed_under_it()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var fixture = new HumanLayerFixture(context, corpus.Root);
         var human = fixture.HumanLayer;
 
-        var meeting = fixture.Meeting("una reunion");
-        var techsed = human.Root(NodeKind.Organization, "TechSed");
+        var techsed = human.Root(NodeKind.Organization, "Techsedd");
+        var coati = human.Under(techsed, NodeKind.Initiative, "Coaty");
+        var topic = human.Under(coati, NodeKind.Topic, "difusion");
+        var first = fixture.Meeting("la daily");
+        var second = fixture.Meeting("la otra");
+
+        human.Link(first.Id, topic, MeetingNodeRole.WorkOf);
+        human.Link(second.Id, topic, MeetingNodeRole.WorkOf);
+
+        human.Rename(techsed, "TechSed").ShouldNotBeNull();
+        human.Rename(coati, "Coati").ShouldNotBeNull();
+        human.Rename(topic, "Difusión").ShouldNotBeNull();
+
+        context.MeetingNodes.Count().ShouldBe(2);
+        context.Nodes.Single(node => node.Id == techsed.Id).Name.ShouldBe("TechSed");
+        context.Nodes.Single(node => node.Id == coati.Id).Name.ShouldBe("Coati");
+        context.Nodes.Single(node => node.Id == topic.Id).Name.ShouldBe("Difusión");
+
+        var classifying = new MeetingClassifying(context, fixture.Clock);
+
+        foreach (var meeting in new[] { first, second })
+        {
+            var read = classifying.Of(meeting.Id);
+            read.Chosen.WorkOf.Single().Nodes.ShouldBe([techsed.Id, coati.Id, topic.Id]);
+            read.Tree.Single(node => node.Id == topic.Id).Name.ShouldBe("Difusión");
+        }
+    }
+
+    /// <summary>
+    /// An organization is a node at depth zero, so renaming one is the same act — and everybody at
+    /// it is still at it, because an affiliation points at an id and never at a name.
+    /// </summary>
+    [Fact]
+    public void Renaming_an_organization_leaves_every_affiliation_to_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
+
+        var techsed = human.Root(NodeKind.Organization, "Techsedd");
         var ada = human.Add("Ada");
         var jo = human.Add("Jo");
 
         human.Join(ada, techsed);
         human.Join(jo, techsed);
-        human.Name(meeting.Id, ada, MeetingPersonRole.Attended);
-        human.Name(meeting.Id, jo, MeetingPersonRole.Attended);
-        human.Assign(meeting.Id, "ch1:speaker_0", ada);
 
-        human.Remove(ada);
+        human.Rename(techsed, "TechSed").ShouldNotBeNull();
 
-        context.People.Single().Id.ShouldBe(jo.Id);
-        context.Affiliations.Single().PersonId.ShouldBe(jo.Id);
-        context.MeetingPeople.Single().PersonId.ShouldBe(jo.Id);
-        context.SpeakerAssignments.ShouldBeEmpty();
-        context.Nodes.Count().ShouldBe(1);
-        context.Meetings.Count().ShouldBe(1);
+        context.Affiliations.Count().ShouldBe(2);
+        context.Affiliations.ToArray().ShouldAllBe(spell => spell.OrganizationId == techsed.Id);
+        context.Nodes.Single().Name.ShouldBe("TechSed");
     }
 
     /// <summary>
-    /// Dropping a node takes the tree under it and every link onto any of it, and leaves the people
-    /// who were there. A meeting missing the people on it is not something anybody can repair.
+    /// The reason a rename finds its own row. A screen reads the tree through a context it closes,
+    /// so the node it hands over is detached — and a method that assigned to it would save nothing,
+    /// report nothing, and let the redraw put the old name back over the correction.
     /// </summary>
     [Fact]
-    public void Removing_a_node_takes_what_hangs_under_it_and_leaves_the_people()
+    public void Renaming_something_this_corpus_no_longer_holds_answers_with_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
+
+        var techsed = human.Root(NodeKind.Organization, "TechSed");
+        var ada = human.Add("Ada");
+
+        context.Nodes.Remove(context.Nodes.Single(node => node.Id == techsed.Id));
+        context.People.Remove(context.People.Single(person => person.Id == ada.Id));
+        context.SaveChanges();
+
+        human.Rename(techsed, "otro").ShouldBeNull();
+        human.Rename(ada, "otra").ShouldBeNull();
+
+        context.Nodes.ShouldBeEmpty();
+        context.People.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The commonest correction anybody makes on the screen is the second half of a name typed
+    /// twice, and it is the one that collides. The tree refuses it in words rather than letting
+    /// SQLite refuse it as <em>an error occurred while saving the entity changes</em>, which is what
+    /// the screen would otherwise put in front of somebody.
+    /// </summary>
+    /// <remarks>
+    /// Over every way a name reaches the tree, not only the rename: the same clash is a new root, a
+    /// new child, and a rename, and three green cases with a fourth way in that nothing asks is the
+    /// shape this exists to avoid. Renaming something to what it already says is not a clash with
+    /// itself, which is the arithmetic that goes wrong if the row is not excluded.
+    /// </remarks>
+    [Fact]
+    public void A_name_something_beside_it_already_carries_is_refused_in_words()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
+
+        var techsed = human.Root(NodeKind.Organization, "TechSed");
+        var mistyped = human.Root(NodeKind.Organization, "Techsedd");
+        var coati = human.Under(techsed, NodeKind.Initiative, "Coati");
+
+        Should.Throw<ClassificationException>(() => human.Rename(mistyped, "TechSed"))
+            .Message.ShouldContain("TechSed");
+
+        Should.Throw<ClassificationException>(() => human.Root(NodeKind.Organization, "TechSed"));
+        Should.Throw<ClassificationException>(() => human.Under(techsed, NodeKind.Initiative, "Coati"));
+
+        // Beside it and not anywhere: the same word under another parent is a different name.
+        human.Under(mistyped, NodeKind.Initiative, "Coati").ShouldNotBeNull();
+
+        // And a node renamed to what it already says is not in its own way.
+        human.Rename(coati, "Coati").ShouldNotBeNull();
+
+        context.Nodes.Count().ShouldBe(4);
+        context.Nodes.Single(node => node.Id == mistyped.Id).Name.ShouldBe("Techsedd");
+    }
+
+    /// <summary>
+    /// Every way of pointing at a node, in one test for the reason
+    /// <see cref="Every_table_of_the_human_layer_has_a_way_in"/> is one: what is being asserted is
+    /// that <em>every</em> pointer counts, and three green cases with a fourth pointer nothing looks
+    /// at is the state this replaced.
+    /// </summary>
+    [Fact]
+    public void A_node_something_points_at_is_not_removed_and_the_refusal_says_what()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
@@ -701,18 +801,105 @@ public class HumanLayerTests
         var coati = human.Under(techsed, NodeKind.Initiative, "Coati");
         var ada = human.Add("Ada");
 
-        human.Join(ada, techsed);
+        Should.Throw<ClassificationException>(() => human.Remove(techsed))
+            .Message.ShouldContain("1 thing under it");
+
         human.Link(meeting.Id, coati, MeetingNodeRole.WorkOf);
+        Should.Throw<ClassificationException>(() => human.Remove(coati))
+            .Message.ShouldContain("1 meeting filed under it");
+
+        human.Join(ada, techsed);
+        Should.Throw<ClassificationException>(() => human.Remove(techsed))
+            .Message.ShouldContain("1 person at it");
+
         human.Correct("quati", "Coati", under: coati);
+        Should.Throw<ClassificationException>(() => human.Remove(coati))
+            .Message.ShouldContain("1 correction scoped to it");
 
-        human.Remove(techsed);
+        // And nothing at all was deleted along the way, which is the half a refusal that half
+        // happened would pass.
+        context.Nodes.Count().ShouldBe(2);
+        context.MeetingNodes.Count().ShouldBe(1);
+        context.Affiliations.Count().ShouldBe(1);
+        context.TerminologyCorrections.Count().ShouldBe(1);
+    }
 
-        context.Nodes.ShouldBeEmpty();
-        context.MeetingNodes.ShouldBeEmpty();
-        context.Affiliations.ShouldBeEmpty();
-        context.TerminologyCorrections.ShouldBeEmpty();
-        context.People.Count().ShouldBe(1);
-        context.Meetings.Count().ShouldBe(1);
+    /// <summary>The act this method exists for: a name nobody used, taken back off the tree.</summary>
+    [Fact]
+    public void A_node_nothing_points_at_is_removed()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
+
+        var techsed = human.Root(NodeKind.Organization, "TechSed");
+        var mistyped = human.Root(NodeKind.Organization, "Techsedd");
+
+        human.Remove(mistyped);
+
+        context.Nodes.Single().Id.ShouldBe(techsed.Id);
+    }
+
+    /// <summary>
+    /// Every way of naming somebody, and the last two are the point of it: a decision they made and
+    /// an action they own point at them exactly as a meeting does, though the schema would only have
+    /// set those two to null.
+    /// </summary>
+    [Fact]
+    public void A_person_something_points_at_is_not_removed_and_the_refusal_says_what()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var fixture = new HumanLayerFixture(context, corpus.Root);
+        var human = fixture.HumanLayer;
+
+        var meeting = fixture.Meeting("una reunion");
+        var run = fixture.ExtractionRunId(meeting);
+        var techsed = human.Root(NodeKind.Organization, "TechSed");
+        var ada = human.Add("Ada");
+
+        human.Name(meeting.Id, ada, MeetingPersonRole.Attended);
+        Should.Throw<ClassificationException>(() => human.Remove(ada))
+            .Message.ShouldContain("1 meeting that names them");
+
+        human.Assign(meeting.Id, "ch1:speaker_0", ada);
+        Should.Throw<ClassificationException>(() => human.Remove(ada))
+            .Message.ShouldContain("1 voice resolved onto them");
+
+        human.Join(ada, techsed);
+        Should.Throw<ClassificationException>(() => human.Remove(ada))
+            .Message.ShouldContain("1 organization they are at");
+
+        // The two the schema would have set to null rather than cascaded, and they are refusals all
+        // the same: a decision somebody made points at them exactly as a meeting does.
+        fixture.Decided(meeting, run, by: ada);
+        Should.Throw<ClassificationException>(() => human.Remove(ada))
+            .Message.ShouldContain("1 decision they made");
+
+        human.Mark(run, ordinal: 0, ActionItemState.Done, ada);
+        Should.Throw<ClassificationException>(() => human.Remove(ada))
+            .Message.ShouldContain("1 action they own");
+
+        context.People.Single().Id.ShouldBe(ada.Id);
+    }
+
+    /// <summary>Somebody named nowhere, forgotten, and everybody else left where they were.</summary>
+    [Fact]
+    public void A_person_nobody_points_at_is_removed()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var fixture = new HumanLayerFixture(context, corpus.Root);
+        var human = fixture.HumanLayer;
+
+        var meeting = fixture.Meeting("una reunion");
+        var ada = human.Add("Ada");
+        var jo = human.Add("Jo");
+
+        human.Name(meeting.Id, ada, MeetingPersonRole.Attended);
+        human.Remove(jo);
+
+        context.People.Single().Id.ShouldBe(ada.Id);
     }
 
     /// <summary>
@@ -810,6 +997,53 @@ internal sealed class HumanLayerFixture
             """);
 
         return run;
+    }
+
+    /// <summary>
+    /// A decision of that meeting, made by that person, with the turn its citation anchors on. The
+    /// turn is not optional: the corpus refuses a claim whose citation lands nowhere.
+    /// </summary>
+    public Decision Decided(Meeting meeting, Guid runId, Person by)
+    {
+        ArgumentNullException.ThrowIfNull(meeting);
+        ArgumentNullException.ThrowIfNull(by);
+
+        _context.Utterances.Add(new Utterance
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting.Id,
+            Ordinal = 0,
+            Start = Duration.FromMilliseconds(1_000),
+            End = Duration.FromMilliseconds(1_500),
+            Channel = AudioChannel.Microphone,
+            SpeakerLabel = "ch1:speaker_0",
+            Text = "lo hacemos asi",
+        });
+
+        var decision = new Decision
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting.Id,
+            ExtractionRunId = runId,
+            Ordinal = 0,
+            Statement = "se hace asi",
+            DecidedByPersonId = by.Id,
+            Evidence = new Citation
+            {
+                MeetingId = meeting.Id,
+                UtteranceOrdinal = 0,
+                Start = Duration.FromMilliseconds(1_000),
+                End = Duration.FromMilliseconds(1_500),
+                SpeakerLabel = "ch1:speaker_0",
+                QuotedText = "lo hacemos asi",
+                SourceArtifactSha256 = Sha256,
+            },
+            CreatedAt = Now,
+        };
+
+        _context.Decisions.Add(decision);
+        _context.SaveChanges();
+        return decision;
     }
 
     /// <summary>

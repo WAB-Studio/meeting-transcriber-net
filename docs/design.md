@@ -597,7 +597,16 @@ track are the summary's citations**, so where each thing falls across the hour i
 *Es trabajo de* is pills with a chevron between them, no tree drawn anywhere. *Del otro lado* and
 *Trata sobre* start empty and say so. *Quiénes* carries a person, optionally the badge saying the
 meeting is about them, and their affiliation and since when. No role with a technical name, no help
-panel.
+panel. A name typed wrong is corrected where it was typed, and every picker on the screen says so
+the same way: *Corregir este nombre*, over a pill and over a person alike. On a pill it opens the
+field a new name is typed into, holding the old name. On a person it opens the notice that adds one,
+retitled *Sobre esta persona*, with the name already in it and neither the organization nor the year
+asked — where somebody belongs is about a person across years and this screen is about one meeting.
+A name something beside it already carries is refused in words rather than by the database, because
+the correction somebody makes most often is the second half of a name typed twice. The top of the
+tree offers two ways to name something new, *una organización nueva* and *un trabajo que no es de
+nadie en particular*, which is how work belonging to no organization gets into the tree without the
+screen ever saying the word *iniciativa*.
 
 **`QuienEsQuien`** · Who is who. **The voices are called *Tu micrófono*, *Voz 1*, *Voz 2*** and
 never the label they are stored under. Each brings a quotation, a small waveform and a clip to

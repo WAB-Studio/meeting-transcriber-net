@@ -39,8 +39,8 @@ public class Person
 /// It carries a period because a meeting is read years after it happened: without one, hiring the
 /// candidate you interviewed rewrites the interview into a meeting with your own employee. Both
 /// ends are open rather than unknown — no start is "as far back as this corpus goes", no end is
-/// "still there" — and a corpus that never learned the dates has both, which is what the legacy
-/// import produces.
+/// "still there" — and a corpus that never learned the dates has both, which is what the Python
+/// corpus arrived as.
 /// </para>
 /// <para>
 /// The class travels beside the id so the pair is one foreign key onto a node's own id and class:

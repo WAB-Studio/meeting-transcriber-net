@@ -62,8 +62,11 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
     /// Puts a node at the top of a tree of its own — an organization, or a body of work belonging to
     /// nobody in particular.
     /// </summary>
+    /// <exception cref="ClassificationException">Another root already carries that name.</exception>
     public Node Root(NodeKind kind, string name)
     {
+        MustBeFreeBeside(null, name, itself: null);
+
         var node = Node.Root(Guid.NewGuid(), kind, name, Now);
         context.Nodes.Add(node);
         context.SaveChanges();
@@ -71,35 +74,145 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
     }
 
     /// <summary>Hangs a node one level under another.</summary>
+    /// <exception cref="ClassificationException">Something under that parent already carries that name.</exception>
     public Node Under(Node parent, NodeKind kind, string name)
     {
+        ArgumentNullException.ThrowIfNull(parent);
+        MustBeFreeBeside(parent.Id, name, itself: null);
+
         var node = Node.Under(Guid.NewGuid(), parent, kind, name, Now);
         context.Nodes.Add(node);
         context.SaveChanges();
         return node;
     }
 
-    /// <summary>Renaming a node moves nothing in the tree and nothing that hangs off it.</summary>
-    public void Rename(Node node, string name)
+    /// <summary>
+    /// Renames a node and answers with the row it wrote, or <see langword="null"/> when this corpus
+    /// no longer holds one. Renaming moves nothing in the tree and nothing that hangs off it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It finds its own row rather than assigning to the node it was handed, and that is not a
+    /// defensive habit: the screen that corrects a name read the tree through a context it then
+    /// closed — <c>MeetingClassifying.Of</c> reads it <c>AsNoTracking</c> — so assigning to what a
+    /// caller hands over would save nothing, report nothing, and let the redraw put the old name
+    /// back over the correction.
+    /// </para>
+    /// <para>
+    /// <see langword="null"/> and not a throw for a node that is gone, and that is a decision. A node
+    /// somebody removed between a screen drawing it and a person pressing on it is a state this
+    /// corpus has, and a screen has a line for it — <c>ThatIsNoLongerHowItWas</c>.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ClassificationException">Something beside it already carries that name.</exception>
+    public Node? Rename(Node node, string name)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        node.Name = name;
-        node.UpdatedAt = Now;
+        if (context.Nodes.Find(node.Id) is not { } stored)
+        {
+            return null;
+        }
+
+        MustBeFreeBeside(stored.ParentId, name, itself: stored.Id);
+
+        stored.Name = name;
+        stored.UpdatedAt = Now;
         context.SaveChanges();
+        return stored;
     }
 
     /// <summary>
-    /// Drops a node, everything under it, and every link and affiliation onto any of them. The
-    /// people stay: they are on meetings, and a meeting missing the people on it is not repairable.
+    /// A name no sibling already carries, which is what the tree's two unique indexes say and this
+    /// says first.
     /// </summary>
+    /// <remarks>
+    /// Asked here rather than left to the index, the way <see cref="Correct"/> refuses two scopes
+    /// before reaching the CHECK that says the same thing. The reason is the screen: the commonest
+    /// correction anybody makes is the second half of a name typed twice — <em>Techsedd</em> beside
+    /// <em>TechSed</em> — and left to SQLite that arrives as <c>DbUpdateException</c>, whose message
+    /// is "an error occurred while saving the entity changes" and names neither the name nor the
+    /// clash. The index still stands behind this and still wins a race between two writers; what
+    /// this buys is a sentence somebody can act on for the case that is not a race.
+    /// </remarks>
+    private void MustBeFreeBeside(Guid? parentId, string name, Guid? itself)
+    {
+        // Never a node's id, so a node being renamed to what it already says is not a clash with
+        // itself, and a node being created has nothing to exclude.
+        var mine = itself ?? Guid.Empty;
+
+        var beside = parentId is { } under
+            ? context.Nodes.Where(other => other.ParentId == under)
+            : context.Nodes.Where(other => other.ParentId == null);
+
+        if (beside.Any(other => other.Name == name && other.Id != mine))
+        {
+            throw new ClassificationException(
+                parentId is null
+                    ? $"There is already something called '{name}' at the top of the tree."
+                    : $"There is already something called '{name}' in the same place.");
+        }
+    }
+
+    /// <summary>
+    /// Drops a node nothing points at. Anything pointing at it is a refusal naming what — this
+    /// exists for something nobody used, and it is the one act here that could lose work somebody
+    /// did, so it does not cascade, it leaves no meeting unclassified, and it retires nothing
+    /// quietly. Removing what this corpus no longer holds is not a failure, the way
+    /// <see cref="Unlink"/> and <see cref="Unassign"/> are not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The refusal is in code and the cascade stays in the schema, and that pairing is deliberate:
+    /// deleting a meeting has to take its links, and deleting an organization by hand in SQL has to
+    /// take the tree under it or leave an orphan nothing goes looking for. What this stops is the
+    /// application doing it, which is the only way it ever happens to somebody.
+    /// </para>
+    /// <para>
+    /// Counting and deleting are one transaction, for the reason <c>MeetingClassifying.Save</c> has
+    /// one. More than one process opens this corpus, and a check-then-act with the schema's cascade
+    /// waiting behind it would let a meeting filed between the last count and the delete be taken by
+    /// the very cascade the refusal exists to prevent.
+    /// </para>
+    /// <para>
+    /// Nothing a person can press reaches this yet. The screen or the command that offers removal is
+    /// what adds <c>ClassificationException</c> to <c>ScreenFailures.Reportable</c> and to
+    /// <c>Cli.IsRefusal</c>, and until one does, a refusal here has no reader to be kind to.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ClassificationException">Something points at it, and the message says what.</exception>
     public void Remove(Node node)
     {
         ArgumentNullException.ThrowIfNull(node);
 
-        context.Nodes.Remove(node);
+        using var removing = context.Database.CurrentTransaction is null
+            ? context.Database.BeginTransaction()
+            : null;
+
+        if (context.Nodes.Find(node.Id) is not { } stored)
+        {
+            return;
+        }
+
+        var what = Pointing(
+            (context.Nodes.Count(child => child.ParentId == stored.Id), "thing under it", "things under it"),
+            (context.MeetingNodes.Count(link => link.NodeId == stored.Id),
+                "meeting filed under it", "meetings filed under it"),
+            (context.Affiliations.Count(spell => spell.OrganizationId == stored.Id),
+                "person at it", "people at it"),
+            (context.TerminologyCorrections.Count(fix => fix.NodeId == stored.Id),
+                "correction scoped to it", "corrections scoped to it"));
+
+        if (what.Length > 0)
+        {
+            throw new ClassificationException(
+                $"'{stored.Name}' is still in use and nothing was removed: {what}. Take those off it first.");
+        }
+
+        context.Nodes.Remove(stored);
         context.SaveChanges();
+        removing?.Commit();
     }
 
     /// <summary>
@@ -307,14 +420,30 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
         return person;
     }
 
-    public void Rename(Person person, string displayName)
+    /// <summary>
+    /// Renames somebody and answers with the row it wrote, or nothing when this corpus no longer
+    /// holds them. Every meeting that named them still does.
+    /// </summary>
+    /// <remarks>
+    /// Why it finds its own row, and why it answers with nothing rather than throwing, is both
+    /// <see cref="Rename(Node, string)"/>'s. What it does not do is refuse a name somebody else
+    /// already carries: two people really are called the same thing, which is the whole reason a
+    /// person is keyed on an id and drawn from a picker rather than typed.
+    /// </remarks>
+    public Person? Rename(Person person, string displayName)
     {
         ArgumentNullException.ThrowIfNull(person);
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
 
-        person.DisplayName = displayName;
-        person.UpdatedAt = Now;
+        if (context.People.Find(person.Id) is not { } stored)
+        {
+            return null;
+        }
+
+        stored.DisplayName = displayName;
+        stored.UpdatedAt = Now;
         context.SaveChanges();
+        return stored;
     }
 
     /// <summary>
@@ -351,17 +480,72 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
     }
 
     /// <summary>
-    /// Forgets somebody, and with them every meeting that named them, every organization they were
-    /// at and every voice resolved onto them. What they decided and what they own is kept and
-    /// loses their name, because a decision nobody made is still a decision the meeting reached.
+    /// Forgets somebody nothing in this corpus names. Anything naming them is a refusal saying what,
+    /// including the two the schema would only have set to null — a decision they made and an action
+    /// they own — because those point at them exactly as a meeting does. Forgetting somebody this
+    /// corpus no longer holds is not a failure.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Why the refusal is in code while the cascade stays in the schema, why the counting and the
+    /// delete are one transaction, and why nothing can report this refusal yet, is all
+    /// <see cref="Remove(Node)"/>'s and is not said twice.
+    /// </para>
+    /// <para>
+    /// <see cref="Person.IsMe"/> is not counted, and that is a decision rather than an oversight. It
+    /// is a flag on the row and not something pointing at it: a corpus whose owner nothing else
+    /// names is a fresh install, <see cref="Me"/> reads nobody, and the screen that asks who is
+    /// using this install goes back to asking — which is the answer <see cref="Me"/>'s own remarks
+    /// say repairs itself. Anything they were actually on is one of the five below and refuses.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ClassificationException">Something names them, and the message says what.</exception>
     public void Remove(Person person)
     {
         ArgumentNullException.ThrowIfNull(person);
 
-        context.People.Remove(person);
+        using var removing = context.Database.CurrentTransaction is null
+            ? context.Database.BeginTransaction()
+            : null;
+
+        if (context.People.Find(person.Id) is not { } stored)
+        {
+            return;
+        }
+
+        var what = Pointing(
+            (context.MeetingPeople.Count(row => row.PersonId == stored.Id),
+                "meeting that names them", "meetings that name them"),
+            (context.SpeakerAssignments.Count(row => row.PersonId == stored.Id),
+                "voice resolved onto them", "voices resolved onto them"),
+            (context.Affiliations.Count(spell => spell.PersonId == stored.Id),
+                "organization they are at", "organizations they are at"),
+            (context.Decisions.Count(settled => settled.DecidedByPersonId == stored.Id),
+                "decision they made", "decisions they made"),
+            (context.ActionItemProgress.Count(owned => owned.OwnerPersonId == stored.Id),
+                "action they own", "actions they own"));
+
+        if (what.Length > 0)
+        {
+            throw new ClassificationException(
+                $"'{stored.DisplayName}' is still named in this corpus and nothing was removed: {what}. "
+                + "Take those off them first.");
+        }
+
+        context.People.Remove(stored);
         context.SaveChanges();
+        removing?.Commit();
     }
+
+    /// <summary>
+    /// The pointers that are not zero, said in the order they were counted, and nothing at all about
+    /// the ones that are. A refusal listing what is <em>not</em> in the way is one somebody has to
+    /// read twice to find what is.
+    /// </summary>
+    private static string Pointing(params (int Count, string One, string Many)[] counted) =>
+        string.Join(", ", counted
+            .Where(kind => kind.Count > 0)
+            .Select(kind => $"{kind.Count} {(kind.Count == 1 ? kind.One : kind.Many)}"));
 
     /// <summary>
     /// Puts somebody at an organization, open ended unless a start is given. Somebody can be at two
