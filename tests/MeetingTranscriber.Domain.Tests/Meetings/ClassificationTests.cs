@@ -133,7 +133,7 @@ public class ClassificationTests
 
     /// <summary>
     /// An affiliation with no dates held then and holds now: a corpus that never learned the dates
-    /// is the ordinary case — it is what the legacy import produces — and not a broken one.
+    /// is the ordinary case — it is what the Python corpus arrived as — and not a broken one.
     /// </summary>
     [Fact]
     public void An_affiliation_open_at_both_ends_holds_whenever_it_is_asked()

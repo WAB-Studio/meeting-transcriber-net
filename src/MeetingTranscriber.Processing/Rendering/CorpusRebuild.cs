@@ -189,8 +189,8 @@ public static class CorpusRebuild
     /// finds. A modified one is the opposite: <c>StagedArtifact.Commit</c> moves the file into place
     /// and only then updates the row's size and hash, so an update abandoned between those two
     /// leaves the corpus naming a size and a hash the disk no longer has. That is the one direction
-    /// this whole design exists to avoid, and it is why the wider sweep <c>CorpusImporter.Commit</c>
-    /// can afford — it rolls its meeting back and this never does — would be wrong here. A tracked
+    /// this whole design exists to avoid, and it is why the wider sweep a caller that rolls its
+    /// meeting back can afford — which this never does — would be wrong here. A tracked
     /// delete would need the same answer and there is none to give: nothing in this loop produces
     /// one, because the turns of a meeting go through <c>ExecuteDelete</c>.
     /// </para>
@@ -224,12 +224,11 @@ public static class CorpusRebuild
     /// it; the corpus refusing a write says <c>"An error occurred while saving the entity changes.
     /// See the inner exception for details."</c> and puts the constraint that fired underneath. A
     /// report naming a meeting nobody can then look into has already failed at the one thing this
-    /// list is for, so the whole chain is printed. That is a third answer to a question two other
-    /// files answer differently — <c>CorpusImporter.Commit</c> prints one level down and
-    /// <see cref="OwedRenders"/> prints the head — and it wins because either of those drops the
-    /// sentence that names the meeting or the sentence that names the cause, depending on which
-    /// refusal arrived. Reaching one spelling across the three is its own piece of work, and no card
-    /// on the board carries it.
+    /// list is for, so the whole chain is printed. That is a second answer to a question
+    /// <see cref="OwedRenders"/> answers differently — it prints the head — and it wins because
+    /// that drops the sentence naming the meeting or the sentence naming the cause, depending on
+    /// which refusal arrived. Reaching one spelling across the two is its own piece of work, and no
+    /// card on the board carries it.
     /// </remarks>
     private static string Why(Exception thrown)
     {
@@ -261,12 +260,13 @@ public static class CorpusRebuild
     /// </para>
     /// <para>
     /// The two refusals that actually did it are on the ordinary path of an imported meeting rather
-    /// than on an exotic one: the legacy importer files a <c>deepgram.json</c> on its sha256 without
-    /// ever parsing it, and imported meetings are the oldest in the corpus, so they are rebuilt
-    /// first. A third arrives through <see cref="Domain.Knowledge.SpeakerLabels"/> on a speaker
-    /// numbered below zero — an <c>ArgumentOutOfRangeException</c>, which reads like somebody's bug
-    /// rather than a refusal and belongs to no list anybody would have written. That is the point:
-    /// the list cannot be closed, so the one that is closed has to be the other one.
+    /// than on an exotic one: the importer that read the Python corpus filed a <c>deepgram.json</c>
+    /// on its sha256 without ever parsing it, and the meetings it wrote are the oldest in a corpus,
+    /// so they are rebuilt first. A third arrives through
+    /// <see cref="Domain.Knowledge.SpeakerLabels"/> on a speaker numbered below zero — an
+    /// <c>ArgumentOutOfRangeException</c>, which reads like somebody's bug rather than a refusal and
+    /// belongs to no list anybody would have written. That is the point: the list cannot be closed,
+    /// so the one that is closed has to be the other one.
     /// </para>
     /// <para>
     /// Excluded is what says nothing about the meeting it was thrown on and would only be thrown

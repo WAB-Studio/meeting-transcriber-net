@@ -298,11 +298,12 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
     /// The path from a node's root down to it, root first.
     /// </summary>
     /// <remarks>
-    /// It stops on a node it has already walked through as well as on one with no parent, and that
-    /// is not a hypothetical guard: a walk up a cycle never ends, and this one runs on the thread a
-    /// window is drawn on. Nothing in the application can write a cycle — the factories set a
-    /// parent once and a depth with it — but the importer writes nodes straight into the tables,
-    /// and a read that hangs the window is a worse answer than a path that stops early.
+    /// It stops on a node it has already walked through as well as on one with no parent. Nothing
+    /// that writes to this corpus can produce a cycle — every node goes through
+    /// <c>Node.Root</c>/<c>Node.Under</c>, which set a parent once and a depth with it — so the
+    /// guard is unreached, and it is three lines because of what it costs to be wrong: a walk up a
+    /// cycle never ends, and this one runs on the thread a window is drawn on, so the failure is a
+    /// hung window rather than an exception anybody sees.
     /// </remarks>
     private static NodePath PathTo(Node deepest, IReadOnlyDictionary<Guid, Node> byId)
     {

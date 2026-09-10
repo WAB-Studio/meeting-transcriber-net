@@ -60,8 +60,8 @@ public static class MeetingRenderer
         // The turns are outside it and ahead of it. Project has already replaced them, so a
         // meeting refused here keeps rows from this render and files from the last one — which is
         // the deliberate half of the trade, because those rows are what a claim cites and the
-        // caller is the one that decides whether to undo them: OwedRenders and the importer wrap
-        // this in a transaction for exactly that, and a rebuild refuses to, because undoing a row
+        // caller is the one that decides whether to undo them: OwedRenders wraps this in a
+        // transaction for exactly that, and a rebuild refuses to, because undoing a row
         // under a file already moved is the one direction the corpus never goes.
         //
         // This used to open a transaction when the caller had none, and that was never the thing

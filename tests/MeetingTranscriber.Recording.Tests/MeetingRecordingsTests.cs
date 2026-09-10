@@ -479,6 +479,244 @@ public sealed class MeetingRecordingsTests : IDisposable
         reopened.Artifacts.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// ISC-184. The recording said channel 0 stopped following Teams and went to the whole machine,
+    /// and the corpus goes on saying so with the folder that said it first deleted.
+    /// </summary>
+    [Fact]
+    public void What_channel_0_stopped_following_and_when_is_in_the_corpus_with_the_folder_gone()
+    {
+        using var context = corpus.OpenMigrated();
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 3);
+
+        var card = new SpoolCard(
+            prepared.MeetingId,
+            Guid.NewGuid(),
+            now,
+            CapturedAudio.Profile,
+            CaptureMode.ProcessLoopback,
+            [
+                new SpooledSource(AudioChannel.Loopback, "teams (pid 8124)", null),
+                new SpooledSource(AudioChannel.Microphone, "Headset", "{0.0.1.00000000}.{mic}"),
+            ]);
+
+        SpoolManifest.Write(prepared.Spool, card);
+        MeetingRecordings.Began(context, card);
+
+        var moved = now + Duration.FromSeconds(1);
+        SpoolChanges.Append(prepared.Spool, new SourceChanged(
+            moved,
+            AudioChannel.Loopback,
+            "everything this machine plays",
+            "teams (pid 8124)"));
+
+        MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(3));
+
+        // The one thing that said so until now, gone. The claim over the folder is a held handle
+        // and Windows will not unlink a folder under one, so the press lets go of it first.
+        prepared.Dispose();
+        prepared.Spool.Delete(recursive: true);
+
+        using var reopened = corpus.Open();
+        var change = reopened.CaptureSourceChanges.Single();
+
+        change.MeetingId.ShouldBe(prepared.MeetingId);
+        change.At.ShouldBe(moved);
+        change.Channel.ShouldBe(AudioChannel.Loopback);
+        change.WasHearing.ShouldBe("teams (pid 8124)");
+        change.Heard.ShouldBe("everything this machine plays");
+        change.DeviceId.ShouldBeNull();
+
+        // And the run still says what the recording opened on, which is the other half of the
+        // decision: one column never comes to mean two things depending on when it is read.
+        var run = reopened.CaptureRuns.Single();
+        run.OthersCaptureMode.ShouldBe(CaptureMode.ProcessLoopback);
+        run.OthersProcess.ShouldBe("teams (pid 8124)");
+    }
+
+    /// <summary>
+    /// Most recordings change nothing, and the corpus says nothing about them — a table of moves
+    /// that acquired a row per meeting would say a channel moved when none did.
+    /// </summary>
+    [Fact]
+    public void A_recording_that_changed_nothing_leaves_nothing_saying_it_did()
+    {
+        using var context = corpus.OpenMigrated();
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
+
+        var card = Fabricated.CardFor(prepared.MeetingId, now);
+        SpoolManifest.Write(prepared.Spool, card);
+        MeetingRecordings.Began(context, card);
+
+        SpoolChanges.In(prepared.Spool).Exists.ShouldBeFalse();
+
+        MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(2));
+
+        using var reopened = corpus.Open();
+        reopened.CaptureSourceChanges.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A finish run twice over one folder — the path <c>Filed</c> exists for — writes one row per
+    /// move rather than failing on the key of the row it wrote the first time.
+    /// </summary>
+    [Fact]
+    public void Finishing_the_same_recording_twice_leaves_one_row_per_move()
+    {
+        using var context = corpus.OpenMigrated();
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
+
+        var card = Fabricated.CardFor(prepared.MeetingId, now);
+        SpoolManifest.Write(prepared.Spool, card);
+        MeetingRecordings.Began(context, card);
+
+        var moved = now + Duration.FromSeconds(1);
+        SpoolChanges.Append(prepared.Spool, new SourceChanged(
+            moved, AudioChannel.Loopback, "everything this machine plays", "teams (pid 8124)"));
+
+        MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(2));
+        MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(2));
+
+        using var reopened = corpus.Open();
+        var change = reopened.CaptureSourceChanges.Single();
+
+        change.At.ShouldBe(moved);
+        change.Channel.ShouldBe(AudioChannel.Loopback);
+    }
+
+    /// <summary>
+    /// A folder that says one channel moved twice at one instant is answered with the later line,
+    /// which is what the channel was on afterwards — and with one row, because two on one key would
+    /// fail the save that files the meeting.
+    /// </summary>
+    /// <remarks>
+    /// Nothing this application writes produces that file: <c>CaptureSession.Move</c> is the only
+    /// writer of it. The lines are appended by hand here for that reason — what is being pinned is
+    /// which of the two the corpus keeps, not that the situation arises.
+    /// </remarks>
+    [Fact]
+    public void One_channel_that_moved_twice_at_one_instant_is_what_it_ended_on()
+    {
+        using var context = corpus.OpenMigrated();
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
+
+        var card = Fabricated.CardFor(prepared.MeetingId, now);
+        SpoolManifest.Write(prepared.Spool, card);
+        MeetingRecordings.Began(context, card);
+
+        var moved = now + Duration.FromSeconds(1);
+        SpoolChanges.Append(prepared.Spool, new SourceChanged(
+            moved, AudioChannel.Microphone, "Laptop microphone", "Headset", "{0.0.1.0}.{laptop}"));
+        SpoolChanges.Append(prepared.Spool, new SourceChanged(
+            moved, AudioChannel.Microphone, "Desk microphone", "Laptop microphone", "{0.0.1.0}.{desk}"));
+
+        MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(2));
+
+        using var reopened = corpus.Open();
+        var change = reopened.CaptureSourceChanges.Single();
+
+        change.Heard.ShouldBe("Desk microphone");
+        change.DeviceId.ShouldBe("{0.0.1.0}.{desk}");
+    }
+
+    /// <summary>
+    /// Two channels that moved are two facts. Channel 1 following Windows to whatever replaced an
+    /// unplugged headset carries the endpoint it reopens by; channel 0 has none to carry.
+    /// </summary>
+    [Fact]
+    public void Both_channels_moving_are_two_facts_with_their_own_instants()
+    {
+        using var context = corpus.OpenMigrated();
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 3);
+
+        var card = Fabricated.CardFor(prepared.MeetingId, now);
+        SpoolManifest.Write(prepared.Spool, card);
+        MeetingRecordings.Began(context, card);
+
+        var loopbackMoved = now + Duration.FromSeconds(1);
+        var microphoneMoved = now + Duration.FromSeconds(2);
+
+        SpoolChanges.Append(prepared.Spool, new SourceChanged(
+            loopbackMoved,
+            AudioChannel.Loopback,
+            "everything this machine plays",
+            "teams (pid 8124)"));
+        SpoolChanges.Append(prepared.Spool, new SourceChanged(
+            microphoneMoved,
+            AudioChannel.Microphone,
+            "Laptop microphone",
+            "Headset",
+            "{0.0.1.00000000}.{laptop}"));
+
+        MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(3));
+
+        using var reopened = corpus.Open();
+        var changes = reopened.CaptureSourceChanges.OrderBy(row => row.At).ToList();
+
+        changes.Count.ShouldBe(2);
+
+        changes[0].At.ShouldBe(loopbackMoved);
+        changes[0].Channel.ShouldBe(AudioChannel.Loopback);
+        changes[0].DeviceId.ShouldBeNull();
+
+        changes[1].At.ShouldBe(microphoneMoved);
+        changes[1].Channel.ShouldBe(AudioChannel.Microphone);
+        changes[1].Heard.ShouldBe("Laptop microphone");
+        changes[1].WasHearing.ShouldBe("Headset");
+        changes[1].DeviceId.ShouldBe("{0.0.1.00000000}.{laptop}");
+    }
+
+    /// <summary>
+    /// A folder whose changes will not read stops the finish where nothing has been paid for yet:
+    /// no audio copied, no length written, no row.
+    /// </summary>
+    /// <remarks>
+    /// A complete line that does not read is the one shape <see cref="SpoolChanges.Find"/> refuses
+    /// a folder over — a torn last line is dropped there instead — so what this arranges is a
+    /// malformed line with a break after it. The refusal is <c>SpoolChanges</c>' own and reaches
+    /// here unwrapped, which is what keeps the sentence somebody reads naming the file.
+    /// </remarks>
+    [Fact]
+    public void A_changes_file_that_cannot_be_read_stops_the_finish_before_anything_is_written()
+    {
+        using var context = corpus.OpenMigrated();
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
+
+        var card = Fabricated.CardFor(prepared.MeetingId, now);
+        SpoolManifest.Write(prepared.Spool, card);
+        MeetingRecordings.Began(context, card);
+
+        SpoolChanges.Append(prepared.Spool, new SourceChanged(
+            now + Duration.FromSeconds(1),
+            AudioChannel.Loopback,
+            "everything this machine plays",
+            "teams (pid 8124)"));
+
+        File.AppendAllText(
+            SpoolChanges.In(prepared.Spool).FullName, "{\"at\": " + Environment.NewLine);
+
+        var refused = Should.Throw<AudioCaptureException>(
+            () => MeetingRecordings.Finish(
+                context, prepared.MeetingId, now + Duration.FromSeconds(2)));
+
+        refused.Message.ShouldContain(SpoolChanges.FileName);
+
+        using var reopened = corpus.Open();
+        reopened.Artifacts.Any(row => row.Kind == ArtifactKind.Audio).ShouldBeFalse();
+        reopened.Meetings.Single().Duration.ShouldBeNull();
+        reopened.CaptureSourceChanges.ShouldBeEmpty();
+
+        CorpusFiles.Locate(
+            corpus.Root, CorpusFiles.PathFor(prepared.MeetingId, MeetingAudio.FileName))
+            .Exists.ShouldBeFalse();
+    }
+
     public void Dispose() => corpus.Dispose();
 
     /// <summary>Takes the database away, leaving everything the corpus wrote to disk.</summary>

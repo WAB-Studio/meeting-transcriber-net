@@ -237,9 +237,14 @@ public sealed class Arguments
     /// place when this line could be carrying a secret.
     /// </summary>
     /// <remarks>
-    /// Every message in this type that interpolates a token goes through here. The two that name
-    /// only a flag this program declares — <see cref="Optional"/>'s and <see cref="Required"/>'s —
-    /// do not, because a flag name is this program's own word and never somebody's key.
+    /// Every refusal in this type that repeats a token somebody typed goes through here, with one
+    /// exception it cannot: <see cref="Meeting"/> is <see langword="static"/>, so it has no line to
+    /// ask about and quotes what it got unconditionally. A command that both declares a sentence
+    /// here and reads a meeting id would leak through it, and there is none — making
+    /// <see cref="Meeting"/> an instance method is what to do on the day there is.
+    /// The refusals that name only a flag or a noun this program declares —
+    /// <see cref="Optional"/>'s, <see cref="Required"/>'s, <see cref="Language"/>'s and
+    /// <see cref="Only"/>'s missing-value branch — do not go through here and do not need to.
     /// </remarks>
     private UsageException Refusing(string quotingWhatItGot) =>
         new(insteadOfRepeating ?? quotingWhatItGot);

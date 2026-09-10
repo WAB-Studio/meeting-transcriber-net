@@ -178,4 +178,114 @@ public class ClassifyingAMeetingTests
             "OnClassify raises Classify before it pauses, so the recording keeps playing behind a "
             + "screen nobody can see.");
     }
+
+    /// <summary>
+    /// Every picker on this screen offers a way to correct what already stands in it — the pills
+    /// over the tree and the rows of people alike, because a name typed wrong is typed wrong in
+    /// both, and in the same words for the reason <c>docs/design.md</c> gives.
+    /// </summary>
+    /// <remarks>
+    /// Read inside each builder rather than anywhere in the file, so an entry deleted from one of
+    /// the two is what fails rather than the member surviving in a comment somewhere else.
+    /// </remarks>
+    [Fact]
+    public void Every_picker_offers_a_way_to_correct_what_stands_in_it()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        Body(source, "private UIElement APill(").ShouldContain(
+            "UiTexts.CorrectThisName",
+            customMessage: "no pill over the tree offers correcting the name standing in it.");
+
+        Body(source, "private UIElement APlaceForSomebody(").ShouldContain(
+            "UiTexts.CorrectThisName",
+            customMessage: "no row of people offers correcting the name of whoever stands in it.");
+    }
+
+    /// <summary>
+    /// Both things that can stand at the top of a tree are on offer there, and the class is no
+    /// longer worked out from the level alone.
+    /// </summary>
+    /// <remarks>
+    /// A body of work belonging to nobody in particular had no way into the tree from this screen,
+    /// because the top level was hardcoded to an organization. The two entries are what replaced
+    /// that without ever asking somebody a technical name.
+    /// </remarks>
+    [Fact]
+    public void The_top_of_the_tree_offers_both_things_that_can_stand_there()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        source.ShouldContain("UiTexts.ANewOrganization");
+        source.ShouldContain("UiTexts.WorkThatIsNobodysInParticular");
+
+        Body(source, "private void NameANode(").ShouldNotContain(
+            "NodeKind.Organization",
+            customMessage: "NameANode still decides the class from the level, so the second entry "
+            + "at the top of the tree writes an organization whatever it says.");
+    }
+
+    /// <summary>
+    /// Correcting a name leaves the pills to the right of it alone.
+    /// </summary>
+    /// <remarks>
+    /// The node standing in the pill is the same node it was, so the pills to its right are still
+    /// its children. Putting it into the path again is what naming a <em>new</em> one has to do and
+    /// what this must not: it would empty every choice somebody had already made below it.
+    /// </remarks>
+    [Fact]
+    public void Correcting_a_name_leaves_the_pills_to_the_right_of_it_alone() =>
+        Body(File.ReadAllText(AppSources.At(Screen).FullName), "private void CorrectTheName(")
+            .ShouldNotContain(
+                "PutAt(",
+                customMessage: "correcting a node's name puts it into the path again, which empties "
+                + "every pill to the right of it — the children somebody had already chosen.");
+
+    /// <summary>
+    /// Nothing this screen offers says <em>initiative</em> or <em>node</em> to anybody, in either
+    /// language.
+    /// </summary>
+    /// <remarks>
+    /// #105's rule, and it is what the two-entry answer at the top of the tree exists to keep.
+    /// <em>Organization</em> is not on the list and the name says so: it is a plain word somebody
+    /// uses out loud, and one of the entries below is <em>Una organización nueva…</em>.
+    /// </remarks>
+    [Fact]
+    public void Nothing_on_this_screen_says_initiative_or_node_to_a_person()
+    {
+        string[] technical = ["initiative", "iniciativa", "node", "nodo"];
+
+        UiText[] offered =
+        [
+            UiTexts.CorrectThisName,
+            UiTexts.ANewOrganization,
+            UiTexts.WorkThatIsNobodysInParticular,
+            UiTexts.AboutThisPerson,
+        ];
+
+        foreach (var words in offered)
+        {
+            foreach (var name in technical)
+            {
+                words.Spanish.ShouldNotContain(name, Case.Insensitive, customMessage: name);
+                words.English.ShouldNotContain(name, Case.Insensitive, customMessage: name);
+            }
+        }
+    }
+
+    /// <summary>
+    /// One method's body, anchored on the closing brace at its own indentation. Lazy to
+    /// <c>[ ]*\}</c> would stop at the first brace inside it, which is a check that reads the guard
+    /// at the top and none of what follows.
+    /// </summary>
+    private static string Body(string source, string signature)
+    {
+        var found = Regex.Match(
+            source,
+            Regex.Escape(signature) + @".*?\r?\n[ ]{4}\}",
+            RegexOptions.Singleline);
+
+        found.Success.ShouldBeTrue($"ClassifyingAMeeting.xaml.cs no longer has a `{signature}`.");
+        return found.Value;
+    }
 }

@@ -431,6 +431,86 @@ public class CommandLineTests
     }
 
     /// <summary>
+    /// A hit that is not a turn says what it is. Everything that cites a turn carries that turn's
+    /// position, so branching on the ordinal printed a decision, an action and an open question the
+    /// same way a turn is printed — often beside the actual turn, with the same number — and left
+    /// somebody unable to tell a settled decision from somebody merely saying the words.
+    /// </summary>
+    /// <remarks>
+    /// Driven through the command line rather than against <c>Anchor</c>, which stays private:
+    /// nothing outside <c>MeetingCommands</c> decides how a hit is written, and there is no
+    /// <c>InternalsVisibleTo</c> anywhere in this repository. The rows go in as raw SQL because
+    /// nothing under <c>src/</c> writes an extraction yet, and the word is deliberately not in
+    /// <c>tests/fixtures/deepgram/vocabulary.txt</c> so that no turn of the fixture can also match
+    /// it and the search answers exactly one hit.
+    /// </remarks>
+    [Fact]
+    public void A_decision_found_by_search_says_it_is_a_decision_and_not_a_turn()
+    {
+        const string job = "44444444-4444-4444-4444-444444444444";
+        const string extraction = "55555555-5555-5555-5555-555555555555";
+        const string decision = "66666666-6666-6666-6666-666666666666";
+        const string sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+        const string when = "2026-03-04T14:00:00.000Z";
+
+        using var corpus = new TemporaryCorpus();
+        var root = corpus.Root.FullName;
+        CommandLine.Of("migrate", "--corpus", root);
+        var imported = Import(root);
+        var meeting = imported.Value("meeting");
+
+        // Uppercased, because that is how a guid is on disk: EF's SQLite provider writes one as
+        // TEXT in upper case and the report prints the same guid in lower, so a foreign key onto
+        // the meeting fails on nothing but the case of six letters.
+        var stored = meeting.ToUpperInvariant();
+
+        using (var context = corpus.Open())
+        {
+            Sql.Execute(context, $"""
+                INSERT INTO processing_jobs (id, meeting_id, kind, state, idempotency_key, created_at, attempt)
+                VALUES ('{job}', '{stored}', 'extract', 'succeeded', 'extract/{stored}/{job}', '{when}', 1);
+
+                INSERT INTO extraction_runs (
+                    id, meeting_id, job_id, provider, prompt_version, schema_version, input_hash,
+                    accepted_at, created_at)
+                VALUES ('{extraction}', '{stored}', '{job}', 'claude_code', '1', '1', '{sha256}', '{when}', '{when}');
+
+                INSERT INTO decisions (id, meeting_id, extraction_run_id, statement, ordinal,
+                                       utterance_ordinal, start_ms, end_ms, speaker_label, quoted_text,
+                                       source_artifact_sha256, created_at)
+                VALUES ('{decision}', '{stored}', '{extraction}', 'quedo decidido lo de la obsidiana', 0,
+                        0, 0, 1000, 'ch0:speaker_0', 'obsidiana', '{sha256}', '{when}');
+                """);
+        }
+
+        var run = CommandLine.Of("search", "obsidiana", "--corpus", root);
+
+        // Trimmed, because the anchor is written under the meeting's own line and indented by two.
+        var lines = run.Output
+            .Split('\n')
+            .Select(line => line.TrimEnd('\r').Trim())
+            .ToArray();
+
+        run.Code.ShouldBe(Cli.Ok, run.Error);
+        lines.ShouldContain(line => line.StartsWith("decision at turn #0,", StringComparison.Ordinal));
+        lines.ShouldNotContain(line => line.StartsWith("turn #", StringComparison.Ordinal));
+
+        // And the other arm the repair touched. A turn says its position and does not say its kind,
+        // because turn is what a position already means — so nothing here reads 'turn at turn #'.
+        var spoken = Words.SaidIn(new FileInfo(Path.Combine(root, imported.Value("utterances"))));
+        var said = CommandLine.Of("search", spoken, "--corpus", root)
+            .Output
+            .Split('\n')
+            .Select(line => line.TrimEnd('\r').Trim())
+            .ToArray();
+
+        said.ShouldContain(line =>
+            line.StartsWith("turn #", StringComparison.Ordinal)
+            && line.Contains(", 0:", StringComparison.Ordinal));
+        said.ShouldNotContain(line => line.StartsWith("turn at ", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// Search takes the index's own query syntax, so a query it cannot parse is an answer this
     /// program owes the person who typed it — naming the query rather than a column nobody wrote.
     /// </summary>

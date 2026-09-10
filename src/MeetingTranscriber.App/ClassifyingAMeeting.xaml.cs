@@ -109,11 +109,14 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// </summary>
     private bool _drawing;
 
-    /// <summary>Which pill, if any, somebody is typing a new name into.</summary>
-    private (MeetingNodeRole Role, int Row, int Level)? _naming;
+    /// <summary>Which pill, if any, somebody is typing a name into, and what that name is for.</summary>
+    private AFieldOnAPill? _naming;
 
-    /// <summary>Which place for somebody the dialogue was opened from.</summary>
-    private int? _namingSomebody;
+    /// <summary>
+    /// Which place for somebody the dialogue was opened from, and whoever it is correcting — or
+    /// nobody, which is the dialogue adding one.
+    /// </summary>
+    private (int Slot, Person? Correcting)? _namingSomebody;
 
     /// <summary>The organizations the dialogue offers, in the order it offers them.</summary>
     private IReadOnlyList<Node> _organizations = [];
@@ -578,23 +581,54 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// </remarks>
     private UIElement APill(MeetingAsClassified read, MeetingNodeRole role, int row, ChosenPath path, int level)
     {
-        if (_naming == (role, row, level))
+        if (_naming is { } field && field.StandsIn(role, row, level))
         {
             return AName(read, role, row, path, level);
         }
 
+        Guid? standing = level < path.Nodes.Count ? path.Nodes[level] : null;
+
+        // The pill to the left, which is what decides the one class this level can hold. Read the
+        // way `WhatMayStandAt` reads it, so a level past what the path holds asks for nothing.
+        var parent = level > 0 && level <= path.Nodes.Count
+            ? read.Tree.FirstOrDefault(node => node.Id == path.Nodes[level - 1])
+            : null;
+
+        var extras = new List<(UiText Words, Action Chose)>();
+
+        if (level == 0)
+        {
+            // Two entries and never a question. What may stand at the top of a tree is an
+            // organization or a body of work belonging to nobody in particular, and this is how the
+            // second one gets in without the screen saying the word *iniciativa* to anybody.
+            extras.Add((
+                UiTexts.ANewOrganization,
+                () => Naming(AFieldOnAPill.ANewOne(role, row, level, NodeKind.Organization))));
+            extras.Add((
+                UiTexts.WorkThatIsNobodysInParticular,
+                () => Naming(AFieldOnAPill.ANewOne(role, row, level, NodeKind.Initiative))));
+        }
+        else
+        {
+            extras.Add((
+                UiTexts.NameANewOne,
+                () => Naming(AFieldOnAPill.ANewOne(
+                    role, row, level, parent is { } above ? Node.Holds(above.Kind) : null))));
+        }
+
+        if (standing is { } here)
+        {
+            extras.Add((UiTexts.CorrectThisName, () => Naming(AFieldOnAPill.ACorrection(role, row, level, here))));
+        }
+
         return APicker(
             [.. WhatMayStandAt(read, path, level).Select(node => (node.Id, node.Name))],
-            level < path.Nodes.Count ? path.Nodes[level] : null,
+            standing,
 
             // Nothing chosen empties this pill and everything to the right of it, because what a
             // deeper pill offered was the children of this one.
             chosen => PutAt(role, row, level, chosen),
-            () =>
-            {
-                _naming = (role, row, level);
-                Changed();
-            });
+            extras);
     }
 
     /// <summary>
@@ -607,7 +641,11 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// are the same control asking the same three-part question — one of these, none of them, or a
     /// new one — and the index arithmetic that turns an answer back into an id is where that gets
     /// quietly wrong. It was written twice before this, and the same off-by-one had to be fixed in
-    /// both.
+    /// both. What each list offers past the rows themselves is the caller's, and is why this takes a
+    /// list rather than one callback: a pill over the tree offers two ways to name a new one at the
+    /// top and one below it, a row of people offers adding somebody, and each of them offers
+    /// correcting whatever already stands there. The arithmetic that reads an answer back is still
+    /// written once.
     /// </para>
     /// <para>
     /// <c>SelectedIndex</c> is set before anything is subscribed, so the value this screen writes
@@ -619,12 +657,16 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// <param name="offered">What the corpus holds that may stand here, in the order it is offered.</param>
     /// <param name="standing">What stands here now, or nothing.</param>
     /// <param name="chose">Called with what was chosen, or with nothing for <em>Ninguno</em>.</param>
-    /// <param name="naming">Called when somebody asked to name one the corpus does not have.</param>
+    /// <param name="alsoOffered">
+    /// What the list offers past the things the corpus holds: naming one that is not there, and
+    /// correcting the name of the one standing here. In the order they appear, which is the order
+    /// the index arithmetic below reads them back in.
+    /// </param>
     private ComboBox APicker(
         IReadOnlyList<(Guid Id, string Name)> offered,
         Guid? standing,
         Action<Guid?> chose,
-        Action naming)
+        IReadOnlyList<(UiText Words, Action Chose)> alsoOffered)
     {
         var picker = new ComboBox
         {
@@ -634,7 +676,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
             [
                 In(UiTexts.NoneOfThese),
                 .. offered.Select(one => one.Name),
-                In(UiTexts.NameANewOne),
+                .. alsoOffered.Select(one => In(one.Words)),
             ],
         };
 
@@ -655,9 +697,9 @@ public sealed partial class ClassifyingAMeeting : UserControl
                 return;
             }
 
-            if (picker.SelectedIndex == offered.Count + 1)
+            if (picker.SelectedIndex > offered.Count)
             {
-                naming();
+                alsoOffered[picker.SelectedIndex - offered.Count - 1].Chose();
                 return;
             }
 
@@ -728,13 +770,28 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// reason: what a commit does is write a node into the classification tree for good, and there
     /// is no screen anywhere in this application that can take one out again. Committing on a
     /// focus that was lost — a click on another pill, the window going to the background — would
-    /// grow a tree of half-typed names that every picker after it offers.
+    /// grow a tree of half-typed names that every picker after it offers. That holds for a
+    /// correction too — leaving the field puts the old name back, because a name half retyped and
+    /// abandoned is not a correction somebody made.
     /// </remarks>
     private UIElement AName(MeetingAsClassified read, MeetingNodeRole role, int row, ChosenPath path, int level)
     {
-        var typing = new TextBox { Style = Chrome("Naming") };
+        var wrong = _naming?.Correcting is { } id
+            ? read.Tree.FirstOrDefault(node => node.Id == id)?.Name
+            : null;
 
-        typing.Loaded += (_, _) => typing.Focus(FocusState.Programmatic);
+        var typing = new TextBox { Style = Chrome("Naming"), Text = wrong ?? string.Empty };
+
+        typing.Loaded += (_, _) =>
+        {
+            typing.Focus(FocusState.Programmatic);
+
+            // Selected and not left with the caret at the end. The field opens holding the name that
+            // is wrong, so typing replaces it, and somebody who only wanted one letter changed still
+            // has it one arrow key away.
+            typing.SelectAll();
+        };
+
         typing.LostFocus += (_, _) => NeverMind(role, row, level);
 
         typing.KeyDown += (_, pressed) =>
@@ -760,12 +817,19 @@ public sealed partial class ClassifyingAMeeting : UserControl
         // Only over the field this is about. Drawing the screen again takes the field off it, which
         // is itself a lost focus — so without this the redraw would call back into here about a
         // field that no longer exists, over a pill somebody has since answered.
-        if (_drawing || _naming != (role, row, level))
+        if (_drawing || _naming is not { } field || !field.StandsIn(role, row, level))
         {
             return;
         }
 
         _naming = null;
+        Changed();
+    }
+
+    /// <summary>Opens a field on a pill, saying what it will do with what is typed into it.</summary>
+    private void Naming(AFieldOnAPill field)
+    {
+        _naming = field;
         Changed();
     }
 
@@ -781,11 +845,12 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// is worth a screen.
     /// </para>
     /// <para>
-    /// What class it is placed as is fixed by where it stands and is never asked: an organization
-    /// at the top, and whatever the pill to its left holds below that. Asking somebody
-    /// <em>organization or body of work?</em> is a technical name on a screen the card says has
-    /// none, so a body of work belonging to nobody in particular has no way in from here — which is
-    /// a screen for the tree and not this one.
+    /// What class it is placed as is fixed by where it stands and by which entry was pressed, and
+    /// nobody is ever asked a technical name for it. Below the top of the tree there is one class
+    /// the pill to the left can hold and no question at all. At the top there are two things that
+    /// can stand — an organization, or a body of work belonging to nobody in particular — so the
+    /// pill offers them as two entries in the words somebody would use for them, and the class
+    /// travels on <see cref="AFieldOnAPill.Placed"/> rather than being worked out again here.
     /// </para>
     /// </remarks>
     private void NameANode(
@@ -796,18 +861,31 @@ public sealed partial class ClassifyingAMeeting : UserControl
         int level,
         string? typed)
     {
-        if (_drawing || _naming != (role, row, level))
+        if (_drawing || _naming is not { } field || !field.StandsIn(role, row, level))
         {
             return;
         }
 
         var name = (typed ?? string.Empty).Trim();
-        var parent = level == 0 ? null : read.Tree.FirstOrDefault(node => node.Id == path.Nodes[level - 1]);
-        var kind = parent is null ? NodeKind.Organization : Node.Holds(parent.Kind);
 
-        // Nothing typed puts the pill back to what it was, and so does a place with nothing under
-        // it — which the press that opened this one cannot produce and is checked anyway.
-        if (name.Length == 0 || kind is not { } placed)
+        // Nothing typed puts the pill back to what it was.
+        if (name.Length == 0)
+        {
+            NeverMind(role, row, level);
+            return;
+        }
+
+        if (field.Correcting is { } correcting)
+        {
+            CorrectTheName(read, correcting, name);
+            return;
+        }
+
+        var parent = level == 0 ? null : read.Tree.FirstOrDefault(node => node.Id == path.Nodes[level - 1]);
+
+        // A place with nothing under it, which the press that opened this one cannot produce and is
+        // checked anyway.
+        if (field.Placed is not { } placed)
         {
             NeverMind(role, row, level);
             return;
@@ -832,6 +910,15 @@ public sealed partial class ClassifyingAMeeting : UserControl
                 ? human.Root(placed, name).Id
                 : human.Under(parent, placed, name).Id;
         }
+        catch (ClassificationException taken)
+        {
+            // The tree refusing a name something beside it already carries, which is the same
+            // refusal `CorrectTheName` catches and for the same reason.
+            _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, taken.Message);
+            _naming = null;
+            Render();
+            return;
+        }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
             _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
@@ -844,6 +931,83 @@ public sealed partial class ClassifyingAMeeting : UserControl
         _naming = null;
         Draw(theDraftToo: false);
         PutAt(role, row, level, made);
+    }
+
+    /// <summary>
+    /// Corrects the name of the node standing in a pill, everywhere the corpus reads it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Renaming and not deleting and re-entering: the node keeps its identity, so every meeting filed
+    /// under it stays filed and reads the new name, and nothing has to be filed again.
+    /// </para>
+    /// <para>
+    /// It does not touch the draft, and that is the whole reason it is not a branch inside
+    /// <see cref="NameANode"/>. The node standing in this pill is the same node it was, so the pills
+    /// to the right of it are still its children — putting it in again through <see cref="PutAt"/>
+    /// would empty every one of them, which is what naming a <em>new</em> one has to do and what
+    /// this must not.
+    /// </para>
+    /// <para>
+    /// The tree it hands over came out of a context this screen closed before anybody pressed
+    /// anything, so the node may be gone twice over: out of the tree this screen drew, which is the
+    /// <c>FirstOrDefault</c>, and out of the corpus between the draw and the press, which is
+    /// <c>HumanLayer.Rename</c> answering with nothing. Both are the same sentence to whoever
+    /// pressed, and neither is a defect — <c>First</c> here would throw
+    /// <c>InvalidOperationException</c>, which <c>ScreenFailures.Reportable</c> deliberately does not
+    /// name, out of a <c>KeyDown</c> handler and take the window with it.
+    /// </para>
+    /// </remarks>
+    private void CorrectTheName(MeetingAsClassified read, Guid correcting, string name)
+    {
+        if (Corpus().Folder is not { } folder)
+        {
+            _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
+            _naming = null;
+            Render();
+            return;
+        }
+
+        var wrong = read.Tree.FirstOrDefault(node => node.Id == correcting);
+
+        try
+        {
+            using var context = CorpusDatabase.Open(folder);
+            var human = new HumanLayer(context, TimeProvider.System);
+
+            if (wrong is null || human.Rename(wrong, name) is null)
+            {
+                // The name that is going, not the one being typed: what changed underneath somebody
+                // is the thing they were correcting, and naming what they just typed reads as the
+                // application complaining about their own keystrokes.
+                _status = TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, wrong?.Name ?? name);
+                _naming = null;
+                Render();
+                return;
+            }
+        }
+        catch (ClassificationException taken)
+        {
+            // Caught by name, the way `OnSave` catches `MeetingStageException` by name, and for the
+            // same reason: this is the corpus saying no rather than failing, and it is not in
+            // `ScreenFailures.Reportable`.
+            _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, taken.Message);
+            _naming = null;
+            Render();
+            return;
+        }
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
+        {
+            _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+            _naming = null;
+            Render();
+            return;
+        }
+
+        // The tree again and not the draft: the filing is unchanged and every pill drawing this node
+        // reads its new name.
+        _naming = null;
+        Draw(theDraftToo: false);
     }
 
     // ── Who was on it ─────────────────────────────────────────────────────────────────────────
@@ -901,6 +1065,29 @@ public sealed partial class ClassifyingAMeeting : UserControl
             .Select(found => (found.Id, Name: found.DisplayName))
             .ToArray();
 
+        // *Nombrar uno nuevo…* and deliberately not *Agregar a alguien*, which is the button under
+        // this column and adds a place rather than a person. Two presses on one screen reading the
+        // same words and doing two different things is the fault that outweighs the entry being
+        // worded for a thing rather than for a person.
+        var extras = new List<(UiText Words, Action Chose)>
+        {
+            (UiTexts.NameANewOne, () => _ = AskWhoTheyAre(read, slot, correcting: null)),
+        };
+
+        // The same words the pill over the tree uses, because it is the same act — `docs/design.md`
+        // says a name typed wrong is corrected where it was typed, and one idea said two ways on one
+        // screen is two ideas to whoever reads it.
+        //
+        // Offered only over somebody the list above actually shows. A slot holding the person using
+        // this install is drawn with nothing selected — they are filtered out of `offered` — and an
+        // entry offering to correct a name the picker will not show is an entry about nothing.
+        if (person.PersonId is { } standing
+            && offered.Any(one => one.Id == standing)
+            && read.Everybody.FirstOrDefault(found => found.Person.Id == standing)?.Person is { } them)
+        {
+            extras.Add((UiTexts.CorrectThisName, () => _ = AskWhoTheyAre(read, slot, them)));
+        }
+
         var picker = APicker(
             offered,
             person.PersonId,
@@ -908,7 +1095,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
             // Nothing chosen is how somebody comes off this meeting. The place stays and names
             // nobody, which files nothing.
             chosen => PutSomebodyIn(slot, chosen),
-            () => _ = AskWhoTheyAre(read, slot));
+            extras);
 
         Grid.SetColumn(picker, 0);
         row.Children.Add(picker);
@@ -1069,21 +1256,31 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// Opens the one dialogue this screen has, over the place it was asked from.
     /// </summary>
     /// <remarks>
-    /// The second of the two <c>docs/design.md</c> §Notices allows, and the list is closed — which
-    /// is why naming a node is done on the pill and not in a third one.
+    /// The second of the two <c>docs/design.md</c> §Notices allows, and the list is closed — which is
+    /// why naming a node is done on the pill and not in a third one. It does two jobs and is not two
+    /// dialogues: adding somebody and correcting the name of somebody already there are the same form
+    /// with one field, and a second notice for the second job would be a third notice.
     /// </remarks>
-    private async Task AskWhoTheyAre(MeetingAsClassified read, int slot)
+    private async Task AskWhoTheyAre(MeetingAsClassified read, int slot, Person? correcting)
     {
-        _namingSomebody = slot;
-        TheirNameBox.Text = string.Empty;
+        _namingSomebody = (slot, correcting);
+        AddingSomebody.Title = In(correcting is null ? UiTexts.AddSomebody : UiTexts.AboutThisPerson);
+        TheirNameBox.Text = correcting?.DisplayName ?? string.Empty;
         TheirYearBox.Text = string.Empty;
         DialogueStatusText.Text = string.Empty;
         DialogueStatusText.Visibility = Visibility.Collapsed;
 
         // Nobody is added without a name, and the act says so by being dead rather than by refusing
         // afterwards: a form that takes a press and answers with a complaint is a form that asked
-        // for the press.
-        AddingSomebody.IsPrimaryButtonEnabled = false;
+        // for the press. Correcting one opens with the name already in the box, so it opens alive.
+        AddingSomebody.IsPrimaryButtonEnabled = correcting is not null;
+
+        // Where somebody belongs is not what this dialogue edits when it is correcting a name. An
+        // affiliation is about a person across years and this screen is about one meeting, so the two
+        // fields come off rather than standing there doing nothing.
+        var asking = correcting is null ? Visibility.Visible : Visibility.Collapsed;
+        TheirOrganizationLine.Visibility = asking;
+        TheirYearBox.Visibility = asking;
 
         _organizations = [.. read.Tree.Where(node => node.ParentId is null && node.Kind is NodeKind.Organization)];
 
@@ -1132,7 +1329,8 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// somebody typed to a corpus that was locked for a second.
     /// </para>
     /// <para>
-    /// One transaction around both writes, for the reason <see cref="MeetingClassifying.Save"/> has
+    /// When somebody is being added — a correction is one write and takes none — one transaction
+    /// around both writes, for the reason <see cref="MeetingClassifying.Save"/> has
     /// one. <c>HumanLayer.Add</c> and <c>.Join</c> each save; a refusal on the second leaves the
     /// person on disk, the dialogue open, and nothing on the screen pointing at them — so the
     /// obvious next move, fixing the year and pressing again, adds a *second* person of the same
@@ -1148,7 +1346,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
 
         // The act is dead until there is a name, so an empty one is not something a person did.
         // A corpus that would not open is, and it is the one the sentence below is about.
-        if (name.Length == 0 || _namingSomebody is not { } slot)
+        if (name.Length == 0 || _namingSomebody is not { } asked)
         {
             args.Cancel = true;
             return;
@@ -1161,27 +1359,46 @@ public sealed partial class ClassifyingAMeeting : UserControl
             return;
         }
 
-        var chosen = TheirOrganization.SelectedIndex - 1;
-        var organization = chosen >= 0 && chosen < _organizations.Count ? _organizations[chosen] : null;
-
         Guid made;
 
         try
         {
             using var context = CorpusDatabase.Open(folder);
-            using var naming = context.Database.BeginTransaction();
             var human = new HumanLayer(context, TimeProvider.System);
-            var person = human.Add(name);
 
-            if (organization is not null)
+            if (asked.Correcting is { } correcting)
             {
-                // No year is what Affiliation already means by no start — as far back as this
-                // corpus goes — and not a guess at one.
-                human.Join(person, organization, TheFirstOfTheYear(TheirYearBox.Text));
-            }
+                // One write, so no transaction. What the pair below needs one for is a refusal on
+                // the second leaving the first standing, and there is no second here.
+                // The name that is going and not the one being typed: what changed underneath
+                // somebody is the person they were correcting.
+                if (human.Rename(correcting, name) is null)
+                {
+                    args.Cancel = true;
+                    SayInTheDialogue(UiTexts.ThatIsNoLongerHowItWas, correcting.DisplayName);
+                    return;
+                }
 
-            naming.Commit();
-            made = person.Id;
+                made = correcting.Id;
+            }
+            else
+            {
+                var chosen = TheirOrganization.SelectedIndex - 1;
+                var organization = chosen >= 0 && chosen < _organizations.Count ? _organizations[chosen] : null;
+
+                using var writing = context.Database.BeginTransaction();
+                var person = human.Add(name);
+
+                if (organization is not null)
+                {
+                    // No year is what Affiliation already means by no start — as far back as this
+                    // corpus goes — and not a guess at one.
+                    human.Join(person, organization, TheFirstOfTheYear(TheirYearBox.Text));
+                }
+
+                writing.Commit();
+                made = person.Id;
+            }
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
@@ -1192,7 +1409,11 @@ public sealed partial class ClassifyingAMeeting : UserControl
 
         _namingSomebody = null;
         Draw(theDraftToo: false);
-        PutSomebodyIn(slot, made);
+
+        // The same person as before when this was a correction, which is a no-op that keeps one
+        // exit: `ChosenPerson` is replaced with `this person`, and the two badges ride along on the
+        // `with`, so nothing somebody set on that row moves.
+        PutSomebodyIn(asked.Slot, made);
     }
 
     private void SayInTheDialogue(UiText what, string about)
@@ -1271,5 +1492,64 @@ public sealed partial class ClassifyingAMeeting : UserControl
         // abandoned leaves the meeting exactly as it was found.
         Close();
         Left?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// The field open on a pill: which pill it stands in, and what it will do with what is typed
+    /// into it.
+    /// </summary>
+    /// <remarks>
+    /// Built through <see cref="ANewOne"/> or <see cref="ACorrection"/> and never by hand, so the
+    /// two things a field can be for are the two things that can be spelled.
+    /// </remarks>
+    private sealed record AFieldOnAPill
+    {
+        /// <summary>
+        /// Private, so the only fields that can exist are the two below. Two nullables where exactly
+        /// one is ever set is a state nothing checks and everything downstream has to ask about.
+        /// </summary>
+        private AFieldOnAPill(MeetingNodeRole role, int row, int level, NodeKind? placed, Guid? correcting)
+        {
+            Role = role;
+            Row = row;
+            Level = level;
+            Placed = placed;
+            Correcting = correcting;
+        }
+
+        public MeetingNodeRole Role { get; }
+
+        public int Row { get; }
+
+        public int Level { get; }
+
+        /// <summary>
+        /// The class a new node would be written as, or nothing when this field corrects one. At the
+        /// top of the tree it is whichever of the two entries was pressed; deeper it is the one class
+        /// the pill to the left holds.
+        /// </summary>
+        public NodeKind? Placed { get; }
+
+        /// <summary>
+        /// The node whose name is being corrected, or nothing when this field names a new one.
+        /// </summary>
+        public Guid? Correcting { get; }
+
+        /// <summary>A field that will write a node the corpus does not have yet.</summary>
+        public static AFieldOnAPill ANewOne(MeetingNodeRole role, int row, int level, NodeKind? placed) =>
+            new(role, row, level, placed, null);
+
+        /// <summary>A field that will correct the name of the node standing in that pill.</summary>
+        public static AFieldOnAPill ACorrection(MeetingNodeRole role, int row, int level, Guid node) =>
+            new(role, row, level, null, node);
+
+        /// <summary>
+        /// Whether this is the field standing in that pill. What the field is <em>for</em> is not
+        /// part of which pill it is on: a pill has at most one field open, whatever that field does
+        /// — so the handlers that ask <em>is this still mine?</em> ask about the pill and never
+        /// about the rest.
+        /// </summary>
+        public bool StandsIn(MeetingNodeRole role, int row, int level) =>
+            Role == role && Row == row && Level == level;
     }
 }

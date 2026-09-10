@@ -154,8 +154,9 @@ public static class OwedRenders
     /// remembers nothing between launches, so one escape starves every meeting behind the one that
     /// threw, on every launch, silently. That is precisely what happened here: a list of six types
     /// carried neither <c>DeepgramResponseException</c> nor <c>AudioContractException</c>, and both
-    /// are on the ordinary path of a legacy meeting, because the importer files a
-    /// <c>deepgram.json</c> on its sha256 without ever parsing it and imported meetings sort first.
+    /// are on the ordinary path of an imported meeting, because the importer that read the Python
+    /// corpus filed a <c>deepgram.json</c> on its sha256 without ever parsing it and the meetings it
+    /// wrote sort first.
     /// </para>
     /// <para>
     /// So the boundary is the meeting, which is what it was always said to be, and a defect inside

@@ -1,7 +1,9 @@
 using System.Data;
 
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.EntityFrameworkCore;
@@ -393,6 +395,56 @@ public class CorpusSearchTests
     }
 
     /// <summary>
+    /// The rule "the last extraction a person accepted" is spelled twice — <c>CorpusSearch</c>'s
+    /// correlated subquery and <c>MeetingReading.TheRunThatCounts</c>'s LINQ — over the same three
+    /// columns, and until this the agreement was argued rather than probed. Two runs accepted in
+    /// the same instant is the only case that can tell the two spellings apart.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both ties, because the ordering has two steps past <c>accepted_at</c> and each is reached
+    /// only by the one shape. The first meeting's two runs were created at different moments and
+    /// the run created later carries the <em>lower</em> id, so an ordering that ran straight out to
+    /// the id would pick the other one. The second meeting's two runs agree on both instants, which
+    /// is the only way to reach the id at all.
+    /// </para>
+    /// <para>
+    /// The assertion goes through the text and not through a run id: a <see cref="SearchHit"/>
+    /// carries none by design, and the decision branch has already filtered to one run, so what
+    /// says which run answered is the marker its own decision carries. Both readers naming the same
+    /// marker is the two spellings agreeing; both naming the expected one is them agreeing on the
+    /// right run rather than on the same wrong one.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Search_and_the_meeting_screen_break_a_tie_between_two_accepted_runs_the_same_way()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Tied.Write(context);
+
+        var hits = CorpusSearch.Find(context, "empatado");
+        hits.Count.ShouldBe(2);
+
+        var byCreation = hits.Single(hit => hit.MeetingId == Tied.BrokenByCreation);
+        var byId = hits.Single(hit => hit.MeetingId == Tied.BrokenById);
+
+        byCreation.Snippet.ShouldContain(Tied.CreatedLast);
+        byId.Snippet.ShouldContain(Tied.HighestId);
+
+        var reading = new MeetingReading(context, TimeProvider.System);
+
+        Decided(reading, Tied.BrokenByCreation).ShouldContain(Tied.CreatedLast);
+        Decided(reading, Tied.BrokenById).ShouldContain(Tied.HighestId);
+    }
+
+    /// <summary>What the meeting screen shows as the decision of the run it decided counts.</summary>
+    private static string Decided(MeetingReading reading, Guid meetingId) =>
+        reading.Of(meetingId).Screen.Left.Things
+            .Single(thing => thing.Kind == LeftKind.Decision)
+            .Says;
+
+    /// <summary>
     /// A meeting filed under two things under one organization is one answer for that organization,
     /// not two. Both rows come from one index row through two paths, so every column of them is the
     /// same and there is nothing to choose between them.
@@ -756,5 +808,109 @@ internal sealed class Corpus
             VALUES ('{tag}0000000-0000-0000-0000-000000000003', '{DailyId}', '{run}', '{question}', 0,
                     {AnchorOrdinal}, {AnchorOrdinal * 1000}, {(AnchorOrdinal + 1) * 1000}, 'ch0:speaker_0',
                     'turno{AnchorOrdinal} comun de coati', '{Sha256}', '{When}');
+            """);
+}
+
+/// <summary>
+/// Two meetings whose extractions were accepted in the same instant, one for each step the
+/// ordering has left after that: the moment the run was created, and the run's own id.
+/// </summary>
+/// <remarks>
+/// Separate from <see cref="Corpus"/> and not folded into it. That fixture is built so every word
+/// is in exactly one index and one run of one meeting answers; a tie is the opposite arrangement —
+/// two runs a search has to choose between — and putting it there would change what half the tests
+/// above are counting.
+/// </remarks>
+internal static class Tied
+{
+    /// <summary>The instant both runs of both meetings were accepted at.</summary>
+    public const string Accepted = "2026-04-09T11:00:00.000Z";
+
+    /// <summary>Every decision here says this, so one search reaches both meetings.</summary>
+    public const string Term = "empatado";
+
+    /// <summary>The marker on the decision of the run created last, which is the one that counts.</summary>
+    public const string CreatedLast = "marcaposterior";
+
+    /// <summary>The marker on the decision of the higher id, which is what the last step decides.</summary>
+    public const string HighestId = "marcamayor";
+
+    private const string Earlier = "2026-04-09T10:00:00.000Z";
+
+    /// <remarks>
+    /// Digits and no letters, in every id this fixture writes. These rows go in through raw SQL and
+    /// come back out through EF, which binds a <see cref="Guid"/> as upper-case text — so an id
+    /// with a letter in it goes in one case and is looked up in the other, and the row is not found.
+    /// </remarks>
+    private const string CreationId = "31111111-1111-1111-1111-111111111111";
+
+    private const string IdId = "32222222-2222-2222-2222-222222222222";
+
+    /// <summary>The run created last, and the lower of the two ids — which is what makes it a tie.</summary>
+    private const string CreatedLastRun = "41000000-0000-0000-0000-000000000001";
+
+    private const string CreatedFirstRun = "42000000-0000-0000-0000-000000000002";
+
+    private const string LowerRun = "51000000-0000-0000-0000-000000000001";
+
+    private const string HigherRun = "52000000-0000-0000-0000-000000000002";
+
+    private const string Sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
+
+    /// <summary>The meeting whose tie only <c>created_at</c> can break.</summary>
+    public static Guid BrokenByCreation => Guid.Parse(CreationId);
+
+    /// <summary>The meeting whose tie only the id can break.</summary>
+    public static Guid BrokenById => Guid.Parse(IdId);
+
+    public static void Write(CorpusDbContext context)
+    {
+        Meeting(context, CreationId, "la reunion del empate por fecha");
+        Meeting(context, IdId, "la reunion del empate por id");
+
+        // The run created later carries the lower id, so an ordering that ran straight out to the
+        // id would answer with the other one. That is what makes this meeting the created_at step.
+        Run(context, CreationId, CreatedLastRun, createdAt: Accepted);
+        Run(context, CreationId, CreatedFirstRun, createdAt: Earlier);
+        Decision(context, CreationId, CreatedLastRun, CreatedLast);
+        Decision(context, CreationId, CreatedFirstRun, "marcaanterior");
+
+        // Both instants equal, so nothing but the id is left.
+        Run(context, IdId, LowerRun, createdAt: Accepted);
+        Run(context, IdId, HigherRun, createdAt: Accepted);
+        Decision(context, IdId, LowerRun, "marcamenor");
+        Decision(context, IdId, HigherRun, HighestId);
+    }
+
+    private static void Meeting(CorpusDbContext context, string id, string title) =>
+        Sql.Execute(context, $"""
+            INSERT INTO meetings (id, title, started_at, source_profile, language, lifecycle_state, created_at, updated_at)
+            VALUES ('{id}', '{title}', '{Accepted}', 'multichannel', 'es', 'active', '{Accepted}', '{Accepted}');
+            INSERT INTO utterances (id, meeting_id, ordinal, start_ms, end_ms, channel, speaker_label, text)
+            VALUES ('{id}-0', '{id}', 0, 0, 1000, 0, 'ch0:speaker_0', 'lo que se dijo en la reunion');
+            """);
+
+    /// <summary>An extraction accepted at <see cref="Accepted"/>, and the job it ran under.</summary>
+    private static void Run(CorpusDbContext context, string meeting, string run, string createdAt) =>
+        Sql.Execute(context, $"""
+            INSERT INTO processing_jobs (id, meeting_id, kind, state, idempotency_key, created_at, attempt)
+            VALUES ('{run}', '{meeting}', 'extract', 'succeeded', 'extract/{run}', '{createdAt}', 1);
+            INSERT INTO extraction_runs (
+                id, meeting_id, job_id, provider, prompt_version, schema_version, input_hash, accepted_at, created_at)
+            VALUES ('{run}', '{meeting}', '{run}', 'claude_code', '1', '1', '{Sha256}', '{Accepted}', '{createdAt}');
+            """);
+
+    /// <summary>
+    /// One decision per run, saying the word both meetings share and the marker that says which run
+    /// wrote it.
+    /// </summary>
+    private static void Decision(
+        CorpusDbContext context, string meeting, string run, string marker) =>
+        Sql.Execute(context, $"""
+            INSERT INTO decisions (id, meeting_id, extraction_run_id, statement, ordinal,
+                                   utterance_ordinal, start_ms, end_ms, speaker_label, quoted_text,
+                                   source_artifact_sha256, created_at)
+            VALUES ('{run}', '{meeting}', '{run}', 'quedo {Term} {marker}', 0,
+                    0, 0, 1000, 'ch0:speaker_0', 'lo que se dijo en la reunion', '{Sha256}', '{Accepted}');
             """);
 }
