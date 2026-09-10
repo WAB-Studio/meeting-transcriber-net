@@ -436,6 +436,34 @@ Dos cosas quedan afuera a propósito, y ninguna es clasificación: la serie que
 relaciona las doscientas dailies del mismo equipo entre sí, y la política de
 retención propia de una reunión sensible.
 
+#### Los cruces
+
+Las trece cerraron el vocabulario y siguen siendo trece: los dos de acá se
+numeran aparte justamente por eso. Lo que ninguna de ellas trae es el cruce:
+alguien con un trabajo, un segundo trabajo y una carrera, en una reunión que es
+trabajo de uno de los trabajos y trata de algo de la carrera. Se lee absurdo
+hasta que pasa. `CrossedStoriesTests` son estas dos en el mismo corpus que las
+trece.
+
+| # | Reunión | Cómo se guarda |
+| --- | --- | --- |
+| Cruce 1 | Reunión de trabajo que toca la tesis | `work_of` la iniciativa del trabajo y `about` la maestría, que es una iniciativa de la facultad. Tres afiliaciones abiertas en la persona, una de ellas la facultad. |
+| Cruce 2 | Reunión con el cliente donde también trabajo | `work_of` la iniciativa de un empleador y `counterpart` el otro. Las dos afiliaciones abiertas siguen abiertas y ninguna de las dos aparece en la reunión. |
+
+**Dónde estaba parada la persona no se guarda, y es deliberado.** Una afiliación
+dice dónde pertenece alguien y durante qué período; un vínculo dice cómo se
+relaciona la reunión con un nodo. Cruzar los dos —decir que Sam estuvo *como*
+Orchard— sería afirmar algo que nadie registró, y una reunión leída dos años
+después diría que fue con la empresa equivocada. Cuando alguien necesite esa
+respuesta, es una columna nueva en `meeting_people` con una decisión detrás, y el
+test que hoy fija las cuatro columnas de esa tabla es lo que la va a hacer
+visible.
+
+Que la facultad sea una `organization` no es una casualidad que aprovechamos: es
+para lo que se eligió esa palabra en lugar de `company`, y el CHECK sobre
+`affiliations.organization_kind` es lo que hace que una carrera se guarde igual
+que un empleo sin inventar un tipo nuevo.
+
 ### 5.4 Jobs y estados independientes
 
 Captura, finalización, transcripción, extracción, renderizado y backup son jobs

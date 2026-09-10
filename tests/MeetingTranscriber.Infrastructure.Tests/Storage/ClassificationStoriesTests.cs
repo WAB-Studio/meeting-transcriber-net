@@ -21,6 +21,13 @@ namespace MeetingTranscriber.Infrastructure.Tests.Storage;
 /// Then it has to be found again — by organization, by initiative and by person — because a
 /// classification nothing can query is a column somebody fills in and never reads.
 /// </para>
+/// <para>
+/// The thirteen are what the vocabulary was closed against and they stay exactly thirteen.
+/// <see cref="CrossedStoriesTests"/> is what stands beside them: the cases where a person's several
+/// affiliations meet a meeting's several links, which read as absurd until somebody has one. They
+/// go into the same corpus, because what they have to prove is that the corpus answers both — a
+/// second corpus would say the rows fit and nothing about whether the routes still separate them.
+/// </para>
 /// </remarks>
 public class ClassificationStoriesTests
 {
@@ -223,6 +230,14 @@ internal sealed class Stories
     public const string Daily = "la daily del equipo";
     public const string Support = "soporte post-venta";
 
+    /// <summary>
+    /// The crossings, which are not the thirteen and never join <see cref="All"/>. What closed the
+    /// vocabulary is the thirteen; these are what was asked of it afterwards.
+    /// </summary>
+    public const string JobAndDegree = "una reunion de trabajo que toca la tesis";
+
+    public const string BothMyEmployers = "una reunion con el cliente donde tambien trabajo";
+
     /// <summary>The day of the interview, the day the candidate moved, and today.</summary>
     public static readonly UtcTimestamp Interviewed = On(2025, 3, 4);
 
@@ -242,6 +257,62 @@ internal sealed class Stories
     [
         Class, Casual, Candidate, Interviewing, TwoProjects, Selling, Team,
         Conference, TwoCompanies, Dismissal, OneToOne, Daily, Support,
+    ];
+
+    /// <summary>Everybody the thirteen name. The first is me and there is only ever one of those.</summary>
+    public static IReadOnlyList<string> Everybody { get; } = ["Renée", "Vikram", "Sam", "Dana", "Jo"];
+
+    /// <summary>The crossings, in the order arquitectura.md §5.3 lists them.</summary>
+    public static IReadOnlyList<string> Crossed { get; } = [JobAndDegree, BothMyEmployers];
+
+    /// <summary>
+    /// The one node the crossings need. Somebody's degree is an initiative under the faculty, the
+    /// same way a course is: the tree already had one shape for a body of work that lasts, and a
+    /// second one for a degree would be a class nobody would name out loud.
+    /// </summary>
+    public static IReadOnlyList<(string Name, string? Parent, NodeKind Kind)> CrossedTree { get; } =
+    [
+        ("Maestría en Datos", "Facultad de Ingeniería", NodeKind.Initiative),
+    ];
+
+    /// <summary>The one person the crossings add. Sam is already one of the thirteen's.</summary>
+    public static IReadOnlyList<string> CrossedPeople { get; } = ["Noa"];
+
+    /// <summary>
+    /// Where Noa belongs, all three open at once. The third is not a job: where somebody studies is
+    /// an organization they belong to for a period, which is the same fact the affiliation already
+    /// holds. A person with a job, a second job and a degree is three open spells and no new
+    /// concept — and the CHECK on <c>affiliations.organization_kind</c> is what keeps the faculty
+    /// being an organization from being a coincidence.
+    /// </summary>
+    public static IReadOnlyList<(string Person, string Organization)> CrossedAffiliations { get; } =
+    [
+        ("Noa", "TechSed"),
+        ("Noa", "Orchard"),
+        ("Noa", "Facultad de Ingeniería"),
+    ];
+
+    /// <summary>How each crossing relates to the tree. The comments are the stories themselves.</summary>
+    public static IReadOnlyList<(string Meeting, string Node, MeetingNodeRole Role)> CrossedLinks { get; } =
+    [
+        // Work of one of her jobs, and about something out of her degree. Two roots at once, and
+        // only one of them is anywhere she is paid. Nothing here is about her at all: what a link
+        // says is how the meeting relates to a node, and where she belongs is her affiliations'.
+        (JobAndDegree, "Coati", MeetingNodeRole.WorkOf),
+        (JobAndDegree, "Maestría en Datos", MeetingNodeRole.About),
+
+        // His two employers on opposite sides of one table. The link on the left says whose work it
+        // is and the one on the right says who is across from them; that both name somewhere he
+        // works is a fact about him and not about the meeting, so no third link appears.
+        (BothMyEmployers, "Coati", MeetingNodeRole.WorkOf),
+        (BothMyEmployers, "Orchard", MeetingNodeRole.Counterpart),
+    ];
+
+    /// <summary>Who is named on a crossing, and how.</summary>
+    public static IReadOnlyList<(string Meeting, string Person, MeetingPersonRole Role)> CrossedNamed { get; } =
+    [
+        (JobAndDegree, "Noa", MeetingPersonRole.Attended),
+        (BothMyEmployers, "Sam", MeetingPersonRole.Attended),
     ];
 
     /// <summary>
@@ -339,6 +410,19 @@ internal sealed class Stories
     public static Stories WriteWithNothingFiled(CorpusDbContext context) =>
         Write(context, theFilingToo: false);
 
+    /// <summary>
+    /// The thirteen, filed, with the crossings beside them in the same corpus.
+    /// </summary>
+    /// <remarks>
+    /// A third entry point rather than a flag on <see cref="Write(CorpusDbContext)"/>, so that
+    /// everything already written against the thirteen goes on getting exactly thirteen. What the
+    /// crossings have to prove is that they coexist — that every route the thirteen answer still
+    /// answers, with two more meetings hanging off nodes the thirteen already use — and a corpus of
+    /// their own could not have said that.
+    /// </remarks>
+    public static Stories WriteTheCrossingsToo(CorpusDbContext context) =>
+        Write(context, theFilingToo: true, theCrossingsToo: true);
+
     public Guid MeetingId(string title) => meetings[title].Id;
 
     public Guid NodeId(string name) => nodes[name].Id;
@@ -373,10 +457,10 @@ internal sealed class Stories
     private static UtcTimestamp On(int year, int month, int day) =>
         UtcTimestamp.From(new DateTimeOffset(year, month, day, 12, 0, 0, TimeSpan.Zero));
 
-    private static Stories Write(CorpusDbContext context, bool theFilingToo)
+    private static Stories Write(CorpusDbContext context, bool theFilingToo, bool theCrossingsToo = false)
     {
         var stories = new Stories();
-        stories.Build(context, theFilingToo);
+        stories.Build(context, theFilingToo, theCrossingsToo);
         context.SaveChanges();
         return stories;
     }
@@ -385,7 +469,11 @@ internal sealed class Stories
     /// Whether the links and the namings go in with the rest. Everything above them is what the
     /// corpus knows before anybody classified anything, and they are what classifying it writes.
     /// </param>
-    private void Build(CorpusDbContext context, bool theFilingToo)
+    /// <param name="theCrossingsToo">
+    /// Whether the two crossings go in beside the thirteen. Off for everything written against the
+    /// thirteen, which is what keeps them exactly thirteen.
+    /// </param>
+    private void Build(CorpusDbContext context, bool theFilingToo, bool theCrossingsToo)
     {
         foreach (var (name, parent, kind) in Tree)
         {
@@ -396,7 +484,17 @@ internal sealed class Stories
             context.Nodes.Add(node);
         }
 
-        foreach (var name in new[] { "Renée", "Vikram", "Sam", "Dana", "Jo" })
+        if (theCrossingsToo)
+        {
+            foreach (var (name, parent, kind) in CrossedTree)
+            {
+                var node = Node.Under(Guid.NewGuid(), nodes[parent!], kind, name, Now);
+                nodes[name] = node;
+                context.Nodes.Add(node);
+            }
+        }
+
+        foreach (var name in Everybody)
         {
             Somebody(context, name, isMe: name == "Renée");
         }
@@ -411,7 +509,20 @@ internal sealed class Stories
         At(context, "Dana", "TechSed");
         At(context, "Jo", "TechSed");
 
-        foreach (var title in All)
+        if (theCrossingsToo)
+        {
+            foreach (var name in CrossedPeople)
+            {
+                Somebody(context, name);
+            }
+
+            foreach (var (person, organization) in CrossedAffiliations)
+            {
+                At(context, person, organization);
+            }
+        }
+
+        foreach (var title in theCrossingsToo ? All.Concat(Crossed) : All)
         {
             var meeting = new Meeting
             {
@@ -432,7 +543,7 @@ internal sealed class Stories
             return;
         }
 
-        foreach (var (meeting, node, role) in Links)
+        foreach (var (meeting, node, role) in theCrossingsToo ? Links.Concat(CrossedLinks) : Links)
         {
             context.MeetingNodes.Add(new MeetingNode
             {
@@ -443,7 +554,7 @@ internal sealed class Stories
             });
         }
 
-        foreach (var (meeting, person, role) in Named)
+        foreach (var (meeting, person, role) in theCrossingsToo ? Named.Concat(CrossedNamed) : Named)
         {
             context.MeetingPeople.Add(new MeetingPerson
             {
@@ -477,4 +588,225 @@ internal sealed class Stories
         UtcTimestamp? until = null) =>
         context.Affiliations.Add(Affiliation.At(
             Guid.NewGuid(), people[person], nodes[organization], Now, from, until));
+}
+
+/// <summary>
+/// Where a person's several affiliations cross a meeting's several links.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The thirteen have somebody at two organizations at once (story #5's contractor) and a meeting
+/// belonging to two things at once (stories #5 and #9). What none of them has is the two at once:
+/// somebody with a job, a second job and a degree, in a meeting that is work of one of the jobs and
+/// about something out of the degree. It reads as absurd until it happens, and when it does the
+/// corpus either answers it or files it under the wrong thing — and a meeting filed wrong is one
+/// nobody finds again.
+/// </para>
+/// <para>
+/// They go into the corpus the thirteen go into, and that is the point rather than an economy: two
+/// of the four links here hang off nodes the thirteen already use, so what these prove is that the
+/// crossings are found by every route they should be <em>and</em> that the thirteen's routes still
+/// answer what they answered.
+/// </para>
+/// <para>
+/// One question here has no answer and is not meant to get one:
+/// <see cref="Nothing_says_which_of_somebodys_affiliations_they_were_in_the_room_under"/>.
+/// </para>
+/// </remarks>
+public class CrossedStoriesTests
+{
+    /// <summary>
+    /// The crossings store, and nothing had to be invented to make them fit. The counts are that
+    /// half: a crossing that only fitted by adding a node nobody would name, or by collapsing two
+    /// links into one, moves one of these numbers.
+    /// </summary>
+    [Fact]
+    public void The_crossings_go_in_beside_the_thirteen_and_nothing_is_invented()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var stories = Stories.WriteTheCrossingsToo(context);
+
+        context.Meetings.Count().ShouldBe(Stories.All.Count + Stories.Crossed.Count);
+        context.Nodes.Count().ShouldBe(Stories.Tree.Count + Stories.CrossedTree.Count);
+        context.MeetingNodes.Count().ShouldBe(Stories.Links.Count + Stories.CrossedLinks.Count);
+        context.MeetingPeople.Count().ShouldBe(Stories.Named.Count + Stories.CrossedNamed.Count);
+        context.People.Count().ShouldBe(Stories.Everybody.Count + Stories.CrossedPeople.Count);
+
+        // The thirteen's six spells — Vikram twice, Sam twice, Dana, Jo — and Noa's three. Only the
+        // crossings' half is derived, so a failure here says which of the two lists moved.
+        context.Affiliations.Count().ShouldBe(6 + Stories.CrossedAffiliations.Count);
+
+        foreach (var title in Stories.Crossed)
+        {
+            var expected = Stories.CrossedLinks
+                .Where(link => link.Meeting == title)
+                .Select(link => (link.Node, link.Role));
+            var stored = context.MeetingNodes
+                .Where(link => link.MeetingId == stories.MeetingId(title))
+                .ToArray()
+                .Select(link => (Node: stories.NodeName(link.NodeId), link.Role));
+
+            stored.ShouldBe(expected, ignoreOrder: true, customMessage: title);
+        }
+    }
+
+    /// <summary>
+    /// The first crossing, found by both roots. The faculty is the line that carries the story:
+    /// nothing links that meeting to it, and searching it finds the meeting anyway — through a
+    /// degree, in a meeting that is work of somewhere else entirely.
+    /// </summary>
+    [Fact]
+    public void A_meeting_that_is_work_of_a_job_and_about_a_degree_is_found_by_both()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var stories = Stories.WriteTheCrossingsToo(context);
+
+        stories.Under(context, "Maestría en Datos").ShouldBe([Stories.JobAndDegree]);
+        stories.Under(context, "Facultad de Ingeniería")
+            .ShouldBe([Stories.Class, Stories.JobAndDegree], ignoreOrder: true);
+        stories.Under(context, "Coati").ShouldContain(Stories.JobAndDegree);
+        stories.Under(context, "TechSed").ShouldContain(Stories.JobAndDegree);
+    }
+
+    /// <summary>
+    /// Three open spells, none of them closed, and one row on one meeting. A job, a second job and
+    /// a degree is three affiliations and no new concept.
+    /// </summary>
+    [Fact]
+    public void Somebody_with_three_affiliations_is_still_one_person_on_one_meeting()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var stories = Stories.WriteTheCrossingsToo(context);
+
+        var noa = stories.PersonId("Noa");
+
+        context.Affiliations
+            .Where(affiliation => affiliation.PersonId == noa)
+            .ToArray()
+            .Select(affiliation => stories.NodeName(affiliation.OrganizationId))
+            .ShouldBe(["Orchard", "TechSed", "Facultad de Ingeniería"], ignoreOrder: true);
+
+        context.MeetingPeople
+            .Where(named => named.PersonId == noa)
+            .Select(named => named.MeetingId)
+            .Distinct()
+            .ToArray()
+            .Select(stories.MeetingName)
+            .ShouldBe([Stories.JobAndDegree]);
+    }
+
+    /// <summary>
+    /// The second crossing. Both his employers are in the room, on opposite sides of it, and that
+    /// both are his is a fact about him rather than about the meeting — so no third link appears.
+    /// </summary>
+    [Fact]
+    public void A_meeting_can_be_work_of_one_employer_and_across_the_table_from_the_other()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var stories = Stories.WriteTheCrossingsToo(context);
+
+        stories.Under(context, "TechSed").ShouldContain(Stories.BothMyEmployers);
+        stories.Under(context, "Orchard").ShouldContain(Stories.BothMyEmployers);
+
+        var sam = stories.PersonId("Sam");
+        context.Affiliations.Count(affiliation => affiliation.PersonId == sam && affiliation.EndedAt == null)
+            .ShouldBe(2);
+
+        var filed = context.MeetingNodes
+            .Where(link => link.MeetingId == stories.MeetingId(Stories.BothMyEmployers))
+            .ToArray()
+            .Select(link => (stories.NodeName(link.NodeId), link.Role));
+
+        filed.ShouldBe(
+            [("Coati", MeetingNodeRole.WorkOf), ("Orchard", MeetingNodeRole.Counterpart)],
+            ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// Small and load-bearing: the meeting is not work of the degree — nobody is paid by the
+    /// maestría — and <c>about</c> is the word §5.3 already has for that. Without this, the test
+    /// above goes on passing with the two links meaning the same thing, which is how a
+    /// classification model bends.
+    /// </summary>
+    [Fact]
+    public void Which_side_a_link_is_on_survives_the_crossing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var stories = Stories.WriteTheCrossingsToo(context);
+
+        var degree = context.MeetingNodes.Single(link =>
+            link.MeetingId == stories.MeetingId(Stories.JobAndDegree)
+            && link.NodeId == stories.NodeId("Maestría en Datos"));
+
+        degree.Role.ShouldBe(MeetingNodeRole.About);
+    }
+
+    /// <summary>
+    /// The one question the model refuses, refused on purpose and pinned so that answering it is a
+    /// decision somebody takes rather than a column somebody adds.
+    /// </summary>
+    [Fact]
+    public void Nothing_says_which_of_somebodys_affiliations_they_were_in_the_room_under()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Stories.WriteTheCrossingsToo(context);
+
+        // The finding, as a test. Sam is at Orchard and at TechSed, both open, and this meeting has
+        // TechSed's work on one side and Orchard across the table — so "which hat was he wearing"
+        // is a question somebody will ask and the corpus does not answer. That is right rather than
+        // a hole: what a person's affiliation says is where they belong over a period, and what a
+        // link says is how the meeting relates to a node. Joining the two would be the corpus
+        // asserting something nobody recorded, and a wrong answer there is a meeting read years
+        // later as having been with the wrong company.
+        //
+        // What is refused is therefore a column, and this is what refuses it: meeting_people
+        // carries the meeting, the person, how they are named on it, and when the row appeared.
+        Sql.Strings(context, "SELECT name FROM pragma_table_info('meeting_people');")
+            .ShouldBe(["meeting_id", "person_id", "role", "created_at"], ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// Every one of these is the thirteen's own expected answer with the crossings added where they
+    /// genuinely belong and nowhere else. Huemul is the control: nothing crosses it and it answers
+    /// what it always answered.
+    /// </summary>
+    [Fact]
+    public void The_thirteen_still_answer_what_they_answered_with_the_crossings_beside_them()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var stories = Stories.WriteTheCrossingsToo(context);
+
+        stories.Under(context, "Orchard").ShouldBe(
+            [Stories.Selling, Stories.TwoCompanies, Stories.Support, Stories.BothMyEmployers],
+            ignoreOrder: true);
+
+        stories.Under(context, "TechSed").ShouldBe(
+            [
+                Stories.Interviewing, Stories.TwoProjects, Stories.Selling, Stories.Team,
+                Stories.Dismissal, Stories.OneToOne, Stories.Daily, Stories.Support,
+                Stories.JobAndDegree, Stories.BothMyEmployers,
+            ],
+            ignoreOrder: true);
+
+        stories.Under(context, "Coati").ShouldBe(
+            [Stories.TwoProjects, Stories.Team, Stories.Daily, Stories.JobAndDegree, Stories.BothMyEmployers],
+            ignoreOrder: true);
+
+        stories.Under(context, "Huemul").ShouldBe([Stories.TwoProjects]);
+
+        context.MeetingPeople
+            .Where(named => named.PersonId == stories.PersonId("Sam"))
+            .Select(named => named.MeetingId)
+            .Distinct()
+            .ToArray()
+            .Select(stories.MeetingName)
+            .ShouldBe([Stories.Team, Stories.BothMyEmployers], ignoreOrder: true);
+    }
 }
