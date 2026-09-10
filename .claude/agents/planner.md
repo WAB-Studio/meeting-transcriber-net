@@ -23,10 +23,20 @@ Read `<batch_dir>/<task_id>/briefing.md` where it is present, and `review.md` wh
 means that plan already exists and is wrong, and every finding in it has to be answered by the plan
 you write now.
 
-**Read `private/owed.md` first.** It is what earlier batches merged and left wrong, written line by
-line by whoever found it. Every entry for a card you are planning goes into that card's plan as work
-to build, and every entry for a card you are not goes in `still_owed` untouched. Take nothing on
+**Read `private/owed.md` first.** It is every defect found and every repair owed, written line by
+line by whoever found it, and it is where all work that is not a feature lives. Take nothing on
 trust: an entry written against a tree that has since moved is said in `decisions` and not built.
+
+**An entry belongs to whichever share owns its files, not to the card it came from.** Once you have
+divided the work, every entry whose files fall inside a share's paths goes into that share as work
+to build — it costs almost nothing there, because that share is already in those files, and it is
+the reason most of this file gets paid off at all. A share does not get to decline one.
+
+**An entry no share's paths reach gets a share of its own the second time you see it.** Write
+`**Passed over:** <yyyy-mm-dd>` on any entry you leave, and when you meet one that already carries
+that line, form a share for it and whatever else has been passed over, sized so it does not collide
+with the rest. Nothing waits a third batch. What you leave for the first time goes in `still_owed`
+with its stamp; what you build does not.
 
 ## Output
 

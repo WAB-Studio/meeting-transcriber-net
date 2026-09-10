@@ -72,7 +72,10 @@ against; the audit floor is still read at the trunk.
 2. **Recover.** A card already being worked, or carrying an open PR, gets a `recoverer` into its
    card dir before anything is planned.
 3. **Plan.** Spawn **one** `planner` over every candidate, with the batch dir, the base, and how
-   many workers may run at once — four unless this machine has less room. It plans each card and
+   many workers may run at once — four. Not a ceiling anybody has hit: both cycles that have run
+   used three, because what limits a batch is two cards reaching the same files, never a slot. Five
+   is what the memory on this machine will not carry, not what the work does not want. It plans each
+   card and
    divides the work between the workers it wants, naming for each share what it builds and which
    model builds it. What it drops is said and goes back to the pool unbuilt.
    - A card it returns `needs_grill` or `blocked` → §4, and the rest of the batch goes on.
