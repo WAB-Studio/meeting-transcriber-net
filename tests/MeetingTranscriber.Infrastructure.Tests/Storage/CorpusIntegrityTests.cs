@@ -11,6 +11,15 @@ namespace MeetingTranscriber.Infrastructure.Tests.Storage;
 public class CorpusIntegrityTests
 {
     private const string MeetingId = "11111111-1111-1111-1111-111111111111";
+    private const string NodeId = "22222222-2222-2222-2222-222222222222";
+    private const string PersonId = "33333333-3333-3333-3333-333333333333";
+    private const string JobId = "44444444-4444-4444-4444-444444444444";
+    private const string RunId = "55555555-5555-5555-5555-555555555555";
+    private const string SummaryId = "66666666-6666-6666-6666-666666666666";
+    private const string DecisionId = "77777777-7777-7777-7777-777777777777";
+    private const string ActionId = "88888888-8888-8888-8888-888888888888";
+    private const string QuestionId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    private const string Sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
     private const string Orphan = "99999999-9999-9999-9999-999999999999";
     private const string When = "2026-08-05T14:00:00.000Z";
 
@@ -169,6 +178,71 @@ public class CorpusIntegrityTests
         Search(context, "inexistente").ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// A meeting deleted for good takes its rows out of every index with it, and the corpus is
+    /// still sound afterwards.
+    /// </summary>
+    /// <remarks>
+    /// The rows under a meeting go by <c>ON DELETE CASCADE</c> rather than by a statement of their
+    /// own, and whether that fires the child table's <c>AFTER DELETE</c> trigger is not obvious:
+    /// <c>recursive_triggers</c> is off, which is what a reader assumes governs it. It does fire,
+    /// and this is what says so — with the trigger dropped, the same delete leaves the index holding
+    /// rows the table no longer has and the check answers <c>database disk image is malformed</c>.
+    /// Worth a test rather than a comment, because the alternative is search answering with somebody
+    /// else's words after an ordinary deletion.
+    /// </remarks>
+    [Fact]
+    public void A_meeting_deleted_takes_its_rows_out_of_every_index_with_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        EverythingUnderOneMeeting(context);
+
+        Sql.Execute(context, $"DELETE FROM meetings WHERE id = '{MeetingId}';");
+
+        CorpusIntegrity.Check(context).ShouldBeEmpty();
+        CorpusSearch.Find(context, "ventanal").ShouldBeEmpty();
+        CorpusSearch.Find(context, "veredas").ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Renaming a meeting is the update trigger, which nothing else exercises. What search answers
+    /// afterwards is the new name, and the old one stops answering at all.
+    /// </summary>
+    [Fact]
+    public void Renaming_a_meeting_is_what_search_answers_afterwards()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        EverythingUnderOneMeeting(context);
+
+        Sql.Execute(context, $"UPDATE meetings SET title = 'la del alero' WHERE id = '{MeetingId}';");
+
+        CorpusSearch.Find(context, "alero").ShouldHaveSingleItem().Source.ShouldBe(SearchSource.Meeting);
+        CorpusSearch.Find(context, "ventanal").ShouldBeEmpty();
+        CorpusIntegrity.Check(context).ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The list and the corpus, held to each other. An index created by a migration and not added to
+    /// <see cref="CorpusIntegrity.SearchIndexes"/> is one nothing rebuilds after a VACUUM and
+    /// nothing checks against its table — and both of those failures are silent, which is why this
+    /// is a test and not a convention.
+    /// </summary>
+    [Fact]
+    public void Every_index_in_the_corpus_is_one_this_list_knows()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var inTheCorpus = Sql.Strings(
+            context,
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE '%\\_fts' ESCAPE '\\';");
+
+        inTheCorpus.Order(StringComparer.Ordinal)
+            .ShouldBe(CorpusIntegrity.SearchIndexes.Order(StringComparer.Ordinal));
+    }
+
     /// <summary>What the index would answer, which is the thing a rebuild has to leave alone.</summary>
     private static List<string> Search(CorpusDbContext context, string term) => Sql.Strings(
         context,
@@ -214,11 +288,63 @@ public class CorpusIntegrityTests
         }
     }
 
-    private static void Project(CorpusDbContext context, int turns)
+    /// <summary>
+    /// One meeting with a row in every table an index covers, so that deleting it exercises all
+    /// eight at once.
+    /// </summary>
+    private static void EverythingUnderOneMeeting(CorpusDbContext context)
+    {
+        Project(context, turns: 1, title: "la del ventanal");
+
+        Sql.Execute(context, $"""
+            INSERT INTO nodes (id, kind, name, depth, parent_id, parent_kind, parent_depth, created_at, updated_at)
+            VALUES ('{NodeId}', 'organization', 'higuera', 0, NULL, NULL, NULL, '{When}', '{When}');
+
+            INSERT INTO people (id, display_name, is_me, created_at, updated_at)
+            VALUES ('{PersonId}', 'Ximena', 0, '{When}', '{When}');
+
+            INSERT INTO meeting_nodes (meeting_id, node_id, role, created_at)
+            VALUES ('{MeetingId}', '{NodeId}', 'work_of', '{When}');
+
+            INSERT INTO meeting_people (meeting_id, person_id, role, created_at)
+            VALUES ('{MeetingId}', '{PersonId}', 'attended', '{When}');
+
+            INSERT INTO processing_jobs (id, meeting_id, kind, state, idempotency_key, created_at, attempt)
+            VALUES ('{JobId}', '{MeetingId}', 'extract', 'succeeded', 'extract/{MeetingId}', '{When}', 1);
+
+            INSERT INTO extraction_runs (
+                id, meeting_id, job_id, provider, prompt_version, schema_version, input_hash, accepted_at, created_at)
+            VALUES ('{RunId}', '{MeetingId}', '{JobId}', 'claude_code', '1', '1', '{Sha256}', '{When}', '{When}');
+
+            INSERT INTO summaries (id, meeting_id, extraction_run_id, abstract, body, created_at)
+            VALUES ('{SummaryId}', '{MeetingId}', '{RunId}', 'lo del patio', 'quedo hablado lo del patio', '{When}');
+
+            INSERT INTO decisions (id, meeting_id, extraction_run_id, statement, ordinal,
+                                   utterance_ordinal, start_ms, end_ms, speaker_label, quoted_text,
+                                   source_artifact_sha256, created_at)
+            VALUES ('{DecisionId}', '{MeetingId}', '{RunId}', 'arreglamos las veredas', 0,
+                    0, 0, 1000, 'ch0:speaker_0', 'palabra0 comun', '{Sha256}', '{When}');
+
+            INSERT INTO action_items (id, meeting_id, extraction_run_id, statement, ordinal,
+                                      utterance_ordinal, start_ms, end_ms, speaker_label, quoted_text,
+                                      source_artifact_sha256, created_at)
+            VALUES ('{ActionId}', '{MeetingId}', '{RunId}', 'contar las farolas', 0,
+                    0, 0, 1000, 'ch0:speaker_0', 'palabra0 comun', '{Sha256}', '{When}');
+
+            INSERT INTO open_questions (id, meeting_id, extraction_run_id, question, ordinal,
+                                        utterance_ordinal, start_ms, end_ms, speaker_label, quoted_text,
+                                        source_artifact_sha256, created_at)
+            VALUES ('{QuestionId}', '{MeetingId}', '{RunId}', 'quien paga las cañerias', 0,
+                    0, 0, 1000, 'ch0:speaker_0', 'palabra0 comun', '{Sha256}', '{When}');
+            """);
+    }
+
+    private static void Project(CorpusDbContext context, int turns, string? title = null)
     {
         Sql.Execute(context, $"""
-            INSERT INTO meetings (id, started_at, source_profile, language, lifecycle_state, created_at, updated_at)
-            VALUES ('{MeetingId}', '{When}', 'multichannel', 'es', 'active', '{When}', '{When}');
+            INSERT INTO meetings (id, title, started_at, source_profile, language, lifecycle_state, created_at, updated_at)
+            VALUES ('{MeetingId}', {(title is null ? "NULL" : $"'{title}'")}, '{When}', 'multichannel', 'es',
+                    'active', '{When}', '{When}');
             """);
 
         for (var ordinal = 0; ordinal < turns; ordinal++)

@@ -436,12 +436,14 @@ public sealed class CaptureSession : IDisposable
     /// <para>
     /// <b>The microphone and not a channel handed in</b>, and that is the shape rather than a
     /// narrowing. Both ways of obtaining channel 0 open through a loopback that always carries a
-    /// sequence on, and <c>CaptureTarget.Program.Open</c> refuses a sequence outright — *which
-    /// program a recording follows is what the recording is*. So a channel 0 following a program
-    /// cannot be opened again at all, and a method that took the channel would be one whose
-    /// commonest argument throws a sentence about a decision nobody made. Naming the one channel
-    /// this works on makes that unreachable instead of guarded. What answers a channel 0 that
-    /// stopped is <see cref="RecordTheWholeMachine"/>, which opens a different way in.
+    /// sequence on, and <c>ReopenedSource</c> — which is the one place that decides this — refuses
+    /// a sequence on a program. So a channel 0 following a program cannot be opened again at all,
+    /// and a method that took the channel would be one whose commonest argument throws a sentence
+    /// about a decision nobody made. Naming the one channel this works on makes that unreachable
+    /// instead of guarded. A microphone has no such problem and that is why this works: its stream
+    /// numbers its own frames, so there is no sequence to carry and nothing to refuse. What answers
+    /// a channel 0 that stopped is <see cref="RecordTheWholeMachine"/>, which opens a different way
+    /// in.
     /// </para>
     /// <para>
     /// <b>Nothing rather than a refusal</b> for a channel that is already recording. A microphone

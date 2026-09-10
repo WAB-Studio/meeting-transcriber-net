@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace MeetingTranscriber.UiProbe;
 
@@ -297,17 +298,38 @@ internal sealed class LaunchedApp : IDisposable
     }
 
     /// <summary>
-    /// What the process is running, waited for. A process activated a moment ago has not always
-    /// published its module list yet, and the read fails rather than blocking — which showed up as
-    /// a launch that failed one time in some tens rather than as anything reproducible.
+    /// What the process is running, waited for.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Asked of the kernel and not of <c>Process.MainModule</c>, which reads the process's loaded
+    /// module list. That list is empty for a moment after an activation and then holds one entry —
+    /// <c>ntdll.dll</c> — before the loader maps the executable, so it does not merely fail while
+    /// it is not ready: it answers, confidently, with a path in <c>System32</c>. Measured on
+    /// 2026-09-10, on the second <c>start</c> of an MCP session: the probe refused with
+    /// <em>"…is registered to C:\WINDOWS\SYSTEM32\ntdll.dll, which is not inside &lt;checkout&gt;"</em>
+    /// and told somebody to give their checkout a package name of its own. That is the same false
+    /// sentence this card removes from <see cref="Repository"/>, arriving through the other half of
+    /// the same comparison.
+    /// </para>
+    /// <para>
+    /// The wait stays, and now means only what it says: a process whose handle cannot be opened
+    /// yet, or one that has already gone. It is not covering a window in which the answer is
+    /// wrong, because there is no longer one.
+    /// </para>
+    /// </remarks>
     private static string ImageOf(Process process)
     {
         var image = Patience.Until(ToPublishItsModules, () =>
         {
             try
             {
-                return process.MainModule?.FileName;
+                var path = new StringBuilder(1024);
+                var length = (uint)path.Capacity;
+
+                return Native.QueryFullProcessImageName(process.Handle, 0, path, ref length)
+                    ? path.ToString(0, (int)length)
+                    : null;
             }
             catch (Exception notYet) when (notYet is InvalidOperationException or Win32Exception)
             {

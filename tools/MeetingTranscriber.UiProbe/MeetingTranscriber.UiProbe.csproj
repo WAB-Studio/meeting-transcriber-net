@@ -1,7 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- The Windows SDK projections, for one namespace: Windows.Management.Deployment, which is
+         how Repository asks Windows what this checkout has registered instead of guessing from a
+         file's timestamp. The version is the one MeetingTranscriber.App and
+         MeetingTranscriber.Audio already declare, so CA1416 answers about this product's floor
+         rather than about a package's. -->
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <RootNamespace>MeetingTranscriber.UiProbe</RootNamespace>
@@ -15,6 +21,24 @@
 
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- For two types and nothing else: CorpusLocation, which is where the application is told its
+         corpus is, and CorpusDatabase, which is what makes one. The probe drives the product's own
+         corpus setting the way a person moving their corpus does, so it needs no new concept and
+         adds no product surface — ISC-114.2 already promises the corpus opens wherever it was
+         moved to.
+
+         MeetingTranscriber.App is still never referenced and never will be: touching a type from
+         that assembly fires the Windows App SDK module initializer in this process and throws
+         outside a packaged host. Infrastructure is plain net10.0 with no such initializer, so this
+         edge costs nothing and the probe still reaches the application only through the shell.
+         docs/layout.md carries the same sentence.
+
+         It is also why ProbeBuild follows ProjectReference rather than watching one folder: what
+         `bin/mcp` is made of now includes this project and everything behind it. -->
+    <ProjectReference Include="..\..\src\MeetingTranscriber.Infrastructure\MeetingTranscriber.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

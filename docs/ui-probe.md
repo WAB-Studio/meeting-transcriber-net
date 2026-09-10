@@ -37,6 +37,11 @@ Point the package registration at the build output. Check what is registered now
 Get-AppxPackage -Name 7feb8c95-4553-46f0-a036-6574f4cd7cb4* | Select-Object Name, InstallLocation
 ```
 
+The probe asks Windows that same question rather than reading the build output: it lists this user's
+packages, keeps the ones registered against a folder at or inside this checkout, and refuses when
+there is none or more than one. So building without registering is now a refusal that says so, and a
+Release build sitting beside Debug no longer makes it name a package nothing has registered.
+
 If this checkout is not in that list against a path ending in `\win-x64`, register it. Remove
 whatever it has first — registering over an existing registration keeps the old location. The remove
 below is scoped to this folder, so if the name you want is in that list against **somebody else's**
@@ -102,6 +107,15 @@ Anything is refused once the application is older than the code on disk. To pick
 close, build, start — in that order, because a running application holds its own assemblies open
 and the build fails on them. A build alone does not lift the refusal; only starting again does.
 
+**A verb is also refused when the published copy of the tool is older than what the tool is built
+out of.** That is the other half of the same trap: `dotnet build` never writes `bin/mcp`, so an edit
+to the probe reaches nothing until it is published, and until this refusal existed every answer for
+the rest of the session came out of yesterday's tool without a word. It follows `ProjectReference`,
+so an edit to `MeetingTranscriber.Infrastructure` or `MeetingTranscriber.Domain` refuses it too —
+the probe references the first of those to make its own corpus, and `bin/mcp` carries both. The way
+out is the same three steps in the same order: end the session, publish, open a new one. What is
+never compared is the published copy's own folder, which would be a copy compared with itself.
+
 **When that is asked differs by host, on purpose.** Over MCP it is asked every turn, because the
 agent taking the turns is the one editing. A script is asked once, at `start`, and by no verb after
 it: nothing in a fixed list of instructions edits code, and a refusal raised halfway would end a
@@ -117,22 +131,43 @@ probe records meetings into it, keeps and discards recordings on the list, and k
 application in the middle of both. A machine whose corpus has something to lose gets the rule
 back, and this paragraph is where that goes.
 
-**What the withdrawn sentence was also doing is keeping two probes out of one corpus, and nothing
-replaced that.** The corpus is one folder for every checkout and the package suffix does not
-divide it: two runs recording at once are two writers on one SQLite file and one spool folder.
-Run them one at a time — and read the list before you start, because a killed run leaves a
-recording at the top of it waiting for Discard or Keep, and the next run's first `see` is a screen
-the last one dirtied. Nothing enforces any of that: issue #216 is the card that asks for a corpus
-of the probe's own, and it says in as many words that prose is not a guard. Until it lands, this
-paragraph is the guard, and an unattended run is the case it does not cover.
+**The probe drives a corpus of its own.** It is `%USERPROFILE%\MeetingTranscriber.ui-probe`, made on
+the first `start` of a session that needs it, and it is a real corpus — the application opens it the
+way it opens any other, because ISC-114.2 says the corpus opens wherever it was moved to. What the
+probe does is move the pointer: `%USERPROFILE%\MeetingTranscriber\corpus-location` goes aside as
+`corpus-location.before-the-probe` while an application is open, and comes back when it closes. If
+there was no pointer at all, what goes aside instead is an empty `corpus-location.none-before-the-probe`,
+and putting back means deleting the pointer again rather than writing one. The pointer is not touched
+until the first `start`, so a Claude Code session that never drives the application never moves it,
+and it is set again at every `start` rather than only the first — the application reads the pointer
+when it launches, so that is the moment it has to be right.
+
+**If a killed run left it moved and you are not going to run another**, move
+`corpus-location.before-the-probe` back over `corpus-location` — or, if what is there is
+`corpus-location.none-before-the-probe`, delete both files. With neither there the application opens
+the corpus in `%USERPROFILE%\MeetingTranscriber`, which is where it puts one when nobody has said
+otherwise. Nothing was lost either way: a pointer says where a corpus is and never holds one. The
+next probe session heals it too, and it cannot make things worse while it does: nothing in the probe
+ever overwrites or deletes what is put aside, so whichever of those two files is there is still the
+one that goes back when that session closes.
+
+**While a probe session has an application open, so is the user's own.** If they start
+MeetingTranscriber from the Start menu in that window they get the probe's corpus and no meetings of
+theirs, with nothing on screen saying why — the pointer is machine-wide and there is only one of it.
+It comes right when the probe closes. An unattended run on a machine somebody is also using is the
+case this does not cover.
+
+**Two probe sessions at once are still two writers over one SQLite file** — the probe's corpus is one
+folder for every checkout, the same way the user's is. Run them one at a time, and read the list
+before you start, because a killed run leaves a recording at the top of it waiting for Discard or
+Keep.
 
 **Nothing tells a meeting a probe made from a meeting somebody recorded**, and the corpus is built
 never to lose either: `docs/corpus.md` files `audio.wav` and the spool's blocks as sources, and
 nothing removes a waiting recording but a person choosing to. So a run's meetings stay until
 somebody presses Discard on them, and they cost what they weigh — both channels spool at the rate
 the devices really run, about 44 MB a minute on this machine, six minutes is 265 MB, and the spool
-folder stays after the meeting is made. Whether a probe should write into the product's corpus at
-all, or into one of its own, is a decision nobody has taken.
+folder stays after the meeting is made.
 
 Recording needs a microphone, what channel 0 follows, and what will be spoken, all three chosen
 before `RecordButton` is anything but disabled. Saving a six-minute meeting took under five seconds
@@ -196,6 +231,9 @@ answer instead of writing the whole walk in advance. `see` also returns the pict
 
 ```text
 start                          → 7feb8c95-...!App is process 12216, from C:\...\win-x64\...exe
+                                 its corpus is C:\Users\...\MeetingTranscriber.ui-probe, and the
+                                 pointer in C:\Users\...\MeetingTranscriber\corpus-location is put
+                                 back on close
                                  window "Grabar una reunión" ... (the whole tree)
 press PackagingChecksButton    → pressed PackagingChecksButton
                                  The application has 2 windows open — "Comprobaciones de
@@ -267,8 +305,10 @@ to `wait` for something on the screen you meant. It is never whichever window is
 - **`press` is `Invoke` only, and `type` is `SetValue` only.** Either one fails naming what the
   control offers instead, which is how you find out it wanted another verb.
 - **It will not bring a window forward.** A window behind another still photographs correctly.
-- **It uses the real corpus, and the preference file of whichever package this checkout registered.**
-  That is deliberate: it drives the real application. The corpus is one folder for every checkout;
-  the preferences are the package's own, so a checkout with a package of its own has its own.
+- **It drives a corpus of its own and the preference file of whichever package this checkout
+  registered.** The corpus is `%USERPROFILE%\MeetingTranscriber.ui-probe`, one folder for every
+  checkout, and the user's pointer is put back when the application closes — see *Record may be
+  pressed*. The preferences are the package's own, so a checkout with a package of its own has its
+  own.
 - **It drives only the application it started**, and closes only that one — including when it is
   killed rather than asked, once the application is running.

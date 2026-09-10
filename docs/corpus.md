@@ -129,8 +129,17 @@ first and leave a meeting whose card was never written without one for good.
 
 ## In the database
 
-Derived tables — `utterances`, `summaries`, `decisions`, `action_items`, `open_questions`, and both
-FTS5 indexes. They are projections of `deepgram.json` and the accepted extractions.
+Derived tables — `utterances`, `summaries`, `decisions`, `action_items`, `open_questions`. They are
+projections of `deepgram.json` and the accepted extractions.
+
+The eight FTS5 indexes are derived too, and they are derived whatever they index. Three of them —
+`meetings_fts`, `nodes_fts`, `people_fts` — sit over tables that are sources, and that does not make
+the index one: an external content index holds no copy of the text, so throwing it away loses
+nothing and rebuilding it from the table it indexes is always right.
+`CorpusIntegrity.SearchIndexes` is the list, and `CorpusIntegrity.RebuildSearchIndexes` is what
+makes that cash out: a corpus whose indexes are empty, stale or gone is one command away from
+answering everything it answered before. The backup copies the database file whole, so it carries
+them either way — what the distinction decides is that losing them is never a loss.
 
 Derived means derived all the way down, so an action's row holds only what the extraction
 proposed. Where it stands and who owns it are moved by a person and live in
@@ -186,12 +195,14 @@ do nothing: FTS5's bare `VALUES ('integrity-check')` only asks whether the index
 consistent, which an index built against the wrong rows is. The comparison against the content table
 is `VALUES ('integrity-check', 1)`, and that is the only form that catches this.
 
-A migration that changes `utterances` or `summaries` costs the same and one thing more. SQLite
-cannot alter a constraint in place, so EF drops the table and rebuilds it: the rows come back under
-new rowids, and the triggers go, because a trigger belongs to its table and not to the schema the
-model tracks. Both have to be put back by hand, and not in that same migration — EF emits raw SQL
-before a rebuild it still has pending, so the statements would run against the table about to be
-dropped.
+A migration that changes any of the eight indexed tables — `utterances`, `summaries`, `meetings`,
+`nodes`, `people`, `decisions`, `action_items`, `open_questions` — costs the same and one thing
+more. SQLite cannot alter a constraint in place, so EF drops the table and rebuilds it: the rows
+come back under new rowids, and the triggers go, because a trigger belongs to its table and not to
+the schema the model tracks. Both have to be put back by hand, and not in that same migration — EF
+emits raw SQL before a rebuild it still has pending, so the statements would run against the table
+about to be dropped. Three of those eight are the human layer, which is where a CHECK is most
+likely to be added, so this is a larger surface than it was when it was two.
 
 Everything else is a source, and the part that matters most is the **human layer**: `nodes`,
 `meeting_nodes`, `templates`, `people`, `affiliations`, `meeting_people`, `speaker_assignments`,

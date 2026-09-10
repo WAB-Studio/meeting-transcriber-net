@@ -12,6 +12,36 @@ namespace MeetingTranscriber.UiProbe;
 internal sealed record Screen(string Tree, byte[] Picture, string Size);
 
 /// <summary>
+/// What a start is refused for before anything of anybody's is touched, and the answers it worked
+/// out on the way: which checkout and package this is, and whether the copy of the tool answering
+/// is the one the checkout describes.
+/// </summary>
+/// <remarks>
+/// Separate from <see cref="Session.Open"/> because of what sits between them in both hosts: the
+/// probe's corpus, which moves a file saying where a person's meetings are. A start into a checkout
+/// with nothing registered, or out of a published copy that is owed a publish, is the commonest
+/// refusal this tool gives — and it should not have moved anybody's pointer, made a folder or run a
+/// migration on its way to saying so. Neither answer costs anything to carry: <c>Repository.Around</c>
+/// asks Windows for every package this user has, so asking it twice would be both slow and a chance
+/// for the two answers to differ.
+/// </remarks>
+internal sealed record Bearings(Repository Repository, ProbeBuild Probe)
+{
+    internal static Bearings Taken()
+    {
+        // Which checkout and which package first, because nothing below can be said without them,
+        // and then this tool's own age: an answer out of a build older than the sources behind it
+        // is a stale answer about the window, about the registration and about staleness itself.
+        var repository = Repository.Around();
+
+        var probe = ProbeBuild.Running(repository);
+        probe.MustNotPredateItsSources();
+
+        return new Bearings(repository, probe);
+    }
+}
+
+/// <summary>
 /// One running application, and everything that can be done to it.
 /// </summary>
 /// <remarks>
@@ -24,7 +54,7 @@ internal sealed record Screen(string Tree, byte[] Picture, string Size);
 /// <para>
 /// It owns the application, so disposing it closes what it started. That is the whole of the
 /// lifetime for the command line, which opens one and walks a script; the server opens one and
-/// keeps it across turns, which is what <see cref="MustStillBeFresh"/> is for.
+/// keeps it across turns, which is what <see cref="MustStillBeUsable"/> is for.
 /// </para>
 /// </remarks>
 internal sealed class Session : IDisposable
@@ -54,10 +84,13 @@ internal sealed class Session : IDisposable
 
     private readonly Freshness _freshness;
 
-    private Session(LaunchedApp app, Freshness freshness)
+    private readonly ProbeBuild _probe;
+
+    private Session(LaunchedApp app, Freshness freshness, ProbeBuild probe)
     {
         _app = app;
         _freshness = freshness;
+        _probe = probe;
     }
 
     /// <summary>
@@ -74,9 +107,11 @@ internal sealed class Session : IDisposable
     /// freshness check is inside the opening rather than beside it: a window of the wrong build
     /// reads exactly like a window, so nothing may be done to one before it has been refused.
     /// </summary>
-    internal static Session Open()
+    internal static Session Open(Bearings bearings)
     {
-        var repository = Repository.Around();
+        ArgumentNullException.ThrowIfNull(bearings);
+
+        var repository = bearings.Repository;
         var app = LaunchedApp.Start(repository.AppUserModelId);
 
         try
@@ -90,7 +125,7 @@ internal sealed class Session : IDisposable
 
             app.OpenAWindow();
 
-            return new Session(app, freshness);
+            return new Session(app, freshness, bearings.Probe);
         }
         catch
         {
@@ -101,13 +136,16 @@ internal sealed class Session : IDisposable
     }
 
     /// <summary>
-    /// Asked again before every instruction, because a session outlives a build. Checking at
-    /// launch was enough while a run was one cold start; once an application stays open across
-    /// turns, somebody edits a screen halfway through and every answer after that is about a
-    /// window that no longer matches the code — and an old window does not look old.
+    /// Asked again before every instruction, because a session outlives a build and a publish. The
+    /// order is the whole of it: this tool, then whether there is an application, then whether the
+    /// window is old. This tool first because a copy older than its own sources is stale about the
+    /// window, about the application and about staleness itself — the one refusal that has to be
+    /// said before any other can be believed.
     /// </summary>
     internal void MustStillBeUsable()
     {
+        _probe.MustNotPredateItsSources();
+
         if (_app.HasGone)
         {
             throw new ProbeFailed(

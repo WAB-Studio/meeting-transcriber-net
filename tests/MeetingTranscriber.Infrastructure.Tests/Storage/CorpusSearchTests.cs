@@ -1,5 +1,6 @@
 using System.Data;
 
+using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 
@@ -63,7 +64,7 @@ public class CorpusSearchTests
 
     /// <summary>Both indexes answer one question, and both kinds of hit come back from one call.</summary>
     [Fact]
-    public void One_search_asks_both_indexes()
+    public void One_search_asks_more_than_one_index()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
@@ -212,16 +213,244 @@ public class CorpusSearchTests
             WHERE id = '{written.Budget}';
             """);
 
-        CorpusSearch.Find(context, "presupuesto").ShouldBeEmpty();
+        // Every way there is of reaching that meeting: a turn, its own words, its context note,
+        // what it is filed under, what is above that, and who was on it.
+        foreach (var word in new[] { "presupuesto", "trimestral", "margen", "ticket", "Renata" })
+        {
+            CorpusSearch.Find(context, word).ShouldBeEmpty(word);
+        }
+
+        // The other meeting is where the four branches an extraction produced live, and nothing
+        // above reaches those. They filter on the same column and it is the same mistake to make.
+        Sql.Execute(context, $"""
+            UPDATE meetings SET lifecycle_state = 'deleting', deleted_at = '{Corpus.When}'
+            WHERE id = '{written.Daily}';
+            """);
+
+        foreach (var word in new[] { "coati", "cierre", "pizarron", "formulario", "cronograma", "Tobias" })
+        {
+            CorpusSearch.Find(context, word).ShouldBeEmpty(word);
+        }
     }
 
     /// <summary>
-    /// The other half of the task, and the reason the rebuild command exists at all: both indexes
-    /// are external content, so throwing them away loses nothing — and search has to prove it by
+    /// A meeting's own words. Its title and the note somebody wrote so that a person who was not
+    /// there can read it are the two things nobody infers, and they were the two search could not
+    /// find.
+    /// </summary>
+    [Fact]
+    public void A_meetings_own_words_are_something_search_finds()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var written = Corpus.Write(context);
+
+        foreach (var word in new[] { "trimestral", "margen" })
+        {
+            var hit = CorpusSearch.Find(context, word).ShouldHaveSingleItem();
+
+            hit.Source.ShouldBe(SearchSource.Meeting);
+            hit.MeetingId.ShouldBe(written.Budget);
+            hit.Snippet.ShouldContain(word);
+            hit.Ordinal.ShouldBeNull();
+            hit.Start.ShouldBeNull();
+            hit.End.ShouldBeNull();
+        }
+    }
+
+    /// <summary>What a meeting is filed under is one of the ways somebody looks for it.</summary>
+    [Fact]
+    public void A_meeting_is_found_by_the_thing_it_is_filed_under()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var written = Corpus.Write(context);
+
+        var hit = CorpusSearch.Find(context, "ticket").ShouldHaveSingleItem();
+
+        hit.Source.ShouldBe(SearchSource.Node);
+        hit.MeetingId.ShouldBe(written.Budget);
+        hit.Ordinal.ShouldBeNull();
+    }
+
+    /// <summary>
+    /// The node branch walks the tree with a fixed number of joins, so it reaches exactly as far as
+    /// the tree is deep and no further. Deepen the tree and it under-reaches in silence: a meeting
+    /// filed at the new level is stored, is legal, and is never found by anything above it.
+    /// </summary>
+    /// <remarks>
+    /// A cap read off the constant rather than a number written twice. There is nowhere to put this
+    /// in the query itself — the branch is a string and the walk is spelled out in it — so this is
+    /// what turns "somebody raised the cap" from a silent gap into a red test naming the file to
+    /// open.
+    /// </remarks>
+    [Fact]
+    public void The_node_branch_reaches_the_whole_tree_and_says_so_when_the_tree_grows()
+    {
+        Node.MaxDepth.ShouldBe(
+            2,
+            "The node branch of CorpusSearch.Sql walks a node, its children and its grandchildren. "
+            + "The tree just got deeper, so that walk needs another OR or search stops finding "
+            + "meetings filed at the bottom of it.");
+    }
+
+    /// <summary>
+    /// And so is anything above it. Somebody typing an organization's name and not finding the
+    /// meetings under it would be search contradicting what a listing by node already answers.
+    /// </summary>
+    [Fact]
+    public void A_meeting_is_found_by_the_organization_above_what_it_is_filed_under()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var written = Corpus.Write(context);
+
+        var found = CorpusSearch.Find(context, "Orchard");
+
+        found.Select(hit => hit.Source).Distinct().ShouldHaveSingleItem().ShouldBe(SearchSource.Node);
+
+        // Two levels down and one level down, which is the whole reach of a three-level tree.
+        found.Select(hit => hit.MeetingId).Order().ShouldBe(
+            new[] { written.Budget, written.Daily }.Order());
+    }
+
+    /// <summary>
+    /// Somebody the meeting names. Either way of being named counts: a person the meeting was about
+    /// and never attended is exactly the one nobody would think to index.
+    /// </summary>
+    [Fact]
+    public void A_meeting_is_found_by_somebody_it_names()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var written = Corpus.Write(context);
+
+        var attended = CorpusSearch.Find(context, "Renata").ShouldHaveSingleItem();
+        attended.Source.ShouldBe(SearchSource.Person);
+        attended.MeetingId.ShouldBe(written.Budget);
+
+        var subject = CorpusSearch.Find(context, "Tobias").ShouldHaveSingleItem();
+        subject.Source.ShouldBe(SearchSource.Person);
+        subject.MeetingId.ShouldBe(written.Daily);
+    }
+
+    /// <summary>
+    /// The three lists an extraction leaves, each found where it was said. They anchor on a turn by
+    /// construction, so a hit that threw the anchor away would send somebody back to the corpus for
+    /// something the row already holds.
+    /// </summary>
+    [Fact]
+    public void A_decision_an_action_and_an_open_question_are_each_found_where_they_were_said()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var written = Corpus.Write(context);
+
+        foreach (var (word, source) in new[]
+            {
+                ("pizarron", SearchSource.Decision),
+                ("formulario", SearchSource.Action),
+                ("cronograma", SearchSource.Question),
+            })
+        {
+            var hit = CorpusSearch.Find(context, word).ShouldHaveSingleItem();
+
+            hit.Source.ShouldBe(source);
+            hit.MeetingId.ShouldBe(written.Daily);
+            hit.Ordinal.ShouldBe(Corpus.AnchorOrdinal);
+            hit.Start.ShouldBe(Duration.FromMilliseconds(Corpus.AnchorOrdinal * 1000));
+            hit.End.ShouldBe(Duration.FromMilliseconds((Corpus.AnchorOrdinal + 1) * 1000));
+        }
+    }
+
+    /// <summary>
+    /// Only the extraction a person accepted answers, and only the last one they accepted. A second
+    /// extraction otherwise puts the same decision in front of somebody twice, said slightly
+    /// differently, with nothing on either to say which is current — and an unaccepted run would put
+    /// sentences nobody has vouched for under the meeting's own name.
+    /// </summary>
+    [Fact]
+    public void Only_the_extraction_a_person_accepted_last_answers()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Corpus.Write(context);
+
+        CorpusSearch.Find(context, "pizarron").ShouldHaveSingleItem()
+            .Snippet.ShouldContain("decidido");
+        CorpusSearch.Find(context, "formulario").ShouldHaveSingleItem()
+            .Snippet.ShouldContain("pendiente");
+        CorpusSearch.Find(context, "cronograma").ShouldHaveSingleItem()
+            .Snippet.ShouldContain("resolver");
+        CorpusSearch.Find(context, "cierre").ShouldHaveSingleItem()
+            .Snippet.ShouldContain("sprint de coati");
+
+        // A word only the unaccepted run's own rows carry. Nothing answers it at all, which is the
+        // other half of the rule and a different path through the SQL: with no accepted run the
+        // subquery is NULL, and a comparison against NULL is not a row that fails the filter but a
+        // row the filter never sees. Every meeting sits in that state until somebody accepts one.
+        CorpusSearch.Find(context, "aceptar").ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A meeting filed under two things under one organization is one answer for that organization,
+    /// not two. Both rows come from one index row through two paths, so every column of them is the
+    /// same and there is nothing to choose between them.
+    /// </summary>
+    [Fact]
+    public void A_meeting_filed_under_two_things_under_one_organization_comes_back_once_for_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var written = Corpus.Write(context);
+        Corpus.AlsoUnderTheInitiative(context);
+
+        CorpusSearch.Find(context, "Orchard")
+            .Count(hit => hit.MeetingId == written.Budget)
+            .ShouldBe(1);
+    }
+
+    /// <summary>
+    /// No source owns the page. An initiative with forty meetings under it, asked for by its own
+    /// name, does not evict every turn where somebody actually said the word.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The failure eight indexes have and two did not. <c>bm25</c> weighs a term against the index
+    /// it was found in, so the number ranks inside a source and means nothing across sources — and
+    /// the node branch makes that worse, because one index row fans out to one row per meeting and
+    /// every one of them carries that same score. Measured on this corpus before the fix: twenty
+    /// node rows and not one turn. After it, ten and ten.
+    /// </para>
+    /// <para>
+    /// The rest of this fixture cannot see it, because every word in it is in exactly one index by
+    /// construction — which is what lets the other tests say which index answered, and exactly what
+    /// would hide this. An initiative's name is the case that is not: it is on the tree
+    /// <em>and</em> people say it out loud.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void No_source_takes_the_whole_page_from_the_others()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Corpus.Write(context);
+        Corpus.ManyMoreMeetingsUnderSoporte(context, howMany: 40);
+
+        var found = CorpusSearch.Find(context, "soporte");
+
+        found.Count.ShouldBe(CorpusSearch.DefaultLimit);
+        found.Count(hit => hit.Source == SearchSource.Node).ShouldBeGreaterThan(1);
+        found.Count(hit => hit.Source == SearchSource.Turn).ShouldBeGreaterThan(1);
+    }
+
+    /// <summary>
+    /// The other half of the task, and the reason the rebuild command exists at all: every index is
+    /// external content, so throwing them away loses nothing — and search has to prove it by
     /// answering identically afterwards.
     /// </summary>
     [Fact]
-    public void Throwing_both_indexes_away_and_rebuilding_them_answers_exactly_the_same()
+    public void Throwing_every_index_away_and_rebuilding_them_answers_exactly_the_same()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
@@ -229,6 +458,13 @@ public class CorpusSearchTests
 
         var before = Corpus.Everything(context);
         before.ShouldNotBeEmpty();
+
+        // A word nothing answers would compare equal to itself across the rebuild and say nothing
+        // about the index it was meant to be asking.
+        foreach (var term in Corpus.Terms)
+        {
+            before.ShouldContain(line => line.StartsWith($"{term}: ", StringComparison.Ordinal), term);
+        }
 
         CorpusIntegrity.RebuildSearchIndexes(context);
 
@@ -238,14 +474,28 @@ public class CorpusSearchTests
 }
 
 /// <summary>
-/// A corpus with something to find in it: two meetings, turns worth ranking against each other, and
-/// a summary so both indexes have an answer.
+/// A corpus with something to find in it: two meetings, turns worth ranking against each other, a
+/// summary so the summary index has an answer, a tree and two people so the human layer does, and
+/// three extractions of one meeting so that "the one a person accepted" has something to choose.
 /// </summary>
+/// <remarks>
+/// Every word here is in exactly one place on purpose. Eight indexes over one corpus means a word
+/// that appears in a title and in a turn makes two hits out of one search, and the tests that count
+/// hits stop saying which index answered. Adding a word to this fixture means checking it against
+/// <see cref="Terms"/> first.
+/// </remarks>
 internal sealed class Corpus
 {
     public const string When = "2026-03-04T14:00:00.000Z";
 
-    public const string BudgetTitle = "revision de presupuesto con Orchard";
+    /// <summary>An earlier acceptance, so "the last one accepted" has something to be later than.</summary>
+    public const string Earlier = "2026-03-04T13:00:00.000Z";
+
+    public const string BudgetTitle = "revision trimestral";
+
+    public const string BudgetContext = "notas previas sobre el margen";
+
+    public const string DailyTitle = "la diaria del equipo";
 
     /// <summary>Long enough that a snippet of it is visibly shorter than it is.</summary>
     public const string Haystack =
@@ -257,12 +507,39 @@ internal sealed class Corpus
 
     public const int SparseOrdinal = 4;
 
+    /// <summary>
+    /// The turn every claim below cites. It has to be one of the daily's own turns: a citation is a
+    /// foreign key onto (meeting_id, ordinal), not a number somebody made up.
+    /// </summary>
+    public const int AnchorOrdinal = 5;
+
     public static readonly UtcTimestamp March = UtcTimestamp.Parse(When);
+
+    /// <summary>
+    /// Every word this corpus can be asked about, at least one per index. It is what the rebuild
+    /// comparison walks: a single term would leave most of the index untouched and the comparison
+    /// would hold whatever the rebuild did to the rest.
+    /// </summary>
+    public static readonly string[] Terms =
+    [
+        "presupuesto", "coati", "aguja", "ranking", "cierre", "comun", "turno7",
+        "trimestral", "margen", "orchard", "soporte", "ticket", "renata", "tobias",
+        "pizarron", "formulario", "cronograma",
+    ];
 
     private const string BudgetId = "11111111-1111-1111-1111-111111111111";
     private const string DailyId = "22222222-2222-2222-2222-222222222222";
     private const string JobId = "33333333-3333-3333-3333-333333333333";
     private const string RunId = "44444444-4444-4444-4444-444444444444";
+    private const string OldJobId = "66666666-6666-6666-6666-666666666666";
+    private const string OldRunId = "77777777-7777-7777-7777-777777777777";
+    private const string UnacceptedJobId = "88888888-8888-8888-8888-888888888888";
+    private const string UnacceptedRunId = "99999999-9999-9999-9999-999999999999";
+    private const string OrchardId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    private const string SoporteId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    private const string TicketId = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+    private const string RenataId = "dddddddd-dddd-dddd-dddd-dddddddddddd";
+    private const string TobiasId = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
     private const string Sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
 
     private Corpus()
@@ -271,10 +548,12 @@ internal sealed class Corpus
 
     public Guid Budget => Guid.Parse(BudgetId);
 
+    public Guid Daily => Guid.Parse(DailyId);
+
     public static Corpus Write(CorpusDbContext context)
     {
-        Meeting(context, BudgetId, BudgetTitle);
-        Meeting(context, DailyId, "daily de Coati");
+        Meeting(context, BudgetId, BudgetTitle, BudgetContext);
+        Meeting(context, DailyId, DailyTitle, note: null);
 
         // What the searches above look for, each one there for a reason.
         Turn(context, BudgetId, 0, "arrancamos la reunion");
@@ -290,27 +569,95 @@ internal sealed class Corpus
             Turn(context, DailyId, ordinal, $"turno{ordinal} comun de coati");
         }
 
-        Summary(context, DailyId, "el cierre del sprint de coati", "coati queda listo para el cierre");
+        // The tree, and the two meetings hung off it at different depths: the budget meeting on a
+        // ticket two levels down, the daily on the initiative one level down. Searching the
+        // organization has to reach both.
+        Node(context, OrchardId, "organization", "Orchard", depth: 0);
+        Node(context, SoporteId, "initiative", "Soporte", depth: 1, parent: OrchardId, parentKind: "organization");
+        Node(context, TicketId, "topic", "ticket 4312", depth: 2, parent: SoporteId, parentKind: "initiative");
+        Filed(context, BudgetId, TicketId, "work_of");
+        Filed(context, DailyId, SoporteId, "work_of");
+
+        // One who was there and one the meeting was about, because the second is the one nobody
+        // would think to index.
+        Person(context, RenataId, "Renata");
+        Person(context, TobiasId, "Tobias");
+        Named(context, BudgetId, RenataId, "attended");
+        Named(context, DailyId, TobiasId, "subject");
+
+        // Three extractions of one meeting: the one a person accepted last, one accepted before it,
+        // and one nobody accepted. Only the first answers.
+        Run(context, JobId, RunId, acceptedAt: When, createdAt: When);
+        Run(context, OldJobId, OldRunId, acceptedAt: Earlier, createdAt: Earlier);
+        Run(context, UnacceptedJobId, UnacceptedRunId, acceptedAt: null, createdAt: When);
+
+        Summary(context, "55555555-5555-5555-5555-555555555555", RunId,
+            "el cierre del sprint de coati", "coati queda listo para el cierre");
+        Summary(context, "55555555-5555-5555-5555-555555555556", OldRunId,
+            "el cierre del sprint anterior", "asi quedaba el cierre en la corrida vieja");
+        Summary(context, "55555555-5555-5555-5555-555555555557", UnacceptedRunId,
+            "el cierre sin aceptar", "nadie firmo este cierre");
+
+        Left(context, "a", RunId, "lo del pizarron queda decidido", "queda pendiente el formulario",
+            "sin resolver el cronograma");
+        Left(context, "b", OldRunId, "el pizarron se decidia distinto", "otro formulario del run viejo",
+            "el cronograma segun el run viejo");
+        Left(context, "c", UnacceptedRunId, "el pizarron sin aceptar", "formulario sin aceptar",
+            "cronograma sin aceptar");
 
         return new Corpus();
     }
 
     /// <summary>
-    /// Everything both indexes can answer, as text, for comparing search against itself across a
-    /// rebuild. Several searches rather than one, because a single term would leave most of the
-    /// index untouched and the comparison would hold whatever the rebuild did to the rest.
+    /// Files the budget meeting under the initiative as well, so it reaches the organization two
+    /// ways at once — which is what <c>DISTINCT</c> in the node branch is for.
     /// </summary>
+    public static void AlsoUnderTheInitiative(CorpusDbContext context) =>
+        Filed(context, BudgetId, SoporteId, "about");
+
+    /// <summary>
+    /// Many more meetings filed under the initiative, each saying its name out loud once.
+    /// </summary>
+    /// <remarks>
+    /// The one collision the rest of this fixture refuses to have, and it is a helper rather than
+    /// part of <see cref="Write"/> for that reason: every word above is in exactly one index so the
+    /// tests can say which index answered, and that is also what would hide one source taking the
+    /// whole page. A node's name is the realistic collision — it is on the tree and people say it.
+    /// </remarks>
+    public static void ManyMoreMeetingsUnderSoporte(CorpusDbContext context, int howMany)
+    {
+        for (var n = 0; n < howMany; n++)
+        {
+            var id = $"7{n:0000000}-0000-0000-0000-000000000000";
+            Meeting(context, id, $"reunion {n}", note: null);
+            Filed(context, id, SoporteId, "work_of");
+            Turn(context, id, 0, $"hablamos de soporte en la reunion {n}");
+        }
+    }
+
+    /// <summary>
+    /// Everything every index can answer, as text, for comparing search against itself across a
+    /// rebuild.
+    /// </summary>
+    /// <remarks>
+    /// Sorted, because it is compared for equality and the ordering does not fully order it: two
+    /// node hits on one search can agree on the score, the date, the source and the ordinal, and
+    /// nothing after that decides which comes first. Comparing them in whatever order SQLite
+    /// happened to produce would be a test that fails on a day nobody changed anything.
+    /// </remarks>
     public static List<string> Everything(CorpusDbContext context) =>
     [
-        .. new[] { "presupuesto", "coati", "aguja", "ranking", "cierre", "comun", "turno7" }
-            .SelectMany(term => CorpusSearch.Find(context, term, limit: 100)
-                .Select(hit => $"{term}: {hit.Source} {hit.MeetingId} {hit.Ordinal} {hit.Snippet}")),
+        .. Terms.SelectMany(term => CorpusSearch.Find(context, term, limit: 100)
+                .Select(hit => $"{term}: {hit.Source} {hit.MeetingId} {hit.Ordinal} {hit.Snippet}"))
+            .Order(StringComparer.Ordinal),
     ];
 
-    private static void Meeting(CorpusDbContext context, string id, string title) => Sql.Execute(context, $"""
-        INSERT INTO meetings (id, title, started_at, source_profile, language, lifecycle_state, created_at, updated_at)
-        VALUES ('{id}', '{title}', '{When}', 'multichannel', 'es', 'active', '{When}', '{When}');
-        """);
+    private static void Meeting(CorpusDbContext context, string id, string title, string? note) =>
+        Sql.Execute(context, $"""
+            INSERT INTO meetings (id, title, context, started_at, source_profile, language, lifecycle_state, created_at, updated_at)
+            VALUES ('{id}', '{title}', {(note is null ? "NULL" : $"'{note}'")}, '{When}', 'multichannel', 'es',
+                    'active', '{When}', '{When}');
+            """);
 
     private static void Turn(CorpusDbContext context, string meeting, int ordinal, string text) =>
         Sql.Execute(context, $"""
@@ -319,14 +666,95 @@ internal sealed class Corpus
                     'ch0:speaker_0', '{text}');
             """);
 
-    private static void Summary(CorpusDbContext context, string meeting, string summary, string body) =>
+    /// <summary>
+    /// A node of the tree, written through raw SQL like everything else here, so the CHECKs are what
+    /// decides whether it is a legal one: a root carries no parent and depth 0, and a child carries
+    /// its parent's kind and its parent's depth.
+    /// </summary>
+    private static void Node(
+        CorpusDbContext context,
+        string id,
+        string kind,
+        string name,
+        int depth,
+        string? parent = null,
+        string? parentKind = null) =>
+        Sql.Execute(context, $"""
+            INSERT INTO nodes (id, kind, name, depth, parent_id, parent_kind, parent_depth, created_at, updated_at)
+            VALUES ('{id}', '{kind}', '{name}', {depth},
+                    {(parent is null ? "NULL" : $"'{parent}'")},
+                    {(parentKind is null ? "NULL" : $"'{parentKind}'")},
+                    {(parent is null ? "NULL" : $"{depth - 1}")},
+                    '{When}', '{When}');
+            """);
+
+    private static void Filed(CorpusDbContext context, string meeting, string node, string role) =>
+        Sql.Execute(context, $"""
+            INSERT INTO meeting_nodes (meeting_id, node_id, role, created_at)
+            VALUES ('{meeting}', '{node}', '{role}', '{When}');
+            """);
+
+    private static void Person(CorpusDbContext context, string id, string name) =>
+        Sql.Execute(context, $"""
+            INSERT INTO people (id, display_name, is_me, created_at, updated_at)
+            VALUES ('{id}', '{name}', 0, '{When}', '{When}');
+            """);
+
+    private static void Named(CorpusDbContext context, string meeting, string person, string role) =>
+        Sql.Execute(context, $"""
+            INSERT INTO meeting_people (meeting_id, person_id, role, created_at)
+            VALUES ('{meeting}', '{person}', '{role}', '{When}');
+            """);
+
+    /// <summary>An extraction of the daily, and the job it ran under.</summary>
+    private static void Run(
+        CorpusDbContext context, string job, string run, string? acceptedAt, string createdAt) =>
         Sql.Execute(context, $"""
             INSERT INTO processing_jobs (id, meeting_id, kind, state, idempotency_key, created_at, attempt)
-            VALUES ('{JobId}', '{meeting}', 'extract', 'succeeded', 'extract/{meeting}', '{When}', 1);
+            VALUES ('{job}', '{DailyId}', 'extract', 'succeeded', 'extract/{DailyId}/{job}', '{createdAt}', 1);
             INSERT INTO extraction_runs (
                 id, meeting_id, job_id, provider, prompt_version, schema_version, input_hash, accepted_at, created_at)
-            VALUES ('{RunId}', '{meeting}', '{JobId}', 'claude_code', '1', '1', '{Sha256}', '{When}', '{When}');
+            VALUES ('{run}', '{DailyId}', '{job}', 'claude_code', '1', '1', '{Sha256}',
+                    {(acceptedAt is null ? "NULL" : $"'{acceptedAt}'")}, '{createdAt}');
+            """);
+
+    private static void Summary(
+        CorpusDbContext context, string id, string run, string summary, string body) =>
+        Sql.Execute(context, $"""
             INSERT INTO summaries (id, meeting_id, extraction_run_id, abstract, body, created_at)
-            VALUES ('55555555-5555-5555-5555-555555555555', '{meeting}', '{RunId}', '{summary}', '{body}', '{When}');
+            VALUES ('{id}', '{DailyId}', '{run}', '{summary}', '{body}', '{When}');
+            """);
+
+    /// <summary>
+    /// What one extraction left: a decision, an action and an open question, all three citing the
+    /// same turn. <paramref name="tag"/> is one hex digit and it is what keeps three runs' rows
+    /// apart — the ids are made from it rather than handed in one at a time.
+    /// </summary>
+    private static void Left(
+        CorpusDbContext context,
+        string tag,
+        string run,
+        string decision,
+        string action,
+        string question) =>
+        Sql.Execute(context, $"""
+            INSERT INTO decisions (id, meeting_id, extraction_run_id, statement, ordinal,
+                                   utterance_ordinal, start_ms, end_ms, speaker_label, quoted_text,
+                                   source_artifact_sha256, created_at)
+            VALUES ('{tag}0000000-0000-0000-0000-000000000001', '{DailyId}', '{run}', '{decision}', 0,
+                    {AnchorOrdinal}, {AnchorOrdinal * 1000}, {(AnchorOrdinal + 1) * 1000}, 'ch0:speaker_0',
+                    'turno{AnchorOrdinal} comun de coati', '{Sha256}', '{When}');
+            INSERT INTO action_items (id, meeting_id, extraction_run_id, statement, ordinal,
+                                      utterance_ordinal, start_ms, end_ms, speaker_label, quoted_text,
+                                      source_artifact_sha256, created_at)
+            VALUES ('{tag}0000000-0000-0000-0000-000000000002', '{DailyId}', '{run}', '{action}', 0,
+                    {AnchorOrdinal}, {AnchorOrdinal * 1000}, {(AnchorOrdinal + 1) * 1000}, 'ch0:speaker_0',
+                    'turno{AnchorOrdinal} comun de coati', '{Sha256}', '{When}');
+            INSERT INTO open_questions (id, meeting_id, extraction_run_id, question, ordinal,
+                                        utterance_ordinal, start_ms, end_ms, speaker_label, quoted_text,
+                                        source_artifact_sha256, created_at)
+            VALUES ('{tag}0000000-0000-0000-0000-000000000003', '{DailyId}', '{run}', '{question}', 0,
+                    {AnchorOrdinal}, {AnchorOrdinal * 1000}, {(AnchorOrdinal + 1) * 1000}, 'ch0:speaker_0',
+                    'turno{AnchorOrdinal} comun de coati', '{Sha256}', '{When}');
             """);
 }

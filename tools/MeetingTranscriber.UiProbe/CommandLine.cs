@@ -175,8 +175,19 @@ internal static class CommandLine
 
     private static void Walk(string folder, IReadOnlyList<Instruction> script)
     {
-        using var session = Session.Open();
+        // Every refusal that does not need an application, before the pointer that says where
+        // somebody's meetings are is touched — the same order Run already keeps for a script that
+        // was wrong, and for the same reason.
+        var bearings = Bearings.Taken();
+
+        // Before the application and let go after it, which is what the order of these two lines
+        // says: a `using` is undone bottom up, so the application closes and only then does the
+        // pointer go back.
+        using var corpus = ProbeCorpus.PointedAtItsOwn();
+        using var session = Session.Open(bearings);
+
         Console.WriteLine(session.StartedAs);
+        Console.WriteLine(corpus.Arrangement);
 
         foreach (var step in script)
         {
