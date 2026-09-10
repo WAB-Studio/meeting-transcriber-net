@@ -394,6 +394,10 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
             // Written the moment two devices opened, which puts a spool in the folder.
             nameof(CaptureRun),
 
+            // Read out of `changes.jsonl` at a finish, so the folder held blocks before this row
+            // could exist — and a folder with blocks is one the sweep already refuses.
+            nameof(CaptureSourceChange),
+
             // Downstream of the audio artifact or of a job, both of which are answered above.
             nameof(ProcessingJob),
             nameof(TranscriptionRun),

@@ -13,6 +13,14 @@ public class CorpusSchemaTests
     /// <summary>A real one, for the tests that read a job back through the model.</summary>
     private const string JobId = "44444444-4444-4444-4444-444444444444";
 
+    /// <summary>
+    /// A microphone's endpoint, without the braces a Windows one carries: these tests reach the
+    /// database through <c>ExecuteSqlRaw</c>, which reads a brace as a parameter placeholder and
+    /// answers a real endpoint id with a <c>FormatException</c> instead of running the statement.
+    /// What is under test here is a CHECK on whether the column is null, not what is in it.
+    /// </summary>
+    private const string Endpoint = "0.0.1.00000000-mic";
+
     [Fact]
     public void A_connection_arrives_with_foreign_keys_on_and_the_file_in_wal()
     {
@@ -338,6 +346,43 @@ public class CorpusSchemaTests
         Should.Throw<SqliteException>(() => InsertUtterance(context, id: "u3", ordinal: 3, channel: "2"));
     }
 
+    /// <summary>
+    /// Neither way of obtaining channel 0 is an endpoint, so a move of it naming a device
+    /// describes a recording this application cannot have made. <c>SpoolChanges.Sound</c> refuses
+    /// the same line beside the blocks; this is the refusal a row written by anything else meets.
+    /// </summary>
+    [Fact]
+    public void A_change_on_channel_0_cannot_name_a_device()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        InsertMeeting(context);
+
+        Should.Throw<SqliteException>(() => InsertSourceChange(
+            context, channel: 0, deviceId: Endpoint));
+
+        Should.NotThrow(() => InsertSourceChange(
+            context, channel: 1, deviceId: Endpoint));
+    }
+
+    /// <summary>
+    /// The channel contract, restated where these rows land: a recording has the loopback and the
+    /// microphone and nothing else, so a move of a third channel is a row about no source at all.
+    /// </summary>
+    [Fact]
+    public void A_change_can_only_sit_on_the_meeting_channel_or_the_user_channel()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        InsertMeeting(context);
+
+        Should.NotThrow(() => InsertSourceChange(context, channel: 0, deviceId: null));
+        Should.NotThrow(() => InsertSourceChange(
+            context, channel: 1, deviceId: null, at: "2026-08-05T14:01:00.000Z"));
+
+        Should.Throw<SqliteException>(() => InsertSourceChange(context, channel: 2, deviceId: null));
+    }
+
     [Fact]
     public void A_turn_cannot_end_before_it_starts()
     {
@@ -560,6 +605,15 @@ public class CorpusSchemaTests
             reading,
             id: "22222222-2222-2222-2222-222222222222"));
     }
+
+    /// <summary>A channel that stopped following what it opened on, written straight at the table.</summary>
+    private static void InsertSourceChange(
+        CorpusDbContext context, int channel, string? deviceId, string at = When) =>
+        Sql.Execute(context, $"""
+            INSERT INTO capture_source_changes (meeting_id, at, channel, heard, was_hearing, device_id)
+            VALUES ('{MeetingId}', '{at}', {channel}, 'what it hears now', 'what it heard before',
+                    {(deviceId is null ? "NULL" : $"'{deviceId}'")});
+            """);
 
     private static void InsertTranscriptionRun(CorpusDbContext context, string id, string job) =>
         Sql.Execute(context, $"""

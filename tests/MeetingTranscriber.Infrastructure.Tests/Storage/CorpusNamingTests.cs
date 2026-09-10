@@ -152,6 +152,17 @@ public partial class CorpusNamingTests
             ignoreOrder: true);
     }
 
+    [Fact]
+    public void A_channel_that_stopped_following_is_stored_under_exactly_these_columns()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Sql.Strings(context, "SELECT name FROM pragma_table_info('capture_source_changes');").ShouldBe(
+            ["meeting_id", "at", "channel", "heard", "was_hearing", "device_id"],
+            ignoreOrder: true);
+    }
+
     /// <summary>
     /// The two columns that hold when something was settled rather than when its row appeared.
     /// Both were <c>created_at</c> and both were written over on a row that already existed, so

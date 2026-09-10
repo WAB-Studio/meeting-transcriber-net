@@ -319,6 +319,7 @@ schema_migrations
 meetings
 artifacts
 capture_runs
+capture_source_changes
 processing_jobs
 transcription_runs
 extraction_runs

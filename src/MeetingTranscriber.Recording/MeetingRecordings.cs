@@ -408,6 +408,16 @@ public static class MeetingRecordings
                 + $"{meeting.Id}. A recording says which meeting it is, and that is what decides.");
         }
 
+        // Read here and not inside the transaction, so a folder whose changes cannot be read stops
+        // this before a byte is copied or a row is touched. Nothing catches it: `SpoolChanges.Find`
+        // already names the file and says what is wrong with it, both front ends answer an
+        // `AudioCaptureException` with that sentence rather than a stack trace — `Cli.IsRefusal`
+        // and `ScreenFailures.Reportable` both name it — and wrapping it here would replace the one
+        // sentence that names the file with one about a meeting. A last line that never finished
+        // landing is already dropped there; what reaches this is a complete line that will not
+        // read, which is a folder that has stopped being what it says it is.
+        var changed = SpoolChanges.Find(spool);
+
         var made = MeetingAudio.Materialise(spool);
         var path = CorpusFiles.PathFor(meeting.Id, MeetingAudio.FileName);
 
@@ -470,6 +480,8 @@ public static class MeetingRecordings
         {
             run.FinishedAt = now;
         }
+
+        Moved(corpus, meeting.Id, changed);
 
         corpus.SaveChanges();
 
@@ -611,5 +623,73 @@ public static class MeetingRecordings
 
         var runs = corpus.CaptureRuns.Where(row => row.MeetingId == meetingId).Take(2).ToList();
         return runs.Count == 1 ? runs[0] : null;
+    }
+
+    /// <summary>
+    /// Puts what the recording wrote down about a channel that moved into the corpus, so it
+    /// outlives the folder.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Adding only what is not already there, and never rewriting or deleting. A finish is run
+    /// again over a meeting whose audio the corpus already holds — <see cref="Filed"/> says when —
+    /// and the file it reads is append-only, so the second pass sees every line the first one did.
+    /// Deleting the meeting's rows and writing them again would be the same answer until the day
+    /// something asks this for a folder whose changes file has gone, and then it would be the
+    /// corpus forgetting the one thing this table exists to remember.
+    /// </para>
+    /// <para>
+    /// The key is the meeting, the instant and the channel, so what "already there" means is the
+    /// database's answer and not a comparison written here.
+    /// </para>
+    /// <para>
+    /// A file that says one channel moved twice at one instant is answered with the later line and
+    /// not the earlier one, because the lines are in the order they happened and what a channel
+    /// ended that millisecond on is what it was on afterwards. Nothing this application writes
+    /// produces that file — <c>CaptureSession.Move</c> is the only writer and channel 0 refuses a
+    /// second move outright — so this is not a case being handled but a rule the collapse has to
+    /// have: taking whichever line came first would store the source the recording had already left,
+    /// and refusing the file outright would cost an hour of unrepeatable audio over a note about
+    /// which program a channel followed.
+    /// </para>
+    /// </remarks>
+    private static void Moved(
+        CorpusDbContext corpus, Guid meetingId, IReadOnlyList<SourceChanged> changed)
+    {
+        if (changed.Count == 0)
+        {
+            return;
+        }
+
+        var already = corpus.CaptureSourceChanges
+            .Where(row => row.MeetingId == meetingId)
+            .Select(row => new { row.At, row.Channel })
+            .ToHashSet();
+
+        // One line per key, the last of them, before anything is compared against the corpus. Two
+        // rows on one key would fail the whole save, and the save is what files the meeting.
+        var latest = new Dictionary<(UtcTimestamp At, AudioChannel Channel), SourceChanged>();
+        foreach (var change in changed)
+        {
+            latest[(change.At, change.Channel)] = change;
+        }
+
+        foreach (var (key, change) in latest)
+        {
+            if (!already.Add(new { key.At, key.Channel }))
+            {
+                continue;
+            }
+
+            corpus.CaptureSourceChanges.Add(new CaptureSourceChange
+            {
+                MeetingId = meetingId,
+                At = change.At,
+                Channel = change.Channel,
+                Heard = change.Heard,
+                WasHearing = change.WasHearing,
+                DeviceId = change.DeviceId,
+            });
+        }
     }
 }

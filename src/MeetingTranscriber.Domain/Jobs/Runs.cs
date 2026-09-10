@@ -43,6 +43,56 @@ public class CaptureRun
     public string? LastError { get; set; }
 }
 
+/// <summary>
+/// A channel that stopped following what it opened on, and the instant it stopped. Channel 0
+/// moved to the whole machine is the one this exists for: the run says what the recording opened
+/// on and goes on saying it, so what the file holds from an instant onward is a fact of its own.
+/// </summary>
+/// <remarks>
+/// <para>
+/// It hangs off the meeting and not off the run, because the folder does: one spool folder is one
+/// meeting, <c>changes.jsonl</c> is that folder's, and a meeting recovered and finished twice is
+/// still the one folder. Hanging it off a run would make it unwritable exactly when
+/// <c>MeetingRecordings.Ran</c> answers nothing — a card that was torn in half over a meeting with
+/// more than one run — which is the recovery this most needs to survive.
+/// </para>
+/// <para>
+/// The words are the recording's own, as a person would read them: what a channel moved to has no
+/// id when it is the whole machine, so a name is all there is. A row on channel 0 is by
+/// construction a move to the whole machine, because <c>CaptureSession.RecordTheWholeMachine</c> is
+/// the only move that channel has and it refuses a second one. The day a channel 0 can move back to
+/// a program, the mode belongs on the line in <c>changes.jsonl</c> first and on this row second —
+/// deriving it here from the two names would be this file guessing at what the recording did.
+/// </para>
+/// <para>
+/// It lives here beside <see cref="CaptureRun"/> because it is the same subject read at a different
+/// instant: what a recording's channels were on. It is not a run and holds no state, so nothing
+/// about where a job reaches applies to it.
+/// </para>
+/// </remarks>
+public class CaptureSourceChange
+{
+    public Guid MeetingId { get; set; }
+
+    /// <summary>When it moved, which is read where the move happened and never where it was asked for.</summary>
+    public UtcTimestamp At { get; set; }
+
+    public AudioChannel Channel { get; set; }
+
+    /// <summary>What it listened to from here on.</summary>
+    public required string Heard { get; set; }
+
+    /// <summary>What it was listening to until then.</summary>
+    public required string WasHearing { get; set; }
+
+    /// <summary>
+    /// The endpoint it reopens by from here on, or nothing when what it moved to is no device.
+    /// Never set on channel 0: neither way of obtaining it is an endpoint, and the CHECK behind
+    /// this column says so where the row lands.
+    /// </summary>
+    public string? DeviceId { get; set; }
+}
+
 /// <summary>One call to a transcription provider, and what it was allowed to cost.</summary>
 /// <remarks>
 /// It carries no state of its own. Where this call stands is the state of the job that runs it —

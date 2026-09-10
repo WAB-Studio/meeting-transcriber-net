@@ -208,8 +208,24 @@ public static class CorpusSearch
     /// accepts a run and something forgets to update it. Two spellings of one ordering is the
     /// cheaper of those while there are two readers. The ordering runs out to the id in both, so two
     /// runs accepted in the same millisecond cannot be broken one way here and the other way there —
-    /// which is argued from the two orderings being the same three columns and is not probed, since
-    /// no test writes two runs accepted at the same instant.
+    /// which
+    /// <c>CorpusSearchTests.Search_and_the_meeting_screen_break_a_tie_between_two_accepted_runs_the_same_way</c>
+    /// holds both spellings to, over a tie only <c>created_at</c> can break and a tie only the id
+    /// can.
+    /// </para>
+    /// <para>
+    /// Costed rather than indexed. This is a correlated subquery on four of the eight branches and
+    /// <c>extraction_runs</c> carries an index on <c>(meeting_id, created_at)</c>, which the
+    /// <c>WHERE</c> already seeks — what an index on <c>(meeting_id, accepted_at)</c> would add is
+    /// the ordering and the <c>accepted_at IS NOT NULL</c> filter over the handful of rows one
+    /// meeting has. Measured over 300 meetings with two runs each, one of them accepted, each run
+    /// carrying a summary, a decision, an action and an open question, over 20 searches hitting all
+    /// four branches after an <c>ANALYZE</c>: 6.4, 7.4 and 6.4 ms a search as it stands, against
+    /// 6.4, 6.3 and 7.1 ms with that index created by hand on the same corpus. The two are one
+    /// noise band, so it was refused on the measurement rather than never taken — and the answer
+    /// does not move with the corpus, because what the subquery orders is one meeting's runs and ten
+    /// times the meetings gives it no more of them. What would move it is a meeting with hundreds,
+    /// which is a person accepting hundreds of extractions of one conversation.
     /// </para>
     /// </remarks>
     private const string TheRunThatCounts = """

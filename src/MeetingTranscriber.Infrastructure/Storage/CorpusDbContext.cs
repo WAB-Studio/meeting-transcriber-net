@@ -81,6 +81,8 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
     public DbSet<CaptureRun> CaptureRuns => Set<CaptureRun>();
 
+    public DbSet<CaptureSourceChange> CaptureSourceChanges => Set<CaptureSourceChange>();
+
     public DbSet<ProcessingJob> ProcessingJobs => Set<ProcessingJob>();
 
     public DbSet<TranscriptionRun> TranscriptionRuns => Set<TranscriptionRun>();
@@ -389,6 +391,31 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             run.HasKey(entity => entity.Id);
             run.HasIndex(entity => new { entity.MeetingId, entity.StartedAt });
             run.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CaptureSourceChange>(change =>
+        {
+            change.ToTable("capture_source_changes", table =>
+            {
+                // The channel contract, restated where these rows land, the way `utterances` does.
+                table.HasCheckConstraint("ck_capture_source_changes_channel", "channel IN (0, 1)");
+
+                // No device ever feeds channel 0. `SpoolChanges.Sound` refuses the same line
+                // beside the blocks; this is the same refusal one layer down, so a row written by
+                // anything but that path cannot put an endpoint's id on a channel whose audio came
+                // from somewhere else.
+                table.HasCheckConstraint(
+                    "ck_capture_source_changes_device",
+                    "channel <> 0 OR device_id IS NULL");
+            });
+
+            // The natural key, so a finish run twice over one folder writes one row per move.
+            // It is also what says a millisecond is as fine as this gets: where a folder claims one
+            // channel moved twice inside one, `MeetingRecordings.Moved` keeps the later line, which
+            // is what the channel was on afterwards.
+            change.HasKey(entity => new { entity.MeetingId, entity.At, entity.Channel });
+            change.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
