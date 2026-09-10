@@ -19,6 +19,7 @@ table exists.
 | validate | `validator` | the batch dir, the cards, the base | `pass`, `revise` or `ask` per card, and collisions |
 | work | `worker` | its share, its card dir, the base, a followup where there is one | a record, and a pushed branch |
 | audit | `auditor` | the base, the batch dir, the branches, the PR number when one exists | one PR carrying the batch, a verdict per card and one for the PR |
+| curate | `curator` | the proposals file | the cards it opened, what it threw away, and what it left for the user |
 
 Pass each agent what its column says and nothing more: never who produced it, never what happens to
 it next, never where the day stands.
@@ -48,6 +49,14 @@ the PR, the handoff, and three files under `private/`: `owed.md`, what merged wr
 built next; `asked.md`, every question waiting on the user; `proposed-issues.md`, what somebody
 wanted opened. Nothing else, and you write no parallel record of what a cycle did. Pick a
 dead day up by starting a new one; §3 gets the context back.
+
+### The close
+
+Before the handoff, spawn `curator` over `private/proposed-issues.md`. It opens what earns a card,
+throws the rest away, and leaves only what turns on the user's taste about the product. Report what
+it opened and what it threw away, in its words. A card it opened is in the pool the next day.
+
+The file is emptied every close and fills again over the next day. Nothing survives it undecided.
 
 ### The handoff
 
@@ -121,8 +130,8 @@ against; the audit floor is still read at the trunk.
      - `fits_this_branch`, the PR still open, and no path `.claude/audit-floor.md` names → spawn
        that card's `worker` again with the followup, its card dir and that PR number.
      - Somebody has to decide it → §4.
-     - `product` → a proposal in `private/proposed-issues.md`, quoting the followup's own words,
-       which only the user opens or deletes.
+     - `product` → a proposal in `private/proposed-issues.md`, quoting the followup's own words.
+       Whether it becomes a card is the `curator`'s at the close, never yours and never the user's.
      - The rest → an `owed` entry, or a line on the standing machinery card the `github` skill names.
 8. **Leave nothing open.** A PR this day opened is merged this day. One you cannot merge is a
    question you put to the user under §4, named as what is waiting and on whom — never a thing left
