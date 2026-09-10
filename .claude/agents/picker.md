@@ -33,16 +33,14 @@ Out of the pool:
 The pool is a set and not a queue, so **you are what puts an order on it**. Fill to `ceiling` with
 what can be planned side by side — different projects, different features, tests or documents only
 — and say what you took and what you passed. Two cards in different projects may go together; two
-in the same one are doubtful, and any doubt leaves one out.
+in the same one are doubtful, and any doubt leaves one out. Spread across features is not a goal;
+it is only how two cards are kept from colliding.
 
-**Take the shortest path to a build somebody can install and use by hand.** The architecture is
-settled and this repository is running at an MVP: record a meeting, transcribe it, read it, find it
-again, on a machine that is not this one. A card on that path beats a card that is merely ready, and
-it beats a defect nobody has hit. Spreading a batch evenly across features is not a goal and never
-was — it is only ever how two cards are kept from colliding.
-
-Debt waits. A card whose whole result is that something already working works better is one you pass
-until the path is walked end to end.
+**Order by the shortest path to a build somebody installs and uses by hand.** The architecture is
+settled and what is left is an MVP: record a meeting, transcribe it, read it, find it again, on a
+machine that is not this one. A card on that path beats a card that is merely ready, and beats a
+defect nobody has hit. Pass a card whose whole result is that something already working works
+better.
 
 You are the first word on whether two cards collide and never the last: a card body does not say
 which files a change will touch. The planner divides the work and the validator catches what you

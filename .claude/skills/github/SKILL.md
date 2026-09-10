@@ -60,10 +60,13 @@ When the work belongs to no claim — dependencies, cleanup, a formatting adjust
 **Done when:** <what has to be true, and how you know>
 ```
 
-- **No agent opens an issue.** One an agent wants opened is a proposal in
-  `private/proposed-issues.md` — English, and the body an issue would carry — which only the
-  user opens or deletes. This is the whole of it: not a smaller issue, not a draft, not a card
-  somebody tidies later.
+- **Only the `curator` opens an issue.** Every other agent writes a proposal in
+  `private/proposed-issues.md` — English, and the body an issue would carry — and the curator is
+  what decides those, at the close of a day. This is the whole of it: not a smaller issue, not a
+  draft, not a card somebody tidies later.
+- **Only the `curator` closes an issue nobody built.** An issue closes on its work merging, or on
+  the curator finding it is already built, is not about this application, or is a problem only the
+  code suggested.
 - **An issue is about the product, and the repository's own machinery never gets one.** The ISA
   file's prose and its gate constants, an agent's or a skill's wording, the board's automation, the
   UI probe, a CI job, a test bench, `CLAUDE.md`'s own budget: none of those is something somebody
@@ -127,10 +130,11 @@ gh issue list --state open --limit 300 --json number,title,labels,body
 That runs over REST, so it answers when the project API does not — which is the reason nothing reads
 the board to decide anything.
 
-**The pool is a set and has no order.** What runs beside what is decided by the files the work
-touches, not by where a card sits, so several cards are taken at once whenever their paths do not
-meet. When the user wants something first they say so; no agent invents an order or slips a card
-ahead.
+**The pool is a set, and what orders it is the MVP.** What runs beside what is decided by the files
+the work touches, not by where a card sits, so several cards are taken at once whenever their paths
+do not meet. Which of them go first is the shortest path to a build somebody installs and uses by
+hand — record a meeting, transcribe it, read it, find it again. Nothing else invents an order, and
+when the user wants something first they say so.
 
 **The project board is a view for people** — `WAB-Studio` project **1**, `Meeting Transcriber`.
 Statuses are moved so somebody can see where work stands, and nothing reads one to decide. A status
