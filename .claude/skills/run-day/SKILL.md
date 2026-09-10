@@ -44,8 +44,9 @@ GitHub writes no file: the verdict is the comment on the PR, and a second copy o
 nobody reads.
 
 It is scratch. What survives a day is the issue's comments and labels, the branch and its commits,
-the PR, the handoff, and three files under `private/`: `owed.md`, what merged wrong and has to be
-built next; `asked.md`, every question waiting on the user; `proposed-issues.md`, what has been proposed and not
+the PR, the handoff, and three files under `private/`: `owed.md`, every defect found and every
+repair owed, which the next planning pass builds and where everything that is not a feature lives;
+`asked.md`, every question waiting on the user; `proposed-issues.md`, what has been proposed and not
 yet decided. Nothing else, and you write no parallel record of what a cycle did. Pick a
 dead day up by starting a new one; §3 gets the context back.
 
@@ -121,9 +122,12 @@ against; the audit floor is still read at the trunk.
      - `fits_this_branch`, the PR still open, and no path `.claude/audit-floor.md` names → spawn
        that card's `worker` again with the followup, its card dir and that PR number.
      - Somebody has to decide it → §4.
-     - `product` → a proposal in `private/proposed-issues.md`, quoting the followup's own words.
-       Whether it becomes a card is settled by the `curate` skill at the close, not here.
-     - The rest → an `owed` entry, or a line on the standing machinery card the `github` skill names.
+     - **A defect, a probe, a guard, a cleanup — anything that is not a feature → `private/owed.md`,
+       and never the board.** The next planning pass builds it out of that file. This is the answer
+       for almost everything an audit finds, and the one you take when you are unsure.
+     - A feature the product cannot do yet → a proposal in `private/proposed-issues.md`, quoting the
+       followup's own words. Whether it becomes a card is settled by the `curate` skill at the
+       close, not here.
 8. **Curate.** At the close of the day, before the handoff, read the `curate` skill and do what it
    says over `private/proposed-issues.md`. It is yours and not a subagent's: whether a proposal is
    real turns on what happened today, which you have and nothing spawned cold does. It opens cards
