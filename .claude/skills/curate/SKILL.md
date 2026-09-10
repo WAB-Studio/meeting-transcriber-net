@@ -13,7 +13,7 @@ proposal where it was.
 
 Reach for this at the close of a day, over `private/proposed-issues.md`.
 
-## 1 · A feature — open an issue
+## A feature — open an issue
 
 **A feature is something the product cannot do yet and a person would ask for by name.** Not a
 defect in something it already does, however serious. Not a check, a probe, a guard, a sweep or a
@@ -21,31 +21,28 @@ test. Not a rename, a cleanup or a comment that lies.
 
 If you are weighing whether something is a feature, it is not one. Send it to `private/owed.md`.
 
-## 2 · Anything else that is real — write it into `private/owed.md`
+## Anything else that is real — write it into `private/owed.md`
 
 A defect, a probe, a guard, a cleanup, a comment contradicting its code, a rename, a repair anybody
 owes. It goes into `private/owed.md` under a heading naming what it belongs to, newest last, and
 **never onto the board** — however small, however certain, however long it has been true.
 
 Write it so the next planning pass can build it without finding anything out again: the file, the
-line, what it is today, what it should be, and what breaks while it is not. The next planner reads
-that file before it plans anything.
+line, what it is today, what it should be, and what breaks while it is not.
 
 **A bug is never an issue.** No exception exists for one that is one line, one that is embarrassing,
-one that blocks something, or one you have just proved. A board of small defects is what stops
-anybody seeing what to build next, and that cost is paid every day by everybody reading it.
+one that blocks something, or one you have just proved.
 
-## 3 · One of the three — throw it away
+## One of the three — throw it away
 
-Confirm each against the tree before acting on it. A proposal describes what it believes is there,
-and believing it is how a repository fills with work nobody needed.
+Confirm each against the tree before acting on it.
 
 - **Already there.** Under another name, in another file, or inside a stage that already runs.
 - **Not this application.** Machine state, a checkout, a worktree, a build agent's housekeeping.
 - **Invented.** A problem only the code suggested: an edge case no recording reaches, a fallback for
   input nothing produces, a guard for a caller that does not exist.
 
-## 4 · Turns on the user's taste — leave it
+## Turns on the user's taste — leave it
 
 What a screen offers, what somebody is told, what the application decides for them. Only that.
 Never anything that turns on engineering, however large.

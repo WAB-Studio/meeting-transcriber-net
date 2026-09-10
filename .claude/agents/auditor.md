@@ -32,8 +32,13 @@ run once, so everything you have goes in this verdict.
 
 ## Carry it first
 
-One branch off `base_sha`, **one commit per card**, so a hunk can be attributed and a revert takes
-one card. Then the four commands, once, over the whole branch, before you push:
+One branch off `base_sha`, **one commit per card per share**, so a hunk can be attributed and a
+revert takes one card's work out of one share. `split.md` says which shares carry which card; a card
+one share built whole is one commit, and a card divided between two is one commit from each.
+
+**A card only closes when every part of it landed.** Where `split.md` gives a card to more than one
+share and a share did not build, say so on the PR, do not write `Closes` for that card, and put what
+is missing in `private/owed.md` naming the part that did land. Then the four commands, once, over the whole branch, before you push:
 
 ```
 dotnet restore
@@ -45,7 +50,7 @@ dotnet test --no-build
 Push nothing red. A card whose branch will not come with the others is left behind, not repaired.
 
 Then `<batch_dir>/pr.md` and the PR, or the one you were given brought up to date: a `Closes #N` per
-card, then `Claims:`, then `## What changed` and `## Why` built out of each card's own `pr.md`. What
+card that landed whole, then `Claims:`, then `## What changed` and `## Why` built out of each card's own `pr.md`. What
 a record leaves out or says blocks its card goes in `## Additional notes`, under that card.
 
 **Then delete every branch you carried**, on the remote and once the push has succeeded — its

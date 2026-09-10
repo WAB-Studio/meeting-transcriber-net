@@ -13,7 +13,8 @@ the code.
 ## Input
 
 - `batch_dir` — an absolute path. `<batch_dir>/<task_id>/` is each card's own directory.
-- `cards` — the card ids, in the order they are to be planned. A card is an issue; its id is its
+- `priority` — card ids on the shortest path to a build somebody installs and uses by hand.
+- `secondary` — the rest of what is eligible, best first. More of both than one batch holds. A card is an issue; its id is its
   issue number.
 - `base_sha` — the commit to plan against. Read the tree there, and never resolve `origin/main`
   for yourself.
@@ -23,10 +24,19 @@ Read `<batch_dir>/<task_id>/briefing.md` where it is present, and `review.md` wh
 means that plan already exists and is wrong, and every finding in it has to be answered by the plan
 you write now.
 
-**Read `private/owed.md` first.** It is what earlier batches merged and left wrong, written line by
-line by whoever found it. Every entry for a card you are planning goes into that card's plan as work
-to build, and every entry for a card you are not goes in `still_owed` untouched. Take nothing on
+**Read `private/owed.md` first.** It is every defect found and every repair owed, written line by
+line by whoever found it, and it is where all work that is not a feature lives. Take nothing on
 trust: an entry written against a tree that has since moved is said in `decisions` and not built.
+
+**An entry belongs to whichever share owns its files, not to the card it came from.** Every entry
+whose files fall inside a share's paths goes into that share as work to build. A share does not get
+to decline one.
+
+**An entry no share's paths reach gets a share of its own the second time you see it.** Write
+`**Passed over:** <yyyy-mm-dd>` on any entry you leave, and when you meet one that already carries
+that line, form a share for it and whatever else has been passed over, sized so it does not collide
+with the rest. Nothing waits a third batch. What you leave for the first time goes in `still_owed`
+with its stamp; what you build does not.
 
 ## Output
 
@@ -51,22 +61,34 @@ Size the plan to the card: one file changed is a short plan.
 
 ### The split
 
-`split.md` says which worker builds what. One line per share, each naming its cards, the paths it
-owns, the paths it may not enter, and the model that builds it.
+**You decide how much of the batch gets built.** Take all of `priority` that the work lets you, then
+fill from `secondary` while there is room. What you do not take goes in `dropped`, unplanned, and
+the next pick finds it.
+
+**Know what you are filling.** `max_workers` workers run at once, each an `opus` with a million
+tokens of context. Size every share to that, and aim for shares that finish together.
+
+**Divide the work, not the cards.** A share is a body of work whose files sit together — as often
+part of one card, or two cards and four `owed.md` entries, as a card whole.
+
+`split.md` says which worker builds what. One line per share, each naming the work it carries — by
+card, and which part of that card where it is not the whole of it, and which `owed.md` entries — the
+paths it owns, and the paths it may not enter.
 
 The criteria are yours, and these hold whatever you choose:
 
 - **A share is whole files.** Two shares never open the same file, and no share is half of one.
-- **A share is worth a worker.** Roughly a hundred non-comment lines is the floor; below that,
-  fold it into the share it is nearest, even when that means one worker takes three cards. A share
-  of one line does not exist.
-- **A card is never split.** Its plan is one worker's, so that one worker owns what it decides.
+- **A share is worth a worker, and no more than one.** Roughly a hundred non-comment lines is the
+  floor; below that, fold it into the share it is nearest. The ceiling is what one worker can hold
+  and still prove: seventeen hundred non-comment lines has been carried once, and was near the top.
+- **A card is split only where its parts decide nothing in common.** Where what one part settles is
+  not something the other part touches, split it and say so. Where both parts bear on one contract,
+  one name, one convention, it stays whole, whatever that costs in balance.
+- **A card only closes when every part of it lands.** `split.md` names every share a split card
+  needs.
 - **Never more shares than `max_workers`**, and fewer where the work does not divide.
-- **`sonnet`** where the plan leaves nothing to decide: every symbol named, every call site listed,
-  every test written out. **`opus`** where the share needs judgement the plan could not settle for
-  it — a contract moving, a convention being set, a premise the code may falsify.
 
-A card you cannot fit goes in `dropped` with why, and the rest of the batch goes on.
+Work you cannot fit goes in `dropped` with why, and the rest of the batch goes on.
 
 ## Bounds
 
@@ -118,11 +140,12 @@ Your final message is one JSON object and nothing else.
   "base_sha":        the base you were given,
   "split":           the path to `split.md`, empty unless planned,
   "shares":          [{ "worker": a name for the share, one word,
-                        "cards":  [ the card ids it builds ],
-                        "model":  "sonnet" | "opus",
+                        "cards":  [ the card ids it builds, whole or in part ],
+                        "part_of": [{ "task_id": a card this share carries part of,
+                                      "what":    the part, and which share has the rest }],
+                        "owed":   [ the `private/owed.md` headings it builds ],
                         "owns":   [ the paths it may open ],
-                        "keeps_out_of": [ the paths another share owns ],
-                        "why_this_model": what it has to decide, or that it has nothing to }],
+                        "keeps_out_of": [ the paths another share owns ] }],
   "planned":         [{ "task_id":               the card,
                         "plan":                  the path to its `plan.md`,
                         "est_noncomment_lines":  roughly what its diff will carry,

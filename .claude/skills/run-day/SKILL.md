@@ -13,9 +13,9 @@ table exists.
 
 | Stage | `subagent_type` | Give it | It returns |
 | --- | --- | --- | --- |
-| pick | `picker` | a ceiling | the candidates, in the order they are to be planned |
+| pick | `picker` | a ceiling | the candidates, as `priority` and `secondary` |
 | recover | `recoverer` | card id, its card dir, PR number | a briefing on what was already done |
-| plan | `planner` | the batch dir, the cards, the base, how many workers may run at once | a plan per card, and the split saying which worker builds what and on which model |
+| plan | `planner` | the batch dir, both candidate lists, the base, how many workers may run at once | a plan per card, and the split saying which worker builds what |
 | validate | `validator` | the batch dir, the cards, the base | `pass`, `revise` or `ask` per card, and collisions |
 | work | `worker` | its share, its card dir, the base, a followup where there is one | a record, and a pushed branch |
 | audit | `auditor` | the base, the batch dir, the branches, the PR number when one exists | one PR carrying the batch, a verdict per card and one for the PR |
@@ -45,7 +45,7 @@ nobody reads.
 
 It is scratch. What survives a day is the issue's comments and labels, the branch and its commits,
 the PR, the handoff, and three files under `private/`: `owed.md`, every defect found and every
-repair owed, which the next planning pass builds and where everything that is not a feature lives;
+repair owed — everything that is not a feature;
 `asked.md`, every question waiting on the user; `proposed-issues.md`, what has been proposed and not
 yet decided. Nothing else, and you write no parallel record of what a cycle did. Pick a
 dead day up by starting a new one; §3 gets the context back.
@@ -66,15 +66,16 @@ landing. Never what happened: the issues, the PRs and the commits carry that alr
 sha to every stage. Nothing in the batch resolves `origin/main` to decide what it is building
 against; the audit floor is still read at the trunk.
 
-1. **Pick.** Spawn `picker` with a ceiling of candidates — six unless this machine has less room.
+1. **Pick.** Spawn `picker` with a ceiling of eight candidates.
    - `no_tasks` or `blocked` → end the day. Say why.
-   - Say the cards and the `why` in one line before you spawn anything else.
+   - Say the cards and the `why` in one line before you spawn anything else. Hand the planner both
+     lists whole; which of them becomes this batch is its call, not yours.
 2. **Recover.** A card already being worked, or carrying an open PR, gets a `recoverer` into its
    card dir before anything is planned.
-3. **Plan.** Spawn **one** `planner` over every candidate, with the batch dir, the base, and how
-   many workers may run at once — four unless this machine has less room. It plans each card and
-   divides the work between the workers it wants, naming for each share what it builds and which
-   model builds it. What it drops is said and goes back to the pool unbuilt.
+3. **Plan.** Spawn **one** `planner` over both lists, with the batch dir, the base, and how
+   many workers may run at once — four; five is what the memory on this machine will not carry. It
+   plans each card and divides the work between the workers it wants, naming for each share what it
+   builds. What it drops is said and goes back to the pool unbuilt.
    - A card it returns `needs_grill` or `blocked` → §4, and the rest of the batch goes on.
    - `already_done` → that card closed itself.
 4. **Validate, or don't.** Spawn `validator` once over the split when it holds more than one card,
@@ -113,9 +114,8 @@ against; the audit floor is still read at the trunk.
      yourself on the PR's own branch and merge on green. Otherwise spawn `worker` once with the
      verdict as its followup, then merge. A `hold` for anything else is one you read as
      `pass_with_followup` — say so on the PR and merge.
-   - **What is owed is not lost.** The auditor writes it into `private/owed.md`, line by line; the
-     next planner reads that file and builds it. Check it landed before you merge, and say what went
-     into it.
+   - **What is owed is not lost.** Check it landed in `private/owed.md` before you merge, and say
+     what went into it.
    - `decisions_owed`, or a `blocked` on a claim `ISA.md` does not carry → §4, and the merge happens
      anyway. Write no claim yourself.
    - **`followups_proposed` is a proposal and you decide. You open no issue, ever.**
@@ -123,15 +123,14 @@ against; the audit floor is still read at the trunk.
        that card's `worker` again with the followup, its card dir and that PR number.
      - Somebody has to decide it → §4.
      - **A defect, a probe, a guard, a cleanup — anything that is not a feature → `private/owed.md`,
-       and never the board.** The next planning pass builds it out of that file. This is the answer
-       for almost everything an audit finds, and the one you take when you are unsure.
+       and never the board.** The next planning pass builds it out of that file, and it is the one
+       you take when you are unsure.
      - A feature the product cannot do yet → a proposal in `private/proposed-issues.md`, quoting the
        followup's own words. Whether it becomes a card is settled by the `curate` skill at the
        close, not here.
 8. **Curate.** At the close of the day, before the handoff, read the `curate` skill and do what it
-   says over `private/proposed-issues.md`. It is yours and not a subagent's: whether a proposal is
-   real turns on what happened today, which you have and nothing spawned cold does. It opens cards
-   and closes none.
+   says over `private/proposed-issues.md`. Yourself, never a subagent. It opens cards and closes
+   none.
 9. **Leave nothing open.** A PR this day opened is merged this day. One you cannot merge is a
    question you put to the user under §4, named as what is waiting and on whom — never a thing left
    standing for somebody to notice.
