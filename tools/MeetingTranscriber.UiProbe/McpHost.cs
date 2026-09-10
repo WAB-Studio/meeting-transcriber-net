@@ -52,6 +52,14 @@ internal sealed class McpHost : IDisposable
         Windows starts is the build it last registered rather than the one you last made. To pick
         up a change: `close`, build, `start` — in that order, because a running application holds
         its own assemblies open and the build fails on them.
+
+        Every verb is also refused once the running copy of this tool is older than the sources it
+        was built from: end the session, publish it, open a new one.
+
+        It drives a corpus of its own, so Record may be pressed. `start` moves the pointer to the
+        user's corpus aside and `close` puts it back, and the line `start` prints says which corpus
+        the application it just opened is on — that line, and not this paragraph, is what is true of
+        the application you are driving.
         """;
 
     /// <summary>Lent by <see cref="Program"/>, which owns it, and not disposed here.</summary>
@@ -59,6 +67,18 @@ internal sealed class McpHost : IDisposable
 
     /// <summary>Touched only on <see cref="_ui"/>, by every tool below and by nothing else.</summary>
     private Session? _open;
+
+    /// <summary>
+    /// The pointer this host is holding, or nothing when no application has been started. Touched
+    /// only on <see cref="_ui"/>, like <see cref="_open"/>.
+    /// </summary>
+    /// <remarks>
+    /// Made on the first <c>start</c> and not when this host is constructed. <c>.mcp.json</c>
+    /// starts this server at every Claude Code session in this checkout, most of which never drive
+    /// anything — and a pointer put aside for one of those would leave somebody's own corpus behind
+    /// a probe folder for hours, for a verb nobody called.
+    /// </remarks>
+    private ProbeCorpus? _corpus;
 
     private McpHost(UiThread ui) => _ui = ui;
 
@@ -91,15 +111,17 @@ internal sealed class McpHost : IDisposable
         // an unbounded wait on a wedged thread is how the application ends up outliving everything
         // that was supposed to close it. Past the budget the leash is what is left, and the leash
         // can only fire once this process is gone.
-        if (!_ui.RunWithin(UiThread.ToStop, () =>
-            {
-                _open?.Dispose();
-                _open = null;
-            }))
+        if (!_ui.RunWithin(UiThread.ToStop, LetGo))
         {
             Console.Error.WriteLine(
                 $"The application would not close within {UiThread.ToStop.TotalSeconds:0} seconds. "
                 + "Ending anyway, which is what takes it with us.");
+
+            // File work and not window work, so it does not need the thread that would not answer.
+            // An application this process could not close is one the leash is about to take, and a
+            // pointer left aside would outlive both.
+            _corpus?.Dispose();
+            _corpus = null;
         }
     }
 
@@ -111,16 +133,48 @@ internal sealed class McpHost : IDisposable
             + "already open, so it is also how you pick up a rebuild — after `close` and a build.",
             () => Answer(() =>
             {
-                // The new one before the old one is let go, and that ordering is the whole point:
-                // the commonest reason this is called is to pick up a change, the commonest reason
-                // it fails is that the change was not built, and closing first would charge an
-                // agent the screen it had walked to for asking.
-                var opened = Session.Open();
+                // Everything that refuses a start without an application, before the pointer that
+                // says where somebody's meetings are is touched at all. A checkout with nothing
+                // registered and a published copy owed a publish are the two commonest answers
+                // this verb gives, and neither should have moved a file to say so.
+                var bearings = Bearings.Taken();
+
+                var corpus = _corpus ??= ProbeCorpus.PointedAtItsOwn();
+
+                // Every start and not only the first. The application reads the pointer once, when
+                // it launches, so the only moment it has to be right is this one — and between two
+                // starts a walk that drove the move-corpus screen, another probe process closing,
+                // or the user can each have left it saying something else.
+                corpus.StillPointedAtItsOwn();
+
+                Session opened;
+                try
+                {
+                    // The new one before the old one is let go, and that ordering is the whole
+                    // point: the commonest reason this is called is to pick up a change, the
+                    // commonest reason it fails is that the change was not built, and closing
+                    // first would charge an agent the screen it had walked to for asking.
+                    opened = Session.Open(bearings);
+                }
+                catch
+                {
+                    // The pointer goes back only when this leaves nothing open. A start that
+                    // failed over an application already running is still a probe session, and
+                    // that session's window is on the probe's corpus.
+                    if (_open is null)
+                    {
+                        LetGo();
+                    }
+
+                    throw;
+                }
 
                 _open?.Dispose();
                 _open = opened;
 
-                return Text($"{opened.StartedAs}{Break}{opened.Tree()}");
+                return Text(
+                    $"{opened.StartedAs}{Environment.NewLine}{corpus.Arrangement}"
+                    + $"{Break}{opened.Tree()}");
             })),
 
         Tool(
@@ -215,17 +269,44 @@ internal sealed class McpHost : IDisposable
             + "application needs this first.",
             () => Answer(() =>
             {
-                if (_open is null)
+                // The pointer as well as the application, and the pointer even when there is no
+                // application: `_corpus` outliving `_open` is what a `start` that opened one and
+                // then threw leaves, and that is the state in which somebody's own application is
+                // opening on the probe's corpus.
+                if (_open is null && _corpus is null)
                 {
                     return Text("Nothing was open.");
                 }
 
-                _open.Dispose();
-                _open = null;
+                LetGo();
 
                 return Text("Closed.");
             })),
     ];
+
+    /// <summary>
+    /// Lets go of the application and of the pointer, in that order, and forgets both.
+    /// </summary>
+    /// <remarks>
+    /// One method because the two always end together and the pairing was spelled out in four
+    /// places: <c>close</c>, the crash branch of <see cref="Live"/>, a failed <c>start</c> and
+    /// <see cref="Dispose"/>. The fifth place somebody drops a session and forgets the pointer is
+    /// somebody's own application opening on the probe's corpus, silently, until the next probe
+    /// run.
+    /// <para>
+    /// The application first and never the pointer: it holds the corpus open and read the pointer
+    /// at its launch, and a pointer put back while it is still writing is the next launch's answer
+    /// arriving under this one.
+    /// </para>
+    /// </remarks>
+    private void LetGo()
+    {
+        _open?.Dispose();
+        _open = null;
+
+        _corpus?.Dispose();
+        _corpus = null;
+    }
 
     private static McpServerTool Tool(string name, string does, Delegate what) =>
         McpServerTool.Create(what, new McpServerToolCreateOptions { Name = name, Description = does });
@@ -289,8 +370,9 @@ internal sealed class McpHost : IDisposable
             // is not the same refusal: that window is still open and still has to be closed.
             if (session.HasGone)
             {
-                _open = null;
-                session.Dispose();
+                // A crash is an ending this tool can see, so the pointer goes back at the first
+                // verb after it rather than waiting for a `close` nobody is going to call.
+                LetGo();
             }
 
             throw;

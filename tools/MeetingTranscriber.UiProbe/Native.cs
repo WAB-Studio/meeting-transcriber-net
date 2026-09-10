@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace MeetingTranscriber.UiProbe;
 
@@ -220,4 +221,22 @@ internal static class Native
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool CloseHandle(IntPtr handle);
+
+    /// <summary>
+    /// The image a process is running, asked of the kernel rather than of the process's loaded
+    /// module list. <c>length</c> goes in as the room in <c>name</c> and comes out as what was
+    /// written.
+    /// </summary>
+    /// <remarks>
+    /// The module list is what <c>Process.MainModule</c> reads, and a process Windows has only just
+    /// created has one entry in it: <c>ntdll.dll</c>, before the loader has mapped the executable.
+    /// So the module list answers the question wrongly for a while and never says it is not ready.
+    /// This one has no such window — the path is a property of the process from the moment it
+    /// exists — which is why the probe asks it instead. <c>LaunchedApp.Start</c> is the reason it
+    /// matters: it reads that path within milliseconds of an activation.
+    /// </remarks>
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool QueryFullProcessImageName(
+        IntPtr process, uint flags, StringBuilder name, ref uint length);
 }

@@ -16,7 +16,8 @@ tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python co
 tools/MeetingTranscriber.CorpusImport/    reads a Python corpus in, then gets deleted
 tools/MeetingTranscriber.UiProbe/         starts the application, reads its window, presses what is on it and
                                           kills it — as a script, and as an MCP server an agent drives a turn
-                                          at a time. It drives the real corpus and records real meetings into it
+                                          at a time. It drives a corpus of its own and records real
+                                          meetings into that
 tests/MeetingTranscriber.Testing/         what a test opens: corpus, SQL, fixture inventory
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```
@@ -223,9 +224,13 @@ what to open before touching an artboard.
 know the Python system existed, so deleting the importer is deleting two folders rather than
 untangling the application — its README says what that deletion is. The UI probe is in here for the
 same reason and a second one: it needs an interactive desktop, so no build agent can run it and
-nothing under `tests/` may come to depend on it. It references no project at all — touching a type
-from `MeetingTranscriber.App` would fire the Windows App SDK module initializer in the probe's own
-process — and reaches the application only the way anybody else does, through the shell.
+nothing under `tests/` may come to depend on it. It references one project,
+`MeetingTranscriber.Infrastructure`, for two types: `CorpusLocation`, which is where the application
+is told its corpus is, and `CorpusDatabase`, which is what makes one. The probe drives a corpus of
+its own by moving that setting and putting it back, which is the same act as a person moving their
+corpus and adds nothing to the product. What it still never references is `MeetingTranscriber.App` —
+touching a type from that assembly would fire the Windows App SDK module initializer in the probe's
+own process — so it reaches the application only the way anybody else does, through the shell.
 
 The project split in `arquitectura.md` §3 is the destination, not the scaffolding: a project
 appears when there is code to put in it, and one the destination never named appears when the code

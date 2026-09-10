@@ -1,5 +1,4 @@
 using System.IO;
-using System.Xml.Linq;
 
 namespace MeetingTranscriber.UiProbe;
 
@@ -39,6 +38,8 @@ namespace MeetingTranscriber.UiProbe;
 /// <c>src/</c> and are not in this application, so editing one of them made the probe demand a
 /// build that could not restamp anything, forever. And the two extensions are the two that are
 /// compile inputs, so the build the refusal asks for is a build that lifts it.
+/// The walk itself is <see cref="Sources"/>'s, shared with <see cref="ProbeBuild"/>, which asks
+/// the same shape of question about this tool rather than about the application.
 /// </para>
 /// <para>
 /// What it therefore does not see: a change that ships without recompiling anything — a resource
@@ -50,8 +51,6 @@ namespace MeetingTranscriber.UiProbe;
 internal sealed class Freshness
 {
     private static readonly string[] Compiled = ["*.cs", "*.xaml"];
-
-    private static readonly string[] Output = ["bin", "obj"];
 
     private readonly IReadOnlyList<string> _projects;
 
@@ -77,20 +76,14 @@ internal sealed class Freshness
         var compiled = Path.ChangeExtension(runningFrom, ".dll");
 
         return new Freshness(
-            ProjectsBehind(repository.AppFolder),
+            Sources.ProjectsBehind(repository.AppFolder),
             runningFrom,
             File.GetLastWriteTimeUtc(File.Exists(compiled) ? compiled : runningFrom));
     }
 
     internal void MustNotPredateTheCode()
     {
-        var newest = _projects
-            .SelectMany(SourcesUnder)
-            .Select(path => (Path: path, Written: File.GetLastWriteTimeUtc(path)))
-            .OrderByDescending(file => file.Written)
-            .FirstOrDefault();
-
-        if (newest.Path is null || newest.Written <= _built)
+        if (Sources.NewestUnder(_projects, Compiled) is not { } newest || newest.Written <= _built)
         {
             return;
         }
@@ -104,69 +97,4 @@ internal sealed class Freshness
             + "assemblies open and the build fails on them. If the build output has never been "
             + "registered, see docs/ui-probe.md.");
     }
-
-    /// <summary>
-    /// <c>bin</c> and <c>obj</c> are skipped on the way down rather than filtered afterwards. Over
-    /// MCP this runs before every instruction, so walking a build output that is an order of
-    /// magnitude larger than the sources and then throwing it away is work paid for on every press.
-    /// </summary>
-    private static IEnumerable<string> SourcesUnder(string folder)
-    {
-        foreach (var kind in Compiled)
-        {
-            foreach (var file in Directory.EnumerateFiles(folder, kind))
-            {
-                yield return file;
-            }
-        }
-
-        foreach (var below in Directory.EnumerateDirectories(folder))
-        {
-            if (Output.Contains(Path.GetFileName(below), StringComparer.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            foreach (var file in SourcesUnder(below))
-            {
-                yield return file;
-            }
-        }
-    }
-
-    /// <summary>
-    /// The application's project and everything it is built out of, following
-    /// <c>ProjectReference</c> as far as it goes. Read off the project files rather than listed
-    /// here, so a project added to the application tomorrow is covered without anybody
-    /// remembering this.
-    /// </summary>
-    private static IReadOnlyList<string> ProjectsBehind(string appFolder)
-    {
-        var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var pending = new Queue<string>(Directory.EnumerateFiles(appFolder, "*.csproj"));
-
-        while (pending.Count > 0)
-        {
-            var project = Path.GetFullPath(pending.Dequeue());
-            if (!found.Add(project))
-            {
-                continue;
-            }
-
-            var folder = Path.GetDirectoryName(project)!;
-            foreach (var referenced in References(project))
-            {
-                pending.Enqueue(Path.GetFullPath(Path.Combine(folder, referenced)));
-            }
-        }
-
-        return found.Select(project => Path.GetDirectoryName(project)!).Distinct().ToList();
-    }
-
-    private static IEnumerable<string> References(string projectPath) =>
-        XDocument.Load(projectPath)
-            .Descendants("ProjectReference")
-            .Select(reference => reference.Attribute("Include")?.Value)
-            .Where(include => !string.IsNullOrEmpty(include))
-            .Select(include => include!.Replace('\\', Path.DirectorySeparatorChar));
 }
