@@ -45,8 +45,8 @@ nobody reads.
 
 It is scratch. What survives a day is the issue's comments and labels, the branch and its commits,
 the PR, the handoff, and three files under `private/`: `owed.md`, what merged wrong and has to be
-built next; `asked.md`, every question waiting on the user; `proposed-issues.md`, what somebody
-wanted opened. Nothing else, and you write no parallel record of what a cycle did. Pick a
+built next; `asked.md`, every question waiting on the user; `proposed-issues.md`, what has been proposed and not
+yet decided. Nothing else, and you write no parallel record of what a cycle did. Pick a
 dead day up by starting a new one; §3 gets the context back.
 
 ### The handoff
@@ -121,10 +121,14 @@ against; the audit floor is still read at the trunk.
      - `fits_this_branch`, the PR still open, and no path `.claude/audit-floor.md` names → spawn
        that card's `worker` again with the followup, its card dir and that PR number.
      - Somebody has to decide it → §4.
-     - `product` → a proposal in `private/proposed-issues.md`, quoting the followup's own words,
-       which only the user opens or deletes.
+     - `product` → a proposal in `private/proposed-issues.md`, quoting the followup's own words.
+       Whether it becomes a card is settled by the `curate` skill at the close, not here.
      - The rest → an `owed` entry, or a line on the standing machinery card the `github` skill names.
-8. **Leave nothing open.** A PR this day opened is merged this day. One you cannot merge is a
+8. **Curate.** At the close of the day, before the handoff, read the `curate` skill and do what it
+   says over `private/proposed-issues.md`. It is yours and not a subagent's: whether a proposal is
+   real turns on what happened today, which you have and nothing spawned cold does. It opens cards
+   and closes none.
+9. **Leave nothing open.** A PR this day opened is merged this day. One you cannot merge is a
    question you put to the user under §4, named as what is waiting and on whom — never a thing left
    standing for somebody to notice.
 
@@ -169,6 +173,7 @@ Speak when a batch is picked, when a cycle closes, when a rule fires, and when t
 - **A pick** — the cards, their names, the `why`, before you spawn the next stage.
 - **A cycle closing** — the cards, the PR, the verdict, what happened to it.
 - **A permission denied to an agent** — quote it exactly, naming the tool and what it tried.
+- **The curate** — every card opened, and everything thrown away with what settled it.
 
 Quote a stage's own words for what it found. Summarise only what you did.
 
@@ -177,6 +182,7 @@ leave with `[Day]`, and leave one only where §2 says to.
 
 ## 7 · Do not touch the repo
 
-Edit no file, make no commit, switch no branch between cycles. Three exceptions, all in §2: the
-merge, the one-line fix on the PR's own branch, and the proposal you add to
-`private/proposed-issues.md`.
+Edit no file, make no commit, switch no branch between cycles. Four exceptions, all in §2: the
+merge, the one-line fix on the PR's own branch, the proposal you add to
+`private/proposed-issues.md`, and the curate, which rewrites that file and is the one place you
+decide rather than route.
