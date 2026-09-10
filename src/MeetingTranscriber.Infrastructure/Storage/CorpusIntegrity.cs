@@ -45,9 +45,25 @@ public sealed class CorpusIntegrityException(IReadOnlyList<CorpusProblem> proble
 public static class CorpusIntegrity
 {
     /// <summary>
-    /// The external content indexes, which are derived and can always be thrown away and rebuilt.
+    /// Every external content index, which is derived and can always be thrown away and rebuilt.
     /// </summary>
-    public static IReadOnlyList<string> SearchIndexes { get; } = ["utterances_fts", "summaries_fts"];
+    /// <remarks>
+    /// The one list, and everything that rebuilds, compacts or checks reads it — so an index added
+    /// in a migration and not added here is one nothing rebuilds after a VACUUM and nothing checks
+    /// against its table. <c>CorpusIntegrityTests.Every_index_in_the_corpus_is_one_this_list_knows</c>
+    /// is what fails when the two come apart.
+    /// </remarks>
+    public static IReadOnlyList<string> SearchIndexes { get; } =
+    [
+        "utterances_fts",
+        "summaries_fts",
+        "meetings_fts",
+        "nodes_fts",
+        "people_fts",
+        "decisions_fts",
+        "action_items_fts",
+        "open_questions_fts",
+    ];
 
     /// <summary>
     /// Everything wrong with this corpus, empty when there is nothing. It reports rather than
@@ -80,11 +96,11 @@ public static class CorpusIntegrity
     /// </summary>
     /// <remarks>
     /// This exists so that no caller has to remember the second half. SQLite is free to renumber
-    /// the rowids of a table with no INTEGER PRIMARY KEY while vacuuming, and both indexes key on
-    /// the rowid of a table that has none — so a bare VACUUM is allowed to leave search answering
-    /// with the wrong rows, and it would not raise anything on the way. Today's SQLite happens to
-    /// keep them, which is the worst version of the problem: it is not a bug that shows up while
-    /// anybody is looking for it.
+    /// the rowids of a table with no INTEGER PRIMARY KEY while vacuuming, and every one of them
+    /// keys on the rowid of a table that has none — so a bare VACUUM is allowed to leave search
+    /// answering with the wrong rows, and it would not raise anything on the way. Today's SQLite
+    /// happens to keep them, which is the worst version of the problem: it is not a bug that shows
+    /// up while anybody is looking for it.
     /// </remarks>
     public static void Compact(CorpusDbContext context)
     {
@@ -95,7 +111,7 @@ public static class CorpusIntegrity
     }
 
     /// <summary>
-    /// Builds both indexes again from the tables they index. Nothing is lost by it: the text lives
+    /// Builds every index again from the tables they index. Nothing is lost by it: the text lives
     /// in those tables and the index holds no copy of its own.
     /// </summary>
     public static void RebuildSearchIndexes(CorpusDbContext context)
