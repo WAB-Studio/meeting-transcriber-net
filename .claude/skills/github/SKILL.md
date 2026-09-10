@@ -60,7 +60,13 @@ When the work belongs to no claim — dependencies, cleanup, a formatting adjust
 **Done when:** <what has to be true, and how you know>
 ```
 
-- **Only the `curate` skill opens an issue.** Every other agent writes a proposal in
+- **An issue is opened for a feature and for nothing else.** A feature is something the product
+  cannot do yet and a person would ask for by name. Everything else that is real — a defect, a
+  probe, a guard, a cleanup, a comment that lies, a rename — is written into `private/owed.md` and
+  built by the next planning pass. It never becomes an issue, however small, however certain,
+  however long it has been true. A board of small defects is what stops anybody seeing what to
+  build next, and that cost is paid every day by everybody reading it.
+- **Only the `curate` skill opens one.** Every other agent writes a proposal in
   `private/proposed-issues.md` — English, and the body an issue would carry — and the `curate`
   skill is what decides those, at the close of a day. This is the whole of it: not a smaller
   issue, not a draft, not a card somebody tidies later.
@@ -91,7 +97,7 @@ by the diff that will come out: the `feat:`/`fix:` prefix belongs to the branch 
 
 | Label                               | When                                                      |
 | ----------------------------------- | --------------------------------------------------------- |
-| `enhancement` `bug` `documentation` | Type — exactly one                                        |
+| `enhancement` `bug` `documentation` | Type — exactly one. A new issue is a feature, so it is `enhancement`; the other two are on cards opened before this rule |
 | `F0` … `F8`                         | The ISA feature it belongs to — exactly one               |
 | `question`                          | Names a decision the user has not made. Out of the pool   |
 | `grilled`                           | They made it. Only they set it, and only on such a card   |
@@ -105,6 +111,11 @@ an issue with no claim takes the feature its work lands in.
 explaining the close matters more than the label.
 
 ## What is buildable
+
+**The pool is not the whole of the work.** The board carries features. What the next planning pass
+also builds is `private/owed.md`, which is every defect anybody has found and every repair anybody
+owes, and the planner reads it before it plans anything. Work being absent from the board says
+nothing about whether it is being built.
 
 **Most work needs no permission.** An issue that is defined is in the pool: a card that settles
 nothing structural — no contract, no schema, no name on disk, nothing a person using the app would
