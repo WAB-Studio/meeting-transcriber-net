@@ -175,7 +175,7 @@ dependency, a claim already closed — and move it once they give the word.
 
 **A card where they did not settle every fork does not move.** It stays in `Backlog`, keeps
 `question`, and its body says what is still open. Half-defined in `Ready` is worse than undefined in
-`Backlog`: the picker would hand it to a worker who stops on the same fork.
+`Backlog`: it would reach a worker who stops on the same fork.
 
 ## 7 · How many
 

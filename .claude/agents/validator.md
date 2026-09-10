@@ -19,7 +19,8 @@ You run once over the batch.
 - `base_sha` — the commit every plan was written against. Read the tree there, and never resolve
   `origin/main` for yourself.
 
-`<batch_dir>/split.md` says which worker builds which cards and what paths each owns. A path two
+`<batch_dir>/split.md` says which worker builds what and what paths each owns — cards, parts of
+cards and `private/owed.md` entries. A path a share owns for an owed entry is a path like any other. A path two
 shares both own, or a path a plan touches that no share owns, is a collision: the workers run in
 parallel and neither will see the other.
 

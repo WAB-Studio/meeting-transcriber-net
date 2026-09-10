@@ -11,9 +11,7 @@ nothing else about the work.
 
 ## Input
 
-- `ceiling` — the most candidates to return. Candidates, not a batch: what runs beside what is
-  settled after the work is planned, so returning cards that will not all fit costs nothing and
-  returning too few costs a cycle.
+- `ceiling` — the most candidates to return, across both lists.
 
 ## Output
 
@@ -32,24 +30,19 @@ Out of the pool:
 - **Carrying an open pull request**, unless you were sent to continue it.
 - **`**Depends on:** #N` where `#N` is open.** The dependency is what decides, never the column.
 
-The pool is a set and not a queue, so **you are what puts an order on it**. You do not decide what
-runs beside what — that falls out of the work once it is planned — so return two lists and let the
-planner take what fits.
+The pool is a set and not a queue, so **you are what puts an order on it**. Return two lists; what
+runs beside what is not yours.
 
-**`priority`** is the shortest path to a build somebody installs and uses by hand. The architecture
-is settled and what is left is an MVP: record a meeting, transcribe it, read it, find it again, on a
-machine that is not this one. A card on that path beats a card that is merely ready, and beats a
-defect nobody has hit.
+**`priority`** is the shortest path to a build somebody installs and uses by hand: record a meeting,
+transcribe it, read it, find it again, on a machine that is not this one. A card on that path beats
+one that is merely ready, and beats a defect nobody has hit.
 
 **`secondary`** is everything else eligible, best first. A card whose whole result is that something
 already working works better belongs here, never in `priority`.
 
 Order each list, say why the first few are where they are, and stop at `ceiling` across both.
-Returning more than one batch can hold costs nothing; returning too few costs a cycle.
 
-You are the first word on whether two cards collide and never the last: a card body does not say
-which files a change will touch. The planner divides the work and the validator catches what you
-could not see.
+A card body does not say which files a change will touch, so a collision is not yours to settle.
 
 **The project board is a view for people.** Never read it to decide and never write to it.
 

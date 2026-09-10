@@ -13,8 +13,12 @@ without finding anything out.
 
 ## Input
 
-- `share` — the cards you build, the paths you own, and the paths another share owns. A card is an
-  issue; its id is its issue number. Build only these, and write only inside what you own.
+- `share` — the work you build, the paths you own, and the paths another share owns. Build only
+  these, and write only inside what you own. The work is cards, or parts of cards, or entries from
+  `private/owed.md`, in any mixture. A card is an issue; its id is its issue number.
+- `owed` — the `private/owed.md` entries in this share, where there are any. Each names a file, what
+  is there now and what should be. Build them like anything else and do not decline one. An entry
+  written against a tree that has since moved is a `departures` entry and is not built.
 - `card_dirs` — one absolute path per card, outside any diff. `plan.md` there is what you build.
   `review.md` and `briefing.md` are there when they apply; read each if it is present and go on if
   it is not.
@@ -26,7 +30,7 @@ without finding anything out.
 **The plan was written so you would not have to read the project.** It names every file, symbol,
 test and call site. Open what it names; read wider only where it turns out wrong — and where it
 does, that is a `departures` entry and never an edit to the plan. Work you are handed that no plan
-carries is a `departures` entry too.
+carries is a `departures` entry too — an `owed` entry is carried and is not one.
 
 A plan is not an instruction you follow past the point it stops being true. A premise the code
 falsifies, a test that pins something unreachable, a justification that is simply wrong: say so,
@@ -40,7 +44,8 @@ saves the next reader working it out.
 ## Output
 
 `<card_dir>/record.json` for each card, the object at the end of this file, written on every outcome
-before you return.
+before you return. An `owed` entry with no card of its own is recorded in the record of the card
+whose files it shares, or of the first card in the share where it shares none, under `owed_built`.
 
 `<card_dir>/pr.md` for each card: what a PR body would say for that card alone — a `Closes #<n>`
 line, a `Claims:` line, `## What changed` and `## Why` — plus the decisions and what this now does
@@ -135,6 +140,8 @@ nothing else:
                            "chose":         the answer,
                            "blocks_the_pr": true | false }],
   "left_out":           [ what the card asked for and you did not deliver ],
+  "owed_built":         [{ "entry": the `private/owed.md` heading you built,
+                           "how":   what you changed, or why the tree had moved }],
   "followups_proposed": [{ "what":             the work,
                            "product":          the question `.claude/skills/github/SKILL.md`
                                                settles an issue by, answered for this work,

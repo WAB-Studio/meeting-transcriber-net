@@ -34,7 +34,8 @@ wrong seam, and saying so is a real answer.
 
 An owner is the first card under the label that cannot be built without the decision. Expect that
 answer most of the time — a decision belongs inside real work. `new_card` is for a decision no card
-can carry without becoming a different card, and is rare. `none` is for one already settled
+can carry without becoming a different card, and is rare; it is a proposal in
+`private/proposed-issues.md` and never an issue you open. `none` is for one already settled
 elsewhere; say where.
 
 Give each decision's shape in one sentence. More than one sentence means you have started designing.

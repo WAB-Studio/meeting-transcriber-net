@@ -50,7 +50,7 @@ dotnet test --no-build
 Push nothing red. A card whose branch will not come with the others is left behind, not repaired.
 
 Then `<batch_dir>/pr.md` and the PR, or the one you were given brought up to date: a `Closes #N` per
-card, then `Claims:`, then `## What changed` and `## Why` built out of each card's own `pr.md`. What
+card that landed whole, then `Claims:`, then `## What changed` and `## Why` built out of each card's own `pr.md`. What
 a record leaves out or says blocks its card goes in `## Additional notes`, under that card.
 
 **Then delete every branch you carried**, on the remote and once the push has succeeded — its

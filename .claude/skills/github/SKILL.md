@@ -22,20 +22,20 @@ ship:   branch  →  commits  →  the four, once a push  →  PR  →  CI  → 
 track:  issue   →  ...  →  closed when the thing it describes stopped being true
 ```
 
-1. **A PR does not need an issue.** Never open one so the PR has something to close. An issue is
-   opened when work has to be remembered — nobody is doing it yet, or it waits on a decision. Work
+1. **A PR does not need an issue.** Never open one so the PR has something to close. What decides
+   whether an issue exists at all is under **Issues** below, and it is narrow. Work
    being done right now goes straight to a branch.
 2. **Branch from `main`**: `feat/`, `fix/`, `chore/` or `docs/` + a short slug —
    `feat/live-transcription-socket`, `fix/spool-export-partial`.
 3. **The four commands green before the PR, once a push** — `dotnet restore`, `dotnet format
    --verify-no-changes`, `dotnet build --no-restore -warnaserror`, `dotnet test --no-build`, each on
    its own line. One pass at the end, over the whole diff, before the PR opens and before every
-   update to it. `/adversarial-review` runs over the work of one card, by whoever built it, before
+   update to it. `/adversarial-review` runs over a share's whole diff, by whoever built it, before
    that pass. A PR is never opened red.
    Nobody waits on CI or chases it — that run is read at merge.
-4. **One PR, one batch, one commit per issue.** A PR may close several issues; each carries its own
-   commit, so an audit can attribute a hunk and a revert takes one card. Two issues sharing a commit
-   is the thing that is wrong.
+4. **One PR, one batch, one commit per card per share.** A card one share built whole is one
+   commit; a card divided between two is one commit from each. A revert takes one card's work out of
+   one share. Two cards sharing a commit is the thing that is wrong.
 5. **Merge commit**, always, and the branch goes with it — `--delete-branch`, because the repo does
    not delete it on its own. `main` is the only long-lived branch. There is no `develop`.
 
@@ -74,10 +74,7 @@ When the work belongs to no claim — dependencies, cleanup, a formatting adjust
   file's prose and its gate constants, an agent's or a skill's wording, the board's automation, the
   UI probe, a CI job, a test bench, `CLAUDE.md`'s own budget: none of those is something somebody
   recording a meeting would notice, so none of them is a card. That work rides on the next pull
-  request that touches the file, or it is a comment on the one that surfaced it — and where it is
-  genuinely too big for either, it is **a line on the standing machinery card, #301**, never a card of
-  its own. Twenty-two of them were folded away on 2026-09-03 for having been opened one at a time, each
-  correctly refused by the PR it came out of and each labelled the way product work is labelled.
+  request that touches the file, or it goes into `private/owed.md`. It never becomes a card.
 - **The issue points at the ISA, it does not copy it.** Cite the ID and nothing more; the text lives
   where it can change. If what has to be achieved should be a claim and is not, it gets written in
   `ISA.md` first — through the `isa` skill, never by hand. The ISA never points back: no issue
@@ -139,8 +136,8 @@ That runs over REST, so it answers when the project API does not — which is th
 the board to decide anything.
 
 **The pool is a set, and what orders it is the MVP.** What runs beside what is decided by the files
-the work touches, not by where a card sits, so several cards are taken at once whenever their paths
-do not meet. Which of them go first is the shortest path to a build somebody installs and uses by
+the work touches and by what one worker can hold, not by where a card sits — so a batch is as often
+two cards divided between three workers as it is eight cards. Which of them go first is the shortest path to a build somebody installs and uses by
 hand — record a meeting, transcribe it, read it, find it again. Nothing else invents an order, and
 when the user wants something first they say so.
 
