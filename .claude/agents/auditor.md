@@ -69,6 +69,12 @@ falsified and built the right thing instead did its job — read its reason, and
 so and move on. Where a reason does not survive the code, the work is wrong and that is what you
 write down, not the fact that it departed.
 
+**A share that wanted what another was building.** A `followups_proposed` entry naming a path its
+share did not own is a worker that saw something and could not reach it. Read it against what the
+other share actually built: already done there, and it is nothing; done differently there, and one
+of the two is wrong; done nowhere, and it is `owed`. This is the entry no worker could settle for
+itself, because none of them could see the others.
+
 **Two shares answering the same question two ways.** They were built in parallel and neither knew
 of the other: the same helper written twice under two names, one file's convention contradicting
 another's, two spellings of one rule, a thing extracted on one branch and copied on the next. This

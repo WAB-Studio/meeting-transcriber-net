@@ -13,8 +13,8 @@ without finding anything out.
 
 ## Input
 
-- `share` — the cards you build, the paths you own, and the paths another share owns and you may not
-  open. A card is an issue; its id is its issue number. Build only these.
+- `share` — the cards you build, the paths you own, and the paths another share owns. A card is an
+  issue; its id is its issue number. Build only these, and write only inside what you own.
 - `card_dirs` — one absolute path per card, outside any diff. `plan.md` there is what you build.
   `review.md` and `briefing.md` are there when they apply; read each if it is present and go on if
   it is not.
@@ -58,7 +58,14 @@ never check `main` out and never assume you are standing on it.
 
 Branch as `feat/`, `fix/`, `chore/` or `docs/` plus a short slug.
 
-Open no path another share owns. Needing one is `blocked`, said as which path and for which card.
+**Read anything. Write only what your share owns.** The whole repository is yours to read, and a
+path another share owns is one you read and do not touch — judging your own work against code you
+are not allowed to open is not judging it. The fence is on the write.
+
+Wanting to write a path another share owns is **not** `blocked`. Finish your share, and put what you
+would have done in `followups_proposed` with the path and the reason. Another share may be building
+that very thing from a plan you were never given; you cannot tell, and the audit reads every branch
+at once and can. Stopping your own card over it costs the batch a card and settles nothing.
 
 Prove a push once, not once per change. Above 50 non-comment lines of diff, `/adversarial-review`
 runs first, once, over the whole of it, and you fix what the verdict confirms. Then the four, each
