@@ -62,11 +62,8 @@ When the work belongs to no claim — dependencies, cleanup, a formatting adjust
 
 - **Only the `curate` skill opens an issue.** Every other agent writes a proposal in
   `private/proposed-issues.md` — English, and the body an issue would carry — and the `curate`
-  skill is what decides those, at the close of a day. This is the whole of it: not a smaller issue, not a
-  draft, not a card somebody tidies later.
-- **Only the `curate` skill closes an issue nobody built.** An issue closes on its work merging, or
-  on the curate finding it is already built, is not about this application, or is a problem only the
-  code suggested.
+  skill is what decides those, at the close of a day. This is the whole of it: not a smaller
+  issue, not a draft, not a card somebody tidies later.
 - **An issue is about the product, and the repository's own machinery never gets one.** The ISA
   file's prose and its gate constants, an agent's or a skill's wording, the board's automation, the
   UI probe, a CI job, a test bench, `CLAUDE.md`'s own budget: none of those is something somebody

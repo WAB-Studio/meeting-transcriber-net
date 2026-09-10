@@ -125,9 +125,9 @@ against; the audit floor is still read at the trunk.
        Whether it becomes a card is settled by the `curate` skill at the close, not here.
      - The rest → an `owed` entry, or a line on the standing machinery card the `github` skill names.
 8. **Curate.** At the close of the day, before the handoff, read the `curate` skill and do what it
-   says over `private/proposed-issues.md`. It is yours and not a subagent's: what a proposal is
-   worth turns on what happened today, which you have and nothing spawned cold does. Nothing else
-   opens or closes a card.
+   says over `private/proposed-issues.md`. It is yours and not a subagent's: whether a proposal is
+   real turns on what happened today, which you have and nothing spawned cold does. It opens cards
+   and closes none.
 9. **Leave nothing open.** A PR this day opened is merged this day. One you cannot merge is a
    question you put to the user under §4, named as what is waiting and on whom — never a thing left
    standing for somebody to notice.
@@ -173,7 +173,7 @@ Speak when a batch is picked, when a cycle closes, when a rule fires, and when t
 - **A pick** — the cards, their names, the `why`, before you spawn the next stage.
 - **A cycle closing** — the cards, the PR, the verdict, what happened to it.
 - **A permission denied to an agent** — quote it exactly, naming the tool and what it tried.
-- **The curate** — every card closed and why, and every card opened.
+- **The curate** — every card opened, and everything thrown away with what settled it.
 
 Quote a stage's own words for what it found. Summarise only what you did.
 
