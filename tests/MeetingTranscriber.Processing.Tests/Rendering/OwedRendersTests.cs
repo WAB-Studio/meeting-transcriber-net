@@ -142,9 +142,10 @@ public class OwedRendersTests
 
     /// <summary>
     /// A response that stops early, which the render path reaches through the parser and no list
-    /// of what a render throws had in it. Nothing files a response through the parser — the legacy
-    /// importer copies a <c>deepgram.json</c> and hashes it — and the sweep runs oldest first,
-    /// which is exactly where an imported meeting sits, so the whole corpus parks behind this one.
+    /// of what a render throws had in it. Nothing files a response through the parser — the importer
+    /// that read the Python corpus copied a <c>deepgram.json</c> and hashed it — and the sweep runs
+    /// oldest first, which is exactly where an imported meeting sits, so the whole corpus parks
+    /// behind this one.
     /// </summary>
     [Fact]
     public void A_response_the_parser_cannot_read_does_not_starve_a_newer_meeting()
@@ -316,9 +317,9 @@ public class OwedRendersTests
     /// <remarks>
     /// The two are separate arguments and not one fixture on purpose. Nothing checks that a filed
     /// response can be read or that it agrees with the meeting it is filed against, so a real
-    /// corpus holds pairs that do not: <c>tools/MeetingTranscriber.CorpusImport</c> files a
-    /// <c>deepgram.json</c> on its sha256 and never opens it. A fixture-only helper could not put
-    /// the corpus into the state the sweep actually meets.
+    /// corpus holds pairs that do not: a corpus imported from the Python system holds responses
+    /// filed on their sha256 and never opened. A fixture-only helper could not put the corpus into
+    /// the state the sweep actually meets.
     /// </remarks>
     private static Guid Filed(
         TemporaryCorpus corpus,

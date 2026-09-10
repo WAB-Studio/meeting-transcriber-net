@@ -52,7 +52,7 @@ public class TerminologyTests
 
     /// <summary>
     /// A corpus of speech has the same word at the start of a sentence and in the middle of one, so
-    /// the mode that ignores case is the one the legacy corpus imports under.
+    /// the mode that ignores case is the one the Python corpus's own corrections were written under.
     /// </summary>
     [Fact]
     public void Case_is_the_correction_s_to_decide()

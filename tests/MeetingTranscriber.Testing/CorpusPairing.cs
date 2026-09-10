@@ -9,10 +9,11 @@ namespace MeetingTranscriber.Testing;
 /// pointing at the same place.
 /// </summary>
 /// <remarks>
-/// It lives here rather than in a suite because the assembly it has to hold over is not the one
-/// any single suite can reach. <c>src/</c> may not reference <c>tools/</c>, so the CLI's suite
-/// cannot see the importer — which is exactly where the live mismatch was — and the importer's
-/// suite cannot see the CLI. Each asserts it over what it can reach, and the rule is written once.
+/// It lives here rather than in a suite because the rule is not one assembly's. It was written when
+/// the live mismatch sat in the Python corpus importer, which <c>src/</c> may not reference and the
+/// CLI's suite therefore could not see; that tool is gone, and what is left is one rule every suite
+/// that can reach a corpus asserts over what it can reach — written once, so the second suite to
+/// need it copies nothing.
 /// </remarks>
 public static class CorpusPairing
 {

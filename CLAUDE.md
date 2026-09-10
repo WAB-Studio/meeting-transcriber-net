@@ -75,8 +75,8 @@ something here has stopped earning its place, and the fix is to move a section o
 ## Nothing has shipped yet
 
 Nothing has shipped — no installed build, no corpus anybody keeps — so nothing carries old data
-forward: no compatibility path, no fallback, no version check. The legacy Python corpus included,
-which a tool reads and never migrates. `docs/migrations.md` says when this stops being true.
+forward: no compatibility path, no fallback, no version check. `docs/migrations.md` says when this
+stops being true.
 
 ## Build and test
 
@@ -167,8 +167,6 @@ recorded and artifacts already paid for. `.claude/audit-floor.md` derives the re
   on. `tests/fixtures/deepgram/README.md` says how.
 - `deepgram.json` is a paid artifact: never overwritten, and corrections are never written into
   it. Re-transcribing creates a new version and needs explicit cost approval.
-- The legacy importer never writes to the Python corpus, is repeatable, and names what it cannot
-  place rather than dropping it. It is a tool, not a feature: nothing in `src/` may depend on it.
 - The corpus never lives in the MSIX package data folder — uninstalling wipes it, and the corpus
   holds artifacts that cannot be obtained again.
 - Claude Code is an optional dependency. Nothing about recording, transcription, rendering,

@@ -37,15 +37,14 @@
     <Project Path="tests/MeetingTranscriber.Presentation.Tests/MeetingTranscriber.Presentation.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Processing.Tests/MeetingTranscriber.Processing.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Recording.Tests/MeetingTranscriber.Recording.Tests.csproj" />
-    <Project Path="tests/MeetingTranscriber.CorpusImport.Tests/MeetingTranscriber.CorpusImport.Tests.csproj" />
-    <!-- Reads ISA.md, references no src project: the claims surface is a repo document, not a
-         layer, so its gate does not belong under any one of them. -->
+    <!-- Reads ISA.md and the source text under tests/, references no project at all: what it holds
+         are rules about the repository rather than about a layer, so its gate belongs under none of
+         them and can cover suites no reference from here could reach. -->
     <Project Path="tests/MeetingTranscriber.Isa.Tests/MeetingTranscriber.Isa.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <!-- Run by hand, in the solution so the build and the formatter still see it. -->
     <Project Path="tools/MeetingTranscriber.CorpusFixtures/MeetingTranscriber.CorpusFixtures.csproj" />
-    <Project Path="tools/MeetingTranscriber.CorpusImport/MeetingTranscriber.CorpusImport.csproj" />
     <!-- Starts the application and presses what is on it. It needs a desktop somebody is logged
          into, so it is the one project here that is only ever run by hand. -->
     <Project Path="tools/MeetingTranscriber.UiProbe/MeetingTranscriber.UiProbe.csproj" />

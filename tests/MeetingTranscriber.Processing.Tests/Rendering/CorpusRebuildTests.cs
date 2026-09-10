@@ -232,9 +232,9 @@ public class CorpusRebuildTests
     /// <remarks>
     /// One before and one after, because both halves are the point: the meetings already rebuilt
     /// have to survive the commit, and the meetings behind it have to be reached at all. Nothing
-    /// files a response through the parser — the legacy importer copies a <c>deepgram.json</c> and
-    /// hashes it — and imported meetings are the oldest in a corpus, so this sits where a rebuild
-    /// meets it first.
+    /// files a response through the parser — the importer that read the Python corpus copied a
+    /// <c>deepgram.json</c> and hashed it — and the meetings it wrote are the oldest in a corpus, so
+    /// this sits where a rebuild meets it first.
     /// </remarks>
     [Fact]
     public void A_response_the_parser_cannot_read_costs_that_meeting_and_neither_side_of_it()
@@ -864,8 +864,8 @@ public class CorpusRebuildTests
     /// <remarks>
     /// The two are separate arguments and not one fixture on purpose. Nothing checks that a filed
     /// response can be read, or that it agrees with the meeting it is filed against, so a real
-    /// corpus holds pairs that do not: <c>tools/MeetingTranscriber.CorpusImport</c> copies a
-    /// <c>deepgram.json</c> and hashes it, and reads only its metadata on the way past. A
+    /// corpus holds pairs that do not: a corpus imported from the Python system holds responses
+    /// copied and hashed without ever being parsed, read for their metadata on the way past. A
     /// fixture-only helper could not put the corpus into the state a rebuild actually meets.
     /// </remarks>
     private static Guid Filed(

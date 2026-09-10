@@ -13,7 +13,6 @@ src/MeetingTranscriber.Presentation/      what the application says, and what la
 src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
 src/MeetingTranscriber.Recording/         a meeting recorded into a corpus, and what a launch owes one: where the sides meet
 tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
-tools/MeetingTranscriber.CorpusImport/    reads a Python corpus in, then gets deleted
 tools/MeetingTranscriber.UiProbe/         starts the application, reads its window, presses what is on it and
                                           kills it — as a script, and as an MCP server an agent drives a turn
                                           at a time. It drives a corpus of its own and records real
@@ -22,14 +21,16 @@ tests/MeetingTranscriber.Testing/         what a test opens: corpus, SQL, fixtur
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```
 
-Domain, Audio, Infrastructure, Processing, Presentation, Recording and CorpusImport each have their
-tests under `tests/<project>.Tests/`. What `Audio.Tests` can hold is bounded by there being no device on a
-build agent: the rules — which endpoint a typed name means, what a block of bytes is worth on a
-meter — are tested there, and that two streams really open at once is a probe somebody runs with
-`capture`, recorded in the ISA like a paid one. What touches a file in there is the spool and the
-recording made out of it, and both have to: what the first claims is the shape of a file on disk
-after a write was cut, and what the second claims is that the bytes read back off the disk are the
-recording that was made — neither of which is something a stream in memory can be.
+Every project under `src/` has its tests under `tests/<project>.Tests/`, and `Isa.Tests` is the one
+suite with no project behind it: it reads `ISA.md` and this tree. `Testing` is the other directory
+under `tests/` with nothing behind it and is no suite at all — it is what a suite opens. What
+`Audio.Tests` can hold is bounded by there being no device on a build agent: the rules — which
+endpoint a typed name means, what a block of bytes is worth on a meter — are tested there, and that
+two streams really open at once is a probe somebody runs with `capture`, recorded in the ISA like a
+paid one. What touches a file in there is the spool and the recording made out of it, and both have
+to: what the first claims is the shape of a file on disk after a write was cut, and what the second
+claims is that the bytes read back off the disk are the recording that was made — neither of which
+is something a stream in memory can be.
 
 `SharedTimeline` is the exception that boundary was drawn around. It takes packets rather than
 opening streams, so two hours of a clock running fast is arithmetic in `Audio.Tests` instead of a
@@ -220,17 +221,18 @@ and that is deliberate: a duration fixed when the application starts cannot be z
 asked for no animation. `Movement` decides it, `ScreenMotion` applies it. `docs/design/README.md` is
 what to open before touching an artboard.
 
-`tools/` is run by hand and is not part of the product. Nothing under `src/` may reference it or
-know the Python system existed, so deleting the importer is deleting two folders rather than
-untangling the application — its README says what that deletion is. The UI probe is in here for the
-same reason and a second one: it needs an interactive desktop, so no build agent can run it and
-nothing under `tests/` may come to depend on it. It references one project,
-`MeetingTranscriber.Infrastructure`, for two types: `CorpusLocation`, which is where the application
-is told its corpus is, and `CorpusDatabase`, which is what makes one. The probe drives a corpus of
-its own by moving that setting and putting it back, which is the same act as a person moving their
-corpus and adds nothing to the product. What it still never references is `MeetingTranscriber.App` —
-touching a type from that assembly would fire the Windows App SDK module initializer in the probe's
-own process — so it reaches the application only the way anybody else does, through the shell.
+`tools/` is run by hand and is not part of the product. Nothing under `src/` may reference it, which
+is the rule that made deleting the Python corpus importer two folders and two solution lines rather
+than untangling the application, on the day the last old corpus had been imported and it became dead
+code. The UI probe is in here for the same reason and a second one: it needs an interactive desktop,
+so no build agent can run it and nothing under `tests/` may come to depend on it. It references one
+project, `MeetingTranscriber.Infrastructure`, for two types: `CorpusLocation`, which is where the
+application is told its corpus is, and `CorpusDatabase`, which is what makes one. The probe drives a
+corpus of its own by moving that setting and putting it back, which is the same act as a person
+moving their corpus and adds nothing to the product. What it still never references is
+`MeetingTranscriber.App` — touching a type from that assembly would fire the Windows App SDK module
+initializer in the probe's own process — so it reaches the application only the way anybody else
+does, through the shell.
 
 The project split in `arquitectura.md` §3 is the destination, not the scaffolding: a project
 appears when there is code to put in it, and one the destination never named appears when the code

@@ -8,10 +8,13 @@
   </PropertyGroup>
 
   <!-- No ProjectReference on purpose: this reads a document at the repo root, and the clone that
-       document sits in. The day it needs one of the src projects to make a point, the point has
-       moved. The clone is not a second product dependency but the price of check 15, which asks
-       what ISA.md said before this change — `IsaHistory` is where that is argued, and the cost is
-       that `dotnet test` here wants git on PATH and history behind `origin/main`. -->
+       document sits in — which since `NothingUnderTestReachesTheNetworkTests` means the source text
+       of every other test project as well, read off disk and never through an assembly. That is why
+       the rule it holds can cover suites no reference from here could reach, and it is the whole of
+       what this project may grow towards: the day it needs one of the src projects to make a point,
+       the point has moved. The clone is not a second product dependency but the price of check 15,
+       which asks what ISA.md said before this change — `IsaHistory` is where that is argued, and the
+       cost is that `dotnet test` here wants git on PATH and history behind `origin/main`. -->
 
 
   <ItemGroup>

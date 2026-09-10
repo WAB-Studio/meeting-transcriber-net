@@ -13,8 +13,7 @@ namespace MeetingTranscriber.Cli.Tests;
 /// <remarks>
 /// The suite that walks the whole product is where this lives, because the rule is about every
 /// layer at once: the CLI reaches Processing, Infrastructure and Domain, so a signature added in
-/// any of them is in reach here. The importer is the one assembly it cannot see —
-/// <c>src/</c> may not reference <c>tools/</c> — and its own suite holds the same rule over it.
+/// any of them is in reach here.
 /// </remarks>
 public class CorpusIsOneThingTests
 {

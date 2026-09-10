@@ -36,7 +36,6 @@ in a hurry later, mid-task.
 | MVVM | `CommunityToolkit.Mvvm` |
 | DI, hosting and logging | `Microsoft.Extensions.*` |
 | Tests | xUnit v3 + Shouldly |
-| Reading the legacy Python corpus | `YamlDotNet`, in the import tool only |
 
 A package outside this table is a decision, not a detail: it gets added here with the area it
 serves, or it does not get referenced.
