@@ -143,6 +143,13 @@ public static class Cli
             "ask the corpus, in the index's own query syntax",
             MeetingCommands.Search),
         new(
+            "deepgram-live",
+            "deepgram-live --audio <directory> --ceiling-minutes <n> --out <directory>"
+            + " [--language <code>]",
+            "send known audio to the real Deepgram, under a ceiling somebody typed back, and check"
+            + " what comes back against the contract rather than against words",
+            DeepgramCommands.Live),
+        new(
             "key",
             "key [--set | --forget]",
             "whether this machine holds a Deepgram key, and putting one there or taking it away",
@@ -217,7 +224,8 @@ public static class Cli
 
     /// <summary>
     /// The failures that are answers rather than defects: a corpus that is not there or not sound,
-    /// a response that cannot be read, a meeting that cannot be rendered, a query the index
+    /// a response that cannot be read, a call the provider refused or failed, a meeting that
+    /// cannot be rendered, a query the index
     /// refuses, a machine with no microphone to give, a disk that will not give the file up, a
     /// recording that names a meeting this corpus does not have, a machine with no Deepgram key on
     /// it. Anything else is a bug and comes out as one.
@@ -242,6 +250,7 @@ public static class Cli
         or IntakeException
         or RenderException
         or DeepgramResponseException
+        or DeepgramCallException
         or DeepgramKeyException
         or AudioContractException
         or ArtifactWriteException

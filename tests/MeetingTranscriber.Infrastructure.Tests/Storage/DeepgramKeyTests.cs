@@ -189,13 +189,15 @@ public class DeepgramKeyTests : IDisposable
         Naming(@"\bDeepgramKey\b(?!Exception)")
             .ShouldBe(
                 [
+                    Path.Combine("MeetingTranscriber.Cli", "DeepgramCommands.cs"),
                     Path.Combine("MeetingTranscriber.Cli", "KeyCommands.cs"),
                     Path.Combine("MeetingTranscriber.Infrastructure", "Storage", "DeepgramKey.cs"),
                 ],
                 "a Deepgram key is read by the thing about to spend money with it and by nothing "
-                + "else, so a third file naming this type is a place the key can be written down. "
+                + "else, so a fourth file naming this type is a place the key can be written down. "
                 + "The answer is to add the caller here on purpose, saying what it does with the "
-                + "key, and never to widen the rule.");
+                + "key — DeepgramCommands is on it because it is the one thing that spends with a "
+                + "key — and never to widen the rule.");
 
     /// <summary>
     /// Which files under <c>src/</c> match <paramref name="pattern"/>, as paths from the project

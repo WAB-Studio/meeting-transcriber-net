@@ -23,7 +23,12 @@ public static class MeetingCommands
     /// What a meeting was spoken in when nobody says. The response does not carry it, and this is
     /// the language every meeting in this product's corpus has been in so far.
     /// </summary>
-    private const string DefaultLanguage = "es";
+    /// <remarks>
+    /// Reachable across this assembly because a third command reads it — <c>deepgram-live</c> asks
+    /// the provider in it — and one place saying what this product's default language is beats a
+    /// third spelling of the same two letters.
+    /// </remarks>
+    internal const string DefaultLanguage = "es";
 
     public static int ImportResponse(Arguments arguments, TextWriter output)
     {
@@ -188,12 +193,28 @@ public static class MeetingCommands
     }
 
     /// <summary>
-    /// Where the hit is, which is the pair a citation anchors on for a turn and nothing at all for
-    /// a summary, because a summary is about the whole meeting.
+    /// What kind of hit this is and where it is. Everything that cites a turn carries that turn's
+    /// position; what is about the whole meeting carries none.
     /// </summary>
-    private static string Anchor(SearchHit hit) => hit.Ordinal is { } ordinal
-        ? $"turn #{ordinal} at {Report.Offset(hit.Start ?? Duration.Zero)}"
-        : WireNames<SearchSource>.Of(hit.Source);
+    /// <remarks>
+    /// A turn says its position and does not say its kind, because <em>turn</em> is what a position
+    /// already means. Everything else that carries one says its kind first: a decision, an action
+    /// and an open question all anchor on the turn they were said in, so branching on the ordinal
+    /// printed all four the same way and left somebody unable to tell a settled decision from
+    /// somebody merely saying the words — which is the distinction the extraction exists to draw.
+    /// </remarks>
+    private static string Anchor(SearchHit hit)
+    {
+        if (hit.Ordinal is not { } ordinal)
+        {
+            return WireNames<SearchSource>.Of(hit.Source);
+        }
+
+        var where = $"turn #{ordinal}, {Report.Offset(hit.Start ?? Duration.Zero)}";
+        return hit.Source is SearchSource.Turn
+            ? where
+            : $"{WireNames<SearchSource>.Of(hit.Source)} at {where}";
+    }
 
     private static void Rendered(TextWriter output, int turns, string transcript, string utterances)
     {

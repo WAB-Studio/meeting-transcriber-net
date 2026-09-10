@@ -29,7 +29,7 @@ public class KeyCommandTests : IDisposable
     /// <summary>The tail of it, which is what a report trying to be helpful would print.</summary>
     private const string ItsTail = "not-a-real-key";
 
-    private readonly DeepgramKey kept = new($"MeetingTranscriber:test:{Guid.NewGuid():n}");
+    private readonly DeepgramKey kept = new(TestVault.ATargetOfItsOwn());
 
     /// <summary>The line as this command's own table entry has it parsed.</summary>
     /// <remarks>
