@@ -153,16 +153,48 @@ public static class DeepgramCommands
 
     /// <summary>Sending it for real, on this machine's key.</summary>
     /// <remarks>
+    /// <para>
     /// The key is read here and not before, so a run nobody confirmed reaches the credential store
     /// not at all. The blocking wait is the shape a synchronous entry point takes: nothing in this
     /// project is <see langword="async"/>, the command table's delegate is not, and nothing here
     /// runs on a UI thread.
+    /// </para>
+    /// <para>
+    /// <b>Ctrl+C is taken rather than left to kill the process, and this is the only place it can
+    /// be.</b> A kill lands mid-write and leaves a <c>.partial</c> nobody named; taking it lets the
+    /// body read stop where it is, the <c>catch</c> run and <see cref="Abandon"/> say what is on
+    /// disk and whether it may have been charged for. The handler takes itself off on the way
+    /// through, so a second Ctrl+C from somebody who means it kills the process as it always did.
+    /// It writes nothing: it runs on a thread of its own while this one may be reporting, and a
+    /// <see cref="TextWriter"/> is not two threads' to share. What was stopped is said by the loop,
+    /// on the thread that was doing it.
+    /// </para>
     /// </remarks>
     private static int WithThisMachinesKey(
-        LiveCheck run, DirectoryInfo into, string language, TextWriter output) =>
-        SendAsync(run, into, language, DeepgramKey.OfThisInstall().Read(), output)
-            .GetAwaiter()
-            .GetResult();
+        LiveCheck run, DirectoryInfo into, string language, TextWriter output)
+    {
+        using var stopping = new CancellationTokenSource();
+
+        void Stop(object? sender, ConsoleCancelEventArgs pressed)
+        {
+            pressed.Cancel = true;
+            Console.CancelKeyPress -= Stop;
+            stopping.Cancel();
+        }
+
+        Console.CancelKeyPress += Stop;
+        try
+        {
+            return SendAsync(
+                    run, into, language, DeepgramKey.OfThisInstall().Read(), output, stopping.Token)
+                .GetAwaiter()
+                .GetResult();
+        }
+        finally
+        {
+            Console.CancelKeyPress -= Stop;
+        }
+    }
 
     /// <summary>
     /// Sends every file of the run, in order, and says what came back of each.
@@ -178,16 +210,23 @@ public static class DeepgramCommands
     /// what the person who typed the number had no evidence of when they typed it.
     /// </para>
     /// <para>
-    /// No <see cref="CancellationToken"/> is passed, and
-    /// <see cref="DeepgramTranscription.SendAsync"/> says what that costs: the client's timeout
-    /// stops covering anything once the response headers arrive, so a provider that answers and
-    /// then goes quiet is bounded by nothing here. What bounds it is the person at the prompt, who
-    /// can press Ctrl+C — and a deadline for the body read would be a number nobody has measured
-    /// standing over a failure nobody has had. The day one is measured is the day it goes here.
+    /// <see cref="DeepgramTranscription.SendAsync"/> says the client's timeout stops covering
+    /// anything once the response headers arrive, so a provider that answers and then goes quiet is
+    /// bounded by <paramref name="stopping"/> and by nothing else. It is bound to Ctrl+C and not to
+    /// a deadline: a deadline for the body read would be a number nobody has measured standing over
+    /// a failure nobody has had, and the day one is measured is the day it goes here. What the
+    /// token buys over killing the process is that the stop lands in a <c>catch</c> rather than in
+    /// the middle of a write, so the fragment on disk is named rather than left for somebody to
+    /// find.
     /// </para>
     /// </remarks>
     private static async Task<int> SendAsync(
-        LiveCheck run, DirectoryInfo into, string language, string key, TextWriter output)
+        LiveCheck run,
+        DirectoryInfo into,
+        string language,
+        string key,
+        TextWriter output,
+        CancellationToken stopping)
     {
         using var http = new HttpClient { Timeout = LongEnoughForAWholeMeeting };
         var transcription = new DeepgramTranscription(http);
@@ -199,6 +238,7 @@ public static class DeepgramCommands
         // to leave out what an earlier run already bought.
         var stamp = LiveCheck.StampOf(Clock.Now());
         var held = true;
+        var stopped = false;
 
         for (var index = 0; index < run.Audio.Count; index++)
         {
@@ -216,8 +256,30 @@ public static class DeepgramCommands
             {
                 await using var stream = partial.Create();
                 bytes = await transcription
-                    .SendAsync(sent.File, new DeepgramRequest(sent.Profile, language), key, stream)
+                    .SendAsync(
+                        sent.File,
+                        new DeepgramRequest(sent.Profile, language),
+                        key,
+                        stream,
+                        stopping)
                     .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+                // Somebody at the prompt stopping the run, which is this command working and not a
+                // defect — so it says what it stopped in the middle of and what it never reached,
+                // and comes back as a refusal rather than as a stack trace. Guarded on the token
+                // because the client's own timeout arrives as the same type and is not this: that
+                // one is a call that went wrong and belongs in the catch below.
+                Abandon(partial, output);
+                Report.Line(
+                    output,
+                    "stopped",
+                    $"{sent.File.Name} — Ctrl+C, part way through the call. Whether it was charged "
+                    + "for is not something this end can tell.");
+                Unsent(output, run.Audio.Skip(index + 1));
+                stopped = true;
+                break;
             }
             catch
             {
@@ -279,7 +341,7 @@ public static class DeepgramCommands
             + "tests/fixtures/deepgram/README.md, and there is no tool that does it to a response "
             + "from here. Nothing happens to these files automatically.");
 
-        return held ? Cli.Ok : Cli.Refused;
+        return held && !stopped ? Cli.Ok : Cli.Refused;
     }
 
     /// <summary>
