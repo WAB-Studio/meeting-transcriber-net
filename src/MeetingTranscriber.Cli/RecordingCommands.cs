@@ -180,7 +180,15 @@ public static class RecordingCommands
                 Report.Line(output, $"{Name(cannot.Channel)} taken out", $"not made: {cannot.Why}");
             }
 
-            return Cli.Ok;
+            foreach (var damaged in taken.WouldNotRead)
+            {
+                Report.Line(
+                    output, $"{Name(damaged.Channel)} taken out", $"not read: {damaged.Why}");
+            }
+
+            // The exit code this command already gave for a damaged source, kept now that the
+            // sources that poured are no longer taken back with it. See `AudioCommands.Recover`.
+            return taken.WouldNotRead.Count == 0 ? Cli.Ok : Cli.Refused;
         }
 
         var recovered = WaitingRecordings.Recover(context, recording, Clock.Now());

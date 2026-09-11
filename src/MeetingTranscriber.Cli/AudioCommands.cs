@@ -318,7 +318,18 @@ public static class AudioCommands
                 Report.Line(output, $"{Name(cannot.Channel)} taken out", $"not made: {cannot.Why}");
             }
 
-            return Cli.Ok;
+            foreach (var damaged in taken.WouldNotRead)
+            {
+                Report.Line(
+                    output, $"{Name(damaged.Channel)} taken out", $"not read: {damaged.Why}");
+            }
+
+            // Refused rather than Ok, and it is the exit code this command already gave: before a
+            // damaged source cost only its own file, the whole export came back as an
+            // `AudioCaptureException` and `Cli` answered `Refused`. Every source that poured now
+            // stays, and a script reading the code still hears that one of them did not — which is
+            // the half of this that must not go quiet while the other half stops losing files.
+            return taken.WouldNotRead.Count == 0 ? Cli.Ok : Cli.Refused;
         }
 
         // One hold over both halves. Making the recording the two sources become and reading each
