@@ -11,11 +11,13 @@ namespace MeetingTranscriber.Cli;
 /// </summary>
 /// <remarks>
 /// A parameter of <see cref="DeepgramCommands.Live(Arguments, TextWriter, Func{string}, Sending)"/>
-/// so that the overload a suite can reach cannot spend: the one implementation that reads this
-/// machine's key and builds a client is private to <see cref="DeepgramCommands"/> and only the
-/// command table binds it. What a test can hand over here is something that does not send, and
-/// writing one that does would mean building an <c>HttpClient</c> under <c>tests/</c>, which is a
-/// deliberate act with a check standing over it rather than a line somebody slips in.
+/// so that the only overload a suite can reach cannot spend: the one implementation that reads this
+/// machine's key and builds a client is private to <see cref="DeepgramCommands"/>, and the overload
+/// that binds it is <see langword="internal"/> — which in this repository means unreachable, there
+/// being no <c>InternalsVisibleTo</c> anywhere. What a test can hand over here is something that
+/// does not send, and writing one that does would mean building an <c>HttpClient</c> under
+/// <c>tests/</c>, which is a deliberate act with a check standing over it rather than a line
+/// somebody slips in.
 /// </remarks>
 public delegate int Sending(LiveCheck run, DirectoryInfo into, string language, TextWriter output);
 
@@ -50,7 +52,14 @@ public static class DeepgramCommands
     private static readonly TimeSpan LongEnoughForAWholeMeeting = TimeSpan.FromMinutes(30);
 
     /// <summary>The command as the table runs it: this prompt's keyboard, and this machine's key.</summary>
-    public static int Live(Arguments arguments, TextWriter output) =>
+    /// <remarks>
+    /// <see langword="internal"/> and not public, which is how this repository keeps something out
+    /// of the test tree — there is no <c>InternalsVisibleTo</c> anywhere, so no suite can name this.
+    /// The four-argument overload beside it is what a suite drives, and it decides everything
+    /// without holding a key or a client. <c>Cli</c>'s command table is in the same assembly, so
+    /// binding this there is unaffected.
+    /// </remarks>
+    internal static int Live(Arguments arguments, TextWriter output) =>
         Live(arguments, output, FromAPersonAtThisPrompt, WithThisMachinesKey);
 
     /// <summary>
@@ -62,8 +71,9 @@ public static class DeepgramCommands
     /// one and answers nothing under a host that redirected it, so the card's promise would rest on
     /// which of those <c>dotnet test</c> happened to launch. The sending, because the keyboard on
     /// its own would then be a public seam a suite could type the right number at: with both handed
-    /// in, everything a test can reach decides, and the one thing that spends is private and bound
-    /// only by the command table.
+    /// in, everything a test can reach decides, and the one thing that spends is private, bound
+    /// only by the command table, and reachable only through an <see langword="internal"/> overload
+    /// no suite in this repository can name.
     /// </remarks>
     /// <param name="arguments">What was typed after the command name.</param>
     /// <param name="output">Where the report goes.</param>
