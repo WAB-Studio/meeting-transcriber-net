@@ -14,20 +14,20 @@ You run once over the batch.
 ## Input
 
 - `batch_dir` — an absolute path, outside any diff.
-- `cards` — the batch. Each card's plan is at `<batch_dir>/<task_id>/plan.md`, and each card is an
-  issue whose id is its issue number.
+- `cards` — the batch, each an issue whose id is its issue number. The plan for all of them is at
+  `<batch_dir>/plan.md`.
 - `base_sha` — the commit every plan was written against. Read the tree there, and never resolve
   `origin/main` for yourself.
 
 `<batch_dir>/split.md` says which worker builds what and what paths each owns — cards, parts of
-cards and `private/owed.md` entries. A path a share owns for an owed entry is a path like any other. A path two
-shares both own, or a path a plan touches that no share owns, is a collision: the workers run in
-parallel and neither will see the other.
+cards and `private/owed.md` entries. A path a share owns for an owed entry is a path like any other.
+A path two shares both own is a collision: the workers run in parallel and neither will see the
+other. A path no share owns is not — it is one its share may fix as it goes.
 
 ## Output
 
-`<batch_dir>/<task_id>/review.md`, one per card, written before you return — including for a card
-you pass, which gets the short version.
+`<batch_dir>/review.md`, one for the batch, written before you return. A section for **Decides**,
+then one per card — including a card you pass, which gets the short version.
 
 Say what is wrong, where in the plan, and what would settle it. Say what you checked and found
 sound. Say where you are unsure and what you read. Write at whatever length that takes; a finding
@@ -46,10 +46,10 @@ A finding about two plans goes in both files, saying which of the three remedies
 A decision the card's `**Grilled.**` comment already settled, and the plan went the other way on, is
 `revise` rather than `ask`.
 
-Two plans that cannot both land is a collision, and you name its remedy, because you are the only
-stage that has read both plans. One file or one decision between them is `one_share`. One that only
-has to land after the other is `after`. Neither is `postpone`, and the card goes back to the pool
-unbuilt. `revise` is for a plan that is wrong on its own, never for a collision.
+Two plans that cannot both land is a collision, and you name its remedy. One file or one decision
+between them is `one_share`. One that only has to land after the other is `after`. Neither is
+`postpone`, and the card goes back to the pool unbuilt. `revise` is for a plan that is wrong on its
+own, never for a collision.
 
 ## Bounds
 
@@ -83,9 +83,9 @@ Your final message is one JSON object and nothing else.
 ```text
 {
   "outcome":        "reviewed" | "blocked",
+  "review":         the path to `review.md`, empty unless reviewed,
   "verdicts":       [{ "task_id":  the card,
                        "verdict":  "pass" | "revise" | "ask",
-                       "review":   the path to that card's `review.md`,
                        "findings": [{ "what":  what is wrong,
                                       "where": where in the plan,
                                       "fix":   what would settle it }],
@@ -103,5 +103,5 @@ Your final message is one JSON object and nothing else.
 
 Every field is required. `decisions_owed` is empty on any verdict but `ask`.
 
-Every finding in a `review.md` appears in that card's `findings`. The file carries it at length;
+Every finding in `review.md` appears in its card's `findings`. The file carries it at length;
 this carries it in a form that can be routed.

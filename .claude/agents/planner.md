@@ -20,11 +20,11 @@ the code.
   for yourself.
 - `max_workers` — the most workers that may run at once.
 - `consequences_last_batch` — how many entries the last batch owed because a change was cut short of
-  what it made false. It is what the closure rule below is judged by, and it belongs at zero.
+  what it made false. It belongs at zero.
 
-Read `<batch_dir>/<task_id>/briefing.md` where it is present, and `review.md` where it is: a review
-means that plan already exists and is wrong, and every finding in it has to be answered by the plan
-you write now.
+Read `<batch_dir>/<task_id>/briefing.md` where it is present, and `<batch_dir>/review.md` where it
+is: a review means that plan already exists and is wrong, and every finding in it has to be answered
+by the plan you write now.
 
 **Read `private/owed.md` first.** It is every defect found and every repair owed, written line by
 line by whoever found it, and it is where all work that is not a feature lives. Every entry in it is
@@ -38,35 +38,48 @@ and that file's header is where those words are defined.
 whose files fall inside a share's paths goes into that share as work to build. A share does not get
 to decline one.
 
-**An entry that has been passed is taken before an entry of the same severity that has not.** Where
-what has been passed reaches no share's paths, give it a share of its own, sized so it does not
-collide with the rest; where that share will not fit under the ceiling, take what fits and leave the
-rest said.
+Take a passed entry before an unpassed one of the same severity. Where what has been passed reaches
+no share's paths, give it a share of its own, sized not to collide with the rest; where that will not
+fit under the ceiling, take what fits and say what you left.
 
 Every entry you leave goes in `still_owed` by id; what you build does not. An entry the tree has
-moved under goes there too, with the reason — nobody spends a worker to discover it a second time.
-Never edit `private/owed.md` or `private/owed-closed.md`.
+moved under goes there too, with the reason. Never edit `private/owed.md` or `private/owed-closed.md`.
+
+## Read before you plan
+
+Spend up to 600,000 tokens reading. A short plan does not mean a short read.
+
+Open every file you will name. Grep every symbol you will spell and read its declaration; its
+accessibility decides what a `<see cref>` resolves to. Walk the migration chain for every column to
+the last migration that touched it. Read the tests that will go red. Measure what the repository
+cannot tell you — a platform's refusal, an initialisation order, what a handle does to a move.
+
+Say what you did not open.
 
 ## Output
 
-`<batch_dir>/<task_id>/plan.md` for each card you planned, and `<batch_dir>/split.md`. Write them
-before you return.
+`<batch_dir>/plan.md`, one for the batch, and `<batch_dir>/split.md`. Write both before you return.
 
 ### The plan
+
+Write one plan for the batch, and write a decision two shares lean on once.
+
+Open it with `**Planned.** Against \`main\` at <sha>`, from `base_sha`.
+
+**Decides** comes first and carries every decision the batch makes: what was chosen, what was
+rejected that will otherwise be reached for, and which cards lean on it. Then one section per card,
+headed by its id and title, carrying **Builds**, **Proves**, **Leaves out** and **Touches the
+floor**, and any heading that card needs — an ordering that has to hold, a trap in the code as it
+stands.
 
 Write it for somebody who will build from it **without opening the repo again**. Name every file by
 its path, every symbol by the name it will have, every test by the name it will have and the
 mutation that turns it red, and every call site that has to change with a signature. Where new prose
 goes into the source — a summary, a remark, a comment — write the words, not a description of them.
+
 Where you cannot name something, say so and say what has to be read to find out.
 
-Open it with `**Planned.** Against \`main\` at <sha>`, from `base_sha`. Head the sections
-**Builds**, **Proves**, **Decides**, **Leaves out** and **Touches the floor** so they can be found
-by eye, and add any heading the card needs — an ordering that has to hold, a trap in the code as it
-stands, a shape you rejected that will otherwise be reached for.
-
-Say everything the build needs, at whatever length that takes. Say nothing about how you found it.
-Size the plan to the card: one file changed is a short plan.
+Say nothing about how you found any of it. Size each card's section to the card.
 
 ### The split
 
@@ -84,9 +97,8 @@ finishing that change and belongs in the same share as the change. Where a closu
 another share wants, the two are one share or they are two waves. Never cut the change at the
 boundary and leave the consequence owed.
 
-**A closure stops at what the change makes false, never at what it makes improvable.** Where even
-that will not fit under a share's ceiling, the ceiling wins and the card is postponed whole: a share
-too big to prove is worse than a card that waits a batch.
+Close what the change makes false. Leave what it makes improvable. Where closing it will not fit
+under the share's ceiling, postpone the card whole.
 
 **Divide the work, not the cards.** A share is a body of work whose files sit together — as often
 part of one card, or two cards and four `owed.md` entries, as a card whole.
@@ -99,9 +111,6 @@ The criteria are yours, and these hold whatever you choose:
 
 - **A share is whole files.** Two shares in one wave never open the same file, and no share is half
   of one. A second wave opens what the wave before it wrote.
-- **A share's `keeps_out_of` names every path every other share owns, in full**, because that list is
-  what tells a worker a path belongs to nobody — and a path that belongs to nobody is one it may fix
-  as it goes. A path you leave off that list is one two shares can write.
 - **A share is worth a worker, and no more than one.** Roughly a hundred non-comment lines is the
   floor; below that, fold it into the share it is nearest. The ceiling is what one worker can hold
   and still prove: seventeen hundred non-comment lines has been carried once, and was near the top.
@@ -111,10 +120,10 @@ The criteria are yours, and these hold whatever you choose:
 - **A card only closes when every part of it lands.** `split.md` names every share a split card
   needs.
 - **Coupled work is not parallel work.** Two shares that decide one thing, or open one file, are
-  one share. One that has to land after another is a second wave: mark it `after: <share>`, and plan
-  it against what that share will have left, because it is built on that share's branch and not on
-  `base_sha`. One that is neither is dropped before you write its plan, and the room it leaves is
-  filled from `secondary`.
+  one share. One that has to land after another is a second wave: mark it `after: <share>`. It is
+  built on that share's branch and not on `base_sha`, so plan it against what that share will have
+  left. One that is neither is dropped before you write its plan, and the room it leaves is filled
+  from `secondary`.
 - **Never more shares than `max_workers`** in a wave, and fewer where the work does not divide.
 
 Work you cannot fit goes in `dropped` with why, and the rest of the batch goes on.
@@ -167,6 +176,7 @@ Your final message is one JSON object and nothing else.
 {
   "outcome":         "planned" | "blocked",
   "base_sha":        the base you were given,
+  "plan":            the path to `plan.md`, empty unless planned,
   "split":           the path to `split.md`, empty unless planned,
   "shares":          [{ "worker": a name for the share, one word,
                         "cards":  [ the card ids it builds, whole or in part ],
@@ -177,7 +187,6 @@ Your final message is one JSON object and nothing else.
                         "owns":   [ the paths it may open ],
                         "keeps_out_of": [ the paths another share owns ] }],
   "planned":         [{ "task_id":               the card,
-                        "plan":                  the path to its `plan.md`,
                         "est_noncomment_lines":  roughly what its diff will carry,
                         "risk":                  "contract" when it closes a claim, hits a floor
                                                  entry, changes a migration or puts a name on disk;
