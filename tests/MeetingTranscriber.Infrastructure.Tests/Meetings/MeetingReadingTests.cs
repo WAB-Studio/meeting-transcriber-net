@@ -136,6 +136,41 @@ public class MeetingReadingTests
         left.Things.Count.ShouldBe(3);
     }
 
+    /// <summary>
+    /// The two instants are pulled apart on purpose. Accepting is a person's act and it does not
+    /// happen in the order the runs were made — somebody reads the newer extraction, does not take
+    /// it, and accepts the older one afterwards — so an ordering that read <c>created_at</c> first
+    /// would put on screen the very extraction they looked at and refused. Every other test in this
+    /// suite creates and accepts a run in the same instant, which leaves the first step of that
+    /// ordering unprobed on both readers.
+    /// </summary>
+    [Fact]
+    public void The_run_read_is_the_one_accepted_last_even_where_it_was_created_first()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context, corpus.Root);
+
+        // The older extraction, accepted after the newer one — somebody read both and kept the first.
+        Summarise(
+            context,
+            meeting,
+            accepted: true,
+            at: Recorded,
+            saying: "the older run, accepted later",
+            acceptedAt: UtcTimestamp.From(Recorded.Value.AddHours(2)));
+        Summarise(
+            context,
+            meeting,
+            accepted: true,
+            at: UtcTimestamp.From(Recorded.Value.AddHours(1)),
+            saying: "the newer run, accepted first");
+
+        var left = new MeetingReading(context, Clock).Of(meeting).Screen.Left;
+
+        left.Abstract.ShouldBe("the older run, accepted later");
+    }
+
     [Fact]
     public void A_meeting_that_arrived_without_a_recording_says_so_rather_than_saying_it_is_lost()
     {
@@ -343,12 +378,19 @@ public class MeetingReadingTests
     /// One extraction, with a decision, an action and an open question, each cited to a turn of its
     /// own. The three sit at three different offsets so the order they come back in says something.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="acceptedAt"/> defaults to the moment the run was made, which is what almost
+    /// every caller wants. Handing it in separately is how a run gets accepted at a different moment
+    /// from the one it was created at, which is the only way to tell the first step of the ordering
+    /// from the second.
+    /// </remarks>
     private static Guid Summarise(
         CorpusDbContext context,
         Guid meeting,
         bool accepted,
         UtcTimestamp? at = null,
-        string saying = "what the meeting was about")
+        string saying = "what the meeting was about",
+        UtcTimestamp? acceptedAt = null)
     {
         var when = at ?? Recorded;
         var job = ProcessingJob.Queue(
@@ -366,7 +408,7 @@ public class MeetingReadingTests
             SchemaVersion = "1",
             InputHash = new string('d', 64),
             CreatedAt = when,
-            AcceptedAt = accepted ? when : null,
+            AcceptedAt = accepted ? acceptedAt ?? when : null,
         };
 
         Add(context, run);

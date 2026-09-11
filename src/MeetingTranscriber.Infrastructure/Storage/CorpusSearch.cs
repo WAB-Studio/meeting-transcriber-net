@@ -35,7 +35,10 @@ public enum SearchSource
     /// </summary>
     Node = 4,
 
-    /// <summary>Somebody the meeting names, as having attended it or as what it was about.</summary>
+    /// <summary>
+    /// Somebody the meeting names, as having attended it or as what it was about. Not somebody a
+    /// voice in it was settled onto — that is <see cref="Voice"/>.
+    /// </summary>
     Person = 5,
 
     /// <summary>Something the meeting settled. It anchors on the turn it was said in.</summary>
@@ -46,6 +49,15 @@ public enum SearchSource
 
     /// <summary>Something the meeting raised and did not settle, anchored the same way.</summary>
     Question = 8,
+
+    /// <summary>
+    /// Somebody a voice in this meeting was settled onto, whether a person said so or the recording
+    /// gave it for free. It is not the meeting naming them: a label is a place in the audio, and
+    /// what is on the other end of it is a person the corpus knows spoke here. So a meeting can
+    /// answer to a name it never named — which is the ordinary case, because nothing puts somebody
+    /// on a meeting for having been recognised in it.
+    /// </summary>
+    Voice = 9,
 }
 
 /// <summary>
@@ -62,7 +74,8 @@ public enum SearchSource
 /// The turn's position in the meeting, which with the meeting is what a citation anchors on — so a
 /// hit is enough to quote from without a second lookup. A decision, an action and an open question
 /// carry the turn they cited. Null for everything that is about the whole meeting rather than a
-/// moment in it: a summary, the meeting's own words, a node it is filed under and a person on it.
+/// moment in it: a summary, the meeting's own words, a node it is filed under, a person on it and a
+/// voice heard in it.
 /// </param>
 public sealed record SearchHit(
     Guid MeetingId,
@@ -131,8 +144,10 @@ public static class CorpusSearch
 
     private static readonly string QuestionSource = WireNames<SearchSource>.Of(SearchSource.Question);
 
+    private static readonly string VoiceSource = WireNames<SearchSource>.Of(SearchSource.Voice);
+
     /// <summary>
-    /// Every index, best first. A meeting on its way out does not answer: it is being deleted, and
+    /// Every branch, best first. A meeting on its way out does not answer: it is being deleted, and
     /// offering it is offering something that will not be there when somebody opens it.
     /// </summary>
     /// <remarks>
@@ -140,7 +155,10 @@ public static class CorpusSearch
     /// against the index it was found in — so they rank inside a source and not across sources.
     /// What makes them one answer is taking the best of each source in turn, which is why no source
     /// can own the page and why every source with something to say is on it. What it does not
-    /// promise is that a turn and a summary of equal quality tie.
+    /// promise is that a turn and a summary of equal quality tie. Nine branches over eight indexes:
+    /// the person branch and the voice branch both ask <c>people_fts</c> and answer about different
+    /// ways a person reaches a meeting, so partitioning by source ranks each on its own and the page
+    /// takes the best of both.
     /// </remarks>
     public static IReadOnlyList<SearchHit> Find(CorpusDbContext context, string query, int limit = DefaultLimit)
     {
@@ -152,9 +170,9 @@ public static class CorpusSearch
         {
             return RawSql.Rows(context, Sql, ReadHit, command =>
             {
-                Bind(command, "@query", query);
-                Bind(command, "@limit", limit);
-                Bind(command, "@active", Active);
+                RawSql.Bind(command, "@query", query);
+                RawSql.Bind(command, "@limit", limit);
+                RawSql.Bind(command, "@active", Active);
             });
         }
         catch (SqliteException refused)
@@ -179,19 +197,16 @@ public static class CorpusSearch
         reader.IsDBNull(6) ? null : Duration.FromMilliseconds(reader.GetInt64(6)),
         reader.IsDBNull(7) ? null : Duration.FromMilliseconds(reader.GetInt64(7)));
 
-    private static void Bind(DbCommand command, string name, object value)
-    {
-        var parameter = command.CreateParameter();
-        parameter.ParameterName = name;
-        parameter.Value = value;
-        command.Parameters.Add(parameter);
-    }
-
     /// <summary>
     /// Which extraction a meeting's summary, decisions, actions and open questions come from: the
-    /// last one a person accepted, ties broken the same way <c>MeetingReading.TheRunThatCounts</c>
-    /// breaks them, and a run nobody accepted not read at all.
+    /// last one a person accepted, ties broken out to the run's own id, and a run nobody accepted
+    /// not read at all.
     /// </summary>
+    /// <param name="meeting">
+    /// The SQL naming the meeting: <c>meeting.id</c> where this correlates with a query,
+    /// <c>@meeting</c> where one meeting is being asked about. It is SQL and never a value — the
+    /// only two callers are in this assembly and both hand it a column or a parameter name.
+    /// </param>
     /// <remarks>
     /// <para>
     /// Without it a second extraction puts the same decision in front of somebody twice, said
@@ -201,20 +216,19 @@ public static class CorpusSearch
     /// vouched for under the meeting's own name.
     /// </para>
     /// <para>
-    /// It is the same rule as the screen's and it is spelled twice, in SQL here and in LINQ there.
-    /// A third place both could ask does exist — a view, or a column on <c>meetings</c> naming the
-    /// run — and neither is free: a view has to be mapped keyless to be readable from LINQ, and a
-    /// column is a second copy of a fact the runs already hold, wrong from the moment somebody
-    /// accepts a run and something forgets to update it. Two spellings of one ordering is the
-    /// cheaper of those while there are two readers. The ordering runs out to the id in both, so two
-    /// runs accepted in the same millisecond cannot be broken one way here and the other way there —
-    /// which
+    /// One spelling, asked by both readers. <c>MeetingReading.TheRunThatCounts</c> asks this same
+    /// method about one meeting rather than restating the ordering in LINQ, so the tie a search
+    /// breaks and the tie the meeting's screen breaks cannot come apart — there is no other way to
+    /// break it. The two places both could have asked instead are still refused: a view has to be
+    /// mapped keyless to be readable, and a column on <c>meetings</c> naming the run is a second
+    /// copy of a fact the runs already hold, wrong from the moment somebody accepts a run and
+    /// something forgets to update it. What
     /// <c>CorpusSearchTests.Search_and_the_meeting_screen_break_a_tie_between_two_accepted_runs_the_same_way</c>
-    /// holds both spellings to, over a tie only <c>created_at</c> can break and a tie only the id
-    /// can.
+    /// holds is no longer that two spellings agree but that the one spelling reaches both readers,
+    /// which is still worth running: they reach it by two different paths to the database.
     /// </para>
     /// <para>
-    /// Costed rather than indexed. This is a correlated subquery on four of the eight branches and
+    /// Costed rather than indexed. This is a correlated subquery on four of the nine branches and
     /// <c>extraction_runs</c> carries an index on <c>(meeting_id, created_at)</c>, which the
     /// <c>WHERE</c> already seeks — what an index on <c>(meeting_id, accepted_at)</c> would add is
     /// the ordering and the <c>accepted_at IS NOT NULL</c> filter over the handful of rows one
@@ -227,10 +241,20 @@ public static class CorpusSearch
     /// times the meetings gives it no more of them. What would move it is a meeting with hundreds,
     /// which is a person accepting hundreds of extractions of one conversation.
     /// </para>
+    /// <para>
+    /// A method and not a constant with a hole in it. The hole would have to be filled by
+    /// <c>string.Format</c>, which reads every brace in the SQL as its own — so a future
+    /// <c>json_extract</c> path or <c>printf</c> would throw while a static field was initialising,
+    /// and the first search would fail with something that names neither the query nor this file.
+    /// A method is also what keeps the caller below out of the one trap a field here has: a static
+    /// field built from this and read by <see cref="Sql"/>'s initialiser is null unless it is
+    /// declared textually above it, which compiles clean and turns every search in the application
+    /// into a syntax error.
+    /// </para>
     /// </remarks>
-    private const string TheRunThatCounts = """
+    internal static string TheRunThatCounts(string meeting) => $"""
         (SELECT id FROM extraction_runs
-          WHERE meeting_id = meeting.id AND accepted_at IS NOT NULL
+          WHERE meeting_id = {meeting} AND accepted_at IS NOT NULL
           ORDER BY accepted_at DESC, created_at DESC, id DESC
           LIMIT 1)
         """;
@@ -252,23 +276,50 @@ public static class CorpusSearch
     /// Two different nodes that both match are two index rows with two scores, and it leaves both.
     /// </para>
     /// <para>
-    /// The four branches an extraction produced ask <see cref="TheRunThatCounts"/>. The other four
-    /// do not and must not: a turn, a title, a node and a person are the meeting's, not a model's.
+    /// The four branches an extraction produced ask <see cref="TheRunThatCounts"/>, correlated on
+    /// <c>meeting.id</c>. The other five do not and must not: a turn, a title, a node, a person and
+    /// a voice are the meeting's, not a model's.
+    /// </para>
+    /// <para>
+    /// The voice branch and the person branch are two ways to one meeting and are deliberately two
+    /// sources rather than one. <c>meeting_people</c> is somebody a person put on this meeting;
+    /// <c>speaker_assignments</c> is somebody the corpus knows spoke in it, and nothing puts one on
+    /// the other. A hit says which it was, so an answer arriving because a voice was recognised is
+    /// never read as a meeting that named them — and somebody both named on a meeting and heard in
+    /// it answers twice for that meeting, once as each, which is one row per way of reaching it and
+    /// the same rule the whole of this query is built on. Neither branch is filtered by what settled
+    /// the label: <c>SpeakerAssignmentSource.Channel</c> is the recording giving the user's own
+    /// microphone away for free, and leaving it out would make the one person every meeting has the
+    /// one person nobody can search for.
+    /// </para>
+    /// <para>
+    /// The <c>EXISTS</c> on the voice branch is what makes its sentence true. An assignment hangs
+    /// off a label and nothing deletes one whose label stopped naming any turn, so a meeting
+    /// transcribed again into a different set of labels keeps the old rows — and this is the first
+    /// reader that does not reach the name through the label. <c>MeetingRenderer.Header</c> builds a
+    /// label-to-name map, so a stale row falls out of the transcript silently; without the
+    /// <c>EXISTS</c> it would fall <em>into</em> search instead, and somebody would be told the
+    /// corpus knows this person spoke in a meeting whose transcript never names them, with no
+    /// anchor to check it against. It costs a seek into one meeting's turns per meeting the branch
+    /// was already going to answer with, which is the price of the branch meaning what it says.
     /// </para>
     /// <para>
     /// A hit on a decision, an action or an open question carries the turn it cited — the position
     /// and both offsets — so it is quotable without a second lookup, exactly as a turn hit is. A
-    /// summary carries none, because it is about the whole meeting; a node, a person and the
-    /// meeting's own words carry none for the same reason. Which is also why <c>ordinal</c> is last
+    /// summary carries none, because it is about the whole meeting; a node, a person, a voice and
+    /// the meeting's own words carry none for the same reason. Which is also why <c>ordinal</c> is last
     /// in the ordering and does nothing on half the branches: it breaks ties inside one meeting's
     /// turns, and where there is no position there is nothing left to break them with.
     /// </para>
     /// <para>
-    /// <c>place</c> is what makes eight indexes one answer, and with two it would not have been
-    /// worth writing. <c>bm25</c> weighs a term against the index it was found in, so the number is
-    /// meaningful inside a source and arbitrary across them — and the node and person branches make
-    /// that worse, because one index row fans out to one row per meeting and every one of those
-    /// carries the same score. Ordered flat, an initiative with forty meetings under it answers a
+    /// <c>place</c> is what makes nine branches over eight indexes one answer, and with two it would
+    /// not have been worth writing. <c>bm25</c> weighs a term against the index it was found in, so
+    /// the number is meaningful inside a source and arbitrary across them — and the node, person and
+    /// voice branches make that worse, because one index row fans out to one row per meeting and
+    /// every one of those carries the same score. The voice branch is the sharpest of the three: one
+    /// <c>people_fts</c> row for a name fans out to every meeting that person was ever recognised
+    /// in, at one identical score, and somebody recognised in a hundred meetings is the ordinary
+    /// case rather than a corner of one. Ordered flat, an initiative with forty meetings under it answers a
     /// search for its own name with forty identical rows and evicts every turn where somebody
     /// actually said the word: measured, twenty node rows and no turns at all. Ranking within each
     /// source and then taking the best of each in turn is what stops one source owning the page,
@@ -312,7 +363,7 @@ public static class CorpusSearch
             JOIN meetings AS meeting ON meeting.id = summary.meeting_id
             WHERE summaries_fts MATCH @query
               AND meeting.lifecycle_state = @active
-              AND summary.extraction_run_id = {TheRunThatCounts}
+              AND summary.extraction_run_id = {TheRunThatCounts("meeting.id")}
 
             UNION ALL
 
@@ -370,6 +421,28 @@ public static class CorpusSearch
 
             UNION ALL
 
+            SELECT DISTINCT
+                   meeting.id,
+                   meeting.started_at,
+                   meeting.title,
+                   '{VoiceSource}',
+                   snippet(people_fts, 0, '', '', '…', {SnippetTokens}),
+                   NULL,
+                   NULL,
+                   NULL,
+                   bm25(people_fts)
+            FROM people_fts
+            JOIN people AS somebody ON somebody.rowid = people_fts.rowid
+            JOIN speaker_assignments AS voice ON voice.person_id = somebody.id
+            JOIN meetings AS meeting ON meeting.id = voice.meeting_id
+            WHERE people_fts MATCH @query
+              AND meeting.lifecycle_state = @active
+              AND EXISTS (SELECT 1 FROM utterances AS said
+                           WHERE said.meeting_id = voice.meeting_id
+                             AND said.speaker_label = voice.speaker_label)
+
+            UNION ALL
+
             SELECT meeting.id,
                    meeting.started_at,
                    meeting.title,
@@ -384,7 +457,7 @@ public static class CorpusSearch
             JOIN meetings AS meeting ON meeting.id = settled.meeting_id
             WHERE decisions_fts MATCH @query
               AND meeting.lifecycle_state = @active
-              AND settled.extraction_run_id = {TheRunThatCounts}
+              AND settled.extraction_run_id = {TheRunThatCounts("meeting.id")}
 
             UNION ALL
 
@@ -402,7 +475,7 @@ public static class CorpusSearch
             JOIN meetings AS meeting ON meeting.id = todo.meeting_id
             WHERE action_items_fts MATCH @query
               AND meeting.lifecycle_state = @active
-              AND todo.extraction_run_id = {TheRunThatCounts}
+              AND todo.extraction_run_id = {TheRunThatCounts("meeting.id")}
 
             UNION ALL
 
@@ -420,7 +493,7 @@ public static class CorpusSearch
             JOIN meetings AS meeting ON meeting.id = asked.meeting_id
             WHERE open_questions_fts MATCH @query
               AND meeting.lifecycle_state = @active
-              AND asked.extraction_run_id = {TheRunThatCounts}
+              AND asked.extraction_run_id = {TheRunThatCounts("meeting.id")}
         )
         )
         ORDER BY place, score, started_at DESC, source, ordinal

@@ -65,4 +65,34 @@ internal static class RawSql
             }
         }
     }
+
+    /// <summary>One text parameter on a command.</summary>
+    public static void Bind(DbCommand command, string name, string value) => Add(command, name, value);
+
+    /// <summary>One integer parameter on a command.</summary>
+    public static void Bind(DbCommand command, string name, int value) => Add(command, name, value);
+
+    /// <summary>One identity parameter on a command, written the way every id column stores one.</summary>
+    public static void Bind(DbCommand command, string name, Guid value) => Add(command, name, value);
+
+    /// <summary>
+    /// One parameter on a command, because what the caller has is a <see cref="DbCommand"/> and
+    /// every raw read here binds rather than interpolates.
+    /// </summary>
+    /// <remarks>
+    /// Private, with a typed overload per thing a caller actually binds, so that a
+    /// <see cref="DateTime"/> cannot be handed to it. The provider would write one as
+    /// <c>yyyy-MM-dd HH:mm:ss.FFFFFFF</c> while every instant in the corpus is stored as
+    /// <c>UtcTimestamp.ToStorage</c> writes it, and the comparison would match nothing at all
+    /// without failing — which is the one way a raw read here can be quietly wrong. An instant that
+    /// has to be bound gets a fourth overload taking <c>UtcTimestamp</c>, not a widening of this
+    /// one.
+    /// </remarks>
+    private static void Add(DbCommand command, string name, object value)
+    {
+        var parameter = command.CreateParameter();
+        parameter.ParameterName = name;
+        parameter.Value = value;
+        command.Parameters.Add(parameter);
+    }
 }
