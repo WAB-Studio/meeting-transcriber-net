@@ -19,24 +19,33 @@ the code.
 - `base_sha` — the commit to plan against. Read the tree there, and never resolve `origin/main`
   for yourself.
 - `max_workers` — the most workers that may run at once.
+- `consequences_last_batch` — how many entries the last batch owed because a change was cut short of
+  what it made false. It is what the closure rule below is judged by, and it belongs at zero.
 
 Read `<batch_dir>/<task_id>/briefing.md` where it is present, and `review.md` where it is: a review
 means that plan already exists and is wrong, and every finding in it has to be answered by the plan
 you write now.
 
 **Read `private/owed.md` first.** It is every defect found and every repair owed, written line by
-line by whoever found it, and it is where all work that is not a feature lives. Take nothing on
-trust: an entry written against a tree that has since moved is said in `decisions` and not built.
+line by whoever found it, and it is where all work that is not a feature lives. Every entry in it is
+open. Take nothing on trust: an entry written against a tree that has since moved is said in
+`decisions` and not built.
+
+Each entry's header line carries its id, its severity, its origin and how many passes have left it,
+and that file's header is where those words are defined.
 
 **An entry belongs to whichever share owns its files, not to the card it came from.** Every entry
 whose files fall inside a share's paths goes into that share as work to build. A share does not get
 to decline one.
 
-**An entry no share's paths reach gets a share of its own the second time you see it.** Write
-`**Passed over:** <yyyy-mm-dd>` on any entry you leave, and when you meet one that already carries
-that line, form a share for it and whatever else has been passed over, sized so it does not collide
-with the rest. Nothing waits a third batch. What you leave for the first time goes in `still_owed`
-with its stamp; what you build does not.
+**An entry that has been passed is taken before an entry of the same severity that has not.** Where
+what has been passed reaches no share's paths, give it a share of its own, sized so it does not
+collide with the rest; where that share will not fit under the ceiling, take what fits and leave the
+rest said.
+
+Every entry you leave goes in `still_owed` by id; what you build does not. An entry the tree has
+moved under goes there too, with the reason — nobody spends a worker to discover it a second time.
+Never edit `private/owed.md` or `private/owed-closed.md`.
 
 ## Output
 
@@ -68,6 +77,17 @@ the next pick finds it.
 **Know what you are filling.** `max_workers` workers run at once, each an `opus` with a million
 tokens of context. Size every share to that, and aim for shares that finish together.
 
+**Compute what a change closes before you give any path to anybody.** A consequence the build
+already knows about — a comment naming a symbol it deletes, a document describing a command it
+changes, a probe its new behaviour turns false, a twin list it forces into line — is part of
+finishing that change and belongs in the same share as the change. Where a closure reaches a file
+another share wants, the two are one share or they are two waves. Never cut the change at the
+boundary and leave the consequence owed.
+
+**A closure stops at what the change makes false, never at what it makes improvable.** Where even
+that will not fit under a share's ceiling, the ceiling wins and the card is postponed whole: a share
+too big to prove is worse than a card that waits a batch.
+
 **Divide the work, not the cards.** A share is a body of work whose files sit together — as often
 part of one card, or two cards and four `owed.md` entries, as a card whole.
 
@@ -77,7 +97,8 @@ paths it owns, and the paths it may not enter.
 
 The criteria are yours, and these hold whatever you choose:
 
-- **A share is whole files.** Two shares never open the same file, and no share is half of one.
+- **A share is whole files.** Two shares in one wave never open the same file, and no share is half
+  of one. A second wave opens what the wave before it wrote.
 - **A share is worth a worker, and no more than one.** Roughly a hundred non-comment lines is the
   floor; below that, fold it into the share it is nearest. The ceiling is what one worker can hold
   and still prove: seventeen hundred non-comment lines has been carried once, and was near the top.
@@ -86,7 +107,12 @@ The criteria are yours, and these hold whatever you choose:
   one name, one convention, it stays whole, whatever that costs in balance.
 - **A card only closes when every part of it lands.** `split.md` names every share a split card
   needs.
-- **Never more shares than `max_workers`**, and fewer where the work does not divide.
+- **Coupled work is not parallel work.** Two shares that decide one thing, or open one file, are
+  one share. One that has to land after another is a second wave: mark it `after: <share>`, and plan
+  it against what that share will have left, because it is built on that share's branch and not on
+  `base_sha`. One that is neither is dropped before you write its plan, and the room it leaves is
+  filled from `secondary`.
+- **Never more shares than `max_workers`** in a wave, and fewer where the work does not divide.
 
 Work you cannot fit goes in `dropped` with why, and the rest of the batch goes on.
 
@@ -143,7 +169,8 @@ Your final message is one JSON object and nothing else.
                         "cards":  [ the card ids it builds, whole or in part ],
                         "part_of": [{ "task_id": a card this share carries part of,
                                       "what":    the part, and which share has the rest }],
-                        "owed":   [ the `private/owed.md` headings it builds ],
+                        "owed":   [ the ids of the `private/owed.md` entries it builds ],
+                        "after":  the share this one is built on top of, empty where there is none,
                         "owns":   [ the paths it may open ],
                         "keeps_out_of": [ the paths another share owns ] }],
   "planned":         [{ "task_id":               the card,
@@ -159,7 +186,8 @@ Your final message is one JSON object and nothing else.
                         "answered":              [ each `review.md` finding, and how ],
                         "decisions":             [{ "what": the fork, "chose": the answer }],
                         "leaves_out":            [ each **Leaves out** line ] }],
-  "still_owed":      [ the `private/owed.md` entries no plan in this batch takes ],
+  "still_owed":      [{ "id":   the entry's id,
+                        "moot": why the tree has moved under it, empty where it stands }],
   "dropped":         [{ "task_id": the card,
                         "outcome": "already_done" | "needs_grill" | "blocked" | "does_not_fit",
                         "why":     what it waits on, or what carried it }],

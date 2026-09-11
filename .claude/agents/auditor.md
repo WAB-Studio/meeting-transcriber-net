@@ -37,8 +37,9 @@ revert takes one card's work out of one share. `split.md` says which shares carr
 one share built whole is one commit, and a card divided between two is one commit from each.
 
 **A card only closes when every part of it landed.** Where `split.md` gives a card to more than one
-share and a share did not build, say so on the PR, do not write `Closes` for that card, and put what
-is missing in `private/owed.md` naming the part that did land. Then the four commands, once, over the whole branch, before you push:
+share and a share did not build, say so on the PR, do not write `Closes` for that card, and return
+what is missing as an `owed` entry naming the part that did land. Then the four commands, once, over
+the whole branch, before you push:
 
 ```
 dotnet restore
@@ -148,8 +149,10 @@ lines as they should be. Somebody who never saw this batch has to be able to bui
 deciding anything. An entry that says a thing is wrong and not what to write instead is not an
 entry.
 
-Append them to `private/owed.md`, under a heading naming the card, newest last. That file is what
-the next planner reads; nothing else carries work between batches.
+Return them in `owed`, each with the severity it is taken at and the origin it was born from.
+`private/owed.md`'s header is where those two words are defined; read it and restate it nowhere. An
+entry this batch's own change made false, and this batch did not fix, is `consequence` whatever else
+it is, and a share boundary is not what decides that.
 
 Every followup answers the question `.claude/skills/github/SKILL.md` settles an issue by — whether
 somebody recording a meeting, running a query or recovering a corpus would notice it — and whether
@@ -170,7 +173,8 @@ commits say, and never edit a source file.
 Never add, delete, reword, split or tombstone an `ISA.md` claim. A claim that is wrong is an entry
 in `reasons` and a proposal in `followups_proposed`.
 
-`private/owed.md` is the one file you append to. Never rewrite what is already in it.
+Read `private/owed.md` by absolute path whenever you need it. Never edit it, and never edit
+`private/owed-closed.md`.
 
 Open no issue. One that should exist is a proposal in `followups_proposed` and nothing else.
 
@@ -243,9 +247,12 @@ Your final message is one JSON object and nothing else.
   "isc_cut_to_fit":       [ an ISC id, what it used to say, and the commit that narrowed it ],
   "owed":                 [{ "task_id":          the card it belongs to,
                              "file":             the path,
+                             "severity":         mvp-blocking | high | normal | low,
+                             "origin":           preexisting | integration | consequence,
                              "as_it_stands":     the lines as they are now,
                              "as_it_should_be":  the lines to write instead,
                              "why":              one sentence, for whoever builds it }],
+  "owed_settled":         [ the id of an open entry this batch made true or moot, and which ],
   "followups_proposed":   [{ "what":             the work,
                              "product":          the question the `github` skill settles an issue
                                                  by, answered for this work,
