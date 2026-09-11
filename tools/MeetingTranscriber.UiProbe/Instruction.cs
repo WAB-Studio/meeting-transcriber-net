@@ -15,13 +15,19 @@ namespace MeetingTranscriber.UiProbe;
 /// costs is loud rather than a script that runs and does nothing.
 /// <para>
 /// Closed on purpose, and small on purpose. Everything a screen is checked for is some
-/// arrangement of these — get in, look, press, fill in, pick from a list — and a verb beyond the
-/// five has to argue that no arrangement of them would have done. Two do, and neither is about a
-/// screen at all: <see cref="Sleep"/>, because a meeting's screen is a function of elapsed real
-/// time and nothing that reads a screen makes ninety seconds pass — <see cref="Wait"/> is bounded
-/// at fifteen seconds and returns on the first frame that matches, which is the opposite of
+/// arrangement of these — get in, look, press, fill in, press a key, pick from a list — and a verb
+/// beyond the six has to argue that no arrangement of them would have done. Two do, and neither is
+/// about a screen at all: <see cref="Sleep"/>, because a meeting's screen is a function of elapsed
+/// real time and nothing that reads a screen makes ninety seconds pass — <see cref="Wait"/> is
+/// bounded at fifteen seconds and returns on the first frame that matches, which is the opposite of
 /// holding one; and <see cref="Kill"/>, because what a crash leaves behind cannot be reached by
 /// asking an application to shut down.
+/// </para>
+/// <para>
+/// <see cref="Key"/> made that argument and won it: <see cref="Type"/> leaves the right text in a
+/// field without a key ever going down, so a control that commits on Enter is one no arrangement of
+/// the other verbs can commit — and a screen built out of those, which is the one a meeting is
+/// filed from, could not be driven at all.
 /// </para>
 /// <para>
 /// <see cref="Sleep"/> is not a way to wait for something to happen and <see cref="Wait"/> is:
@@ -38,6 +44,23 @@ internal enum Verb
 
     /// <summary>Put text in a field.</summary>
     Type,
+
+    /// <summary>
+    /// Send one key to a control, named out of a closed table.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Type"/> is <c>ValuePattern.SetValue</c> and raises no key event, so a control
+    /// that commits on Enter cannot be committed and a screen made of those closes on nothing.
+    /// This is the verb that presses one.
+    /// <para>
+    /// A table of names and never arbitrary text, which is the decision inside it. A verb taking
+    /// any string answers a typo by sending nothing and reporting success — a walk that ran, said
+    /// <em>done</em> and proved nothing, which is the failure this whole tool exists not to have.
+    /// <see cref="Instruction.KeyNamed"/> is the table, and a fourth name is added there on
+    /// purpose, by somebody who wanted it.
+    /// </para>
+    /// </remarks>
+    Key,
 
     /// <summary>Pick a named thing out of a list.</summary>
     Choose,
@@ -71,11 +94,25 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
         [Verb.See] = 1,
         [Verb.Press] = 1,
         [Verb.Type] = 2,
+        [Verb.Key] = 2,
         [Verb.Choose] = 2,
         [Verb.Wait] = 1,
         [Verb.Sleep] = 1,
         [Verb.Kill] = 0,
     };
+
+    /// <summary>
+    /// Every key <c>key</c> sends, by the word written for it, with the virtual-key code Windows
+    /// knows it as. Ordinal and case-insensitive, so <c>Enter</c> and <c>enter</c> are one name and
+    /// nothing else is.
+    /// </summary>
+    private static readonly Dictionary<string, ushort> Keys =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["enter"] = 0x0D,
+            ["escape"] = 0x1B,
+            ["tab"] = 0x09,
+        };
 
     /// <summary>
     /// The longest one <c>sleep</c> may be. A probe that holds a screen is watching a meeting run,
@@ -119,6 +156,11 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
                 _ = Named(words[at + 1]);
             }
 
+            if (verb is Verb.Key)
+            {
+                _ = KeyNamed(words[at + 2]);
+            }
+
             if (verb is Verb.Kill && at + 1 < words.Count)
             {
                 throw new ProbeFailed(
@@ -155,6 +197,36 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
             : throw new ProbeFailed(
                 $"\"{word}\" is not a number of seconds between 0 and "
                 + $"{LongestSleep.TotalSeconds:0} to hold a screen for.");
+
+    /// <summary>
+    /// Which key a <c>key</c> sends, off the word written after the element — the whole table, and
+    /// the only place a key name is turned into anything.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Closed, for the reason <see cref="Verb.Key"/> gives: a name it does not carry is refused
+    /// naming what it does carry, rather than sent as an unrecognised code and reported as done.
+    /// </para>
+    /// <para>
+    /// Three, and they are the three a screen of this application needs: a field that commits on
+    /// Enter, a dialogue that closes on Escape, and the move between controls that is how a screen
+    /// is walked without a mouse. Anything held down with another key is not here and is not an
+    /// omission — it would be a second parameter and a second thing to spell, and no screen in this
+    /// application asks for one.
+    /// </para>
+    /// <para>
+    /// Here beside <see cref="Seconds"/> and <see cref="Named"/> because it is the same kind of
+    /// thing and is wanted in the same two places: <see cref="Read"/> refuses a bad name before an
+    /// application is started, and <see cref="Session.Key"/> reads the same table at the step, so
+    /// the host that has no script gets the identical refusal.
+    /// </para>
+    /// </remarks>
+    internal static ushort KeyNamed(string word) =>
+        Keys.TryGetValue(word, out var key)
+            ? key
+            : throw new ProbeFailed(
+                $"\"{word}\" is not a key this probe sends. It is one of: "
+                + $"{string.Join(", ", Keys.Keys)}.");
 
     /// <summary>
     /// What a <c>see</c> is called, off the word written after it — the same word twice over, since

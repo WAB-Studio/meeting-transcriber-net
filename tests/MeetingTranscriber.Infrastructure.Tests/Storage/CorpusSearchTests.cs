@@ -216,20 +216,25 @@ public class CorpusSearchTests
             """);
 
         // Every way there is of reaching that meeting: a turn, its own words, its context note,
-        // what it is filed under, what is above that, and who was on it.
+        // what it is filed under, what is above that, and who was on it. No voice — this meeting
+        // has no assignment, and the daily below is where that branch is reached from.
         foreach (var word in new[] { "presupuesto", "trimestral", "margen", "ticket", "Renata" })
         {
             CorpusSearch.Find(context, word).ShouldBeEmpty(word);
         }
 
-        // The other meeting is where the four branches an extraction produced live, and nothing
-        // above reaches those. They filter on the same column and it is the same mistake to make.
+        // The other meeting is where the four branches an extraction produced live, and where its
+        // voices are; nothing above reaches either. They all filter on the same column and it is
+        // the same mistake to make.
         Sql.Execute(context, $"""
             UPDATE meetings SET lifecycle_state = 'deleting', deleted_at = '{Corpus.When}'
             WHERE id = '{written.Daily}';
             """);
 
-        foreach (var word in new[] { "coati", "cierre", "pizarron", "formulario", "cronograma", "Tobias" })
+        foreach (var word in new[]
+            {
+                "coati", "cierre", "pizarron", "formulario", "cronograma", "Tobias", "Ines", "Bruno",
+            })
         {
             CorpusSearch.Find(context, word).ShouldBeEmpty(word);
         }
@@ -337,6 +342,131 @@ public class CorpusSearchTests
     }
 
     /// <summary>
+    /// Somebody the corpus knows spoke in a meeting, which is a different thing from somebody the
+    /// meeting names. Ines is on no <c>meeting_people</c> row at all — only on a voice of the daily —
+    /// so before the voice branch this search answered nothing, and the one person with a name on
+    /// every multichannel meeting was the one person nobody could look for.
+    /// </summary>
+    [Fact]
+    public void A_meeting_is_found_by_the_name_somebody_gave_a_voice()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var written = Corpus.Write(context);
+
+        var hit = CorpusSearch.Find(context, "Ines").ShouldHaveSingleItem();
+
+        hit.Source.ShouldBe(SearchSource.Voice);
+        hit.MeetingId.ShouldBe(written.Daily);
+        hit.Snippet.ShouldContain("Ines");
+
+        // A label is a place in the audio and a row about it is about the whole meeting: there is
+        // no turn under it to cite, and inventing one would be a citation nobody searched for.
+        hit.Ordinal.ShouldBeNull();
+        hit.Start.ShouldBeNull();
+        hit.End.ShouldBeNull();
+    }
+
+    /// <summary>
+    /// And the recording settling the microphone on its own counts the same as a person listening
+    /// back and saying who it was. Filtering to the assignments somebody made by hand would make the
+    /// user of this install the one person their own corpus cannot find.
+    /// </summary>
+    [Fact]
+    public void A_voice_the_recording_settled_is_found_the_same_way_as_one_a_person_did()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var written = Corpus.Write(context);
+
+        var hit = CorpusSearch.Find(context, "Bruno").ShouldHaveSingleItem();
+
+        hit.Source.ShouldBe(SearchSource.Voice);
+        hit.MeetingId.ShouldBe(written.Daily);
+    }
+
+    /// <summary>
+    /// One person can hold two labels of one meeting — both sides of a conversation, or a diarized
+    /// track the provider split — and both rows come from one index row, so every column of them
+    /// including the score is the same and there is nothing to choose between them.
+    /// </summary>
+    [Fact]
+    public void Somebody_heard_on_two_voices_of_one_meeting_is_one_hit()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Corpus.Write(context);
+        Corpus.AlsoHeardOnASecondVoiceOfTheDaily(context);
+
+        CorpusSearch.Find(context, "Ines").ShouldHaveSingleItem();
+    }
+
+    /// <summary>
+    /// An assignment whose label names no turn of the meeting is not somebody the corpus knows spoke
+    /// in it. Nothing deletes such a row — a meeting transcribed again into a different set of labels
+    /// leaves every old one behind — and this is the first reader that does not reach the name
+    /// through the label, so without the check it would be the only place that stale row is ever
+    /// seen: a meeting offered under a name its transcript never says, with no anchor to check.
+    /// </summary>
+    [Fact]
+    public void A_voice_whose_label_names_no_turn_is_not_somebody_the_corpus_knows_spoke()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var written = Corpus.Write(context);
+        Corpus.HeardOnALabelThatNamesNoTurn(context);
+
+        // Renata still answers once, as the budget meeting naming her. What she does not answer as
+        // is a voice, which is the row this just wrote.
+        var hit = CorpusSearch.Find(context, "Renata").ShouldHaveSingleItem();
+
+        hit.Source.ShouldBe(SearchSource.Person);
+        hit.MeetingId.ShouldBe(written.Budget);
+    }
+
+    /// <summary>
+    /// Somebody a meeting names and also heard in it answers twice for that meeting, once as each.
+    /// They are two different facts — one is somebody's assertion that this person belongs on the
+    /// meeting, the other is the corpus recognising their voice in it — and one row per way of
+    /// reaching the meeting is what this query promises everywhere else.
+    /// </summary>
+    [Fact]
+    public void Somebody_a_meeting_names_and_also_heard_in_it_answers_as_both()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var written = Corpus.Write(context);
+        Corpus.AlsoHeardOnAVoiceOfTheDaily(context);
+
+        var found = CorpusSearch.Find(context, "Tobias");
+
+        found.Select(hit => hit.MeetingId).Distinct().ShouldHaveSingleItem().ShouldBe(written.Daily);
+        found.Select(hit => hit.Source).Order()
+            .ShouldBe([SearchSource.Person, SearchSource.Voice]);
+    }
+
+    /// <summary>
+    /// Every source can be answered with. A member of <see cref="SearchSource"/> with no branch
+    /// behind it compiles, formats and passes everything else — it is simply a kind of hit the
+    /// corpus can never produce, and nothing else here would notice.
+    /// </summary>
+    [Fact]
+    public void Every_source_a_hit_can_carry_is_a_source_the_corpus_can_answer_with()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Corpus.Write(context);
+
+        var answered = Corpus.Terms
+            .SelectMany(term => CorpusSearch.Find(context, term, limit: 100))
+            .Select(hit => hit.Source)
+            .Distinct()
+            .Order();
+
+        answered.ShouldBe(Enum.GetValues<SearchSource>().Order());
+    }
+
+    /// <summary>
     /// The three lists an extraction leaves, each found where it was said. They anchor on a turn by
     /// construction, so a hit that threw the anchor away would send somebody back to the corpus for
     /// something the row already holds.
@@ -395,12 +525,19 @@ public class CorpusSearchTests
     }
 
     /// <summary>
-    /// The rule "the last extraction a person accepted" is spelled twice — <c>CorpusSearch</c>'s
-    /// correlated subquery and <c>MeetingReading.TheRunThatCounts</c>'s LINQ — over the same three
-    /// columns, and until this the agreement was argued rather than probed. Two runs accepted in
-    /// the same instant is the only case that can tell the two spellings apart.
+    /// The rule "the last extraction a person accepted" is one spelling —
+    /// <c>CorpusSearch.TheRunThatCounts</c> — reaching two readers, and they reach it by two
+    /// different paths to the database: search correlates it on <c>meeting.id</c> inside a nine-way
+    /// union, the meeting screen fills it with a bound <c>@meeting</c> and runs it alone. Two runs
+    /// accepted in the same instant is what tells those two paths apart.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// It used to hold two spellings level with each other. It now holds something narrower and
+    /// still worth running: that the one spelling answers the same through a correlated column and
+    /// through a bound parameter — which is where a meeting id bound in a form that does not match
+    /// what EF stored would show up, and nothing else would catch that.
+    /// </para>
     /// <para>
     /// Both ties, because the ordering has two steps past <c>accepted_at</c> and each is reached
     /// only by the one shape. The first meeting's two runs were created at different moments and
@@ -411,9 +548,8 @@ public class CorpusSearchTests
     /// <para>
     /// The assertion goes through the text and not through a run id: a <see cref="SearchHit"/>
     /// carries none by design, and the decision branch has already filtered to one run, so what
-    /// says which run answered is the marker its own decision carries. Both readers naming the same
-    /// marker is the two spellings agreeing; both naming the expected one is them agreeing on the
-    /// right run rather than on the same wrong one.
+    /// says which run answered is the marker its own decision carries. Both readers naming the
+    /// expected marker is them landing on the right run rather than on the same wrong one.
     /// </para>
     /// </remarks>
     [Fact]
@@ -527,14 +663,17 @@ public class CorpusSearchTests
 
 /// <summary>
 /// A corpus with something to find in it: two meetings, turns worth ranking against each other, a
-/// summary so the summary index has an answer, a tree and two people so the human layer does, and
-/// three extractions of one meeting so that "the one a person accepted" has something to choose.
+/// summary so the summary index has an answer, a tree and four people so the human layer does — two
+/// the meetings name and two they only heard — and three extractions of one meeting so that "the one
+/// a person accepted" has something to choose.
 /// </summary>
 /// <remarks>
-/// Every word here is in exactly one place on purpose. Eight indexes over one corpus means a word
+/// Every word here is in exactly one place on purpose. Nine branches over one corpus means a word
 /// that appears in a title and in a turn makes two hits out of one search, and the tests that count
-/// hits stop saying which index answered. Adding a word to this fixture means checking it against
-/// <see cref="Terms"/> first.
+/// hits stop saying which branch answered. Adding a word to this fixture means checking it against
+/// <see cref="Terms"/> first. Branches and not indexes, because the person branch and the voice
+/// branch both read <c>people_fts</c> — so a name is in one index and can still answer twice, and
+/// the two helpers that make it do are out of <see cref="Write"/> for that reason.
 /// </remarks>
 internal sealed class Corpus
 {
@@ -565,6 +704,19 @@ internal sealed class Corpus
     /// </summary>
     public const int AnchorOrdinal = 5;
 
+    /// <summary>
+    /// The daily's other two voices, past the block of turns the limit test counts: the second
+    /// speaker the provider found on the loopback, and the microphone.
+    /// </summary>
+    private const int LoopbackOrdinal = 5 + CorpusSearch.DefaultLimit + 5;
+
+    private const int MicrophoneOrdinal = LoopbackOrdinal + 1;
+
+    /// <summary>Two more of the daily's loopback voices, written only by the helpers that need them.</summary>
+    private const int SplitLoopbackOrdinal = MicrophoneOrdinal + 1;
+
+    private const int TobiasOrdinal = SplitLoopbackOrdinal + 1;
+
     public static readonly UtcTimestamp March = UtcTimestamp.Parse(When);
 
     /// <summary>
@@ -576,7 +728,7 @@ internal sealed class Corpus
     [
         "presupuesto", "coati", "aguja", "ranking", "cierre", "comun", "turno7",
         "trimestral", "margen", "orchard", "soporte", "ticket", "renata", "tobias",
-        "pizarron", "formulario", "cronograma",
+        "pizarron", "formulario", "cronograma", "ines", "bruno",
     ];
 
     private const string BudgetId = "11111111-1111-1111-1111-111111111111";
@@ -592,6 +744,8 @@ internal sealed class Corpus
     private const string TicketId = "cccccccc-cccc-cccc-cccc-cccccccccccc";
     private const string RenataId = "dddddddd-dddd-dddd-dddd-dddddddddddd";
     private const string TobiasId = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
+    private const string InesId = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    private const string BrunoId = "ffffffff-ffff-ffff-ffff-fffffffffffe";
     private const string Sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
 
     private Corpus()
@@ -621,6 +775,13 @@ internal sealed class Corpus
             Turn(context, DailyId, ordinal, $"turno{ordinal} comun de coati");
         }
 
+        // The daily is a multichannel recording, so it has more than one voice in it: the loopback
+        // diarized into two, and the microphone. Every label an assignment below hangs off is one a
+        // turn of this meeting actually carries, which is the state the corpus is in after a render
+        // and the only state a voice hit is supposed to answer from.
+        Turn(context, DailyId, LoopbackOrdinal, "turno del otro lado del loopback", "ch0:speaker_1");
+        Turn(context, DailyId, MicrophoneOrdinal, "turno dicho por el microfono", "ch1:speaker_0", channel: 1);
+
         // The tree, and the two meetings hung off it at different depths: the budget meeting on a
         // ticket two levels down, the daily on the initiative one level down. Searching the
         // organization has to reach both.
@@ -636,6 +797,16 @@ internal sealed class Corpus
         Person(context, TobiasId, "Tobias");
         Named(context, BudgetId, RenataId, "attended");
         Named(context, DailyId, TobiasId, "subject");
+
+        // Two the meeting never names. Ines is somebody who listened back and put a name on a
+        // voice; Bruno is the microphone the recording settled on its own, so he is `is_me` — that
+        // is the only person `SettleTheMicrophone` ever writes a `channel` row for, and he is the
+        // user of this install on every multichannel meeting. Neither is on `meeting_people`, which
+        // is the whole of what this pair is here for.
+        Person(context, InesId, "Ines");
+        Person(context, BrunoId, "Bruno", isMe: true);
+        Voice(context, DailyId, "ch0:speaker_1", InesId, "person");
+        Voice(context, DailyId, "ch1:speaker_0", BrunoId, "channel");
 
         // Three extractions of one meeting: the one a person accepted last, one accepted before it,
         // and one nobody accepted. Only the first answers.
@@ -666,6 +837,40 @@ internal sealed class Corpus
     /// </summary>
     public static void AlsoUnderTheInitiative(CorpusDbContext context) =>
         Filed(context, BudgetId, SoporteId, "about");
+
+    /// <summary>
+    /// Ines on a second voice of the same meeting, so one name reaches one meeting two ways at
+    /// once — which is what <c>DISTINCT</c> in the voice branch is for. Out of <see cref="Write"/>
+    /// for the same reason the node one is: the tests that count hits expect one each.
+    /// </summary>
+    /// <remarks>
+    /// Both labels are on channel 0. The provider splitting the loopback into more speakers than
+    /// there are people is the case this is for, and it is the only one available: channel 1 is the
+    /// microphone, and a second label on it is exactly what stops <c>Speakers.Resolve</c> settling
+    /// anything at all.
+    /// </remarks>
+    public static void AlsoHeardOnASecondVoiceOfTheDaily(CorpusDbContext context)
+    {
+        Turn(context, DailyId, SplitLoopbackOrdinal, "otro turno del loopback partido", "ch0:speaker_3");
+        Voice(context, DailyId, "ch0:speaker_3", InesId, "person");
+    }
+
+    /// <summary>
+    /// Tobias, whom the daily already names as its subject, also heard on one of its voices — so one
+    /// name reaches one meeting as two different kinds of fact at once.
+    /// </summary>
+    public static void AlsoHeardOnAVoiceOfTheDaily(CorpusDbContext context)
+    {
+        Turn(context, DailyId, TobiasOrdinal, "y otro turno mas del loopback", "ch0:speaker_2");
+        Voice(context, DailyId, "ch0:speaker_2", TobiasId, "person");
+    }
+
+    /// <summary>
+    /// Renata on a label the budget meeting has no turn for, which is what a corpus is left holding
+    /// when a meeting is transcribed again into a different set of labels. Nothing deletes the row.
+    /// </summary>
+    public static void HeardOnALabelThatNamesNoTurn(CorpusDbContext context) =>
+        Voice(context, BudgetId, "ch1:speaker_0", RenataId, "person");
 
     /// <summary>
     /// Many more meetings filed under the initiative, each saying its name out loud once.
@@ -711,11 +916,22 @@ internal sealed class Corpus
                     'active', '{When}', '{When}');
             """);
 
-    private static void Turn(CorpusDbContext context, string meeting, int ordinal, string text) =>
+    /// <summary>
+    /// One turn. The label carries its channel, so <paramref name="channel"/> moves with it: channel
+    /// 0 is the loopback and channel 1 is the microphone, and a row saying one while its label says
+    /// the other is a corpus nothing could have recorded.
+    /// </summary>
+    private static void Turn(
+        CorpusDbContext context,
+        string meeting,
+        int ordinal,
+        string text,
+        string label = "ch0:speaker_0",
+        int channel = 0) =>
         Sql.Execute(context, $"""
             INSERT INTO utterances (id, meeting_id, ordinal, start_ms, end_ms, channel, speaker_label, text)
-            VALUES ('{meeting}-{ordinal}', '{meeting}', {ordinal}, {ordinal * 1000}, {(ordinal + 1) * 1000}, 0,
-                    'ch0:speaker_0', '{text}');
+            VALUES ('{meeting}-{ordinal}', '{meeting}', {ordinal}, {ordinal * 1000}, {(ordinal + 1) * 1000}, {channel},
+                    '{label}', '{text}');
             """);
 
     /// <summary>
@@ -746,16 +962,38 @@ internal sealed class Corpus
             VALUES ('{meeting}', '{node}', '{role}', '{When}');
             """);
 
-    private static void Person(CorpusDbContext context, string id, string name) =>
+    /// <summary>
+    /// Somebody the corpus knows. <paramref name="isMe"/> is the user of this install, and it is on
+    /// exactly the person a <c>channel</c> assignment can point at: <c>SettleTheMicrophone</c>
+    /// settles the microphone onto <c>Me()</c> and onto nobody else.
+    /// </summary>
+    private static void Person(CorpusDbContext context, string id, string name, bool isMe = false) =>
         Sql.Execute(context, $"""
             INSERT INTO people (id, display_name, is_me, created_at, updated_at)
-            VALUES ('{id}', '{name}', 0, '{When}', '{When}');
+            VALUES ('{id}', '{name}', {(isMe ? 1 : 0)}, '{When}', '{When}');
             """);
 
     private static void Named(CorpusDbContext context, string meeting, string person, string role) =>
         Sql.Execute(context, $"""
             INSERT INTO meeting_people (meeting_id, person_id, role, created_at)
             VALUES ('{meeting}', '{person}', '{role}', '{When}');
+            """);
+
+    /// <summary>
+    /// Somebody the corpus knows spoke in a meeting. <paramref name="assignedBy"/> is the stored
+    /// form of <c>SpeakerAssignmentSource</c> — <c>person</c> where somebody listened back and said
+    /// who it was, <c>channel</c> where the recording gave it for free.
+    /// </summary>
+    /// <remarks>
+    /// The last column is <c>assigned_at</c> and not <c>created_at</c>: <c>ConfirmedAndAssigned</c>
+    /// renamed it, because the value moves whenever somebody overrules what the channel guessed and
+    /// so never said the row's own age.
+    /// </remarks>
+    private static void Voice(
+        CorpusDbContext context, string meeting, string label, string person, string assignedBy) =>
+        Sql.Execute(context, $"""
+            INSERT INTO speaker_assignments (meeting_id, speaker_label, person_id, assigned_by, assigned_at)
+            VALUES ('{meeting}', '{label}', '{person}', '{assignedBy}', '{When}');
             """);
 
     /// <summary>An extraction of the daily, and the job it ran under.</summary>

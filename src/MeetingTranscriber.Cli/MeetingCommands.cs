@@ -30,6 +30,13 @@ public static class MeetingCommands
     /// </remarks>
     internal const string DefaultLanguage = "es";
 
+    /// <summary>Files a paid response, as a meeting of its own or onto one already here.</summary>
+    /// <remarks>
+    /// <b><c>--meeting</c> is what tells the two halves apart.</b> Without it this is a response
+    /// nothing in the corpus knows about and the command has to be told when the meeting was and
+    /// what it was recorded as. With it the response belongs to a meeting this machine recorded,
+    /// every one of those facts is already on the row, and none of them may be given.
+    /// </remarks>
     public static int ImportResponse(Arguments arguments, TextWriter output)
     {
         ArgumentNullException.ThrowIfNull(arguments);
@@ -37,16 +44,24 @@ public static class MeetingCommands
 
         var corpus = Corpus.At(arguments);
         var response = new FileInfo(arguments.Only($"The {MeetingIntake.ResponseFileName} to import"));
-        var details = new MeetingDetails(
-            arguments.Instant("--started-at"),
-            arguments.Profile("--profile"),
-            arguments.Language("--language", DefaultLanguage),
-            arguments.Optional("--title"),
-            arguments.Optional("--context"));
-        arguments.EnsureNothingLeftOver();
+
+        // Which door this is, and every flag that door takes, is settled before the corpus is
+        // opened. A line that will be refused for what was typed on it refuses for that, rather
+        // than for a corpus that happens not to be at the path beside it.
+        Func<CorpusDbContext, ReceivedMeeting> filing;
+        if (arguments.Optional("--meeting") is { } named)
+        {
+            var meeting = OnlyTheMeeting(arguments, named);
+            filing = opened => MeetingIntake.ReceiveInto(opened, meeting, response, Clock.Now());
+        }
+        else
+        {
+            var details = Told(arguments);
+            filing = opened => MeetingIntake.Receive(opened, response, details, Clock.Now());
+        }
 
         using var context = corpus.Write();
-        var received = MeetingIntake.Receive(context, response, details, Clock.Now());
+        var received = filing(context);
 
         Report.Line(
             output,
@@ -59,6 +74,78 @@ public static class MeetingCommands
         PutBack(output, received.PutBack);
         Rendered(output, received.Turns, received.Transcript.RelativePath, received.Utterances.RelativePath);
         return Cli.Ok;
+    }
+
+    /// <summary>
+    /// The flags that say what a meeting is, which only the half that mints one may be given.
+    /// </summary>
+    /// <remarks>
+    /// It sits between the two halves that use it because both have to agree about it and nothing
+    /// makes them: <see cref="Told"/> reads exactly these five, and
+    /// <see cref="OnlyTheMeeting"/> refuses exactly these five. A sixth added to one and not the
+    /// other is silent — the flag would be read on one half and land in
+    /// <c>EnsureNothingLeftOver</c>'s "this command takes no …" on the other, which is the sentence
+    /// this list exists to avoid.
+    /// </remarks>
+    private static readonly string[] WhatAMeetingAlreadySays =
+        ["--context", "--language", "--profile", "--started-at", "--title"];
+
+    /// <summary>What the command line knows about a meeting nothing in the corpus does.</summary>
+    private static MeetingDetails Told(Arguments arguments)
+    {
+        var details = new MeetingDetails(
+            arguments.Instant("--started-at"),
+            arguments.Profile("--profile"),
+            arguments.Language("--language", DefaultLanguage),
+            arguments.Optional("--title"),
+            arguments.Optional("--context"));
+        arguments.EnsureNothingLeftOver();
+        return details;
+    }
+
+    /// <summary>
+    /// The meeting a response is being filed onto, and nothing else off this command line.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every flag the other half takes is refused by name rather than ignored. The meeting already
+    /// says when it was, what it was recorded as, what was expected to be spoken in it and what it
+    /// is called, so a flag here would be a second answer to a question the corpus has already
+    /// settled — and for <c>--profile</c> it would be one that decides whether two channels are the
+    /// meeting's two sources. A flag silently doing nothing is worse than a refusal: somebody would
+    /// go on typing it and go on believing it.
+    /// </para>
+    /// <para>
+    /// It is a <see cref="UsageException"/> and so <c>Cli.Misused</c>, because that is what this is:
+    /// the line was typed wrong, and it was decided from the tokens alone before the corpus was
+    /// opened. <c>Cli.Refused</c> is for the corpus or the input saying no, and reporting a grammar
+    /// error as one would make the same flag answer 1 with a value and 2 without it — so a script
+    /// reading the code could no longer tell "you typed the line wrong" from "the corpus said no".
+    /// It also prints the usage, which is where the alternation these flags belong to is written.
+    /// </para>
+    /// </remarks>
+    private static Guid OnlyTheMeeting(Arguments arguments, string named)
+    {
+        var meeting = Arguments.Meeting(named);
+
+        // Asked for presence and not for a value, so the answer is the same sentence whether or not
+        // somebody typed one after the flag. Read through `Optional` it would not be: a flag with no
+        // value throws "--title takes a value" first, which sends them back to type a value for a
+        // flag that may not be given here at all. Asking marks it read either way, so
+        // `EnsureNothingLeftOver` below does not then answer "this command takes no --title" —
+        // false of the command, and true only of this half of it.
+        var told = WhatAMeetingAlreadySays.Where(arguments.WasGiven).ToArray();
+
+        if (told.Length > 0)
+        {
+            throw new UsageException(
+                $"{string.Join(", ", told)} cannot be given with --meeting. Meeting {meeting} "
+                + "already says when it was, what it was recorded as and what was spoken in it, "
+                + "and a response filed onto it never gets to say otherwise.");
+        }
+
+        arguments.EnsureNothingLeftOver();
+        return meeting;
     }
 
     /// <summary>

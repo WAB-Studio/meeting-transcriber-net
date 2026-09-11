@@ -275,6 +275,18 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     }
 
     /// <summary>
+    /// <see cref="CorpusSearch.TheRunThatCounts"/> asked about one meeting, with the correlation
+    /// replaced by a bound parameter.
+    /// </summary>
+    /// <remarks>
+    /// A <c>SELECT</c> of a subquery with no <c>FROM</c> produces exactly one row whatever the
+    /// corpus holds, so what says no run was accepted is that row carrying <c>NULL</c> and never an
+    /// empty result — which is why the read below ends in <c>Single</c>.
+    /// </remarks>
+    private static readonly string TheAcceptedRunOfThisMeeting =
+        $"SELECT {CorpusSearch.TheRunThatCounts("@meeting")} AS run;";
+
+    /// <summary>
     /// Which extraction the screen reads, or none when no run of this meeting was accepted.
     /// </summary>
     /// <remarks>
@@ -296,15 +308,29 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     /// queries breaking that tie their own way, would put one run's decisions under another run's
     /// model — which is precisely what the line naming who wrote this exists to get right.
     /// </para>
+    /// <para>
+    /// It is <see cref="CorpusSearch.TheRunThatCounts"/> and not a second spelling of it. The rule
+    /// used to be written twice — this in LINQ and that in SQL — and held together by a test
+    /// asserting the two agreed, which is what two readers of one rule need and is not the same as
+    /// there being one rule. It reads through <see cref="RawSql"/> rather than through EF for the
+    /// ordinary reason a raw read does: the ordering is a SQL string and LINQ cannot be handed one.
+    /// The meeting is bound as a parameter and never put into the text.
+    /// </para>
+    /// <para>
+    /// The bind goes through the provider's mapping for a <c>Guid</c> rather than through EF's, and
+    /// the two agree because no <c>Guid</c> in this model carries a conversion. Giving one a
+    /// conversion — a strongly-typed id, or ids stored as BLOB — moves EF and leaves this behind,
+    /// and the symptom is not an error: the parameter matches no row, this answers <c>null</c>, and
+    /// a meeting that has an accepted run renders as one that has none. So a <c>Guid</c> converter
+    /// is a change that has to come here too.
+    /// </para>
     /// </remarks>
-    private Guid? TheRunThatCounts(Guid meetingId) => context.ExtractionRuns
-        .AsNoTracking()
-        .Where(row => row.MeetingId == meetingId && row.AcceptedAt != null)
-        .OrderByDescending(row => row.AcceptedAt)
-        .ThenByDescending(row => row.CreatedAt)
-        .ThenByDescending(row => row.Id)
-        .Select(row => (Guid?)row.Id)
-        .FirstOrDefault();
+    private Guid? TheRunThatCounts(Guid meetingId) => RawSql.Rows(
+            context,
+            TheAcceptedRunOfThisMeeting,
+            reader => reader.IsDBNull(0) ? (Guid?)null : Guid.Parse(reader.GetString(0)),
+            command => RawSql.Bind(command, "@meeting", meetingId))
+        .Single();
 
     /// <summary>
     /// A provider and the model it ran, as the one name a person reads.

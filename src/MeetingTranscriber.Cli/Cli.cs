@@ -1,6 +1,7 @@
 using MeetingTranscriber.Audio;
 
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Deepgram;
@@ -80,12 +81,21 @@ public static class Cli
             DiagnosticCommands.Compact),
         // Two doors, and each says which one it is. `import` on its own was unambiguous for
         // exactly as long as a response was the only thing a meeting could be made out of.
+        //
+        // There are three now, and the third is a flag on the first rather than a command of its
+        // own. The rule above still holds and this is not an exception to it: what made `import`
+        // ambiguous was two different acts — a meeting made out of a response, a meeting made out
+        // of a WAV — sharing one name. Filing a response onto a meeting the corpus recorded is the
+        // same act as filing one that has no meeting yet: the same file goes in, the same
+        // derivatives come out, and the report reads the same. What moves is where the identity
+        // comes from, and a second command for that would be two spellings of one thing.
         new(
             "import-response",
             $"import-response <{MeetingIntake.ResponseFileName}> {Corpus.Option} <directory>"
-            + " --started-at <instant> --profile <multichannel|diarize> [--title <text>]"
-            + " [--context <text>] [--language <code>]",
-            "file a paid response as a meeting and render everything derived from it",
+            + " (--meeting <id> | --started-at <instant> --profile <multichannel|diarize>"
+            + " [--title <text>] [--context <text>] [--language <code>])",
+            "file a paid response — onto the meeting it was recorded from, or as a meeting of its"
+            + " own — and render everything derived from it",
             MeetingCommands.ImportResponse),
         new(
             "import-audio",
@@ -228,7 +238,8 @@ public static class Cli
     /// cannot be rendered, a query the index
     /// refuses, a machine with no microphone to give, a disk that will not give the file up, a
     /// recording that names a meeting this corpus does not have, a machine with no Deepgram key on
-    /// it. Anything else is a bug and comes out as one.
+    /// it, a classification the corpus will not take — a name already used beside it, something
+    /// still pointing at what is being removed. Anything else is a bug and comes out as one.
     /// </summary>
     /// <remarks>
     /// <see cref="DbUpdateException"/> is the same corpus failure as <see cref="SqliteException"/>
@@ -244,6 +255,15 @@ public static class Cli
     /// </remarks>
     private static bool IsRefusal(Exception exception) => exception
         is CommandException
+
+        // No command reaches this one yet — nothing under `Cli` touches `HumanLayer` or the
+        // classification tree, so today it is the only name here that cannot be thrown. It is here
+        // anyway because this list and `ScreenFailures.Reportable` are two spellings of one policy
+        // and `ScreenFailures`' own remarks say why they must not drift: a failure one surface has
+        // learnt to say and the other has not is how the application ends up unable to open.
+        // The screen reached it first; letting the two disagree deliberately would cost more than
+        // the line does.
+        or ClassificationException
         or AudioCaptureException
         or CorpusIntegrityException
         or CorpusSearchException

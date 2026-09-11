@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 156/218
+progress: 151/218
 updated: 2026-09-10
 ---
 
@@ -73,11 +73,11 @@ Board: 0 · Contratos y caracterización
 - [x] ISC-24: Every response the fixture set holds parses into the turns it describes.
 - [x] ISC-25: A fixture carries the provider's real timings, confidences and channel numbers, with every word replaced from a closed vocabulary.
 - [x] ISC-26: Where this system departs from the one it replaces is written down, and each departure is held to.
-- [x] ISC-27: Anti: importing never writes to the old corpus — it comes out exactly as it went in.
-- [x] ISC-28: Anti: what an import cannot place is named, apart from what was left behind on purpose, and never dropped.
-- [x] ISC-29: An imported meeting's derived files are produced here rather than carried over.
-- [x] ISC-30: A speaker somebody resolved in the old corpus arrives on the words that speaker actually said.
-- [x] ISC-31: What the old corpus extracted arrives with the run it came out of, and every decision, action and state projected from it hangs off that run.
+- [ ] ISC-27: [DROPPED 2026-09-10: importing a Python corpus was deleted on 2026-08-26, so there is no old corpus for this to leave untouched and the probe went with the suite.]
+- [ ] ISC-28: [DROPPED 2026-09-10: importing a Python corpus was deleted on 2026-08-26, so nothing places anything and there is nothing left to name or drop.]
+- [ ] ISC-29: [DROPPED 2026-09-10: importing a Python corpus was deleted on 2026-08-26; no meeting arrives carrying derived files, and that a rebuild produces them here is ISC-36's.]
+- [ ] ISC-30: [DROPPED 2026-09-10: importing a Python corpus was deleted on 2026-08-26, so no speaker resolved elsewhere arrives at all.]
+- [ ] ISC-31: [DROPPED 2026-09-10: importing a Python corpus was deleted on 2026-08-26, so nothing extracted elsewhere arrives and there is no run somewhere else for anything to hang off.]
 
 ### F2 · Deterministic core from artifacts
 Why: given a paid response, everything that does not need a microphone works — parse, store,
@@ -602,7 +602,7 @@ Board: 7 · Distribución y backup
 - ISC-13 — `ClassificationStoriesTests` green 2026-08-07
 - ISC-14 — `CorpusNamingTests` green 2026-08-07, which spells out every stored table and column, so a rename that nobody meant fails the suite
 - ISC-15 — `CorpusNamingTests.No_created_at_anywhere_can_be_written_over_a_row_that_exists` and `.Moving_a_created_at_on_a_stored_row_fails_instead_of_being_written` green 2026-08-07, both red with the model rule commented out
-- ISC-16 — `NothingUnderTestReachesTheNetworkTests.Nothing_under_test_names_a_type_that_opens_a_socket`, `.Every_file_that_builds_an_HttpClient_declares_the_handler_behind_it` and `.No_HttpClient_under_test_is_built_with_nothing_behind_it` in `tests/MeetingTranscriber.Isa.Tests` green 2026-09-10, each red that day against its own named mutation: `TcpListener` written into a file under `tests/`, `HttpClient` named in the code of a file declaring no handler, and `FakeDeepgram.Client` built over nothing. Replaces the `git grep` recorded 2026-08-07. Not reached: a name nobody has reached for yet, since the socket half is an inventory of eleven types and not a rule; a client obtained through a factory, without the word; and a process started under test that goes to the network itself, which is how Claude Code quota would be spent
+- ISC-16 — `NothingUnderTestReachesTheNetworkTests.Nothing_under_test_names_a_type_that_opens_a_socket`, `.Every_file_that_builds_an_HttpClient_declares_the_handler_behind_it`, `.No_HttpClient_under_test_is_built_with_nothing_behind_it` and `.Nothing_under_test_starts_a_process_this_rule_has_not_seen` in `tests/MeetingTranscriber.Isa.Tests` green 2026-09-10, each red that day against its own named mutation: `TcpListener` written into a file under `tests/`, `HttpClient` named in the code of a file declaring no handler, `FakeDeepgram.Client` built over nothing, and `Process.Start` named in a file the allowlist does not carry. Not reached: a name nobody has reached for yet, since the socket half is an inventory of eleven types and not a rule; a client obtained through a factory, without the word; and whether an allowed process is really local, which the fourth fact carries as a sentence per file and not as a measurement
 - ISC-17 — `git grep -l` for the five fixture names over `tests/**/*.cs` returned `MeetingTranscriber.Testing/DeepgramFixtures.cs` alone 2026-08-07; the other hit is the tool that builds them, which is not the test tree. `DeepgramFixtureTests.The_inventory_names_exactly_the_responses_that_are_committed` green, red with a fixture dropped from the inventory
 - ISC-18 — `git grep -l "class TemporaryCorpus" -- tests/` returned `MeetingTranscriber.Testing/TemporaryCorpus.cs` alone 2026-08-07
 - ISC-19 — `dotnet build --no-restore -warnaserror` 0 warnings 0 errors 2026-08-14
@@ -613,14 +613,9 @@ Board: 7 · Distribución y backup
 - ISC-24 — `FixtureParsingTests` green 2026-08-07
 - ISC-25 — `DeepgramFixtureTests` green 2026-08-07
 - ISC-26 — `ReferenceBehaviourTests` green 2026-08-07
-- ISC-27 — `CorpusImporterTests.The_corpus_it_reads_comes_out_exactly_as_it_went_in` green 2026-08-07 (suite deleted with the importer)
-- ISC-28 — `CorpusImporterTests.What_is_left_behind_on_purpose_is_not_mixed_with_what_had_nowhere_to_go` green 2026-08-07 (suite deleted with the importer)
-- ISC-29 — `CorpusImporterTests.Importing_again_does_not_duplicate_or_rewrite_the_derivatives` green 2026-08-07 (suite deleted with the importer)
-- ISC-30 — `CorpusImporterTests.A_speaker_somebody_resolved_arrives_under_the_label_the_provider_wrote` green 2026-08-07 (suite deleted with the importer)
-- ISC-31 — `CorpusImporterTests.An_imported_extraction_arrives_with_the_run_it_came_out_of` and `.A_decision_and_an_action_projected_from_it_hang_off_that_run` green 2026-08-07 (suite deleted with the importer)
 - ISC-32 — `DeepgramTranscriptParserTests` green 2026-08-07
 - ISC-33 — `CliWalkthroughTests.A_response_becomes_a_meeting_that_renders_rebuilds_and_is_found_again` green 2026-08-07
-- ISC-34 — `CliWalkthroughTests.The_same_response_imported_twice_is_one_meeting`, `CorpusImporterTests.Importing_the_same_corpus_twice_imports_it_once` and `.Importing_again_does_not_duplicate_or_rewrite_the_derivatives` green 2026-08-07; the folder-name half, `CorpusImporterTests.A_meeting_whose_folder_was_renamed_is_still_the_same_meeting` (suite deleted with the importer) green 2026-08-26; the audio door too, `AudioIntakeTests.The_same_audio_brought_in_twice_is_one_meeting` (both a single track and a pair, compared after the mix down because that is what would land) and `ImportAudioCommandTests.Bringing_the_same_audio_in_twice_is_one_meeting` (`tests/MeetingTranscriber.Recording.Tests`, `tests/MeetingTranscriber.Cli.Tests`) green 2026-08-20
+- ISC-34 — `CliWalkthroughTests.The_same_response_imported_twice_is_one_meeting`, `AudioIntakeTests.The_same_audio_brought_in_twice_is_one_meeting` (both a single track and a pair, compared after the mix down because that is what would land) and `ImportAudioCommandTests.Bringing_the_same_audio_in_twice_is_one_meeting` (`tests/MeetingTranscriber.Cli.Tests`, `tests/MeetingTranscriber.Recording.Tests`) green 2026-09-10. Not reached: under whatever folder name. `CorpusImporterTests.A_meeting_whose_folder_was_renamed_is_still_the_same_meeting` was the probe for that clause and went with the importer on 2026-08-26; every live probe hands the same path over twice, so nothing measures a meeting arriving from a folder called something else
 - ISC-35 — `CorpusRebuildTests.Deleting_every_derived_row_and_projecting_again_leaves_every_other_table_as_it_was` green 2026-08-07, which holds the classifications and the speaker assignments a person edited as well as the rows nothing touched
 - ISC-36 — `CorpusRebuildTests.Rebuilding_produces_the_same_projections_and_the_same_files` and `MeetingRendererTests.Rendering_again_leaves_the_sources_alone_and_produces_the_same_files` green 2026-08-07
 - ISC-37 — `CorpusRebuildTests.A_claim_cannot_cite_a_turn_the_meeting_never_had` green 2026-08-07. That half only: the deleted-out-from-under-it half held for a rebuild that finishes and not for one refused partway, where the turns went and the claims stayed. `.A_meeting_refused_with_cited_turns_costs_that_meeting_and_not_the_run` (`tests/MeetingTranscriber.Processing.Tests`) green 2026-09-02 is what reaches it, red that day against the projection deleting before it knew the new turns would save
@@ -642,7 +637,7 @@ Board: 7 · Distribución y backup
 - ISC-53 — `CommandLineTests` green 2026-08-07: `status` answers for a corpus this build has moved past, and `check` names the file the corpus claims and does not have
 - ISC-54 — `HumanLayerTests.Exactly_one_person_is_the_user_of_this_install` green 2026-08-07
 - ISC-55 — `HumanLayerTests.A_label_the_recording_settled_does_not_overwrite_one_a_person_resolved` green 2026-08-07
-- ISC-56 — `capture` runs of 8, 12 and 24 seconds on this machine 2026-08-13: the two streams opened within 32 ms of each other and their files ended within 60 ms of each other, a difference that did not grow with length (60 ms over 8 s, 10 ms over 24 s), so it is start and stop jitter and not accumulated drift, which is ISC-66's to measure. Both files parse as IEEE float WAVs, 48 kHz 2 ch 32 bit, their data chunk ending exactly at the last byte
+- ISC-56 — `capture` runs of 8, 12 and 24 seconds on this machine 2026-08-13: the two streams opened within 32 ms of each other and their files ended within 60 ms of each other, a difference that did not grow with length (60 ms over 8 s, 10 ms over 24 s), so it is start and stop jitter and not accumulated drift. Both files parse as IEEE float WAVs, 48 kHz 2 ch 32 bit, their data chunk ending exactly at the last byte. Not reached: a packaged run — the microphone was refused to a packaged identity until `Package.appxmanifest` declared it 2026-09-10, and one is still owed
 - ISC-57 — the same runs: `ch0 device` and `ch0 format` named 'Altavoces (High Definition Audio Device)' at 48000 Hz, 2 ch, 32 bit float, and `ch1` its microphone. `StreamFormatTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-13 for the extensible format WASAPI really hands over, which reads as neither integer nor float until it is reduced
 - ISC-58 — `LevelsTests` and `SourceMeterTests` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-13; the same runs metered both sources every second, between −7.5 and −65.6 dBFS. A width no block of which could be metered is refused before a device is opened rather than on its first block, which `LevelsTests.A_format_that_could_never_be_metered_is_refused_before_anything_is_recorded` holds
 - ISC-59 — `AudioDevicesTests` green 2026-08-13, and three runs 2026-08-13: `--microphone "blue yeti"` refused with exit 1 and nothing opened; a channel 1 whose file was already there refused with exit 1 after channel 0 had opened; and a channel 1 whose path could not be claimed at all — a directory standing in its place — refused with exit 1 after channel 0 was already recording, left nothing of channel 0 behind, and let the next attempt succeed once the obstacle was gone

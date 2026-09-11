@@ -61,6 +61,7 @@ internal static class CommandLine
           see <name>          write <name>.tree.txt and <name>.png of the screen
           press <element>     do to it what pressing it does
           type <element> <text>  put text in a field
+          key <element> <key>   send one key to it: enter, escape or tab
           choose <list> <item>  pick a named thing out of a list
           wait <element>      stop until it is on a screen, and make that screen the one the
                               rest of the script is about
@@ -69,7 +70,9 @@ internal static class CommandLine
 
         An element is named by the x:Name the XAML gave it, or by the words on it. A press whose
         effect is about to be photographed needs a wait after it — that is the only thing here
-        that synchronises. For example, opening the application and walking to the meetings:
+        that synchronises. type leaves text in a field without a key going down, so a field that
+        commits on enter takes a key after it. For example, opening the application and walking to
+        the meetings:
 
           --out probe see recorder press MeetingsButton wait RefreshButton see meetings
 
@@ -210,6 +213,9 @@ internal static class CommandLine
                 break;
             case Verb.Type:
                 session.Type(step.Subject, step.Detail);
+                break;
+            case Verb.Key:
+                session.Key(step.Subject, step.Detail);
                 break;
             case Verb.Choose:
                 session.Choose(step.Subject, step.Detail);

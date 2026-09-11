@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows.Automation;
 
 namespace MeetingTranscriber.UiProbe;
@@ -271,6 +272,121 @@ internal sealed class Session : IDisposable
         }
 
         field.SetValue(text);
+        Thread.Sleep(HedgeAfterAPress);
+    }
+
+    /// <summary>
+    /// Sends one key to a control, the way a keyboard does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="Type"/> cannot do this and is not a near miss: <c>ValuePattern.SetValue</c> puts
+    /// the right text in the field with no key ever going down, so a control that commits on Enter
+    /// never hears one and a screen made of those closes on nothing. That is why <c>Clasificar</c>
+    /// could not be driven and had to be reasoned about instead.
+    /// </para>
+    /// <para>
+    /// Focus and then the queue, which is the only route a XAML screen reads keys off. A posted
+    /// <c>WM_KEYDOWN</c> reaches the window procedure and no handler on the screen, and there is no
+    /// automation pattern for a keystroke at all — so this is the one verb that goes around UI
+    /// Automation, and it asks the same first question every other verb asks, because a key sent at
+    /// a dead control is a step that did nothing and said so nowhere.
+    /// </para>
+    /// <para>
+    /// It does not ask whether the control takes a value. What a key means is the control's — Enter
+    /// on a button is a press and on a field is a commit — and a probe deciding for it would refuse
+    /// the half of this screen the verb was added for.
+    /// </para>
+    /// <para>
+    /// Focus is <em>checked</em> and not merely asked for, which is the whole of what makes this
+    /// verb worth having. <c>SendInput</c> answers with how many events Windows put in the queue and
+    /// never with where they went, and the queue belongs to whatever has the keyboard — so a
+    /// <c>SetFocus</c> the foreground lock refused returns quietly, the count comes back right, and
+    /// Enter lands in whatever a person was typing in while this says it committed a field. A step
+    /// that ran, said <em>done</em> and proved nothing is the one failure this tool exists not to
+    /// have, so the answer to <em>did it take</em> is read back off the element before a key is sent.
+    /// </para>
+    /// <para>
+    /// That makes this the one verb that needs the application in front, which every other verb
+    /// deliberately does not — a window behind another still photographs. There is no way round it:
+    /// a key goes to the focused window or it goes nowhere useful.
+    /// </para>
+    /// </remarks>
+    internal void Key(string target, string key)
+    {
+        // The name before the element, so a typo costs nothing and reads the same from either
+        // host: the command line refuses it before the application starts, and the server, which
+        // has no script to check, refuses it here.
+        var code = Instruction.KeyNamed(key);
+
+        var element = Search.One(_app.Windows.Active(), target);
+
+        if (Reading.Flag(() => element.Current.IsEnabled) == false)
+        {
+            throw new ProbeFailed($"{ElementWords.Line(element)} is disabled: no key reaches it.");
+        }
+
+        try
+        {
+            element.SetFocus();
+        }
+
+        // Both ways it refuses: `InvalidOperationException` for an element that cannot take focus,
+        // `ElementNotAvailableException` for one that has gone — which is ordinary on a screen that
+        // redraws on every change, and would otherwise leave this verb as a stack trace where every
+        // other one answers in a sentence.
+        catch (Exception cannot)
+            when (cannot is InvalidOperationException or ElementNotAvailableException)
+        {
+            throw new ProbeFailed(
+                $"{ElementWords.Line(element)} would not take focus, so a key sent now would go to "
+                + $"whatever has it instead: {cannot.Message}");
+        }
+
+        // Asked of the element rather than assumed of the call. `SetFocus` is best effort: Windows'
+        // foreground lock refuses a process that is not already in front, and a provider that does
+        // not implement focus returns without doing anything — neither throws, and both leave the
+        // keyboard where it was.
+        if (Reading.Flag(() => element.Current.HasKeyboardFocus) != true)
+        {
+            throw new ProbeFailed(
+                $"{ElementWords.Line(element)} does not have the keyboard, so the \"{key}\" key "
+                + "would go wherever the keyboard is. Bring the application in front and try again; "
+                + "a control that never takes focus wants press or type instead.");
+        }
+
+        Native.Input[] both =
+        [
+            new()
+            {
+                Type = Native.InputKeyboard,
+                Union = new Native.InputUnion { Keyboard = new Native.KeyboardInput { wVk = code } },
+            },
+            new()
+            {
+                Type = Native.InputKeyboard,
+                Union = new Native.InputUnion
+                {
+                    Keyboard = new Native.KeyboardInput { wVk = code, dwFlags = Native.KeyUp },
+                },
+            },
+        ];
+
+        // Both events in one call, because SendInput guarantees nothing else is interleaved
+        // between the events of one call and two calls have no such promise — a key that goes down
+        // and stays down is a screen nothing afterwards is true of.
+        if (Native.SendInput((uint)both.Length, both, Native.InputSize) != both.Length)
+        {
+            // What Windows said and not a guess at which of them it was: input blocked, a secure
+            // desktop, a locked workstation and a window of higher integrity in front all look
+            // identical from here, and naming one of the four is naming the wrong one three times
+            // in four.
+            throw new ProbeFailed(
+                $"Windows would not take the \"{key}\" key for {ElementWords.Line(element)}, and "
+                + $"said {Marshal.GetLastWin32Error()}. Something has the input queue: a UAC "
+                + "prompt, a locked workstation, or an application running higher than this one.");
+        }
+
         Thread.Sleep(HedgeAfterAPress);
     }
 

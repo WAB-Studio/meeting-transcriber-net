@@ -242,6 +242,13 @@ public sealed record ChannelReading
 /// <c>AudioDevices.Playback</c>. Both are the machine not saying, both leave the answer where it
 /// was, and telling them apart here would be a distinction with nothing behind it.
 /// </para>
+/// <para>
+/// What stops an edit going back to asking the machine on every redraw is
+/// <c>OneAnswerPerQuestionTests.The_machine_is_asked_what_it_plays_through_in_one_place</c>, over
+/// the application's own source. It is there and not here because none of this type's own tests can
+/// see a second caller: every one of them would stay green while the rule this paragraph argues was
+/// quietly gone.
+/// </para>
 /// </remarks>
 public sealed class WhatTheMachinePlaysThrough
 {
@@ -258,7 +265,8 @@ public sealed class WhatTheMachinePlaysThrough
     /// <param name="machine">
     /// The whole of what touches the audio stack. A delegate rather than an interface so that this
     /// rule is one a build agent runs: reaching <c>AudioDevices.Playback</c> from here would put the
-    /// rule back behind a device.
+    /// rule back behind a device. The other half — the caller doing the reaching instead — is held
+    /// by <c>OneAnswerPerQuestionTests.The_machine_is_asked_what_it_plays_through_in_one_place</c>.
     /// </param>
     public void Ask(Func<AudioDevice> machine)
     {

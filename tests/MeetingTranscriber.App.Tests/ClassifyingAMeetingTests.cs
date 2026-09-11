@@ -274,6 +274,99 @@ public class ClassifyingAMeetingTests
     }
 
     /// <summary>
+    /// Every pill on this screen is a control a screen reader and the probe can address.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The pills are built in code and have no <c>x:Name</c>, and <c>UiProbe.ElementWords</c>
+    /// matches an element only by <c>AutomationId</c> or <c>Name</c> — so an unnamed one is a bare
+    /// <c>ComboBox</c> in the tree that no <c>choose</c> can reach. That is why #296's own Proof
+    /// could not be driven and had to be reasoned about instead, and a screen reader is in exactly
+    /// the same position.
+    /// </para>
+    /// <para>
+    /// Both properties, because they answer two different questions and only one of them is a key.
+    /// The name is what somebody hears and is deliberately what stands in the pill — so it is not
+    /// unique, it is Spanish, and it changes the moment anybody chooses anything. The id is where
+    /// the pill stands, which is unique, the same in both languages, and still the same word after
+    /// a <c>choose</c>: it is what <c>UiProbe.Search</c> matches first, and without it a walk over
+    /// this screen cannot be written at all, since the column's own heading is drawn beside the
+    /// pills carrying the identical string.
+    /// </para>
+    /// <para>
+    /// That <c>APicker</c> takes a column and an id is the compiler's to enforce and not a test's;
+    /// what no compiler can say is that the parameters are used on the control, and that no second
+    /// picker is built somewhere else without them. <c>TheirOrganization</c> in the markup is not a
+    /// second one — XAML gives it an <c>x:Name</c>, which is where an id comes from there.
+    /// </para>
+    /// <para>
+    /// Read as text, so it is a cheap guard and not a structural impossibility: <c>ComboBox picker
+    /// = new();</c> is the same construction and matches nothing here. What it stops is the
+    /// ordinary way this would come back — a second builder written the way the first one is.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Every_pill_this_screen_builds_can_be_addressed_by_name()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+        var picker = Body(source, "private ComboBox APicker(");
+
+        picker.ShouldContain(
+            "AutomationProperties.SetName(picker",
+            customMessage: "APicker returns a control with no name on it, so every pill on this "
+            + "screen is a bare ComboBox to a screen reader.");
+
+        picker.ShouldContain(
+            "AutomationProperties.SetAutomationId(picker",
+            customMessage: "APicker returns a control with no id on it, so no `choose` can reach a "
+            + "pill: the words are not unique on this screen and they move when somebody answers.");
+
+        // The field that stands where a pill was is the only thing on this screen that commits on
+        // Enter, so a walk that cannot address it cannot finish an act.
+        Body(source, "private UIElement AName(").ShouldContain(
+            "AutomationProperties.SetAutomationId(typing",
+            customMessage: "the field a new name is typed into has no id, so nothing can send it "
+            + "the Enter that writes the name.");
+
+        SourceLines.Occurrences(source, "new ComboBox").Count().ShouldBe(
+            1,
+            "this screen builds a ComboBox somewhere other than APicker, and that one is addressed "
+            + "by nothing. Build it through APicker, which is also where the index arithmetic "
+            + "lives.");
+    }
+
+    /// <summary>
+    /// The corpus is opened once for each thing this screen does to it, and adding to its
+    /// vocabulary is one of them.
+    /// </summary>
+    /// <remarks>
+    /// Three presses wrote a node or a person, each spelling out the same ladder — the folder, the
+    /// context, the layer, the corpus saying no, the corpus failing — and it is what made the
+    /// <c>First</c>-versus-<c>FirstOrDefault</c> divergence #296 fixed possible: the same lookup
+    /// written three times, only one of which was right. <c>InTheCorpus</c> is that ladder now, and
+    /// a fourth caller opening the corpus for itself is what this goes red on.
+    /// </remarks>
+    [Fact]
+    public void This_screen_opens_the_corpus_once_for_each_thing_it_does_to_it()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        SourceLines.Occurrences(source, "new HumanLayer(").Count().ShouldBe(
+            1,
+            "adding a node or a person is written more than once, which is the shape the "
+            + "divergence #296 fixed grew in. InTheCorpus is the one place that opens the corpus "
+            + "to write vocabulary; a press that writes some calls it.");
+
+        SourceLines.Occurrences(source, "CorpusDatabase.Open(").Count().ShouldBe(
+            3,
+            "this screen opens the corpus three times and each is a different thing it does: Draw "
+            + "reads the meeting, InTheCorpus writes the vocabulary a pill offers, and OnSave files "
+            + "it. A fourth opening is a fourth thing this screen does to the corpus, and the "
+            + "answer is to say here what it is — not to raise the number. Read as text, so a "
+            + "construction spelled another way walks past it.");
+    }
+
+    /// <summary>
     /// One method's body, anchored on the closing brace at its own indentation. Lazy to
     /// <c>[ ]*\}</c> would stop at the first brace inside it, which is a check that reads the guard
     /// at the top and none of what follows.
