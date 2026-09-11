@@ -185,6 +185,16 @@ public static class SpoolChanges
     /// a complete line that will not read is not a torn write at all, it is a file that has stopped
     /// being what it says it is, and reading it as "nothing changed" would be this file failing in
     /// exactly the direction it exists to prevent. That one throws.
+    /// <para>
+    /// A file that will not open is the same kind of answer and gets the same kind of sentence.
+    /// <see cref="Append"/> holds this file open <see cref="FileAccess.ReadWrite"/> while a channel
+    /// moves, and a read asks for it with write sharing denied, so the one command somebody runs to
+    /// find out what happened to a recording met a bare <see cref="IOException"/> exactly while a
+    /// recording was in progress — the failure whose whole shape is that it only ever happens at
+    /// the moment the answer matters most. Every caller here answers an
+    /// <see cref="AudioCaptureException"/> with a sentence rather than a stack trace, so it is
+    /// raised as one, naming the file and the folder it belongs to.
+    /// </para>
     /// </remarks>
     public static IReadOnlyList<SourceChanged> Find(DirectoryInfo folder)
     {
@@ -194,7 +204,19 @@ public static class SpoolChanges
             return [];
         }
 
-        var written = File.ReadAllText(file.FullName);
+        string written;
+        try
+        {
+            written = File.ReadAllText(file.FullName);
+        }
+        catch (Exception held) when (held is IOException or UnauthorizedAccessException)
+        {
+            throw new AudioCaptureException(
+                $"'{file.FullName}' could not be read, so what the recording in "
+                + $"'{folder.FullName}' changed while it was running is not known: {held.Message}",
+                held);
+        }
+
         var lines = written
             .Split('\n')
             .Select(line => line.Trim('\r'))
