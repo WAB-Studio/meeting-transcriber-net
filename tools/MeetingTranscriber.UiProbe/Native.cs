@@ -5,8 +5,8 @@ namespace MeetingTranscriber.UiProbe;
 
 /// <summary>
 /// The Win32 and COM entry points this tool cannot reach any other way: activating a packaged
-/// application and getting its process back, asking which window is in front, and copying the
-/// pixels under one.
+/// application and getting its process back, asking which window is in front, copying the pixels
+/// under one, and putting a keystroke into the input queue.
 /// </summary>
 internal static class Native
 {
@@ -15,6 +15,12 @@ internal static class Native
     /// paints into its own device context.
     /// </summary>
     internal const uint PW_RENDERFULLCONTENT = 2;
+
+    /// <summary><c>INPUT_KEYBOARD</c>.</summary>
+    internal const uint InputKeyboard = 1;
+
+    /// <summary><c>KEYEVENTF_KEYUP</c>: the release rather than the press.</summary>
+    internal const uint KeyUp = 0x0002;
 
     internal const int BI_RGB = 0;
     internal const uint DIB_RGB_COLORS = 0;
@@ -56,6 +62,66 @@ internal static class Native
         internal int Y;
     }
 
+    /// <summary><c>KEYBDINPUT</c>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct KeyboardInput
+    {
+        internal ushort wVk;
+        internal ushort wScan;
+        internal uint dwFlags;
+        internal uint time;
+        internal IntPtr dwExtraInfo;
+    }
+
+    /// <summary>
+    /// <c>MOUSEINPUT</c>, declared and never used.
+    /// </summary>
+    /// <remarks>
+    /// It is here because it is the largest arm of <c>INPUT</c>'s union — 32 bytes against
+    /// <c>KEYBDINPUT</c>'s 24 on x64 — and therefore what fixes the size of the whole structure.
+    /// <c>SendInput</c> is passed that size and rejects any other by doing nothing, so leaving the
+    /// arm out would give a probe whose key verb silently pressed no key, which is the exact failure
+    /// that verb exists not to have. <c>HARDWAREINPUT</c> is the third arm and is deliberately
+    /// absent: it is eight bytes, so it changes no size, and a declaration that measures nothing and
+    /// is never assigned is a line somebody has to work out the purpose of.
+    /// </remarks>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MouseInput
+    {
+        internal int dx;
+        internal int dy;
+        internal uint mouseData;
+        internal uint dwFlags;
+        internal uint time;
+        internal IntPtr dwExtraInfo;
+    }
+
+    /// <summary>The union inside <c>INPUT</c>.</summary>
+    [StructLayout(LayoutKind.Explicit)]
+    internal struct InputUnion
+    {
+        [FieldOffset(0)]
+        internal MouseInput Mouse;
+
+        [FieldOffset(0)]
+        internal KeyboardInput Keyboard;
+    }
+
+    /// <summary><c>INPUT</c>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Input
+    {
+        internal uint Type;
+        internal InputUnion Union;
+    }
+
+    /// <summary>
+    /// What <see cref="SendInput"/> is told one <see cref="Input"/> measures. Asked of the runtime
+    /// rather than written down: the number differs between 32- and 64-bit, and a wrong one is
+    /// refused by doing nothing.
+    /// </summary>
+    internal static readonly int InputSize = Marshal.SizeOf<Input>();
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct BitmapInfoHeader
     {
@@ -91,6 +157,21 @@ internal static class Native
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool PrintWindow(IntPtr window, IntPtr deviceContext, uint flags);
+
+    /// <summary>
+    /// Puts events into the same queue a keyboard does, which is the only way to raise a real key
+    /// event.
+    /// </summary>
+    /// <remarks>
+    /// UI Automation has no pattern for a keystroke: <c>ValuePattern.SetValue</c> writes a field
+    /// without a key ever going down, so a control that commits on Enter never hears one. Posting
+    /// <c>WM_KEYDOWN</c> at the window is the other candidate and is not the same thing — XAML
+    /// routes keyboard input off the queue, so a posted message reaches the window procedure and no
+    /// handler on the screen. What comes back is how many events were accepted, and zero is the
+    /// answer when a window of higher integrity is in front.
+    /// </remarks>
+    [DllImport("user32.dll", SetLastError = true)]
+    internal static extern uint SendInput(uint count, Input[] inputs, int size);
 
     [DllImport("user32.dll")]
     internal static extern IntPtr GetDC(IntPtr window);

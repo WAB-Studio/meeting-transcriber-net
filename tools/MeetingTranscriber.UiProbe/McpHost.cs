@@ -48,6 +48,9 @@ internal sealed class McpHost : IDisposable
         before you look at it. `wait` is also what says which window you are on when more than one
         is open.
 
+        `type` leaves the text in a field with no key going down, so a control that commits on
+        Enter is committed with `key` and never by typing into it.
+
         Every verb is refused once the application is older than the code on disk, because what
         Windows starts is the build it last registered rather than the one you last made. To pick
         up a change: `close`, build, `start` — in that order, because a running application holds
@@ -233,6 +236,22 @@ internal sealed class McpHost : IDisposable
                     session.Type(element, text);
 
                     return $"typed \"{text}\" into {element}";
+                })),
+
+        Tool(
+            "key",
+            "Sends one key to a control and answers with the tree of the screen it became. `type` "
+            + "raises no key event, so this is what commits a field that commits on Enter, closes "
+            + "a dialogue on Escape, or moves focus on Tab. Fails naming the three when the key is "
+            + "anything else, and when the control is disabled.",
+            (
+                [Description("The x:Name of the control, or the words on it.")] string element,
+                [Description("One of: enter, escape, tab.")] string key) =>
+                Turn(session =>
+                {
+                    session.Key(element, key);
+
+                    return $"sent {key} to {element}";
                 })),
 
         Tool(
