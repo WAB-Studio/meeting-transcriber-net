@@ -31,26 +31,40 @@ namespace MeetingTranscriber.UiProbe;
 /// walk over is argued where each host decides it.
 /// </para>
 /// <para>
-/// What it compares is deliberately narrow: the <c>.cs</c> and <c>.xaml</c> of the projects the
-/// application is actually built from, found by following <c>ProjectReference</c> out of its own
-/// project file. Both halves of that matter. Sweeping all of <c>src/</c> instead was the first
-/// try and it has a dead end — the command line and the transcript renderer are under
+/// What it compares is deliberately narrow: the <c>.cs</c>, <c>.xaml</c> and <c>.csproj</c> of the
+/// projects the application is actually built from, found by following <c>ProjectReference</c> out
+/// of its own project file. Both halves of that matter. Sweeping all of <c>src/</c> instead was the
+/// first try and it has a dead end — the command line and the transcript renderer are under
 /// <c>src/</c> and are not in this application, so editing one of them made the probe demand a
-/// build that could not restamp anything, forever. And the two extensions are the two that are
+/// build that could not restamp anything, forever. And the three extensions are the three that are
 /// compile inputs, so the build the refusal asks for is a build that lifts it.
 /// The walk itself is <see cref="Sources"/>'s, shared with <see cref="ProbeBuild"/>, which asks
 /// the same shape of question about this tool rather than about the application.
 /// </para>
 /// <para>
-/// What it therefore does not see: a change that ships without recompiling anything — a resource
-/// file, an asset, a manifest edit. There is none of that in this application today, and a check
-/// that named files the build does not compile would be back to demanding a build that changes
-/// nothing.
+/// <c>.csproj</c> is in that list for the reason <see cref="ProbeBuild"/> gives beside it: a
+/// reference added to a project changes what the published copy is made of and changes nothing
+/// under it that ends in <c>.cs</c>. The argument holds identically for the application — a
+/// <c>ProjectReference</c> added to it or to anything behind it changes what its window can
+/// contain and moves no <c>.cs</c> or <c>.xaml</c> file. Without it, an agent driving a window that
+/// gained a whole assembly's worth of behaviour since the registered build reads a truthful-looking
+/// tree of a window missing all of it, and this class calls that window current.
+/// </para>
+/// <para>
+/// What it therefore does not see: a change that ships without recompiling anything — an asset, a
+/// package version bumped in <c>Directory.Packages.props</c>, an edit to
+/// <c>Package.appxmanifest</c>. The manifest is the one that bites, and it is not an omission to
+/// fix by adding the extension: what a manifest edit needs is a <em>re-registration</em> and not a
+/// build, so a build that lifted the refusal would restamp nothing and the refusal could never
+/// lift — the forever-stale dead end the paragraph above is about, arrived at from the other side.
+/// A window driven against a manifest it does not carry is therefore this class's blind spot and
+/// stays one; whoever changes a capability re-registers, which <c>docs/ui-probe.md</c> says how to
+/// do.
 /// </para>
 /// </remarks>
 internal sealed class Freshness
 {
-    private static readonly string[] Compiled = ["*.cs", "*.xaml"];
+    private static readonly string[] Compiled = ["*.cs", "*.xaml", "*.csproj"];
 
     private readonly IReadOnlyList<string> _projects;
 
