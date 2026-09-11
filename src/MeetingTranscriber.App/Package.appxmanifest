@@ -49,5 +49,9 @@
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
     <systemai:Capability Name="systemAIModels"/>
+    <!-- Channel 1. Without this Windows refuses IAudioClient activation to a packaged identity with
+         E_ACCESSDENIED, whatever the privacy pages say, so pressing record fails on every install.
+         PackageManifestTests is what stops it leaving again. -->
+    <DeviceCapability Name="microphone" />
   </Capabilities>
 </Package>
