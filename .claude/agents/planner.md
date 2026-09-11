@@ -99,6 +99,9 @@ The criteria are yours, and these hold whatever you choose:
 
 - **A share is whole files.** Two shares in one wave never open the same file, and no share is half
   of one. A second wave opens what the wave before it wrote.
+- **A share's `keeps_out_of` names every path every other share owns, in full**, because that list is
+  what tells a worker a path belongs to nobody — and a path that belongs to nobody is one it may fix
+  as it goes. A path you leave off that list is one two shares can write.
 - **A share is worth a worker, and no more than one.** Roughly a hundred non-comment lines is the
   floor; below that, fold it into the share it is nearest. The ceiling is what one worker can hold
   and still prove: seventeen hundred non-comment lines has been carried once, and was near the top.

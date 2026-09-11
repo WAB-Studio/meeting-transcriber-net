@@ -71,6 +71,12 @@ nothing else.
 path another share owns is one you read and do not touch — judging your own work against code you
 are not allowed to open is not judging it. The fence is on the write.
 
+**A path no share owns is yours to fix.** The fence is on a path another share owns — your share
+names every one of those — and it is there because two branches writing one file is how one question
+gets two answers. A path in nobody's share has no second writer. Where your own change makes it
+false, or where it holds a defect you can say in a sentence and redden with a probe, fix it in the
+same pass and put it in `departures`. Where it needs more than that, it is `followups_proposed`.
+
 Wanting to write a path another share owns is **not** `blocked`. Finish your share, and put what you
 would have done in `followups_proposed` with the path and the reason. Another share may be building
 that very thing from a plan you were never given; you cannot tell, and the audit reads every branch
