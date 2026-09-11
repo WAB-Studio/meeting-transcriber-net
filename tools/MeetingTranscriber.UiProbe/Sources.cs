@@ -27,6 +27,20 @@ internal static class Sources
     private static readonly string[] Output = ["bin", "obj"];
 
     /// <summary>
+    /// What counts as a source file of the application, for the staleness question.
+    /// </summary>
+    /// <remarks>
+    /// The application has XAML and this tool has none, so the two readers want two lists — and
+    /// until 2026-09-10 each held its own literal with the reason for the difference written in
+    /// neither, which is how they drifted and were then put back by editing one to match the
+    /// other. One place, two named answers, and the difference argued here.
+    /// </remarks>
+    internal static readonly string[] OfTheApplication = ["*.cs", "*.xaml", "*.csproj"];
+
+    /// <summary>The same question about this tool, which compiles no XAML.</summary>
+    internal static readonly string[] OfThisTool = ["*.cs", "*.csproj"];
+
+    /// <summary>
     /// The newest file of these kinds under any of these folders, or nothing when there is none.
     /// </summary>
     internal static (string Path, DateTime Written)? NewestUnder(
