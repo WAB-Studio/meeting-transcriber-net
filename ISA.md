@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 156/218
+progress: 151/218
 updated: 2026-09-10
 ---
 
@@ -73,11 +73,11 @@ Board: 0 · Contratos y caracterización
 - [x] ISC-24: Every response the fixture set holds parses into the turns it describes.
 - [x] ISC-25: A fixture carries the provider's real timings, confidences and channel numbers, with every word replaced from a closed vocabulary.
 - [x] ISC-26: Where this system departs from the one it replaces is written down, and each departure is held to.
-- [x] ISC-27: Anti: importing never writes to the old corpus — it comes out exactly as it went in.
-- [x] ISC-28: Anti: what an import cannot place is named, apart from what was left behind on purpose, and never dropped.
-- [x] ISC-29: An imported meeting's derived files are produced here rather than carried over.
-- [x] ISC-30: A speaker somebody resolved in the old corpus arrives on the words that speaker actually said.
-- [x] ISC-31: What the old corpus extracted arrives with the run it came out of, and every decision, action and state projected from it hangs off that run.
+- [ ] ISC-27: [DROPPED 2026-09-10: importing a Python corpus was deleted on 2026-08-26, so there is no old corpus for this to leave untouched and the probe went with the suite.]
+- [ ] ISC-28: [DROPPED 2026-09-10: importing a Python corpus was deleted on 2026-08-26, so nothing places anything and there is nothing left to name or drop.]
+- [ ] ISC-29: [DROPPED 2026-09-10: importing a Python corpus was deleted on 2026-08-26; no meeting arrives carrying derived files, and that a rebuild produces them here is ISC-36's.]
+- [ ] ISC-30: [DROPPED 2026-09-10: importing a Python corpus was deleted on 2026-08-26, so no speaker resolved elsewhere arrives at all.]
+- [ ] ISC-31: [DROPPED 2026-09-10: importing a Python corpus was deleted on 2026-08-26, so nothing extracted elsewhere arrives and there is no run somewhere else for anything to hang off.]
 
 ### F2 · Deterministic core from artifacts
 Why: given a paid response, everything that does not need a microphone works — parse, store,
@@ -613,14 +613,9 @@ Board: 7 · Distribución y backup
 - ISC-24 — `FixtureParsingTests` green 2026-08-07
 - ISC-25 — `DeepgramFixtureTests` green 2026-08-07
 - ISC-26 — `ReferenceBehaviourTests` green 2026-08-07
-- ISC-27 — `CorpusImporterTests.The_corpus_it_reads_comes_out_exactly_as_it_went_in` green 2026-08-07 (suite deleted with the importer)
-- ISC-28 — `CorpusImporterTests.What_is_left_behind_on_purpose_is_not_mixed_with_what_had_nowhere_to_go` green 2026-08-07 (suite deleted with the importer)
-- ISC-29 — `CorpusImporterTests.Importing_again_does_not_duplicate_or_rewrite_the_derivatives` green 2026-08-07 (suite deleted with the importer)
-- ISC-30 — `CorpusImporterTests.A_speaker_somebody_resolved_arrives_under_the_label_the_provider_wrote` green 2026-08-07 (suite deleted with the importer)
-- ISC-31 — `CorpusImporterTests.An_imported_extraction_arrives_with_the_run_it_came_out_of` and `.A_decision_and_an_action_projected_from_it_hang_off_that_run` green 2026-08-07 (suite deleted with the importer)
 - ISC-32 — `DeepgramTranscriptParserTests` green 2026-08-07
 - ISC-33 — `CliWalkthroughTests.A_response_becomes_a_meeting_that_renders_rebuilds_and_is_found_again` green 2026-08-07
-- ISC-34 — `CliWalkthroughTests.The_same_response_imported_twice_is_one_meeting`, `CorpusImporterTests.Importing_the_same_corpus_twice_imports_it_once` and `.Importing_again_does_not_duplicate_or_rewrite_the_derivatives` green 2026-08-07; the folder-name half, `CorpusImporterTests.A_meeting_whose_folder_was_renamed_is_still_the_same_meeting` (suite deleted with the importer) green 2026-08-26; the audio door too, `AudioIntakeTests.The_same_audio_brought_in_twice_is_one_meeting` (both a single track and a pair, compared after the mix down because that is what would land) and `ImportAudioCommandTests.Bringing_the_same_audio_in_twice_is_one_meeting` (`tests/MeetingTranscriber.Recording.Tests`, `tests/MeetingTranscriber.Cli.Tests`) green 2026-08-20
+- ISC-34 — `CliWalkthroughTests.The_same_response_imported_twice_is_one_meeting`, `AudioIntakeTests.The_same_audio_brought_in_twice_is_one_meeting` (both a single track and a pair, compared after the mix down because that is what would land) and `ImportAudioCommandTests.Bringing_the_same_audio_in_twice_is_one_meeting` (`tests/MeetingTranscriber.Cli.Tests`, `tests/MeetingTranscriber.Recording.Tests`) green 2026-09-10. Not reached: under whatever folder name. `CorpusImporterTests.A_meeting_whose_folder_was_renamed_is_still_the_same_meeting` was the probe for that clause and went with the importer on 2026-08-26; every live probe hands the same path over twice, so nothing measures a meeting arriving from a folder called something else
 - ISC-35 — `CorpusRebuildTests.Deleting_every_derived_row_and_projecting_again_leaves_every_other_table_as_it_was` green 2026-08-07, which holds the classifications and the speaker assignments a person edited as well as the rows nothing touched
 - ISC-36 — `CorpusRebuildTests.Rebuilding_produces_the_same_projections_and_the_same_files` and `MeetingRendererTests.Rendering_again_leaves_the_sources_alone_and_produces_the_same_files` green 2026-08-07
 - ISC-37 — `CorpusRebuildTests.A_claim_cannot_cite_a_turn_the_meeting_never_had` green 2026-08-07. That half only: the deleted-out-from-under-it half held for a rebuild that finishes and not for one refused partway, where the turns went and the claims stayed. `.A_meeting_refused_with_cited_turns_costs_that_meeting_and_not_the_run` (`tests/MeetingTranscriber.Processing.Tests`) green 2026-09-02 is what reaches it, red that day against the projection deleting before it knew the new turns would save
