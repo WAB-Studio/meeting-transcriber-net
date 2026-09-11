@@ -5,7 +5,8 @@ namespace MeetingTranscriber.Isa.Tests;
 
 /// <summary>
 /// ISC-16 as a rule rather than as a word that happens not to appear: nothing under <c>tests/</c>
-/// opens a socket, so no test spends what a person has to pay for.
+/// opens a socket or starts a process nobody has looked at, so no test spends what a person has to
+/// pay for.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -37,6 +38,14 @@ namespace MeetingTranscriber.Isa.Tests;
 /// over suites no reference from here could reach.
 /// </para>
 /// <para>
+/// A socket is not the only way a test spends money. <c>CLAUDE.md</c> forbids spending Claude Code
+/// quota too, and quota is spent by <em>starting a process</em> — the three facts about sockets
+/// cannot see one. So the fourth fact below reads for a process start and holds an inventory of
+/// what may start one, each entry saying what it starts and why that costs nothing. This suite
+/// itself is on that list: it shells out to <c>git</c>, and the care that keeps that local —
+/// <c>GIT_NO_LAZY_FETCH</c> — was written where no check could read it.
+/// </para>
+/// <para>
 /// This file is the one file the walk skips, because a file that states a rule names every word the
 /// rule forbids. It finds itself by <c>[CallerFilePath]</c> and not by name, so renaming it cannot
 /// quietly turn the skip off, and <see cref="Code"/> refuses outright if the skip matched nothing.
@@ -62,6 +71,46 @@ public partial class NothingUnderTestReachesTheNetworkTests
         "Socket", "TcpClient", "TcpListener", "UdpClient", "HttpListener", "ClientWebSocket",
         "HttpClientHandler", "SocketsHttpHandler",
         "WebClient", "HttpMessageInvoker", "IHttpClientFactory",
+    ];
+
+    /// <summary>
+    /// Every file under <c>tests/</c> that may start a process, and what each one starts. Beside
+    /// <see cref="OpensASocket"/> because it answers the other half of the same question: a socket
+    /// is how a test reaches Deepgram, and a process is how one reaches anything else that bills —
+    /// Claude Code above all, whose quota is spent by launching it and by nothing else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A list of files and not of executables, because what has to be read to answer <em>does this
+    /// cost anything</em> is the whole of how the process is started: its arguments, its
+    /// environment, and what it is pointed at. Three sentences of prose are cheaper than one
+    /// allowlist of program names that would let <c>claude.exe</c> through under an argument nobody
+    /// read. Extend it by adding the file with its sentence — never by widening the pattern.
+    /// </para>
+    /// <para>
+    /// The sentences are what somebody wrote and not what anything measured, and that is the whole
+    /// of the bound on this fact: what it holds is that a file which starts a process was looked at
+    /// by a person, never that what it starts is local. An entry saying the wrong thing is green.
+    /// The rule it replaces held nothing at all, which is why this is worth having and not worth
+    /// reading as more than it is.
+    /// </para>
+    /// </remarks>
+    private static readonly Allowed[] StartsAProcess =
+    [
+        new(
+            "tests/MeetingTranscriber.Audio.Tests/AnotherProcess.cs",
+            "powershell.exe, running an encoded script that opens one file in this test's own "
+            + "temporary folder and holds it. Local, and the only thing it touches is a path the "
+            + "test made."),
+        new(
+            "tests/MeetingTranscriber.Infrastructure.Tests/Storage/CorpusLocationTests.cs",
+            "cmd.exe /c mklink /J, which is the one way to make a directory junction without a "
+            + "privilege a build agent lacks. Two local paths, both the test's own."),
+        new(
+            "tests/MeetingTranscriber.Isa.Tests/IsaHistory.cs",
+            "git, over this clone, for objects it already holds. GIT_NO_LAZY_FETCH is set on every "
+            + "call so a missing object is an error rather than a download, which is the whole of "
+            + "what keeps this one local."),
     ];
 
     /// <summary>
@@ -146,6 +195,34 @@ public partial class NothingUnderTestReachesTheNetworkTests
             + "what `FakeDeepgram.Client` does.");
     }
 
+    /// <summary>
+    /// A test that starts a process can spend whatever that process spends, and Claude Code is
+    /// started and not called. So every file that starts one is on a list somebody wrote a sentence
+    /// on, and a new one is answered rather than passed over.
+    /// </summary>
+    /// <remarks>
+    /// The whole set and not a contains, both directions on purpose: a file arriving is the thing
+    /// this is for, and a file that stopped starting a process goes missing from the list, so an
+    /// entry cannot outlive what it was written about. There is no assertion that the walk found
+    /// something, because <see cref="Code"/> already refuses an empty walk once for all four facts.
+    /// </remarks>
+    [Fact]
+    public void Nothing_under_test_starts_a_process_this_rule_has_not_seen() =>
+        Code().Where(file => Starts().IsMatch(file.Text)).Select(file => file.Relative)
+            .Order(StringComparer.Ordinal)
+            .ShouldBe(
+                StartsAProcess.Select(allowed => allowed.File).Order(StringComparer.Ordinal),
+                "a test spends Claude Code quota by starting a process, which no rule about "
+                + "sockets can see. What may start one is written down with what it starts:"
+                + Environment.NewLine
+                + string.Join(
+                    Environment.NewLine,
+                    StartsAProcess.Select(allowed => $"  {allowed.File} — {allowed.Starts}"))
+                + Environment.NewLine
+                + "If a file is missing from that list, add it there with the one sentence saying "
+                + "what it launches and why it costs nothing. If one is on it and no longer starts "
+                + "anything, take it off.");
+
     /// <summary>A type declared here with a message handler behind it — the only fake that may.</summary>
     [GeneratedRegex(@"\bclass\s+\w+\s*:[^\r\n{]*\b(HttpMessageHandler|DelegatingHandler)\b")]
     private static partial Regex Handler();
@@ -172,6 +249,21 @@ public partial class NothingUnderTestReachesTheNetworkTests
     /// </remarks>
     [GeneratedRegex(@"\bnew\s+HttpClient\s*\(\s*\)|\bHttpClient\b[^;{}]*\bnew\s*\(\s*\)")]
     private static partial Regex Bare();
+
+    /// <summary>
+    /// Starting a process, every way it is spelled: the settings object, the static
+    /// <c>Process.Start</c> that takes a file name straight, and <c>new Process</c> — which is the
+    /// spelling neither of the first two catches, because <c>p.StartInfo = …; p.Start();</c> names
+    /// neither token.
+    /// </summary>
+    /// <remarks>
+    /// <c>new Process</c> is a construction and not a start, so it is wider than the rule by exactly
+    /// one case: a file that builds one and never starts it. That file is on the allowlist with a
+    /// sentence saying it does not start anything, which is the cheaper mistake — the other
+    /// direction is a start this never sees.
+    /// </remarks>
+    [GeneratedRegex(@"\bProcessStartInfo\b|\bProcess\.Start\b|\bnew\s+Process\b")]
+    private static partial Regex Starts();
 
     /// <summary>
     /// A line that is all comment, which is the whole of what is taken out. It matches from the
@@ -238,4 +330,10 @@ public partial class NothingUnderTestReachesTheNetworkTests
 
     /// <summary>One file: where it is, and what it says once the comments are out.</summary>
     private sealed record Source(string Relative, string Text);
+
+    /// <summary>
+    /// One file that may start a process, and the one sentence saying what it starts and why that
+    /// costs nobody anything.
+    /// </summary>
+    private sealed record Allowed(string File, string Starts);
 }
