@@ -887,12 +887,11 @@ public sealed partial class ClassifyingAMeeting : UserControl
         }
 
         // Two different kinds of thing and one sentence, because to whoever pressed they are one:
-        // the corpus said no, or the corpus failed. `ClassificationException` is named in its own
-        // right because it derives from `InvalidOperationException`, which
-        // `ScreenFailures.Reportable` deliberately excludes — the same way `OnSave` names
-        // `MeetingStageException`. The day that list carries it, this clause is the one that goes.
-        catch (Exception refused)
-            when (refused is ClassificationException || ScreenFailures.Reportable(refused))
+        // the corpus said no, or the corpus failed. `ScreenFailures.Reportable` names
+        // `ClassificationException` in its own right — it derives from `InvalidOperationException`,
+        // which that list deliberately excludes — so the classification tree refusing a name a
+        // person just typed arrives here as an answer and not as a window closing.
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
             return TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
         }
