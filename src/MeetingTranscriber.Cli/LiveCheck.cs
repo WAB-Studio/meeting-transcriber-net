@@ -41,14 +41,41 @@ public sealed class LiveCheck
         + "key at a test project first if that is not what you want charged: "
         + "'meeting-transcriber key --set'.";
 
-    private LiveCheck(IReadOnlyList<LiveAudio> audio, int ceilingMinutes)
+    /// <summary>What a response is called, as a name ends.</summary>
+    private const string ResponseExtension = ".json";
+
+    /// <summary>
+    /// How a run stamps every response it writes.
+    /// </summary>
+    /// <remarks>
+    /// Compact because <c>UtcTimestamp.ToString</c> writes colons, which is not a file name Windows
+    /// will take. It is read back as well as written — see <see cref="AnswersAlready"/> — so it is
+    /// spelled once here rather than at each end.
+    /// </remarks>
+    private const string RunStamp = "yyyyMMdd'T'HHmmss'Z'";
+
+    private LiveCheck(
+        IReadOnlyList<LiveAudio> audio, IReadOnlyList<FileInfo> answered, int ceilingMinutes)
     {
         Audio = audio;
+        Answered = answered;
         CeilingMinutes = ceilingMinutes;
     }
 
     /// <summary>What this run would send, in the order it would send it.</summary>
     public IReadOnlyList<LiveAudio> Audio { get; }
+
+    /// <summary>
+    /// What this run leaves out because the folder it writes into already holds its response, in
+    /// name order.
+    /// </summary>
+    /// <remarks>
+    /// Said on its own line by <see cref="Say"/> and never only subtracted. Files go in name order
+    /// and the first failure ends the run, so an eight-file run that died on the sixth is re-run to
+    /// finish it — and a run that quietly sent fewer files than the folder holds would be worse
+    /// than one that re-bought them, because nobody could tell the two apart from the report.
+    /// </remarks>
+    public IReadOnlyList<FileInfo> Answered { get; }
 
     /// <summary>How much audio that is, all of it together.</summary>
     public Duration Total => Audio.Aggregate(Duration.Zero, (sum, sent) => sum + sent.Length);
@@ -70,21 +97,32 @@ public sealed class LiveCheck
     public bool UnderTheCeiling => Minutes <= CeilingMinutes;
 
     /// <summary>
-    /// What is in <paramref name="audio"/>, refused now rather than after somebody has paid for the
-    /// files before the bad one.
+    /// What is in <paramref name="audio"/> and is not already answered in <paramref name="into"/>,
+    /// refused now rather than after somebody has paid for the files before the bad one.
     /// </summary>
     /// <remarks>
-    /// Every file is read through <see cref="AudioFiles.Read"/>, which counts the frames rather
-    /// than believing the header — so a file that is not a WAV at all is refused by the engine's
-    /// own sentence, and a length here is a length there really is.
+    /// <para>
+    /// Every file this would send is read through <see cref="AudioFiles.Read"/>, which counts the
+    /// frames rather than believing the header — so a file that is not a WAV at all is refused by
+    /// the engine's own sentence, and a length here is a length there really is.
+    /// </para>
+    /// <para>
+    /// <b><paramref name="into"/> is read here and not only written to later, and that is what
+    /// makes a run resumable.</b> The ceiling is spent against the audio that will actually be
+    /// sent, so the minutes said, the minutes checked against the ceiling and the minutes typed
+    /// back are one number — an eight-file run that died on the sixth used to be re-offered at the
+    /// same total and re-buy five files. A file already answered is not read at all: it is not
+    /// going to be sent, and a full read of it would be minutes of disk for a number nobody uses.
+    /// </para>
     /// </remarks>
     /// <exception cref="CommandException">
-    /// There is no such folder, it holds no <c>.wav</c>, or one of the files in it is not something
-    /// this application transcribes.
+    /// There is no such folder, it holds no <c>.wav</c>, or one of the files it would send is not
+    /// something this application transcribes.
     /// </exception>
-    public static LiveCheck Of(DirectoryInfo audio, int ceilingMinutes)
+    public static LiveCheck Of(DirectoryInfo audio, DirectoryInfo into, int ceilingMinutes)
     {
         ArgumentNullException.ThrowIfNull(audio);
+        ArgumentNullException.ThrowIfNull(into);
 
         audio.Refresh();
         if (!audio.Exists)
@@ -103,7 +141,22 @@ public sealed class LiveCheck
                 $"'{audio.FullName}' holds no .wav file, so there is nothing to send.");
         }
 
-        return new LiveCheck([.. files.Select(Sent)], ceilingMinutes);
+        var responses = into.EnumerateFiles("*" + ResponseExtension).Select(file => file.Name).ToArray();
+        var sending = new List<LiveAudio>();
+        var answered = new List<FileInfo>();
+
+        foreach (var file in files)
+        {
+            if (AnswersAlready(responses, Path.GetFileNameWithoutExtension(file.Name)))
+            {
+                answered.Add(file);
+                continue;
+            }
+
+            sending.Add(Sent(file));
+        }
+
+        return new LiveCheck(sending, answered, ceilingMinutes);
     }
 
     /// <summary>What this run is, said before anything is asked and whether or not it goes ahead.</summary>
@@ -125,6 +178,19 @@ public sealed class LiveCheck
                 output,
                 "will send",
                 $"{sent.File.Name} ({Report.Offset(sent.Length)}, {sent.Profile.ToWireName()})");
+        }
+
+        // Beside the ones that will be sent and never instead of them, because the difference
+        // between a folder of eight and a run of three is the whole of what somebody is agreeing
+        // to, and a run that silently sent fewer files than the folder held would read exactly like
+        // one that had nothing left to do.
+        foreach (var already in Answered)
+        {
+            Report.Line(
+                output,
+                "already",
+                $"{already.Name} — the folder responses land in already holds one for it, so it is "
+                + "not sent again.");
         }
 
         Report.Line(output, "files", $"{Audio.Count}");
@@ -155,6 +221,58 @@ public sealed class LiveCheck
             + "Anything else sends nothing.");
 
         return typed()?.Trim() == Minutes.ToString(CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// How a run stamps every response it writes, so that files straddling a second still sort and
+    /// group together.
+    /// </summary>
+    public static string StampOf(UtcTimestamp when) =>
+        when.Value.ToString(RunStamp, CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// What the response to <paramref name="sent"/> is called in a run stamped
+    /// <paramref name="stamp"/>.
+    /// </summary>
+    /// <remarks>
+    /// Written by <see cref="DeepgramCommands"/> and read back by <see cref="Of"/>, which is why it
+    /// is here and not a literal at each end: two spellings of one name would mean a resumed run
+    /// re-buying every file the moment either changed.
+    /// </remarks>
+    public static string ResponseNamed(FileInfo sent, string stamp)
+    {
+        ArgumentNullException.ThrowIfNull(sent);
+
+        return $"{Path.GetFileNameWithoutExtension(sent.Name)}-{stamp}{ResponseExtension}";
+    }
+
+    /// <summary>
+    /// Whether one of <paramref name="responses"/> is a response some run already wrote for
+    /// <paramref name="stem"/>.
+    /// </summary>
+    /// <remarks>
+    /// The stamp is read back and not only the prefix. A folder may hold <c>a.wav</c> and
+    /// <c>a-b.wav</c> at once, and <c>a-b</c>'s response begins <c>a-</c>; a rule that stopped at
+    /// the prefix would leave <c>a.wav</c> out of a run that had never sent it, which is the one
+    /// way this could cost somebody a file rather than save them one.
+    /// <para>
+    /// Case is ignored, because Windows decides case for itself and the two ends of this rule are a
+    /// name this program wrote and a name the file system handed back.
+    /// </para>
+    /// </remarks>
+    private static bool AnswersAlready(IReadOnlyList<string> responses, string stem)
+    {
+        var prefix = stem + "-";
+
+        return responses.Any(name =>
+            name.Length > prefix.Length + ResponseExtension.Length
+            && name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            && DateTime.TryParseExact(
+                name[prefix.Length..^ResponseExtension.Length],
+                RunStamp,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out _));
     }
 
     /// <summary>One file, refused by name where it is not something this application transcribes.</summary>

@@ -119,8 +119,20 @@ public static class DeepgramCommands
             "reading",
             $"every .wav in '{audio.FullName}', counting the frames rather than believing a header.");
 
-        var run = LiveCheck.Of(audio, ceiling);
+        var run = LiveCheck.Of(audio, into, ceiling);
         run.Say(output);
+
+        if (run.Audio.Count == 0)
+        {
+            // Not a refusal. Somebody re-running a folder that is finished has asked for nothing,
+            // and the lines above already name every file and say why each was left out.
+            Report.Line(
+                output,
+                "not sent",
+                "every .wav in that folder already has a response where responses land, so there "
+                + "was nothing left to send.");
+            return Cli.Ok;
+        }
 
         if (!run.UnderTheCeiling)
         {
@@ -182,17 +194,17 @@ public static class DeepgramCommands
 
         // One stamp for the run and not one per file, because what it identifies is a run: files
         // that straddle a second would otherwise stop sorting and grouping together, which is the
-        // whole of what it is for. UtcTimestamp.ToString writes colons, which is not a file name
-        // Windows will take, so the compact spelling. The clock is the machine's, for the reason
-        // Clock's own remarks give.
-        var stamp = Clock.Now().Value.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture);
+        // whole of what it is for. The clock is the machine's, for the reason Clock's own remarks
+        // give. How it is spelled is `LiveCheck`'s, because `LiveCheck.Of` reads these names back
+        // to leave out what an earlier run already bought.
+        var stamp = LiveCheck.StampOf(Clock.Now());
         var held = true;
 
         for (var index = 0; index < run.Audio.Count; index++)
         {
             var sent = run.Audio[index];
-            var stem = Path.GetFileNameWithoutExtension(sent.File.Name);
-            var response = new FileInfo(Path.Combine(into.FullName, $"{stem}-{stamp}.json"));
+            var response = new FileInfo(
+                Path.Combine(into.FullName, LiveCheck.ResponseNamed(sent.File, stamp)));
             var partial = new FileInfo(response.FullName + RecordingFiles.UnfinishedSuffix);
 
             // A working name, and the point of it: SendAsync's own remarks say a caller writing

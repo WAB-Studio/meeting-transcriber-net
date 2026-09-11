@@ -1,4 +1,5 @@
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Processing.Deepgram;
 
 namespace MeetingTranscriber.Cli.Tests;
@@ -195,7 +196,7 @@ public sealed class LiveDeepgramTests : IDisposable
     public void Confirming_is_typing_back_the_minutes()
     {
         Wav("meeting.wav", seconds: 480, 0.4f, 0.2f);
-        var run = LiveCheck.Of(audio, ceilingMinutes: 9);
+        var run = LiveCheck.Of(audio, into, ceilingMinutes: 9);
 
         using var yes = new StringWriter();
         run.Confirmed(yes, () => "y").ShouldBeFalse();
@@ -224,7 +225,7 @@ public sealed class LiveDeepgramTests : IDisposable
         Wav("meeting.wav", seconds: 503, 0.4f, 0.2f);
         using var output = new StringWriter();
 
-        var run = LiveCheck.Of(audio, ceilingMinutes: 9);
+        var run = LiveCheck.Of(audio, into, ceilingMinutes: 9);
         run.Say(output);
         run.Confirmed(output, () => null);
 
@@ -232,7 +233,7 @@ public sealed class LiveDeepgramTests : IDisposable
         output.ToString().ShouldContain("0:08:23 (9 minute(s))");
         output.ToString().ShouldContain("type 9");
         run.UnderTheCeiling.ShouldBeTrue();
-        LiveCheck.Of(audio, ceilingMinutes: 8).UnderTheCeiling.ShouldBeFalse();
+        LiveCheck.Of(audio, into, ceilingMinutes: 8).UnderTheCeiling.ShouldBeFalse();
     }
 
     /// <summary>
@@ -246,7 +247,7 @@ public sealed class LiveDeepgramTests : IDisposable
         Wav("a.wav", seconds: 10, 0.4f, 0.2f);
         Wav("b.wav", seconds: 10, 0.3f);
 
-        var run = LiveCheck.Of(audio, ceilingMinutes: 5);
+        var run = LiveCheck.Of(audio, into, ceilingMinutes: 5);
 
         run.Audio.Select(sent => sent.File.Name).ShouldBe(["a.wav", "b.wav", "c.wav"]);
         run.Audio.Select(sent => sent.Profile).ShouldBe(
@@ -263,7 +264,7 @@ public sealed class LiveDeepgramTests : IDisposable
     {
         Wav("meeting.wav", seconds: 60, 0.4f, 0.2f);
         using var output = new StringWriter();
-        var run = LiveCheck.Of(audio, ceilingMinutes: 5);
+        var run = LiveCheck.Of(audio, into, ceilingMinutes: 5);
 
         run.Say(output);
         Should.Throw<InvalidOperationException>(() => run.Confirmed(output, Nobody));
@@ -284,9 +285,97 @@ public sealed class LiveDeepgramTests : IDisposable
         said.ShouldContain("confirm");
     }
 
+    /// <summary>
+    /// Files go in name order and the first failure ends the run, so an eight-file run that died on
+    /// the sixth is re-run to finish it. Nothing skipped a stem whose response was already in
+    /// <c>--out</c>, and the ceiling was recomputed over the whole <c>--audio</c> folder — so the
+    /// second run was offered at the same total and re-bought five files.
+    /// </summary>
+    /// <remarks>
+    /// The ceiling is the sharp half: eight minutes over a five-minute ceiling is refused, and the
+    /// same folder with five of those minutes already answered is three minutes and goes through.
+    /// Red when <c>Of</c> stops reading <c>--out</c>, and red when the skipped files are subtracted
+    /// from the total but still sent.
+    /// </remarks>
+    [Fact]
+    public void A_file_whose_response_is_already_there_is_not_sent_or_paid_for_again()
+    {
+        Wav("a.wav", seconds: 300, 0.4f, 0.2f);
+        Wav("b.wav", seconds: 180, 0.4f, 0.2f);
+        Answered("a.wav");
+
+        using var output = new StringWriter();
+        var run = LiveCheck.Of(audio, into, ceilingMinutes: 5);
+        run.Say(output);
+
+        run.Audio.Select(sent => sent.File.Name).ShouldBe(["b.wav"]);
+        run.Answered.Select(file => file.Name).ShouldBe(["a.wav"]);
+        run.Minutes.ShouldBe(3);
+        run.UnderTheCeiling.ShouldBeTrue();
+
+        // Said on its own line and never only subtracted: a run that quietly sent fewer files than
+        // the folder holds would read exactly like one with nothing left to do.
+        output.ToString().ShouldContain("already");
+        output.ToString().ShouldContain("a.wav");
+        output.ToString().ShouldContain("will send");
+        output.ToString().ShouldContain("b.wav");
+    }
+
+    /// <summary>
+    /// The one way this could cost somebody a file rather than save them one. A folder holding
+    /// <c>a.wav</c> and <c>a-b.wav</c> has an <c>a-b</c> response that begins <c>a-</c>, so a rule
+    /// stopping at the prefix would leave <c>a.wav</c> out of a run that had never sent it.
+    /// </summary>
+    [Fact]
+    public void A_response_to_another_file_whose_name_starts_the_same_is_not_mistaken_for_one()
+    {
+        Wav("a.wav", seconds: 60, 0.4f, 0.2f);
+        Wav("a-b.wav", seconds: 60, 0.4f, 0.2f);
+        Answered("a-b.wav");
+
+        var run = LiveCheck.Of(audio, into, ceilingMinutes: 5);
+
+        run.Audio.Select(sent => sent.File.Name).ShouldBe(["a.wav"]);
+        run.Answered.Select(file => file.Name).ShouldBe(["a-b.wav"]);
+    }
+
+    /// <summary>
+    /// A folder that is finished is somebody re-running a command they already ran, which is not a
+    /// failure and is not a confirmation to ask for either — the alternative is a prompt saying
+    /// "type 0 and press Enter to send 0 minute(s)".
+    /// </summary>
+    [Fact]
+    public void A_folder_that_is_already_answered_sends_nothing_and_asks_nobody()
+    {
+        Wav("a.wav", seconds: 60, 0.4f, 0.2f);
+        Answered("a.wav");
+        using var output = new StringWriter();
+
+        var code = DeepgramCommands.Live(
+            Typed("--ceiling-minutes", "5"),
+            output,
+            Nobody,
+            (_, _, _, _) => throw new InvalidOperationException("Nothing was left to send."));
+
+        code.ShouldBe(Cli.Ok);
+        output.ToString().ShouldContain("not sent");
+        output.ToString().ShouldContain("a.wav");
+    }
+
     /// <summary>A keyboard nobody is at, for the paths that must never reach one.</summary>
     private static string? Nobody() =>
         throw new InvalidOperationException("Nothing on this path may ask anybody to confirm.");
+
+    /// <summary>
+    /// The response an earlier run left for <paramref name="wav"/>, named exactly as that run would
+    /// have named it.
+    /// </summary>
+    private void Answered(string wav) => File.WriteAllText(
+        Path.Combine(
+            into.FullName,
+            LiveCheck.ResponseNamed(
+                new FileInfo(wav), LiveCheck.StampOf(UtcTimestamp.Parse("2026-09-10T11:22:33.000Z")))),
+        "{}");
 
     private static void Erase(DirectoryInfo folder)
     {
