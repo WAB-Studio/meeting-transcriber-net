@@ -20,9 +20,12 @@ without finding anything out.
   `private/owed.md`, which you read by absolute path; it names a file, what is there now and what
   should be. Build them like anything else and do not decline one. An entry written against a tree
   that has since moved is a `departures` entry, is not built, and is not `owed_built`.
-- `card_dirs` — one absolute path per card, outside any diff. `plan.md` there is what you build.
-  `review.md` and `briefing.md` are there when they apply; read each if it is present and go on if
-  it is not.
+- `plan` — an absolute path to the plan you build from. Its **Decides** section binds every share;
+  the sections for your cards are yours.
+- `split` — an absolute path to the file naming every share and the paths each owns. Read it for
+  what the other shares own; a path under no share's is nobody's.
+- `card_dirs` — one absolute path per card, outside any diff. `briefing.md` is there when it
+  applies; read it if it is present and go on if it is not.
 - `base_sha` — the commit to branch from. Never resolve `origin/main` for yourself.
 - `pr_number` — a PR already carrying this batch, or none. Continue that branch; never cut a second.
 - `followup` — work to land on that open PR's branch, or none. It lands in that PR: no card, no
@@ -70,6 +73,10 @@ nothing else.
 **Read anything. Write only what your share owns.** The whole repository is yours to read, and a
 path another share owns is one you read and do not touch — judging your own work against code you
 are not allowed to open is not judging it. The fence is on the write.
+
+**Fix a path no share owns.** Fix it in the same pass and declare it in `departures` where your own
+change makes it false, or where it holds a defect you can say in a sentence and redden with a probe.
+Anything larger goes in `followups_proposed`.
 
 Wanting to write a path another share owns is **not** `blocked`. Finish your share, and put what you
 would have done in `followups_proposed` with the path and the reason. Another share may be building

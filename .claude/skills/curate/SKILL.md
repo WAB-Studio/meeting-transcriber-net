@@ -28,8 +28,7 @@ owes. It goes into `private/owed.md` under a heading naming what it belongs to, 
 **never onto the board** — however small, however certain, however long it has been true.
 
 It carries the header line every entry there carries — a fresh id, its severity, `preexisting`, and
-`passed 0` — in the shape that file's own header defines. An entry without one is invisible to every
-pass that comes after.
+`passed 0` — in the shape that file's own header defines.
 
 Write it so the next planning pass can build it without finding anything out again: the file, the
 line, what it is today, what it should be, and what breaks while it is not.

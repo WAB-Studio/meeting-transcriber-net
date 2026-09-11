@@ -15,9 +15,9 @@ table exists.
 | --- | --- | --- | --- |
 | pick | `picker` | a ceiling | the candidates, as `priority` and `secondary` |
 | recover | `recoverer` | card id, its card dir, PR number | a briefing on what was already done |
-| plan | `planner` | the batch dir, both candidate lists, the base, last batch's `consequence` count, how many workers may run at once | a plan per card, and the split saying which worker builds what |
-| validate | `validator` | the batch dir, the cards, the base | `pass`, `revise` or `ask` per card, and collisions |
-| work | `worker` | its share, its card dir, the base, a followup where there is one | a record, and a pushed branch |
+| plan | `planner` | the batch dir, both candidate lists, the base, last batch's `consequence` count, how many workers may run at once | one plan for the batch, and the split saying which worker builds what |
+| validate | `validator` | the batch dir, the cards, the base | one review, `pass`, `revise` or `ask` per card, and collisions |
+| work | `worker` | its share, the plan, the split, its card dir, the base, a followup where there is one | a record, and a pushed branch |
 | audit | `auditor` | the base, the batch dir, the branches, the PR number when one exists | one PR carrying the batch, a verdict per card and one for the PR |
 
 Pass each agent what its column says and nothing more: never who produced it, never what happens to
@@ -26,6 +26,9 @@ it next, never where the day stands.
 **Route on the object; never retell the content.** Each stage writes what it knows to a file and the
 next stage reads that file whole. What reaches you is the structured object, and it is what you act
 on and what you report. Never paraphrase one stage's work into another's input.
+
+**Send work that answers for an agent's own output back to that agent.** A plan that came back
+wrong, a split that has to change. Spawn a fresh agent of a stage only for a stage that died.
 
 ## 1 · The run directory
 
@@ -37,9 +40,9 @@ Absolute paths, under the primary checkout, ignored by git. The batch dir is the
 card dir is the folder named for a card. Create each before the stage that writes into it, and pass
 the right one — a stage given the wrong depth reads nothing and says nothing about it.
 
-The batch dir holds `base`, the commit every stage in this batch is given, and `split.md`, what the
-planner divided the work into. A card dir holds `briefing.md`, `plan.md`, `review.md`, `pr.md` and
-`record.json` — each written by one stage and read by the next. A stage whose answer has a reader on
+The batch dir holds `base`, the commit every stage in this batch is given, `plan.md`, the one plan
+the batch builds from, and `split.md`, what the planner divided the work into. A card dir holds
+`briefing.md`, `pr.md` and `record.json` — each written by one stage and read by the next. A stage whose answer has a reader on
 GitHub writes no file: the verdict is the comment on the PR, and a second copy on disk is a copy
 nobody reads.
 
@@ -83,20 +86,20 @@ against; the audit floor is still read at the trunk.
 4. **Validate, or don't.** Spawn `validator` once over the split when it holds more than one card,
    when any plan returned `floor_paths`, or when a plan carries a decision that holds up other parts
    of the application for months. One card, no floor path, nothing structural → skip it and say so.
-   - `revise` → spawn `planner` again over that card alone, on the same card dir. It reads
-     `review.md` there and answers every finding. **Once.** A second `revise` drops the card.
+   - `revise` → back to the planner that wrote it, naming the cards `review.md` returned it for.
+     **Once.** A second `revise` drops the card.
    - `ask` → §4. Drop the card.
-   - A collision → act on the `remedy` the validator returned, which is the only stage that read
-     both plans. `one_share` or `after` → spawn `planner` again over the batch, **once**, to re-split
-     it; a collision surviving that drops the card that waits. `postpone` → drop it now; it is still
-     in the pool and the next pick finds it.
+   - A collision → act on the `remedy` the validator returned. `one_share` or `after` → back to the
+     planner to re-split, **once**; a collision surviving that drops the card that waits.
+     `postpone` → drop it now; it is still in the pool and the next pick finds it.
 
    A card dropped here does not stop the rest.
 5. **Work.** A share carrying `after` runs in a second wave, once that share has built and pushed,
    and its base is that share's pushed tip and not `base`; everything else runs now. Spawn one
    `worker` per share of the wave, in parallel, each in its own worktree under
    `C:\Users\pc\Documents\GitHub\Personal\worktrees`, never inside the checkout, deleted when the
-   share is done and never reused. Give each its card dir by absolute path, its share and the base.
+   share is done and never reused. Give each the plan, the split and its card dir by absolute path,
+   its share and the base.
    Tell each which paths it owns and which belong to another share — to read and not to write, never
    to stay out of. Say other shares are running and never which. Anything you hand a worker past its
    plan, tell it to declare, so the audit reads the reason rather than working it out.
@@ -123,17 +126,17 @@ against; the audit floor is still read at the trunk.
      `pass_with_followup` — say so on the PR and merge.
    - **The ledger has one writer and it is you.** Count the open entries first. Then, in the primary
      checkout, in one pass: every `owed` the audit returned that `owed-closed.md` does not already
-     hold becomes an entry under a fresh `O-<yyyymmdd>-<nn>` — fresh against both files, because an
-     id is never reissued — at `passed 0` with its severity and origin. Every `owed_built` from a
+     hold becomes an entry at `passed 0`, with its severity and origin, under an
+     `O-<yyyymmdd>-<nn>` fresh against both files; an id is never reissued. Every `owed_built` from a
      share that **built**, and every `owed_settled` the audit returned, leaves for
      `private/owed-closed.md` under the commit that closed it; an `owed_built` carrying no commit
      closed nothing. Every entry still open that was open when you counted has its `passed` raised
      by one, whatever became of the share that held it.
    - **Then say the six, and check they balance**: open at the start, closed, created by integration,
      created as a known consequence, preexisting found, open at the end. `end = start − closed +
-     integration + consequence + preexisting`. It not balancing means an entry was lost or counted
-     twice, and that is worth more than the batch. **A `consequence` is a planning defect** — it
-     belongs at zero, and it is what the next planner's closure rule is judged by.
+     integration + consequence + preexisting`. It not balancing is an entry lost or counted twice,
+     and you find out which before you pick again. **A `consequence` is a planning defect** — it
+     belongs at zero.
    - `decisions_owed`, or a `blocked` on a claim `ISA.md` does not carry → §4, and the merge happens
      anyway. Write no claim yourself.
    - **`followups_proposed` is a proposal and you decide. You open no issue, ever.**
