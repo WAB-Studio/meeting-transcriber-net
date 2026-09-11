@@ -12,6 +12,12 @@
          this project, and a path from a domain test to the parser would let a rule be proved
          against the parser's own output instead of against a response. -->
     <ProjectReference Include="..\..\src\MeetingTranscriber.Infrastructure\MeetingTranscriber.Infrastructure.csproj" />
+
+    <!-- TestVault names CredentialManager itself, so this project names the package itself. It
+         arrived here transitively through Infrastructure, which meant the day the key stopped
+         living in Credential Manager this project would fail to compile for a reason written down
+         in somebody else's project file. No Version: the pin is in Directory.Packages.props. -->
+    <PackageReference Include="Meziantou.Framework.Win32.CredentialManager" />
   </ItemGroup>
 
   <!-- No test framework: this project holds what a test opens, never an assertion or a theory,

@@ -100,8 +100,39 @@
   <PropertyGroup>
     <PublishReadyToRun Condition="'$(Configuration)' == 'Debug'">False</PublishReadyToRun>
     <PublishReadyToRun Condition="'$(Configuration)' != 'Debug'">True</PublishReadyToRun>
-    <PublishTrimmed Condition="'$(Configuration)' == 'Debug'">False</PublishTrimmed>
-    <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
+
+    <!--
+      Never trimmed, in any configuration, and that is a decision rather than the template's
+      default left alone. EF Core builds its model by reflecting over `CorpusDbContext` and its
+      entity types, the SQLite provider resolves `SQLitePCLRaw` through a bundle that is found the
+      same way, and the migrations in this assembly are discovered rather than referenced - none of
+      which a trimmer can see. Nothing in this repository has ever run a Release publish, so a
+      trimmed package would be handed to somebody as the first build that ever existed, and what it
+      would fail on is the first query against their corpus. What trimming would buy is tens of
+      megabytes against a corpus that holds gigabytes of audio nobody can record again. The day
+      somebody wants it back, the thing to do first is run the trimmed package against a real
+      corpus and read the warnings, not flip this line.
+
+      The premise stops here and does not reach `PublishReadyToRun` above, which is equally
+      unexercised and keeps its Debug/Release pair. What trimming does is delete code a trimmer
+      cannot see reached; what ReadyToRun does is precompile code it keeps either way, so being
+      wrong about it costs startup time and not a query.
+    -->
+    <PublishTrimmed>false</PublishTrimmed>
+
+    <!--
+      One `.msix`, not a bundle: there is one architecture and sideloading takes the package itself.
+      Both were measured on 2026-09-11 and neither changes what today's build produces - the
+      documented command lands exactly one signed `.msix` and no `.msixbundle` or `.msixupload`
+      with these two lines deleted. They are here because of how the toolchain would fail if a
+      default moved, and not because they are what makes it work: `PackagedAppTests` finds the
+      package by looking for an `.msix` under `AppPackages`, so a build mode that produced a bundle
+      instead would leave it finding nothing and all four facts would *skip*, green, saying nothing.
+      A silent default is the one kind this card cannot survive, so the two that decide the shape
+      of the output are written down rather than inherited.
+    -->
+    <AppxBundle>Never</AppxBundle>
+    <UapAppxPackageBuildMode>SideloadOnly</UapAppxPackageBuildMode>
   </PropertyGroup>
 
   <!--

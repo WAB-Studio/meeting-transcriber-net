@@ -180,7 +180,15 @@ public static class RecordingCommands
                 Report.Line(output, $"{Name(cannot.Channel)} taken out", $"not made: {cannot.Why}");
             }
 
-            return Cli.Ok;
+            foreach (var damaged in taken.WouldNotRead)
+            {
+                Report.Line(
+                    output, $"{Name(damaged.Channel)} taken out", $"not read: {damaged.Why}");
+            }
+
+            // One judgement, answered by the export and asked here, so this command and
+            // `audio --recover` cannot come to different answers about the same folder.
+            return taken.Whole ? Cli.Ok : Cli.Refused;
         }
 
         var recovered = WaitingRecordings.Recover(context, recording, Clock.Now());

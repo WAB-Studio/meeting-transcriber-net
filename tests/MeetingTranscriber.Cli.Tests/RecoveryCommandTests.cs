@@ -402,6 +402,43 @@ public sealed class RecoveryCommandTests : IDisposable
     }
 
     /// <summary>
+    /// The other half of the same rule, at the prompt, and the one that used to cost a meeting. A
+    /// source whose blocks will not read through is damaged rather than fine, so it gets a line of
+    /// its own that says so in different words and an exit code that is not <see cref="Cli.Ok"/> —
+    /// and the source that poured completely stays where it poured, which until 2026-09-10 it did
+    /// not: the whole export went back and took an undamaged <c>loopback.wav</c> with it.
+    /// </summary>
+    /// <remarks>
+    /// Red three ways: with the export taking the whole thing back again, where the command comes
+    /// out <see cref="Cli.Refused"/> with nothing in the folder; with a damaged source folded into
+    /// <c>NotMade</c>, where the line reads <c>not made:</c> and the exit code is
+    /// <see cref="Cli.Ok"/>; and with <c>TakenOut.Whole</c> ignored here, where a folder missing a
+    /// channel reports success.
+    /// </remarks>
+    [Fact]
+    public void A_source_that_will_not_read_says_so_and_what_poured_stays_where_it_poured()
+    {
+        Recorded("daily", both: true);
+        Corrupt(AudioChannel.Microphone);
+        var into = Path.Combine(root.FullName, "taken out");
+
+        var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--export", into);
+
+        run.Code.ShouldBe(Cli.Refused);
+        run.Value("ch0 taken out").ShouldContain("loopback.wav");
+        run.Value("ch1 taken out").ShouldStartWith("not read: ");
+        run.Value("ch1 taken out").ShouldContain("microphone.blocks");
+
+        var poured = new FileInfo(Path.Combine(into, "loopback.wav"));
+        poured.Exists.ShouldBeTrue();
+        poured.Length.ShouldBeGreaterThan(0);
+        new FileInfo(Path.Combine(into, "microphone.wav")).Exists.ShouldBeFalse();
+
+        // And the recording is where it was, which is what taking one out means.
+        Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
+    }
+
+    /// <summary>
     /// ISC-125, at the surface: the one command that removes a recording, and it removes it only
     /// because somebody typed the word.
     /// </summary>
@@ -570,6 +607,21 @@ public sealed class RecoveryCommandTests : IDisposable
     }
 
     /// <summary>Takes the tail off the way a process being killed mid write takes it off.</summary>
+    /// <summary>
+    /// Damages a spool's header, which is every way a source can fail to read through — a header
+    /// that is not one, a block whose hash is not its bytes, a file the disk will not give up — all
+    /// of which reach the same <c>catch</c> by the same route.
+    /// </summary>
+    private void Corrupt(AudioChannel channel)
+    {
+        var file = BlockSpool.FileFor(Folder("daily"), channel);
+        using var stream = file.Open(FileMode.Open, FileAccess.ReadWrite);
+        stream.Position = 16;
+        var was = stream.ReadByte();
+        stream.Position = 16;
+        stream.WriteByte((byte)(was ^ 0xFF));
+    }
+
     private void CutOffMidBlock(AudioChannel channel)
     {
         var file = BlockSpool.FileFor(Folder("daily"), channel);

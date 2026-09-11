@@ -48,8 +48,6 @@ namespace MeetingTranscriber.UiProbe;
 /// </remarks>
 internal sealed class ProbeBuild
 {
-    private static readonly string[] Compiled = ["*.cs", "*.csproj"];
-
     private const string ProbeProject = "MeetingTranscriber.UiProbe";
 
     private const string Assemblies = "*.dll";
@@ -149,7 +147,8 @@ internal sealed class ProbeBuild
 
     internal void MustNotPredateItsSources()
     {
-        if (Sources.NewestUnder(_projects, Compiled) is not { } newest || newest.Written <= _built)
+        if (Sources.NewestUnder(_projects, Sources.OfThisTool) is not { } newest
+            || newest.Written <= _built)
         {
             return;
         }

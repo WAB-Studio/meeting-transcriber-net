@@ -135,6 +135,50 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// The one command somebody runs to find out what happened to a recording came back as a bare
+    /// <see cref="IOException"/> exactly while a recording was in progress:
+    /// <see cref="SpoolChanges.Append"/> holds <c>changes.jsonl</c> open
+    /// <see cref="FileAccess.ReadWrite"/> while a channel hands over, and the read asked for it with
+    /// write sharing denied. It now shares the file, so the answer arrives — and the answer is which
+    /// source the second half of that meeting is really on.
+    /// </summary>
+    /// <remarks>
+    /// Red with the read back on <see cref="FileShare.Read"/>, which is what
+    /// <c>File.ReadAllText</c> asks for. The same share mode was costing the other direction too,
+    /// and that half is held by
+    /// <c>SpoolChangesTests.A_change_written_while_somebody_is_reading_the_folder_still_lands</c>:
+    /// a listing holding the file made the <em>append</em> throw, and an append that is refused is
+    /// a move that does not happen.
+    /// </remarks>
+    [Fact]
+    public void A_recording_whose_changes_are_being_appended_to_is_offered_saying_what_changed()
+    {
+        Recorded("moving", both: true);
+        var whole = Recorded("whole", both: true);
+        SpoolChanges.Append(Folder("moving"), new SourceChanged(
+            UtcTimestamp.Parse("2026-08-15T09:41:31.500Z"),
+            AudioChannel.Loopback,
+            "everything this machine plays",
+            "teams (pid 8124)"));
+
+        // Held exactly as the append that is moving a channel holds it.
+        using var moving = new FileStream(
+            SpoolChanges.In(Folder("moving")).FullName,
+            FileMode.Open,
+            FileAccess.ReadWrite,
+            FileShare.Read);
+
+        var waiting = UnfinishedRecordings.In(root);
+
+        waiting.Select(recording => recording.Folder.Name).ShouldBe(["moving", "whole"]);
+        waiting[0].Unreadable.ShouldBeNull();
+        waiting[0].Changed.ShouldHaveSingleItem().WasHearing.ShouldBe("teams (pid 8124)");
+        waiting[0].Sources.Count.ShouldBe(2);
+        waiting[1].Card.ShouldNotBeNull().MeetingId.ShouldBe(whole);
+        waiting[1].Unreadable.ShouldBeNull();
+    }
+
+    /// <summary>
     /// The same recording, named directly rather than found: a card that will not read is not a
     /// reason to refuse a decision about the blocks beside it.
     /// </summary>
@@ -210,6 +254,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
         taken.Exported.Select(source => source.Wav.Name).ShouldBe(["loopback.wav", "microphone.wav"]);
         taken.Exported.ShouldAllBe(source => source.Wav.Exists && source.Blocks > 0);
         taken.NotMade.ShouldBeEmpty();
+        taken.WouldNotRead.ShouldBeEmpty();
         into.EnumerateFiles("*.blocks").ShouldBeEmpty();
 
         // A folder this call made, and the undo that takes such a folder back runs on the way out
@@ -244,6 +289,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
 
         taken.NotMade.Select(source => source.Channel).ShouldBe([AudioChannel.Microphone]);
         taken.NotMade[0].Why.ShouldContain("microphone.blocks");
+        taken.WouldNotRead.ShouldBeEmpty();
 
         // The file that poured is still there, and nothing stands under the name that did not.
         new FileInfo(Path.Combine(into.FullName, "loopback.wav")).Exists.ShouldBeTrue();
@@ -272,28 +318,43 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     }
 
     /// <summary>
-    /// Half of a recording somebody asked for is worse than a refusal, and worse still because the
-    /// half that landed is what makes the second attempt refuse the folder. So a source that
-    /// cannot be read takes back what the sources before it wrote, and asking again is a thing
-    /// somebody can do.
+    /// A recording nobody stopped is often the only copy of a meeting there will ever be, so a
+    /// damaged source costs its own file and nothing else: the source that poured completely stays
+    /// where it poured, and the export names the one it could not read. This is the opposite of the
+    /// rule this test held until 2026-09-10, and it is the same word for word inverted — what used
+    /// to be proved is that a corrupt microphone header threw away a whole, undamaged
+    /// <c>loopback.wav</c>.
     /// <para>
-    /// Nothing behind is the folder too, which somebody did not have before they typed the command.
-    /// The corrupt spool is what stands in here for the file system refusing the export — a full
-    /// disk, a read-only path, a denied permission — because none of those can be produced on a
-    /// build agent and all of them arrive at this same <c>catch</c> by the same route.
+    /// The corrupt spool stands in for every way a source can fail to read — a header that is not
+    /// one, a block whose hash is not its bytes, a spool the file system will not open — because
+    /// they all arrive at this same <c>catch</c> by the same route. What it does <em>not</em> stand
+    /// in for any more is the file system refusing the export itself; that is a full disk or a
+    /// destination that cannot be made, it is not one source's fault, and
+    /// <see cref="A_destination_the_file_system_refused_partway_leaves_no_level_it_had_made"/> is
+    /// where it is held.
     /// </para>
     /// </summary>
     [Fact]
-    public void Audio_taken_out_leaves_nothing_behind_when_a_later_source_cannot_be_read()
+    public void Audio_taken_out_leaves_what_poured_when_a_later_source_cannot_be_read()
     {
         Recorded("daily", both: true);
         Corrupt(BlockSpool.FileFor(Folder("daily"), AudioChannel.Microphone), at: 16);
         var into = Folder("taken out");
 
-        Should.Throw<AudioCaptureException>(() => UnfinishedRecordings.At(Folder("daily")).Export(into));
+        var taken = UnfinishedRecordings.At(Folder("daily")).Export(into);
+
+        taken.Exported.Select(source => source.Channel).ShouldBe([AudioChannel.Loopback]);
+        taken.NotMade.ShouldBeEmpty();
+        taken.WouldNotRead.Select(source => source.Channel).ShouldBe([AudioChannel.Microphone]);
+        taken.WouldNotRead[0].Why.ShouldContain("microphone.blocks");
 
         into.Refresh();
-        into.Exists.ShouldBeFalse();
+        into.Exists.ShouldBeTrue();
+        into.GetFiles().Select(file => file.Name).ShouldBe(["loopback.wav"]);
+        new FileInfo(Path.Combine(into.FullName, "loopback.wav")).Length.ShouldBeGreaterThan(0);
+
+        // And the recording is where it was, which is what taking one out means.
+        Folder("daily").EnumerateFiles("*.blocks").Count().ShouldBe(2);
     }
 
     /// <summary>
@@ -301,15 +362,24 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     /// deleting a folder they had would be worse than leaving behind one this call made. It is
     /// empty on purpose — a destination with anything in it would be held by the non-recursive
     /// delete itself and would prove nothing about remembering.
+    /// <para>
+    /// Every source is damaged here rather than one of them, because since 2026-09-10 a single
+    /// damaged source leaves the file the other one poured — so the only export that makes nothing
+    /// is the one where nothing could be read.
+    /// </para>
     /// </summary>
     [Fact]
-    public void An_export_that_was_refused_leaves_an_empty_destination_somebody_already_had()
+    public void An_export_that_made_nothing_leaves_an_empty_destination_somebody_already_had()
     {
         Recorded("daily", both: true);
+        Corrupt(BlockSpool.FileFor(Folder("daily"), AudioChannel.Loopback), at: 16);
         Corrupt(BlockSpool.FileFor(Folder("daily"), AudioChannel.Microphone), at: 16);
         var into = root.CreateSubdirectory("taken out");
 
-        Should.Throw<AudioCaptureException>(() => UnfinishedRecordings.At(Folder("daily")).Export(into));
+        var taken = UnfinishedRecordings.At(Folder("daily")).Export(into);
+
+        taken.Exported.ShouldBeEmpty();
+        taken.WouldNotRead.Count.ShouldBe(2);
 
         into.Refresh();
         into.Exists.ShouldBeTrue();
@@ -322,13 +392,14 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     /// beside a folder that was there and break it for one two levels down.
     /// </summary>
     [Fact]
-    public void An_export_that_was_refused_leaves_no_folder_it_had_to_make_on_the_way()
+    public void An_export_that_made_nothing_leaves_no_folder_it_had_to_make_on_the_way()
     {
         Recorded("daily", both: true);
+        Corrupt(BlockSpool.FileFor(Folder("daily"), AudioChannel.Loopback), at: 16);
         Corrupt(BlockSpool.FileFor(Folder("daily"), AudioChannel.Microphone), at: 16);
         var into = new DirectoryInfo(Path.Combine(root.FullName, "one", "two", "taken out"));
 
-        Should.Throw<AudioCaptureException>(() => UnfinishedRecordings.At(Folder("daily")).Export(into));
+        UnfinishedRecordings.At(Folder("daily")).Export(into).Exported.ShouldBeEmpty();
 
         new DirectoryInfo(Path.Combine(root.FullName, "one")).Exists.ShouldBeFalse();
     }
@@ -390,6 +461,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
 
         taken.Exported.ShouldBeEmpty();
         taken.NotMade.Select(source => source.Channel).ShouldBe([AudioChannel.Microphone]);
+        taken.WouldNotRead.ShouldBeEmpty();
 
         into.Refresh();
         into.Exists.ShouldBeFalse();

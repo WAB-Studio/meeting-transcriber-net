@@ -67,12 +67,63 @@ public static class SpoolChanges
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
+    /// <summary>
+    /// What makes two channels handing over at once two appends one after the other rather than one
+    /// append and one refusal.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both channels reach <see cref="Append"/> from their own capture callbacks, against one file,
+    /// with a read-modify-truncate inside it. A dock or a hub coming out takes both endpoints in the
+    /// same instant, and without this the second one in met the first one's handle, got a sharing
+    /// violation, and had its move refused — so that channel recorded the rest of the meeting on an
+    /// endpoint nobody was on, on timing alone.
+    /// </para>
+    /// <para>
+    /// One lock and not one per folder: an append is a few bytes and happens a handful of times in a
+    /// meeting, and this machine records one meeting at a time. A second recording waiting a
+    /// microsecond costs nothing worth a dictionary keyed by path.
+    /// </para>
+    /// </remarks>
+    private static readonly Lock Appending = new();
+
     /// <summary>Where a folder's changes are, whether or not anything changed.</summary>
     public static FileInfo In(DirectoryInfo folder)
     {
         ArgumentNullException.ThrowIfNull(folder);
 
         return new FileInfo(Path.Combine(folder.FullName, FileName));
+    }
+
+    /// <summary>
+    /// Opens this file the way everything that reads it opens it: sharing it with the writer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The share mode is the rule and not a detail, and denying write sharing cost both directions
+    /// at once. The one command somebody runs to find out what happened to a recording met a bare
+    /// <see cref="IOException"/> exactly while a recording was in progress; and, the other way
+    /// round, a listing holding this file for the length of one read made <see cref="Append"/>
+    /// throw — which <see cref="Append"/> says means the move does not happen and the rest of the
+    /// meeting records on an endpoint nobody is on.
+    /// </para>
+    /// <para>
+    /// Sharing is safe because of what the file is. Nothing before the last line break ever moves:
+    /// <see cref="Settle"/> truncates only bytes with no line break behind them, which were never a
+    /// whole line, and a line is written in one call. So the worst a reader can see is a line half
+    /// written, which is the tail <see cref="Find"/> already drops on purpose.
+    /// </para>
+    /// <para>
+    /// Public because the only way to hold this rule is to take a handle the way a reader takes one
+    /// and watch an append land through it. A test spelling the modes itself would go green against
+    /// whatever this asked for.
+    /// </para>
+    /// </remarks>
+    public static FileStream Reading(FileInfo file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        return new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
     }
 
     /// <summary>
@@ -108,11 +159,14 @@ public static class SpoolChanges
 
         try
         {
-            using var stream = new FileStream(
-                file.FullName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
+            lock (Appending)
+            {
+                using var stream = new FileStream(
+                    file.FullName, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
 
-            Settle(stream);
-            stream.Write(line);
+                Settle(stream);
+                stream.Write(line);
+            }
         }
         catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
         {
@@ -185,6 +239,20 @@ public static class SpoolChanges
     /// a complete line that will not read is not a torn write at all, it is a file that has stopped
     /// being what it says it is, and reading it as "nothing changed" would be this file failing in
     /// exactly the direction it exists to prevent. That one throws.
+    /// <para>
+    /// <b>The read shares the file with the writer rather than locking it out.</b> A reader that
+    /// drops a torn tail on purpose is a reader built to read a file being appended to, and denying
+    /// write sharing cost both directions at once: the one command somebody runs to find out what
+    /// happened to a recording met a bare <see cref="IOException"/> exactly while a recording was in
+    /// progress, and a listing taken at the instant a channel handed over made <see cref="Append"/>
+    /// throw — which <see cref="Append"/> says means the move does not happen and the rest of the
+    /// meeting records on an endpoint nobody is on. Sharing removes both.
+    /// </para>
+    /// <para>
+    /// What is left is a file that genuinely will not open, and that answers an
+    /// <see cref="AudioCaptureException"/> naming the file and the folder, because every caller here
+    /// turns one of those into a sentence rather than a stack trace.
+    /// </para>
     /// </remarks>
     public static IReadOnlyList<SourceChanged> Find(DirectoryInfo folder)
     {
@@ -194,7 +262,30 @@ public static class SpoolChanges
             return [];
         }
 
-        var written = File.ReadAllText(file.FullName);
+        string written;
+        try
+        {
+            // `Reading` and not `File.ReadAllText`, which shares Read only — see `Reading` for what
+            // that was costing in both directions.
+            using var stream = Reading(file);
+            using var reading = new StreamReader(stream);
+            written = reading.ReadToEnd();
+        }
+        catch (Exception held)
+            when (held is IOException or UnauthorizedAccessException
+                && held is not FileNotFoundException and not DirectoryNotFoundException)
+        {
+            // What is left after the share mode is a file that genuinely will not open — a denied
+            // permission, a disk that answered no. A folder that went between `file.Exists` and
+            // here is a recording somebody discarded in another window, and saying "could not be
+            // read" about a recording that is simply gone would be the wrong sentence, so those two
+            // go on out as they are.
+            throw new AudioCaptureException(
+                $"'{file.FullName}' could not be read, so what the recording in "
+                + $"'{folder.FullName}' changed while it was running is not known: {held.Message}",
+                held);
+        }
+
         var lines = written
             .Split('\n')
             .Select(line => line.Trim('\r'))

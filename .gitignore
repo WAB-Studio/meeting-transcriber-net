@@ -251,6 +251,8 @@ ClientBin/
 *.dbproj.schemaview
 *.jfm
 *.pfx
+# Beside the private half: both are regenerated from the step docs/packaging.md writes out.
+*.cer
 *.publishsettings
 orleans.codegen.cs
 

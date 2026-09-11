@@ -65,7 +65,8 @@ something here has stopped earning its place, and the fix is to move a section o
 | `docs/layout.md` | Looking for where something lives, or what a project may reference. |
 | `docs/shell.md` | A command by hand did something other than what it looks like it did. |
 | `docs/migrations.md` | Adding or editing an EF migration. |
-| `docs/packages.md` | Adding, bumping or choosing a package. |
+| `docs/packages.md` | Adding, bumping or choosing a NuGet package. |
+| `docs/packaging.md` | Building, signing or handing out the MSIX. |
 | `docs/corpus.md` | Deciding what gets backed up, what is deletable, what is rebuildable. |
 | `docs/process-capture.md` | How channel 0 is captured either way: what Windows gives, and what was probed. |
 | `docs/design.md` | Building a screen, or adding a control to one. Its keys are `Olivo.xaml`. |

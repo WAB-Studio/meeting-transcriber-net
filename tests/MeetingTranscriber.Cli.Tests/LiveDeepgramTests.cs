@@ -1,5 +1,7 @@
+using System.Runtime.CompilerServices;
+
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
-using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Processing.Deepgram;
 
@@ -27,8 +29,10 @@ namespace MeetingTranscriber.Cli.Tests;
 /// </para>
 /// <para>
 /// The half that only a real call would otherwise exercise — what a response has to hold — is
-/// driven against <c>tests/fixtures/deepgram/</c>, which is real responses with every timing,
-/// confidence and channel number left as sent.
+/// <see cref="LiveInvariants"/>'s, and it is proved in <c>MeetingTranscriber.Processing.Tests</c>
+/// against <c>tests/fixtures/deepgram/</c>. It is not here because the rule is not here:
+/// <c>docs/layout.md</c> says this project holds no rule of its own, and what this file is about is
+/// the argument reading, the ceiling, the confirmation and the exit code.
 /// </para>
 /// </remarks>
 public sealed class LiveDeepgramTests : IDisposable
@@ -38,6 +42,13 @@ public sealed class LiveDeepgramTests : IDisposable
     /// realistic rate would make a four-minute file eight megabytes for nothing.
     /// </summary>
     private const int Rate = 100;
+
+    /// <summary>
+    /// A ceiling that is not what is being tested. The tests that are about the ceiling say their
+    /// own number; the ones about what a send does say this, so a fixture's real length never has
+    /// to be worked out twice.
+    /// </summary>
+    private const int Generous = 60;
 
     private readonly DirectoryInfo audio = new(Path.Combine(
         Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
@@ -50,13 +61,6 @@ public sealed class LiveDeepgramTests : IDisposable
         audio.Create();
         into.Create();
     }
-
-    /// <summary>
-    /// Declared here rather than on <see cref="DeepgramFixtures"/> for the reason that type's own
-    /// remarks give: xunit's analyzer crashes on a <c>MemberData</c> whose member lives in another
-    /// assembly, and a crashed analyzer is a warning CI fails on.
-    /// </summary>
-    public static TheoryData<string> Fixtures => new(DeepgramFixtures.All);
 
     public void Dispose()
     {
@@ -202,7 +206,7 @@ public sealed class LiveDeepgramTests : IDisposable
     public void Confirming_is_typing_back_the_minutes()
     {
         Wav("meeting.wav", seconds: 480, 0.4f, 0.2f);
-        var run = LiveCheck.Of(audio, ceilingMinutes: 9);
+        var run = LiveCheck.Of(audio, into, ceilingMinutes: 9);
 
         using var yes = new StringWriter();
         run.Confirmed(yes, () => "y").ShouldBeFalse();
@@ -231,7 +235,7 @@ public sealed class LiveDeepgramTests : IDisposable
         Wav("meeting.wav", seconds: 503, 0.4f, 0.2f);
         using var output = new StringWriter();
 
-        var run = LiveCheck.Of(audio, ceilingMinutes: 9);
+        var run = LiveCheck.Of(audio, into, ceilingMinutes: 9);
         run.Say(output);
         run.Confirmed(output, () => null);
 
@@ -239,7 +243,7 @@ public sealed class LiveDeepgramTests : IDisposable
         output.ToString().ShouldContain("0:08:23 (9 minute(s))");
         output.ToString().ShouldContain("type 9");
         run.UnderTheCeiling.ShouldBeTrue();
-        LiveCheck.Of(audio, ceilingMinutes: 8).UnderTheCeiling.ShouldBeFalse();
+        LiveCheck.Of(audio, into, ceilingMinutes: 8).UnderTheCeiling.ShouldBeFalse();
     }
 
     /// <summary>
@@ -253,7 +257,7 @@ public sealed class LiveDeepgramTests : IDisposable
         Wav("a.wav", seconds: 10, 0.4f, 0.2f);
         Wav("b.wav", seconds: 10, 0.3f);
 
-        var run = LiveCheck.Of(audio, ceilingMinutes: 5);
+        var run = LiveCheck.Of(audio, into, ceilingMinutes: 5);
 
         run.Audio.Select(sent => sent.File.Name).ShouldBe(["a.wav", "b.wav", "c.wav"]);
         run.Audio.Select(sent => sent.Profile).ShouldBe(
@@ -270,7 +274,7 @@ public sealed class LiveDeepgramTests : IDisposable
     {
         Wav("meeting.wav", seconds: 60, 0.4f, 0.2f);
         using var output = new StringWriter();
-        var run = LiveCheck.Of(audio, ceilingMinutes: 5);
+        var run = LiveCheck.Of(audio, into, ceilingMinutes: 5);
 
         run.Say(output);
         Should.Throw<InvalidOperationException>(() => run.Confirmed(output, Nobody));
@@ -292,170 +296,351 @@ public sealed class LiveDeepgramTests : IDisposable
     }
 
     /// <summary>
-    /// Every committed response holds everything a live call is checked for. This is the half that
-    /// would otherwise only ever run on a call somebody paid for.
+    /// Files go in name order and the first failure ends the run, so an eight-file run that died on
+    /// the sixth is re-run to finish it. Nothing skipped a stem whose response was already in
+    /// <c>--out</c>, and the ceiling was recomputed over the whole <c>--audio</c> folder — so the
+    /// second run was offered at the same total and re-bought five files.
     /// </summary>
     /// <remarks>
-    /// It is also what stops a rule being written that reads a speaker label's list position as the
-    /// provider's speaker number. All five fixtures number their speakers contiguously from zero,
-    /// so such a rule would go green here and fail for the first time on a paid call — which is why
-    /// <see cref="LiveInvariants"/> checks what the provider decides and nothing the parser built.
+    /// The ceiling is the sharp half: eight minutes over a five-minute ceiling is refused, and the
+    /// same folder with five of those minutes already answered is three minutes and goes through.
+    /// Red when <c>Of</c> stops reading <c>--out</c>, and red when the skipped files are subtracted
+    /// from the total but still sent.
     /// </remarks>
-    [Theory]
-    [MemberData(nameof(Fixtures))]
-    public void Every_committed_response_holds_every_invariant(string fixture)
+    [Fact]
+    public void A_file_whose_response_is_already_there_is_not_sent_or_paid_for_again()
     {
-        var read = Read(fixture);
+        Wav("a.wav", seconds: 300, 0.4f, 0.2f);
+        Wav("b.wav", seconds: 180, 0.4f, 0.2f);
+        Answered("a.wav");
 
-        var verdict = LiveInvariants.Of(read, Sent(fixture, read));
+        using var output = new StringWriter();
+        var run = LiveCheck.Of(audio, into, ceilingMinutes: 5);
+        run.Say(output);
 
-        verdict.Broken.ShouldBeEmpty();
-        verdict.Held.ShouldBeTrue();
-        verdict.Turns.ShouldBeGreaterThan(0);
+        run.Audio.Select(sent => sent.File.Name).ShouldBe(["b.wav"]);
+        run.Answered.Select(file => file.Name).ShouldBe(["a.wav"]);
+        run.Minutes.ShouldBe(3);
+        run.UnderTheCeiling.ShouldBeTrue();
+
+        // Said on its own line and never only subtracted: a run that quietly sent fewer files than
+        // the folder holds would read exactly like one with nothing left to do.
+        output.ToString().ShouldContain("already");
+        output.ToString().ShouldContain("a.wav");
+        output.ToString().ShouldContain("will send");
+        output.ToString().ShouldContain("b.wav");
     }
 
     /// <summary>
-    /// A response describing audio nobody sent is the failure only a real call can produce, and the
-    /// one worth every other rule being left out for.
+    /// The one way this could cost somebody a file rather than save them one. A folder holding
+    /// <c>a.wav</c> and <c>a-b.wav</c> has an <c>a-b</c> response that begins <c>a-</c>, so a rule
+    /// stopping at the prefix would leave <c>a.wav</c> out of a run that had never sent it.
     /// </summary>
     [Fact]
-    public void A_response_whose_length_is_not_the_audio_s_is_named()
+    public void A_response_to_another_file_whose_name_starts_the_same_is_not_mistaken_for_one()
     {
-        var read = Read(DeepgramFixtures.TwoChannelShort);
-        var sent = Sent(DeepgramFixtures.TwoChannelShort, read) with
-        {
-            Length = read.Audio + Duration.FromSeconds(120),
-        };
+        Wav("a.wav", seconds: 60, 0.4f, 0.2f);
+        Wav("a-b.wav", seconds: 60, 0.4f, 0.2f);
+        Answered("a-b.wav");
 
-        var verdict = LiveInvariants.Of(read, sent);
+        var run = LiveCheck.Of(audio, into, ceilingMinutes: 5);
 
-        verdict.Held.ShouldBeFalse();
-        verdict.Broken.Count.ShouldBe(1);
-        verdict.Broken[0].ShouldContain($"{read.Audio}");
-        verdict.Broken[0].ShouldContain($"{sent.Length}");
-        verdict.Broken[0].ShouldContain(sent.File.Name);
+        run.Audio.Select(sent => sent.File.Name).ShouldBe(["a.wav"]);
+        run.Answered.Select(file => file.Name).ShouldBe(["a-b.wav"]);
     }
 
     /// <summary>
-    /// A provider reports its own rounding of what it received and this end counts frames, so the
-    /// two never agree to the millisecond. Comparing for equality would fail every real call.
+    /// A folder that is finished is somebody re-running a command they already ran, which is not a
+    /// failure and is not a confirmation to ask for either — the alternative is a prompt saying
+    /// "type 0 and press Enter to send 0 minute(s)".
     /// </summary>
     [Fact]
-    public void A_length_a_second_out_is_not_a_failure()
+    public void A_folder_that_is_already_answered_sends_nothing_and_asks_nobody()
     {
-        var read = Read(DeepgramFixtures.TwoChannelShort);
-        var sent = Sent(DeepgramFixtures.TwoChannelShort, read) with
-        {
-            Length = read.Audio + Duration.FromMilliseconds(900),
-        };
+        Wav("a.wav", seconds: 60, 0.4f, 0.2f);
+        Answered("a.wav");
+        using var output = new StringWriter();
 
-        LiveInvariants.Of(read, sent).Held.ShouldBeTrue();
+        var code = DeepgramCommands.Live(
+            Typed("--ceiling-minutes", "5"),
+            output,
+            Nobody,
+            (_, _, _, _) => throw new InvalidOperationException("Nothing was left to send."));
+
+        code.ShouldBe(Cli.Ok);
+        output.ToString().ShouldContain("not sent");
+        output.ToString().ShouldContain("a.wav");
     }
 
     /// <summary>
-    /// The response's two halves against each other, which nothing else compares: the parser holds
-    /// an utterance's start against its own end and neither against the length it reports.
+    /// The chain the resume rule is made of, end to end: the name a run writes is the name the next
+    /// run reads back.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the one that was missing, and what it found is that nothing ever renamed the working
+    /// file. Every byte went to <c>&lt;stem&gt;-&lt;stamp&gt;.json.partial</c>, the report named a
+    /// path that was not there, and the parser opened <see cref="FileMode.Open"/> on it and threw —
+    /// after the money was spent. <see cref="LiveCheck.Of"/> lists <c>*.json</c>, so nothing it
+    /// could ever find existed and the resume rule matched nothing on a real machine.
+    /// </para>
+    /// <para>
+    /// Writing the response by hand and reading it back proves only that
+    /// <see cref="LiveCheck.ResponseNamed"/> agrees with itself. What makes this a probe is that the
+    /// file it reads is the one the send loop left.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_response_that_held_lands_under_the_name_the_next_run_reads_back()
+    {
+        AudioFor(DeepgramFixtures.TwoChannelOneVoiceMe, "a.wav");
+        using var output = new StringWriter();
+
+        var code = await DeepgramCommands.SendAsync(
+            LiveCheck.Of(audio, into, Generous),
+            into,
+            output,
+            Answering(DeepgramFixtures.TwoChannelOneVoiceMe),
+            CancellationToken.None);
+
+        code.ShouldBe(Cli.Ok, output.ToString());
+
+        var response = into.EnumerateFiles("*.json").ShouldHaveSingleItem();
+        response.Name.ShouldStartWith("a-");
+        into.EnumerateFiles("*" + RecordingFiles.UnfinishedSuffix).ShouldBeEmpty();
+        output.ToString().ShouldContain(response.FullName);
+
+        // And what the next run over the same two folders makes of it.
+        var again = LiveCheck.Of(audio, into, Generous);
+        again.Audio.ShouldBeEmpty();
+        again.Answered.Select(file => file.Name).ShouldBe(["a.wav"]);
+    }
+
+    /// <summary>
+    /// A response that broke an invariant is paid for and is kept — and it does not wear the name
+    /// that says it is a response to read a meeting from, because that name is what a later run
+    /// reads to decide what it need not buy.
+    /// </summary>
+    /// <remarks>
+    /// The failure this stops is the entry's own headline case got backwards: a run of eight stops
+    /// on the sixth because nobody was heard in it, somebody fixes <c>--language</c> and runs the
+    /// same command again — and the sixth is reported <c>already</c> and never sent while seven and
+    /// eight are bought. Red when the working name is moved onto the final one before the verdict
+    /// is in.
+    /// </remarks>
+    [Fact]
+    public async Task A_response_that_did_not_hold_is_kept_under_a_name_the_next_run_sends_again()
+    {
+        // A one-minute file against a thirteen-minute response, which is what a wrong account or a
+        // wrong key comes back as: a response describing audio nobody sent.
+        Wav("a.wav", seconds: 60, 0.4f, 0.2f);
+        Wav("b.wav", seconds: 60, 0.4f, 0.2f);
+        using var output = new StringWriter();
+
+        var code = await DeepgramCommands.SendAsync(
+            LiveCheck.Of(audio, into, Generous),
+            into,
+            output,
+            Answering(DeepgramFixtures.TwoChannelOneVoiceMe),
+            CancellationToken.None);
+
+        code.ShouldBe(Cli.Refused);
+        output.ToString().ShouldContain("not held");
+        output.ToString().ShouldContain("kept");
+
+        // Nothing wears the name of an answer, and what came back is still on disk.
+        into.EnumerateFiles("*.json").ShouldBeEmpty();
+        into.EnumerateFiles("*" + RecordingFiles.UnfinishedSuffix).ShouldHaveSingleItem()
+            .Length.ShouldBeGreaterThan(0);
+
+        // So the next run sends it again rather than calling it bought, and b.wav with it.
+        LiveCheck.Of(audio, into, Generous).Audio.Select(one => one.File.Name)
+            .ShouldBe(["a.wav", "b.wav"]);
+    }
+
+    /// <summary>
+    /// Ctrl+C part way through a call: the fragment is named rather than left for somebody to find,
+    /// what the run never reached is named too, and it comes back a refusal rather than an
+    /// unhandled <see cref="OperationCanceledException"/> — which is what it would be,
+    /// <c>Cli.IsRefusal</c> not naming that type and having no reason to.
     /// </summary>
     [Fact]
-    public void An_utterance_after_the_end_of_the_audio_is_named()
+    public async Task A_run_stopped_part_way_through_a_call_says_what_it_stopped_and_what_is_left()
     {
-        var read = Read(DeepgramFixtures.TwoChannelShort);
-        var beyond = read with
-        {
-            Segments =
-            [
-                .. read.Segments,
-                new SpeechSegment(
-                    read.Audio + Duration.FromSeconds(30),
-                    read.Audio + Duration.FromSeconds(35),
-                    AudioChannel.Loopback,
-                    "ch0:speaker_0",
-                    "coati"),
-            ],
-        };
+        AudioFor(DeepgramFixtures.TwoChannelOneVoiceMe, "a.wav");
+        Wav("b.wav", seconds: 60, 0.4f, 0.2f);
+        using var stopping = new CancellationTokenSource();
+        using var output = new StringWriter();
 
-        var verdict = LiveInvariants.Of(beyond, Sent(DeepgramFixtures.TwoChannelShort, read));
+        var code = await DeepgramCommands.SendAsync(
+            LiveCheck.Of(audio, into, Generous),
+            into,
+            output,
+            (sent, wrote, token) =>
+            {
+                stopping.Cancel();
+                token.ThrowIfCancellationRequested();
+                return Task.FromResult(0L);
+            },
+            stopping.Token);
 
-        verdict.Held.ShouldBeFalse();
-        verdict.Broken.Count.ShouldBe(1);
-        verdict.Broken[0].ShouldContain("1 utterance(s)");
-        verdict.Broken[0].ShouldContain($"{read.Audio}");
+        code.ShouldBe(Cli.Refused);
+
+        var said = output.ToString();
+        said.ShouldContain("stopped");
+        said.ShouldContain("a.wav");
+        said.ShouldContain("not sent");
+        said.ShouldContain("b.wav");
+
+        // Nought bytes is a call that never delivered, so there is nothing to keep and nothing to
+        // name: what would stand otherwise is litter under a name claiming to be about a paid
+        // response.
+        into.EnumerateFiles().ShouldBeEmpty();
     }
 
     /// <summary>
-    /// What a run in the wrong language produces, and what a live probe exists to catch: a response
-    /// that came back whole, cost money and holds nobody.
+    /// A press that lands between two files. Nothing was in flight, so nothing may have been
+    /// charged for — and the one command whose job is saying true things about a call must not
+    /// invent a possible charge for a request that never left the machine.
     /// </summary>
+    /// <remarks>
+    /// Red without the question asked at the top of the loop: the next call is entered with a token
+    /// already set, throws with nothing sent, and the run reports that file as stopped part way
+    /// through a call and then leaves it out of what was not sent — wrong twice about one file.
+    /// </remarks>
     [Fact]
-    public void A_response_nobody_was_heard_in_is_a_failure()
+    public async Task A_press_between_two_files_stops_the_run_without_claiming_a_call_was_in_flight()
     {
-        var read = Read(DeepgramFixtures.TwoChannelShort);
+        AudioFor(DeepgramFixtures.TwoChannelOneVoiceMe, "a.wav");
+        AudioFor(DeepgramFixtures.TwoChannelOneVoiceMe, "b.wav");
+        using var stopping = new CancellationTokenSource();
+        using var output = new StringWriter();
+        var asked = new List<string>();
+        var answer = Answering(DeepgramFixtures.TwoChannelOneVoiceMe);
 
-        var verdict = LiveInvariants.Of(
-            read with { Segments = [] }, Sent(DeepgramFixtures.TwoChannelShort, read));
+        var code = await DeepgramCommands.SendAsync(
+            LiveCheck.Of(audio, into, Generous),
+            into,
+            output,
+            async (sent, wrote, token) =>
+            {
+                asked.Add(sent.File.Name);
+                var bytes = await answer(sent, wrote, token);
 
-        verdict.Turns.ShouldBe(0);
-        verdict.Held.ShouldBeFalse();
-        verdict.Broken.Count.ShouldBe(1);
-        verdict.Broken[0].ShouldContain("nothing was heard");
-        verdict.Broken[0].ShouldContain("language");
+                // The press, landing as this call comes back.
+                await stopping.CancelAsync();
+                return bytes;
+            },
+            stopping.Token);
+
+        code.ShouldBe(Cli.Refused);
+        asked.ShouldBe(["a.wav"]);
+
+        var said = output.ToString();
+        said.ShouldContain("between files");
+        said.ShouldNotContain("Whether it was charged for");
+        said.ShouldContain("b.wav");
+
+        // The one that did come back held, so it is under the name a later run reads.
+        into.EnumerateFiles("*.json").ShouldHaveSingleItem().Name.ShouldStartWith("a-");
     }
 
     /// <summary>
-    /// A channel that carried nobody was transcribed and was charged for, so it is said — and it is
-    /// not a reason to fail a run, because a meeting where one side never spoke is a meeting.
+    /// The rule that keeps the one entry point that spends out of reach of every suite there is,
+    /// asserted rather than written down.
     /// </summary>
+    /// <remarks>
+    /// <c>DeepgramCommands.Live(Arguments, TextWriter)</c> binds this prompt's keyboard and this
+    /// machine's key, and it is <see langword="internal"/> — which keeps a suite out only for as
+    /// long as this repository has no <c>InternalsVisibleTo</c>. Seven places state that in prose
+    /// and nothing held it: one attribute in <c>Directory.Build.props</c> silently reopens it, and
+    /// the failure would show up as a test that suddenly compiles.
+    /// <para>
+    /// The whole tree and not <c>src/</c> alone, because the attribute is assembly-level and can be
+    /// written anywhere the assembly compiles — a project file, a props file, any <c>.cs</c>. Red
+    /// with the attribute added anywhere in either.
+    /// </para>
+    /// </remarks>
     [Fact]
-    public void A_silent_channel_is_said_and_is_not_a_failure()
+    public void No_suite_can_be_let_in_to_what_spends()
     {
-        var read = Read(DeepgramFixtures.TwoChannelSilentMe);
+        // Spelled in two halves, because a file hunting for a declaration must not be one its own
+        // hunt finds. Seven files in this repository say the word in prose and none of them is
+        // declaring anything; what a compiler reads is the word with one of these in front of it.
+        const string Named = "InternalsVisible" + "To";
+        const string InCode = "[assembly: " + Named;
+        const string InAProjectFile = "<" + Named;
 
-        var verdict = LiveInvariants.Of(read, Sent(DeepgramFixtures.TwoChannelSilentMe, read));
+        var repository = new DirectoryInfo(Path.GetFullPath(Path.Combine(Here(), "..", "..")));
 
-        verdict.Held.ShouldBeTrue();
-        verdict.Broken.ShouldBeEmpty();
-        verdict.WorthSaying.Count.ShouldBe(1);
-        verdict.WorthSaying[0].ShouldContain("channel 1");
-        verdict.WorthSaying[0].ShouldContain("the microphone");
+        var declaring = repository
+            .EnumerateFiles("*", SearchOption.AllDirectories)
+            .Where(file => file.Extension is ".cs" or ".csproj" or ".props" or ".targets")
+            .Where(file => !file.FullName.Contains(
+                $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(file => !file.FullName.Contains(
+                $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(file =>
+            {
+                var written = File.ReadAllText(file.FullName);
+
+                return written.Contains(InCode, StringComparison.Ordinal)
+                    || written.Contains(InAProjectFile, StringComparison.Ordinal);
+            })
+            .Select(file => Path.GetRelativePath(repository.FullName, file.FullName))
+            .ToArray();
+
+        declaring.ShouldBeEmpty();
     }
-
-    /// <summary>
-    /// A rule and not an example: what a live check may compare is structure. A provider rewords
-    /// itself between models and between days, and a check against its words is a check that goes
-    /// red for a reason nobody can act on — on a call somebody paid for.
-    /// </summary>
-    [Fact]
-    public void Nothing_here_reads_a_word_of_what_was_said()
-    {
-        var read = Read(DeepgramFixtures.TwoChannelLong);
-        var sent = Sent(DeepgramFixtures.TwoChannelLong, read);
-        var reworded = read with
-        {
-            Segments = [.. read.Segments.Select(segment => segment with { Text = "coati" })],
-        };
-
-        var said = LiveInvariants.Of(read, sent);
-        var otherwise = LiveInvariants.Of(reworded, sent);
-
-        otherwise.Turns.ShouldBe(said.Turns);
-        otherwise.Broken.ShouldBe(said.Broken);
-        otherwise.WorthSaying.ShouldBe(said.WorthSaying);
-    }
-
-    /// <summary>A committed response, read exactly as the command reads a paid one.</summary>
-    private static DeepgramTranscript Read(string fixture) => DeepgramTranscriptParser.ParseFile(
-        DeepgramFixtures.PathOf(fixture), DeepgramFixtures.ProfileOf(fixture));
-
-    /// <summary>
-    /// The audio that response is a transcription of. The file is named and never opened: what a
-    /// fixture is missing is its audio, and every rule under test is about the response.
-    /// </summary>
-    private static LiveAudio Sent(string fixture, DeepgramTranscript read) => new(
-        new FileInfo(fixture + ".wav"), DeepgramFixtures.ProfileOf(fixture), read.Audio);
 
     /// <summary>A keyboard nobody is at, for the paths that must never reach one.</summary>
     private static string? Nobody() =>
         throw new InvalidOperationException("Nothing on this path may ask anybody to confirm.");
+
+    /// <summary>
+    /// Where this file is, so the repository is found from the tree rather than from whatever
+    /// working directory the runner happened to start in.
+    /// </summary>
+    private static string Here([CallerFilePath] string path = "") => Path.GetDirectoryName(path)!;
+
+    /// <summary>
+    /// A stand-in for the provider that answers with a committed response and reaches no socket.
+    /// </summary>
+    private static Transcribing Answering(string fixture) => async (sent, wrote, stopping) =>
+    {
+        await using var response = File.OpenRead(DeepgramFixtures.PathOf(fixture));
+        await response.CopyToAsync(wrote, stopping);
+        return response.Length;
+    };
+
+    /// <summary>
+    /// The audio a committed response is a transcription of, at this suite's cheap frame rate — so
+    /// that what the response says about its length and what this end counts agree, which is the
+    /// first thing <c>LiveInvariants</c> holds them to.
+    /// </summary>
+    private FileInfo AudioFor(string fixture, string name)
+    {
+        var read = DeepgramTranscriptParser.ParseFile(
+            DeepgramFixtures.PathOf(fixture), DeepgramFixtures.ProfileOf(fixture));
+
+        return ForeignWav.Steady(
+            new FileInfo(Path.Combine(audio.FullName, name)),
+            Rate,
+            (int)(read.Audio.Milliseconds * Rate / 1000),
+            0.4f,
+            0.2f);
+    }
+
+    /// <summary>
+    /// The response an earlier run left for <paramref name="wav"/>, named exactly as that run would
+    /// have named it.
+    /// </summary>
+    private void Answered(string wav) => File.WriteAllText(
+        Path.Combine(
+            into.FullName,
+            LiveCheck.ResponseNamed(
+                new FileInfo(wav), LiveCheck.StampOf(UtcTimestamp.Parse("2026-09-10T11:22:33.000Z")))),
+        "{}");
 
     private static void Erase(DirectoryInfo folder)
     {

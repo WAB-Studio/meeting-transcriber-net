@@ -2,24 +2,10 @@ using System.Globalization;
 
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
-using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Processing.Deepgram;
 
 namespace MeetingTranscriber.Cli;
-
-/// <summary>One audio file a live run would send, and what it is.</summary>
-/// <param name="File">The file.</param>
-/// <param name="Profile">
-/// Decided by the file's own channel count and never asked for: two channels is what this
-/// application records, one is a single track, and the contract is that a profile disagreeing with
-/// its audio throws. A flag would let somebody pay to find that out.
-/// </param>
-/// <param name="Length">
-/// How long it is, counted off the frames before anything is sent rather than read off the header,
-/// because the header is a claim and this is the number a ceiling is spent against.
-/// </param>
-public sealed record LiveAudio(FileInfo File, SourceProfile Profile, Duration Length);
 
 /// <summary>
 /// One live run against the real provider: which files it would send, how much audio that is,
@@ -55,14 +41,41 @@ public sealed class LiveCheck
         + "key at a test project first if that is not what you want charged: "
         + "'meeting-transcriber key --set'.";
 
-    private LiveCheck(IReadOnlyList<LiveAudio> audio, int ceilingMinutes)
+    /// <summary>What a response is called, as a name ends.</summary>
+    private const string ResponseExtension = ".json";
+
+    /// <summary>
+    /// How a run stamps every response it writes.
+    /// </summary>
+    /// <remarks>
+    /// Compact because <c>UtcTimestamp.ToString</c> writes colons, which is not a file name Windows
+    /// will take. It is read back as well as written — see <see cref="AnswersAlready"/> — so it is
+    /// spelled once here rather than at each end.
+    /// </remarks>
+    private const string RunStamp = "yyyyMMdd'T'HHmmss'Z'";
+
+    private LiveCheck(
+        IReadOnlyList<LiveAudio> audio, IReadOnlyList<FileInfo> answered, int ceilingMinutes)
     {
         Audio = audio;
+        Answered = answered;
         CeilingMinutes = ceilingMinutes;
     }
 
     /// <summary>What this run would send, in the order it would send it.</summary>
     public IReadOnlyList<LiveAudio> Audio { get; }
+
+    /// <summary>
+    /// What this run leaves out because the folder it writes into already holds its response, in
+    /// name order.
+    /// </summary>
+    /// <remarks>
+    /// Said on its own line by <see cref="Say"/> and never only subtracted. Files go in name order
+    /// and the first failure ends the run, so an eight-file run that died on the sixth is re-run to
+    /// finish it — and a run that quietly sent fewer files than the folder holds would be worse
+    /// than one that re-bought them, because nobody could tell the two apart from the report.
+    /// </remarks>
+    public IReadOnlyList<FileInfo> Answered { get; }
 
     /// <summary>How much audio that is, all of it together.</summary>
     public Duration Total => Audio.Aggregate(Duration.Zero, (sum, sent) => sum + sent.Length);
@@ -84,26 +97,55 @@ public sealed class LiveCheck
     public bool UnderTheCeiling => Minutes <= CeilingMinutes;
 
     /// <summary>
-    /// What is in <paramref name="audio"/>, refused now rather than after somebody has paid for the
-    /// files before the bad one.
+    /// What is in <paramref name="audio"/> and is not already answered in <paramref name="into"/>,
+    /// refused now rather than after somebody has paid for the files before the bad one.
     /// </summary>
     /// <remarks>
-    /// Every file is read through <see cref="AudioFiles.Read"/>, which counts the frames rather
-    /// than believing the header — so a file that is not a WAV at all is refused by the engine's
-    /// own sentence, and a length here is a length there really is.
+    /// <para>
+    /// Every file this would send is read through <see cref="AudioFiles.Read"/>, which counts the
+    /// frames rather than believing the header — so a file that is not a WAV at all is refused by
+    /// the engine's own sentence, and a length here is a length there really is.
+    /// </para>
+    /// <para>
+    /// <b><paramref name="into"/> is read here and not only written to later, and that is what
+    /// makes a run resumable.</b> The ceiling is spent against the audio that will actually be
+    /// sent, so the minutes said, the minutes checked against the ceiling and the minutes typed
+    /// back are one number — an eight-file run that died on the sixth used to be re-offered at the
+    /// same total and re-buy five files. A file already answered is not read at all: it is not
+    /// going to be sent, and a full read of it would be minutes of disk for a number nobody uses.
+    /// </para>
+    /// <para>
+    /// <b>What is in <paramref name="into"/> is a ledger nothing locks.</b> Two runs pointed at one
+    /// folder both see nothing answered, both pass the ceiling and both buy it — the stamps keep
+    /// the files from colliding, which is exactly what would hide it. That was true before anything
+    /// read this folder and reading it does not make it worse, but it is now a directory listing
+    /// standing over somebody's money, so it is said here rather than left to be found.
+    /// </para>
     /// </remarks>
     /// <exception cref="CommandException">
-    /// There is no such folder, it holds no <c>.wav</c>, or one of the files in it is not something
-    /// this application transcribes.
+    /// Either folder is not there, <paramref name="audio"/> holds no <c>.wav</c>, or one of the
+    /// files this would send is not something this application transcribes.
     /// </exception>
-    public static LiveCheck Of(DirectoryInfo audio, int ceilingMinutes)
+    public static LiveCheck Of(DirectoryInfo audio, DirectoryInfo into, int ceilingMinutes)
     {
         ArgumentNullException.ThrowIfNull(audio);
+        ArgumentNullException.ThrowIfNull(into);
 
         audio.Refresh();
         if (!audio.Exists)
         {
             throw new CommandException($"There is no folder '{audio.FullName}' to take audio from.");
+        }
+
+        // Both folders, now this owns both. The command refuses a missing `--out` first and in its
+        // own words, before the frame count that costs minutes; what this stops is the caller that
+        // does not, meeting a `DirectoryNotFoundException` where every other way out of here is a
+        // sentence.
+        into.Refresh();
+        if (!into.Exists)
+        {
+            throw new CommandException(
+                $"There is no folder '{into.FullName}' for the responses to land in.");
         }
 
         var files = audio
@@ -117,7 +159,22 @@ public sealed class LiveCheck
                 $"'{audio.FullName}' holds no .wav file, so there is nothing to send.");
         }
 
-        return new LiveCheck([.. files.Select(Sent)], ceilingMinutes);
+        var responses = into.EnumerateFiles("*" + ResponseExtension).Select(file => file.Name).ToArray();
+        var sending = new List<LiveAudio>();
+        var answered = new List<FileInfo>();
+
+        foreach (var file in files)
+        {
+            if (AnswersAlready(responses, Path.GetFileNameWithoutExtension(file.Name)))
+            {
+                answered.Add(file);
+                continue;
+            }
+
+            sending.Add(Sent(file));
+        }
+
+        return new LiveCheck(sending, answered, ceilingMinutes);
     }
 
     /// <summary>What this run is, said before anything is asked and whether or not it goes ahead.</summary>
@@ -139,6 +196,19 @@ public sealed class LiveCheck
                 output,
                 "will send",
                 $"{sent.File.Name} ({Report.Offset(sent.Length)}, {sent.Profile.ToWireName()})");
+        }
+
+        // Beside the ones that will be sent and never instead of them, because the difference
+        // between a folder of eight and a run of three is the whole of what somebody is agreeing
+        // to, and a run that silently sent fewer files than the folder held would read exactly like
+        // one that had nothing left to do.
+        foreach (var already in Answered)
+        {
+            Report.Line(
+                output,
+                "already",
+                $"{already.Name} — the folder responses land in already holds one for it, so it is "
+                + "not sent again.");
         }
 
         Report.Line(output, "files", $"{Audio.Count}");
@@ -171,6 +241,58 @@ public sealed class LiveCheck
         return typed()?.Trim() == Minutes.ToString(CultureInfo.InvariantCulture);
     }
 
+    /// <summary>
+    /// How a run stamps every response it writes, so that files straddling a second still sort and
+    /// group together.
+    /// </summary>
+    public static string StampOf(UtcTimestamp when) =>
+        when.Value.ToString(RunStamp, CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// What the response to <paramref name="sent"/> is called in a run stamped
+    /// <paramref name="stamp"/>.
+    /// </summary>
+    /// <remarks>
+    /// Written by <see cref="DeepgramCommands"/> and read back by <see cref="Of"/>, which is why it
+    /// is here and not a literal at each end: two spellings of one name would mean a resumed run
+    /// re-buying every file the moment either changed.
+    /// </remarks>
+    public static string ResponseNamed(FileInfo sent, string stamp)
+    {
+        ArgumentNullException.ThrowIfNull(sent);
+
+        return $"{Path.GetFileNameWithoutExtension(sent.Name)}-{stamp}{ResponseExtension}";
+    }
+
+    /// <summary>
+    /// Whether one of <paramref name="responses"/> is a response some run already wrote for
+    /// <paramref name="stem"/>.
+    /// </summary>
+    /// <remarks>
+    /// The stamp is read back and not only the prefix. A folder may hold <c>a.wav</c> and
+    /// <c>a-b.wav</c> at once, and <c>a-b</c>'s response begins <c>a-</c>; a rule that stopped at
+    /// the prefix would leave <c>a.wav</c> out of a run that had never sent it, which is the one
+    /// way this could cost somebody a file rather than save them one.
+    /// <para>
+    /// Case is ignored, because Windows decides case for itself and the two ends of this rule are a
+    /// name this program wrote and a name the file system handed back.
+    /// </para>
+    /// </remarks>
+    private static bool AnswersAlready(IReadOnlyList<string> responses, string stem)
+    {
+        var prefix = stem + "-";
+
+        return responses.Any(name =>
+            name.Length > prefix.Length + ResponseExtension.Length
+            && name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            && DateTime.TryParseExact(
+                name[prefix.Length..^ResponseExtension.Length],
+                RunStamp,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out _));
+    }
+
     /// <summary>One file, refused by name where it is not something this application transcribes.</summary>
     private static LiveAudio Sent(FileInfo file)
     {
@@ -191,127 +313,4 @@ public sealed class LiveCheck
                 $"'{file.Name}' holds no audio at all. Deepgram would refuse it after the files "
                 + "before it had already been paid for.");
     }
-}
-
-/// <summary>
-/// What a real response came back as: what it broke, and what is worth saying about it that is not
-/// a failure. The two are separate lists because a channel that carried nobody is a fact somebody
-/// paid for and has to be told, and is not a reason to fail a run.
-/// </summary>
-/// <param name="Turns">
-/// How many turns <see cref="MeetingTranscriber.Domain.Knowledge.Turns.Group"/> made of it.
-/// </param>
-public sealed record LiveVerdict(
-    int Turns, IReadOnlyList<string> Broken, IReadOnlyList<string> WorthSaying)
-{
-    /// <summary>Whether the response held everything a live call is checked for.</summary>
-    public bool Held => Broken.Count == 0;
-}
-
-/// <summary>
-/// What has to be true of a real response, said as structure and never as wording. A provider
-/// rewords itself between models and between days; what it may not do is come back describing
-/// different audio from the audio that was sent.
-/// </summary>
-/// <remarks>
-/// <para>
-/// <b>It checks only what the provider decides, and deliberately restates nothing the parser has
-/// already refused.</b> <see cref="DeepgramTranscriptParser"/> is the first invariant and the
-/// loudest one: it refuses a response whose channel count is not the profile's, an utterance on a
-/// channel that does not exist, an utterance that ends before it starts, and a channel whose whole
-/// transcript and whose utterances disagree — each as a
-/// <see cref="DeepgramResponseException"/> naming what it found. A check here for any of those
-/// would be a check against the parser and would pass by construction.
-/// </para>
-/// <para>
-/// The same goes for anything the parser builds rather than reads. A speaker label is
-/// <see cref="SpeakerLabels.For"/>'s output, a channel's position is
-/// <see cref="CapturedAudio.ChannelAt"/>'s, and the order of turns is
-/// <see cref="Turns.Group"/>'s — asserting any of them here would be asserting that this build
-/// calls the functions it calls, and one of them would go further and be wrong: a channel whose
-/// speakers really are numbered 0 and 2 has a label list whose second entry is
-/// <c>ch0:speaker_2</c>, because the parser drops a speaker whose every utterance is blank. A rule
-/// that read the list position as the provider's number would fail on a correct response, and it
-/// would fail for the first time on a call somebody had paid for.
-/// </para>
-/// <para>
-/// What is left is the three things only a real call can settle, and they are the three below.
-/// </para>
-/// </remarks>
-public static class LiveInvariants
-{
-    /// <summary>
-    /// The one tolerance there is. A provider reports its own rounding of the length it received
-    /// and this end counts frames, so the two agree to about a second and never to the millisecond.
-    /// </summary>
-    private static readonly Duration Slack = Duration.FromSeconds(1);
-
-    /// <summary>What a real response says, held against the audio that was sent.</summary>
-    public static LiveVerdict Of(DeepgramTranscript answered, LiveAudio sent)
-    {
-        ArgumentNullException.ThrowIfNull(answered);
-        ArgumentNullException.ThrowIfNull(sent);
-
-        var broken = new List<string>();
-        var turns = Turns.Group(answered.Segments);
-
-        // Both lengths print as milliseconds rather than as a clock: a tolerance of one second is
-        // not readable in h:mm:ss, and this is the one line somebody compares two numbers on.
-        if (Difference(answered.Audio, sent.Length) > Slack)
-        {
-            broken.Add(
-                $"the response says the audio is {answered.Audio} and '{sent.File.Name}' is "
-                + $"{sent.Length}. That is not this file.");
-        }
-
-        // Held against the length this end counted rather than against the one the response
-        // reports, so that a response whose reported duration is nonsense breaks one rule instead
-        // of two. Nothing else compares the two at all: the parser holds an utterance's start
-        // against its own end and neither against anything outside it.
-        var beyond = answered.Segments
-            .Where(segment => segment.End > sent.Length + Slack)
-            .ToArray();
-        if (beyond.Length > 0)
-        {
-            broken.Add(
-                $"{beyond.Length} utterance(s) end after the audio does: the last ends at "
-                + $"{beyond.Max(segment => segment.End)} and '{sent.File.Name}' is {sent.Length}.");
-        }
-
-        // Read off the segments and not off the grouping, deliberately. What a wrong language
-        // produces is a response with nothing in it, which is a fact about what came back; routed
-        // through Turns.Group a grouping regression would arrive as an accusation about the
-        // language, and would arrive for the first time on a call somebody paid for.
-        if (answered.Segments.All(segment => string.IsNullOrWhiteSpace(segment.Text)))
-        {
-            broken.Add(
-                $"nothing was heard at all in {sent.Length} of audio. The usual cause is asking "
-                + "for the wrong language.");
-        }
-
-        return new LiveVerdict(
-            turns.Count,
-            broken,
-            [
-                .. answered.SilentChannels.Select(channel =>
-                    $"channel {channel.Index} ({Position(channel.Channel)}) carried nobody. It was "
-                    + "transcribed and it was charged for; the usual cause is asking for the wrong "
-                    + "language."),
-            ]);
-    }
-
-    /// <summary>How far apart two lengths are, whichever way round they came.</summary>
-    private static Duration Difference(Duration one, Duration other) =>
-        one > other ? one - other : other - one;
-
-    /// <summary>
-    /// What a channel is, read off the value the transcript already carries. Nothing here decides
-    /// which index is which: <see cref="CapturedAudio.ChannelAt"/> did that, once.
-    /// </summary>
-    private static string Position(AudioChannel? channel) => channel switch
-    {
-        AudioChannel.Loopback => "the loopback",
-        AudioChannel.Microphone => "the microphone",
-        _ => "the single track",
-    };
 }

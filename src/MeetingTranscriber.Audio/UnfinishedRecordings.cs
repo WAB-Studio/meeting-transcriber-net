@@ -45,16 +45,55 @@ public sealed record ExportedSource(AudioChannel Channel, FileInfo Wav, int Bloc
 /// </param>
 public sealed record SourceWithNoPlayback(AudioChannel Channel, string Why);
 
+/// <summary>One source whose blocks would not read through, and what stopped the read.</summary>
+/// <param name="Channel">Which of the two channels it fed.</param>
+/// <param name="Why">
+/// What the engine said: a spool that would not open at all, a header that is not a header, a
+/// block whose hash is not its bytes. Nothing here is fine, which is what makes it a list of its
+/// own rather than another <see cref="SourceWithNoPlayback"/>.
+/// </param>
+public sealed record SourceThatWouldNotRead(AudioChannel Channel, string Why);
+
 /// <summary>What taking a recording's audio out came to: what landed, and what could not.</summary>
+/// <remarks>
+/// Three lists and not two, because the two ways a source fails to become a file are not the same
+/// thing to whoever reads them. A source in <see cref="NotMade"/> is entirely fine and its audio is
+/// all still there; a source in <see cref="WouldNotRead"/> is damaged, and folding the two together
+/// would have the report say a corrupt header is "a source that is entirely fine".
+/// </remarks>
 /// <param name="Exported">One per source that poured, in channel order.</param>
 /// <param name="NotMade">
 /// One per source that changed to a device handing over another format, in channel order. A source
 /// here is a source that is entirely fine — a WAV is one format all the way down and this one is
 /// two — so it is reported beside what landed rather than instead of it.
 /// </param>
+/// <param name="WouldNotRead">
+/// One per source whose blocks could not be read through, in channel order. It costs its own file
+/// and nothing else: every source that poured is still poured, and this is how the export says
+/// which one it could not read.
+/// </param>
 public sealed record TakenOut(
     IReadOnlyList<ExportedSource> Exported,
-    IReadOnlyList<SourceWithNoPlayback> NotMade);
+    IReadOnlyList<SourceWithNoPlayback> NotMade,
+    IReadOnlyList<SourceThatWouldNotRead> WouldNotRead)
+{
+    /// <summary>
+    /// Whether every source this recording has came out.
+    /// </summary>
+    /// <remarks>
+    /// Answered here and asked by the reporters, because it is one judgement about an export and
+    /// every surface that carries an export has to reach the same one. Both command-line reporters
+    /// turn it into an exit code and a screen would turn it into a sentence; deciding it at each of
+    /// them is how the prompt comes to say an export went as asked while a window says it did not.
+    /// <para>
+    /// <see cref="NotMade"/> does not count against it. A source that changed device mid-meeting has
+    /// every block it ever had, and what does not exist is only the single-format file poured for
+    /// convenience — so an export that says so is an export that did what it could and said what it
+    /// could not, which is a different thing from one that could not read a source's audio.
+    /// </para>
+    /// </remarks>
+    public bool Whole => WouldNotRead.Count == 0;
+}
 
 /// <summary>
 /// A recording sitting in the folder recordings are written into, and the three things that may
@@ -215,12 +254,14 @@ public sealed record UnfinishedRecording(
     /// </para>
     /// <para>
     /// Every destination is claimed from the file system before any audio is poured, and anything
-    /// that goes wrong afterwards takes back what this call made — the poured files, and the
-    /// destination folder itself along with every level of it this call had to make on the way.
-    /// Half of a recording somebody asked for is worse than a refusal, worse still because the half
-    /// that landed is what makes the second attempt refuse the folder. Both halves of that undo are
-    /// best effort and silent, so what it promises is that nothing here leaves a folder behind on
-    /// purpose, not that a disk holding one open will let go of it.
+    /// that goes wrong afterwards <em>and is not one source failing</em> takes back what this call
+    /// made — the poured files, and the destination folder itself along with every level of it this
+    /// call had to make on the way. That is the export itself failing: a name already taken, a
+    /// destination that cannot be made, a disk that will not take the bytes. Half of a recording
+    /// somebody asked for is worse than a refusal, worse still because the half that landed is what
+    /// makes the second attempt refuse the folder. Both halves of that undo are best effort and
+    /// silent, so what it promises is that nothing here leaves a folder behind on purpose, not that
+    /// a disk holding one open will let go of it.
     /// </para>
     /// <para>
     /// What bounds the undo is the word <em>made</em>: a destination that was already there is left
@@ -231,24 +272,44 @@ public sealed record UnfinishedRecording(
     /// with a recording in it does.
     /// </para>
     /// <para>
-    /// A source that came to hold two formats is the one thing that is not something going wrong,
-    /// so it is said in <see cref="TakenOut.NotMade"/> rather than thrown, and what landed for the
-    /// other sources stays. Nothing in this method erases the refused source's half-poured file:
-    /// <see cref="BlockSpool.ToWav"/> has already taken it back on its way out, and that is checked
-    /// here rather than trusted, because <see cref="BlockSpool.Erase"/> is best effort and a
-    /// truncated WAV standing beside a line saying it was not made is the one outcome worse than
-    /// refusing the whole call. A destination this leaves partly full is a destination the next
-    /// attempt refuses by name, which is the paragraph above and is why somebody asking again names
-    /// a folder of their own.
+    /// <b>One source failing costs its own file and nothing else.</b> A source that came to hold
+    /// two formats is the one thing that is not something going wrong, so it is said in
+    /// <see cref="TakenOut.NotMade"/>; a source whose blocks will not read through is something
+    /// going wrong, and it is said in <see cref="TakenOut.WouldNotRead"/>. Either way what landed
+    /// for the other sources stays. A spool with a corrupt header used to take the whole export
+    /// back, which threw away a <c>loopback.wav</c> that had poured completely and was not damaged
+    /// — and a recording nobody stopped is often the only copy of a meeting there will ever be, so
+    /// the half that can still be heard is worth more than the tidiness of an all-or-nothing call.
     /// </para>
     /// <para>
-    /// When <em>every</em> source is in <see cref="TakenOut.NotMade"/> this still comes back rather
-    /// than throwing — one source that changed format is a fact about that source, and so are two —
-    /// and what it leaves behind is nothing this call made. A destination holding no file is the
-    /// same empty folder a refusal would have left, and it is the only trace an attempt that made
-    /// nothing has, so it goes back the same way. That needs no rule of its own: the undo runs on
-    /// every way out and asks only whether the folder is empty, which after every source refused it
-    /// is.
+    /// Nothing in this method leaves a refused source's half-poured file standing:
+    /// <see cref="BlockSpool.ToWav"/> takes back what it poured on its way out, a source whose
+    /// spool would not open at all never reached the pour, and the zero-byte name this method
+    /// claimed is erased here. That is checked rather than trusted, because
+    /// <see cref="BlockSpool.Erase"/> is best effort and a truncated or empty WAV standing beside a
+    /// line saying the source was not made is the one outcome worse than refusing the whole call.
+    /// A destination this leaves partly full is a destination the next attempt refuses by name,
+    /// which is the paragraph above and is why somebody asking again names a folder of their own.
+    /// </para>
+    /// <para>
+    /// The family caught per source is <see cref="AudioCaptureException"/> and nothing wider, and
+    /// the line is where the fault is: that family means this machine will not hand over
+    /// <em>this source's</em> audio, which is a fact about one channel. Anything else — a full
+    /// disk, a destination that will not take the bytes — is the export failing rather than a
+    /// source, and an export that cannot write is not an export that leaves half of one behind.
+    /// The one thing inside that family that is still refused whole is a
+    /// <see cref="SpoolInUseException"/>: on this machine something holding a spool is a capture
+    /// writing it, so it is a fact about the meeting and not about the channel, and all three
+    /// outcomes refuse a meeting that has not stopped.
+    /// </para>
+    /// <para>
+    /// When <em>every</em> source has failed this still comes back rather than throwing — one
+    /// source failing is a fact about that source, and so are two, and the call is how those facts
+    /// reach whoever asked — and what it leaves behind is nothing this call made. A destination
+    /// holding no file is the same empty folder a refusal would have left, and it is the only trace
+    /// an attempt that made nothing has, so it goes back the same way. That needs no rule of its
+    /// own: the undo runs on every way out and asks only whether the folder is empty, which after
+    /// every source failed it is.
     /// </para>
     /// </remarks>
     public TakenOut Export(DirectoryInfo into)
@@ -270,6 +331,7 @@ public sealed record UnfinishedRecording(
         {
             var exported = new List<ExportedSource>();
             var notMade = new List<SourceWithNoPlayback>();
+            var wouldNotRead = new List<SourceThatWouldNotRead>();
 
             foreach (var source in Sources)
             {
@@ -294,9 +356,7 @@ public sealed record UnfinishedRecording(
                 }
                 catch (NoSinglePlaybackException cannot)
                 {
-                    // Narrow on purpose. A spool that would not open at all reaches the catch
-                    // below and takes everything back, because a torn artifact is not something to
-                    // hand back half of.
+                    // First, because it is the narrower type and the one that is not a failure.
                     wav.Refresh();
                     if (wav.Exists)
                     {
@@ -310,9 +370,44 @@ public sealed record UnfinishedRecording(
 
                     notMade.Add(new SourceWithNoPlayback(source.Channel, cannot.Message));
                 }
+                // A spool something is holding is not a damaged source: on this machine a handle on
+                // blocks is a capture writing them, so the meeting has not stopped, and a meeting
+                // that is still happening is refused whole by all three outcomes rather than
+                // exported in part. `EnsureThereIsSomethingToDecide` asks that on the way in; a
+                // capture that took hold since the recording was found lands here instead, and goes
+                // past this clause to the outer catch, which takes the whole export back.
+                // What comes out is `SpoolReader`'s sentence about a block file rather than the one
+                // about a meeting — the shape `EnsureThereIsSomethingToDecide` exists to avoid — and
+                // that is unchanged from before this clause existed and is what
+                // `None_of_the_three_outcomes_lands_on_a_meeting_that_is_still_being_recorded`
+                // pins. Asking the question here instead, by opening the file again, would ask it a
+                // second time and get a second answer: a capture that stopped in between makes an
+                // intact source read as damaged, and one that started throws away a `loopback.wav`
+                // that poured completely, which is the loss this clause exists to stop.
+                catch (AudioCaptureException unreadable) when (unreadable is not SpoolInUseException)
+                {
+                    // The claim is erased here and not by `ToWav`, which never ran for a spool
+                    // that would not open at all — so what stands under this name is the zero-byte
+                    // file `Claim` left, and a file under a source's name holding nothing is a file
+                    // somebody would play and hear silence from.
+                    BlockSpool.Erase(wav);
+                    wav.Refresh();
+                    if (wav.Exists)
+                    {
+                        throw new AudioCaptureException(
+                            $"'{source.Blocks.FullName}' could not be read through and "
+                            + $"'{wav.FullName}' could not be taken back, so what stands under that "
+                            + "name is not this source's audio. A file under the name of a source "
+                            + "is worse than no file at all, so nothing of this export is left "
+                            + "standing.",
+                            unreadable);
+                    }
+
+                    wouldNotRead.Add(new SourceThatWouldNotRead(source.Channel, unreadable.Message));
+                }
             }
 
-            return new TakenOut(exported, notMade);
+            return new TakenOut(exported, notMade, wouldNotRead);
         }
         catch
         {

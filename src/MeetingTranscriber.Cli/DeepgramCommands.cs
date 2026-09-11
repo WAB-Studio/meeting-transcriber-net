@@ -11,13 +11,41 @@ namespace MeetingTranscriber.Cli;
 /// </summary>
 /// <remarks>
 /// A parameter of <see cref="DeepgramCommands.Live(Arguments, TextWriter, Func{string}, Sending)"/>
-/// so that the overload a suite can reach cannot spend: the one implementation that reads this
-/// machine's key and builds a client is private to <see cref="DeepgramCommands"/> and only the
-/// command table binds it. What a test can hand over here is something that does not send, and
-/// writing one that does would mean building an <c>HttpClient</c> under <c>tests/</c>, which is a
-/// deliberate act with a check standing over it rather than a line somebody slips in.
+/// so that the overload a suite drives cannot spend: the one implementation that reads this
+/// machine's key and builds a client is <see cref="DeepgramCommands.WithThisMachinesKey"/>, which is
+/// private, and the overload that binds it is <see langword="internal"/> — which in this repository
+/// means unreachable, there being no <c>InternalsVisibleTo</c> anywhere. What a test hands over here
+/// does not send, and writing one that does would mean building an <c>HttpClient</c> under
+/// <c>tests/</c>, which is a deliberate act with a check standing over it rather than a line
+/// somebody slips in.
+/// <para>
+/// What that is <em>not</em> is the only thing between a suite and a charge, and the branch that
+/// made it <see langword="internal"/> did not make it one. <see cref="Cli.Run"/> is public and the
+/// command table binds the same entry point, so a test typing the command line still reaches it;
+/// what stops that one is the keyboard refusing a redirected console and the confirmation nobody
+/// can answer. This seam is what makes the refusals, the ceiling and the confirmation provable
+/// without either.
+/// </para>
 /// </remarks>
 public delegate int Sending(LiveCheck run, DirectoryInfo into, string language, TextWriter output);
+
+/// <summary>
+/// Sending one file of a run and writing what comes back, which is the only thing in
+/// <see cref="DeepgramCommands.SendAsync"/> that reaches the network.
+/// </summary>
+/// <remarks>
+/// A parameter for the reason <see cref="Sending"/> is one, one layer further down: everything
+/// around it decides — where the bytes land, which name they end up under, what a broken invariant
+/// costs, what a stop says — and none of that could be driven while the only way in built an
+/// <see cref="HttpClient"/> out of this machine's key. What a suite hands over here reaches no
+/// socket; the one implementation that does is private to <see cref="DeepgramCommands"/> and only
+/// the command table binds it.
+/// </remarks>
+/// <param name="sent">The file being sent, and what it is.</param>
+/// <param name="wrote">Where the response body is written, byte for byte as it arrives.</param>
+/// <param name="stopping">What a person at the prompt pressing Ctrl+C sets.</param>
+/// <returns>How many bytes came back.</returns>
+public delegate Task<long> Transcribing(LiveAudio sent, Stream wrote, CancellationToken stopping);
 
 /// <summary>
 /// The one command that spends money: known audio to the real Deepgram, under a ceiling somebody
@@ -50,7 +78,14 @@ public static class DeepgramCommands
     private static readonly TimeSpan LongEnoughForAWholeMeeting = TimeSpan.FromMinutes(30);
 
     /// <summary>The command as the table runs it: this prompt's keyboard, and this machine's key.</summary>
-    public static int Live(Arguments arguments, TextWriter output) =>
+    /// <remarks>
+    /// <see langword="internal"/> and not public, which is how this repository keeps something out
+    /// of the test tree — there is no <c>InternalsVisibleTo</c> anywhere, so no suite can name this.
+    /// The four-argument overload beside it is what a suite drives, and it decides everything
+    /// without holding a key or a client. <c>Cli</c>'s command table is in the same assembly, so
+    /// binding this there is unaffected.
+    /// </remarks>
+    internal static int Live(Arguments arguments, TextWriter output) =>
         Live(arguments, output, FromAPersonAtThisPrompt, WithThisMachinesKey);
 
     /// <summary>
@@ -62,8 +97,9 @@ public static class DeepgramCommands
     /// one and answers nothing under a host that redirected it, so the card's promise would rest on
     /// which of those <c>dotnet test</c> happened to launch. The sending, because the keyboard on
     /// its own would then be a public seam a suite could type the right number at: with both handed
-    /// in, everything a test can reach decides, and the one thing that spends is private and bound
-    /// only by the command table.
+    /// in, everything a test can reach decides, and the one thing that spends is private, bound
+    /// only by the command table, and reachable only through an <see langword="internal"/> overload
+    /// no suite in this repository can name.
     /// </remarks>
     /// <param name="arguments">What was typed after the command name.</param>
     /// <param name="output">Where the report goes.</param>
@@ -109,8 +145,20 @@ public static class DeepgramCommands
             "reading",
             $"every .wav in '{audio.FullName}', counting the frames rather than believing a header.");
 
-        var run = LiveCheck.Of(audio, ceiling);
+        var run = LiveCheck.Of(audio, into, ceiling);
         run.Say(output);
+
+        if (run.Audio.Count == 0)
+        {
+            // Not a refusal. Somebody re-running a folder that is finished has asked for nothing,
+            // and the lines above already name every file and say why each was left out.
+            Report.Line(
+                output,
+                "not sent",
+                "every .wav in that folder already has a response where responses land, so there "
+                + "was nothing left to send.");
+            return Cli.Ok;
+        }
 
         if (!run.UnderTheCeiling)
         {
@@ -131,16 +179,74 @@ public static class DeepgramCommands
 
     /// <summary>Sending it for real, on this machine's key.</summary>
     /// <remarks>
+    /// <para>
     /// The key is read here and not before, so a run nobody confirmed reaches the credential store
     /// not at all. The blocking wait is the shape a synchronous entry point takes: nothing in this
     /// project is <see langword="async"/>, the command table's delegate is not, and nothing here
     /// runs on a UI thread.
+    /// </para>
+    /// <para>
+    /// <b>Ctrl+C is taken rather than left to kill the process, and this is the only place it can
+    /// be.</b> A kill lands mid-write and leaves a <c>.partial</c> nobody named; taking it lets the
+    /// body read stop where it is, the <c>catch</c> run and <see cref="Abandon"/> say what is on
+    /// disk and whether it may have been charged for. The handler takes itself off on the way
+    /// through, so a second Ctrl+C from somebody who means it kills the process as it always did.
+    /// It writes nothing: it runs on a thread of its own while this one may be reporting, and a
+    /// <see cref="TextWriter"/> is not two threads' to share. What was stopped is said by the loop,
+    /// on the thread that was doing it.
+    /// </para>
     /// </remarks>
     private static int WithThisMachinesKey(
-        LiveCheck run, DirectoryInfo into, string language, TextWriter output) =>
-        SendAsync(run, into, language, DeepgramKey.OfThisInstall().Read(), output)
-            .GetAwaiter()
-            .GetResult();
+        LiveCheck run, DirectoryInfo into, string language, TextWriter output)
+    {
+        using var http = new HttpClient { Timeout = LongEnoughForAWholeMeeting };
+        var transcription = new DeepgramTranscription(http);
+        var key = DeepgramKey.OfThisInstall().Read();
+
+        using var stopping = new CancellationTokenSource();
+        var gate = new Lock();
+        var listening = true;
+
+        void Stop(object? sender, ConsoleCancelEventArgs pressed)
+        {
+            pressed.Cancel = true;
+            Console.CancelKeyPress -= Stop;
+
+            // Under the gate, because this runs on the console's own thread and the one below is on
+            // its way out with a `using` behind it: cancelling a source that has been disposed
+            // throws here, where nothing is catching, and the process would die with a stack trace
+            // over the top of the report of a run that finished and was paid for.
+            lock (gate)
+            {
+                if (listening)
+                {
+                    stopping.Cancel();
+                }
+            }
+        }
+
+        Console.CancelKeyPress += Stop;
+        try
+        {
+            return SendAsync(
+                    run,
+                    into,
+                    output,
+                    (sent, wrote, token) => transcription.SendAsync(
+                        sent.File, new DeepgramRequest(sent.Profile, language), key, wrote, token),
+                    stopping.Token)
+                .GetAwaiter()
+                .GetResult();
+        }
+        finally
+        {
+            Console.CancelKeyPress -= Stop;
+            lock (gate)
+            {
+                listening = false;
+            }
+        }
+    }
 
     /// <summary>
     /// Sends every file of the run, in order, and says what came back of each.
@@ -156,34 +262,70 @@ public static class DeepgramCommands
     /// what the person who typed the number had no evidence of when they typed it.
     /// </para>
     /// <para>
-    /// No <see cref="CancellationToken"/> is passed, and
-    /// <see cref="DeepgramTranscription.SendAsync"/> says what that costs: the client's timeout
-    /// stops covering anything once the response headers arrive, so a provider that answers and
-    /// then goes quiet is bounded by nothing here. What bounds it is the person at the prompt, who
-    /// can press Ctrl+C — and a deadline for the body read would be a number nobody has measured
-    /// standing over a failure nobody has had. The day one is measured is the day it goes here.
+    /// <see cref="DeepgramTranscription.SendAsync"/> says the client's timeout stops covering
+    /// anything once the response headers arrive, so a provider that answers and then goes quiet is
+    /// bounded by <paramref name="stopping"/> and by nothing else. It is bound to Ctrl+C and not to
+    /// a deadline: a deadline for the body read would be a number nobody has measured standing over
+    /// a failure nobody has had, and the day one is measured is the day it goes here. What the
+    /// token buys over killing the process is that the stop lands in a <c>catch</c> rather than in
+    /// the middle of a write, so the fragment on disk is named rather than left for somebody to
+    /// find.
+    /// </para>
+    /// <para>
+    /// <b>It takes what sends as a parameter and holds no client, which is what makes any of this
+    /// provable.</b> Everything here decides — where the bytes land, which name they end up under,
+    /// what a broken invariant costs, what a stop says — and none of it could be driven while the
+    /// only way in built an <see cref="HttpClient"/> out of this machine's key.
+    /// <see cref="WithThisMachinesKey"/> is the one implementation that spends, it is private, and
+    /// only the command table reaches it. A <see cref="Transcribing"/> a suite writes reaches no
+    /// socket, exactly as <see cref="Sending"/> already works one layer up.
     /// </para>
     /// </remarks>
-    private static async Task<int> SendAsync(
-        LiveCheck run, DirectoryInfo into, string language, string key, TextWriter output)
+    /// <param name="run">The files this run would send, in order.</param>
+    /// <param name="into">Where the responses land.</param>
+    /// <param name="output">Where the report goes.</param>
+    /// <param name="transcribe">What sending one file is.</param>
+    /// <param name="stopping">What a person at the prompt pressing Ctrl+C sets.</param>
+    public static async Task<int> SendAsync(
+        LiveCheck run,
+        DirectoryInfo into,
+        TextWriter output,
+        Transcribing transcribe,
+        CancellationToken stopping)
     {
-        using var http = new HttpClient { Timeout = LongEnoughForAWholeMeeting };
-        var transcription = new DeepgramTranscription(http);
+        ArgumentNullException.ThrowIfNull(run);
+        ArgumentNullException.ThrowIfNull(into);
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(transcribe);
 
         // One stamp for the run and not one per file, because what it identifies is a run: files
         // that straddle a second would otherwise stop sorting and grouping together, which is the
-        // whole of what it is for. UtcTimestamp.ToString writes colons, which is not a file name
-        // Windows will take, so the compact spelling. The clock is the machine's, for the reason
-        // Clock's own remarks give.
-        var stamp = Clock.Now().Value.ToString("yyyyMMdd'T'HHmmss'Z'", CultureInfo.InvariantCulture);
+        // whole of what it is for. The clock is the machine's, for the reason Clock's own remarks
+        // give. How it is spelled is `LiveCheck`'s, because `LiveCheck.Of` reads these names back
+        // to leave out what an earlier run already bought.
+        var stamp = LiveCheck.StampOf(Clock.Now());
         var held = true;
+        var stopped = false;
 
         for (var index = 0; index < run.Audio.Count; index++)
         {
             var sent = run.Audio[index];
-            var stem = Path.GetFileNameWithoutExtension(sent.File.Name);
-            var response = new FileInfo(Path.Combine(into.FullName, $"{stem}-{stamp}.json"));
+            var response = new FileInfo(
+                Path.Combine(into.FullName, LiveCheck.ResponseNamed(sent.File, stamp)));
             var partial = new FileInfo(response.FullName + RecordingFiles.UnfinishedSuffix);
+
+            // Asked before the call and not only inside it. A press lands wherever it lands, and
+            // between two files is the likeliest place of all — the reports are on screen and
+            // nothing is in flight. Entering the call with a token already set would throw with
+            // nothing sent, and the catch below would say a file may have been charged for when the
+            // request never left the machine.
+            if (stopping.IsCancellationRequested)
+            {
+                Report.Line(output, "stopped", "Ctrl+C, between files. Nothing was in flight.");
+                Unsent(output, run.Audio.Skip(index));
+                stopped = true;
+                break;
+            }
 
             // A working name, and the point of it: SendAsync's own remarks say a caller writing
             // straight at the final name is left with a truncated artifact on any failure after the
@@ -192,10 +334,27 @@ public static class DeepgramCommands
             long bytes;
             try
             {
-                await using var stream = partial.Create();
-                bytes = await transcription
-                    .SendAsync(sent.File, new DeepgramRequest(sent.Profile, language), key, stream)
-                    .ConfigureAwait(false);
+                await using (var stream = partial.Create())
+                {
+                    bytes = await transcribe(sent, stream, stopping).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+                // Somebody at the prompt stopping the run, which is this command working and not a
+                // defect — so it says what it stopped in the middle of and what it never reached,
+                // and comes back as a refusal rather than as a stack trace. Guarded on the token
+                // because the client's own timeout arrives as the same type and is not this: that
+                // one is a call that went wrong and belongs in the catch below.
+                Abandon(partial, output);
+                Report.Line(
+                    output,
+                    "stopped",
+                    $"{sent.File.Name} — Ctrl+C, part way through the call. Whether it was charged "
+                    + "for is not something this end can tell.");
+                Unsent(output, run.Audio.Skip(index + 1));
+                stopped = true;
+                break;
             }
             catch
             {
@@ -210,15 +369,15 @@ public static class DeepgramCommands
                 throw;
             }
 
-            // Named before anything reads it. A response that came back whole and that this build
-            // cannot parse is exactly what a live probe is for, and it is the failure that leaves
-            // the irreplaceable artifact — so where it landed is on the screen before the parser is
-            // given the chance to throw.
+            // Named before anything reads it, and named where it really is. A response that came
+            // back whole and that this build cannot parse is exactly what a live probe is for, and
+            // it is the failure that leaves the irreplaceable artifact — so where it landed is on
+            // the screen before the parser is given the chance to throw.
             Report.Line(output, "sent", $"{sent.File.Name} ({Report.Offset(sent.Length)})");
-            Report.Line(output, "response", response.FullName);
+            Report.Line(output, "landed", partial.FullName);
             Report.Line(output, "bytes", bytes.ToString(CultureInfo.InvariantCulture));
 
-            var read = DeepgramTranscriptParser.ParseFile(response.FullName, sent.Profile);
+            var read = DeepgramTranscriptParser.ParseFile(partial.FullName, sent.Profile);
             var verdict = LiveInvariants.Of(read, sent);
 
             Report.Line(output, "channels", $"{read.Channels.Count}");
@@ -243,10 +402,50 @@ public static class DeepgramCommands
 
             if (!verdict.Held)
             {
+                // Kept, named, and left under the working name. It is paid for, so nothing deletes
+                // it; and it is not a response to build on, so it must not wear the name that says
+                // it is one — `LiveCheck.Of` reads that name back to decide what a later run need
+                // not buy, and a response nobody was heard in reported as `already` is the file
+                // somebody fixes `--language` for and then never sends again.
+                Report.Line(
+                    output,
+                    "kept",
+                    $"{partial.FullName} — paid for and here, under a name that says it is not a "
+                    + "response to read a meeting from. Run this again over the same folder and "
+                    + $"'{sent.File.Name}' is sent again; the others already answered are not.");
+
                 held = false;
                 Unsent(output, run.Audio.Skip(index + 1));
                 break;
             }
+
+            // The working name becomes the real one, and only now. Nothing did this until
+            // 2026-09-11: every byte went to `<stem>-<stamp>.json.partial`, the line above named a
+            // path that was not there, and the parser opened `FileMode.Open` on it and threw
+            // `FileNotFoundException` — after the money was spent. It is also what `LiveCheck.Of`
+            // reads back, so until this line the resume rule could never match anything.
+            // `overwrite: false`, because the one thing this folder holds is responses somebody
+            // paid for. A name already taken is a second run inside the same second, and it takes
+            // the catch above: the fragment is named and nothing is written over.
+            try
+            {
+                // `File.Move` and not the handle's own spelling, which this repository bans
+                // outright: `UnfinishedRecordingsTests.Nothing_removes_or_renames_through_a_handle`
+                // is a sweep over the text of `src/`, and what stands between a person and a
+                // deleted recording is only as good as the spelling it can see.
+                File.Move(partial.FullName, response.FullName, overwrite: false);
+            }
+            catch (IOException taken)
+            {
+                _ = taken;
+                throw new CommandException(
+                    $"'{response.FullName}' is already there, so what just came back for "
+                    + $"'{sent.File.Name}' is still at '{partial.FullName}'. Nothing here writes "
+                    + "over a response somebody paid for. Move that file somewhere of its own, or "
+                    + "send again into a folder that is empty.");
+            }
+
+            Report.Line(output, "response", response.FullName);
         }
 
         Report.Line(
@@ -257,7 +456,7 @@ public static class DeepgramCommands
             + "tests/fixtures/deepgram/README.md, and there is no tool that does it to a response "
             + "from here. Nothing happens to these files automatically.");
 
-        return held ? Cli.Ok : Cli.Refused;
+        return held && !stopped ? Cli.Ok : Cli.Refused;
     }
 
     /// <summary>

@@ -64,8 +64,6 @@ namespace MeetingTranscriber.UiProbe;
 /// </remarks>
 internal sealed class Freshness
 {
-    private static readonly string[] Compiled = ["*.cs", "*.xaml", "*.csproj"];
-
     private readonly IReadOnlyList<string> _projects;
 
     private readonly string _runningFrom;
@@ -97,7 +95,8 @@ internal sealed class Freshness
 
     internal void MustNotPredateTheCode()
     {
-        if (Sources.NewestUnder(_projects, Compiled) is not { } newest || newest.Written <= _built)
+        if (Sources.NewestUnder(_projects, Sources.OfTheApplication) is not { } newest
+            || newest.Written <= _built)
         {
             return;
         }
