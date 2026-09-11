@@ -47,7 +47,8 @@ moved under goes there too, with the reason. Never edit `private/owed.md` or `pr
 
 ## Read before you plan
 
-Spend up to 600,000 tokens reading. A short plan does not mean a short read.
+Read until nothing in the plan is a guess. A short plan does not mean a short read, and there is no
+budget to come in under.
 
 Open every file you will name. Grep every symbol you will spell and read its declaration; its
 accessibility decides what a `<see cref>` resolves to. Walk the migration chain for every column to
