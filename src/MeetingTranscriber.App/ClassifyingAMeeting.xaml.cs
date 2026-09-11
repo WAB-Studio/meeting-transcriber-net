@@ -628,7 +628,9 @@ public sealed partial class ClassifyingAMeeting : UserControl
             // Nothing chosen empties this pill and everything to the right of it, because what a
             // deeper pill offered was the children of this one.
             chosen => PutAt(role, row, level, chosen),
-            extras);
+            extras,
+            Heading(role),
+            APillAt(role, row, level));
     }
 
     /// <summary>
@@ -662,11 +664,22 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// correcting the name of the one standing here. In the order they appear, which is the order
     /// the index arithmetic below reads them back in.
     /// </param>
+    /// <param name="column">
+    /// The words over this pill, which is what it is called while nothing stands in it. The four
+    /// columns already have them and they are already what a person reads on this screen; a second
+    /// set of words for the same four would be two spellings of one thing.
+    /// </param>
+    /// <param name="named">
+    /// Where this pill stands, as the id an agent addresses it by. A caller's parameter and not
+    /// worked out here, because it is the caller that holds the coordinates.
+    /// </param>
     private ComboBox APicker(
         IReadOnlyList<(Guid Id, string Name)> offered,
         Guid? standing,
         Action<Guid?> chose,
-        IReadOnlyList<(UiText Words, Action Chose)> alsoOffered)
+        IReadOnlyList<(UiText Words, Action Chose)> alsoOffered,
+        UiText column,
+        string named)
     {
         var picker = new ComboBox
         {
@@ -690,6 +703,25 @@ public sealed partial class ClassifyingAMeeting : UserControl
 
         picker.SelectedIndex = at.At < 0 ? -1 : at.At + 1;
 
+        // Where it stands, which is what an agent addresses it by, and never the words. An id is
+        // unique by construction, is the same in both languages, and does not move when somebody
+        // answers the pill — where the name is none of those three: the column's own heading is
+        // drawn beside these pills and carries the identical string, two empty pills in one column
+        // carry it as each other, and the name is re-read off the selection on every redraw. All
+        // three are `Search.One` finding two things or a different thing, which is a walk that
+        // cannot be written rather than one that goes wrong quietly.
+        AutomationProperties.SetAutomationId(picker, named);
+
+        // What stands in it, and the column it is in when nothing does. A glyph with no name is
+        // nothing to a screen reader, and so is a pill: the tree showed a bare `ComboBox`, which is
+        // why this screen's proof could not be driven and had to be reasoned about. The name moves
+        // as the answer moves, because it is read off the same `at` the selection is — so it can
+        // never say one thing while the pill shows another — and it is what somebody sees, which
+        // the column alone is not once a column holds two pills. That last ambiguity is real and is
+        // the id's to answer, not this line's: what a person hears and what a script types are two
+        // questions, and a name bent into a key would be worse at both.
+        AutomationProperties.SetName(picker, at.At < 0 ? In(column) : offered[at.At].Name);
+
         picker.SelectionChanged += (_, _) =>
         {
             if (_drawing || picker.SelectedIndex < 0)
@@ -708,6 +740,30 @@ public sealed partial class ClassifyingAMeeting : UserControl
 
         return picker;
     }
+
+    /// <summary>
+    /// What an agent calls the pill at one place in a column, and the field standing where that
+    /// pill was.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The coordinates and nothing readable, because this is a key and not a label: an id is what
+    /// <c>UiProbe.Search</c> matches first and is the only handle on this screen that is unique,
+    /// the same in both languages, and unchanged by somebody answering the pill. The words are
+    /// <see cref="AutomationProperties.SetName"/>'s, one line down from each caller, and they are
+    /// none of those three.
+    /// </para>
+    /// <para>
+    /// Written here rather than at the two call sites so the shape is one thing: a script that
+    /// learnt to read one of these ids has learnt to read them all, and a walk over this screen is
+    /// written from the coordinates it can already see in the tree.
+    /// </para>
+    /// </remarks>
+    private static string APillAt(MeetingNodeRole role, int row, int level) =>
+        $"{role}-{row}-{level}";
+
+    /// <summary>What an agent calls the pill over one place for somebody. <see cref="APillAt"/>'s rule.</summary>
+    private static string APlaceAt(int slot) => $"who-{slot}";
 
     /// <summary>
     /// What may stand at one level of a path: every root at the first, and the children of the pill
@@ -762,6 +818,103 @@ public sealed partial class ClassifyingAMeeting : UserControl
     // ── Naming something the corpus does not have yet ──────────────────────────────────────────
 
     /// <summary>
+    /// Opens the corpus, hands <paramref name="write"/> the one way this screen adds to its
+    /// vocabulary, and lets it go — answering with the line to say when it did not go through, and
+    /// with nothing when it did.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three presses on this screen write a node or a person, and before this each spelled out the
+    /// same ladder: the folder, the context, the layer, the corpus saying no, the corpus failing.
+    /// That is what made the <c>First</c>-versus-<c>FirstOrDefault</c> divergence #296 fixed
+    /// possible — the same lookup written three times, only one of which was right.
+    /// </para>
+    /// <para>
+    /// What it deliberately does not take over is the exits, which is why this hands a line back
+    /// rather than drawing one. The three do different things with the same sentence: two put it on
+    /// the screen's own status line and redraw, one cancels a dialogue so three typed fields are not
+    /// lost to a corpus that was locked for a second. Folding those together would be one exit that
+    /// is wrong on two of the three call sites, and it is the reason this is a design decision
+    /// rather than a lift.
+    /// </para>
+    /// <para>
+    /// A <see cref="TextLine"/> and not a string, because the line is what somebody reads in their
+    /// own language: the <c>UiText</c> it is built from is the whole of what makes that possible,
+    /// and a caller handed a rendered string would have nothing left to say it with.
+    /// </para>
+    /// <para>
+    /// One transaction, around every write to the vocabulary and not only around the pair that
+    /// needs one. Adding a person is <c>HumanLayer.Add</c> and <c>.Join</c>, each of which saves,
+    /// and a refusal on the second leaves the first on disk with nothing on screen pointing at it —
+    /// so the obvious next move adds a second person of the same name. Putting the transaction here
+    /// rather than at that one call site means the next press that grows into two writes is atomic
+    /// because of where it is written, and not because whoever wrote it remembered. A transaction
+    /// around one write costs nothing. It is not every write on this screen: <c>OnSave</c> files the
+    /// meeting through <c>MeetingClassifying</c> and owns its own, which is why the two are separate
+    /// openings rather than one.
+    /// </para>
+    /// <para>
+    /// <paramref name="write"/> answering with a line is the corpus having moved underneath
+    /// somebody — a node renamed away, a person already gone — which is not a failure and is not
+    /// thrown. Nothing is committed on that answer, so a write that got half way leaves the corpus
+    /// as it was found.
+    /// </para>
+    /// </remarks>
+    private TextLine? InTheCorpus<T>(Func<HumanLayer, (T Made, TextLine? Instead)> write, out T made)
+    {
+        made = default!;
+
+        if (Corpus().Folder is not { } folder)
+        {
+            return TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
+        }
+
+        try
+        {
+            using var context = CorpusDatabase.Open(folder);
+            using var writing = context.Database.BeginTransaction();
+
+            var wrote = write(new HumanLayer(context, TimeProvider.System));
+
+            if (wrote.Instead is { } instead)
+            {
+                return instead;
+            }
+
+            writing.Commit();
+            made = wrote.Made;
+            return null;
+        }
+
+        // Two different kinds of thing and one sentence, because to whoever pressed they are one:
+        // the corpus said no, or the corpus failed. `ClassificationException` is named in its own
+        // right because it derives from `InvalidOperationException`, which
+        // `ScreenFailures.Reportable` deliberately excludes — the same way `OnSave` names
+        // `MeetingStageException`. The day that list carries it, this clause is the one that goes.
+        catch (Exception refused)
+            when (refused is ClassificationException || ScreenFailures.Reportable(refused))
+        {
+            return TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+        }
+    }
+
+    /// <summary>
+    /// <see cref="InTheCorpus{T}"/> for the press that writes nothing the screen has to hold on to.
+    /// </summary>
+    /// <remarks>
+    /// The pair exists so the other one can be generic, and the generic one is what matters: a
+    /// write that produces an id has to hand it back <em>through the contract</em>. It was a
+    /// captured local for one draft, and that draft quietly gave up what the compiler had been
+    /// doing for free — a <c>Guid</c> declared and not yet assigned is a path the compiler refuses,
+    /// and a <c>Guid</c> initialised to <c>Guid.Empty</c> beside a delegate is a node id nothing in
+    /// the corpus carries, filed into the draft, gone from the pill on the next redraw and said
+    /// nowhere. Answering with a tuple puts it back: there is no way to say <em>it went through</em>
+    /// without saying what was made.
+    /// </remarks>
+    private TextLine? InTheCorpus(Func<HumanLayer, TextLine?> write) =>
+        InTheCorpus<object?>(human => (null, write(human)), out _);
+
+    /// <summary>
     /// The field a new name is typed into, standing where its pill was.
     /// </summary>
     /// <remarks>
@@ -776,11 +929,24 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// </remarks>
     private UIElement AName(MeetingAsClassified read, MeetingNodeRole role, int row, ChosenPath path, int level)
     {
-        var wrong = _naming?.Correcting is { } id
+        var correcting = _naming?.Correcting;
+
+        var wrong = correcting is { } id
             ? read.Tree.FirstOrDefault(node => node.Id == id)?.Name
             : null;
 
         var typing = new TextBox { Style = Chrome("Naming"), Text = wrong ?? string.Empty };
+
+        // Named for the same reason the pills are, and it is the control that most needed it: this
+        // is the only thing on the screen that commits on Enter, so a walk that cannot address it
+        // cannot finish an act — which is why this screen's proof had to be reasoned about. The id
+        // is the pill's own, because this field is standing where that pill was and a script that
+        // opened it already knows that name. The words are the entry somebody pressed to open it,
+        // which is what a screen reader should hear and is unambiguous by construction: one field
+        // is open at a time.
+        AutomationProperties.SetAutomationId(typing, APillAt(role, row, level));
+        AutomationProperties.SetName(
+            typing, In(correcting is null ? UiTexts.NameANewOne : UiTexts.CorrectThisName));
 
         typing.Loaded += (_, _) =>
         {
@@ -891,37 +1057,13 @@ public sealed partial class ClassifyingAMeeting : UserControl
             return;
         }
 
-        if (Corpus().Folder is not { } folder)
-        {
-            _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
-            _naming = null;
-            Render();
-            return;
-        }
-
-        Guid made;
-
-        try
-        {
-            using var context = CorpusDatabase.Open(folder);
-            var human = new HumanLayer(context, TimeProvider.System);
-
-            made = parent is null
+        if (InTheCorpus(
+            human => (parent is null
                 ? human.Root(placed, name).Id
-                : human.Under(parent, placed, name).Id;
-        }
-        catch (ClassificationException taken)
+                : human.Under(parent, placed, name).Id, (TextLine?)null),
+            out var made) is { } instead)
         {
-            // The tree refusing a name something beside it already carries, which is the same
-            // refusal `CorrectTheName` catches and for the same reason.
-            _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, taken.Message);
-            _naming = null;
-            Render();
-            return;
-        }
-        catch (Exception refused) when (ScreenFailures.Reportable(refused))
-        {
-            _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+            _status = instead;
             _naming = null;
             Render();
             return;
@@ -960,45 +1102,16 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// </remarks>
     private void CorrectTheName(MeetingAsClassified read, Guid correcting, string name)
     {
-        if (Corpus().Folder is not { } folder)
-        {
-            _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
-            _naming = null;
-            Render();
-            return;
-        }
-
         var wrong = read.Tree.FirstOrDefault(node => node.Id == correcting);
 
-        try
+        // The name that is going, not the one being typed: what changed underneath somebody is the
+        // thing they were correcting, and naming what they just typed reads as the application
+        // complaining about their own keystrokes.
+        if (InTheCorpus(human => wrong is null || human.Rename(wrong, name) is null
+                ? TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, wrong?.Name ?? name)
+                : null) is { } instead)
         {
-            using var context = CorpusDatabase.Open(folder);
-            var human = new HumanLayer(context, TimeProvider.System);
-
-            if (wrong is null || human.Rename(wrong, name) is null)
-            {
-                // The name that is going, not the one being typed: what changed underneath somebody
-                // is the thing they were correcting, and naming what they just typed reads as the
-                // application complaining about their own keystrokes.
-                _status = TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, wrong?.Name ?? name);
-                _naming = null;
-                Render();
-                return;
-            }
-        }
-        catch (ClassificationException taken)
-        {
-            // Caught by name, the way `OnSave` catches `MeetingStageException` by name, and for the
-            // same reason: this is the corpus saying no rather than failing, and it is not in
-            // `ScreenFailures.Reportable`.
-            _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, taken.Message);
-            _naming = null;
-            Render();
-            return;
-        }
-        catch (Exception refused) when (ScreenFailures.Reportable(refused))
-        {
-            _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+            _status = instead;
             _naming = null;
             Render();
             return;
@@ -1095,7 +1208,9 @@ public sealed partial class ClassifyingAMeeting : UserControl
             // Nothing chosen is how somebody comes off this meeting. The place stays and names
             // nobody, which files nothing.
             chosen => PutSomebodyIn(slot, chosen),
-            extras);
+            extras,
+            UiTexts.Who,
+            APlaceAt(slot));
 
         Grid.SetColumn(picker, 0);
         row.Children.Add(picker);
@@ -1329,13 +1444,14 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// somebody typed to a corpus that was locked for a second.
     /// </para>
     /// <para>
-    /// When somebody is being added — a correction is one write and takes none — one transaction
-    /// around both writes, for the reason <see cref="MeetingClassifying.Save"/> has
-    /// one. <c>HumanLayer.Add</c> and <c>.Join</c> each save; a refusal on the second leaves the
-    /// person on disk, the dialogue open, and nothing on the screen pointing at them — so the
-    /// obvious next move, fixing the year and pressing again, adds a *second* person of the same
-    /// name. That is exactly what the picker on the row exists to prevent: a corpus that grows a
-    /// person per meeting is one where searching a person stops finding the meetings they are on.
+    /// Adding somebody is two writes, and they are one act. <c>HumanLayer.Add</c> and <c>.Join</c>
+    /// each save; a refusal on the second would leave the person on disk, the dialogue open, and
+    /// nothing on the screen pointing at them — so the obvious next move, fixing the year and
+    /// pressing again, adds a <em>second</em> person of the same name. That is exactly what the
+    /// picker on the row exists to prevent: a corpus that grows a person per meeting is one where
+    /// searching a person stops finding the meetings they are on. The transaction that stops it is
+    /// <see cref="InTheCorpus{T}"/>'s and covers every write this screen makes to the corpus's
+    /// vocabulary, for the reason given there.
     /// </para>
     /// </remarks>
     private void OnSomebodyNamed(ContentDialog sender, ContentDialogButtonClickEventArgs args)
@@ -1352,41 +1468,20 @@ public sealed partial class ClassifyingAMeeting : UserControl
             return;
         }
 
-        if (Corpus().Folder is not { } folder)
-        {
-            args.Cancel = true;
-            SayInTheDialogue(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
-            return;
-        }
-
-        Guid made;
-
-        try
-        {
-            using var context = CorpusDatabase.Open(folder);
-            var human = new HumanLayer(context, TimeProvider.System);
-
-            if (asked.Correcting is { } correcting)
+        if (InTheCorpus(
+            human =>
             {
-                // One write, so no transaction. What the pair below needs one for is a refusal on
-                // the second leaving the first standing, and there is no second here.
-                // The name that is going and not the one being typed: what changed underneath
-                // somebody is the person they were correcting.
-                if (human.Rename(correcting, name) is null)
+                if (asked.Correcting is { } correcting)
                 {
-                    args.Cancel = true;
-                    SayInTheDialogue(UiTexts.ThatIsNoLongerHowItWas, correcting.DisplayName);
-                    return;
+                    // The name that is going and not the one being typed: what changed underneath
+                    // somebody is the person they were correcting.
+                    return human.Rename(correcting, name) is null
+                        ? (Guid.Empty, TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, correcting.DisplayName))
+                        : (correcting.Id, null);
                 }
 
-                made = correcting.Id;
-            }
-            else
-            {
                 var chosen = TheirOrganization.SelectedIndex - 1;
                 var organization = chosen >= 0 && chosen < _organizations.Count ? _organizations[chosen] : null;
-
-                using var writing = context.Database.BeginTransaction();
                 var person = human.Add(name);
 
                 if (organization is not null)
@@ -1396,14 +1491,12 @@ public sealed partial class ClassifyingAMeeting : UserControl
                     human.Join(person, organization, TheFirstOfTheYear(TheirYearBox.Text));
                 }
 
-                writing.Commit();
-                made = person.Id;
-            }
-        }
-        catch (Exception refused) when (ScreenFailures.Reportable(refused))
+                return (person.Id, (TextLine?)null);
+            },
+            out var made) is { } instead)
         {
             args.Cancel = true;
-            SayInTheDialogue(UiTexts.ThatDidNotGoThrough, refused.Message);
+            SayInTheDialogue(instead);
             return;
         }
 
@@ -1416,9 +1509,9 @@ public sealed partial class ClassifyingAMeeting : UserControl
         PutSomebodyIn(asked.Slot, made);
     }
 
-    private void SayInTheDialogue(UiText what, string about)
+    private void SayInTheDialogue(TextLine line)
     {
-        DialogueStatusText.Text = TextLine.Says(what, about).In(_language);
+        DialogueStatusText.Text = line.In(_language);
         DialogueStatusText.Visibility = Visibility.Visible;
     }
 
