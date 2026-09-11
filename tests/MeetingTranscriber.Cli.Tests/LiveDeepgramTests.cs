@@ -1,3 +1,6 @@
+using System.Runtime.CompilerServices;
+
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Processing.Deepgram;
@@ -39,6 +42,13 @@ public sealed class LiveDeepgramTests : IDisposable
     /// realistic rate would make a four-minute file eight megabytes for nothing.
     /// </summary>
     private const int Rate = 100;
+
+    /// <summary>
+    /// A ceiling that is not what is being tested. The tests that are about the ceiling say their
+    /// own number; the ones about what a send does say this, so a fixture's real length never has
+    /// to be worked out twice.
+    /// </summary>
+    private const int Generous = 60;
 
     private readonly DirectoryInfo audio = new(Path.Combine(
         Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
@@ -362,9 +372,264 @@ public sealed class LiveDeepgramTests : IDisposable
         output.ToString().ShouldContain("a.wav");
     }
 
+    /// <summary>
+    /// The chain the resume rule is made of, end to end: the name a run writes is the name the next
+    /// run reads back.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the one that was missing, and what it found is that nothing ever renamed the working
+    /// file. Every byte went to <c>&lt;stem&gt;-&lt;stamp&gt;.json.partial</c>, the report named a
+    /// path that was not there, and the parser opened <see cref="FileMode.Open"/> on it and threw —
+    /// after the money was spent. <see cref="LiveCheck.Of"/> lists <c>*.json</c>, so nothing it
+    /// could ever find existed and the resume rule matched nothing on a real machine.
+    /// </para>
+    /// <para>
+    /// Writing the response by hand and reading it back proves only that
+    /// <see cref="LiveCheck.ResponseNamed"/> agrees with itself. What makes this a probe is that the
+    /// file it reads is the one the send loop left.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_response_that_held_lands_under_the_name_the_next_run_reads_back()
+    {
+        AudioFor(DeepgramFixtures.TwoChannelOneVoiceMe, "a.wav");
+        using var output = new StringWriter();
+
+        var code = await DeepgramCommands.SendAsync(
+            LiveCheck.Of(audio, into, Generous),
+            into,
+            output,
+            Answering(DeepgramFixtures.TwoChannelOneVoiceMe),
+            CancellationToken.None);
+
+        code.ShouldBe(Cli.Ok, output.ToString());
+
+        var response = into.EnumerateFiles("*.json").ShouldHaveSingleItem();
+        response.Name.ShouldStartWith("a-");
+        into.EnumerateFiles("*" + RecordingFiles.UnfinishedSuffix).ShouldBeEmpty();
+        output.ToString().ShouldContain(response.FullName);
+
+        // And what the next run over the same two folders makes of it.
+        var again = LiveCheck.Of(audio, into, Generous);
+        again.Audio.ShouldBeEmpty();
+        again.Answered.Select(file => file.Name).ShouldBe(["a.wav"]);
+    }
+
+    /// <summary>
+    /// A response that broke an invariant is paid for and is kept — and it does not wear the name
+    /// that says it is a response to read a meeting from, because that name is what a later run
+    /// reads to decide what it need not buy.
+    /// </summary>
+    /// <remarks>
+    /// The failure this stops is the entry's own headline case got backwards: a run of eight stops
+    /// on the sixth because nobody was heard in it, somebody fixes <c>--language</c> and runs the
+    /// same command again — and the sixth is reported <c>already</c> and never sent while seven and
+    /// eight are bought. Red when the working name is moved onto the final one before the verdict
+    /// is in.
+    /// </remarks>
+    [Fact]
+    public async Task A_response_that_did_not_hold_is_kept_under_a_name_the_next_run_sends_again()
+    {
+        // A one-minute file against a thirteen-minute response, which is what a wrong account or a
+        // wrong key comes back as: a response describing audio nobody sent.
+        Wav("a.wav", seconds: 60, 0.4f, 0.2f);
+        Wav("b.wav", seconds: 60, 0.4f, 0.2f);
+        using var output = new StringWriter();
+
+        var code = await DeepgramCommands.SendAsync(
+            LiveCheck.Of(audio, into, Generous),
+            into,
+            output,
+            Answering(DeepgramFixtures.TwoChannelOneVoiceMe),
+            CancellationToken.None);
+
+        code.ShouldBe(Cli.Refused);
+        output.ToString().ShouldContain("not held");
+        output.ToString().ShouldContain("kept");
+
+        // Nothing wears the name of an answer, and what came back is still on disk.
+        into.EnumerateFiles("*.json").ShouldBeEmpty();
+        into.EnumerateFiles("*" + RecordingFiles.UnfinishedSuffix).ShouldHaveSingleItem()
+            .Length.ShouldBeGreaterThan(0);
+
+        // So the next run sends it again rather than calling it bought, and b.wav with it.
+        LiveCheck.Of(audio, into, Generous).Audio.Select(one => one.File.Name)
+            .ShouldBe(["a.wav", "b.wav"]);
+    }
+
+    /// <summary>
+    /// Ctrl+C part way through a call: the fragment is named rather than left for somebody to find,
+    /// what the run never reached is named too, and it comes back a refusal rather than an
+    /// unhandled <see cref="OperationCanceledException"/> — which is what it would be,
+    /// <c>Cli.IsRefusal</c> not naming that type and having no reason to.
+    /// </summary>
+    [Fact]
+    public async Task A_run_stopped_part_way_through_a_call_says_what_it_stopped_and_what_is_left()
+    {
+        AudioFor(DeepgramFixtures.TwoChannelOneVoiceMe, "a.wav");
+        Wav("b.wav", seconds: 60, 0.4f, 0.2f);
+        using var stopping = new CancellationTokenSource();
+        using var output = new StringWriter();
+
+        var code = await DeepgramCommands.SendAsync(
+            LiveCheck.Of(audio, into, Generous),
+            into,
+            output,
+            (sent, wrote, token) =>
+            {
+                stopping.Cancel();
+                token.ThrowIfCancellationRequested();
+                return Task.FromResult(0L);
+            },
+            stopping.Token);
+
+        code.ShouldBe(Cli.Refused);
+
+        var said = output.ToString();
+        said.ShouldContain("stopped");
+        said.ShouldContain("a.wav");
+        said.ShouldContain("not sent");
+        said.ShouldContain("b.wav");
+
+        // Nought bytes is a call that never delivered, so there is nothing to keep and nothing to
+        // name: what would stand otherwise is litter under a name claiming to be about a paid
+        // response.
+        into.EnumerateFiles().ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A press that lands between two files. Nothing was in flight, so nothing may have been
+    /// charged for — and the one command whose job is saying true things about a call must not
+    /// invent a possible charge for a request that never left the machine.
+    /// </summary>
+    /// <remarks>
+    /// Red without the question asked at the top of the loop: the next call is entered with a token
+    /// already set, throws with nothing sent, and the run reports that file as stopped part way
+    /// through a call and then leaves it out of what was not sent — wrong twice about one file.
+    /// </remarks>
+    [Fact]
+    public async Task A_press_between_two_files_stops_the_run_without_claiming_a_call_was_in_flight()
+    {
+        AudioFor(DeepgramFixtures.TwoChannelOneVoiceMe, "a.wav");
+        AudioFor(DeepgramFixtures.TwoChannelOneVoiceMe, "b.wav");
+        using var stopping = new CancellationTokenSource();
+        using var output = new StringWriter();
+        var asked = new List<string>();
+        var answer = Answering(DeepgramFixtures.TwoChannelOneVoiceMe);
+
+        var code = await DeepgramCommands.SendAsync(
+            LiveCheck.Of(audio, into, Generous),
+            into,
+            output,
+            async (sent, wrote, token) =>
+            {
+                asked.Add(sent.File.Name);
+                var bytes = await answer(sent, wrote, token);
+
+                // The press, landing as this call comes back.
+                await stopping.CancelAsync();
+                return bytes;
+            },
+            stopping.Token);
+
+        code.ShouldBe(Cli.Refused);
+        asked.ShouldBe(["a.wav"]);
+
+        var said = output.ToString();
+        said.ShouldContain("between files");
+        said.ShouldNotContain("Whether it was charged for");
+        said.ShouldContain("b.wav");
+
+        // The one that did come back held, so it is under the name a later run reads.
+        into.EnumerateFiles("*.json").ShouldHaveSingleItem().Name.ShouldStartWith("a-");
+    }
+
+    /// <summary>
+    /// The rule that keeps the one entry point that spends out of reach of every suite there is,
+    /// asserted rather than written down.
+    /// </summary>
+    /// <remarks>
+    /// <c>DeepgramCommands.Live(Arguments, TextWriter)</c> binds this prompt's keyboard and this
+    /// machine's key, and it is <see langword="internal"/> — which keeps a suite out only for as
+    /// long as this repository has no <c>InternalsVisibleTo</c>. Seven places state that in prose
+    /// and nothing held it: one attribute in <c>Directory.Build.props</c> silently reopens it, and
+    /// the failure would show up as a test that suddenly compiles.
+    /// <para>
+    /// The whole tree and not <c>src/</c> alone, because the attribute is assembly-level and can be
+    /// written anywhere the assembly compiles — a project file, a props file, any <c>.cs</c>. Red
+    /// with the attribute added anywhere in either.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void No_suite_can_be_let_in_to_what_spends()
+    {
+        // Spelled in two halves, because a file hunting for a declaration must not be one its own
+        // hunt finds. Seven files in this repository say the word in prose and none of them is
+        // declaring anything; what a compiler reads is the word with one of these in front of it.
+        const string Named = "InternalsVisible" + "To";
+        const string InCode = "[assembly: " + Named;
+        const string InAProjectFile = "<" + Named;
+
+        var repository = new DirectoryInfo(Path.GetFullPath(Path.Combine(Here(), "..", "..")));
+
+        var declaring = repository
+            .EnumerateFiles("*", SearchOption.AllDirectories)
+            .Where(file => file.Extension is ".cs" or ".csproj" or ".props" or ".targets")
+            .Where(file => !file.FullName.Contains(
+                $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(file => !file.FullName.Contains(
+                $"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Where(file =>
+            {
+                var written = File.ReadAllText(file.FullName);
+
+                return written.Contains(InCode, StringComparison.Ordinal)
+                    || written.Contains(InAProjectFile, StringComparison.Ordinal);
+            })
+            .Select(file => Path.GetRelativePath(repository.FullName, file.FullName))
+            .ToArray();
+
+        declaring.ShouldBeEmpty();
+    }
+
     /// <summary>A keyboard nobody is at, for the paths that must never reach one.</summary>
     private static string? Nobody() =>
         throw new InvalidOperationException("Nothing on this path may ask anybody to confirm.");
+
+    /// <summary>
+    /// Where this file is, so the repository is found from the tree rather than from whatever
+    /// working directory the runner happened to start in.
+    /// </summary>
+    private static string Here([CallerFilePath] string path = "") => Path.GetDirectoryName(path)!;
+
+    /// <summary>
+    /// A stand-in for the provider that answers with a committed response and reaches no socket.
+    /// </summary>
+    private static Transcribing Answering(string fixture) => async (sent, wrote, stopping) =>
+    {
+        await using var response = File.OpenRead(DeepgramFixtures.PathOf(fixture));
+        await response.CopyToAsync(wrote, stopping);
+        return response.Length;
+    };
+
+    /// <summary>
+    /// The audio a committed response is a transcription of, at this suite's cheap frame rate — so
+    /// that what the response says about its length and what this end counts agree, which is the
+    /// first thing <c>LiveInvariants</c> holds them to.
+    /// </summary>
+    private FileInfo AudioFor(string fixture, string name)
+    {
+        var read = DeepgramTranscriptParser.ParseFile(
+            DeepgramFixtures.PathOf(fixture), DeepgramFixtures.ProfileOf(fixture));
+
+        return ForeignWav.Steady(
+            new FileInfo(Path.Combine(audio.FullName, name)),
+            Rate,
+            (int)(read.Audio.Milliseconds * Rate / 1000),
+            0.4f,
+            0.2f);
+    }
 
     /// <summary>
     /// The response an earlier run left for <paramref name="wav"/>, named exactly as that run would

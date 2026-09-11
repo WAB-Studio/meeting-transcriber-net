@@ -325,6 +325,37 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
     }
 
     /// <summary>
+    /// A source that is damaged rather than fine costs its own file too, and that is the one that
+    /// used to cost the meeting: a corrupt microphone header took the whole export back, including
+    /// a <c>loopback.wav</c> that had poured completely and was the only copy of what was said. It
+    /// gets a line of its own, in different words from a source that changed format, and an exit
+    /// code that is not <see cref="Cli.Ok"/> — a channel nobody could read is not something a
+    /// script should hear as success.
+    /// </summary>
+    [Fact]
+    public void A_source_that_will_not_read_costs_its_own_file_and_says_so_at_the_prompt()
+    {
+        var meeting = Killed();
+        Corrupt(meeting, AudioChannel.Microphone);
+        var into = Path.Combine(Root, "taken out");
+
+        var run = CommandLine.Of(
+            "recovery", "--corpus", Root, "--meeting", meeting.ToString(), "--export", into);
+
+        run.Code.ShouldBe(Cli.Refused);
+        run.Value("others taken out").ShouldContain("loopback.wav");
+        run.Value("me taken out").ShouldStartWith("not read: ");
+
+        var poured = new FileInfo(Path.Combine(into, "loopback.wav"));
+        poured.Exists.ShouldBeTrue();
+        poured.Length.ShouldBeGreaterThan(0);
+        new FileInfo(Path.Combine(into, "microphone.wav")).Exists.ShouldBeFalse();
+
+        // Taking it out is still not deciding about it.
+        CommandLine.Of("recovery", "--corpus", Root).Value("meeting").ShouldBe(meeting.ToString());
+    }
+
+    /// <summary>
     /// The same guarantee at the prompt the card names, through <c>WaitingRecordings</c> — the path
     /// the drawer takes too. A second window keeping this recording, or a prompt exporting it,
     /// holds a block file open; a discard typed while it does used to take the card and the first
@@ -540,6 +571,22 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
     {
         using var stream = blocks.Open(FileMode.Open, FileAccess.Write);
         stream.SetLength(blocks.Length - 32);
+    }
+
+    /// <summary>
+    /// Damages a spool's header, which stands in for every way a source can fail to read through —
+    /// a header that is not one, a block whose hash is not its bytes, a disk that will not give the
+    /// file up — because they all reach the same <c>catch</c> by the same route and none of the
+    /// others can be produced on a build agent.
+    /// </summary>
+    private void Corrupt(Guid meeting, AudioChannel channel)
+    {
+        var blocks = BlockSpool.FileFor(CorpusFiles.SpoolFolderFor(corpus.Root, meeting), channel);
+        using var stream = blocks.Open(FileMode.Open, FileAccess.ReadWrite);
+        stream.Position = 16;
+        var was = stream.ReadByte();
+        stream.Position = 16;
+        stream.WriteByte((byte)(was ^ 0xFF));
     }
 
     /// <summary>

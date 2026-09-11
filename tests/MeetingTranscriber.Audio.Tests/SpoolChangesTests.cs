@@ -336,6 +336,66 @@ public sealed class SpoolChangesTests : IDisposable
         File.ReadAllLines(SpoolChanges.In(folder).FullName).Length.ShouldBe(2);
     }
 
+    /// <summary>
+    /// The direction of the same sharing conflict that costs audio rather than a report line. A
+    /// listing is a read of this file, and it used to deny write sharing — so a read taken at the
+    /// instant a channel handed over refused the append, and <see cref="SpoolChanges.Append"/> says
+    /// what a refused append means: the move does not happen, and the rest of the meeting records
+    /// on an endpoint nobody is on.
+    /// </summary>
+    /// <remarks>
+    /// The handle is taken through <see cref="SpoolChanges.Reading"/>, which is the one thing that
+    /// decides how this file is read — a test spelling the modes itself would go green whatever the
+    /// reader asked for. Red with that back on <see cref="FileShare.Read"/>, which is what
+    /// <c>File.ReadAllText</c> asks for: the append throws and the change is lost.
+    /// </remarks>
+    [Fact]
+    public void A_change_written_while_somebody_is_reading_the_folder_still_lands()
+    {
+        SpoolChanges.Append(folder, Moving());
+
+        using (var reading = SpoolChanges.Reading(SpoolChanges.In(folder)))
+        {
+            SpoolChanges.Append(folder, Replaced() with { At = Moved + Duration.FromSeconds(90) });
+        }
+
+        SpoolChanges.Find(folder).Select(change => change.Channel)
+            .ShouldBe([AudioChannel.Loopback, AudioChannel.Microphone]);
+    }
+
+    /// <summary>
+    /// Two channels handing over at once is a dock or a hub coming out, which takes both endpoints
+    /// in the same instant. Each reaches <see cref="SpoolChanges.Append"/> from its own capture
+    /// callback, against one file, and without a lock the second one in met the first one's handle,
+    /// got a sharing violation, and had its move refused on timing alone.
+    /// </summary>
+    /// <remarks>
+    /// Red with the lock taken out, where a run of this leaves fewer lines than it wrote or throws
+    /// outright. Many appends rather than two, because one pair coinciding is a coin toss and forty
+    /// is not.
+    /// </remarks>
+    [Fact]
+    public void Two_channels_handing_over_at_once_both_land()
+    {
+        const int Each = 20;
+
+        var moving = Enumerable.Range(0, Each).Select(step => Moving() with
+        {
+            At = Moved + Duration.FromSeconds(step),
+        });
+
+        var replaced = Enumerable.Range(0, Each).Select(step => Replaced() with
+        {
+            At = Moved + Duration.FromSeconds(step),
+        });
+
+        Parallel.ForEach(
+            moving.Zip(replaced).SelectMany(pair => new[] { pair.First, pair.Second }),
+            change => SpoolChanges.Append(folder, change));
+
+        SpoolChanges.Find(folder).Count.ShouldBe(Each * 2);
+    }
+
     public void Dispose()
     {
         try

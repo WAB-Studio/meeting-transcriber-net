@@ -75,7 +75,25 @@ public sealed record SourceThatWouldNotRead(AudioChannel Channel, string Why);
 public sealed record TakenOut(
     IReadOnlyList<ExportedSource> Exported,
     IReadOnlyList<SourceWithNoPlayback> NotMade,
-    IReadOnlyList<SourceThatWouldNotRead> WouldNotRead);
+    IReadOnlyList<SourceThatWouldNotRead> WouldNotRead)
+{
+    /// <summary>
+    /// Whether every source this recording has came out.
+    /// </summary>
+    /// <remarks>
+    /// Answered here and asked by the reporters, because it is one judgement about an export and
+    /// every surface that carries an export has to reach the same one. Both command-line reporters
+    /// turn it into an exit code and a screen would turn it into a sentence; deciding it at each of
+    /// them is how the prompt comes to say an export went as asked while a window says it did not.
+    /// <para>
+    /// <see cref="NotMade"/> does not count against it. A source that changed device mid-meeting has
+    /// every block it ever had, and what does not exist is only the single-format file poured for
+    /// convenience — so an export that says so is an export that did what it could and said what it
+    /// could not, which is a different thing from one that could not read a source's audio.
+    /// </para>
+    /// </remarks>
+    public bool Whole => WouldNotRead.Count == 0;
+}
 
 /// <summary>
 /// A recording sitting in the folder recordings are written into, and the three things that may
@@ -279,9 +297,10 @@ public sealed record UnfinishedRecording(
     /// <em>this source's</em> audio, which is a fact about one channel. Anything else — a full
     /// disk, a destination that will not take the bytes — is the export failing rather than a
     /// source, and an export that cannot write is not an export that leaves half of one behind.
-    /// The one thing inside that family that is still refused whole is a spool something is
-    /// holding: on this machine that is a capture writing it, so it is a fact about the meeting
-    /// and not about the channel, and all three outcomes refuse a meeting that has not stopped.
+    /// The one thing inside that family that is still refused whole is a
+    /// <see cref="SpoolInUseException"/>: on this machine something holding a spool is a capture
+    /// writing it, so it is a fact about the meeting and not about the channel, and all three
+    /// outcomes refuse a meeting that has not stopped.
     /// </para>
     /// <para>
     /// When <em>every</em> source has failed this still comes back rather than throwing — one
@@ -351,20 +370,22 @@ public sealed record UnfinishedRecording(
 
                     notMade.Add(new SourceWithNoPlayback(source.Channel, cannot.Message));
                 }
-                catch (AudioCaptureException unreadable)
+                // A spool something is holding is not a damaged source: on this machine a handle on
+                // blocks is a capture writing them, so the meeting has not stopped, and a meeting
+                // that is still happening is refused whole by all three outcomes rather than
+                // exported in part. `EnsureThereIsSomethingToDecide` asks that on the way in; a
+                // capture that took hold since the recording was found lands here instead, and goes
+                // past this clause to the outer catch, which takes the whole export back.
+                // What comes out is `SpoolReader`'s sentence about a block file rather than the one
+                // about a meeting — the shape `EnsureThereIsSomethingToDecide` exists to avoid — and
+                // that is unchanged from before this clause existed and is what
+                // `None_of_the_three_outcomes_lands_on_a_meeting_that_is_still_being_recorded`
+                // pins. Asking the question here instead, by opening the file again, would ask it a
+                // second time and get a second answer: a capture that stopped in between makes an
+                // intact source read as damaged, and one that started throws away a `loopback.wav`
+                // that poured completely, which is the loss this clause exists to stop.
+                catch (AudioCaptureException unreadable) when (unreadable is not SpoolInUseException)
                 {
-                    // A spool something still holds is not a damaged source. On this machine a
-                    // handle on blocks is a capture writing them, which means the meeting has not
-                    // stopped — and a meeting that is still happening is refused whole by all three
-                    // outcomes rather than exported in part.
-                    // `EnsureThereIsSomethingToDecide` asks this on the way in; a capture that took
-                    // hold since the recording was found arrives here instead and gets the same
-                    // answer, in the same sentence, with the destination taken back below.
-                    if (BlockSpool.IsStillBeingWritten(source.Blocks))
-                    {
-                        throw;
-                    }
-
                     // The claim is erased here and not by `ToWav`, which never ran for a spool
                     // that would not open at all — so what stands under this name is the zero-byte
                     // file `Claim` left, and a file under a source's name holding nothing is a file

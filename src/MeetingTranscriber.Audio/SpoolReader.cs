@@ -73,7 +73,11 @@ public sealed class SpoolReader : IDisposable
         }
         catch (IOException held) when (File.Exists(file.FullName))
         {
-            throw new AudioCaptureException(
+            // The narrower type, and the sentence is the one this has always given. What it buys is
+            // that a caller taking the family can tell a source something is holding from a source
+            // that is damaged — see `SpoolInUseException` — without opening the file a second time
+            // and getting a second answer.
+            throw new SpoolInUseException(
                 $"'{file.FullName}' is open elsewhere, which on this machine means a recording that "
                 + "is still running. What it holds can be read once it stops.", held);
         }

@@ -135,16 +135,23 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     }
 
     /// <summary>
-    /// The changes beside the card get the same answer, and the failure they get it for is the one
-    /// that only ever arrives when it matters most: <see cref="SpoolChanges.Append"/> holds
-    /// <c>changes.jsonl</c> open <see cref="FileAccess.ReadWrite"/> while a channel hands over, and
-    /// a read asks for it with write sharing denied — so the one command somebody runs to find out
-    /// what happened to a recording came back as a bare <see cref="IOException"/> exactly while a
-    /// recording was in progress. The recording is offered, saying why, and the one beside it is
-    /// untouched.
+    /// The one command somebody runs to find out what happened to a recording came back as a bare
+    /// <see cref="IOException"/> exactly while a recording was in progress:
+    /// <see cref="SpoolChanges.Append"/> holds <c>changes.jsonl</c> open
+    /// <see cref="FileAccess.ReadWrite"/> while a channel hands over, and the read asked for it with
+    /// write sharing denied. It now shares the file, so the answer arrives — and the answer is which
+    /// source the second half of that meeting is really on.
     /// </summary>
+    /// <remarks>
+    /// Red with the read back on <see cref="FileShare.Read"/>, which is what
+    /// <c>File.ReadAllText</c> asks for. The same share mode was costing the other direction too,
+    /// and that half is held by
+    /// <c>SpoolChangesTests.A_change_written_while_somebody_is_reading_the_folder_still_lands</c>:
+    /// a listing holding the file made the <em>append</em> throw, and an append that is refused is
+    /// a move that does not happen.
+    /// </remarks>
     [Fact]
-    public void A_recording_whose_changes_will_not_open_is_offered_and_takes_no_other_one_with_it()
+    public void A_recording_whose_changes_are_being_appended_to_is_offered_saying_what_changed()
     {
         Recorded("moving", both: true);
         var whole = Recorded("whole", both: true);
@@ -154,7 +161,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
             "everything this machine plays",
             "teams (pid 8124)"));
 
-        // Opened exactly as the append that is moving a channel opens it.
+        // Held exactly as the append that is moving a channel holds it.
         using var moving = new FileStream(
             SpoolChanges.In(Folder("moving")).FullName,
             FileMode.Open,
@@ -164,8 +171,8 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
         var waiting = UnfinishedRecordings.In(root);
 
         waiting.Select(recording => recording.Folder.Name).ShouldBe(["moving", "whole"]);
-        waiting[0].Unreadable.ShouldNotBeNull().ShouldContain(SpoolChanges.FileName);
-        waiting[0].Unreadable.ShouldNotBeNull().ShouldContain(Folder("moving").FullName);
+        waiting[0].Unreadable.ShouldBeNull();
+        waiting[0].Changed.ShouldHaveSingleItem().WasHearing.ShouldBe("teams (pid 8124)");
         waiting[0].Sources.Count.ShouldBe(2);
         waiting[1].Card.ShouldNotBeNull().MeetingId.ShouldBe(whole);
         waiting[1].Unreadable.ShouldBeNull();

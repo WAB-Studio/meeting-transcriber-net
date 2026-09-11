@@ -324,12 +324,16 @@ public static class AudioCommands
                     output, $"{Name(damaged.Channel)} taken out", $"not read: {damaged.Why}");
             }
 
+            // `Whole` and not a count read here, because whether an export came out whole is one
+            // judgement about the export and `RecordingCommands` has to reach the same one.
             // Refused rather than Ok, and it is the exit code this command already gave: before a
             // damaged source cost only its own file, the whole export came back as an
-            // `AudioCaptureException` and `Cli` answered `Refused`. Every source that poured now
-            // stays, and a script reading the code still hears that one of them did not — which is
-            // the half of this that must not go quiet while the other half stops losing files.
-            return taken.WouldNotRead.Count == 0 ? Cli.Ok : Cli.Refused;
+            // `AudioCaptureException` and `Cli` answered `Refused`. What the number now means is
+            // narrower than it was — it used to say nothing landed, and it now says something did
+            // not — so a script that took 1 as "there is nothing in that folder" has to read the
+            // report. That is the right way round: `Ok` would say an export that could not read a
+            // channel went as asked, which is the silence this whole change exists to end.
+            return taken.Whole ? Cli.Ok : Cli.Refused;
         }
 
         // One hold over both halves. Making the recording the two sources become and reading each

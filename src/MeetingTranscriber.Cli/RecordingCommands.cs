@@ -186,9 +186,9 @@ public static class RecordingCommands
                     output, $"{Name(damaged.Channel)} taken out", $"not read: {damaged.Why}");
             }
 
-            // The exit code this command already gave for a damaged source, kept now that the
-            // sources that poured are no longer taken back with it. See `AudioCommands.Recover`.
-            return taken.WouldNotRead.Count == 0 ? Cli.Ok : Cli.Refused;
+            // One judgement, answered by the export and asked here, so this command and
+            // `audio --recover` cannot come to different answers about the same folder.
+            return taken.Whole ? Cli.Ok : Cli.Refused;
         }
 
         var recovered = WaitingRecordings.Recover(context, recording, Clock.Now());

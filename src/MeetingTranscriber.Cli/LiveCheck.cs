@@ -114,10 +114,17 @@ public sealed class LiveCheck
     /// same total and re-buy five files. A file already answered is not read at all: it is not
     /// going to be sent, and a full read of it would be minutes of disk for a number nobody uses.
     /// </para>
+    /// <para>
+    /// <b>What is in <paramref name="into"/> is a ledger nothing locks.</b> Two runs pointed at one
+    /// folder both see nothing answered, both pass the ceiling and both buy it — the stamps keep
+    /// the files from colliding, which is exactly what would hide it. That was true before anything
+    /// read this folder and reading it does not make it worse, but it is now a directory listing
+    /// standing over somebody's money, so it is said here rather than left to be found.
+    /// </para>
     /// </remarks>
     /// <exception cref="CommandException">
-    /// There is no such folder, it holds no <c>.wav</c>, or one of the files it would send is not
-    /// something this application transcribes.
+    /// Either folder is not there, <paramref name="audio"/> holds no <c>.wav</c>, or one of the
+    /// files this would send is not something this application transcribes.
     /// </exception>
     public static LiveCheck Of(DirectoryInfo audio, DirectoryInfo into, int ceilingMinutes)
     {
@@ -128,6 +135,17 @@ public sealed class LiveCheck
         if (!audio.Exists)
         {
             throw new CommandException($"There is no folder '{audio.FullName}' to take audio from.");
+        }
+
+        // Both folders, now this owns both. The command refuses a missing `--out` first and in its
+        // own words, before the frame count that costs minutes; what this stops is the caller that
+        // does not, meeting a `DirectoryNotFoundException` where every other way out of here is a
+        // sentence.
+        into.Refresh();
+        if (!into.Exists)
+        {
+            throw new CommandException(
+                $"There is no folder '{into.FullName}' for the responses to land in.");
         }
 
         var files = audio
