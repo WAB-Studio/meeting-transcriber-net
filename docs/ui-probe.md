@@ -182,13 +182,17 @@ a `sleep`.
 - `choose <list> <item>` — open the list, pick the item by name, shut it again. A list too long
   to draw whole is asked what it holds rather than walked, so an item below the fold is named the
   same way as one on screen.
+- `key <element> <enter|escape|tab>` — focus it and send that key. Fails if it is disabled, if it
+  will not take focus, if it takes focus and does not get the keyboard — which is what a window
+  that is not in front does — or if Windows refuses the keystroke outright, which a locked
+  workstation and a secure desktop both do.
 - `wait <element>` — block until it is on a window, and make that window the screen from then on.
 - `sleep <seconds>` — let that long pass, touching nothing. Script host only, capped at twenty
   minutes.
 - `kill` — end the application the way a crash does, with nothing asked and nothing let finish.
 
-Put a `wait` after any `press`, `type` or `choose` whose effect you are about to look at. It is the
-only thing here that synchronises.
+Put a `wait` after any `press`, `type`, `choose` or `key` whose effect you are about to look at. It
+is the only thing here that synchronises.
 
 **A `see` whose window will not be photographed still writes the tree**, says why there is no
 picture, and fails on it. That is not a hypothetical: on 2026-09-02 this window printed its frame
@@ -303,8 +307,19 @@ to `wait` for something on the screen you meant. It is never whichever window is
 ## What it will not do
 
 - **`press` is `Invoke` only, and `type` is `SetValue` only.** Either one fails naming what the
-  control offers instead, which is how you find out it wanted another verb.
-- **It will not bring a window forward.** A window behind another still photographs correctly.
+  control offers instead, which is how you find out it wanted another verb. `key` is the answer
+  when a control wants a keystroke and neither of those is it — a field that commits on Enter is
+  the case it was added for.
+- **It will not bring a window forward — and `key` is the one verb that needs it in front.** A
+  window behind another still photographs, and every other verb reaches it through UI Automation. A
+  key goes to whatever has the keyboard, so `key` asks the element for focus and then reads back
+  whether it really got it, refusing when it did not rather than reporting a keystroke that landed
+  in whatever you were typing in. There is no verb that brings a window forward and none is
+  planned: what an unattended run can do is leave the foreground alone — start the application
+  last, use `key` before anything else takes focus, and treat its refusal as *something else took
+  the keyboard* rather than as something to retry. The check narrows the window between asking and
+  sending; it does not close it, because the foreground belongs to the machine and not to this
+  process.
 - **It drives a corpus of its own and the preference file of whichever package this checkout
   registered.** The corpus is `%USERPROFILE%\MeetingTranscriber.ui-probe`, one folder for every
   checkout, and the user's pointer is put back when the application closes — see *Record may be
