@@ -33,7 +33,7 @@ Say what is wrong, where in the plan, and what would settle it. Say what you che
 sound. Say where you are unsure and what you read. Write at whatever length that takes; a finding
 left out for being small is one that arrives later at full price. Leave out how you found any of it.
 
-A finding about two plans goes in both files, saying which card should wait.
+A finding about two plans goes in both files, saying which of the three remedies it takes.
 
 ## What decides a verdict
 
@@ -46,8 +46,10 @@ A finding about two plans goes in both files, saying which card should wait.
 A decision the card's `**Grilled.**` comment already settled, and the plan went the other way on, is
 `revise` rather than `ask`.
 
-Two plans that cannot both land is `revise` for the one that should wait, never for the lead. The
-plans name their files; that is what the card bodies could not.
+Two plans that cannot both land is a collision, and you name its remedy, because you are the only
+stage that has read both plans. One file or one decision between them is `one_share`. One that only
+has to land after the other is `after`. Neither is `postpone`, and the card goes back to the pool
+unbuilt. `revise` is for a plan that is wrong on its own, never for a collision.
 
 ## Bounds
 
@@ -93,7 +95,8 @@ Your final message is one JSON object and nothing else.
                                             "options": [ an answer, and what it costs ] }] }],
   "collisions":     [{ "between": [ two task ids ],
                        "over":    the file or the shape,
-                       "waits":   the task id that should wait }],
+                       "remedy":  "one_share" | "after" | "postpone",
+                       "waits":   the task id that goes second, empty unless `after` }],
   "blocked_reason": what stopped you, empty unless blocked
 }
 ```

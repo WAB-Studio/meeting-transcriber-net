@@ -16,9 +16,10 @@ without finding anything out.
 - `share` — the work you build, the paths you own, and the paths another share owns. Build only
   these, and write only inside what you own. The work is cards, or parts of cards, or entries from
   `private/owed.md`, in any mixture. A card is an issue; its id is its issue number.
-- `owed` — the `private/owed.md` entries in this share, where there are any. Each names a file, what
-  is there now and what should be. Build them like anything else and do not decline one. An entry
-  written against a tree that has since moved is a `departures` entry and is not built.
+- `owed` — the ids of the owed entries in this share, where there are any. Each is a heading in
+  `private/owed.md`, which you read by absolute path; it names a file, what is there now and what
+  should be. Build them like anything else and do not decline one. An entry written against a tree
+  that has since moved is a `departures` entry, is not built, and is not `owed_built`.
 - `card_dirs` — one absolute path per card, outside any diff. `plan.md` there is what you build.
   `review.md` and `briefing.md` are there when they apply; read each if it is present and go on if
   it is not.
@@ -62,6 +63,9 @@ nothing else. A dirty tree is `blocked`, and you fix nothing. You are running in
 never check `main` out and never assume you are standing on it.
 
 Branch as `feat/`, `fix/`, `chore/` or `docs/` plus a short slug.
+
+Never edit `private/owed.md` or `private/owed-closed.md`. An entry you built is `owed_built` and
+nothing else.
 
 **Read anything. Write only what your share owns.** The whole repository is yours to read, and a
 path another share owns is one you read and do not touch — judging your own work against code you
@@ -140,8 +144,9 @@ nothing else:
                            "chose":         the answer,
                            "blocks_the_pr": true | false }],
   "left_out":           [ what the card asked for and you did not deliver ],
-  "owed_built":         [{ "entry": the `private/owed.md` heading you built,
-                           "how":   what you changed, or why the tree had moved }],
+  "owed_built":         [{ "id":     the entry's id,
+                           "how":    what you changed,
+                           "commit": the commit that carries it }],
   "followups_proposed": [{ "what":             the work,
                            "product":          the question `.claude/skills/github/SKILL.md`
                                                settles an issue by, answered for this work,
