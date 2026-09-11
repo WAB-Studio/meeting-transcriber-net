@@ -114,6 +114,24 @@ public sealed class Arguments
         return value ?? throw new UsageException($"{name} takes a value.");
     }
 
+    /// <summary>Whether an option was on the line at all, whatever it carried.</summary>
+    /// <remarks>
+    /// The question a command asks about a flag it will not accept where it is, and it is different
+    /// from every other reader here: <see cref="Optional"/> and <see cref="Required"/> ask what a
+    /// flag carries and refuse one with nothing after it, <see cref="Flag"/> refuses one with
+    /// something after it. Both answer about the value, so both turn <em>you may not give this
+    /// here</em> into a sentence about what should have followed it. This one marks the flag read
+    /// like the rest, so a command that has refused it by name does not then meet
+    /// <see cref="EnsureNothingLeftOver"/> saying the command takes no such thing.
+    /// </remarks>
+    public bool WasGiven(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        read.Add(name);
+
+        return options.ContainsKey(name);
+    }
+
     /// <summary>Whether an option with no value of its own was given.</summary>
     public bool Flag(string name)
     {

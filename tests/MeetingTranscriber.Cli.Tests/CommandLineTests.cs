@@ -642,6 +642,78 @@ public class CommandLineTests
         run.Output.ShouldNotContain("never materialised");
     }
 
+    /// <summary>
+    /// Every flag the other half of <c>import-response</c> takes is refused by name when
+    /// <c>--meeting</c> is given, because the meeting already answers each of them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nothing is migrated and no corpus is read, because nothing has to be: the refusal is decided
+    /// from the tokens alone and happens before <c>corpus.Write()</c>. Both the meeting id and the
+    /// corpus directory name things that are not there, and the answer is still about the flag —
+    /// which is the whole claim.
+    /// </para>
+    /// <para>
+    /// Twice per flag, with a value and without one, because those took different routes before and
+    /// somebody typing either has the same thing wrong with their line. <c>Misused</c> rather than
+    /// <c>Refused</c> for both: the line was typed wrong, and <c>Refused</c> is for the corpus or
+    /// the input saying no. It is also what prints the usage, where the alternation these flags
+    /// belong to is written.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("--profile", "multichannel")]
+    [InlineData("--profile", null)]
+    [InlineData("--started-at", "2026-03-04T14:00:00Z")]
+    [InlineData("--started-at", null)]
+    [InlineData("--title", "la del jueves")]
+    [InlineData("--title", null)]
+    [InlineData("--context", "presupuesto")]
+    [InlineData("--language", "es")]
+    public void Filing_a_response_onto_a_meeting_refuses_every_flag_that_meeting_already_answers(
+        string flag, string? value)
+    {
+        string[] line =
+        [
+            "import-response",
+            DeepgramFixtures.PathOf(Fixture),
+            "--corpus",
+            Path.Combine(Path.GetTempPath(), $"no-corpus-{Guid.NewGuid():n}"),
+            "--meeting",
+            $"{Guid.NewGuid()}",
+            flag,
+            .. value is null ? Array.Empty<string>() : [value],
+        ];
+
+        var run = CommandLine.Of(line);
+
+        run.Code.ShouldBe(Cli.Misused, run.Error);
+        run.Error.ShouldContain(flag);
+        run.Error.ShouldContain("--meeting");
+        run.Error.ShouldContain("usage:");
+    }
+
+    /// <summary>
+    /// The usage is the only place somebody standing at a prompt would find the flag, and the only
+    /// place that says the two halves are alternatives rather than options to mix.
+    /// </summary>
+    [Fact]
+    public void Import_response_usage_names_both_halves_as_alternatives()
+    {
+        var line = Cli.Usage()
+            .Split(Environment.NewLine)
+            .Select(text => text.Trim())
+            .Single(text => text.StartsWith("import-response ", StringComparison.Ordinal));
+
+        // The pipe and not just the flag. A usage that listed `[--meeting <id>]` beside
+        // `[--started-at <instant>]` would name everything this asserts and say the one thing that
+        // is not true — that a line may carry both.
+        line.ShouldContain("--meeting");
+        line.ShouldContain("|");
+        line.ShouldContain("--started-at");
+        line.ShouldContain("--profile");
+    }
+
     /// <summary>A file beside a recording's blocks, put there without the engine.</summary>
     private static void Spooled(DirectoryInfo folder, string name, string text) =>
         File.WriteAllText(Path.Combine(folder.FullName, name), text);

@@ -1,4 +1,4 @@
-using MeetingTranscriber.Audio;
+﻿using MeetingTranscriber.Audio;
 
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Infrastructure.Artifacts;
@@ -80,12 +80,21 @@ public static class Cli
             DiagnosticCommands.Compact),
         // Two doors, and each says which one it is. `import` on its own was unambiguous for
         // exactly as long as a response was the only thing a meeting could be made out of.
+        //
+        // There are three now, and the third is a flag on the first rather than a command of its
+        // own. The rule above still holds and this is not an exception to it: what made `import`
+        // ambiguous was two different acts — a meeting made out of a response, a meeting made out
+        // of a WAV — sharing one name. Filing a response onto a meeting the corpus recorded is the
+        // same act as filing one that has no meeting yet: the same file goes in, the same
+        // derivatives come out, and the report reads the same. What moves is where the identity
+        // comes from, and a second command for that would be two spellings of one thing.
         new(
             "import-response",
             $"import-response <{MeetingIntake.ResponseFileName}> {Corpus.Option} <directory>"
-            + " --started-at <instant> --profile <multichannel|diarize> [--title <text>]"
-            + " [--context <text>] [--language <code>]",
-            "file a paid response as a meeting and render everything derived from it",
+            + " (--meeting <id> | --started-at <instant> --profile <multichannel|diarize>"
+            + " [--title <text>] [--context <text>] [--language <code>])",
+            "file a paid response — onto the meeting it was recorded from, or as a meeting of its"
+            + " own — and render everything derived from it",
             MeetingCommands.ImportResponse),
         new(
             "import-audio",

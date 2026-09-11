@@ -1,6 +1,7 @@
 using System.Globalization;
 
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Processing.Intake;
 
 namespace MeetingTranscriber.Cli.Tests;
 
@@ -19,6 +20,14 @@ namespace MeetingTranscriber.Cli.Tests;
 /// The one file it opens is the <c>utterances.jsonl</c> the import produced, and only to pick a
 /// word to search for. A query nobody said would prove nothing about search, and asking the corpus
 /// for a word to ask it about would be the reach into the database this test does not make.
+/// </para>
+/// <para>
+/// One of the walks below starts at <c>import-audio</c> rather than at a response, because the
+/// meeting it is about is one the corpus already holds. <c>record</c> is what really produces one
+/// and it cannot run here — it opens WASAPI endpoints, and <c>RecordingCommands</c>' own remarks
+/// say nothing on a build agent can open one — so the stand-in is a meeting brought in from a file:
+/// the same row, the same <c>audio.wav</c> under it, the same absence of a response. What that
+/// leaves untested is the device ordering, which is deliberately not part of <c>dotnet test</c>.
 /// </para>
 /// </remarks>
 public class CliWalkthroughTests
@@ -171,6 +180,96 @@ public class CliWalkthroughTests
         refused.Error.ShouldContain(SourceProfile.Diarize.ToWireName());
         CommandLine.Of("status", "--corpus", root).Value("meetings").ShouldBe("none");
         Directory.Exists(Path.Combine(root, "meetings")).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A meeting the corpus already holds gains a transcript in its own row, walked end to end from
+    /// a prompt: bring the audio in, file a response onto that meeting, and find the words in it.
+    /// </summary>
+    /// <remarks>
+    /// The response is <c>single-track-diarized</c> and it has to be. <c>import-audio</c> files
+    /// everything it brings in as <c>diarize</c>, so a two-channel response onto that meeting is
+    /// refused by the contract before anything is filed — which would make this walk prove the
+    /// refusal instead of the card.
+    /// </remarks>
+    [Fact]
+    public void A_meeting_the_corpus_already_holds_is_transcribed_into_that_row_and_not_a_second()
+    {
+        using var corpus = new TemporaryCorpus();
+        var root = corpus.Root.FullName;
+
+        var made = CommandLine.Of("migrate", "--corpus", root);
+        made.Code.ShouldBe(Cli.Ok, made.Error);
+
+        // Somebody else's WAV, in a folder of its own so nothing about the corpus vouches for it.
+        var elsewhere = Directory.CreateTempSubdirectory("meeting-transcriber-tests-");
+        try
+        {
+            var wav = ForeignWav.Steady(
+                new FileInfo(Path.Combine(elsewhere.FullName, "meeting.wav")),
+                44_100,
+                44_100,
+                0.2f,
+                0.3f);
+
+            var brought = CommandLine.Of(
+                "import-audio", wav.FullName,
+                "--corpus", root,
+                "--started-at", StartedAt,
+                "--title", "la del jueves");
+
+            brought.Code.ShouldBe(Cli.Ok, brought.Error);
+            var meeting = brought.Value("meeting");
+            Guid.TryParse(meeting, out _).ShouldBeTrue(meeting);
+            brought.Value("profile").ShouldBe("diarize (mixed down to one track)");
+            brought.Value("length").ShouldBe("0:00:01");
+
+            var filed = CommandLine.Of(
+                "import-response",
+                DeepgramFixtures.PathOf(DeepgramFixtures.SingleTrackDiarized),
+                "--corpus", root,
+                "--meeting", meeting);
+
+            filed.Code.ShouldBe(Cli.Ok, filed.Error);
+
+            // No "already here" suffix: these bytes are new, and the meeting is the one that has
+            // the audio rather than one this filing minted.
+            filed.Value("meeting").ShouldBe(meeting);
+            filed.Value("response").ShouldBe($"meetings/{meeting}/{MeetingIntake.ResponseFileName}");
+            filed.Value("transcript").ShouldStartWith($"meetings/{meeting}/");
+            filed.Value("manifest").ShouldStartWith($"meetings/{meeting}/");
+            var turns = int.Parse(filed.Value("turns"), CultureInfo.InvariantCulture);
+            turns.ShouldBeGreaterThan(0);
+
+            // The card: one meeting, not two, and its turns are the corpus's turns.
+            var status = CommandLine.Of("status", "--corpus", root);
+            status.Code.ShouldBe(Cli.Ok, status.Error);
+            status.Value("meetings").ShouldBe("1 active");
+            status.Value("turns").ShouldBe($"{turns}");
+
+            // And the hit points at the meeting that has the audio, which is the second thing a
+            // filing that minted its own would break.
+            var spoken = Words.SaidIn(new FileInfo(Path.Combine(root, filed.Value("utterances"))));
+            var found = CommandLine.Of("search", spoken, "--corpus", root);
+            found.Code.ShouldBe(Cli.Ok, found.Error);
+            found.Output.ShouldContain(meeting);
+            found.Output.ShouldContain("turn #");
+
+            var sound = CommandLine.Of("check", "--corpus", root, "--verify-contents");
+            sound.Code.ShouldBe(Cli.Ok, sound.Error);
+            sound.Output.ShouldContain("Sound");
+        }
+        finally
+        {
+            try
+            {
+                elsewhere.Delete(recursive: true);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // A leftover temp folder is not worth failing a green test over.
+            }
+        }
     }
 
     private static Run Import(string root) => CommandLine.Of(
