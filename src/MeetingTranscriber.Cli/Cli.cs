@@ -1,6 +1,7 @@
-﻿using MeetingTranscriber.Audio;
+using MeetingTranscriber.Audio;
 
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Deepgram;
@@ -237,7 +238,8 @@ public static class Cli
     /// cannot be rendered, a query the index
     /// refuses, a machine with no microphone to give, a disk that will not give the file up, a
     /// recording that names a meeting this corpus does not have, a machine with no Deepgram key on
-    /// it. Anything else is a bug and comes out as one.
+    /// it, a classification the corpus will not take — a name already used beside it, something
+    /// still pointing at what is being removed. Anything else is a bug and comes out as one.
     /// </summary>
     /// <remarks>
     /// <see cref="DbUpdateException"/> is the same corpus failure as <see cref="SqliteException"/>
@@ -253,6 +255,15 @@ public static class Cli
     /// </remarks>
     private static bool IsRefusal(Exception exception) => exception
         is CommandException
+
+        // No command reaches this one yet — nothing under `Cli` touches `HumanLayer` or the
+        // classification tree, so today it is the only name here that cannot be thrown. It is here
+        // anyway because this list and `ScreenFailures.Reportable` are two spellings of one policy
+        // and `ScreenFailures`' own remarks say why they must not drift: a failure one surface has
+        // learnt to say and the other has not is how the application ends up unable to open.
+        // The screen reached it first; letting the two disagree deliberately would cost more than
+        // the line does.
+        or ClassificationException
         or AudioCaptureException
         or CorpusIntegrityException
         or CorpusSearchException
