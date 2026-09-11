@@ -4,6 +4,22 @@ using MeetingTranscriber.Infrastructure.Storage;
 
 namespace MeetingTranscriber.Cli;
 
+/// <summary>One keystroke, as a console hands it over.</summary>
+/// <remarks>
+/// A parameter of <see cref="KeyCommands.WhatWasTyped"/> rather than a call inside it, because
+/// <see cref="Console.ReadKey(bool)"/> cannot be driven by a suite at all: under <c>dotnet test</c>
+/// the input is redirected and it throws, so the loop between a typed key and a screen recording of
+/// somebody typing it was reachable from no test in this repository.
+/// <para>
+/// <paramref name="intercept"/> is a parameter and not a literal buried in the loop for the same
+/// reason it is the whole point of the loop. Whether a keystroke is echoed is what stands between a
+/// Deepgram key and whatever recorded that screen, and a rule nothing can read back is a rule
+/// somebody has to watch a screen to check.
+/// </para>
+/// </remarks>
+/// <param name="intercept">Whether the console is to keep the keystroke off the screen.</param>
+public delegate ConsoleKeyInfo Keystroke(bool intercept);
+
 /// <summary>
 /// The Deepgram key at a prompt: whether this machine holds one, and putting one there or taking
 /// it away.
@@ -150,36 +166,64 @@ public static class KeyCommands
                 return Console.In.ReadLine();
             }
 
-            var typed = new StringBuilder();
-            while (true)
-            {
-                var key = Console.ReadKey(intercept: true);
+            var typed = WhatWasTyped(Console.ReadKey);
 
-                if (key.Key is ConsoleKey.Enter)
-                {
-                    Console.WriteLine();
-                    return typed.ToString();
-                }
-
-                if (key.Key is ConsoleKey.Backspace)
-                {
-                    // A character and not a char. One keystroke put one character in, and taking
-                    // half of a surrogate pair back out would leave a lone surrogate buried in the
-                    // middle of a key nobody can see — kept, read back equal, and failing every
-                    // Deepgram call with an authentication error nobody can find the cause of.
-                    Undo(typed);
-                    continue;
-                }
-
-                if (!char.IsControl(key.KeyChar))
-                {
-                    typed.Append(key.KeyChar);
-                }
-            }
+            // The newline after the Enter that ended it, which is the console's and not the loop's:
+            // what is on this screen is this end's business and what was typed is not.
+            Console.WriteLine();
+            return typed;
         }
         catch (Exception nobodyThere) when (nobodyThere is InvalidOperationException or IOException)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// What somebody typed, keystroke by keystroke, up to the Enter that ends it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every keystroke is asked for intercepted, which is the whole of what this is for: a key on
+    /// screen is a key in whatever recorded that screen. Nothing here writes anything anywhere.
+    /// </para>
+    /// <para>
+    /// Public and taking its keyboard, for the reason the four-argument
+    /// <see cref="Key(Arguments, TextWriter, DeepgramKey, Func{string})"/> is: a rule nothing in CI
+    /// can stand over is a claim resting on somebody having read it. Both of the decisions in here
+    /// — intercepting, and taking back a character rather than a <see langword="char"/> — fail
+    /// silently and cost somebody a key they cannot see is wrong.
+    /// </para>
+    /// </remarks>
+    /// <param name="pressed">Where the keystrokes come from.</param>
+    public static string WhatWasTyped(Keystroke pressed)
+    {
+        ArgumentNullException.ThrowIfNull(pressed);
+
+        var typed = new StringBuilder();
+        while (true)
+        {
+            var key = pressed(intercept: true);
+
+            if (key.Key is ConsoleKey.Enter)
+            {
+                return typed.ToString();
+            }
+
+            if (key.Key is ConsoleKey.Backspace)
+            {
+                // A character and not a char. One keystroke put one character in, and taking
+                // half of a surrogate pair back out would leave a lone surrogate buried in the
+                // middle of a key nobody can see — kept, read back equal, and failing every
+                // Deepgram call with an authentication error nobody can find the cause of.
+                Undo(typed);
+                continue;
+            }
+
+            if (!char.IsControl(key.KeyChar))
+            {
+                typed.Append(key.KeyChar);
+            }
         }
     }
 

@@ -29,6 +29,13 @@ public class KeyCommandTests : IDisposable
     /// <summary>The tail of it, which is what a report trying to be helpful would print.</summary>
     private const string ItsTail = "not-a-real-key";
 
+    /// <summary>The keystroke that ends a key, and the one that takes a character back.</summary>
+    private static readonly ConsoleKeyInfo Enter =
+        new('\r', ConsoleKey.Enter, shift: false, alt: false, control: false);
+
+    private static readonly ConsoleKeyInfo Backspace =
+        new('\b', ConsoleKey.Backspace, shift: false, alt: false, control: false);
+
     private readonly DeepgramKey kept = new(TestVault.ATargetOfItsOwn());
 
     /// <summary>The line as this command's own table entry has it parsed.</summary>
@@ -201,7 +208,82 @@ public class KeyCommandTests : IDisposable
         kept.Read().ShouldBe(NotAKey);
     }
 
+    /// <summary>
+    /// The loop that stands between a typed key and whatever recorded that screen, driven for the
+    /// first time.
+    /// </summary>
+    /// <remarks>
+    /// Every other test in this file hands <see cref="KeyCommands.Key"/> a
+    /// <see cref="Func{TResult}"/> and never reaches the keyboard, and
+    /// <see cref="Console.ReadKey(bool)"/> throws under a redirected host — so until
+    /// <see cref="KeyCommands.WhatWasTyped"/> took its keystrokes as a parameter, nothing in this
+    /// repository could ask whether they were intercepted. Red when <c>intercept: true</c> becomes
+    /// <c>intercept: false</c>, which is the one change that would put somebody's key on a screen
+    /// and in every recording of it.
+    /// </remarks>
+    [Fact]
+    public void Every_keystroke_of_a_key_is_asked_for_intercepted()
+    {
+        var keyboard = new Keyboard(Character('s'), Character('k'), Enter);
+
+        KeyCommands.WhatWasTyped(keyboard.Press).ShouldBe("sk");
+
+        keyboard.Asked.Count.ShouldBe(3);
+        keyboard.Asked.ShouldAllBe(intercepted => intercepted);
+    }
+
+    /// <summary>
+    /// A character and not a <see langword="char"/>. One keystroke put one character in, and a
+    /// character outside the basic plane arrives as two of them — so a backspace taking one
+    /// <see langword="char"/> would leave a lone surrogate buried in the middle of a key nobody can
+    /// see, kept, read back equal, and failing every Deepgram call with an authentication error
+    /// nobody can find the cause of.
+    /// </summary>
+    /// <remarks>
+    /// Red when the backspace drops one <see langword="char"/>: what comes back then carries a high
+    /// surrogate with nothing after it, which prints as nothing and compares as something.
+    /// </remarks>
+    [Fact]
+    public void Backspace_takes_back_the_character_somebody_typed_and_never_half_of_one()
+    {
+        const string OutsideTheBasicPlane = "\U0001F600";
+
+        var pair = new Keyboard(
+            Character('s'),
+            Character(OutsideTheBasicPlane[0]),
+            Character(OutsideTheBasicPlane[1]),
+            Backspace,
+            Enter);
+
+        KeyCommands.WhatWasTyped(pair.Press).ShouldBe("s");
+
+        // Nothing left to take back is not an error: holding the key down at the start of an empty
+        // prompt is the ordinary way to reach it.
+        var empty = new Keyboard(Backspace, Backspace, Character('k'), Enter);
+
+        KeyCommands.WhatWasTyped(empty.Press).ShouldBe("k");
+    }
+
     /// <summary>A keyboard nobody is at, for the paths that must never reach one.</summary>
     private static string? Nobody() =>
         throw new InvalidOperationException("Nothing on this path may ask for a key to be typed.");
+
+    /// <summary>One ordinary keystroke, which is the only kind that puts a character in.</summary>
+    private static ConsoleKeyInfo Character(char typed) =>
+        new(typed, ConsoleKey.None, shift: false, alt: false, control: false);
+
+    /// <summary>A keyboard somebody typed at, which says how each keystroke was asked for.</summary>
+    private sealed class Keyboard(params ConsoleKeyInfo[] keys)
+    {
+        private int next;
+
+        /// <summary>Whether each keystroke was asked for intercepted, in the order they came.</summary>
+        public List<bool> Asked { get; } = [];
+
+        public ConsoleKeyInfo Press(bool intercept)
+        {
+            Asked.Add(intercept);
+            return keys[next++];
+        }
+    }
 }
