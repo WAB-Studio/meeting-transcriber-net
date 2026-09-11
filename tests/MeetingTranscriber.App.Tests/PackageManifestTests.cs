@@ -1,5 +1,3 @@
-using System.Xml.Linq;
-
 namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
@@ -25,77 +23,37 @@ namespace MeetingTranscriber.App.Tests;
 /// being added.
 /// </para>
 /// <para>
-/// What it does not reach is the run: whether Windows really hands the device over on a packaged
-/// build is a person starting an installed copy and pressing record, which is what ISC-56's
-/// verification line now says is still owed.
+/// This reads the source manifest. Whether the package that was actually built carries what the
+/// source says is <see cref="PackagedAppTests"/>, which reads a built <c>.msix</c> through the
+/// same <see cref="PackageManifest"/> — so what it compares is two documents and never two
+/// readers.
+/// </para>
+/// <para>
+/// What neither of them reaches is the run: whether Windows really hands the device over on a
+/// packaged build is a person starting an installed copy and pressing record, which is what
+/// ISC-56's verification line now says is still owed.
 /// </para>
 /// </remarks>
 public class PackageManifestTests
 {
-    /// <summary>
-    /// Every capability the package declares, spelled the way the manifest spells it — prefix and
-    /// all.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The prefix travels with the name because it is the namespace, and the namespace is the
-    /// question. <c>rescap:Capability</c> is restricted and is what the install prompt reads out;
-    /// the same word without the prefix is a different declaration Windows answers differently, and
-    /// a package that lost it is broken in a way nothing else here would see. Reading
-    /// <c>LocalName</c> alone would let exactly that through, which is the mistake this is written
-    /// against.
-    /// </para>
-    /// <para>
-    /// Every child of <c>&lt;Capabilities&gt;</c> is read, not the kinds named in the list below, so
-    /// a kind nobody has used yet — a custom capability, a device this application does not touch —
-    /// arrives as a failure rather than as nothing. <c>Single</c> and <c>Elements</c> do the rest:
-    /// a manifest with no <c>&lt;Capabilities&gt;</c> throws rather than passing over an empty set,
-    /// and the comment now inside the element is an <c>XComment</c>, which <c>Elements</c> skips.
-    /// </para>
-    /// </remarks>
-    private static IReadOnlyList<string> Declared()
-    {
-        // One manifest, because this is about *the* package: a second is a second answer to what
-        // the application may reach, and which one it is installed from would be whichever the
-        // build picked.
-        var manifest = AppSources.With(".appxmanifest").ShouldHaveSingleItem();
-
-        return
-        [
-            .. XDocument.Load(manifest.FullName)
-                .Root!
-                .Elements()
-                .Single(element => element.Name.LocalName == "Capabilities")
-                .Elements()
-                .Select(Spelled)
-                .Order(StringComparer.Ordinal),
-        ];
-    }
-
-    /// <summary>One declaration as the manifest writes it: <c>prefix:LocalName Name</c>.</summary>
-    private static string Spelled(XElement element)
-    {
-        var prefix = element.GetPrefixOfNamespace(element.Name.Namespace);
-
-        return (prefix is null ? string.Empty : $"{prefix}:")
-            + element.Name.LocalName
-            + $" {element.Attribute("Name")?.Value}";
-    }
-
     [Fact]
     public void The_application_declares_the_microphone_it_records_on() =>
-        Declared()
+        PackageManifest.Declared()
             .ShouldBe(
+                // The namespace and not the prefix, for the reason PackageManifest.CapabilitiesOf
+                // gives: this list is compared against one the MSIX tooling writes, and a prefix is
+                // a document's spelling rather than what it means. Sorted ordinally over the whole
+                // string, which is why the restricted namespace comes first - it is the longer URI
+                // and '/' sorts below '}'.
                 [
-                    "DeviceCapability microphone",
-                    "rescap:Capability runFullTrust",
-                    "systemai:Capability systemAIModels",
+                    "{http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+                    + "/restrictedcapabilities}Capability runFullTrust",
+                    "{http://schemas.microsoft.com/appx/manifest/foundation/windows10}"
+                    + "DeviceCapability microphone",
                 ],
                 "channel 1 is the microphone, and a packaged identity that has not declared it is "
                 + "refused at IAudioClient activation, so pressing record fails on every install. "
                 + "If a capability is missing here, put it back in Package.appxmanifest; if one is "
                 + "here that the package does not declare, say on this list what the application "
-                + "does with it and what somebody is agreeing to at install. systemAIModels is on "
-                + "this list unexplained — nothing in this repository names a Windows AI model — "
-                + "and pinning it is not agreeing with it.");
+                + "does with it and what somebody is agreeing to at install.");
 }
