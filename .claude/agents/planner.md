@@ -50,6 +50,12 @@ moved under goes there too, with the reason. Never edit `private/owed.md` or `pr
 Read until nothing in the plan is a guess. A short plan does not mean a short read, and there is no
 budget to come in under.
 
+**Never ration a read.** Not for time, not for context, not because a file looks obvious from its
+name. One file read by halves is enough to make a whole plan wrong, and this is the one mistake
+that hides itself: the plan comes out whole, reads whole, passes review, and four workers build
+from it before anybody finds out. Nothing a short read saves is worth what it costs when it was
+the wrong half.
+
 Open every file you will name. Grep every symbol you will spell and read its declaration; its
 accessibility decides what a `<see cref>` resolves to. Walk the migration chain for every column to
 the last migration that touched it. Read the tests that will go red. Measure what the repository
