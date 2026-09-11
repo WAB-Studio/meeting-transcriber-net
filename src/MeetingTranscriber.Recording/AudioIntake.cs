@@ -4,6 +4,7 @@ using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
+using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 
 namespace MeetingTranscriber.Recording;
@@ -198,8 +199,43 @@ public static class AudioIntake
                 .OrderBy(row => row.RelativePath)
                 .FirstOrDefault();
 
-            var filed = already
-                ?? Filed(corpus, meetingId, audio, bytes, profile, format, stored, details, now);
+            // The card this produces is dropped, and that is the answer rather than an oversight.
+            // `ImportAudio` reports no card and the `already` branch below writes one it does not
+            // report either, so a field on `BroughtMeeting` would be a public record widened for a
+            // reader that does not exist.
+            var filed = already ?? MeetingArchive.New(
+                corpus,
+                new NewMeeting(
+                    meetingId,
+                    details.StartedAt,
+
+                    // Counted off the audio that is going in, and never off the file that arrived: a
+                    // mixed down copy is the meeting from here, and a length taken from the other
+                    // one would be the number every citation is checked against describing a file
+                    // the corpus does not hold.
+                    stored.Length,
+                    profile,
+                    details.Language,
+                    details.Title,
+                    details.Context),
+                new ArrivedOn(
+                    Kind: ArtifactKind.Audio,
+                    FileName: MeetingAudio.FileName,
+                    Contents: into =>
+                    {
+                        using var from = bytes.OpenRead();
+                        from.CopyTo(into);
+                    },
+                    Verb: "audio imported",
+
+                    // What the file arrived as and not only where it was, which is the whole point
+                    // of the line. A file whose channels were averaged on the way in and a file
+                    // that only ever had one are the same meeting afterwards in every other place
+                    // the corpus looks — same profile, same length, same card, field for field — so
+                    // without this the only account of a meeting having lost its two sources is a
+                    // line of console output from the afternoon somebody ran the command.
+                    Detail: $"the audio at '{audio.FullName}', {ArrivedAs(format, stored.Format)}"),
+                now).Source;
             IReadOnlyList<string> putBack = [];
 
             if (already is not null)
@@ -395,88 +431,4 @@ public static class AudioIntake
             ? $"which arrived as {arrived} and went in as it was"
             : $"which arrived as {arrived} and went in with its {arrived.Channels} channels "
               + "averaged into one";
-
-    /// <summary>
-    /// The meeting, the audio it is built on and the card that says what it is, as one thing.
-    /// </summary>
-    /// <remarks>
-    /// The row exists before an artifact can point at it, and the card is written before the
-    /// commit rather than after it. Written after, a card that would not land would leave the
-    /// command reporting a refusal over a meeting that is in the corpus for good — which is the
-    /// one shape a person cannot act on, because what they are told happened and what happened
-    /// disagree.
-    /// </remarks>
-    private static Artifact Filed(
-        CorpusDbContext corpus,
-        Guid meetingId,
-        FileInfo brought,
-        FileInfo bytes,
-        SourceProfile profile,
-        StreamFormat arrived,
-        AudioOnDisk stored,
-        BroughtDetails details,
-        UtcTimestamp now)
-    {
-        using var filing = corpus.Database.CurrentTransaction is null
-            ? corpus.Database.BeginTransaction()
-            : null;
-
-        corpus.Meetings.Add(new Meeting
-        {
-            Id = meetingId,
-            Title = details.Title,
-            Context = details.Context,
-            StartedAt = details.StartedAt,
-
-            // Counted off the audio that is going in, and never off the file that arrived: a mixed
-            // down copy is the meeting from here, and a length taken from the other one would be
-            // the number every citation is checked against describing a file the corpus does not
-            // hold.
-            Duration = stored.Length,
-            SourceProfile = profile,
-            Language = details.Language,
-            LifecycleState = LifecycleState.Active,
-            CreatedAt = now,
-            UpdatedAt = now,
-        });
-
-        // Where this meeting came from, in the table provenance belongs in, and under a verb of its
-        // own: a meeting made out of a WAV somebody had and one whose response they paid Deepgram
-        // for are different things to find later, and one word for both would make the audit unable
-        // to tell them apart.
-        //
-        // It says what the file arrived as and not only where it was, and that half is the whole
-        // point of the line. A file whose channels were averaged on the way in and a file that
-        // only ever had one are the same meeting afterwards in every other place the corpus looks
-        // — same profile, same length, same card, field for field — so without this the only
-        // account of a meeting having lost its two sources is a line of console output from the
-        // afternoon somebody ran the command.
-        corpus.AuditEvents.Add(new AuditEvent
-        {
-            OccurredAt = now,
-            Actor = AuditActor.App,
-            Action = "audio imported",
-            MeetingId = meetingId,
-            Detail = $"the audio at '{brought.FullName}', {ArrivedAs(arrived, stored.Format)}",
-        });
-
-        corpus.SaveChanges();
-
-        var audio = DurableArtifact.Write(
-            corpus,
-            meetingId,
-            ArtifactKind.Audio,
-            CorpusFiles.PathFor(meetingId, MeetingAudio.FileName),
-            now,
-            into =>
-            {
-                using var source = bytes.OpenRead();
-                source.CopyTo(into);
-            });
-
-        MeetingManifest.Write(corpus, meetingId, now);
-
-        filing?.Commit();
-        return audio;
-    }
 }

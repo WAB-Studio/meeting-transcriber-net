@@ -1,8 +1,8 @@
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
-using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
+using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Deepgram;
 using MeetingTranscriber.Processing.Rendering;
@@ -114,26 +114,54 @@ public static class MeetingIntake
             artifact.Kind == ArtifactKind.DeepgramResponse && artifact.Sha256 == sha256);
 
         var meetingId = already?.MeetingId ?? Guid.NewGuid();
-        var stored = already ?? Record(context, meetingId, response, details, transcript, bytes, now);
 
-        // A meeting the corpus knows and whose paid file is gone. Somebody handing the original
-        // over again is the ordinary way that gets noticed, and it used to go straight to a render
-        // that failed on the file the row names — with the bytes that would have fixed it open in
-        // this method. They go back before anything is derived from them, through the same door the
-        // restore command uses and on the same terms: the corpus finds the rows these bytes belong
-        // under, and this hands over no row of its own even though it is holding one.
+        Artifact stored;
+        Artifact manifest;
         IReadOnlyList<string> putBack = [];
-        if (already is not null)
-        {
-            putBack = ArtifactRestore.Restore(context, bytes, now).PutBack;
-        }
 
-        // Before the render and on every filing, including one that found the meeting already
-        // here. It is the cheapest artifact to produce and the only one that says which meeting
-        // this folder is, so it goes down as early as there is a row to write it from — and a
-        // filing that finds the card missing, or saying what the corpus no longer says, is what
-        // puts it right.
-        var manifest = MeetingManifest.Write(context, meetingId, now);
+        if (already is null)
+        {
+            (stored, manifest) = MeetingArchive.New(
+                context,
+                new NewMeeting(
+                    meetingId,
+                    details.StartedAt,
+
+                    // What the provider says it transcribed. Asking the caller for a length it
+                    // would be reading off the same file is asking it to be wrong.
+                    transcript.Audio,
+                    details.Profile,
+                    details.Language,
+                    details.Title,
+                    details.Context),
+                new ArrivedOn(
+                    ArtifactKind.DeepgramResponse,
+                    ResponseFileName,
+                    bytes.CopyTo,
+                    "imported",
+                    $"the response at '{response.FullName}'"),
+                now);
+        }
+        else
+        {
+            stored = already;
+
+            // A meeting the corpus knows and whose paid file is gone. Somebody handing the original
+            // over again is the ordinary way that gets noticed, and it used to go straight to a
+            // render that failed on the file the row names — with the bytes that would have fixed
+            // it open in this method. They go back before anything is derived from them, through
+            // the same door the restore command uses and on the same terms: the corpus finds the
+            // rows these bytes belong under, and this hands over no row of its own even though it
+            // is holding one.
+            putBack = ArtifactRestore.Restore(context, bytes, now).PutBack;
+
+            // The card, on a filing that found the meeting already here — which is the only branch
+            // left that has to write one, because the other gets it from the archive after the
+            // commit that filed it. It is the cheapest artifact to produce and the only one that
+            // says which meeting this folder is, so a filing that finds the card missing, or saying
+            // what the corpus no longer says, is what puts it right.
+            manifest = MeetingManifest.Write(context, meetingId, now);
+        }
 
         // Outside the filing above, and deliberately. The file and the database cannot be written
         // together, so a response that has landed on disk is recorded the moment it can be; a
@@ -152,64 +180,5 @@ public static class MeetingIntake
             rendered.Transcript,
             rendered.Utterances,
             putBack);
-    }
-
-    /// <summary>
-    /// The meeting and the response it is built on, in that order — the row has to exist before an
-    /// artifact can point at it — and as one thing: a corpus with a response nothing owns is the
-    /// state this transaction exists to prevent.
-    /// </summary>
-    private static Artifact Record(
-        CorpusDbContext context,
-        Guid meetingId,
-        FileInfo response,
-        MeetingDetails details,
-        DeepgramTranscript transcript,
-        Stream bytes,
-        UtcTimestamp now)
-    {
-        using var filing = context.Database.CurrentTransaction is null
-            ? context.Database.BeginTransaction()
-            : null;
-
-        context.Meetings.Add(new Meeting
-        {
-            Id = meetingId,
-            Title = details.Title,
-            Context = details.Context,
-            StartedAt = details.StartedAt,
-
-            // What the provider says it transcribed. Asking the caller for a length it would be
-            // reading off the same file is asking it to be wrong.
-            Duration = transcript.Audio,
-            SourceProfile = details.Profile,
-            Language = details.Language,
-            CreatedAt = now,
-            UpdatedAt = now,
-        });
-
-        // Where this meeting came from, in the table provenance belongs in. A corpus holding a
-        // meeting nobody recorded on this machine is worth being able to explain later.
-        context.AuditEvents.Add(new AuditEvent
-        {
-            OccurredAt = now,
-            Actor = AuditActor.App,
-            Action = "imported",
-            MeetingId = meetingId,
-            Detail = $"the response at '{response.FullName}'",
-        });
-
-        context.SaveChanges();
-
-        var artifact = DurableArtifact.Write(
-            context,
-            meetingId,
-            ArtifactKind.DeepgramResponse,
-            CorpusFiles.PathFor(meetingId, ResponseFileName),
-            now,
-            bytes.CopyTo);
-
-        filing?.Commit();
-        return artifact;
     }
 }

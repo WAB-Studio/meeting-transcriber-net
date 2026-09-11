@@ -201,6 +201,29 @@ public class MeetingIntakeTests
             .ShouldContain("## Ada — ");
     }
 
+    /// <summary>
+    /// What a meeting's lifecycle starts as, asserted at the door that never says it. The audio
+    /// door has had this assertion since it was written; this one leans on <c>Meeting</c>'s own
+    /// initializer, which after #94 is the only place a new meeting's lifecycle is decided at all.
+    /// </summary>
+    [Fact]
+    public void An_imported_meeting_is_active()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid meetingId;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meetingId = Receive(context, corpus.Root).MeetingId;
+        }
+
+        using var reopened = corpus.Open();
+        var meeting = reopened.Meetings.Single(row => row.Id == meetingId);
+
+        meeting.LifecycleState.ShouldBe(LifecycleState.Active);
+        meeting.DeletedAt.ShouldBeNull();
+    }
+
     private static ReceivedMeeting Receive(
         CorpusDbContext context,
         DirectoryInfo root,
