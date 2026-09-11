@@ -164,7 +164,15 @@ public class Node
         NodeKind.Organization => NodeKind.Initiative,
         NodeKind.Initiative => NodeKind.Topic,
         NodeKind.Topic => null,
-        _ => throw new ClassificationException($"Unknown node kind '{kind}'."),
+
+        // A totality guard over an enum, and so a defect rather than an answer: a member added
+        // without a case here is a hole in this file, not the tree refusing something somebody
+        // typed. `ScreenFailures.Reportable` and `Cli.IsRefusal` both name
+        // `ClassificationException`, so throwing one from here would put a missing case on a
+        // status line and in an exit code as though the corpus had said no, and the application
+        // would carry on with a question nothing answered. This is the spelling
+        // `Artifacts.OriginOf` and `Artifacts.MayBeReplaced` already use to guard an enum.
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown node kind."),
     };
 
     /// <summary>

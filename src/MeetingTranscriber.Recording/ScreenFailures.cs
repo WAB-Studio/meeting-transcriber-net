@@ -25,12 +25,12 @@ namespace MeetingTranscriber.Recording;
 /// corpus already held closed the window.
 /// </para>
 /// <para>
-/// It is not quite a closed set of readable refusals, and the exception is worth knowing about:
-/// <c>Classification.Holds</c> throws one for a <c>NodeKind</c> it has no case for, which is a
-/// totality guard over an enum and a defect rather than an answer. A member added there without a
-/// case now reaches a status line instead of stopping the application. That arm should not be a
-/// <see cref="ClassificationException"/>, and until it is something else this list is quieter about
-/// one defect than it means to be.
+/// The set is closed on refusals a person can read, and it is worth saying what keeps it that way.
+/// <c>Classification.Holds</c> used to throw a <see cref="ClassificationException"/> for a
+/// <c>NodeKind</c> it had no case for — a totality guard over an enum, and a defect rather than an
+/// answer — so a member added there without a case reached a status line instead of stopping the
+/// application. That arm is an <c>ArgumentOutOfRangeException</c> as of 2026-09-11, which this list
+/// does not name and never will: a defect is not a thing to say.
 /// </para>
 /// <para>
 /// The list is closed on purpose, and what it guards is worth being exact about: the handlers that
