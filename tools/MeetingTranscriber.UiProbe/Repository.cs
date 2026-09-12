@@ -253,7 +253,18 @@ internal sealed record Repository(string Root, string AppFolder, string AppUserM
             || full.StartsWith(top + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string? RootAbove(string start)
+    /// <summary>
+    /// The checkout <paramref name="start"/> is in — the folder holding the solution — or nothing
+    /// when it is in none.
+    /// </summary>
+    /// <remarks>
+    /// <see langword="internal"/> rather than private because <see cref="Sources"/> asks it too, for
+    /// the two props files that sit above every project folder and are still sources of what is
+    /// running. Where the root is, is one answer: a second walk in <see cref="Sources"/> would be a
+    /// second thing to get wrong, and it would get it wrong the same way — by stopping at the first
+    /// folder that looks plausible instead of at the one holding <c>MeetingTranscriber.slnx</c>.
+    /// </remarks>
+    internal static string? RootAbove(string start)
     {
         var here = new DirectoryInfo(start);
         while (here is not null)

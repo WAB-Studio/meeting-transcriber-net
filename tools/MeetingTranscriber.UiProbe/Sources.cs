@@ -41,19 +41,82 @@ internal static class Sources
     internal static readonly string[] OfThisTool = ["*.cs", "*.csproj"];
 
     /// <summary>
-    /// The newest file of these kinds under any of these folders, or nothing when there is none.
+    /// The two files above every project folder that are sources of the running application all the
+    /// same.
     /// </summary>
+    /// <remarks>
+    /// A bump in <c>Directory.Packages.props</c> changes what the application contains — a different
+    /// Windows App SDK, a different SQLite — and edits no file under any project folder, so the walk
+    /// below cannot see it at any depth: both of these sit <em>above</em> the folders it descends
+    /// from. <c>Directory.Build.props</c> is the same fact about the settings every project is
+    /// compiled under. Neither carries a kind either reader names, which is why they are listed by
+    /// name rather than folded into <see cref="OfTheApplication"/>.
+    /// </remarks>
+    private static readonly string[] AboveEveryProject =
+        ["Directory.Packages.props", "Directory.Build.props"];
+
+    /// <summary>
+    /// The newest file of these kinds under any of these folders — or of the two props files above
+    /// them all — and nothing when there is none.
+    /// </summary>
+    /// <param name="folders">
+    /// The project folders to walk. A list rather than a sequence because this reads it twice: once
+    /// to walk it, and once to find the checkout it is in. Both callers hand over
+    /// <see cref="ProjectsBehind"/>'s answer, which is already one.
+    /// </param>
     internal static (string Path, DateTime Written)? NewestUnder(
-        IEnumerable<string> folders, IReadOnlyList<string> kinds)
+        IReadOnlyList<string> folders, IReadOnlyList<string> kinds)
     {
         var newest = folders
             .SelectMany(folder => Under(folder, kinds))
+            .Concat(AtTheRootAbove(folders))
             .Select(path => (Path: path, Written: File.GetLastWriteTimeUtc(path)))
             .OrderByDescending(file => file.Written)
             .FirstOrDefault();
 
         return newest.Path is null ? null : newest;
     }
+
+    /// <summary>
+    /// <see cref="AboveEveryProject"/> at the root of the checkout these folders are in, and
+    /// nothing at all when there are no folders, no checkout above any of them, or no such file.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The root is <see cref="Repository.RootAbove"/>'s answer and never a count of <c>..</c> from a
+    /// project folder, because where the root is, is written down once: it is the folder holding
+    /// <c>MeetingTranscriber.slnx</c>. That matters here more than usual —
+    /// <c>tests/Directory.Build.props</c> is a different file with one of these names, and walking
+    /// up to the first hit rather than to the solution would find it and stop.
+    /// </para>
+    /// <para>
+    /// Every folder is tried and not the first, because <see cref="ProjectsBehind"/> answers out of
+    /// a <see cref="HashSet{T}"/> and nothing defines which project comes back first. They are all
+    /// inside the same checkout today, so it makes no difference today; an ordering dependency on a
+    /// collection with no ordering is not worth carrying to find that out later.
+    /// </para>
+    /// <para>
+    /// <b>The refusal this feeds can be lifted by the build it asks for, which is the question
+    /// <see cref="Freshness"/> would raise about any file listed here.</b> That one excludes
+    /// <c>Package.appxmanifest</c> because it is a change that ships without recompiling anything,
+    /// so a refusal over it would stand for ever. These two are not that, and it was measured rather
+    /// than reasoned: touching <c>Directory.Packages.props</c> and rebuilding the application
+    /// restamps <c>MeetingTranscriber.App.dll</c>, because MSBuild counts every imported file among
+    /// the compile's inputs. So close, build, start clears it exactly as the refusal says.
+    /// </para>
+    /// <para>
+    /// <b>Additive, and that is what stands in for a probe.</b> <c>tools/</c> is run by hand and
+    /// nothing under <c>tests/</c> may depend on it, so what there is instead is that this can only
+    /// make the answer <em>newer</em> — and newer is the direction that refuses. What it cannot do
+    /// is refuse wrongly. What it can do, and what nothing here would say, is go quiet: a checkout
+    /// this finds no root above, or a rename of either file, puts the two staleness rules back to
+    /// watching only the project folders, which is where they were before this existed.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<string> AtTheRootAbove(IReadOnlyList<string> folders) =>
+        folders.Select(Repository.RootAbove).FirstOrDefault(root => root is not null) is not { } root
+            ? []
+            : AboveEveryProject.Select(name => Path.Combine(root, name)).Where(File.Exists);
 
     /// <summary>
     /// This project and everything it is built out of, following <c>ProjectReference</c> as far as
