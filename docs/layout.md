@@ -55,6 +55,16 @@ can be exercised without automating a window — `tests/MeetingTranscriber.Cli.T
 and it is the half of the alias that exists: nothing packages it yet, so an installed build has no
 `meeting-transcriber` on the PATH until ISC-113 is closed.
 
+**One exception, named, and it is a live run.** `LiveCheck` and `SendingMark` are rules and they are
+here: which files a run sends, how much audio that is, what the ceiling allows, what a person
+confirmed, and the claim over the folder the responses land in. They are here because nothing else
+in the product spends money and there is no live command in the application, so there is no service
+above this one for them to be a call into. That is the whole of the exception and it does not grow —
+the prompt may hold what a live run decides and nothing else — which is why every other sentence in
+this document and in the tree saying the prompt holds no rule of its own is still true as written:
+each of them is about a rule that is not a live run's. What a provider *response* has to hold is not
+part of it and lives in `Processing` with `LiveInvariants`, for the reason that paragraph gives.
+
 `MeetingTranscriber.Recording` is where the rules that need more than one of `Audio`,
 `Infrastructure` and `Processing` live, and it is what the application composes through. The prompt
 reaches each of those directly and holds no rule of its own, which is the paragraph above. Neither

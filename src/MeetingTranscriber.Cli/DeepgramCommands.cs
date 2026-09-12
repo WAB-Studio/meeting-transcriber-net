@@ -137,6 +137,13 @@ public static class DeepgramCommands
                 + "response has to have somewhere to go before the call is made.");
         }
 
+        // Held for the whole of the run, and taken before the folder is listed: what decides what
+        // need not be bought is that listing, so a second run that got as far as reading it has
+        // already seen a ledger the first one is about to write into. After the existence refusal
+        // above and never before it, so the claim never meets a folder that is not there and that
+        // refusal keeps its own words.
+        using var sending = SendingMark.Take(into);
+
         // Said before it happens, because it is a full read of every file: a ceiling is spent
         // against frames that are there rather than against a length a header claims, and a folder
         // of hour-long meetings is minutes of disk before there is anything on the screen.

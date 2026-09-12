@@ -115,11 +115,24 @@ public sealed class LiveCheck
     /// going to be sent, and a full read of it would be minutes of disk for a number nobody uses.
     /// </para>
     /// <para>
-    /// <b>What is in <paramref name="into"/> is a ledger nothing locks.</b> Two runs pointed at one
-    /// folder both see nothing answered, both pass the ceiling and both buy it — the stamps keep
-    /// the files from colliding, which is exactly what would hide it. That was true before anything
-    /// read this folder and reading it does not make it worse, but it is now a directory listing
-    /// standing over somebody's money, so it is said here rather than left to be found.
+    /// <b>What is in <paramref name="into"/> is a ledger nothing here locks.</b> Two runs pointed
+    /// at one folder would both see nothing answered, both pass the ceiling and both buy every
+    /// file, and the run stamps would keep the files from colliding, which is exactly what would
+    /// hide it. What makes that a ledger one run at a time is <see cref="SendingMark"/>, and
+    /// <b>this does not take it and does not require it</b>: the claim is a whole run's and a run
+    /// is <see cref="DeepgramCommands"/>'s, which takes it before it reaches here. So what this
+    /// answers is what the folder says, and whether anything may act on that answer is settled one
+    /// layer up. A second caller that read this and then sent, holding nothing, would be back where
+    /// the hazard was — which is a reason for there to go on being one place that sends, and not a
+    /// property this method has.
+    /// </para>
+    /// <para>
+    /// <b>What the claim does not cover is two folders holding one audio folder's responses.</b>
+    /// The question this asks is what <em>this</em> folder already answers, and a run pointed
+    /// somewhere else is a ledger of its own with nothing in it — so two runs over one
+    /// <c>--audio</c> and two different <c>--out</c>s both buy everything and neither is told. That
+    /// is somebody choosing two folders rather than a claim failing to hold, and nothing here can
+    /// see it, but it is the hazard that is left and it is said here rather than left to be found.
     /// </para>
     /// </remarks>
     /// <exception cref="CommandException">
