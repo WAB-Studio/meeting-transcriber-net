@@ -623,6 +623,61 @@ public sealed class LiveDeepgramTests : IDisposable
     }
 
     /// <summary>
+    /// A rename that fails for a reason of its own says what that reason was, and does not report
+    /// the one cause it happens to have a sentence for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>File.Move(..., overwrite: false)</c> raises <see cref="IOException"/> for a destination
+    /// that exists and equally for a full disk or a path too long — and
+    /// <see cref="UnauthorizedAccessException"/>, which is not one, for a denied path. The cost
+    /// lands after the call was paid for: the response is safe under its working name, and the one
+    /// command whose job is saying true things about a spend was saying a false thing about why.
+    /// </para>
+    /// <para>
+    /// The destination is made a <em>directory</em> of that name, which is the one obstruction that
+    /// is deterministic here and is not a file: <c>File.Exists</c> is false for it, so the
+    /// already-there arm's filter does not take it, and Windows refuses the rename all the same. It
+    /// is created from inside the stand-in provider because only there is the name knowable — the
+    /// run stamp comes off the clock inside <c>SendAsync</c>, and the stream this is handed is the
+    /// working file, whose name is the response's with the unfinished suffix on the end.
+    /// </para>
+    /// <para>
+    /// <b>Red when</b> the two arms collapse back into one: the message then says the destination is
+    /// already there, over a path that holds no response at all, and carries nothing of what really
+    /// refused.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_response_that_cannot_be_put_in_place_for_a_reason_of_its_own_says_what_that_reason_was()
+    {
+        AudioFor(DeepgramFixtures.TwoChannelOneVoiceMe, "a.wav");
+        using var output = new StringWriter();
+        var answering = Answering(DeepgramFixtures.TwoChannelOneVoiceMe);
+
+        var refused = await Should.ThrowAsync<CommandException>(async () => await DeepgramCommands.SendAsync(
+            LiveCheck.Of(audio, into, Generous),
+            into,
+            output,
+            async (sent, wrote, stopping) =>
+            {
+                var working = ((FileStream)wrote).Name;
+                Directory.CreateDirectory(
+                    working[..^RecordingFiles.UnfinishedSuffix.Length]);
+
+                return await answering(sent, wrote, stopping);
+            },
+            CancellationToken.None));
+
+        // The working name, so somebody can find what they paid for, and the underlying failure's
+        // own words, so they find out what actually stopped it.
+        refused.Message.ShouldContain(RecordingFiles.UnfinishedSuffix);
+        refused.Message.ShouldContain("could not be moved onto");
+        refused.Message.ShouldNotContain("is already there");
+        into.EnumerateFiles("*" + RecordingFiles.UnfinishedSuffix).ShouldHaveSingleItem();
+    }
+
+    /// <summary>
     /// The rule that keeps the one entry point that spends out of reach of every suite there is,
     /// asserted rather than written down.
     /// </summary>

@@ -433,7 +433,7 @@ public static class DeepgramCommands
             // reads back, so until this line the resume rule could never match anything.
             // `overwrite: false`, because the one thing this folder holds is responses somebody
             // paid for. A name already taken is a second run inside the same second, and it takes
-            // the catch above: the fragment is named and nothing is written over.
+            // the first of the two catches below: the fragment is named and nothing is written over.
             try
             {
                 // `File.Move` and not the handle's own spelling, which this repository bans
@@ -442,7 +442,13 @@ public static class DeepgramCommands
                 // deleted recording is only as good as the spelling it can see.
                 File.Move(partial.FullName, response.FullName, overwrite: false);
             }
-            catch (IOException taken)
+            // Only the arm that has checked may say so. `File.Move(..., overwrite: false)` raises
+            // `IOException` for a destination that exists and equally for a full disk or a path too
+            // long, so a single clause saying "is already there" is a cause invented about a call
+            // that has already been paid for — by the one command whose job is saying true things
+            // about a spend. The filter is the check, and what fails it hands over the message it
+            // came with rather than one of ours.
+            catch (IOException taken) when (File.Exists(response.FullName))
             {
                 _ = taken;
                 throw new CommandException(
@@ -450,6 +456,20 @@ public static class DeepgramCommands
                     + $"'{sent.File.Name}' is still at '{partial.FullName}'. Nothing here writes "
                     + "over a response somebody paid for. Move that file somewhere of its own, or "
                     + "send again into a folder that is empty.");
+            }
+
+            // `UnauthorizedAccessException` beside it, which is not an `IOException`: a denied path
+            // is where `File.Move` maps `ERROR_ACCESS_DENIED`, and a read-only responses folder is
+            // an ordinary enough thing for somebody to have. O-20260911-09's own wording put it
+            // under `IOException`; it is not there, and what it would have cost is the one sentence
+            // this arm exists to say — that the response is paid for and is still under its working
+            // name — swapped for a bare framework line about a file operation.
+            catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
+            {
+                throw new CommandException(
+                    $"'{partial.FullName}' could not be moved onto '{response.FullName}', so what "
+                    + $"came back for '{sent.File.Name}' is paid for and is still under its working "
+                    + $"name: {refused.Message}");
             }
 
             Report.Line(output, "response", response.FullName);
