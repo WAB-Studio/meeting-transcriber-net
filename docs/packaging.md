@@ -110,6 +110,17 @@ dotnet publish src/MeetingTranscriber.App/MeetingTranscriber.App.csproj `
   -p:PackageCertificatePassword=<the password>
 ```
 
+**The two `Appx` switches stay on that line, and that was measured rather than preferred.** They are
+the two easiest to forget and the two whose absence the build says nothing about — the first
+produces no package at all, the second an unsigned one `Add-AppxPackage` refuses — so writing them
+down in `win-x64.pubxml` looks like the obvious fix. It is not: that profile is imported by an
+*ordinary* `dotnet build`, because the csproj names it in `<PublishProfile>`, and putting either
+switch in it turns every build of this project red. The comment in
+`src/MeetingTranscriber.App/Properties/PublishProfiles/win-x64.pubxml` says what each one did and
+what belongs in that file instead. What forgetting them costs now is one command, not an alpha
+handed out: the section below fails on a package that is not there, and `The_package_is_signed`
+fails on one that is not signed.
+
 **`dotnet publish` is what produced the package here**, on 2026-09-11, with the Windows SDK MSIX
 build tools that come in through the Windows App SDK package — no Developer PowerShell, no
 `msbuild`, nothing installed by hand. The single-project MSIX targets have historically wanted full
@@ -126,15 +137,11 @@ Three warnings come out of that command and all three are expected:
 - **APPX0105** — *cannot import the key file, it may be password protected* — and **APPX0107** —
   *the certificate specified is not valid for signing*. Both come from a validation pass that reads
   the `.pfx` without the password; the signing itself then succeeds with it. The package that came
-  out of the run above is signed. To see that for yourself rather than take it on trust:
-
-  ```powershell
-  (Get-AuthenticodeSignature .\src\MeetingTranscriber.App\AppPackages\*\*.msix).SignerCertificate |
-    Select-Object Subject, Thumbprint
-  ```
-
-  which should read `CN=pc` and your thumbprint. `Status` reads `UnknownError` until the certificate
-  is trusted, which is §4 and is a fact about *this* machine's stores rather than about the package.
+  out of the run above is signed, and by whom is not something to take on trust or read by hand:
+  `PackagedAppTests.The_package_is_signed` decodes the PKCS#7 inside `AppxSignature.p7x` and holds
+  the signer's subject against `<Identity Publisher>`, which is the comparison Windows makes on the
+  receiving end and answers by naming neither side. Run it in the same breath — the section below —
+  and it is checked every time rather than whenever somebody remembers to look.
 - **`mspdbcmf.exe` could not be found. A symbols package will not be generated.** A `.msixsym` is
   for uploading to the Store's symbol service. Nothing here uploads anything.
 
@@ -159,7 +166,8 @@ in one sitting.
 
 `dotnet build` over the solution builds the application and produces **no** `.msix` at all. The
 package appears only under `GenerateAppxPackageOnBuild=true`, and only from a Release publish, for
-the self-contained layout to be what goes inside it.
+the self-contained layout to be what goes inside it. That switch is on the command line and not in
+`win-x64.pubxml` precisely so that this stays true — see the comment in that file.
 
 The second thing to watch is the identity. A Debug build on a checkout that has a
 `PackageIdentity.props` writes a suffixed identity into the generated manifest — see the argument in

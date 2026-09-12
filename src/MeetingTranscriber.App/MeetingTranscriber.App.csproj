@@ -127,9 +127,15 @@
       with these two lines deleted. They are here because of how the toolchain would fail if a
       default moved, and not because they are what makes it work: `PackagedAppTests` finds the
       package by looking for an `.msix` under `AppPackages`, so a build mode that produced a bundle
-      instead would leave it finding nothing and all four facts would *skip*, green, saying nothing.
+      instead would leave it finding nothing and all five facts would *skip*, green, saying nothing.
       A silent default is the one kind this card cannot survive, so the two that decide the shape
       of the output are written down rather than inherited.
+
+      These two and not `GenerateAppxPackageOnBuild` or `AppxPackageSigningEnabled`, which stay on
+      the command line in docs/packaging.md §3: putting either of those in this project - here or in
+      `win-x64.pubxml`, which this csproj names in `<PublishProfile>` and which is therefore read by
+      every build - makes `dotnet build` package, and it has no certificate. Measured, with what
+      each one did, in the comment at the foot of `Properties\PublishProfiles\win-x64.pubxml`.
     -->
     <AppxBundle>Never</AppxBundle>
     <UapAppxPackageBuildMode>SideloadOnly</UapAppxPackageBuildMode>

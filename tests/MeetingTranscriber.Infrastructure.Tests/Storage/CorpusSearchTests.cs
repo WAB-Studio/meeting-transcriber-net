@@ -6,6 +6,7 @@ using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Infrastructure.Tests.Storage;
@@ -167,6 +168,48 @@ public class CorpusSearchTests
 
         refused.Query.ShouldBe("presupuesto AND");
         refused.Message.ShouldContain("presupuesto AND");
+        refused.InnerException.ShouldBeOfType<SqliteException>().SqliteErrorCode.ShouldBe(1);
+    }
+
+    /// <summary>
+    /// And the other half of that cost, which is the one worth guarding: a corpus that will not
+    /// answer is not the query's fault, and telling somebody to retype their search is the one
+    /// recovery that cannot work.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The state is an index that is not there — what the full-text migration's own down step
+    /// leaves, and what a corpus arrives in when a rebuild was interrupted. It is the sharpest case
+    /// there is for this filter, and that is why it is the one produced here rather than a lock:
+    /// SQLite answers a missing table with SQLITE_ERROR, the <em>same</em> code FTS5 answers an
+    /// unparseable query with, so a narrowing that keyed on the code alone would still be telling
+    /// this person their search is bad. The message is what separates them.
+    /// </para>
+    /// <para>
+    /// What is measured is that one; SQLITE_BUSY under a concurrent render, SQLITE_IOERR and
+    /// SQLITE_CORRUPT are reasoned from the same filter and are not produced here, because none of
+    /// the three can be reached from this suite without waiting out a busy timeout or damaging a
+    /// file on purpose. They fail the message half the way this one does. Red when the catch goes
+    /// back to taking every <see cref="SqliteException"/>: this comes out as a
+    /// <see cref="CorpusSearchException"/> saying "'presupuesto' is not a search this corpus can
+    /// run".
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_corpus_that_will_not_answer_is_not_reported_as_a_bad_search()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Corpus.Write(context);
+
+        CorpusSearch.Find(context, "presupuesto").ShouldNotBeEmpty();
+
+        Sql.Execute(context, "DROP TABLE utterances_fts;");
+
+        var broken = Should.Throw<SqliteException>(() => CorpusSearch.Find(context, "presupuesto"));
+
+        broken.SqliteErrorCode.ShouldBe(1);
+        broken.Message.ShouldContain("utterances_fts");
     }
 
     /// <summary>

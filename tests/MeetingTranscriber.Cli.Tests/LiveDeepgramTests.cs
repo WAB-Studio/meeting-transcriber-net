@@ -16,7 +16,10 @@ namespace MeetingTranscriber.Cli.Tests;
 /// <see cref="CommandLine.Of"/> drives the table's own binding, which is the console and this
 /// machine's key — so it is used only where the command refuses before
 /// <see cref="LiveCheck.Confirmed"/> is reached, and every one of those refusals is in argument
-/// parsing or in <see cref="LiveCheck.Of"/>. Everything past that point drives the four-argument
+/// parsing, in <see cref="SendingMark.Take"/> or in <see cref="LiveCheck.Of"/>. What matters is the
+/// ordering and not the list: the key is read inside the <see cref="Sending"/> the table binds, and
+/// nothing on this side of the confirmation has reached it. Everything past that point drives the
+/// four-argument
 /// <see cref="DeepgramCommands.Live(Arguments, TextWriter, Func{string}, Sending)"/> with a
 /// keyboard and a <see cref="Sending"/> of its own.
 /// </para>
@@ -31,8 +34,11 @@ namespace MeetingTranscriber.Cli.Tests;
 /// The half that only a real call would otherwise exercise — what a response has to hold — is
 /// <see cref="LiveInvariants"/>'s, and it is proved in <c>MeetingTranscriber.Processing.Tests</c>
 /// against <c>tests/fixtures/deepgram/</c>. It is not here because the rule is not here:
-/// <c>docs/layout.md</c> says this project holds no rule of its own, and what this file is about is
-/// the argument reading, the ceiling, the confirmation and the exit code.
+/// <c>docs/layout.md</c> says this project holds no rule of its own bar one named exception, which
+/// is what a live run decides — which files are sent, what the ceiling allows, what a person
+/// confirmed, and the claim over the folder the responses land in. Those four are what this file is
+/// about, beside the argument reading and the exit code; what a response has to hold is on the
+/// other side of that exception and is proved where the rule lives.
 /// </para>
 /// </remarks>
 public sealed class LiveDeepgramTests : IDisposable
@@ -95,7 +101,7 @@ public sealed class LiveDeepgramTests : IDisposable
         run.Code.ShouldBe(Cli.Refused);
         run.Error.ShouldContain("8");
         run.Error.ShouldContain("5");
-        into.EnumerateFiles().ShouldBeEmpty();
+        Landed().ShouldBeEmpty();
     }
 
     /// <summary>
@@ -113,7 +119,7 @@ public sealed class LiveDeepgramTests : IDisposable
         run.Code.ShouldBe(Cli.Refused);
         run.Error.ShouldContain("array.wav");
         run.Error.ShouldContain("6");
-        into.EnumerateFiles().ShouldBeEmpty();
+        Landed().ShouldBeEmpty();
     }
 
     [Fact]
@@ -139,7 +145,7 @@ public sealed class LiveDeepgramTests : IDisposable
 
         run.Code.ShouldBe(Cli.Refused);
         run.Error.ShouldContain("empty.wav");
-        into.EnumerateFiles().ShouldBeEmpty();
+        Landed().ShouldBeEmpty();
     }
 
     /// <summary>
@@ -162,7 +168,7 @@ public sealed class LiveDeepgramTests : IDisposable
         code.ShouldBe(Cli.Ok);
         asked.ShouldBe(0);
         output.ToString().ShouldContain("not sent");
-        into.EnumerateFiles().ShouldBeEmpty();
+        Landed().ShouldBeEmpty();
     }
 
     /// <summary>
@@ -195,7 +201,7 @@ public sealed class LiveDeepgramTests : IDisposable
         code.ShouldBe(Cli.Ok);
         sent.ShouldNotBeNull();
         sent!.Audio.Select(one => one.File.Name).ShouldBe(["meeting.wav"]);
-        into.EnumerateFiles().ShouldBeEmpty();
+        Landed().ShouldBeEmpty();
     }
 
     /// <summary>
@@ -494,7 +500,9 @@ public sealed class LiveDeepgramTests : IDisposable
 
         // Nought bytes is a call that never delivered, so there is nothing to keep and nothing to
         // name: what would stand otherwise is litter under a name claiming to be about a paid
-        // response.
+        // response. The whole folder and not `Landed()`, because this drives `SendAsync`
+        // directly: no `SendingMark` is ever taken on this path, so nothing here is entitled to
+        // leave a file of any name behind.
         into.EnumerateFiles().ShouldBeEmpty();
     }
 
@@ -546,6 +554,130 @@ public sealed class LiveDeepgramTests : IDisposable
     }
 
     /// <summary>
+    /// Two runs pointed at one <c>--out</c>: the second is refused by name, before the folder has
+    /// been listed and before anything has been sent.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What a listing decides is what need not be bought, so two runs that both reached it would
+    /// both see nothing answered, both pass the ceiling, both be confirmed and both pay for the same
+    /// audio — and the run stamps would keep the files from colliding, so nothing on disk or on
+    /// screen would ever say it happened. A listing is not a claim; a handle is.
+    /// </para>
+    /// <para>
+    /// Driven through <see cref="CommandLine.Of"/>, which is this suite's rule and not a
+    /// convenience: the claim is taken before <see cref="LiveCheck.Confirmed"/> is reached, so no
+    /// keyboard and no key are touched on this path, and what the refusal is worth is the exit code
+    /// and the sentence a person actually gets. <b>Red when</b> the claim is not taken: the run
+    /// reaches the ceiling and the confirmation instead of stopping here.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void A_second_run_over_a_folder_a_run_is_already_using_is_refused_before_anything_is_sent()
+    {
+        Wav("meeting.wav", seconds: 60, 0.4f, 0.2f);
+        using var first = SendingMark.Take(into);
+
+        var run = Line("--ceiling-minutes", "5");
+
+        run.Code.ShouldBe(Cli.Refused);
+        run.Error.ShouldContain(into.FullName);
+        run.Error.ShouldContain("could not be claimed");
+        run.Error.ShouldContain(SendingMark.FileName);
+        Landed().ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// And the half without which the guard would be worse than the hazard: a run that ended leaves
+    /// the folder free for the next one.
+    /// </summary>
+    /// <remarks>
+    /// A claim nothing lets go of turns one finished run into a folder nobody may ever send into
+    /// again — which costs somebody every file in it, where the hazard cost them one duplicate bill.
+    /// <b>Red when</b> the <c>using</c> on the mark is dropped or the handle outlives the command.
+    /// </remarks>
+    [Fact]
+    public void A_run_that_ended_leaves_the_folder_free_for_the_next_one()
+    {
+        Wav("meeting.wav", seconds: 60, 0.4f, 0.2f);
+        var sent = 0;
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            using var output = new StringWriter();
+
+            var code = DeepgramCommands.Live(
+                Typed("--ceiling-minutes", "5"),
+                output,
+                () => "1",
+                (_, _, _, _) =>
+                {
+                    sent++;
+                    return Cli.Ok;
+                });
+
+            code.ShouldBe(Cli.Ok, output.ToString());
+        }
+
+        sent.ShouldBe(2);
+    }
+
+    /// <summary>
+    /// A rename that fails for a reason of its own says what that reason was, and does not report
+    /// the one cause it happens to have a sentence for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>File.Move(..., overwrite: false)</c> raises <see cref="IOException"/> for a destination
+    /// that exists and equally for a full disk or a path too long — and
+    /// <see cref="UnauthorizedAccessException"/>, which is not one, for a denied path. The cost
+    /// lands after the call was paid for: the response is safe under its working name, and the one
+    /// command whose job is saying true things about a spend was saying a false thing about why.
+    /// </para>
+    /// <para>
+    /// The destination is made a <em>directory</em> of that name, which is the one obstruction that
+    /// is deterministic here and is not a file: <c>File.Exists</c> is false for it, so the
+    /// already-there arm's filter does not take it, and Windows refuses the rename all the same. It
+    /// is created from inside the stand-in provider because only there is the name knowable — the
+    /// run stamp comes off the clock inside <c>SendAsync</c>, and the stream this is handed is the
+    /// working file, whose name is the response's with the unfinished suffix on the end.
+    /// </para>
+    /// <para>
+    /// <b>Red when</b> the two arms collapse back into one: the message then says the destination is
+    /// already there, over a path that holds no response at all, and carries nothing of what really
+    /// refused.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_response_that_cannot_be_put_in_place_for_a_reason_of_its_own_says_what_that_reason_was()
+    {
+        AudioFor(DeepgramFixtures.TwoChannelOneVoiceMe, "a.wav");
+        using var output = new StringWriter();
+        var answering = Answering(DeepgramFixtures.TwoChannelOneVoiceMe);
+
+        var refused = await Should.ThrowAsync<CommandException>(async () => await DeepgramCommands.SendAsync(
+            LiveCheck.Of(audio, into, Generous),
+            into,
+            output,
+            async (sent, wrote, stopping) =>
+            {
+                var working = ((FileStream)wrote).Name;
+                Directory.CreateDirectory(
+                    working[..^RecordingFiles.UnfinishedSuffix.Length]);
+
+                return await answering(sent, wrote, stopping);
+            },
+            CancellationToken.None));
+
+        // The working name, so somebody can find what they paid for, and the underlying failure's
+        // own words, so they find out what actually stopped it.
+        refused.Message.ShouldContain(RecordingFiles.UnfinishedSuffix);
+        refused.Message.ShouldContain("could not be moved onto");
+        refused.Message.ShouldNotContain("is already there");
+        into.EnumerateFiles("*" + RecordingFiles.UnfinishedSuffix).ShouldHaveSingleItem();
+    }
+
+    /// <summary>
     /// The rule that keeps the one entry point that spends out of reach of every suite there is,
     /// asserted rather than written down.
     /// </summary>
@@ -592,6 +724,19 @@ public sealed class LiveDeepgramTests : IDisposable
 
         declaring.ShouldBeEmpty();
     }
+
+    /// <summary>
+    /// Everything in the responses folder that somebody would have been charged for — which is
+    /// everything in it except the run's own claim over it.
+    /// </summary>
+    /// <remarks>
+    /// What these facts are about is whether anything was bought, and a <see cref="SendingMark"/> is
+    /// a handle rather than an artifact: it says a run reached the folder, never that a call was
+    /// made. Left out by name and not by extension, so a <c>.partial</c> — a call that was paid for
+    /// and did not land — is still caught by every one of them.
+    /// </remarks>
+    private IEnumerable<FileInfo> Landed() =>
+        into.EnumerateFiles().Where(file => file.Name != SendingMark.FileName);
 
     /// <summary>A keyboard nobody is at, for the paths that must never reach one.</summary>
     private static string? Nobody() =>

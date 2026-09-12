@@ -116,6 +116,21 @@ the probe references the first of those to make its own corpus, and `bin/mcp` ca
 out is the same three steps in the same order: end the session, publish, open a new one. What is
 never compared is the published copy's own folder, which would be a copy compared with itself.
 
+**Both of those also watch `Directory.Packages.props` and `Directory.Build.props` at the root**,
+which are sources of what is running and sit above every project folder rather than under one. A
+package bump changes what the application contains — a different Windows App SDK, a different SQLite
+— and moves no `.cs`, `.xaml` or `.csproj` anywhere, so without those two the refusal you are owed
+never comes and the tree you are handed is yesterday's build described as today's. The refusal you
+will meet instead reads *the window is showing code from before Directory.Packages.props was last
+edited*, and nothing else in this document would explain it. The way out is the same three steps,
+and they do lift it: a build after touching either file really does restamp the application's
+assembly, which was measured rather than assumed.
+
+The cost of that, said plainly: `Directory.Packages.props` is one file for the whole repository, so
+bumping a package only `tests/` uses refuses the probe too, and for a packaged window the way out is
+the publish-and-re-register above rather than a plain build. That is the wide side of a refusal
+whose narrow side would be missing a bump that changed the window, and this is the direction chosen.
+
 **When that is asked differs by host, on purpose.** Over MCP it is asked every turn, because the
 agent taking the turns is the one editing. A script is asked once, at `start`, and by no verb after
 it: nothing in a fixed list of instructions edits code, and a refusal raised halfway would end a

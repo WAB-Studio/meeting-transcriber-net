@@ -175,11 +175,34 @@ public static class CorpusSearch
                 RawSql.Bind(command, "@active", Active);
             });
         }
-        catch (SqliteException refused)
+        catch (SqliteException refused) when (IsAParseRefusal(refused))
         {
             throw new CorpusSearchException(query, refused);
         }
     }
+
+    /// <summary>
+    /// Whether SQLite is refusing the query's own syntax rather than the corpus underneath it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// FTS5 answers a query it cannot parse with SQLITE_ERROR and a message beginning <c>fts5:</c>,
+    /// and there is no error code of its own to key off. Everything else SQLite can raise here is
+    /// about the corpus and not the query — locked, unreadable, corrupt, an index that is not
+    /// there — and each of those has a recovery, none of which is retyping the search. Matching on
+    /// the message is narrow and it is the narrowest thing available; matching on the code alone
+    /// would take SQLITE_ERROR from anywhere, which is the code a missing table arrives under too.
+    /// </para>
+    /// <para>
+    /// What everything else becomes is the <see cref="SqliteException"/> itself, which both
+    /// surfaces already answer for: it is in <c>Cli.IsRefusal</c> and in
+    /// <c>ScreenFailures.Reportable</c>, so a corpus that will not answer reaches a prompt as an
+    /// exit code carrying SQLite's own sentence and a screen as a status line.
+    /// </para>
+    /// </remarks>
+    private static bool IsAParseRefusal(SqliteException refused) =>
+        refused.SqliteErrorCode == 1 /* SQLITE_ERROR */
+        && refused.Message.Contains("fts5", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// One row, in the order the query selects. The source is parsed rather than compared against

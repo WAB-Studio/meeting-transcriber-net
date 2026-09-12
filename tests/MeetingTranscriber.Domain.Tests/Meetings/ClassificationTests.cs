@@ -90,6 +90,28 @@ public class ClassificationTests
         }
     }
 
+    /// <summary>
+    /// A kind <see cref="Node.Holds"/> has no case for is a hole in that file and never the tree
+    /// refusing something somebody typed, and the type of the throw is the whole of the assertion
+    /// here. Both exceptions stop the call; only one of them reaches a person. A
+    /// <c>ClassificationException</c> is named by <c>ScreenFailures.Reportable</c> and by
+    /// <c>Cli.IsRefusal</c>, so from that arm a missing case would arrive on a status line and in an
+    /// exit code as though the corpus had said no, and the application would carry on.
+    /// </summary>
+    /// <remarks>
+    /// <c>(NodeKind)0</c> really does reach the default arm: <c>NodeKind</c> starts at
+    /// <c>Organization = 1</c>, so zero is not a member and the three defined values are each
+    /// answered above it. Red when the arm goes back to <c>ClassificationException</c>.
+    /// </remarks>
+    [Fact]
+    public void A_node_kind_nothing_answers_for_stops_rather_than_reading_as_a_refusal()
+    {
+        var stopped = Should.Throw<ArgumentOutOfRangeException>(() => Node.Holds((NodeKind)0));
+
+        stopped.ParamName.ShouldBe("kind");
+        stopped.Message.ShouldContain("kind");
+    }
+
     [Fact]
     public void A_node_without_a_name_is_not_a_node()
     {
