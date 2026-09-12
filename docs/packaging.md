@@ -110,6 +110,17 @@ dotnet publish src/MeetingTranscriber.App/MeetingTranscriber.App.csproj `
   -p:PackageCertificatePassword=<the password>
 ```
 
+**The two `Appx` switches stay on that line, and that was measured rather than preferred.** They are
+the two easiest to forget and the two whose absence the build says nothing about — the first
+produces no package at all, the second an unsigned one `Add-AppxPackage` refuses — so writing them
+down in `win-x64.pubxml` looks like the obvious fix. It is not: that profile is imported by an
+*ordinary* `dotnet build`, because the csproj names it in `<PublishProfile>`, and putting either
+switch in it turns every build of this project red. The comment in
+`src/MeetingTranscriber.App/Properties/PublishProfiles/win-x64.pubxml` says what each one did and
+what belongs in that file instead. What forgetting them costs now is one command, not an alpha
+handed out: the section below fails on a package that is not there, and `The_package_is_signed`
+fails on one that is not signed.
+
 **`dotnet publish` is what produced the package here**, on 2026-09-11, with the Windows SDK MSIX
 build tools that come in through the Windows App SDK package — no Developer PowerShell, no
 `msbuild`, nothing installed by hand. The single-project MSIX targets have historically wanted full
@@ -155,7 +166,8 @@ in one sitting.
 
 `dotnet build` over the solution builds the application and produces **no** `.msix` at all. The
 package appears only under `GenerateAppxPackageOnBuild=true`, and only from a Release publish, for
-the self-contained layout to be what goes inside it.
+the self-contained layout to be what goes inside it. That switch is on the command line and not in
+`win-x64.pubxml` precisely so that this stays true — see the comment in that file.
 
 The second thing to watch is the identity. A Debug build on a checkout that has a
 `PackageIdentity.props` writes a suffixed identity into the generated manifest — see the argument in
