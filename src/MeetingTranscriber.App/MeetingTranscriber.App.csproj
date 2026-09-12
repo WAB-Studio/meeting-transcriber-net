@@ -127,7 +127,7 @@
       with these two lines deleted. They are here because of how the toolchain would fail if a
       default moved, and not because they are what makes it work: `PackagedAppTests` finds the
       package by looking for an `.msix` under `AppPackages`, so a build mode that produced a bundle
-      instead would leave it finding nothing and all four facts would *skip*, green, saying nothing.
+      instead would leave it finding nothing and all five facts would *skip*, green, saying nothing.
       A silent default is the one kind this card cannot survive, so the two that decide the shape
       of the output are written down rather than inherited.
     -->
