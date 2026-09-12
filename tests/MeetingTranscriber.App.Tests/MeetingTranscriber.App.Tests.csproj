@@ -33,6 +33,27 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
     <PackageReference Include="Shouldly" />
+    <!-- `SignedCms`, which is what reads the signer's certificate out of `AppxSignature.p7x` — the
+         one fact in this repository that can tell a package signed by the wrong certificate from
+         one signed by the right one.
+
+         The narrowest thing that answers, deliberately, because this project's references are
+         decided rather than accumulated: it is the assembly the compiler itself names when
+         `SignedCms` is written without it (CS1069, measured). What was not reached for is a signing
+         or packaging SDK, which would stand a second MSIX toolchain under `tests/` beside the one
+         the packaging build uses, to read one certificate subject.
+
+         It is a real dependency and not only a reference-set one, which was measured rather than
+         assumed: `System.Security.Cryptography.Pkcs.dll` is **not** in `Microsoft.NETCore.App` —
+         the framework carries `System.Security.Cryptography.X509Certificates` and a row of facades
+         beside it, and none of them is this — so the package ships the implementation and it lands
+         in this project's `bin`. Excluding the runtime asset was tried and the fact then fails with
+         `FileNotFoundException` at the first decode. It is in this project's `bin` and no other's,
+         which is where a test that reads a built package belongs.
+
+         No Version: the pin is in Directory.Packages.props, and docs/packages.md carries the row
+         saying which area it serves. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <PackageReference Include="xunit.runner.visualstudio">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>

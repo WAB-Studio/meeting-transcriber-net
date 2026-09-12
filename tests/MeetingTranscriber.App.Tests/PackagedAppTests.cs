@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Security.Cryptography.Pkcs;
+using System.Security.Cryptography.X509Certificates;
 using System.Xml.Linq;
 
 namespace MeetingTranscriber.App.Tests;
@@ -52,6 +54,12 @@ public class PackagedAppTests
     /// tell a machine that never packaged from one that packaged and then deleted it.
     /// </remarks>
     private const string Expected = "MEETING_TRANSCRIBER_EXPECT_PACKAGE";
+
+    /// <summary>
+    /// The four bytes <c>AppxSignature.p7x</c> carries ahead of its DER — see
+    /// <see cref="The_package_is_signed"/>, where what was measured is written down.
+    /// </summary>
+    private static readonly byte[] Magic = "PKCX"u8.ToArray();
 
     /// <summary>
     /// The package these read, or a skip — or, under <see cref="Expected"/>, a failure.
@@ -173,15 +181,60 @@ public class PackagedAppTests
                 + "section is now telling people to carry something that is already inside.");
     }
 
+    /// <summary>
+    /// That the signature is there, and who made it: the signer's subject against
+    /// <c>&lt;Identity Publisher&gt;</c>.
+    /// </summary>
     /// <remarks>
-    /// That the signature is <em>there</em>, and not who made it. The thing worth asserting is that
-    /// the signer's subject equals <c>&lt;Identity Publisher&gt;</c> — Windows refuses the package
-    /// when they differ and says only that the publisher does not match, not which of the two is
-    /// wrong, which is the hour <c>docs/packaging.md</c>'s first warning exists to save. Reading it
-    /// means decoding the PKCS#7 inside <c>AppxSignature.p7x</c>, and <c>SignedCms</c> wants
-    /// <c>System.Security.Cryptography.Pkcs</c> referenced in this project's file, which this
-    /// change does not own. So the document says to read the signer with
-    /// <c>Get-AuthenticodeSignature</c> rather than claiming this does it.
+    /// <para>
+    /// Windows refuses a package whose signer and <c>Publisher</c> differ, and says only that the
+    /// publisher does not match — not which of the two is wrong, and not what either of them is. A
+    /// package signed with the wrong certificate passes every other fact here, so this is the one
+    /// place the two are compared, and it is the hour <c>docs/packaging.md</c>'s first warning
+    /// exists to save.
+    /// </para>
+    /// <para>
+    /// <b>The entry being there is still asserted first, and it is not a formality.</b> An unsigned
+    /// package carries no <c>AppxSignature.p7x</c> at all, so the decode below would have nothing to
+    /// decode — and the sentence somebody needs then is the one about
+    /// <c>-p:AppxPackageSigningEnabled</c>, which that first line carries and a decode failure
+    /// would not.
+    /// </para>
+    /// <para>
+    /// <b><c>AppxSignature.p7x</c> is not a bare PKCS#7 blob, and this was measured rather than
+    /// assumed.</b> On 2026-09-11, against the package this repository's own packaging build
+    /// produced: the entry is 1561 bytes and begins <c>50 4b 43 58</c> — the four ASCII characters
+    /// <c>PKCX</c> — immediately followed by <c>30 82 06 11</c>, a DER <c>SEQUENCE</c> of 1553
+    /// bytes, which is the remainder of the entry exactly. So the magic is four bytes wide and the
+    /// PKCS#7 starts at offset four. The four bytes are asserted and not skipped, because a header
+    /// taken on trust is how a fact like this ends up green over the wrong offset — and because the
+    /// sentence a reader needs when the format moves is *the header is not what it was*, which a
+    /// bare <c>CryptographicException</c> out of a decode would not give them.
+    /// </para>
+    /// <para>
+    /// <b>The two names are compared through one formatter, and both ends of that were measured.</b>
+    /// A distinguished name is DER, and what a manifest carries is a string, so there are two wrong
+    /// answers here and this fact was red on each of them first.
+    /// </para>
+    /// <para>
+    /// Comparing <c>X509Certificate2.Subject</c> to the manifest's text is comparing one rendering
+    /// with something nobody rendered: separator spacing, RDN order and attribute spelling are the
+    /// formatter's choices and not the manifest author's — <c>S=</c> where most tooling writes
+    /// <c>ST=</c>, for one — so a publisher with more than the one component this repository has
+    /// today would go red over two spellings of one name. Comparing the two encodings instead is
+    /// wrong the other way, and this is the measured part: this machine's certificate encodes
+    /// <c>CN=pc</c> as <c>…06 03 55 04 03 <b>13</b> 02 70 63</c>, a PrintableString, while
+    /// <c>new X500DistinguishedName("CN=pc")</c> encodes the same name as <c>…<b>0C</b> 02 70 63</c>,
+    /// a UTF8String. One byte, same name, and a <c>RawData</c> comparison red over a package Windows
+    /// installs.
+    /// </para>
+    /// <para>
+    /// So both sides are decoded and rendered by the same formatter: the manifest's string is parsed
+    /// into an <see cref="X500DistinguishedName"/> and both are read back through
+    /// <see cref="X500DistinguishedName.Name"/>. That is independent of which ASN.1 string type
+    /// either side chose and of how the manifest happened to be typed, and it is the comparison that
+    /// can only go red over two names that really are different.
+    /// </para>
     /// </remarks>
     [Fact]
     public void The_package_is_signed()
@@ -191,6 +244,59 @@ public class PackagedAppTests
         Names(msix).Contains("AppxSignature.p7x").ShouldBeTrue(
             "an unsigned .msix cannot be installed by Add-AppxPackage at all, and the packaging "
             + "build produces one silently when -p:AppxPackageSigningEnabled=true is left off.");
+
+        var carried = Bytes(msix.GetEntry("AppxSignature.p7x")!);
+
+        carried.AsSpan(0, Magic.Length).SequenceEqual(Magic).ShouldBeTrue(
+            "AppxSignature.p7x does not begin with the four bytes PKCX, so the PKCS#7 inside it no "
+            + "longer starts where this fact reads it. The format moved; find the new offset and "
+            + "write down what was measured, rather than decoding from somewhere and hoping.");
+
+        var signature = new SignedCms();
+        signature.Decode(carried[Magic.Length..]);
+
+        // Decoding parses and verifies nothing, so a signature blob lifted out of another package
+        // would decode to that package's signer and satisfy every line below. This is what makes
+        // the certificate below the one that really signed these bytes rather than the one the blob
+        // claims. `verifySignatureOnly` because whether the certificate chains to something this
+        // machine trusts is §4 of docs/packaging.md and is a fact about a machine's stores, not
+        // about the package.
+        Should.NotThrow(
+            () => signature.CheckSignature(verifySignatureOnly: true),
+            "the signature in this package does not verify against its own contents, so what the "
+            + "certificate below says is not evidence of who signed it.");
+
+        signature.SignerInfos.Count.ShouldBe(
+            1,
+            "one signer is what this packaging build produces and what the comparison below is "
+            + "about; more than one means the package was signed somewhere other than here.");
+
+        var signer = signature.SignerInfos[0].Certificate.ShouldNotBeNull(
+            "the signature carries no certificate, so there is nothing here to compare with the "
+            + "manifest's Publisher - and nothing Windows could match against it either.");
+
+        var declared = new X500DistinguishedName(
+            Value(PackageManifest.IdentityOf(PackageManifest.Source()), "Publisher"));
+
+        signer.SubjectName.Name.ShouldBe(
+            declared.Name,
+            "the certificate that signed this package and the <Identity Publisher> in "
+            + "src/MeetingTranscriber.App/Package.appxmanifest are not the same name: the signer is "
+            + $"'{signer.Subject}' and the manifest declares '{declared.Name}'. Windows refuses "
+            + "such a package on the receiving end and names neither side, so neither is the wrong "
+            + "one from here either: either the manifest declares a publisher this machine cannot "
+            + "sign as, or the packaging build was pointed at a different certificate - see "
+            + "docs/packaging.md.");
+    }
+
+    /// <summary>One entry of the package, whole, because what is read off it is bytes at offsets.</summary>
+    private static byte[] Bytes(ZipArchiveEntry entry)
+    {
+        using var carried = entry.Open();
+        using var read = new MemoryStream();
+        carried.CopyTo(read);
+
+        return read.ToArray();
     }
 
     [Fact]

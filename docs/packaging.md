@@ -126,15 +126,11 @@ Three warnings come out of that command and all three are expected:
 - **APPX0105** — *cannot import the key file, it may be password protected* — and **APPX0107** —
   *the certificate specified is not valid for signing*. Both come from a validation pass that reads
   the `.pfx` without the password; the signing itself then succeeds with it. The package that came
-  out of the run above is signed. To see that for yourself rather than take it on trust:
-
-  ```powershell
-  (Get-AuthenticodeSignature .\src\MeetingTranscriber.App\AppPackages\*\*.msix).SignerCertificate |
-    Select-Object Subject, Thumbprint
-  ```
-
-  which should read `CN=pc` and your thumbprint. `Status` reads `UnknownError` until the certificate
-  is trusted, which is §4 and is a fact about *this* machine's stores rather than about the package.
+  out of the run above is signed, and by whom is not something to take on trust or read by hand:
+  `PackagedAppTests.The_package_is_signed` decodes the PKCS#7 inside `AppxSignature.p7x` and holds
+  the signer's subject against `<Identity Publisher>`, which is the comparison Windows makes on the
+  receiving end and answers by naming neither side. Run it in the same breath — the section below —
+  and it is checked every time rather than whenever somebody remembers to look.
 - **`mspdbcmf.exe` could not be found. A symbols package will not be generated.** A `.msixsym` is
   for uploading to the Store's symbol service. Nothing here uploads anything.
 

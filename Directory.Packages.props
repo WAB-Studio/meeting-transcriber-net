@@ -34,6 +34,13 @@
     <!-- Transitive pin. Microsoft.Data.Sqlite 10.0.10 still asks for the 2.1.x bundle, whose
          native e_sqlite3 carries GHSA-2m69-gcr7-jv3q. The 3.x bundle is the fixed line. -->
     <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
+    <!-- `SignedCms`, for the one fact that reads who signed the .msix. The 10.0 line, which is the
+         one that matches this repository's `net10.0`: the assembly is not in Microsoft.NETCore.App
+         at all — measured — so this package is what carries it, and a line that does not match the
+         target framework would be shipping an older or a newer security assembly into a test
+         project's bin for no reason. Ordinary bump; nothing here is load-bearing the way the three
+         pins above are. -->
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.12" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
   </ItemGroup>
