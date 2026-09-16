@@ -28,9 +28,12 @@ namespace MeetingTranscriber.Infrastructure.Storage;
 /// second. Both live here, and there is nowhere else they could.
 /// </para>
 /// <para>
-/// One edit is one transaction: every method saves. A person's edits are separate acts and a failed
-/// one should not take back the one before it, and the two rules above each move more than one row,
-/// so the boundary is the method rather than the caller.
+/// One edit is one transaction: every method saves, so a failed edit does not take back the one
+/// before it, and the two rules above each move more than one row. The caller may be the boundary
+/// all the same, and one is — <c>ClassifyingAMeeting.InTheCorpus</c> opens a transaction around
+/// whatever it calls here, because adding a person and putting them where they belong is one act
+/// and a refusal on the second would leave the person on disk with nothing on screen pointing at
+/// them.
 /// </para>
 /// <para>
 /// It reaches the corpus folder, and not because most of it writes files — only
@@ -178,9 +181,10 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
     /// the very cascade the refusal exists to prevent.
     /// </para>
     /// <para>
-    /// Nothing a person can press reaches this yet. The screen or the command that offers removal is
-    /// what adds <c>ClassificationException</c> to <c>ScreenFailures.Reportable</c> and to
-    /// <c>Cli.IsRefusal</c>, and until one does, a refusal here has no reader to be kind to.
+    /// A refusal here has a reader on both surfaces: <c>ClassificationException</c> is in
+    /// <c>ScreenFailures.Reportable</c> and in <c>Cli.IsRefusal</c>, put there by a screen that
+    /// names people rather than one that removes them. What is still missing is a surface offering
+    /// removal at all, so nothing a person can press reaches this yet.
     /// </para>
     /// </remarks>
     /// <exception cref="ClassificationException">Something points at it, and the message says what.</exception>
