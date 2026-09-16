@@ -70,8 +70,10 @@ public sealed record LiveVerdict(
 /// </para>
 /// <para>
 /// It lives here and not beside the command that calls it because it is a rule about what a
-/// provider response has to hold, and <c>docs/layout.md</c> says three times that
-/// <c>MeetingTranscriber.Cli</c> holds no rule of its own: every command is a call into the same
+/// provider response has to hold, and <c>docs/layout.md</c> says <c>MeetingTranscriber.Cli</c>
+/// holds no rule of its own, with one named exception that is what a live run decides — which this
+/// is not: a rule about what a provider response has to hold is not a rule about a run. Every
+/// command is a call into the same
 /// service the application calls, and what it adds is argument parsing, a report and an exit code.
 /// It needs only <c>Domain</c> and this project, and it sits beside
 /// <see cref="DeepgramTranscriptParser"/>, whose refusals the remarks above defer to.
