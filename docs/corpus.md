@@ -92,6 +92,10 @@ moved to the whole machine an hour in is only written down here. Losing it leave
 its channel 0 followed one program when most of what is in the file is everything the machine
 played. Most recordings never have one.
 
+That is true until the meeting is finished. Afterwards it is in the corpus too, in
+`capture_source_changes`, and this file is what the corpus was read from — so before a finish the
+folder is the only copy, and after one there are two and neither is derivable from anything else.
+
 **Two files are called `manifest.json` and they are not the same card.** The one in a meeting's
 folder is produced from the corpus every time and may be replaced; the one beside a spool is
 written once when the devices open and never again, because there is no corpus to produce it from
@@ -216,8 +220,20 @@ label somebody resolved is not overwritten by one the recording settled. The fir
 changing together, which a unique index refuses halfway through; the second is the same row written
 twice, of which the database only ever sees the second.
 
-Runs and jobs — `capture_runs`, `processing_jobs`, `transcription_runs`, `extraction_runs` — are
-sources too. They are the record of what was charged and what state a restart found.
+One of these rows goes without anybody asking, and only one: a re-render takes off the
+`speaker_assignments` of labels the new turns no longer carry. A label is a place in the audio, so
+a row hanging off one that is gone says somebody spoke in a meeting where, as the corpus now reads
+it, they did not — the row is already wrong, not lost. That delete is `HumanLayer`'s too, inside
+the savepoint the turn swap runs under, so a swap that was refused takes it back with the turns. A
+render refused after the swap keeps both, which is the same answer it already gives about the turns
+themselves: what committed agrees with itself. Nothing else anywhere takes a human-layer row
+without somebody asking.
+
+Runs and jobs — `capture_runs`, `capture_source_changes`, `processing_jobs`, `transcription_runs`,
+`extraction_runs` — are sources too. They are the record of what was charged, what state a restart
+found, and what a channel was on at each instant of a recording. `capture_source_changes` holds a
+fact nothing on the machine can produce again once the spool folder is gone, and a table whose
+whole point is holding an unrepeatable fact is the one that must not be left to a catch-all.
 
 ## Where the rule is enforced
 
