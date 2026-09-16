@@ -905,7 +905,16 @@ FTS5 cubre inicialmente:
 - compañías, proyectos y participantes;
 - abstract y summary;
 - transcript;
-- decisiones, acciones y preguntas abiertas.
+- decisiones, acciones y preguntas abiertas;
+- voces a las que alguien le puso nombre.
+
+*Participante* y *voz* no son lo mismo, y ninguna se convierte en la otra. Un
+participante es alguien que una persona puso en la reunión; una voz es alguien
+que el corpus sabe que habló en ella, porque alguien le puso nombre a una
+etiqueta de hablante. Buscar un nombre trae las reuniones donde esa persona
+figura y las reuniones donde habló, y son conjuntos distintos: se puede haber
+hablado en una reunión sin figurar en ella, y figurar en una sin haber dicho
+nada.
 
 La búsqueda devuelve resultados pequeños con `meeting_id`, fecha, título,
 snippet y timestamps relevantes. El transcript completo solo se abre cuando es
