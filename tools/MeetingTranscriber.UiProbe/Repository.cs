@@ -26,8 +26,20 @@ internal sealed record Registration(string AppUserModelId, string InstalledPath)
 /// when it disagrees with the assembly <see cref="MustBeWhatWindowsStarted"/> is what turns the
 /// disagreement into a sentence instead of a wrong answer.
 /// </para>
+/// <para>
+/// Public, and not by preference: there is no <c>InternalsVisibleTo</c> anywhere in this
+/// repository, so an internal type could not be reached by the suite that proves
+/// <see cref="RootAbove"/> still finds a checkout and still stops at one.
+/// <c>MeetingTranscriber.Cli.SendingMark</c> and <c>LiveCheck</c> are public for that same reason.
+/// It costs more than <see cref="Sources"/> did and the widening is worth naming rather than
+/// noticing later: <see cref="Root"/>, <see cref="AppFolder"/>, <see cref="AppUserModelId"/>,
+/// <see cref="Around"/> and <see cref="MustBeWhatWindowsStarted"/> are all reachable from outside
+/// this assembly now. None of them is a way in to anything — this type answers questions about a
+/// checkout and starts nothing — and nothing under <c>tests/</c> may drive the probe either way,
+/// which is what <c>docs/layout.md</c> says rather than what an accessibility keyword could.
+/// </para>
 /// </remarks>
-internal sealed record Repository(string Root, string AppFolder, string AppUserModelId)
+public sealed record Repository(string Root, string AppFolder, string AppUserModelId)
 {
     private const string Solution = "MeetingTranscriber.slnx";
 
@@ -258,13 +270,22 @@ internal sealed record Repository(string Root, string AppFolder, string AppUserM
     /// when it is in none.
     /// </summary>
     /// <remarks>
-    /// <see langword="internal"/> rather than private because <see cref="Sources"/> asks it too, for
-    /// the two props files that sit above every project folder and are still sources of what is
-    /// running. Where the root is, is one answer: a second walk in <see cref="Sources"/> would be a
-    /// second thing to get wrong, and it would get it wrong the same way — by stopping at the first
-    /// folder that looks plausible instead of at the one holding <c>MeetingTranscriber.slnx</c>.
+    /// <para>
+    /// Not private, because <see cref="Sources"/> asks it too — for the two props files that sit
+    /// above every project folder and are still sources of what is running. Where the root is, is
+    /// one answer: a second walk in <see cref="Sources"/> would be a second thing to get wrong, and
+    /// it would get it wrong the same way, by stopping at the first folder that looks plausible
+    /// instead of at the one holding <c>MeetingTranscriber.slnx</c>.
+    /// </para>
+    /// <para>
+    /// Public rather than internal for the reason the type above gives: there is no
+    /// <c>InternalsVisibleTo</c> anywhere in this repository, so this is how the suite reaches the
+    /// walk that both staleness refusals are computed from. The two halves it holds are the two
+    /// halves worth holding — that it finds the folder holding the solution, and that it stops
+    /// rather than climbing out of a checkout that has none.
+    /// </para>
     /// </remarks>
-    internal static string? RootAbove(string start)
+    public static string? RootAbove(string start)
     {
         var here = new DirectoryInfo(start);
         while (here is not null)

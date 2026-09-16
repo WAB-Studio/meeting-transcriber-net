@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Follows the project under test, which has no Windows floor: nothing an MCP tool does here
+         opens a device. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MeetingTranscriber.Mcp\MeetingTranscriber.Mcp.csproj" />
+    <ProjectReference Include="..\MeetingTranscriber.Testing\MeetingTranscriber.Testing.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="Shouldly" />
+    <Using Include="MeetingTranscriber.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The client half. It arrives transitively through the server's project reference, which
+         meant this suite would have failed to compile for a reason written down in somebody else's
+         project file the day the server's package choice moved. No Version: the pin is in
+         Directory.Packages.props. -->
+    <PackageReference Include="ModelContextProtocol.Core" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+</Project>

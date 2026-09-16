@@ -13,6 +13,9 @@
     <Project Path="src/MeetingTranscriber.Audio/MeetingTranscriber.Audio.csproj" />
     <Project Path="src/MeetingTranscriber.Domain/MeetingTranscriber.Domain.csproj" />
     <Project Path="src/MeetingTranscriber.Infrastructure/MeetingTranscriber.Infrastructure.csproj" />
+    <!-- The corpus's other read-only face: six tools an agent asks about meetings somebody
+         recorded, over stdio, opening SQLite read-only and writing nothing. -->
+    <Project Path="src/MeetingTranscriber.Mcp/MeetingTranscriber.Mcp.csproj" />
     <!-- What the application says and what language it says it in. Outside the app because the
          Windows App SDK's module initializer makes anything living beside a window unloadable
          anywhere there is no window. -->
@@ -34,9 +37,15 @@
     <Project Path="tests/MeetingTranscriber.Cli.Tests/MeetingTranscriber.Cli.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Domain.Tests/MeetingTranscriber.Domain.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Infrastructure.Tests/MeetingTranscriber.Infrastructure.Tests.csproj" />
+    <!-- A real MCP client over a real session: the round trip the server answers, and the sweeps
+         that hold it to opening nothing it could write through. -->
+    <Project Path="tests/MeetingTranscriber.Mcp.Tests/MeetingTranscriber.Mcp.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Presentation.Tests/MeetingTranscriber.Presentation.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Processing.Tests/MeetingTranscriber.Processing.Tests.csproj" />
     <Project Path="tests/MeetingTranscriber.Recording.Tests/MeetingTranscriber.Recording.Tests.csproj" />
+    <!-- The halves of the UI probe that open no window: the two root walks every staleness
+         refusal it makes is computed from. It references the probe and never drives it. -->
+    <Project Path="tests/MeetingTranscriber.UiProbe.Tests/MeetingTranscriber.UiProbe.Tests.csproj" />
     <!-- Reads ISA.md and the source text under tests/, references no project at all: what it holds
          are rules about the repository rather than about a layer, so its gate belongs under none of
          them and can cover suites no reference from here could reach. -->

@@ -340,6 +340,125 @@ public class MeetingReadingTests
         Should.Throw<MeetingStageException>(() => reading.Name(nobody, "anything"));
     }
 
+    /// <summary>
+    /// A stretch of a meeting is the turns that began inside it, closed at the bottom and open at
+    /// the top.
+    /// </summary>
+    /// <remarks>
+    /// Red the day the top of the window is made inclusive, which is not a rounding difference: two
+    /// calls walking a meeting back to back would each answer with the turn on the boundary, and an
+    /// agent reading a meeting in stretches would quote it twice with nothing downstream able to
+    /// tell that from a thing that really was said twice. The second half — that the two halves
+    /// together are the whole — is what says the window loses nothing either.
+    /// </remarks>
+    [Fact]
+    public void Turns_between_two_offsets_are_the_ones_said_in_that_stretch()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context, corpus.Root);
+
+        for (var ordinal = 0; ordinal < 4; ordinal++)
+        {
+            Add(context, NewTurn(meeting, ordinal));
+        }
+
+        var reading = new MeetingReading(context, Clock);
+
+        // The turns start at 1000, 2000, 3000 and 4000 ms.
+        var stretch = reading.Between(
+            meeting, Duration.FromMilliseconds(2_000), Duration.FromMilliseconds(4_000), 10);
+
+        stretch.Select(turn => turn.Ordinal).ShouldBe([1, 2]);
+
+        var before = reading.Between(meeting, Duration.Zero, Duration.FromMilliseconds(2_000), 10);
+        var after = reading.Between(
+            meeting, Duration.FromMilliseconds(2_000), Duration.FromMilliseconds(10_000), 10);
+
+        before.Select(turn => turn.Ordinal).ShouldBe([0]);
+        after.Select(turn => turn.Ordinal).ShouldBe([1, 2, 3]);
+    }
+
+    /// <summary>
+    /// The bound is applied to the read and not to what comes back from it.
+    /// </summary>
+    /// <remarks>
+    /// The stretch a caller asks for can be the whole of a three-hour meeting, so a bound taken
+    /// after the read is every turn of one materialised to hand back two hundred. Red against a
+    /// <c>Take</c> moved out of the query — which answers the same rows and so cannot be seen in
+    /// what comes back, only in how many the meeting had to give up to produce it. The earliest
+    /// turns and not any two: what a bounded stretch means is the start of it.
+    /// </remarks>
+    [Fact]
+    public void A_stretch_longer_than_the_bound_comes_back_as_its_first_turns()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context, corpus.Root);
+
+        for (var ordinal = 0; ordinal < 4; ordinal++)
+        {
+            Add(context, NewTurn(meeting, ordinal));
+        }
+
+        new MeetingReading(context, Clock)
+            .Between(meeting, Duration.Zero, Duration.FromMilliseconds(10_000), 2)
+            .Select(turn => turn.Ordinal)
+            .ShouldBe([0, 1]);
+    }
+
+    /// <summary>
+    /// A transcript says which paid response produced it, off the run that finished and not off the
+    /// newest response filed against the meeting.
+    /// </summary>
+    /// <remarks>
+    /// The two come apart exactly where it matters. A meeting transcribed a second time has a newer
+    /// response on disk from the moment the job confirms it, and its turns are still the first
+    /// response's until the projection is rebuilt — so answering from the artifact hands a reader a
+    /// hash the quotation is not in, which is a corpus inconsistency that does not exist. Red the
+    /// day this reads the artifacts table instead of the run.
+    /// </remarks>
+    [Fact]
+    public void A_transcript_says_which_response_the_run_that_finished_produced_it_from()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context, corpus.Root);
+
+        var produced = new string('7', 64);
+        Transcribe(context, meeting, response: produced);
+
+        // A second response, paid for and filed later, whose own run has not come back. The turns
+        // on disk are still the first one's.
+        Add(context, new Artifact
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            Kind = ArtifactKind.DeepgramResponse,
+            Origin = ArtifactKind.DeepgramResponse.OriginOf(),
+            RelativePath = CorpusFiles.PathFor(meeting, "deepgram.2.json"),
+            ByteSize = 4,
+            Sha256 = new string('8', 64),
+            ConfirmedAt = UtcTimestamp.From(Recorded.Value.AddHours(2)),
+        });
+
+        new MeetingReading(context, Clock).TranscribedFrom(meeting).ShouldBe(produced);
+    }
+
+    /// <summary>
+    /// A meeting whose turns came from no response anybody paid for says so, rather than saying
+    /// nothing or guessing.
+    /// </summary>
+    [Fact]
+    public void A_meeting_with_no_paid_response_behind_it_names_none()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context, corpus.Root);
+
+        new MeetingReading(context, Clock).TranscribedFrom(meeting).ShouldBeNull();
+    }
+
     private static Guid Record(CorpusDbContext context, DirectoryInfo root)
     {
         var meeting = Guid.NewGuid();
@@ -353,10 +472,34 @@ public class MeetingReadingTests
         return meeting;
     }
 
-    private static void Transcribe(CorpusDbContext context, Guid meeting, bool finished = true)
+    /// <param name="response">
+    /// The paid response this run produced, filed as an artifact and named on the run. Nothing when
+    /// the fact is only about a run having finished, which is what every caller but one wants.
+    /// </param>
+    private static void Transcribe(
+        CorpusDbContext context, Guid meeting, bool finished = true, string? response = null)
     {
         var job = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Transcribe, $"{meeting}/1", Recorded);
         Add(context, job);
+
+        Guid? filed = null;
+
+        if (response is not null)
+        {
+            filed = Guid.NewGuid();
+
+            Add(context, new Artifact
+            {
+                Id = filed.Value,
+                MeetingId = meeting,
+                Kind = ArtifactKind.DeepgramResponse,
+                Origin = ArtifactKind.DeepgramResponse.OriginOf(),
+                RelativePath = CorpusFiles.PathFor(meeting, "deepgram.json"),
+                ByteSize = 4,
+                Sha256 = response,
+                ConfirmedAt = Recorded,
+            });
+        }
 
         Add(context, new TranscriptionRun
         {
@@ -369,6 +512,7 @@ public class MeetingReadingTests
             Language = "es",
             AudioSha256 = new string('b', 64),
             BillableConfigHash = new string('c', 64),
+            ResponseArtifactId = filed,
             CreatedAt = Recorded,
             FinishedAt = finished ? Recorded : null,
         });
