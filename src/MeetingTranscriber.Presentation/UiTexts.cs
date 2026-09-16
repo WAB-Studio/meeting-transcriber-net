@@ -54,9 +54,10 @@ public static class UiTexts
 
     public static UiText MyRole { get; } = new("Yo", "Me");
 
-    // What transcribes the meeting, shown on the card and changed in the settings — which is what
-    // #97 settled, and why it is a pill with no chevron under it. A provider's model name is what
-    // that provider called it, so it is the same either way.
+    // What transcribes the meeting, shown on the card and named again in the settings, where what
+    // it costs is beside it. Nothing changes it: there is one engine, which is why it is a pill
+    // with no chevron under it. A provider's model name is what that provider called it, so it is
+    // the same either way.
     public static UiText TheEngineThatTranscribes { get; } =
         new("Deepgram nova-3", "Deepgram nova-3");
 
@@ -225,10 +226,17 @@ public static class UiTexts
         "Reunión {0} grabada: {1} de audio en {2}.",
         "Meeting {0} recorded: {1} of audio at {2}.");
 
-    // Said out loud every time, because it is the promise and not an omission.
+    // Said out loud every time, because what a stop did about money is not something to leave
+    // somebody working out from a list. Which of the two is said is read off what was really
+    // written, never off what the settings say — a stop that decided a transcription and found one
+    // already queued says the first of these, because that is what happened.
     public static UiText NothingWasQueued { get; } = new(
         "No se puso nada en cola: transcribir es otro botón.",
         "Nothing was queued: transcribing is a separate press.");
+
+    public static UiText TranscribingWasQueued { get; } = new(
+        "Quedó en cola transcribirla, que es lo que pedía la configuración.",
+        "Transcribing it is queued, which is what the settings asked for.");
 
     public static UiText TheRecordingCouldNotStart { get; } =
         new("No se pudo empezar a grabar.", "The recording could not be started.");
@@ -663,11 +671,12 @@ public static class UiTexts
         "That is no longer as it was. The list has been read again.");
 
     // The corpus is not reachable, so an empty list would be a lie. Which refusal it was is the
-    // recording screen's to say, and it has the whole table for it.
+    // settings screen's to say, and it has the whole table for it — it moved there with the line
+    // about where the corpus is kept, which is the one place that names the folder.
     public static UiText TheCorpusCouldNotBeOpened { get; } = new(
-        "No se pudo abrir el corpus, así que esta lista no dice nada. La pantalla de grabación "
-        + "dice por qué: {0}",
-        "The corpus could not be opened, so this list says nothing. The recording screen says "
+        "No se pudo abrir el corpus, así que esta lista no dice nada. La pantalla de "
+        + "configuración dice por qué: {0}",
+        "The corpus could not be opened, so this list says nothing. The settings screen says "
         + "why: {0}");
 
     // ── The screen one meeting is read from ────────────────────────────────────────────────────
@@ -900,6 +909,62 @@ public static class UiTexts
     // casual catch-up»; this one is «none of the thirteen fits and I will fill it in».
     public static UiText TheShapeFilledByHand { get; } =
         new("Ninguna — la lleno yo", "None — I will fill it in");
+
+    // ── The settings screen, the one that lives apart ────────────────────────────────
+
+    // What the gear on the front door opens, and the screen's own title. The gear says this out
+    // loud rather than only drawing a cog: nothing else on that row is a press, so a shape with no
+    // name is the one control there a screen reader would announce as nothing.
+    public static UiText Settings { get; } = new("Configuración", "Settings");
+
+    // The way back off this screen, and it does not name where back is the way the meeting screen's
+    // does. That one is reached from the list and returns to it; this one is reached from wherever
+    // the window happened to be, so naming a place would name the wrong one half the time.
+    public static UiText BackFromSettings { get; } = new("Volver", "Back");
+
+    // The one question on this screen that spends money, and the whole reason it exists: it is
+    // asked once, here, rather than per meeting.
+    public static UiText WhenARecordingEnds { get; } =
+        new("Cuando termina una grabación", "When a recording ends");
+
+    // The three answers. *Preguntarme cada vez* is not among them and is not missing: nothing in
+    // this application asks, so the third answer is the meeting sitting in the list until somebody
+    // presses something on its row.
+    public static UiText TranscribeItAndSummariseIt { get; } =
+        new("Transcribirla y resumirla", "Transcribe it and summarise it");
+
+    public static UiText OnlyTranscribeIt { get; } = new("Sólo transcribirla", "Only transcribe it");
+
+    public static UiText DoNothingWhenItEnds { get; } = new("No hacer nada", "Do nothing");
+
+    // The two engines, each named with what it costs beside it. Neither is a picker: there is one
+    // of each, so what is drawn is the answer and not a choice.
+    public static UiText TranscribeWith { get; } = new("Transcribir con", "Transcribe with");
+
+    public static UiText SummariseWith { get; } = new("Resumir con", "Summarise with");
+
+    // What a maker called its own model, so it is the same either way — the same answer
+    // `TheEngineThatTranscribes` gives one section up.
+    public static UiText TheEngineThatSummarises { get; } = new("Claude", "Claude");
+
+    // `docs/design.md`'s rule: an amount goes as `[costo]` until a run produces a real number, so
+    // what stands here is a placeholder and not words. The two differ because the two engines are
+    // charged differently — transcription by the minute of audio, summarising by the model's
+    // published price — and one entry for both would say the wrong thing about one of them.
+    public static UiText WhatAMinuteCosts { get; } = new("[costo] / min", "[costo] / min");
+
+    public static UiText WhatItCosts { get; } = new("[costo]", "[costo]");
+
+    // At the foot of the two engine blocks, and it is the sentence that makes them two blocks: if
+    // one of the two fails, the other is already done and is not paid for again.
+    public static UiText EachIsPaidForSeparately { get; } = new(
+        "Transcribir y resumir se cobran por separado.",
+        "Transcribing and summarising are paid for separately.");
+
+    // Over the line naming the folder. Not *Dónde se guardan las reuniones*: what is kept there is
+    // the corpus, which is the recordings, the responses already paid for and everything read out
+    // of them, and the sentence under it already says the word *reuniones*.
+    public static UiText WhereItIsKept { get; } = new("Dónde se guarda", "Where it is kept");
 
     // ── The packaging checks scaffold ──────────────────────────────────────────────────────────
 

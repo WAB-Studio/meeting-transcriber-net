@@ -1,6 +1,7 @@
 ﻿using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
@@ -389,19 +390,20 @@ public sealed class MeetingRecordingsTests : IDisposable
 
     /// <summary>
     /// ISC-157. Stopping starts no work nobody asked for beforehand: transcribing spends the user's
-    /// own credit, so it waits for somebody to ask for it.
+    /// own credit, so it waits for somebody to have asked for it.
     /// </summary>
     /// <remarks>
-    /// What is asserted is stronger than the claim, and can be while nothing lets anybody ask
-    /// beforehand: <see cref="WhatStoppingStarts"/> answers the same empty list for every meeting,
-    /// and the preference that will make it answer otherwise is ISC-157.1, open. So nobody asked
-    /// and nothing was queued is the whole of the sentence today. The case to write beside this one
-    /// is a meeting somebody did ask about, and it arrives with the preference and not before.
+    /// The preference is set to <see cref="AfterARecording.DoNothing"/> outright rather than left
+    /// unset, so what this asserts is the answer and not the absence of one — a corpus nobody has
+    /// answered for reads the same way, and that is <c>CorpusSettingsTests</c>' sentence and not
+    /// this one's. The case beside it is the meeting somebody did ask about, below.
     /// </remarks>
     [Fact]
     public void Stopping_a_recording_queues_no_work_on_the_meeting()
     {
         using var context = corpus.OpenMigrated();
+        new CorpusSettings(context).WhenARecordingEnds(AfterARecording.DoNothing, now);
+
         using var prepared = MeetingRecordings.Open(context, "es", now);
         Fabricated.Spools(prepared.Spool, seconds: 2);
 
@@ -411,6 +413,100 @@ public sealed class MeetingRecordingsTests : IDisposable
 
         using var reopened = corpus.Open();
         reopened.ProcessingJobs.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// ISC-157.1. A recording somebody asked to have transcribed comes out of the stop with exactly
+    /// that queued, and nothing runs it.
+    /// </summary>
+    /// <remarks>
+    /// Read back through a second connection, so what is asserted is the database and not a row
+    /// still sitting in the context's tracker. The instant on the job is the one the finish was
+    /// given and not the machine's clock: a job created because a recording ended is created at the
+    /// moment it ended, which is why <c>MeetingWork.Take</c> takes one.
+    /// </remarks>
+    [Fact]
+    public void Stopping_a_recording_somebody_asked_to_transcribe_queues_exactly_that()
+    {
+        using var context = corpus.OpenMigrated();
+        new CorpusSettings(context).WhenARecordingEnds(AfterARecording.Transcribe, now);
+
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
+
+        var stopped = now + Duration.FromSeconds(2);
+        var finished = MeetingRecordings.Finish(context, prepared.MeetingId, stopped);
+
+        finished.Queued.ShouldBe([JobKind.Transcribe]);
+
+        using var reopened = corpus.Open();
+        var queued = reopened.ProcessingJobs.Single();
+
+
+        queued.MeetingId.ShouldBe(prepared.MeetingId);
+        queued.Kind.ShouldBe(JobKind.Transcribe);
+        queued.State.ShouldBe(JobState.Pending);
+        queued.StartedAt.ShouldBeNull();
+        queued.CreatedAt.ShouldBe(stopped);
+    }
+
+    /// <summary>
+    /// Asking for a summary queues the transcription and not the summary.
+    /// </summary>
+    /// <remarks>
+    /// The meeting has nothing for a summary to be made from, so an <c>Extract</c> row here would
+    /// describe a stage this meeting cannot be at. What the rest of that answer means is read again
+    /// by whatever finishes the transcription, and nothing does yet.
+    /// </remarks>
+    [Fact]
+    public void Stopping_a_recording_somebody_asked_to_summarise_queues_only_the_transcription()
+    {
+        using var context = corpus.OpenMigrated();
+        new CorpusSettings(context).WhenARecordingEnds(AfterARecording.TranscribeAndSummarise, now);
+
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
+
+        MeetingRecordings.Finish(context, prepared.MeetingId, now);
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Select(job => job.Kind).ShouldBe([JobKind.Transcribe]);
+    }
+
+    /// <summary>
+    /// A finish run again over a meeting that already carries the queued work queues nothing and
+    /// still finishes.
+    /// </summary>
+    /// <remarks>
+    /// This is the recovery path, and it is the one that would have been paid for at the worst
+    /// possible moment. <c>MeetingWork.Take</c> throws <c>MeetingStageException</c> when the
+    /// standing will not take the stage, and by the time the queueing runs the audio row and the
+    /// meeting's length are committed — so a finish that called it blind would die on its last
+    /// line over a meeting whose recording is already on disk, and every attempt after it would die
+    /// the same way.
+    /// </remarks>
+    [Fact]
+    public void A_finish_run_again_over_a_meeting_already_queued_queues_nothing_and_still_finishes()
+    {
+        using var context = corpus.OpenMigrated();
+        new CorpusSettings(context).WhenARecordingEnds(AfterARecording.Transcribe, now);
+
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
+
+        MeetingRecordings.Finish(context, prepared.MeetingId, now);
+        var again = MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(5));
+
+        again.MeetingId.ShouldBe(prepared.MeetingId);
+
+        // And it says so: what comes back is the work this finish wrote, not what the preference
+        // decided should be there. Both front ends print this line to a person, and one that
+        // announced a charge it did not make would be the application's only sentence about their
+        // own money saying the wrong thing.
+        again.Queued.ShouldBeEmpty();
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Count().ShouldBe(1);
     }
 
     /// <summary>

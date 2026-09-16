@@ -56,6 +56,15 @@
          settles it. This one never stood there, which is why settling it added no row. -->
     <SolidColorBrush x:Key="EmptyControlRingBrush" Color="#DEDBD4" />
 
+    <!-- Nothing has been said about this yet: a voice nobody has named, an unticked box, the ring
+         of a radio nobody has chosen. `docs/design.md` §Colour held it in *Decided, and not yet a
+         key* until the settings screen drew the third of those, and that page's own procedure is
+         that the screen which first draws one settles it in the change that draws it — so the row
+         moved into the colour table with this key in the same change, and `OlivoTests` pins that
+         table one row longer. It leaves whole, as that page says: one value, three roles, one key,
+         and they get two keys only on the day one of them has to diverge. -->
+    <SolidColorBrush x:Key="UnansweredBrush" Color="#C3BFB6" />
+
     <!-- ── The two faces ────────────────────────────────────────────────────────────────────────
 
          Both ship inside the package: `Assets/Fonts/`, listed as Content in the project file, under
@@ -667,6 +676,125 @@
                             </Border>
                         </Popup>
                     </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- One option of a set of more than two, which `docs/design.md` §Controls draws as a radio
+         row: a 16px circle — genuinely round — olivo with a papel inset when chosen and a ring
+         when not, and the whole chosen row sitting on the decision tint.
+
+         Templated, and for exactly the reason `DropDownItem` above is: the platform's own
+         RadioButton fills its checked circle from the accent family, and §And five things this
+         application is not says outright that this application never uses the system accent
+         colour. It has two colours and neither of them is the system's. A `Foreground` setter loses
+         to a visual state, so the states are what had to be rewritten.
+
+         Over and pressed are named and left empty rather than left out, and the difference is what
+         a reader takes from it: §What never moves says nothing in this application answers a
+         passing cursor, so both states were decided and the empty element is the record of that.
+         This template replaces the platform's wholesale, so there are no inherited setters left to
+         suppress — what an unnamed state would cost is only that the next person cannot tell a
+         decision from an omission.
+
+         What the platform still owns is the whole of what a radio is: the group, the keyboard, the
+         automation peer and the exclusivity. Only what is drawn is Olivo's. -->
+    <Style x:Key="Option" TargetType="RadioButton" BasedOn="{StaticResource DefaultRadioButtonStyle}">
+        <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
+        <Setter Property="FontSize" Value="{StaticResource BodySize}" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
+        <Setter Property="Padding" Value="12,0,12,0" />
+        <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border
+                        x:Name="TheRow"
+                        Background="{TemplateBinding Background}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        MinHeight="{TemplateBinding MinHeight}"
+                        Padding="{TemplateBinding Padding}"
+                        Control.IsTemplateFocusTarget="True">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver" />
+                                <VisualState x:Name="Pressed" />
+                                <!-- Both setters, because either circle may be the one on screen:
+                                     `Chosen` is what a ticked row shows and `Ring` is what the
+                                     other rows show, and a group that went dead with one of them
+                                     still at full strength reads as half live. -->
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="TheWords.Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                                        <Setter Target="Chosen.Fill" Value="{StaticResource TertiaryTextBrush}" />
+                                        <Setter Target="Ring.Stroke" Value="{StaticResource EmptyControlRingBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualState x:Name="Checked">
+                                    <VisualState.Setters>
+                                        <Setter Target="TheRow.Background" Value="{StaticResource DecisionTintBrush}" />
+                                        <Setter Target="Ring.Visibility" Value="Collapsed" />
+                                        <Setter Target="Chosen.Visibility" Value="Visible" />
+                                        <Setter Target="Inset.Visibility" Value="Visible" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Unchecked" />
+                                <VisualState x:Name="Indeterminate" />
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Three circles and not one with a changing fill. A `Setter` inside a
+                                 visual state hands every element wearing this template the same
+                                 object, which is the trap the chevron above is written against, and
+                                 visibility is the one property that costs nothing to say twice. -->
+                            <Grid Grid.Column="0" Width="16" Height="16" VerticalAlignment="Center">
+                                <Ellipse
+                                    x:Name="Ring"
+                                    Width="16"
+                                    Height="16"
+                                    Stroke="{StaticResource UnansweredBrush}"
+                                    StrokeThickness="1.5" />
+                                <Ellipse
+                                    x:Name="Chosen"
+                                    Width="16"
+                                    Height="16"
+                                    Fill="{StaticResource OliveBrush}"
+                                    Visibility="Collapsed" />
+                                <Ellipse
+                                    x:Name="Inset"
+                                    Width="8"
+                                    Height="8"
+                                    Fill="{StaticResource PaperBrush}"
+                                    Visibility="Collapsed" />
+                            </Grid>
+
+                            <ContentPresenter
+                                x:Name="TheWords"
+                                Grid.Column="1"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Foreground="{TemplateBinding Foreground}"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                TextWrapping="Wrap" />
+                        </Grid>
+                    </Border>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

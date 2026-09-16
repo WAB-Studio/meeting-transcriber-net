@@ -45,6 +45,7 @@ public partial class OlivoTests
         "DefaultButtonStyle",
         "DefaultComboBoxItemStyle",
         "DefaultComboBoxStyle",
+        "DefaultRadioButtonStyle",
         "DefaultTextBoxStyle",
     ];
 
@@ -523,7 +524,7 @@ public partial class OlivoTests
     public void The_dictionary_carries_every_colour_the_design_names_at_the_value_it_names()
     {
         var page = Palette();
-        page.Count.ShouldBe(12, "docs/design.md §Colour is the twelve-row table this reads.");
+        page.Count.ShouldBe(13, "docs/design.md §Colour is the thirteen-row table this reads.");
 
         var brushes = Brushes();
 

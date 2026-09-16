@@ -57,19 +57,15 @@
              deliberately unfinished, so what is drawn here is the placeholder those artboards
              carry, in one place for whoever draws the real one.
 
-             **There is no settings gear**, and that is a decision rather than a piece left out.
-             Every artboard draws a 34×34 gear at the right of this row and there is no settings
-             screen behind it — #108 owns that screen and it is not built. Of the three answers, a
-             live gear that opens nothing is the one this repository refuses outright; a disabled
-             one says *not answerable just now*, which is what disabled means everywhere else in
-             this application and is a lie here, since nothing about the state of the screen is
-             stopping it; and explaining it in a line under it is what §The rules the design imposes
-             forbids in as many words. So the row is drawn without it, and #108 puts it in the place
-             this row already leaves for it. -->
+             The gear at the right is the one press on this row, and it is the only thing anywhere
+             in the application that reaches the settings. It says what it opens by name rather than
+             only drawing a cog: nothing else here is pressable, so a shape with no name is the one
+             control on this row a screen reader would announce as nothing. -->
         <Grid x:Name="TheApplication" Grid.Row="0" ColumnSpacing="11" Margin="6,0,6,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
 
             <!-- Drawn on the artboards' own 24-unit box inside a Viewbox rather than as two paths
@@ -97,6 +93,41 @@
                 VerticalAlignment="Center"
                 Text="{x:Bind In(loc:UiTexts.TheApplicationsName)}"
                 Style="{StaticResource SectionText}" />
+
+            <!-- Drawn on the artboards' own 24-unit box inside a Viewbox, for the reason the mark
+                 beside it is: two arcs each stretched to its own bounds would scale independently.
+                 The cog is one stroked ring and six teeth as straight runs out from the centre,
+                 which is a shape and not an icon inside a rounded square — `docs/design.md`
+                 §And five things this application is not names that square as the single most
+                 recognisable gesture of a settings list and refuses it outright. -->
+            <Button
+                x:Name="SettingsButton"
+                Grid.Column="2"
+                Width="34"
+                Height="34"
+                Padding="0"
+                VerticalAlignment="Center"
+                Style="{StaticResource ButtonAtTheMargin}"
+                AutomationProperties.Name="{x:Bind In(loc:UiTexts.Settings)}"
+                Click="OnOpenSettings">
+                <Viewbox Width="18" Height="18">
+                    <Canvas Width="24" Height="24">
+                        <Ellipse
+                            Canvas.Left="7.5"
+                            Canvas.Top="7.5"
+                            Width="9"
+                            Height="9"
+                            Stroke="{StaticResource InkBrush}"
+                            StrokeThickness="2" />
+                        <Path
+                            Data="M12 2.5v3M12 18.5v3M3.3 7l2.6 1.5M18.1 15.5l2.6 1.5M3.3 17l2.6-1.5M18.1 8.5l2.6-1.5"
+                            Stroke="{StaticResource InkBrush}"
+                            StrokeThickness="2"
+                            StrokeStartLineCap="Round"
+                            StrokeEndLineCap="Round" />
+                    </Canvas>
+                </Viewbox>
+            </Button>
         </Grid>
 
         <!-- What the next meeting will record, on tarjeta. A card and not a stack of controls on
@@ -553,87 +584,6 @@
                     Content="{x:Bind In(loc:UiTexts.RecordTheWholeMachine)}" />
             </Grid>
 
-            <!-- Who is using the application, beside where their meetings are kept: both are
-                 answers about this install rather than about the next meeting, which is why they
-                 are here and not up on the card. It is one field and one press whether it is
-                 being answered for the first time or corrected afterwards — the asking is the
-                 sentence under it, which is on screen exactly while nobody has answered.
-
-                 It lives here until the settings screen exists, and then it moves there with the
-                 language and this line: #108 is the card, and the row it is built around is this
-                 one. The affiliation the design asks about is not here and is not missing —
-                 `docs/design.md` says the first screen of an application is not where somebody
-                 enumerates their jobs, and the `Persona` dialogue is where one is added. -->
-            <StackPanel Spacing="4">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBox
-                        x:Name="WhoIsUsingThisBox"
-                        MinWidth="240"
-                        Style="{StaticResource TypedField}"
-                        Header="{x:Bind In(loc:UiTexts.WhoIsUsingTheApplication)}"
-                        TextChanged="OnWhoIsUsingThisTyped" />
-                    <Button
-                        x:Name="WhoIsUsingThisButton"
-                        VerticalAlignment="Bottom"
-                        Style="{StaticResource NormalButtonOnPaper}"
-                        Click="OnKeepWhoIsUsingThis"
-                        Content="{x:Bind In(loc:UiTexts.Save)}" />
-
-                    <!-- The language the application is **read** in, which is the other of the two
-                         language questions on this screen and the one that is not about the next
-                         meeting. It is here rather than on the card for the reason the row it sits
-                         in is, and it goes to the settings with that row when #108 builds them.
-
-                         Its label is beside it and not over it: a picker is a pill now and a pill
-                         carries no header, so what it chooses is said as text. That text is also
-                         what a screen reader is given, by name. -->
-                    <TextBlock
-                        VerticalAlignment="Bottom"
-                        Margin="0,0,0,7"
-                        Text="{x:Bind In(loc:UiTexts.Language)}"
-                        Style="{StaticResource BodyText}"
-                        Foreground="{StaticResource SecondaryTextBrush}" />
-                    <ComboBox
-                        x:Name="LanguagePicker"
-                        MinWidth="150"
-                        VerticalAlignment="Bottom"
-                        Style="{StaticResource DropDown}"
-                        AutomationProperties.Name="{x:Bind In(loc:UiTexts.Language)}"
-                        SelectionChanged="OnLanguageChosen" />
-                </StackPanel>
-
-                <!-- Left and not merely bounded. A `MaxWidth` on a block that stretches centres it,
-                     so this sentence stood in the middle of a window nothing else on the row was
-                     under — which a probe photographed. -->
-                <TextBlock
-                    x:Name="NobodyHasSaidYet"
-                    HorizontalAlignment="Left"
-                    Text="{x:Bind In(loc:UiTexts.NobodyHasSaidWhoIsUsingThis)}"
-                    Style="{StaticResource BodyText}"
-                    Foreground="{StaticResource SecondaryTextBrush}"
-                    TextWrapping="Wrap"
-                    MaxWidth="640"
-                    Visibility="Collapsed" />
-            </StackPanel>
-
-            <!-- Where the meetings go, and which folder was refused when there is nowhere. Outside
-                 the half above for the reason the report below it is: the drawer may take the
-                 window while there is no corpus — nothing is being recorded then and nothing can
-                 be — and this is the only line in the application that says which refusal it was.
-                 The drawer's own line says the corpus could not be opened and sends somebody here
-                 for why, so a screen that let this go with the recorder would be answering that
-                 with an empty window.
-
-                 A sentence, and so the body rank in a quieter ink. The path inside it is data and
-                 the line around it is not — `docs/design.md` §Type: text never goes in mono, and a
-                 number that is part of a sentence is text. Set at the data rank this read as a
-                 whole line of code, which is what mono says about anything it is given. -->
-            <TextBlock
-                x:Name="CorpusText"
-                Style="{StaticResource BodyText}"
-                Foreground="{StaticResource SecondaryTextBrush}"
-                TextWrapping="Wrap" />
-
             <ScrollViewer MaxHeight="180">
                 <TextBlock
                     x:Name="OutputText"
@@ -657,6 +607,12 @@
              reached from the meeting and returns to it, and the meeting keeps its recording —
              paused — for as long as this is up. -->
         <local:ClassifyingAMeeting x:Name="Classifying" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
+
+        <!-- The settings, in that same room. It is the one of the four that is not about a meeting
+             at all: it is reached from the gear above rather than from the list, which is why it
+             wins the room over all three of the others. A meeting under way keeps the strip while
+             it is up, exactly as it does behind the raised list. -->
+        <local:Configuracion x:Name="Settings" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
 
         <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" Margin="6,0,6,0">
             <TextBlock

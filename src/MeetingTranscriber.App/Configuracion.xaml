@@ -1,0 +1,261 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="MeetingTranscriber.App.Configuracion"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MeetingTranscriber.App"
+    xmlns:loc="using:MeetingTranscriber.Presentation"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- The one screen that lives apart, and everything on it is an answer about this install
+         rather than about the next meeting. Four blocks, in the artboard's own order: what should
+         happen when a recording ends, what runs it, who is using the application and in which
+         language, and where the corpus is.
+
+         The first block is the whole reason this screen exists. Choosing between transcribing and
+         summarising stopped being a question per meeting and became a preference set once, so it
+         is asked here, before any recording, and nothing asks again — which is what makes the
+         presses on a meeting's own row load-bearing rather than a convenience.
+
+         Neither engine is a picker. `docs/design.md` says there is one transcription engine and one
+         summariser, so neither is a choice: what is drawn is the answer with its cost beside it,
+         and a *Descargar* that downloads nothing is the live control that does nothing this
+         repository refuses outright — so the row for a model that does not exist is not drawn at
+         all.
+
+         A sub-screen of the window and not a window of its own, the way the meeting screen and the
+         filing screen are: it is reached from the gear on the front door and returns there, and
+         a meeting under way keeps its strip above it for the whole of that. -->
+
+    <Grid x:Name="Root" RowSpacing="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- The header, in the shape the meeting screen's is. The way back does not name where back
+             is, and that is the one place this differs from its siblings: the meeting screen is
+             reached from the list and returns to it, and this one is reached from wherever the
+             window happened to be. -->
+        <Grid Grid.Row="0" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Button
+                x:Name="BackButton"
+                Grid.Column="0"
+                VerticalAlignment="Center"
+                Style="{StaticResource ButtonAtTheMargin}"
+                Click="OnBack"
+                Content="{x:Bind In(loc:UiTexts.BackFromSettings)}" />
+
+            <TextBlock
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Text="{x:Bind In(loc:UiTexts.Settings)}"
+                Style="{StaticResource SubScreenTitleText}" />
+        </Grid>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="18" MaxWidth="760" HorizontalAlignment="Left">
+                <!-- What happens when a recording ends: three options, one chosen, on tarjeta. A
+                     set of more than two is a radio row, and every part of how one is drawn is
+                     Olivo's `Option`.
+
+                     The group goes dead when the corpus is not reachable, which is the rule the
+                     row about who is using the application already applies one block down: the
+                     answer has nowhere to be kept, the refusal is already on screen naming the
+                     folder, and a press that would fail is worse than one that is plainly not
+                     available. -->
+                <Border Style="{StaticResource Card}" Padding="{StaticResource LargeCardPadding}">
+                    <RadioButtons
+                        x:Name="AfterARecordingOptions"
+                        Header="{x:Bind In(loc:UiTexts.WhenARecordingEnds)}">
+                        <RadioButton
+                            x:Name="AfterTranscribeAndSummarise"
+                            Style="{StaticResource Option}"
+                            Checked="OnAfterARecordingChosen"
+                            Content="{x:Bind In(loc:UiTexts.TranscribeItAndSummariseIt)}" />
+                        <RadioButton
+                            x:Name="AfterTranscribe"
+                            Style="{StaticResource Option}"
+                            Checked="OnAfterARecordingChosen"
+                            Content="{x:Bind In(loc:UiTexts.OnlyTranscribeIt)}" />
+                        <RadioButton
+                            x:Name="AfterNothing"
+                            Style="{StaticResource Option}"
+                            Checked="OnAfterARecordingChosen"
+                            Content="{x:Bind In(loc:UiTexts.DoNothingWhenItEnds)}" />
+                    </RadioButtons>
+                </Border>
+
+                <!-- The two engines, side by side, each on its own card because they are charged
+                     separately: if one of the two fails the other is already done and is not paid
+                     for again, which is the sentence at the foot of this screen.
+
+                     Written out and not built from a list, which is the one thing about this block
+                     worth arguing. `docs/design.md` says a model on this machine is one more row in
+                     both lists rather than a special case — and it is: one more row here is one
+                     more pair of lines here. A loop over a list of one would be preparation for a
+                     shape nobody has drawn, and the shape is already known to be different, because
+                     a local model brings a size, a download and a state none of these two have. -->
+                <Grid ColumnSpacing="18">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource Card}" Padding="{StaticResource SmallCardPadding}">
+                        <StackPanel Spacing="8">
+                            <TextBlock
+                                Text="{x:Bind In(loc:UiTexts.TranscribeWith)}"
+                                Style="{StaticResource BodyText}"
+                                Foreground="{StaticResource SecondaryTextBrush}" />
+                            <StackPanel Spacing="2">
+                                <TextBlock
+                                    Text="{x:Bind In(loc:UiTexts.TheEngineThatTranscribes)}"
+                                    Style="{StaticResource BodyText}" />
+
+                                <!-- The data rank, in a quieter ink: until a run produces a number
+                                     this is `docs/design.md`'s placeholder standing where a figure
+                                     will go, and a placeholder is not a sentence. -->
+                                <TextBlock
+                                    Text="{x:Bind In(loc:UiTexts.WhatAMinuteCosts)}"
+                                    Style="{StaticResource DataText}"
+                                    Foreground="{StaticResource SecondaryTextBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="1" Style="{StaticResource Card}" Padding="{StaticResource SmallCardPadding}">
+                        <StackPanel Spacing="8">
+                            <TextBlock
+                                Text="{x:Bind In(loc:UiTexts.SummariseWith)}"
+                                Style="{StaticResource BodyText}"
+                                Foreground="{StaticResource SecondaryTextBrush}" />
+                            <StackPanel Spacing="2">
+                                <TextBlock
+                                    Text="{x:Bind In(loc:UiTexts.TheEngineThatSummarises)}"
+                                    Style="{StaticResource BodyText}" />
+                                <TextBlock
+                                    Text="{x:Bind In(loc:UiTexts.WhatItCosts)}"
+                                    Style="{StaticResource DataText}"
+                                    Foreground="{StaticResource SecondaryTextBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Who is using the application, and the language it is read in. Moved here off
+                     the front door whole, handlers and all: both are answers about this install,
+                     and the front door only carried them until this screen existed.
+
+                     It is one field and one press whether it is being answered for the first time
+                     or corrected afterwards — the asking is the sentence under it, which is on
+                     screen exactly while nobody has answered. The affiliation the design asks about
+                     is not here and is not missing: `docs/design.md` says the first screen of an
+                     application is not where somebody enumerates their jobs, and the `Persona`
+                     dialogue is where one is added. -->
+                <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBox
+                            x:Name="WhoIsUsingThisBox"
+                            MinWidth="240"
+                            Style="{StaticResource TypedField}"
+                            Header="{x:Bind In(loc:UiTexts.WhoIsUsingTheApplication)}"
+                            TextChanged="OnWhoIsUsingThisTyped" />
+                        <Button
+                            x:Name="WhoIsUsingThisButton"
+                            VerticalAlignment="Bottom"
+                            Style="{StaticResource NormalButtonOnPaper}"
+                            Click="OnKeepWhoIsUsingThis"
+                            Content="{x:Bind In(loc:UiTexts.Save)}" />
+
+                        <!-- The language the application is **read** in, which is not the language
+                             a meeting is spoken in: that one is on the recording card, beside what
+                             it is about.
+
+                             Its label is beside it and not over it: a picker is a pill and a pill
+                             carries no header, so what it chooses is said as text. That text is
+                             also what a screen reader is given, by name. -->
+                        <TextBlock
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,0,7"
+                            Text="{x:Bind In(loc:UiTexts.Language)}"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{StaticResource SecondaryTextBrush}" />
+                        <ComboBox
+                            x:Name="LanguagePicker"
+                            MinWidth="150"
+                            VerticalAlignment="Bottom"
+                            Style="{StaticResource DropDown}"
+                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.Language)}"
+                            SelectionChanged="OnLanguageChosen" />
+                    </StackPanel>
+
+                    <!-- Left and not merely bounded. A `MaxWidth` on a block that stretches centres
+                         it, so this sentence stood in the middle of a window nothing else on the
+                         row was under — which a probe photographed. -->
+                    <TextBlock
+                        x:Name="NobodyHasSaidYet"
+                        HorizontalAlignment="Left"
+                        Text="{x:Bind In(loc:UiTexts.NobodyHasSaidWhoIsUsingThis)}"
+                        Style="{StaticResource BodyText}"
+                        Foreground="{StaticResource SecondaryTextBrush}"
+                        TextWrapping="Wrap"
+                        MaxWidth="640"
+                        Visibility="Collapsed" />
+                </StackPanel>
+
+                <!-- Where the corpus is, and which folder was refused when there is nowhere. This
+                     is the only line in the application that says which refusal it was, and the
+                     meetings list's own sentence — `UiTexts.TheCorpusCouldNotBeOpened` — sends
+                     somebody to this screen for it. It came here off the recording card with the
+                     row above, which is why that entry now names this screen and not that one.
+
+                     A sentence, and so the body rank in a quieter ink. The path inside it is data
+                     and the line around it is not — `docs/design.md` §Type: text never goes in
+                     mono, and a number that is part of a sentence is text.
+
+                     *Cambiar* is drawn on the artboard and is not here: relocating a corpus is a
+                     folder picker nothing in this application has yet, and a button that opens
+                     nothing is the live control that does nothing. So the line names the folder and
+                     offers nothing. -->
+                <StackPanel Spacing="4">
+                    <TextBlock
+                        Text="{x:Bind In(loc:UiTexts.WhereItIsKept)}"
+                        Style="{StaticResource BodyText}"
+                        Foreground="{StaticResource SecondaryTextBrush}" />
+                    <TextBlock
+                        x:Name="CorpusText"
+                        Style="{StaticResource BodyText}"
+                        Foreground="{StaticResource SecondaryTextBrush}"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+
+                <TextBlock
+                    Text="{x:Bind In(loc:UiTexts.EachIsPaidForSeparately)}"
+                    Style="{StaticResource BodyText}"
+                    Foreground="{StaticResource TertiaryTextBrush}"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Said where it happened rather than in a notice, which is what the filing screen already
+             does: a corpus that would not open and an answer that was refused are things about this
+             screen, and the two the design allows to stop a screen are a charge and adding a
+             person. -->
+        <TextBlock
+            x:Name="StatusText"
+            Grid.Row="2"
+            Style="{StaticResource BodyText}"
+            Foreground="{StaticResource PeakBrush}"
+            TextWrapping="Wrap"
+            Visibility="Collapsed" />
+    </Grid>
+</UserControl>

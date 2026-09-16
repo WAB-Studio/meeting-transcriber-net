@@ -5,6 +5,7 @@ using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
+using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.EntityFrameworkCore;
@@ -107,8 +108,12 @@ public sealed class PreparedRecording : IDisposable
 /// <param name="Audio">The row describing the meeting's audio, hashed as it was written.</param>
 /// <param name="Length">How long the meeting turned out to be, pauses included.</param>
 /// <param name="Queued">
-/// What stopping set going, which is nothing — see <see cref="WhatStoppingStarts"/>. Reported
-/// rather than assumed, so a caller reads the answer instead of the absence of one.
+/// What stopping actually set going: the work <c>MeetingWork</c> wrote a row for, and not what
+/// <see cref="WhatStoppingStarts"/> decided should be there. The two differ on the one path that
+/// matters — a finish run again over a meeting that already carries the job decides
+/// transcription and queues nothing — and both front ends say this line out loud to a person, so
+/// it has to be the fact. Reported rather than assumed, so a caller reads the answer instead of
+/// the absence of one.
 /// </param>
 public sealed record FinishedRecording(
     Guid MeetingId,
@@ -299,16 +304,17 @@ public static class MeetingRecordings
 
     /// <summary>
     /// What stopping does: the spools become the meeting's audio, the corpus is told how long the
-    /// meeting was, and nothing is set going.
+    /// meeting was, and what the person settled beforehand is queued.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Making the recording is not work that was started — it is the recording being finished. It
     /// costs nothing, reaches nothing off this machine, and produces the same bytes every time
     /// from the same spools, so doing it now rather than queueing it is what lets somebody play
-    /// the meeting the moment they stop it. What is deliberately not done here is everything that
-    /// would spend money or somebody's quota, and <see cref="WhatStoppingStarts"/> is the one
-    /// place that says so.
+    /// the meeting the moment they stop it. What is done here besides that is what the person
+    /// settled once, and nothing else: nothing spends money or somebody's quota for having been
+    /// asked by this method, and <see cref="WhatStoppingStarts"/> is the one place that says which
+    /// work a stop is allowed to queue at all.
     /// </para>
     /// <para>
     /// The audio lands in the meeting's folder through the corpus's own write, so the bytes and the
@@ -486,8 +492,8 @@ public static class MeetingRecordings
         corpus.SaveChanges();
 
         // The audio row is committed after the length and not before it — the reverse of the order
-        // these two lines used to sit in, and the same order `MeetingIntake.Record` and
-        // `AudioIntake.Filed` already write in. This save is the one that renames `audio.wav` into
+        // these two lines used to sit in, and the same order `MeetingArchive.Filed` writes in. This
+        // save is the one that renames `audio.wav` into
         // place, and that is the only step in this method nothing can undo, so it goes last:
         // everything that can still be refused for free has been asked and accepted before anything
         // irreversible happens. A save that throws above this line rolls back over a folder nothing
@@ -514,27 +520,44 @@ public static class MeetingRecordings
         // with one file `ArtifactReconciler.Check` names and a rebuild replaces. Inside, the same
         // refusal would roll the audio row back over a file already renamed into place — the trap
         // above — and the meeting could then never be finished without somebody deleting that file
-        // by hand. `AudioIntake.Filed` is the writer that still holds its card inside a transaction
-        // over an `ArtifactKind.Audio`, and it has the window this does not.
+        // by hand. `MeetingArchive.Filed` is the one other place this order is written, for every
+        // door a meeting arrives through, and it reaches the same answer for the same reason.
         //
         // Not because of the length: the card carries the meeting, when it started, the profile, the
         // language and the title, and says nothing about how long it is — which is what the sentence
         // here used to claim.
         MeetingManifest.Write(corpus, meeting.Id, now);
 
-        var queued = WhatStoppingStarts.For(meeting);
-        if (queued.Count > 0)
+        // After `filing.Commit()` and after the card, and that ordering is not a preference:
+        // `Finish` opens a bare transaction that refuses a caller holding one, and `MeetingWork`
+        // opens its own, so queueing inside this method's transaction would be the second
+        // `BeginTransaction` on a context already inside one. What that costs is stated in
+        // `WhatStoppingStarts`' own remarks and is the smaller of the two prices — a machine that
+        // dies in this gap leaves a meeting recorded, playable and un-queued, which is one press on
+        // its row; the other order leaves the audio row rolled back under a file already renamed
+        // into place, which nothing can repair.
+        //
+        // The clock is frozen at the instant this finish was asked about, so the row a stop writes
+        // carries the moment the recording ended rather than the moment the write reached SQLite.
+        // This method reads the machine's clock nowhere, and the constructor is what says so.
+        var settled = new CorpusSettings(corpus).WhenARecordingEnds();
+        var work = new MeetingWork(corpus, now);
+        List<JobKind> started = [];
+
+        foreach (var kind in WhatStoppingStarts.For(settled))
         {
-            // Nothing here queues, because the answer has always been nothing. Whoever makes it
-            // answer otherwise is changing what stopping does, and this is the line that tells them
-            // the queueing has to be written — rather than the meeting quietly waiting for work
-            // that was decided on and never created.
-            throw new RecordingException(
-                $"Stopping meeting {meeting.Id} was answered with {string.Join(", ", queued)}, and "
-                + "nothing here queues anything. What decides changed without what acts on it.");
+            // Already queued, already run, or a stage this meeting cannot be offered: all three are
+            // left alone and none is a failure. A recovery finish over a meeting somebody already
+            // asked about is the case, and it must not die on its last line with the audio
+            // committed — which is why the question is asked inside the transaction that answers
+            // it and comes back as nothing rather than as a throw.
+            if (work.TakeIfItIsOffered(meeting.Id, kind) is not null)
+            {
+                started.Add(kind);
+            }
         }
 
-        return new FinishedRecording(meeting.Id, audio, made.Length, queued);
+        return new FinishedRecording(meeting.Id, audio, made.Length, started);
     }
 
     /// <summary>

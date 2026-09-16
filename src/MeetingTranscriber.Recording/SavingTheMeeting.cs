@@ -3,13 +3,14 @@ namespace MeetingTranscriber.Recording;
 /// <summary>What saving a meeting does, in the order it does it.</summary>
 /// <remarks>
 /// These are the whole of it, and the order they are declared in is the order they happen in —
-/// which is what <see cref="SavingTheMeeting.Steps"/> reads. There is no member for the work
-/// stopping sets going because stopping sets nothing going: <see cref="WhatStoppingStarts"/>
-/// answers with nothing and <c>MeetingRecordings.Finish</c> refuses any other answer, so a step
-/// for it would be one a save never runs — and a screen showing it would say a meeting is about to
-/// be transcribed on an install where it is not. Whoever makes stopping queue something adds the
-/// member here, and every screen holding this enum to naming all of it goes red until it has words
-/// for it.
+/// which is what <see cref="SavingTheMeeting.Steps"/> reads. <b>Stopping does queue what the person
+/// settled, and there is still no member for it.</b> The reason changed with the fact: it used to
+/// be that nothing was ever queued, and it is now that queueing is one row written after the last
+/// byte of audio is on disk — inside <see cref="WritingTheMeetingDown"/> by every reading a person
+/// could have of it, and over in the time it takes to say it. These two are what a person watches
+/// for minutes while a long meeting is made; a step that could only ever be drawn already finished
+/// is not progress, it is a line that appears and goes in one frame. What would bring a member here
+/// is work a save waits on — something that runs the job rather than writing it down.
 /// </remarks>
 public enum SavingWork
 {
