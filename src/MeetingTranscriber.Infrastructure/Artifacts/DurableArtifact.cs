@@ -590,6 +590,33 @@ public sealed class StagedArtifact : IDisposable
     /// a refusal found at the move would already have vacated the destinations ahead of it. The
     /// sentence is the same one either way, so nothing a single write does changes.
     /// </para>
+    /// <para>
+    /// <b>The row is asked only once the file is gone, and that is the whole of what it adds.</b>
+    /// A disk that lost a file answers neither question, and the corpus still records what was paid
+    /// for at that path — so a caller that picks a meeting by anything other than the bytes is the
+    /// way in: somebody who lost their <c>deepgram.json</c> hands a different response over, and
+    /// with only the file asked about, the corpus rebinds the paid row to it and then reports
+    /// itself sound. Equal hashes are not a refusal, because over a missing file the same bytes
+    /// filed again is the one thing that puts the corpus back; with the file still there the check
+    /// above has already refused, so this never softens a refusal that was going to happen anyway.
+    /// </para>
+    /// <para>
+    /// <b>This is the rule, and two callers above it still carry their own.</b>
+    /// <c>MeetingIntake.ReceiveInto</c> refuses a second response for a meeting keyed on the kind
+    /// rather than the path, and gets there first with a sentence about a paid transcription that
+    /// this layer could not write; <c>MeetingRecordings.Filed</c> refuses a second recording and
+    /// answers the filed row when the bytes agree, which is a return value and not only a refusal.
+    /// Neither is redundant with this and neither is reached by every writer — which is why the
+    /// invariant is stated here, where every artifact of this corpus is written. The comparison is
+    /// <see cref="StringComparison.OrdinalIgnoreCase"/> for one reason: <c>Filed</c> asks the same
+    /// question that way, and two spellings of "are these the same bytes" that could ever disagree
+    /// is a meeting one of them lets be finished and the other never will.
+    /// </para>
+    /// <para>
+    /// It is keyed on the path, like the row lookup above it and like the only unique index
+    /// <c>artifacts</c> carries. A second artifact of one kind for one meeting at another path is a
+    /// question this cannot ask and <c>ReceiveInto</c>'s guard can.
+    /// </para>
     /// </remarks>
     private Artifact? Refusals()
     {
@@ -612,6 +639,16 @@ public sealed class StagedArtifact : IDisposable
         if (!Kind.MayBeReplaced() && StillThere(CorpusFiles.Locate(_corpus.Root, RelativePath)))
         {
             throw AlreadyThere();
+        }
+
+        // Second, and never before the file: with the file standing there the sentence above is
+        // the true one, and this one would tell somebody their file went missing and send them to
+        // `restore`, which refuses a path that has a file.
+        if (!Kind.MayBeReplaced()
+            && artifact is not null
+            && !string.Equals(artifact.Sha256, Sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            throw AlreadyRecorded(artifact);
         }
 
         return artifact;
@@ -682,6 +719,13 @@ public sealed class StagedArtifact : IDisposable
         new($"'{RelativePath}' is already there and a {Kind} is never rewritten. Writing it "
             + "again would destroy the only copy of something that cannot be obtained a "
             + "second time.");
+
+    private ArtifactWriteException AlreadyRecorded(Artifact artifact) =>
+        new($"'{RelativePath}' is this meeting's {Kind} and this corpus already records different "
+            + $"bytes there - {artifact.Sha256[..12]}… and not {Sha256[..12]}…. A {Kind} is never "
+            + "rewritten, and the file having gone missing does not make these the bytes that were "
+            + "paid for. Put the original back with `restore`, or file this one onto a meeting of "
+            + "its own.");
 
     /// <summary>
     /// Throws away a write that was never put in place. Doing nothing would be safe too — an
