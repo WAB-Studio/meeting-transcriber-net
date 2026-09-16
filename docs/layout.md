@@ -57,8 +57,10 @@ parsing, a report and an exit code. It targets Windows because `capture` does, a
 there rather than only in the window because drift is claimed over two hours — a measurement
 nobody repeats by clicking. It is where the whole path from a paid response to an answer
 can be exercised without automating a window — `tests/MeetingTranscriber.Cli.Tests/` walks it —
-and it is the half of the alias that exists: nothing packages it yet, so an installed build has no
-`meeting-transcriber` on the PATH until ISC-113 is closed.
+and it is one of the two faces the alias reaches: `MeetingTranscriber.App` publishes it into the
+package and `Package.appxmanifest` declares `meeting-transcriber` on the PATH beside
+`meeting-transcriber-mcp`. What ISC-113 still waits on is a run: nobody has installed a build and
+started either name.
 
 **One exception, named, and it is a live run.** `LiveCheck` and `SendingMark` are rules and they are
 here: which files a run sends, how much audio that is, what the ceiling allows, what a person

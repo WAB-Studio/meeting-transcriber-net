@@ -5,7 +5,8 @@
   xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
-  IgnorableNamespaces="uap rescap">
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  IgnorableNamespaces="uap rescap uap5">
 
   <Identity
     Name="7feb8c95-4553-46f0-a036-6574f4cd7cb4"
@@ -42,6 +43,77 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
+    </Application>
+
+    <!--
+      The two faces of this product used from outside its window, each an `<Application>` of its own
+      because that is what carries an app execution alias.
+
+      **Why an alias.** Inside an MSIX the install directory is read-only, has closed ACLs, and its
+      path carries the version, so nothing outside the package can name either executable by path and
+      a path written into an MCP client's config today stops existing at the next update. An alias is
+      a name on the user's PATH that survives the update. It ends in `.exe` because
+      `ST_ExecutableNoPath` requires it; what a person types is `meeting-transcriber`.
+
+      **One `<Application>` each, and not one carrying both.** `MakeAppx` refuses two
+      `windows.appExecutionAlias` extensions under one application - one extension binds one
+      `Executable` - whatever the schema allows. `AppListEntry="none"` keeps a console face out of
+      the Start menu while leaving it activatable, and `uap:VisualElements` is required whatever
+      that says, which is why these two carry logos nothing draws. **The window stays first**:
+      `tools/MeetingTranscriber.UiProbe/ApplicationId.cs` activates the first `<Application>`, and
+      `PackageManifestTests` asserts the order for that reason.
+
+      **`uap5` is in `IgnorableNamespaces` by the tooling's convention, and what that buys is a
+      failure mode.** Nothing in this package's range ignores it. What being ignorable means is that
+      a mis-namespaced or malformed alias block is *dropped* by the appx tooling rather than refused
+      - green build, no alias - which only the generated `AppxManifest.xml` can show, and
+      `PackagedAppTests` is what reads it.
+
+      docs/packaging.md §3.1 is the rest: what gets these executables into the package, and what an
+      alias costs on a machine that installs two builds.
+    -->
+    <Application Id="Cli"
+      Executable="meeting-transcriber.exe"
+      EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        AppListEntry="none"
+        DisplayName="Meeting Transcriber command line"
+        Description="Diagnosis, import, rebuild, recovery and capture from a prompt."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <uap5:Extension
+          Category="windows.appExecutionAlias"
+          Executable="meeting-transcriber.exe"
+          EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias>
+            <uap5:ExecutionAlias Alias="meeting-transcriber.exe" />
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+
+    <Application Id="Mcp"
+      Executable="meeting-transcriber-mcp.exe"
+      EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        AppListEntry="none"
+        DisplayName="Meeting Transcriber corpus server"
+        Description="Answers questions about recorded meetings over MCP, read-only."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <uap5:Extension
+          Category="windows.appExecutionAlias"
+          Executable="meeting-transcriber-mcp.exe"
+          EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias>
+            <uap5:ExecutionAlias Alias="meeting-transcriber-mcp.exe" />
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
+      </Extensions>
     </Application>
   </Applications>
 

@@ -101,6 +101,92 @@ internal static class PackageManifest
         ];
     }
 
+    /// <summary>
+    /// Every app execution alias <paramref name="manifest"/> declares, spelled
+    /// <c>Executable → Alias</c>, sorted ordinally.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both halves, because they are two separate things to get wrong: the executable is what the
+    /// package has to carry, and the alias is the name that goes on the <c>PATH</c>.
+    /// <c>Package.appxmanifest</c> says why there is an alias at all.
+    /// </para>
+    /// <para>
+    /// By <c>{namespace}LocalName</c> and never by prefix, for the reason
+    /// <see cref="CapabilitiesOf"/> gives at length. Here that has a second edge: <c>uap5</c> is in
+    /// the manifest's <c>IgnorableNamespaces</c>, so a block written into the wrong namespace is
+    /// silently dropped by the tooling rather than refused — which is a difference between the two
+    /// documents, and invisible inside either one.
+    /// </para>
+    /// <para>
+    /// Found by descending rather than by walking to one <c>Application</c>: the schema allows more
+    /// than one shape and which one the tooling took is not what these facts are about. A manifest
+    /// declaring no alias answers an empty list, so a caller fails on its own sentence rather than
+    /// on a missing element here.
+    /// </para>
+    /// </remarks>
+    internal static IReadOnlyList<string> AliasesOf(XDocument manifest)
+    {
+        return
+        [
+            .. AliasExtensionsIn(manifest)
+                .SelectMany(extension => extension
+                    .Descendants()
+                    .Where(element => element.Name.LocalName == "ExecutionAlias")
+                    .Select(alias =>
+                        $"{extension.Attribute("Executable")?.Value} → "
+                        + $"{alias.Attribute("Alias")?.Value}"))
+                .Order(StringComparer.Ordinal),
+        ];
+    }
+
+    /// <summary>
+    /// The executables <paramref name="manifest"/> puts an alias over, each once.
+    /// </summary>
+    /// <remarks>
+    /// What a fact about the *package* asks of the manifest: the set of executables that have to be
+    /// inside it. Derived rather than written down again, so a face arriving is a face the packaged
+    /// facts start checking without anybody remembering to add it to a list.
+    /// </remarks>
+    internal static IReadOnlyList<string> AliasedExecutablesIn(XDocument manifest)
+    {
+        return
+        [
+            .. AliasExtensionsIn(manifest)
+                .Select(extension => extension.Attribute("Executable")?.Value ?? string.Empty)
+                .Where(executable => executable.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.Ordinal),
+        ];
+    }
+
+    /// <summary>Every <c>windows.appExecutionAlias</c> extension, wherever it sits.</summary>
+    private static IEnumerable<XElement> AliasExtensionsIn(XDocument manifest) =>
+        manifest.Descendants()
+            .Where(element =>
+                element.Name.LocalName == "Extension"
+                && element.Attribute("Category")?.Value == "windows.appExecutionAlias");
+
+    /// <summary>
+    /// The <c>Id</c> of each <c>&lt;Application&gt;</c>, in the order the manifest declares them.
+    /// </summary>
+    /// <remarks>
+    /// Order, which nothing else here reads, because one thing outside this suite depends on it:
+    /// <c>tools/MeetingTranscriber.UiProbe/ApplicationId.cs</c> activates the <em>first</em>
+    /// <c>&lt;Application&gt;</c>. Every other list in this class is sorted precisely so document
+    /// order cannot matter; this one is the exception and says so.
+    /// </remarks>
+    internal static IReadOnlyList<string> ApplicationIdsOf(XDocument manifest)
+    {
+        return
+        [
+            .. Only(manifest, "Applications")
+                .Elements()
+                .Where(element => element.Name.LocalName == "Application")
+                .Select(element => element.Attribute("Id")?.Value ?? string.Empty),
+        ];
+    }
+
     /// <summary>What the application declares, which is <see cref="CapabilitiesOf"/> the source.</summary>
     internal static IReadOnlyList<string> Declared() => CapabilitiesOf(Source());
 

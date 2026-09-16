@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Security.Cryptography.Pkcs;
 using System.Security.Cryptography.X509Certificates;
+using System.Text.Json;
 using System.Xml.Linq;
 
 namespace MeetingTranscriber.App.Tests;
@@ -332,6 +333,137 @@ public class PackagedAppTests
 
         names.Contains("Assets/Fonts/SpaceGrotesk.ttf").ShouldBeTrue(Fonts);
         names.Contains("Assets/Fonts/JetBrainsMono.ttf").ShouldBeTrue(Fonts);
+    }
+
+    /// <summary>
+    /// That the package's own manifest declares the same aliases the source one does.
+    /// </summary>
+    /// <remarks>
+    /// <b>This is not the source fact read twice.</b> <c>uap5</c> is in the source manifest's
+    /// <c>IgnorableNamespaces</c>, which is the tooling's convention and is what makes an alias
+    /// block the appx tooling does not understand — a mistyped namespace, a malformed child — get
+    /// <em>dropped</em> from the generated manifest rather than refused. The build stays green, the
+    /// package installs, and nothing is on the <c>PATH</c>. The generated <c>AppxManifest.xml</c> is
+    /// the only document that can show that, and this is the only thing that reads it.
+    /// </remarks>
+    [Fact]
+    public void The_package_declares_exactly_the_aliases_the_manifest_does()
+    {
+        using var msix = ZipFile.OpenRead(Packaged().FullName);
+
+        PackageManifest.AliasesOf(Manifest(msix))
+            .ShouldBe(
+                PackageManifest.AliasesOf(PackageManifest.Source()),
+                "the names this package puts on a user's PATH are not the ones "
+                + "src/MeetingTranscriber.App/Package.appxmanifest declares. If the package's list "
+                + "is the short one, the appx tooling dropped an alias block instead of refusing "
+                + "it - uap5 is in IgnorableNamespaces, so a mis-namespaced or malformed extension "
+                + "leaves the build green. Otherwise the package was built from a different "
+                + "manifest; build it again - see docs/packaging.md.");
+    }
+
+    /// <summary>
+    /// That every face the manifest puts an alias over is inside the package, whole.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An alias and the executable it names are two halves of one thing declared in two files, and
+    /// the package is where they meet. Without this, a manifest declaring
+    /// <c>meeting-transcriber-mcp.exe</c> over a package that does not carry it installs cleanly and
+    /// answers the prompt with <em>the term is not recognized</em> — on somebody else's machine,
+    /// after the hand-over.
+    /// </para>
+    /// <para>
+    /// <b>The list of faces is read off the manifest, not written down here.</b> A third face is
+    /// then one <c>&lt;Application&gt;</c> block and one <c>&lt;Face&gt;</c> row, and this starts
+    /// checking it without anybody remembering to. All four files each, because all four are load
+    /// bearing: an apphost with no <c>.deps.json</c> beside it cannot resolve an assembly and one
+    /// with no <c>.runtimeconfig.json</c> does not start at all.
+    /// </para>
+    /// <para>
+    /// <b>The two assemblies are what say the by-name diff really ran.</b> What puts the faces in is
+    /// a diff of each face's publish against the application's own, and these are the only two names
+    /// in the package the application has never referenced — so they are the two a fixed list would
+    /// have dropped, leaving a server that starts and throws on its first tool call.
+    /// </para>
+    /// <para>
+    /// <b>And that all three runtime configs name one framework.</b> A second apphost works inside a
+    /// self-contained layout because every runtime config in it declares the same
+    /// <c>includedFrameworks</c>; two that disagreed would be a face bound against a runtime the
+    /// package does not carry, which no other fact here would see.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void The_package_carries_every_face_the_manifest_puts_an_alias_over()
+    {
+        using var msix = ZipFile.OpenRead(Packaged().FullName);
+        var names = Names(msix);
+
+        const string Missing =
+            "Package.appxmanifest declares an app execution alias over this face, so a package "
+            + "without every one of its four files installs and then fails at the prompt. "
+            + "MeetingTranscriber.App.csproj's PublishTheCommandLineFacesIntoThePackage is what "
+            + "puts them here - see docs/packaging.md §3.1.";
+
+        foreach (var face in PackageManifest.AliasedExecutablesIn(PackageManifest.Source()))
+        {
+            var name = Path.GetFileNameWithoutExtension(face);
+
+            names.Contains(face).ShouldBeTrue($"{face}: {Missing}");
+            names.Contains($"{name}.dll").ShouldBeTrue($"{name}.dll: {Missing}");
+            names.Contains($"{name}.deps.json").ShouldBeTrue($"{name}.deps.json: {Missing}");
+            names.Contains($"{name}.runtimeconfig.json")
+                .ShouldBeTrue($"{name}.runtimeconfig.json: {Missing}");
+        }
+
+        const string Diffed =
+            "the MCP server is inside this package and an assembly it is written against is not: "
+            + "each face's publish is diffed against the application's own by name, and this is a "
+            + "name the application does not have. If this is the only thing red here, the diff "
+            + "stopped running and what shipped is a server that starts and throws on its first "
+            + "tool call.";
+
+        names.Contains("ModelContextProtocol.Core.dll").ShouldBeTrue(Diffed);
+        names.Contains("Microsoft.Extensions.AI.Abstractions.dll").ShouldBeTrue(Diffed);
+
+        Frameworks(msix).ShouldHaveSingleItem(
+            "the runtime configs in this package do not all name one framework, so one of these "
+            + "faces is bound against a runtime version the package does not carry. A second "
+            + "apphost runs out of a self-contained layout only because they agree.");
+    }
+
+    /// <summary>
+    /// Every <c>includedFrameworks</c> entry every runtime config in the package declares, spelled
+    /// <c>Name version</c>, deduplicated — so one entry means they agree.
+    /// </summary>
+    private static HashSet<string> Frameworks(ZipArchive msix)
+    {
+        var declared = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var entry in msix.Entries.Where(entry =>
+            entry.FullName.EndsWith(".runtimeconfig.json", StringComparison.OrdinalIgnoreCase)))
+        {
+            using var carried = entry.Open();
+            using var configuration = JsonDocument.Parse(carried);
+
+            if (!configuration.RootElement.TryGetProperty("runtimeOptions", out var options)
+                || !options.TryGetProperty("includedFrameworks", out var frameworks))
+            {
+                throw new InvalidOperationException(
+                    $"{entry.FullName} declares no includedFrameworks, so it is not the runtime "
+                    + "config of a self-contained build. Everything in this package is published "
+                    + "self-contained - see docs/packaging.md §3.1.");
+            }
+
+            foreach (var framework in frameworks.EnumerateArray())
+            {
+                declared.Add(
+                    $"{framework.GetProperty("name").GetString()} "
+                    + framework.GetProperty("version").GetString());
+            }
+        }
+
+        return declared;
     }
 
     /// <summary>The manifest the package carries, which is not the one in <c>src/</c>.</summary>
