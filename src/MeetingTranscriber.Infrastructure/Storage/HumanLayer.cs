@@ -4,6 +4,8 @@ using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace MeetingTranscriber.Infrastructure.Storage;
 
 /// <summary>
@@ -671,6 +673,84 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
             context.SpeakerAssignments.Remove(assignment);
             context.SaveChanges();
         }
+    }
+
+    /// <summary>
+    /// Takes off this meeting every assignment hanging off a label none of its turns carries, and
+    /// answers how many went.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A label is a place in the audio, and an assignment hangs off one. A meeting transcribed
+    /// again into a different set of labels leaves rows asserting that somebody spoke in a meeting
+    /// where, as this corpus now reads it, they did not — <c>ISA.md</c> records that happening
+    /// once, to the Python importer: every assignment matched no turn, no name reached the
+    /// transcript, and nothing failed. Search already hides them behind an <c>EXISTS</c> over
+    /// <c>utterances</c>, which is the reader's half; this is the writer's, and it is deliberately
+    /// the same predicate inverted rather than a second way of deciding the same thing.
+    /// </para>
+    /// <para>
+    /// <b>It is told a meeting and nothing else.</b> Handing it the labels would put the
+    /// destructive decision in the caller — a set computed one row wrong deletes work nothing can
+    /// put back, and an empty one takes every assignment the meeting has. Deriving it from the
+    /// turns costs one subquery and leaves a caller no way to be wrong, which is worth more here
+    /// than anywhere else in this type: these are the rows a person made by listening.
+    /// </para>
+    /// <para>
+    /// So it reads the turns as they stand, and the caller's job is to call it once they are the
+    /// meeting's: inside the swap's own transaction, after the new turns are saved, so a swap that
+    /// rolls back takes this with it. The rows are only wrong once the new turns are the meeting's.
+    /// </para>
+    /// <para>
+    /// It is here and not in the renderer for the reason the whole type exists: the human layer has
+    /// one writer. A second place deleting these rows is how somebody's name ends up on another
+    /// person's words, which is the invariant this file is on the audit floor for.
+    /// </para>
+    /// <para>
+    /// <b>Nothing a person can press makes a stale row yet.</b> <see cref="Assign"/> has one caller
+    /// in this repository — <see cref="SettleTheMicrophone"/>, which writes the label the render
+    /// just produced — so today the delete is a rule held ahead of the screen that will break it,
+    /// not a repair of damage somebody has. The screen that offers naming a voice is what makes it
+    /// live, and this is here first because a delete of the human layer is not something to invent
+    /// under the pressure of a bug report.
+    /// </para>
+    /// <para>
+    /// <b>A delete and not a refusal</b>, which is the opposite of what
+    /// <c>MeetingRenderer.RefuseStrandedClaims</c> does with the other unrepeatable rows in that
+    /// method — and the difference is what the row would mean afterwards. A claim citing a turn
+    /// that is gone would point at nothing, so the corpus would lie about its own evidence and the
+    /// render has to stop. A stale assignment is already wrong before this runs; taking it off is
+    /// restoring what the corpus says, not losing what somebody did. What is still owed is saying
+    /// so: the count comes back and no surface prints it, so a person whose row went learns
+    /// nothing.
+    /// </para>
+    /// <para>
+    /// The one method here that does not save, because it stages nothing: the delete goes straight
+    /// to the database, which is <c>MeetingRenderer.Forget</c>'s argument about the turns beside
+    /// these rows. Rows this context had already read are detached, because a bulk statement leaves
+    /// them describing rows that may be gone. Only <see cref="EntityState.Unchanged"/> ones: a
+    /// staged insert is not in the database and the statement did not touch it, and a staged edit
+    /// whose row the statement took comes back as a concurrency refusal, which is the loud answer
+    /// and the one worth keeping.
+    /// </para>
+    /// </remarks>
+    public int ForgetVoicesNoTurnHas(Guid meetingId)
+    {
+        var gone = context.SpeakerAssignments
+            .Where(row => row.MeetingId == meetingId
+                && !context.Utterances.Any(turn =>
+                    turn.MeetingId == meetingId && turn.SpeakerLabel == row.SpeakerLabel))
+            .ExecuteDelete();
+
+        foreach (var read in context.ChangeTracker.Entries<SpeakerAssignment>()
+            .Where(entry => entry.State is EntityState.Unchanged
+                && entry.Entity.MeetingId == meetingId)
+            .ToArray())
+        {
+            read.State = EntityState.Detached;
+        }
+
+        return gone;
     }
 
     /// <summary>

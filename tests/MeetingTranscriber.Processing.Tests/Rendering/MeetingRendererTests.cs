@@ -476,7 +476,88 @@ public class MeetingRendererTests
             .ShouldContain("## Jo — ");
     }
 
-    /// <summary>Somebody saying who a speaker label is, which reaches the transcript and no row.</summary>
+    /// <summary>
+    /// A label is a place in the audio, and a meeting re-derived into another set of them leaves
+    /// rows saying somebody spoke where this corpus now reads nobody. The one somebody resolved on
+    /// a label the new turns still carry is the control: it is the row that must not go.
+    /// </summary>
+    /// <remarks>
+    /// Both labels come from <see cref="SpeakerLabels.For"/> and neither is spelled out, which is
+    /// the criterion <c>ISA.md</c> records against the importer. The stranded one is a speaker
+    /// number the fixture's loopback does not reach; that it is stranded is asserted off the turns
+    /// the render actually wrote rather than assumed.
+    /// </remarks>
+    [Fact]
+    public void Rendering_a_meeting_into_new_labels_leaves_no_assignment_pointing_at_a_label_that_is_gone()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+        var carried = SpeakerLabels.For(AudioChannel.Microphone, speaker: 0);
+        var stranded = SpeakerLabels.For(AudioChannel.Loopback, speaker: 7);
+
+        Resolved(context, meeting, carried, "Jo");
+        Resolved(context, meeting, stranded, "Renata");
+
+        MeetingRenderer.Render(context, meeting, When);
+
+        var labels = Turns(context, meeting)
+            .Select(turn => turn.Split('|')[1])
+            .ToHashSet(StringComparer.Ordinal);
+
+        labels.ShouldContain(carried);
+        labels.ShouldNotContain(stranded);
+        context.SpeakerAssignments.AsNoTracking()
+            .Select(row => row.SpeakerLabel)
+            .ToList()
+            .ShouldBe([carried]);
+    }
+
+    /// <summary>
+    /// A render the corpus refuses costs a meeting nothing at all — including the rows somebody
+    /// made by listening, which are the most expensive kind to lose for a render that did not
+    /// happen. The delete lives inside the swap's savepoint so that stays true however the refusal
+    /// arrives.
+    /// </summary>
+    /// <remarks>
+    /// Driven through the same <c>ck_utterances_confidence</c> refusal
+    /// <see cref="A_render_outside_a_transaction_leaves_a_refused_meeting_the_turns_it_had"/> uses,
+    /// and for the same reason: it is the one refusal that arrives from inside the save with the
+    /// swap already under way. Red the day the delete is taken outside the swap's transaction —
+    /// which is what putting it in <c>Project</c>, beside <c>SettleTheMicrophone</c>, would do on
+    /// the path where the render holds no transaction of its own.
+    /// </remarks>
+    [Fact]
+    public void A_render_that_was_refused_leaves_every_assignment_where_it_was()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+        MeetingRenderer.Render(context, meeting, When);
+        Resolved(context, meeting, SpeakerLabels.For(AudioChannel.Loopback, speaker: 7), "Renata");
+
+        var had = Voices(context);
+        had.ShouldNotBeEmpty();
+        OffTheScale(context, corpus.Root, meeting);
+
+        Should.Throw<DbUpdateException>(() => MeetingRenderer.Render(context, meeting, When));
+
+        Voices(context).ShouldBe(had);
+    }
+
+    /// <summary>Every assignment in the corpus as text, for comparing across a refused render.</summary>
+    private static List<string> Voices(CorpusDbContext context) =>
+    [
+        .. context.SpeakerAssignments.AsNoTracking()
+            .OrderBy(row => row.SpeakerLabel)
+            .AsEnumerable()
+            .Select(row => $"{row.MeetingId}|{row.SpeakerLabel}|{row.PersonId}|{row.AssignedBy}"),
+    ];
+
+    /// <summary>
+    /// Somebody saying who a speaker label is: the row a render reads to put a name in the
+    /// transcript, written here without the screen that will offer it.
+    /// </summary>
     private static void Resolved(CorpusDbContext context, Guid meeting, string label, string name)
     {
         var person = new Person
