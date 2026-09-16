@@ -278,12 +278,7 @@ public static class MeetingRecordings
             Id = card.CaptureRunId,
             MeetingId = card.MeetingId,
             StartedAt = card.StartedAt,
-            // Empty, both of them, and not a branch that could fill them: channel 0 is not a
-            // device either way round, and a card saying it was is refused where the card is read.
-            // The two columns outlive this by a migration and nothing else.
-            OthersDeviceId = null,
-            OthersDeviceName = null,
-            OthersProcess = card.Mode is CaptureMode.ProcessLoopback ? others.Heard : null,
+            OthersProcess = card.Mode is CaptureMode.OneProgram ? others.Heard : null,
             OthersCaptureMode = card.Mode,
             MeDeviceId = me.DeviceId,
             MeDeviceName = me.Heard,

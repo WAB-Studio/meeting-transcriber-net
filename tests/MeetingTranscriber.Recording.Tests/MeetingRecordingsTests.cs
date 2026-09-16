@@ -160,7 +160,7 @@ public sealed class MeetingRecordingsTests : IDisposable
             Guid.NewGuid(),
             now,
             CapturedAudio.Profile,
-            followedAProgram ? CaptureMode.ProcessLoopback : CaptureMode.FullLoopback,
+            followedAProgram ? CaptureMode.OneProgram : CaptureMode.WholeMachine,
             [
                 new SpooledSource(
                     AudioChannel.Loopback,
@@ -178,19 +178,15 @@ public sealed class MeetingRecordingsTests : IDisposable
         run.SampleRate.ShouldBe(CapturedAudio.SampleRate);
         run.ChannelCount.ShouldBe(CapturedAudio.ChannelCount);
 
-        // Channel 0 is not a device either way, so the run names none of one — what it says
-        // instead is which of the two it was, and the program's name only when there was one.
-        run.OthersDeviceName.ShouldBeNull();
-        run.OthersDeviceId.ShouldBeNull();
-
+        // Which of the two channel 0 was, and the program's name only when there was one.
         if (followedAProgram)
         {
-            run.OthersCaptureMode.ShouldBe(CaptureMode.ProcessLoopback);
+            run.OthersCaptureMode.ShouldBe(CaptureMode.OneProgram);
             run.OthersProcess.ShouldBe("Teams (4120)");
         }
         else
         {
-            run.OthersCaptureMode.ShouldBe(CaptureMode.FullLoopback);
+            run.OthersCaptureMode.ShouldBe(CaptureMode.WholeMachine);
             run.OthersProcess.ShouldBeNull();
         }
     }
@@ -591,7 +587,7 @@ public sealed class MeetingRecordingsTests : IDisposable
             Guid.NewGuid(),
             now,
             CapturedAudio.Profile,
-            CaptureMode.ProcessLoopback,
+            CaptureMode.OneProgram,
             [
                 new SpooledSource(AudioChannel.Loopback, "teams (pid 8124)", null),
                 new SpooledSource(AudioChannel.Microphone, "Headset", "{0.0.1.00000000}.{mic}"),
@@ -627,7 +623,7 @@ public sealed class MeetingRecordingsTests : IDisposable
         // And the run still says what the recording opened on, which is the other half of the
         // decision: one column never comes to mean two things depending on when it is read.
         var run = reopened.CaptureRuns.Single();
-        run.OthersCaptureMode.ShouldBe(CaptureMode.ProcessLoopback);
+        run.OthersCaptureMode.ShouldBe(CaptureMode.OneProgram);
         run.OthersProcess.ShouldBe("teams (pid 8124)");
     }
 

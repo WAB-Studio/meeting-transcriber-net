@@ -385,9 +385,23 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
     {
         modelBuilder.Entity<CaptureRun>(run =>
         {
-            run.ToTable("capture_runs", table => table.HasCheckConstraint(
-                "ck_capture_runs_others_capture_mode",
-                $"others_capture_mode IN ({WireNames<CaptureMode>.AsSqlList()})"));
+            run.ToTable("capture_runs", table =>
+            {
+                table.HasCheckConstraint(
+                    "ck_capture_runs_others_capture_mode",
+                    $"others_capture_mode IN ({WireNames<CaptureMode>.AsSqlList()})");
+
+                // Channel 0 names a program when it followed one and nothing when it took the
+                // machine, so the mode and the program are one fact stored in two columns. A row
+                // where they disagree describes a recording that did not happen — it says a
+                // meeting followed Teams when the file holds every notification on the machine —
+                // and the only thing keeping them in step is a `?:` in `MeetingRecordings.Began`.
+                // The recovery path writes this table too, which is where a second writer arrives.
+                table.HasCheckConstraint(
+                    "ck_capture_runs_others_process",
+                    $"(others_capture_mode = '{CaptureMode.OneProgram.ToWireName()}')"
+                    + " = (others_process IS NOT NULL)");
+            });
             run.HasKey(entity => entity.Id);
             run.HasIndex(entity => new { entity.MeetingId, entity.StartedAt });
             run.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)

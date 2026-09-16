@@ -129,7 +129,7 @@ public sealed class RecordingFileNamesTests : IDisposable
         Guid.NewGuid(),
         UtcTimestamp.From(new DateTimeOffset(2026, 9, 7, 13, 47, 0, TimeSpan.Zero)),
         SourceProfile.Multichannel,
-        CaptureMode.FullLoopback,
+        CaptureMode.WholeMachine,
         [
             new SpooledSource(AudioChannel.Loopback, "everything this machine plays", null),
             new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.00000000}.jabra"),

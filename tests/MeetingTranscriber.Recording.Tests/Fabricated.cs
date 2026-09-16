@@ -66,7 +66,7 @@ internal static class Fabricated
         Guid.NewGuid(),
         startedAt,
         CapturedAudio.Profile,
-        CaptureMode.FullLoopback,
+        CaptureMode.WholeMachine,
         [
             new SpooledSource(AudioChannel.Loopback, "everything this machine plays", null),
             new SpooledSource(AudioChannel.Microphone, "Headset", "{0.0.1.00000000}.{mic}"),

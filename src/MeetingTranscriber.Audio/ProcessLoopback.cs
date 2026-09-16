@@ -8,7 +8,9 @@ namespace MeetingTranscriber.Audio;
 
 /// <summary>
 /// Opens what processes are playing rather than what a device is: one tree of them, or every
-/// process on the machine bar this application's own tree.
+/// process on the machine bar this application's own tree. It is named for the Windows activation,
+/// which is what it is and what both of <see cref="MeetingTranscriber.Domain.Audio.CaptureMode"/>'s
+/// members run on — so it is named for neither of them, and does not follow when they are renamed.
 /// </summary>
 /// <remarks>
 /// <para>

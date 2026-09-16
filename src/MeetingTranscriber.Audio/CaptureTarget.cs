@@ -124,7 +124,7 @@ public abstract record CaptureTarget
         public override string Name => Process.ToString();
 
         /// <inheritdoc/>
-        public override CaptureMode? Mode => CaptureMode.ProcessLoopback;
+        public override CaptureMode? Mode => CaptureMode.OneProgram;
 
         /// <inheritdoc/>
         public override AudioChannel Channel => AudioChannel.Loopback;
@@ -160,7 +160,7 @@ public abstract record CaptureTarget
         public override string Name => "everything this machine plays";
 
         /// <inheritdoc/>
-        public override CaptureMode? Mode => CaptureMode.FullLoopback;
+        public override CaptureMode? Mode => CaptureMode.WholeMachine;
 
         /// <inheritdoc/>
         public override AudioChannel Channel => AudioChannel.Loopback;

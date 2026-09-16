@@ -1555,7 +1555,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
                 Guid.NewGuid(),
                 UtcTimestamp.Parse("2026-08-15T09:41:07.250Z"),
                 SourceProfile.Multichannel,
-                CaptureMode.FullLoopback,
+                CaptureMode.WholeMachine,
                 [
                     new SpooledSource(AudioChannel.Loopback, "everything this machine plays", null),
                     new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.0}.jabra"),

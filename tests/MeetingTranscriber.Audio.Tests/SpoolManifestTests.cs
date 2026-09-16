@@ -54,7 +54,7 @@ public sealed class SpoolManifestTests : IDisposable
         read.On(AudioChannel.Loopback).DeviceId.ShouldBeNull();
         read.On(AudioChannel.Microphone).Heard.ShouldBe("Jabra Evolve 65");
         read.On(AudioChannel.Microphone).DeviceId.ShouldBe("{0.0.1.00000000}.jabra");
-        read.Mode.ShouldBe(CaptureMode.FullLoopback);
+        read.Mode.ShouldBe(CaptureMode.WholeMachine);
     }
 
     /// <summary>
@@ -64,8 +64,8 @@ public sealed class SpoolManifestTests : IDisposable
     /// saying when, which is the changes file's and not the card's.
     /// </summary>
     [Theory]
-    [InlineData(CaptureMode.ProcessLoopback, "teams (pid 8124)")]
-    [InlineData(CaptureMode.FullLoopback, "everything this machine plays")]
+    [InlineData(CaptureMode.OneProgram, "teams (pid 8124)")]
+    [InlineData(CaptureMode.WholeMachine, "everything this machine plays")]
     public void Which_of_the_two_channel_zero_opened_as_is_the_cards_own_field(
         CaptureMode mode, string heard)
     {
@@ -253,7 +253,7 @@ public sealed class SpoolManifestTests : IDisposable
         var card = SpoolManifest.In(folder);
         File.WriteAllText(
             card.FullName,
-            File.ReadAllText(card.FullName).Replace("full_loopback", "FullLoopback", StringComparison.Ordinal));
+            File.ReadAllText(card.FullName).Replace("whole_machine", "WholeMachine", StringComparison.Ordinal));
 
         Should.Throw<AudioCaptureException>(() => SpoolManifest.Read(card))
             .Message.ShouldContain("others_capture_mode");
@@ -286,7 +286,7 @@ public sealed class SpoolManifestTests : IDisposable
         written.ShouldContain("\"capture_run\"");
         written.ShouldContain("\"started_at\": \"2026-08-15T09:41:07.250Z\"");
         written.ShouldContain("\"source_profile\": \"multichannel\"");
-        written.ShouldContain("\"others_capture_mode\": \"full_loopback\"");
+        written.ShouldContain("\"others_capture_mode\": \"whole_machine\"");
         written.ShouldContain("\"channel\": 0");
         written.ShouldContain(Environment.NewLine);
     }
@@ -308,7 +308,7 @@ public sealed class SpoolManifestTests : IDisposable
         Guid.NewGuid(),
         Started,
         SourceProfile.Multichannel,
-        CaptureMode.FullLoopback,
+        CaptureMode.WholeMachine,
         [
             new SpooledSource(AudioChannel.Loopback, "everything this machine plays", null),
             new SpooledSource(AudioChannel.Microphone, "Jabra Evolve 65", "{0.0.1.00000000}.jabra"),

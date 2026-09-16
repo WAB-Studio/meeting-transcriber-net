@@ -12,16 +12,16 @@ public static class CaptureModes
     /// <summary>The name this mode is persisted under, in a corpus and beside a recording's blocks.</summary>
     public static string ToWireName(this CaptureMode mode) => mode switch
     {
-        CaptureMode.ProcessLoopback => "process_loopback",
-        CaptureMode.FullLoopback => "full_loopback",
+        CaptureMode.OneProgram => "one_program",
+        CaptureMode.WholeMachine => "whole_machine",
         _ => throw new AudioContractException($"Unknown capture mode '{mode}'."),
     };
 
     /// <summary>Reads back a mode persisted by <see cref="ToWireName"/>.</summary>
     public static CaptureMode FromWireName(string name) => name switch
     {
-        "process_loopback" => CaptureMode.ProcessLoopback,
-        "full_loopback" => CaptureMode.FullLoopback,
+        "one_program" => CaptureMode.OneProgram,
+        "whole_machine" => CaptureMode.WholeMachine,
         _ => throw new AudioContractException($"Unknown capture mode '{name}'."),
     };
 }
