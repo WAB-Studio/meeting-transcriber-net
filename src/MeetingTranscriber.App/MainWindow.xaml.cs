@@ -56,12 +56,6 @@ namespace MeetingTranscriber.App;
 public sealed partial class MainWindow : Window
 {
     /// <summary>
-    /// The order the picker offers, and the order it reads a selection back in. One array, read
-    /// twice, so the two cannot come apart.
-    /// </summary>
-    private static readonly UiLanguage[] Languages = Enum.GetValues<UiLanguage>();
-
-    /// <summary>
     /// What a meeting can be said to be spoken in: the name a person picks, and the tag the corpus
     /// stores and the provider is asked for.
     /// </summary>
@@ -83,8 +77,9 @@ public sealed partial class MainWindow : Window
     /// </summary>
     /// <remarks>
     /// The refusal on it is settled for as long as this window is open and nothing here can lift
-    /// one. Whether the folder holds a corpus is not settled: <see cref="ThereIsACorpus"/> asks
-    /// that each time, because two of this screen's presses make one.
+    /// one. Whether the folder holds a corpus is not settled and is not asked here: the settings
+    /// screen is what says where the corpus is, and it asks that question again every time it is
+    /// opened, because two of this application's presses make one.
     /// </remarks>
     private readonly CorpusFolder _corpus;
 
@@ -103,13 +98,6 @@ public sealed partial class MainWindow : Window
 
     private UiLanguage _language;
     private TextLine? _status;
-
-    /// <summary>
-    /// What the row about who is using the application knows that the field itself does not: what
-    /// the last read of the corpus found, and whether a press is in flight. What is typed is read
-    /// off the field at the moment it is asked, which is why that half is not kept here.
-    /// </summary>
-    private WhoIsUsingThisRow _whoIsUsingThis = WhoIsUsingThisRow.Unread;
 
     /// <summary>True while the pickers are being filled, so refilling them is not a choice.</summary>
     private bool _filling;
@@ -238,6 +226,14 @@ public sealed partial class MainWindow : Window
         Classifying.Filed += OnFiled;
         Classifying.Left += OnLeftTheClassification;
 
+        // The fourth, and the one that is not about a meeting. The language is raised on up from
+        // it rather than answered there: which language the application is read in is the
+        // application's answer and this window is what carries it outward, so the screen that
+        // offers the picker says somebody chose and nothing more.
+        Settings.Open(corpus);
+        Settings.Left += OnLeftTheSettings;
+        Settings.LanguageChosen += OnLanguageChosenInTheSettings;
+
         // Read off the drawer once here as well as on every move, so which position the screen
         // opens in is the drawer's answer rather than two defaults that happen to agree.
         OnMeetingsMoved(Meetings, EventArgs.Empty);
@@ -259,10 +255,6 @@ public sealed partial class MainWindow : Window
         {
             Say(UiTexts.NoMicrophoneOnThisMachine);
         }
-
-        // Before ReadIn, which is what draws the row: whether it is asking or showing is read off
-        // the corpus here, and ReadIn only puts it on screen in this reader's language.
-        ReadWhoIsUsingThis();
 
         ReadIn(language);
 
@@ -299,7 +291,6 @@ public sealed partial class MainWindow : Window
         Title = UiTexts.RecordAMeeting.In(language);
 
         FillThePickers();
-        ShowWhoIsUsingThis();
         Render();
         Refresh();
 
@@ -310,6 +301,7 @@ public sealed partial class MainWindow : Window
         Meetings.ReadIn(language);
         Reading.ReadIn(language);
         Classifying.ReadIn(language);
+        Settings.ReadIn(language);
         Refresh();
     }
 
@@ -360,8 +352,10 @@ public sealed partial class MainWindow : Window
             // list raised into it, and a meeting being read in it. Read off the two controls rather
             // than kept, for the reason every other field here is — a copy of it updated by whichever
             // handler remembered to is how a screen comes to disagree with the arrangement it is in.
-            TheRoomBelowHasTheWindow =
-                Meetings.HasTheWholeWindow || Reading.IsShowingAMeeting || Classifying.IsOpen,
+            TheRoomBelowHasTheWindow = Meetings.HasTheWholeWindow
+                || Reading.IsShowingAMeeting
+                || Classifying.IsOpen
+                || Settings.IsOpen,
         };
     }
 
@@ -891,19 +885,19 @@ public sealed partial class MainWindow : Window
     /// <remarks>
     /// The last arm stops rather than leaving the previous line standing, which is
     /// <see cref="RecorderStates.Reaches"/> on a state it does not have and
-    /// <see cref="SayWhereTheCorpusIs"/> on a refusal it has no words for: the three tables in
-    /// this window agree that an unknown key stops. Of the three this is the one whose silence
-    /// would be hardest to see — a status line that keeps saying what it last said looks like a
-    /// screen with nothing wrong in it, and somebody reads "recording" off a window that is doing
-    /// something else. A state added to <see cref="RecorderState"/> and not given a line here is
-    /// a fault of the code, which nothing a person does can reach.
+    /// <c>Configuracion.SayWhereTheCorpusIs</c> on a refusal it has no words for: the three tables
+    /// this application draws a screen from agree that an unknown key stops. Of the three this is
+    /// the one whose silence would be hardest to see — a status line that keeps saying what it
+    /// last said looks like a screen with nothing wrong in it, and somebody reads "recording" off
+    /// a window that is doing something else. A state added to <see cref="RecorderState"/> and not
+    /// given a line here is a fault of the code, which nothing a person does can reach.
     /// <para>
-    /// It carries no test of the kind <c>CorpusTextTests</c> is for <see cref="SayWhereTheCorpusIs"/>,
-    /// and the difference is where the two would first be met. A corpus refusal fires only for
-    /// somebody whose folder is in that particular state, which a developer may never be in, so
-    /// the throw there could reach a person before anybody saw it. This runs on every refresh in
-    /// every state the screen passes through, and a state with no line here stops the window from
-    /// opening on the first run after it was added.
+    /// It carries no test of the kind <c>CorpusTextTests</c> is for the corpus table, and the
+    /// difference is where the two would first be met. A corpus refusal fires only for somebody
+    /// whose folder is in that particular state, which a developer may never be in, so the throw
+    /// there could reach a person before anybody saw it. This runs on every refresh in every state
+    /// the screen passes through, and a state with no line here stops the window from opening on
+    /// the first run after it was added.
     /// </para>
     /// </remarks>
     private void Announce(RecorderState state)
@@ -1111,128 +1105,6 @@ public sealed partial class MainWindow : Window
         _recording ?? throw new InvalidOperationException(
             "The screen reads as recording with no meeting under it.");
 
-    /// <summary>
-    /// Where the meetings go, said before the first one rather than found out afterwards — and
-    /// when there is nowhere, which folder and what was wrong with it.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// The corpus refused for a reason this screen has no words for.
-    /// </exception>
-    /// <remarks>
-    /// The last arm stops rather than substituting, which is <see cref="RecorderStates.Reaches"/>
-    /// on a state it does not have and is the same rule for the same reason: a refusal added to
-    /// <see cref="CorpusRefusal"/> and not given a text here would otherwise be shown to somebody
-    /// as one of the others, sending them to check a folder that is fine or a setting they never
-    /// wrote. A screen that says the wrong reason confidently is worse than one that stops, and
-    /// this is a table falling behind its enum — a fault of the code, which nothing a person does
-    /// can reach. <c>CorpusTextTests</c> is what catches it before it can be thrown.
-    /// </remarks>
-    private void SayWhereTheCorpusIs()
-    {
-        var text = _corpus.Refusal switch
-        {
-            null => ThereIsACorpus()
-                ? UiTexts.MeetingsAreKeptAt
-                : UiTexts.TheFirstThingKeptMakesTheCorpusAt,
-            CorpusRefusal.SettingSaysNothingUsable => UiTexts.TheSettingSaysNothingUsable,
-            CorpusRefusal.FolderDoesNotAnswer => UiTexts.TheCorpusFolderDidNotAnswer,
-            CorpusRefusal.NoCorpusInTheFolder => UiTexts.ThereIsNoCorpusInThatFolder,
-            CorpusRefusal.GoesWhenThePackageDoes => UiTexts.TheCorpusFolderGoesWhenThePackageDoes,
-            _ => throw new InvalidOperationException(
-                $"This screen has no text for corpus refusal '{_corpus.Refusal}'."),
-        };
-
-        // One entry, read once. Every arm above takes the path and nothing else, so there is no
-        // second case here and no punctuation for this window to choose between two of them.
-        CorpusText.Text = text.In(_language, _corpus.Path);
-    }
-
-    /// <summary>
-    /// Whether there is a corpus in that folder as of now, rather than as of when this window
-    /// opened.
-    /// </summary>
-    /// <remarks>
-    /// Asked and not kept, which is what <see cref="MeetingsDrawer"/> already does on every read
-    /// and for the same reason: the corpus comes into existence under this screen — keeping who is
-    /// using the application makes one, and so does the first recording — so an answer read once
-    /// would go on saying there is none under the press that just made one. What is kept is the
-    /// refusal beside it, because nothing on this screen can lift one.
-    /// </remarks>
-    private bool ThereIsACorpus() =>
-        _corpus.Folder is { } folder && CorpusDatabase.HoldsACorpus(folder);
-
-    /// <summary>
-    /// Reads who is using this application out of the corpus and puts it in the field.
-    /// </summary>
-    /// <remarks>
-    /// Not part of <see cref="ReadIn"/>, which runs whenever the language changes: what is in that
-    /// field may be half typed, and re-reading it there would take a name out from under somebody
-    /// mid-answer because they switched language to read the question. The words around it are the
-    /// XAML's own binding and do follow the language.
-    /// </remarks>
-    private void ReadWhoIsUsingThis()
-    {
-        var name = string.Empty;
-
-        // No corpus yet is not a failure and is not read as one: nobody has answered, which is
-        // what an empty field with the question under it already says. Keeping an answer is what
-        // makes the corpus, the same way the first recording does.
-        if (_corpus.Folder is { } folder && ThereIsACorpus())
-        {
-            try
-            {
-                using var context = CorpusDatabase.Open(folder);
-                name = new HumanLayer(context, TimeProvider.System).Me()?.DisplayName ?? string.Empty;
-            }
-            catch (Exception wouldNotRead) when (ScreenFailures.Reportable(wouldNotRead))
-            {
-                // Said rather than left blank. A corpus that will not open reads exactly like one
-                // nobody has answered in, and the difference is somebody's own name: shown the
-                // empty field alone, they would answer again believing nobody had.
-                //
-                // The row stays live through it, which is the other half. The press opens the
-                // corpus the way this read did not — bringing the schema up — so a corpus one
-                // migration behind is repaired by being answered; and answering cannot make a
-                // second person however this read failed, because the write renames whoever
-                // carries the flag rather than adding to them.
-                Say(UiTexts.WhoIsUsingThisCouldNotBeRead);
-                Dump(wouldNotRead.Message);
-            }
-        }
-
-        // The facts before the field, because setting the field is a change and the change is
-        // handled: OnWhoIsUsingThisTyped draws the row before the next line would have run.
-        _whoIsUsingThis = _whoIsUsingThis with
-        {
-            CorpusIsReachable = _corpus.Folder is not null,
-            SomebodyHasSaid = name.Length > 0,
-        };
-
-        WhoIsUsingThisBox.Text = name;
-    }
-
-    /// <summary>
-    /// The row as the facts that decide what it does, built fresh rather than kept, so what is on
-    /// screen cannot come to disagree with what is in the field.
-    /// </summary>
-    private WhoIsUsingThisRow WhoIsUsingThis() =>
-        _whoIsUsingThis with { Typed = WhoIsUsingThisBox.Text };
-
-    /// <summary>
-    /// Sets the row's three controls from the one answer, the way <see cref="Refresh"/> sets the
-    /// recorder's. Nothing here decides anything.
-    /// </summary>
-    private void ShowWhoIsUsingThis()
-    {
-        var row = WhoIsUsingThis();
-
-        // Visibility and not merely a greyer line: an explanation that stayed would keep asking a
-        // question this install has an answer to.
-        NobodyHasSaidYet.Visibility = row.IsAsking ? Visibility.Visible : Visibility.Collapsed;
-        WhoIsUsingThisBox.IsEnabled = row.FieldIsLive;
-        WhoIsUsingThisButton.IsEnabled = row.MayBeKept;
-    }
-
     private void FillThePickers()
     {
         NameTheChannels();
@@ -1245,7 +1117,7 @@ public sealed partial class MainWindow : Window
         //
         // Each strip is told what it offers and what is chosen in one call, and the strip's own
         // flag is the whole of what keeps that from being read as somebody choosing — the window's
-        // `_filling` covers the two pickers below and nothing here.
+        // `_filling` covers the picker below and nothing here.
         Mine.Offer(
             [.. _microphones.Select(device => DeviceLines.Of(device.Name, device.IsDefault).In(_language))],
             _chosen.Microphone is null
@@ -1264,16 +1136,11 @@ public sealed partial class MainWindow : Window
             SpokenPicker.SelectedIndex = _chosen.Spoken is null
                 ? -1
                 : Array.FindIndex(Spoken, offered => offered.Tag == _chosen.Spoken);
-
-            LanguagePicker.ItemsSource = Languages.Select(offered => In(UiLanguages.Endonym(offered))).ToArray();
-            LanguagePicker.SelectedIndex = Array.IndexOf(Languages, _language);
         }
         finally
         {
             _filling = false;
         }
-
-        SayWhereTheCorpusIs();
     }
 
     /// <summary>
@@ -1525,15 +1392,22 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private void ShowWhatTheRoomIsShowing(RecorderScreen screen)
     {
-        // Three now, and the order is what says which wins: filing a meeting is reached from the
-        // meeting, so the meeting screen is still holding one — with its recording paused — for the
+        // Four now, and the order is what says which wins. The settings are first because they
+        // are reached from the window itself and not from a meeting: the gear is pressable
+        // whatever the room below is showing, so a screen underneath goes on holding whatever it
+        // was holding and gets it back when this closes. Then filing, which is reached from the
+        // meeting — so the meeting screen is still holding one, with its recording paused, for the
         // whole of it, and asking it whether it has the window would put two screens in one room.
-        var classifying = Classifying.IsOpen;
-        var reading = !classifying && Reading.IsShowingAMeeting;
+        var settings = Settings.IsOpen;
+        var classifying = !settings && Classifying.IsOpen;
+        var reading = !settings && !classifying && Reading.IsShowingAMeeting;
 
+        Settings.Visibility = settings ? Visibility.Visible : Visibility.Collapsed;
         Classifying.Visibility = classifying ? Visibility.Visible : Visibility.Collapsed;
         Reading.Visibility = reading ? Visibility.Visible : Visibility.Collapsed;
-        Meetings.Visibility = classifying || reading ? Visibility.Collapsed : Visibility.Visible;
+        Meetings.Visibility = settings || classifying || reading
+            ? Visibility.Collapsed
+            : Visibility.Visible;
 
         // Where each is heading and not where it is: something on its way out is still visible for
         // the whole of the move, so reading its visibility here would drop the press that reversed
@@ -1621,112 +1495,41 @@ public sealed partial class MainWindow : Window
         Refresh();
     }
 
-    private void OnWhoIsUsingThisTyped(object sender, TextChangedEventArgs e) => ShowWhoIsUsingThis();
-
     /// <summary>
-    /// Keeps who is using this application, which is the same press whether it is the first answer
-    /// or a correction of it.
+    /// Somebody asked for the settings.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Off this thread, and for the reason starting a recording is: the corpus may have every
-    /// migration to run before the first row, which on a machine that has never recorded is the
-    /// whole schema. It is the same two lines the recorder uses — make the folder, open migrated —
-    /// so an install where this is answered before anything is recorded lays the corpus out the
-    /// same way the first recording would have.
-    /// </para>
-    /// <para>
-    /// A blank answer is not one, and it is refused by the press being dead rather than by a
-    /// sentence: there is nothing to say about it that the empty field does not already say.
-    /// </para>
-    /// <para>
-    /// The row is dead for as long as the press is in flight, and that is not tidiness. Disabling
-    /// the button alone left the field live, and a keystroke into it drew the row again and armed
-    /// the button back — so a second press ran beside the first, both found that nobody had
-    /// answered, and both wrote a person who had. The recorder's own presses are held the same
-    /// way and by the same kind of state, which is why this one is in
-    /// <see cref="WhoIsUsingThisRow"/> rather than beside the handler.
-    /// </para>
+    /// Shown before the room is rearranged, for the reason <see cref="OnMeetingChosen"/> gives: it
+    /// is showing it that makes <see cref="Configuracion.IsOpen"/> true, and that is what the
+    /// arrangement is read off. Nothing is refused, a meeting under way included — what should
+    /// happen when a recording ends is answerable while one is running, and the strip carries what
+    /// the recorder half was carrying for the whole of it.
     /// </remarks>
-    private async void OnKeepWhoIsUsingThis(object sender, RoutedEventArgs e)
+    private void OnOpenSettings(object sender, RoutedEventArgs e)
     {
-        // Asked again inside the handler, because a click already in flight arrives after the row
-        // was drawn dead.
-        if (!WhoIsUsingThis().MayBeKept || _corpus.Folder is not { } folder)
-        {
-            return;
-        }
-
-        var name = WhoIsUsingThis().Name;
-        _whoIsUsingThis = _whoIsUsingThis with { BeingKept = true };
-        ShowWhoIsUsingThis();
-
-        try
-        {
-            await Task.Run(() =>
-            {
-                folder.Create();
-                using var context = CorpusDatabase.OpenMigrated(folder);
-                new HumanLayer(context, TimeProvider.System).ThisIsMe(name);
-            });
-        }
-        catch (Exception refused) when (ScreenFailures.Reportable(refused))
-        {
-            if (!_closed)
-            {
-                Say(UiTexts.WhoIsUsingThisWasNotKept);
-                Dump(refused.Message);
-            }
-
-            return;
-        }
-        finally
-        {
-            _whoIsUsingThis = _whoIsUsingThis with { BeingKept = false };
-
-            if (!_closed)
-            {
-                ShowWhoIsUsingThis();
-            }
-        }
-
-        if (_closed)
-        {
-            return;
-        }
-
-        // What the write said, rather than the corpus asked again. The write either threw or put
-        // this name on the one row that carries the flag, so a read back could only disagree by
-        // failing — and a "could not be read" printed under a "done" is a screen contradicting
-        // itself about an act that worked.
-        _whoIsUsingThis = _whoIsUsingThis with { SomebodyHasSaid = true };
-        WhoIsUsingThisBox.Text = name;
-
-        // The corpus may not have existed a moment ago, and the line under this row would still be
-        // saying so.
-        SayWhereTheCorpusIs();
-        Say(UiTexts.WhoIsUsingThisIsKept, name);
+        Settings.Show();
+        Refresh();
     }
 
-    private void OnLanguageChosen(object sender, SelectionChangedEventArgs e)
+    /// <summary>
+    /// Somebody came back from the settings. The list is read again rather than shown as it was:
+    /// answering who is using the application makes a corpus where there was none, and every row on
+    /// that list is read out of it.
+    /// </summary>
+    private void OnLeftTheSettings(object? sender, EventArgs e)
     {
-        if (_filling || LanguagePicker.SelectedIndex < 0)
-        {
-            return;
-        }
-
-        var chosen = Languages[LanguagePicker.SelectedIndex];
-
-        // Selecting what is already selected is not somebody choosing. The picker is set from the
-        // language the window opened in, and taking that for a choice would record one on every
-        // launch — after which the application would never follow Windows again.
-        if (chosen == _language)
-        {
-            return;
-        }
-
-        LanguageChosen?.Invoke(this, chosen);
+        Settings.Close();
+        Meetings.Read();
+        Refresh();
     }
+
+    /// <summary>
+    /// Somebody picked the language on the settings screen. It is raised on rather than answered
+    /// here: what is done about a language is the application's, and this window is one of the
+    /// things told about it.
+    /// </summary>
+    private void OnLanguageChosenInTheSettings(object? sender, UiLanguage language) =>
+        LanguageChosen?.Invoke(this, language);
 
     private void OnOpenPackagingChecks(object sender, RoutedEventArgs e) =>
         PackagingChecksAsked?.Invoke(this, EventArgs.Empty);
@@ -1825,11 +1628,6 @@ public sealed partial class MainWindow : Window
             _recording = started.Recording;
             _watch.Start();
 
-            // The other press that makes a corpus where there was none, said again for the same
-            // reason keeping an answer says it: the line under the recorder would otherwise go on
-            // offering to make one while a meeting records into the one it just made.
-            SayWhereTheCorpusIs();
-
             // Once here, so the meters and the line about the room are up with the meeting rather
             // than a second into it. The meters are the tick's from here on; what the machine plays
             // through is nobody's until Windows says it moved.
@@ -1925,8 +1723,17 @@ public sealed partial class MainWindow : Window
                 ScreenNumbers.Long(finished.Length),
                 finished.Audio.RelativePath);
 
-            // Said out loud, every time, because it is the promise and not an omission.
-            Say(UiTexts.NothingWasQueued);
+            // Said out loud, every time, and read off what stopping really wrote rather than off
+            // what the settings said it should. The two come apart on the recovery path, where a
+            // meeting that already carries the job is finished again and queues nothing — and a
+            // window that announced a charge it did not make is the one sentence a person has about
+            // their own money at the moment it is spent.
+            //
+            // Two arms and not a table over `JobKind`, because `WhatStoppingStarts` answers at most
+            // transcription and says why: everything else is a stage a meeting that has just
+            // stopped cannot be at. The day that changes, `WhatStoppingStartsTests` goes red before
+            // this line does, which is where somebody finds out.
+            Say(finished.Queued.Count == 0 ? UiTexts.NothingWasQueued : UiTexts.TranscribingWasQueued);
         }
         catch (Exception broke) when (ScreenFailures.Reportable(broke))
         {
@@ -2175,6 +1982,13 @@ public sealed partial class MainWindow : Window
         // got round to them — with the recording still coming out of the machine until it did.
         Reading.Close();
         Classifying.Close();
+
+        // The settings hold no file and no device, so this is not about letting anything go: it is
+        // the same `_closed` the list keeps, for the same reason. A name being written into the
+        // corpus outlives the handler that started it, and what it must not do when it comes back
+        // is draw into a window that has gone. `Close` is deliberately not called beside it, for
+        // that same reason — it draws.
+        Settings.Closing();
 
         // Before the guard below, and it is the one thing here that is: what it stops is Windows
         // calling into a closed window about a device, which has nothing to do with whichever

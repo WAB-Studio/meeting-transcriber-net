@@ -23,8 +23,8 @@ namespace MeetingTranscriber.Infrastructure.Meetings;
 public sealed record MeetingAsRead(Meeting Meeting, MeetingScreen Screen, FileInfo? Audio);
 
 /// <summary>
-/// The corpus side of the screen a meeting is read from: what to show, what to unfold when
-/// somebody presses a citation, and the one thing the screen writes back.
+/// Reading one meeting out of the corpus: what a screen shows, what to unfold when somebody
+/// presses a citation, a stretch of the transcript, and the one thing the screen writes back.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -32,6 +32,13 @@ public sealed record MeetingAsRead(Meeting Meeting, MeetingScreen Screen, FileIn
 /// far a meeting has got and what is owed on it is one rule, asked here for one meeting and there
 /// for all of them. What this adds is everything the list has no room for — what an extraction
 /// left, who produced it, and where the audio is.
+/// </para>
+/// <para>
+/// It was the screen's read and is now the meeting's. <see cref="Of"/> is still exactly what the
+/// screen needs, and the reads beside it — <see cref="Row"/>, <see cref="Between"/>,
+/// <see cref="TranscribedFrom"/> — are what a reader that is not a screen asks about one meeting.
+/// The alternative was a second type over the same tables, which would have put two answers to
+/// <em>which turns does this meeting have</em> in one assembly.
 /// </para>
 /// <para>
 /// Nothing here caches. Every call reads the corpus it was handed, for the reason
@@ -54,12 +61,26 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     /// </remarks>
     public const int TurnsEitherSide = 2;
 
+    /// <summary>
+    /// The meeting's own row, and nothing else read on its behalf.
+    /// </summary>
+    /// <remarks>
+    /// What a reader wants when it needs the meeting's own words — when it started, what it is
+    /// called — and not the screen. <see cref="Of"/> costs a stage computation, four reads of what
+    /// an extraction left and a stat of the audio file on disk, all of which a caller that only
+    /// wants those two fields pays for and then throws away. It is also the one lookup every method
+    /// here begins with, so the refusal for a meeting this corpus does not hold is written once.
+    /// </remarks>
+    /// <exception cref="MeetingStageException">There is no such meeting in this corpus.</exception>
+    public Meeting Row(Guid meetingId) =>
+        context.Meetings.AsNoTracking().FirstOrDefault(row => row.Id == meetingId)
+            ?? throw new MeetingStageException($"This corpus holds no meeting {meetingId}.");
+
     /// <summary>One meeting, as the screen that reads it needs it.</summary>
     /// <exception cref="MeetingStageException">There is no such meeting in this corpus.</exception>
     public MeetingAsRead Of(Guid meetingId)
     {
-        var meeting = context.Meetings.AsNoTracking().FirstOrDefault(row => row.Id == meetingId)
-            ?? throw new MeetingStageException($"This corpus holds no meeting {meetingId}.");
+        var meeting = Row(meetingId);
 
         var owed = new MeetingWork(context, clock).On(meetingId);
         var audio = Audio(meetingId, out var recorded);
@@ -87,25 +108,118 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
         var first = Math.Max(0, ordinal - TurnsEitherSide);
         var last = ordinal + TurnsEitherSide;
 
-        return
-        [
-            .. context.Utterances
-                .AsNoTracking()
-                .Where(turn => turn.MeetingId == meetingId
-                    && turn.Ordinal >= first
-                    && turn.Ordinal <= last)
-                .OrderBy(turn => turn.Ordinal)
-                .ToList()
-                .Select(turn => new Turn(
-                    turn.Ordinal,
-                    turn.Start,
-                    turn.End,
-                    turn.Channel,
-                    turn.SpeakerLabel,
-                    turn.Text,
-                    turn.Confidence)),
-        ];
+        return AsTurns(context.Utterances
+            .Where(turn => turn.MeetingId == meetingId
+                && turn.Ordinal >= first
+                && turn.Ordinal <= last)
+            .OrderBy(turn => turn.Ordinal));
     }
+
+    /// <summary>
+    /// The turns said in one stretch of a meeting, which is what opening part of a transcript is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// By where a turn <em>starts</em> and not by where it overlaps. A turn is what a citation
+    /// anchors on, so a stretch is the turns that began inside it, and one that was still being
+    /// said when the stretch opened belongs to the stretch before — which is what makes two
+    /// adjoining calls answer exactly what one call over both would have.
+    /// </para>
+    /// <para>
+    /// Closed at the bottom and open at the top, for that same reason. Two calls walking a meeting
+    /// back to back must not each return the turn on the boundary: an agent reading a meeting in
+    /// stretches would quote it twice, and nothing downstream can tell a thing said twice from a
+    /// thing reported twice.
+    /// </para>
+    /// <para>
+    /// An empty answer is a real one, exactly as it is for <see cref="Around"/>. A stretch nobody
+    /// spoke in and a meeting whose turns have not been produced yet are both nothing to show,
+    /// rather than something to refuse.
+    /// </para>
+    /// </remarks>
+    /// <param name="meetingId">The meeting.</param>
+    /// <param name="from">Where the stretch opens, from the meeting's start.</param>
+    /// <param name="to">Where it closes, which is the first offset outside it.</param>
+    /// <param name="limit">
+    /// How many turns at most. Bounded in the query and not by the caller afterwards: the stretch
+    /// somebody asks for can be the whole of a three-hour meeting, and reading every turn of one to
+    /// hand back the first two hundred is the same answer at a thousand times the cost.
+    /// </param>
+    public IReadOnlyList<Turn> Between(Guid meetingId, Duration from, Duration to, int limit)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+
+        return AsTurns(context.Utterances
+            .Where(turn => turn.MeetingId == meetingId
+                && turn.Start >= from
+                && turn.Start < to)
+            .OrderBy(turn => turn.Ordinal)
+            .Take(limit));
+    }
+
+    /// <summary>
+    /// The SHA-256 of the paid response this meeting's turns were produced from, or nothing when
+    /// they came from no response anybody paid for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The run that <em>finished</em> and the artifact that run recorded, which is the corpus's own
+    /// link from the turns on disk to what they were read out of. Not the newest response filed
+    /// against the meeting: re-transcribing files a new one and never replaces the old, so between
+    /// a response landing and the projection being rebuilt from it the newest artifact is a
+    /// response these turns did not come from — and a hash a reader checks a quote against and
+    /// cannot find is worse than no hash, because it is actionable and wrong.
+    /// </para>
+    /// <para>
+    /// The same ordering as the transcription <see cref="Wrote"/> names, so the provider a reader
+    /// is shown and the hash beside it are the one run and not two answers to two queries.
+    /// </para>
+    /// <para>
+    /// This is about the live projection. What a decision, an action or an open question was quoted
+    /// out of is the citation's own <c>SourceArtifactSha256</c>, which is a different question and
+    /// is stored on the row for exactly this reason.
+    /// </para>
+    /// </remarks>
+    public string? TranscribedFrom(Guid meetingId)
+    {
+        var response = context.TranscriptionRuns
+            .AsNoTracking()
+            .Where(run => run.MeetingId == meetingId
+                && run.FinishedAt != null
+                && run.ResponseArtifactId != null)
+            .OrderByDescending(run => run.FinishedAt)
+            .ThenByDescending(run => run.CreatedAt)
+            .Select(run => run.ResponseArtifactId)
+            .FirstOrDefault();
+
+        return response is null
+            ? null
+            : context.Artifacts
+                .AsNoTracking()
+                .Where(artifact => artifact.Id == response)
+                .Select(artifact => artifact.Sha256)
+                .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Whatever rows a read narrowed to, as turns, in the order it put them in. One projection
+    /// because two of them are two places a field goes missing the day <see cref="Turn"/> gains
+    /// one.
+    /// </summary>
+    private static IReadOnlyList<Turn> AsTurns(IQueryable<Utterance> narrowed) =>
+    [
+        .. narrowed
+            .AsNoTracking()
+            .ToList()
+            .Select(turn => new Turn(
+                turn.Ordinal,
+                turn.Start,
+                turn.End,
+                turn.Channel,
+                turn.SpeakerLabel,
+                turn.Text,
+                turn.Confidence)),
+    ];
 
     /// <summary>
     /// Puts the name somebody typed on the meeting, or takes the name off it.

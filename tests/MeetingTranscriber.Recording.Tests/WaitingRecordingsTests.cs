@@ -118,8 +118,7 @@ public sealed class WaitingRecordingsTests : IDisposable
         run.MeetingId.ShouldBe(recorded);
         run.StartedAt.ShouldBe(recordedAt);
         run.MeDeviceName.ShouldBe("Headset");
-        run.OthersCaptureMode.ShouldBe(CaptureMode.FullLoopback);
-        run.OthersDeviceName.ShouldBeNull();
+        run.OthersCaptureMode.ShouldBe(CaptureMode.WholeMachine);
         run.Recovered.ShouldBeTrue();
         run.FinishedAt.ShouldBe(openedAgainAt);
     }

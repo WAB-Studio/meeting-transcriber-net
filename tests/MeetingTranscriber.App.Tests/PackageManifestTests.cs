@@ -56,4 +56,64 @@ public class PackageManifestTests
                 + "If a capability is missing here, put it back in Package.appxmanifest; if one is "
                 + "here that the package does not declare, say on this list what the application "
                 + "does with it and what somebody is agreeing to at install.");
+
+    /// <summary>
+    /// The two faces used from outside the window, each with a name on the user's <c>PATH</c>.
+    /// </summary>
+    /// <remarks>
+    /// A whole set and not a contains, for the same reason the capabilities above are: an alias
+    /// <em>arriving</em> is a name this install takes over on that user's <c>PATH</c> from whatever
+    /// already answered to it, and nothing else in this repository would notice one being added. One
+    /// leaving is the other half — an MCP client's config file names the executable and nothing
+    /// else, so an alias that goes takes the server with it. That the two executables are really in
+    /// the built package, and that the alias and the face agree at all, are
+    /// <see cref="PackagedAppTests"/> and <c>MeetingTranscriber.App.csproj</c>'s own two
+    /// <c>&lt;Error&gt;</c>s.
+    /// </remarks>
+    [Fact]
+    public void The_application_declares_an_alias_for_each_face_used_from_outside_the_window() =>
+        PackageManifest.AliasesOf(PackageManifest.Source())
+            .ShouldBe(
+                // The `.exe` on the alias is ST_ExecutableNoPath's requirement; what a person types
+                // is `meeting-transcriber`.
+                [
+                    "meeting-transcriber-mcp.exe → meeting-transcriber-mcp.exe",
+                    "meeting-transcriber.exe → meeting-transcriber.exe",
+                ],
+                "inside an MSIX the install directory is read-only and its path changes with every "
+                + "version, so an alias is the only way a prompt or an MCP client's config file "
+                + "reaches either of these. If one is missing here, put it back in "
+                + "Package.appxmanifest; if one is here that no face answers, it is a name this "
+                + "install takes on the user's PATH for an executable that is not there.");
+
+    /// <summary>
+    /// That the window is still the first <c>&lt;Application&gt;</c> the manifest declares.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every other assertion here is over a sorted set, precisely so that document order is nobody's
+    /// business. This one is the exception, and it exists because something outside this suite reads
+    /// it: <c>tools/MeetingTranscriber.UiProbe/ApplicationId.cs</c> activates the <em>first</em>
+    /// <c>&lt;Application&gt;</c>, which was the only one until the two faces each needed one of
+    /// their own — <c>MakeAppx</c> refuses two <c>windows.appExecutionAlias</c> extensions under one
+    /// application.
+    /// </para>
+    /// <para>
+    /// So an alphabetical tidy-up or a merge that put <c>Cli</c> above <c>App</c> would have every
+    /// probe session launch a console face as *the window*, and then fail on a window that never
+    /// appears. The whole list is asserted rather than only its head, because a face added without
+    /// an alias is the other thing this document can be got wrong by, and both are one line to fix.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void The_window_is_the_first_application_the_manifest_declares() =>
+        PackageManifest.ApplicationIdsOf(PackageManifest.Source())
+            .ShouldBe(
+                ["App", "Cli", "Mcp"],
+                "tools/MeetingTranscriber.UiProbe/ApplicationId.cs activates the first "
+                + "<Application> in this manifest, so the window has to be first and the two "
+                + "console faces after it. If this is red because the order moved, the probe is "
+                + "about to start a console face and wait for a window that never appears; if it "
+                + "is red because an Id arrived, say here what that application is and check "
+                + "MeetingTranscriber.App.csproj publishes what it names.");
 }

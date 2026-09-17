@@ -416,6 +416,50 @@ public sealed class AudioIntakeTests : IDisposable
     }
 
     /// <summary>
+    /// ISC-34's third clause, <i>under whatever folder name</i>. The same audio in a folder called
+    /// something else, under a file name of its own, is the meeting that is already here.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What it holds is that a meeting is identified by the bytes that would land and never by the
+    /// path they arrived on. Somebody restoring a backup into a folder named for the day they
+    /// restored it is handing this corpus a meeting it already has, and a door that read the path
+    /// would file it a second time — two meetings, two audio rows, and every citation somebody
+    /// writes afterwards hanging off whichever of them they happened to open.
+    /// </para>
+    /// <para>
+    /// The clause had no probe between 2026-08-26 and this one.
+    /// <c>CorpusImporterTests.A_meeting_whose_folder_was_renamed_is_still_the_same_meeting</c>
+    /// covered it and went with the Python importer, and every probe left hands the same path over
+    /// twice — which is why this changes the folder <b>and</b> the file name, so neither is what
+    /// the answer could have come from.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void The_same_audio_under_another_folder_name_is_still_one_meeting()
+    {
+        var arrived = Foreign("call.wav", 44_100, 0.5f, 0.25f);
+
+        var renamed = new DirectoryInfo(Path.Combine(elsewhere.FullName, "restored-2026-09-16"));
+        renamed.Create();
+        var copied = new FileInfo(Path.Combine(renamed.FullName, "reunion con el cliente.wav"));
+        arrived.CopyTo(copied.FullName);
+
+        using var context = corpus.OpenMigrated();
+
+        var first = AudioIntake.Bring(context, arrived, details, now);
+        var again = AudioIntake.Bring(context, copied, details, now);
+
+        again.WasAlreadyThere.ShouldBeTrue();
+        again.MeetingId.ShouldBe(first.MeetingId);
+        again.PutBack.ShouldBeEmpty();
+
+        using var reopened = corpus.Open();
+        reopened.Meetings.Select(meeting => meeting.Id).ShouldBe([first.MeetingId]);
+        reopened.Artifacts.Count(row => row.Kind == ArtifactKind.Audio).ShouldBe(1);
+    }
+
+    /// <summary>
     /// And the same audio handed over to a corpus that has the row and has lost the file puts the
     /// file back — and says which one, rather than answering "already here" over a write.
     /// </summary>

@@ -68,7 +68,8 @@ public sealed class SavingMark : IDisposable
     /// </remarks>
     /// <param name="folder">The recording's folder.</param>
     /// <exception cref="AudioCaptureException">
-    /// A save of this recording is already running, or there is no folder to claim.
+    /// The folder would not be claimed — another save of this recording is the likeliest reason and
+    /// is not the only one — or there is no folder to claim.
     /// </exception>
     public static SavingMark Take(DirectoryInfo folder)
     {
@@ -84,13 +85,28 @@ public sealed class SavingMark : IDisposable
                 $"There is no folder at '{folder.FullName}', so there is no recording in it to "
                 + "save.", gone);
         }
-        catch (IOException taken)
+        catch (Exception taken) when (taken is IOException or UnauthorizedAccessException)
         {
+            // What refused is carried and not summarised, which is the shape `SendingMark.Take`
+            // was corrected to: another save is what this almost always is and is not what has
+            // been checked — a full disk, a path too long and a volume that will not take the
+            // handle all arrive here too — so the sentence somebody gets holds the cause it
+            // really had, and the second save is offered as the thing to look at rather than
+            // asserted. The exception is carried as well, and the message says it anyway, because
+            // an `AudioCaptureException` is read off a screen that prints one line.
+            //
+            // `UnauthorizedAccessException` beside `IOException`, which is the rest of that same
+            // shape: `HeldMark.Claim` opens for writing, so a folder restored under somebody
+            // else's access rules refuses with that one, and caught as `IOException` alone it went
+            // out as the operating system's sentence about a '.saving' file with nothing in it
+            // about a recording.
             throw new AudioCaptureException(
-                $"A save of the recording in '{folder.FullName}' is already running: something "
-                + "held its mark open throughout, and two saves of one recording would read the "
-                + "same blocks into the same meeting at the same time. This one is refused "
-                + "rather than started, and the blocks are untouched.", taken);
+                $"A save of the recording in '{folder.FullName}' could not be claimed: "
+                + $"{taken.Message} A save holds a mark on the folder for as long as it lasts, "
+                + "because two saves of one recording would read the same blocks into the same "
+                + "meeting at the same time. If a save of it is already running, let that one "
+                + "finish. This one is refused rather than started, and the blocks are "
+                + "untouched.", taken);
         }
     }
 

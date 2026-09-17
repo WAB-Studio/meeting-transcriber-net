@@ -694,6 +694,86 @@ public class CommandLineTests
     }
 
     /// <summary>
+    /// The theory above names its flags one by one, so a sixth flag is refused by the command and
+    /// named by nothing here. This is what says the two sets are one set.
+    /// </summary>
+    /// <remarks>
+    /// Read off <c>MeetingCommands.WhatAMeetingAlreadySays</c>, which is the table the minting half
+    /// folds and the filing half refuses by name — so this asserts against the thing that decides
+    /// rather than against a third copy of the five. Private for the reason
+    /// <see cref="Inside(string)"/>'s two are, and reached the same way: a rename lands here as a
+    /// failure that says what went.
+    /// </remarks>
+    [Fact]
+    public void Every_flag_a_meeting_already_answers_is_one_this_suite_names()
+    {
+        var field = typeof(MeetingCommands).GetField(
+            "WhatAMeetingAlreadySays", BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException(
+                "MeetingCommands.WhatAMeetingAlreadySays pairs a flag with how it is read, and it "
+                + "is gone or renamed.");
+
+        var table = (Array)(field.GetValue(null)
+            ?? throw new InvalidOperationException("WhatAMeetingAlreadySays answered nothing."));
+
+        var flags = table
+            .Cast<object>()
+            .Select(says => (string)Named(says, "Flag").GetValue(says)!)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        var named = typeof(CommandLineTests)
+            .GetMethod(nameof(Filing_a_response_onto_a_meeting_refuses_every_flag_that_meeting_already_answers))!
+            .GetCustomAttributes<InlineDataAttribute>()
+            .Select(row => (string)row.Data[0]!)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        named.ShouldBe(flags);
+    }
+
+    /// <summary>
+    /// A line carrying two of them names both, in the order the sentence has always used, which is
+    /// alphabetical and not the order the table folds in.
+    /// </summary>
+    /// <remarks>
+    /// The theory above gives one flag at a time, so nothing held the joined sentence a person
+    /// actually reads. Without this, reordering the fold — a change about which missing flag is
+    /// reported first — silently rewrites a user-facing message.
+    /// <c>--language</c> and <c>--context</c> are the pair, and the choice matters: they are third
+    /// and fifth in the table and first and second alphabetically, so the two orders disagree. A
+    /// pair that read the same either way would pass whichever order the code used.
+    /// </remarks>
+    [Fact]
+    public void Two_flags_a_meeting_already_answers_are_named_in_one_sentence_and_in_order()
+    {
+        var run = CommandLine.Of(
+            "import-response",
+            DeepgramFixtures.PathOf(Fixture),
+            "--corpus",
+            Path.Combine(Path.GetTempPath(), $"no-corpus-{Guid.NewGuid():n}"),
+            "--meeting",
+            $"{Guid.NewGuid()}",
+            "--language",
+            "es",
+            "--context",
+            "presupuesto");
+
+        run.Code.ShouldBe(Cli.Misused, run.Error);
+        run.Error.ShouldContain("--context, --language cannot be given with --meeting");
+    }
+
+    /// <summary>
+    /// A member of a row of a private table, named rather than reached by tuple position, so a
+    /// shape change here says what moved instead of dereferencing null inside reflection.
+    /// </summary>
+    private static PropertyInfo Named(object says, string member) =>
+        says.GetType().GetProperty(member)
+        ?? throw new InvalidOperationException(
+            $"A row of WhatAMeetingAlreadySays no longer carries {member}.");
+
+    /// <summary>
     /// The usage is the only place somebody standing at a prompt would find the flag, and the only
     /// place that says the two halves are alternatives rather than options to mix.
     /// </summary>

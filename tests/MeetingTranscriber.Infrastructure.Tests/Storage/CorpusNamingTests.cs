@@ -4,6 +4,7 @@ using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Meetings;
+using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.EntityFrameworkCore;
@@ -54,8 +55,8 @@ public partial class CorpusNamingTests
         (ArtifactKind.Summary, "summary"),
         (ArtifactOrigin.Source, "source"),
         (ArtifactOrigin.Derived, "derived"),
-        (CaptureMode.ProcessLoopback, "process_loopback"),
-        (CaptureMode.FullLoopback, "full_loopback"),
+        (CaptureMode.OneProgram, "one_program"),
+        (CaptureMode.WholeMachine, "whole_machine"),
         (ActionItemState.Open, "open"),
         (ActionItemState.Done, "done"),
         (ActionItemState.Dropped, "dropped"),
@@ -289,6 +290,11 @@ public partial class CorpusNamingTests
     /// hand-written, so what it missed was whatever went in last — and what went in last was the
     /// classification, the one vocabulary that had not been settled yet.
     /// </summary>
+    /// <remarks>
+    /// It reads enums off the model's properties, so a name stored as the text of a
+    /// <c>settings</c> row is invisible to it — <c>after-a-recording</c>'s three are spelled out
+    /// in <c>CorpusSettingsTests</c> instead, and that is where a fourth one goes.
+    /// </remarks>
     [Fact]
     public void Every_enum_the_model_stores_is_spelled_out_here()
     {
@@ -357,6 +363,86 @@ public partial class CorpusNamingTests
         Sql.Strings(context, "SELECT name FROM pragma_table_info('utterances');").ShouldContain("start_ms");
         Sql.Strings(context, "SELECT name FROM pragma_table_info('capture_runs');").ShouldContain("drift_ms");
         Sql.Strings(context, "SELECT name FROM pragma_table_info('meetings');").ShouldContain("duration_ms");
+    }
+
+    /// <summary>
+    /// Channel 0 is a process loopback either way round, so no endpoint feeds it and there is
+    /// nothing of a device for a run to name — <c>others_device_id</c> and
+    /// <c>others_device_name</c> are the two absences this list is for. Spelled out whole rather
+    /// than as two refusals, because SQLite rebuilds this table for any change to it, and a
+    /// rebuild that quietly loses a column it was not asked about is the failure a list catches
+    /// and a refusal does not.
+    /// </summary>
+    [Fact]
+    public void A_capture_run_is_stored_under_exactly_these_columns()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Sql.Strings(context, "SELECT name FROM pragma_table_info('capture_runs');").ShouldBe(
+            [
+                "id",
+                "meeting_id",
+                "started_at",
+                "finished_at",
+                "others_capture_mode",
+                "others_process",
+                "me_device_id",
+                "me_device_name",
+                "sample_rate",
+                "channel_count",
+                "bits_per_sample",
+                "drift_ms",
+                "recovered",
+                "last_error",
+            ],
+            ignoreOrder: true);
+    }
+
+    /// <summary>
+    /// The mode and the program are one fact in two columns: channel 0 following a program names
+    /// it, and channel 0 on the whole machine names nothing. A row where they disagree describes a
+    /// recording that did not happen, so the corpus refuses it rather than trusting the one caller
+    /// that writes it.
+    /// </summary>
+    [Theory]
+    [InlineData(CaptureMode.WholeMachine, "teams (pid 8124)")]
+    [InlineData(CaptureMode.OneProgram, null)]
+    public void A_run_cannot_say_it_followed_a_program_and_name_the_wrong_thing(
+        CaptureMode mode,
+        string? process)
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        var at = UtcTimestamp.From(new DateTimeOffset(2026, 8, 20, 9, 41, 7, TimeSpan.Zero));
+        var meeting = new Meeting
+        {
+            Id = Guid.NewGuid(),
+            Language = "es",
+            StartedAt = at,
+            SourceProfile = SourceProfile.Multichannel,
+            CreatedAt = at,
+            UpdatedAt = at,
+        };
+
+        context.Meetings.Add(meeting);
+        context.SaveChanges();
+
+        context.CaptureRuns.Add(new CaptureRun
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting.Id,
+            StartedAt = at,
+            OthersCaptureMode = mode,
+            OthersProcess = process,
+            SampleRate = CapturedAudio.SampleRate,
+            ChannelCount = CapturedAudio.ChannelCount,
+            BitsPerSample = CapturedAudio.BitsPerSample,
+        });
+
+        Should.Throw<DbUpdateException>(() => context.SaveChanges())
+            .InnerException!.Message.ShouldContain("ck_capture_runs_others_process");
     }
 
     /// <summary>

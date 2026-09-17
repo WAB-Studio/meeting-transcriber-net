@@ -1,29 +1,35 @@
 namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
-/// The recording window's line about where the corpus is names every refusal the corpus can give,
+/// The settings screen's line about where the corpus is names every refusal the corpus can give,
 /// and substitutes for none of them.
 /// </summary>
 /// <remarks>
 /// How this is read out of source, and why it has to be, is <see cref="EnumTable"/>'s. What is
 /// here is what the answer has to be.
+/// <para>
+/// It read the recording window until #108, and it is re-pointed rather than duplicated: there is
+/// still exactly one place in the application that names the folder and says which refusal it was,
+/// and it moved with the line. The meetings list's own sentence sends somebody to that place, so a
+/// table that fell behind there is a person told to look somewhere that says the wrong thing.
+/// </para>
 /// </remarks>
 public class CorpusTextTests
 {
     private static EnumTable Table() => EnumTable.Read(
-        Path.Combine("MeetingTranscriber.App", "MainWindow.xaml.cs"),
-        "_corpus.Refusal",
+        Path.Combine("MeetingTranscriber.App", "Configuracion.xaml.cs"),
+        "Corpus().Refusal",
         "CorpusRefusal",
         Path.Combine("MeetingTranscriber.Infrastructure", "Storage", "CorpusLocation.cs"));
 
     [Fact]
-    public void Every_refusal_the_corpus_can_give_has_a_text_on_the_recording_window()
+    public void Every_refusal_the_corpus_can_give_has_a_text_on_the_settings_screen()
     {
         var table = Table();
         var unnamed = table.Declared.Except(table.Named).ToArray();
 
         unnamed.ShouldBeEmpty(
-            "MainWindow.SayWhereTheCorpusIs has no text for these refusals, so somebody "
+            "Configuracion.SayWhereTheCorpusIs has no text for these refusals, so somebody "
             + "meeting one would be told the wrong reason or nothing at all: "
             + string.Join("; ", unnamed));
     }
@@ -39,7 +45,7 @@ public class CorpusTextTests
         var stale = table.Named.Except(table.Declared).ToArray();
 
         stale.ShouldBeEmpty(
-            "MainWindow.SayWhereTheCorpusIs answers for refusals CorpusRefusal does not "
+            "Configuracion.SayWhereTheCorpusIs answers for refusals CorpusRefusal does not "
             + "have: " + string.Join("; ", stale));
     }
 

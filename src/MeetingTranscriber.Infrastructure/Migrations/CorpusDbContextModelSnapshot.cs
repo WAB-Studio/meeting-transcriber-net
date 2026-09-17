@@ -124,14 +124,6 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("others_capture_mode");
 
-                    b.Property<string>("OthersDeviceId")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("others_device_id");
-
-                    b.Property<string>("OthersDeviceName")
-                        .HasColumnType("TEXT")
-                        .HasColumnName("others_device_name");
-
                     b.Property<string>("OthersProcess")
                         .HasColumnType("TEXT")
                         .HasColumnName("others_process");
@@ -157,7 +149,9 @@ namespace MeetingTranscriber.Infrastructure.Migrations
 
                     b.ToTable("capture_runs", null, t =>
                         {
-                            t.HasCheckConstraint("ck_capture_runs_others_capture_mode", "others_capture_mode IN ('full_loopback', 'process_loopback')");
+                            t.HasCheckConstraint("ck_capture_runs_others_capture_mode", "others_capture_mode IN ('one_program', 'whole_machine')");
+
+                            t.HasCheckConstraint("ck_capture_runs_others_process", "(others_capture_mode = 'one_program') = (others_process IS NOT NULL)");
                         });
                 });
 

@@ -298,4 +298,183 @@
              Query="$(_PackageIdentityQuery)"
              Value="$(_PackageIdentityWanted)" />
   </Target>
+  <!--
+    The two faces this package puts on the PATH, put inside the package.
+
+    `Package.appxmanifest` declares an app execution alias for `meeting-transcriber.exe` and one for
+    `meeting-transcriber-mcp.exe`. An alias over an executable the package does not carry installs
+    and then answers the prompt with *the term is not recognized*, so the two declarations have to
+    agree - and the first thing this target does is refuse a build where they do not. The names are
+    an item group rather than prose twice over, for the reason `DecideThePackageIdentity` gives
+    about batching over an empty item list.
+
+    **It runs on an ordinary build and not only on a publish**, because the MSIX layout is computed
+    from the publish list every time: `GetPackagingOutputs` reaches `ComputeFilesToPublish` whether
+    or not a package is being made. That is not incidental, it is required - the loose layout under
+    `$(OutDir)` is what `docs/ui-probe.md` registers, and its generated manifest carries the same
+    three `<Application>` elements, so a layout without the two executables in it is one
+    `Add-AppxPackage -Register` refuses with `0x80080204`. Measured 2026-09-16. So the faces are
+    copied into `$(OutDir)` as well as added to the payload, and the cost - two nested publishes -
+    falls on every build of this project and not on the packaging command alone.
+
+    **Every file of a face's publish the application's own publish does not already carry, by name,
+    and not a fixed list.** Measured 2026-09-16: `MeetingTranscriber.Cli` contributes its own four
+    files to the application's 270, and `MeetingTranscriber.Mcp` contributes its own four plus
+    `ModelContextProtocol.Core.dll` and `Microsoft.Extensions.AI.Abstractions.dll`, which are
+    assemblies this application has never referenced. A list written from the first face would have
+    shipped a package that starts the server and throws on its first tool call.
+
+    A name the application already publishes is taken from the application's copy. Two faces
+    contributing one name the application does not have is left to fail loudly as NETSDK1152, which
+    names the file and both sources: choosing a winner there is a decision nothing here can make.
+
+    `.pdb` files are skipped because nobody debugs from an installed MSIX.
+  -->
+  <ItemGroup>
+    <Face Include="..\MeetingTranscriber.Cli\MeetingTranscriber.Cli.csproj">
+      <Name>meeting-transcriber</Name>
+    </Face>
+    <Face Include="..\MeetingTranscriber.Mcp\MeetingTranscriber.Mcp.csproj">
+      <Name>meeting-transcriber-mcp</Name>
+    </Face>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <_AliasNamespaces>$(_PackageManifestNamespace)&lt;Namespace Prefix="u5" Uri="http://schemas.microsoft.com/appx/manifest/uap/windows10/5" /&gt;</_AliasNamespaces>
+    <_AliasedExecutableQuery>//u5:Extension[@Category='windows.appExecutionAlias']/@Executable</_AliasedExecutableQuery>
+
+    <!--
+      **The two global properties of docs/packaging.md §3's command that reach a face.** Every
+      switch on that command is a global property, and the `MSBuild` task hands global properties to
+      the child unless they are named here.
+
+      - `Platform=x64` is the one this is really defending against. It would reach both faces and,
+        through their `ProjectReference` closures, `Audio`, `Domain`, `Infrastructure`, `Processing`
+        and `Recording` - this application's own dependencies - which is the double-build the
+        paragraph in `Directory.Build.props` was written to end. `EnableDynamicPlatformResolution`
+        does not cover it: it fixes `ProjectReference` negotiation, and a project invoked by path is
+        not a `ProjectReference` and gets no negotiation.
+      - `PublishProfile=win-x64` would reach two projects that have no such profile, and the SDK
+        does not ignore a publish profile it cannot find.
+
+      The rest of that command - the two `Appx` switches and the two certificate properties - are
+      MSIX properties, and a face is a plain SDK project importing no MSIX targets, so they are
+      inert there. Naming them would be defending against nothing.
+    -->
+    <_FacePropertiesToDrop>Platform;PublishProfile</_FacePropertiesToDrop>
+    <_FacePublishProperties>Configuration=$(Configuration);RuntimeIdentifier=win-x64;SelfContained=true</_FacePublishProperties>
+  </PropertyGroup>
+
+  <Target Name="PublishTheCommandLineFacesIntoThePackage"
+          AfterTargets="ComputeResolvedFilesToPublishList">
+    <!--
+      **The manifest and the item group above are two halves of one declaration, and this is what
+      holds them together.** Either half alone is a silent wrong: an alias with no face is a name
+      that installs and resolves to nothing, and a face with no alias is an executable in the package
+      nobody outside the window can start. Read off the manifest rather than written down a third
+      time, so a new face is one row here and one `<Application>` block there and neither can be
+      forgotten.
+    -->
+    <XmlPeek XmlInputPath="@(AppxManifest->'%(FullPath)')"
+             Namespaces="$(_AliasNamespaces)"
+             Query="$(_AliasedExecutableQuery)">
+      <Output TaskParameter="Result" ItemName="_AliasedExecutable" />
+    </XmlPeek>
+
+    <ItemGroup>
+      <_FaceExecutable Include="@(Face->'%(Name).exe')" />
+      <_AliasWithNoFace Include="@(_AliasedExecutable)" Exclude="@(_FaceExecutable)" />
+      <_FaceWithNoAlias Include="@(_FaceExecutable)" Exclude="@(_AliasedExecutable)" />
+    </ItemGroup>
+
+    <Error Condition="'@(_AliasWithNoFace)' != ''"
+           Text="@(AppxManifest) declares an app execution alias for @(_AliasWithNoFace->'%(Identity)', ', '), and no &lt;Face&gt; in MeetingTranscriber.App.csproj publishes it. That package installs and puts a name on the PATH resolving to nothing - see docs/packaging.md §3.1." />
+
+    <Error Condition="'@(_FaceWithNoAlias)' != ''"
+           Text="MeetingTranscriber.App.csproj publishes @(_FaceWithNoAlias->'%(Identity)', ', ') into the package and @(AppxManifest) declares no app execution alias for it. Inside an MSIX the install directory is read-only and its path carries the version, so an executable with no alias is one nothing outside the window can start - see docs/packaging.md §3.1." />
+
+    <!--
+      The publish directory has to be absolute: MSBuild resolves a relative `PublishDir` against the
+      project being built, so a relative path handed to a face names a folder under *its* directory
+      while this project reads one under its own. `NormalizeDirectory` rather than concatenation, so
+      an `IntermediateOutputPath` that is already rooted stays where it is.
+
+      Emptied first, because nothing else ever empties it. A publish does not prune its destination,
+      so a dependency dropped from a face - or a face that was renamed - would otherwise keep being
+      swept up and shipped for as long as the folder survived, and `Clean` would not reach it.
+    -->
+    <PropertyGroup>
+      <_FacesRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'faces'))</_FacesRoot>
+      <_FacesRestoreSessionId>$([System.Guid]::NewGuid())</_FacesRestoreSessionId>
+    </PropertyGroup>
+
+    <RemoveDir Directories="$(_FacesRoot)" />
+
+    <!--
+      **A RID-specific publish needs a `project.assets.json` carrying a target for that RID, and the
+      solution's restore writes none** for a project declaring no `RuntimeIdentifiers`: without this
+      the publish stops on NETSDK1047. The two extra properties are the ones `/restore` itself
+      passes and both are load-bearing - a restore inside a running build otherwise leaves the
+      publish underneath reading the evaluation from before it, which is green on a machine that has
+      built once and red on a clean checkout.
+
+      `<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>` on the two faces deletes all of this, and it
+      is the better shape: `win-x64` is a fact about two projects that ship only inside an x64
+      package, and declaring it there would also stop this build and the solution's restore writing
+      each other's answer into five shared projects' assets files turn about. It is not done here
+      because those two csproj files belong to another share this batch; the PR says so.
+    -->
+    <MSBuild Projects="@(Face)"
+             Targets="Restore"
+             RemoveProperties="$(_FacePropertiesToDrop)"
+             Properties="$(_FacePublishProperties);ExcludeRestorePackageImports=true;MSBuildRestoreSessionId=$(_FacesRestoreSessionId)" />
+
+    <MSBuild Projects="@(Face)"
+             Targets="Publish"
+             RemoveProperties="$(_FacePropertiesToDrop)"
+             Properties="$(_FacePublishProperties);PublishDir=$(_FacesRoot)%(Face.Name)\" />
+
+    <!-- What a face is made of. The state this catches is `%(Face.Name)` drifting from the face's
+         own `<AssemblyName>`, which is the one coupling the item group above introduces: a publish
+         that failed has already failed the build, and one that succeeded always writes these four. -->
+    <ItemGroup>
+      <_FaceMustCarry Include="$(_FacesRoot)%(Face.Name)\%(Face.Name).exe" />
+      <_FaceMustCarry Include="$(_FacesRoot)%(Face.Name)\%(Face.Name).dll" />
+      <_FaceMustCarry Include="$(_FacesRoot)%(Face.Name)\%(Face.Name).deps.json" />
+      <_FaceMustCarry Include="$(_FacesRoot)%(Face.Name)\%(Face.Name).runtimeconfig.json" />
+      <_FaceIsMissing Include="@(_FaceMustCarry)" Condition="!Exists('%(_FaceMustCarry.Identity)')" />
+    </ItemGroup>
+
+    <Error Condition="'@(_FaceIsMissing)' != ''"
+           Text="The publish under $(_FacesRoot) did not produce @(_FaceIsMissing->'%(Filename)%(Extension)', ', '). A Face's Name has to be the AssemblyName that face publishes under, because Package.appxmanifest names that executable and an alias over an executable the package does not carry fails at the prompt with 'the term is not recognized' - see docs/packaging.md §3.1." />
+
+    <!-- Named by where each file sits under its own face's publish root and not by its file name
+         alone: a publish is not always flat - a satellite assembly sits under its culture - and
+         flattening one onto the package root puts it where nothing loads it. It is also what makes
+         the subtraction below a comparison of like with like, `RelativePath` being that same
+         path. -->
+    <ItemGroup>
+      <_FaceFile Include="$(_FacesRoot)%(Face.Name)\**\*" Exclude="$(_FacesRoot)%(Face.Name)\**\*.pdb" />
+
+      <_FaceFileInThePackage Include="@(_FaceFile->'%(RecursiveDir)%(Filename)%(Extension)')">
+        <Source>%(_FaceFile.FullPath)</Source>
+      </_FaceFileInThePackage>
+
+      <_FaceFileInThePackage Remove="@(ResolvedFileToPublish->'%(RelativePath)')" />
+
+      <ResolvedFileToPublish Include="@(_FaceFileInThePackage->'%(Source)')">
+        <RelativePath>%(_FaceFileInThePackage.Identity)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+
+    <!-- And into the build output, which is the other layout carrying a generated manifest - the
+         one `docs/ui-probe.md` registers. `ResolvedFileToPublish` does not reach it, and a layout
+         whose manifest names an executable the folder does not hold is refused outright. -->
+    <Copy SourceFiles="@(_FaceFileInThePackage->'%(Source)')"
+          DestinationFiles="@(_FaceFileInThePackage->'$(OutDir)%(Identity)')"
+          SkipUnchangedFiles="true">
+      <Output TaskParameter="CopiedFiles" ItemName="FileWrites" />
+    </Copy>
+  </Target>
 </Project>

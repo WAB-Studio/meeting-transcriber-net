@@ -14,6 +14,11 @@ One signed `.msix` — `MeetingTranscriber.App_<version>_x64.msix` — holding a
 application with **the .NET runtime and the fonts inside it**. It installs per user, with no
 administrator rights, on a machine that already trusts the certificate.
 
+Beside the window it carries the product's two other faces — `meeting-transcriber` and
+`meeting-transcriber-mcp` — which the manifest declares an app execution alias over, so installing
+should put each on that user's `PATH`. *Should*: nobody has installed a build and typed either name,
+and that run is what ISC-113 is still waiting on. §3.1 says how they get inside.
+
 **The Windows App SDK is not inside it.** The package's manifest declares
 
 ```xml
@@ -119,7 +124,10 @@ switch in it turns every build of this project red. The comment in
 `src/MeetingTranscriber.App/Properties/PublishProfiles/win-x64.pubxml` says what each one did and
 what belongs in that file instead. What forgetting them costs now is one command, not an alpha
 handed out: the section below fails on a package that is not there, and `The_package_is_signed`
-fails on one that is not signed.
+fails on one that is not signed. **That run, and nothing in the build, is where the refusal over a
+forgotten switch lives**, and it is settled rather than open: a target in the project would have to
+guess which builds were meant to be signed, because the certificate is on this line precisely as a
+fact about the machine typing it, and CI runs neither switch.
 
 **`dotnet publish` is what produced the package here**, on 2026-09-11, with the Windows SDK MSIX
 build tools that come in through the Windows App SDK package — no Developer PowerShell, no
@@ -145,6 +153,41 @@ Three warnings come out of that command and all three are expected:
 - **`mspdbcmf.exe` could not be found. A symbols package will not be generated.** A `.msixsym` is
   for uploading to the Store's symbol service. Nothing here uploads anything.
 
+### 3.1 — What else is inside the package
+
+The window is not the only thing in there. Two more executables ride inside the same package, and
+installing it puts each on this user's `PATH`:
+
+| What a person types | What it is |
+| --- | --- |
+| `meeting-transcriber` | the diagnostic prompt — diagnosis, import, rebuild, recovery and capture |
+| `meeting-transcriber-mcp` | the corpus's MCP server, which an agent's client starts by name |
+
+**They need a name because nothing else would reach them.** Inside an MSIX the install directory is
+read-only, has closed ACLs, and its path carries the version, so it changes with every update. An MCP
+client's config file names an executable and nothing else, and a path written into one today stops
+existing at the next build. `Package.appxmanifest` declares a `windows.appExecutionAlias` for each,
+and `MeetingTranscriber.App.csproj`'s `PublishTheCommandLineFacesIntoThePackage` is what puts the two
+executables inside — that target's own comment is where the mechanism is written down, and it is
+where to read before changing any of it. Two things worth knowing from out here:
+
+- **The alias and the face are declared in two files, and the build refuses a disagreement.** That
+  target reads the aliases off the manifest and errors either way round — an alias with no face, or a
+  face with no alias. A third face is one `<Application>` block and one `<Face>` row; forget either
+  and the build says which.
+- **It runs on an ordinary build, not only on this section's command.** The MSIX layout is computed
+  from the publish list every time, which is also what keeps `docs/ui-probe.md`'s registered Debug
+  layout installable — its manifest declares the same three applications. What it costs is a nested
+  publish of both faces on every build of that project.
+
+An alias is registered for this user and not for the package, so two installs of two builds contend
+for one `meeting-transcriber` and the last registered wins. #151 is where that gets decided.
+
+**One honest note on the shape.** The application project is also the packaging project — that is
+what a single-project MSIX means — which is why it knows about its two siblings and publishes them.
+That is the right home today by elimination rather than by design: splitting the packaging out would
+take a `.wapproj` and full MSBuild, which §3 deliberately does not use.
+
 ### Then prove the package, in the same breath
 
 ```powershell
@@ -157,6 +200,15 @@ when there is none — which is right for CI, where the packaging build never ru
 you, because a skipped test and a passing test read the same in a summary line. That variable turns
 the absence of a package into a failure, so the run either proves the package or says it could not
 find one. Set it every time; it is the second half of this command and not an option.
+
+Two of those facts are §3.1's, and both go red on things a green build says nothing about.
+`The_package_declares_exactly_the_aliases_the_manifest_does` reads the *generated*
+`AppxManifest.xml` and not the one in `src/`, because `uap5` is in `IgnorableNamespaces` and a
+mis-namespaced or malformed alias block is therefore **dropped** by the appx tooling rather than
+refused — the build stays green and nothing lands on the `PATH`.
+`The_package_carries_every_face_the_manifest_puts_an_alias_over` takes the list of faces off the
+manifest and asserts all four files of each, the two assemblies only the MCP face brings, and that
+every runtime config in the package names one framework.
 
 Note what those facts do **not** cover: they compare the package against
 `Package.appxmanifest`, so a package built before a C# or XAML change still passes. Build and prove
@@ -196,6 +248,13 @@ Add-AppxPackage -Path MeetingTranscriber.App_<version>_x64.msix `
 
 `Install.ps1` in the same folder does both and resolves the dependency itself; prefer it if it
 works, and keep the two commands for when it does not say why.
+
+**After it installs, look for `meeting-transcriber` and `meeting-transcriber-mcp` in a *new*
+shell.** An alias is written to that user's `%LOCALAPPDATA%\Microsoft\WindowsApps` at install, and a
+terminal that was already open does not see it — which reads exactly like an install that did not
+take. Open another one before concluding anything. **This is the run ISC-113 waits on**, and the use
+it is really for is an MCP client starting `meeting-transcriber-mcp` by name over stdio, which is a
+different launch from typing it: record what both did.
 
 **Do not run this on a development machine that drives the UI probe.** A Release package carries
 `<Identity Name>` `7feb8c95-4553-46f0-a036-6574f4cd7cb4` — the same name a checkout without a

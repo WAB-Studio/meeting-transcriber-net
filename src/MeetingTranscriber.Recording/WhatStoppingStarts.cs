@@ -4,41 +4,53 @@ using MeetingTranscriber.Domain.Meetings;
 namespace MeetingTranscriber.Recording;
 
 /// <summary>
-/// The one thing that decides what pressing stop sets going, and today it always answers nothing.
+/// The one thing that decides what pressing stop sets going.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Stopping a meeting starts no work on it.</b> The recording is finished and the meeting sits
-/// there; transcribing it is a separate press, made from the meeting itself once somebody has
-/// decided they want it. That is not a limitation waiting to be lifted — transcription spends the
-/// user's own Deepgram credit, and a stop that queued it would be this application spending
-/// somebody's money for having stopped recording.
+/// <b>Stopping a meeting starts what the person settled beforehand, and nothing else.</b>
+/// Transcription spends the user's own Deepgram credit, so a stop that queued it on its own would
+/// be this application spending somebody's money for having stopped recording. What makes queueing
+/// it legitimate is that it was asked for once and in advance, on the settings screen — which is
+/// <see cref="AfterARecording"/>, and why the answer arrives as a parameter rather than being read
+/// here.
 /// </para>
 /// <para>
-/// It exists as a type answering an empty list rather than as no code at all, and that is the
-/// whole point of it. What a meeting is waiting for, and which stage offers which button, is being
-/// built on top of this; when a stage does become something stopping sets going, it becomes so
-/// here, once, where every caller already asks. The alternative is the decision arriving as an
-/// <c>if</c> inside whichever caller needed it first, and a second one written differently in the
-/// caller after that — which is how an application ends up spending money on one path and not on
-/// the other, with nothing saying which was meant.
+/// It answers at most transcription, whichever of the two paid answers was settled. A meeting that
+/// has just stopped is at <c>MeetingStage.Recorded</c>; summarising is a stage it cannot be offered
+/// yet, because the transcription a summary is made from does not exist — and queueing work whose
+/// input does not exist is the one thing <c>JobStates</c> cannot describe. What the preference says
+/// about summarising is therefore read again by whatever finishes a transcription, and that is
+/// nothing today.
 /// </para>
 /// <para>
-/// It takes the meeting because the answer is about that meeting and not about the application's
-/// mood. Nothing reads it today; a rule that could not see the meeting it is deciding about would
-/// have to be rewritten rather than extended the first time one did.
+/// One place and not an <c>if</c> inside whichever caller needed it first. A second one written
+/// differently in the caller after that is how an application ends up spending money on one path
+/// and not on the other, with nothing saying which was meant.
+/// </para>
+/// <para>
+/// <b>It does not take the meeting, and that is the other half of one place.</b> What a stop may
+/// queue does not depend on which meeting stopped — a meeting that has just been recorded is at
+/// the same stage as every other one. Whether <em>this</em> meeting still offers that stage is a
+/// different question with a different answer, it is about rows nothing here can see, and it has to
+/// be asked inside the transaction that writes: <c>MeetingWork.TakeIfItIsOffered</c> is where it
+/// lives. A parameter here that was read by nothing would only make the caller's own check look
+/// like a second opinion on this one.
 /// </para>
 /// </remarks>
 public static class WhatStoppingStarts
 {
     /// <summary>
-    /// The work that should be queued now that <paramref name="meeting"/> has stopped recording.
-    /// Empty, always, and every caller is expected to handle a non-empty answer anyway.
+    /// The work a recording that has just stopped should have queued, given what
+    /// <paramref name="settled"/> says was asked for beforehand.
     /// </summary>
-    public static IReadOnlyList<JobKind> For(Meeting meeting)
-    {
-        ArgumentNullException.ThrowIfNull(meeting);
+    /// <param name="settled">What the person settled about a recording that ends.</param>
+    public static IReadOnlyList<JobKind> For(AfterARecording settled) =>
 
-        return [];
-    }
+        // Never `Extract`, whichever of the two asked for a summary. The meeting has no
+        // transcription for one to be made from, so the job's input does not exist and the row
+        // would describe a stage the meeting cannot reach from where it is.
+        settled is AfterARecording.Transcribe or AfterARecording.TranscribeAndSummarise
+            ? [JobKind.Transcribe]
+            : [];
 }

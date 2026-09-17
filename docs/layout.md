@@ -9,6 +9,7 @@ src/MeetingTranscriber.Audio/             WASAPI: the devices and streams, the s
 src/MeetingTranscriber.Cli/               diagnosis, import, rebuild, recovery and capture from a prompt
 src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
+src/MeetingTranscriber.Mcp/               the corpus answered read-only over stdio, for an agent
 src/MeetingTranscriber.Presentation/      what the application says, and what language it says it in
 src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
 src/MeetingTranscriber.Recording/         a meeting recorded into a corpus, and what a launch owes one: where the sides meet
@@ -22,8 +23,10 @@ tests/fixtures/deepgram/                  anonymised responses, free to test aga
 ```
 
 Every project under `src/` has its tests under `tests/<project>.Tests/`, and `Isa.Tests` is the one
-suite with no project behind it: it reads `ISA.md` and this tree. `Testing` is the other directory
-under `tests/` with nothing behind it and is no suite at all — it is what a suite opens. What
+suite with no project behind it: it reads `ISA.md` and this tree. `UiProbe.Tests` is the one whose
+project is under `tools/` rather than `src/`, and the paragraph about `tools/` below says what that
+suite may and may not do. `Testing` is the other directory under `tests/` with nothing behind it and
+is no suite at all — it is what a suite opens. What
 `Audio.Tests` can hold is bounded by there being no device on a build agent: the rules — which
 endpoint a typed name means, what a block of bytes is worth on a meter — are tested there, and that
 two streams really open at once is a probe somebody runs with `capture`, recorded in the ISA like a
@@ -40,9 +43,11 @@ existed are written. That arithmetic is why `Audio.Tests` takes about a minute w
 suite takes seconds: `TimelineDriftTests` really does run the two hours ISC-66 claims, half a
 billion frames of it, and a shorter one would be a different claim.
 
-`tests/MeetingTranscriber.Testing/` holds no test. It is where `TemporaryCorpus`, the raw-SQL
-helpers and the inventory of the Deepgram fixtures live, so a suite that opens a corpus or walks
-the fixture set references it instead of carrying a copy — and adding a fixture is one edit every
+`tests/MeetingTranscriber.Testing/` holds no test. It is where `TemporaryCorpus`, the corpus
+outside application data that the facts about *where* a corpus may live need, the rows a meeting
+somebody summarised is made of, the raw-SQL helpers and the inventory of the Deepgram fixtures
+live, so a suite that opens a corpus or walks the fixture set references it instead of carrying a
+copy — and adding a fixture is one edit every
 suite sees. It stops at `Infrastructure` on purpose: `Domain.Tests` references it, and a path from
 there to `Processing` would let a domain rule be proved against the parser's own output.
 
@@ -52,8 +57,10 @@ parsing, a report and an exit code. It targets Windows because `capture` does, a
 there rather than only in the window because drift is claimed over two hours — a measurement
 nobody repeats by clicking. It is where the whole path from a paid response to an answer
 can be exercised without automating a window — `tests/MeetingTranscriber.Cli.Tests/` walks it —
-and it is the half of the alias that exists: nothing packages it yet, so an installed build has no
-`meeting-transcriber` on the PATH until ISC-113 is closed.
+and it is one of the two faces the alias reaches: `MeetingTranscriber.App` publishes it into the
+package and `Package.appxmanifest` declares `meeting-transcriber` on the PATH beside
+`meeting-transcriber-mcp`. What ISC-113 still waits on is a run: nobody has installed a build and
+started either name.
 
 **One exception, named, and it is a live run.** `LiveCheck` and `SendingMark` are rules and they are
 here: which files a run sends, how much audio that is, what the ceiling allows, what a person
@@ -65,9 +72,22 @@ this document and in the tree saying the prompt holds no rule of its own is stil
 each of them is about a rule that is not a live run's. What a provider *response* has to hold is not
 part of it and lives in `Processing` with `LiveInvariants`, for the reason that paragraph gives.
 
+`MeetingTranscriber.Mcp` is the corpus's other read-only face — six tools an agent asks about
+meetings somebody recorded — and it holds no rule of its own either, exactly as
+`MeetingTranscriber.Cli` does not: every tool is a read the application already does, and what it
+adds is a tool surface, a bounded answer and a sentence for each way a corpus can refuse to open.
+It references `Infrastructure` and `Domain` and no further, and the other three edges are each
+refused for one reason: `Processing` would put rendering behind an MCP tool, `Audio` would put
+WASAPI behind one, and `Recording` would bring both. It opens the corpus read-only, so no row of
+anybody's corpus can be written through it whatever the code above says — that is the connection's
+promise and not a rule anything here has to remember. What SQLite does still write is its own
+`-wal` and `-shm` beside the database, which is what reading a write-ahead-logged file costs, so a
+corpus on a volume this user cannot write to is not readable from here either.
+
 `MeetingTranscriber.Recording` is where the rules that need more than one of `Audio`,
 `Infrastructure` and `Processing` live, and it is what the application composes through. The prompt
-reaches each of those directly and holds no rule of its own, which is the paragraph above. Neither
+reaches each of those directly and holds no rule of its own, which is the
+`MeetingTranscriber.Cli` paragraph above, bar the live run named beside it. Neither
 of `Audio` and `Infrastructure` may reference the other: an edge from `Infrastructure` to `Audio`
 would put WASAPI behind rendering a transcript and force `Processing` onto a Windows target
 framework, and an edge the other way would stop the audio engine being provable on a machine with
@@ -235,8 +255,14 @@ what to open before touching an artboard.
 is the rule that made deleting the Python corpus importer two folders and two solution lines rather
 than untangling the application, on the day the last old corpus had been imported and it became dead
 code. The UI probe is in here for the same reason and a second one: it needs an interactive desktop,
-so no build agent can run it and nothing under `tests/` may come to depend on it. It references one
-project, `MeetingTranscriber.Infrastructure`, for two types: `CorpusLocation`, which is where the
+so no build agent can run it and **nothing under `tests/` may drive it**. A suite may reference it,
+and one does — `tests/MeetingTranscriber.UiProbe.Tests/` holds the halves that open no window, which
+is the two walks every staleness refusal the probe makes is computed from, and those were otherwise
+free to stop watching silently. Starting a window is the line, not the reference, and
+`ProbeIsNotDrivenTests` in that suite is what holds the line rather than this sentence: it sweeps
+the suite's own source and fails the moment a fact names anything that opens or presses a window.
+
+The probe references one project, `MeetingTranscriber.Infrastructure`, for two types: `CorpusLocation`, which is where the
 application is told its corpus is, and `CorpusDatabase`, which is what makes one. The probe drives a
 corpus of its own by moving that setting and putting it back, which is the same act as a person
 moving their corpus and adds nothing to the product. What it still never references is

@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Plain net10.0, with no Windows floor. Every tool here is a read of the corpus and the one
+         project behind it is plain net10.0 too; the prompt's `-windows` target exists because
+         `capture` opens WASAPI, and nothing here opens anything. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <!-- The name an app execution alias publishes on the PATH, for the reason
+         MeetingTranscriber.Cli.csproj carries `meeting-transcriber`: the install directory's path
+         changes with every version. Nothing packages this yet: that is ISC-113. -->
+    <AssemblyName>meeting-transcriber-mcp</AssemblyName>
+    <RootNamespace>MeetingTranscriber.Mcp</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- `.Core` and not the meta-package: there is nothing here to put in a container. Six static
+         delegates, one corpus opened and let go per call, no lifetimes, no HTTP and no session at
+         all — the hosting layer would put Microsoft.Extensions.Hosting, .DependencyInjection and
+         .Logging inside the MSIX to resolve them. docs/packages.md carries the row. -->
+    <PackageReference Include="ModelContextProtocol.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The corpus, and the types it is made of. `Domain` is declared although `Infrastructure`
+         already brings it, which is what MeetingTranscriber.Cli and MeetingTranscriber.Processing
+         both do: a project names what it compiles against, so the day a transitive edge moves this
+         fails the restore rather than failing the compile of a file that never named it.
+
+         The three edges that are not here are each refused for one reason. Every tool is a read of
+         the corpus, so `Processing` would put rendering behind an MCP tool, `Audio` would put
+         WASAPI behind one, and `Recording` would bring both — inside a server whose whole promise
+         is that it writes nothing. -->
+    <ProjectReference Include="..\MeetingTranscriber.Domain\MeetingTranscriber.Domain.csproj" />
+    <ProjectReference Include="..\MeetingTranscriber.Infrastructure\MeetingTranscriber.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

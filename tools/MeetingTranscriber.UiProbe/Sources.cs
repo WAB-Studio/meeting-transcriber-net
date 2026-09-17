@@ -21,8 +21,17 @@ namespace MeetingTranscriber.UiProbe;
 /// sources beside it. It is also what keeps <c>bin/mcp</c> out of the probe's own answer, which
 /// would be a copy compared with itself.
 /// </para>
+/// <para>
+/// Public, and not by preference: there is no <c>InternalsVisibleTo</c> anywhere in this
+/// repository, so an internal walk could not be reached by the suite that proves it still finds
+/// what it claims to. <c>SendingMark</c> and <c>LiveCheck</c> in <c>MeetingTranscriber.Cli</c> are
+/// public for that same reason, and this is an <c>Exe</c> exactly as that project is. What the
+/// suite reaches is <see cref="NewestUnder"/> and the two named kind lists;
+/// <see cref="AtTheRootAbove"/> stays private, because the seam that matters is the answer and not
+/// the step.
+/// </para>
 /// </remarks>
-internal static class Sources
+public static class Sources
 {
     private static readonly string[] Output = ["bin", "obj"];
 
@@ -35,10 +44,10 @@ internal static class Sources
     /// neither, which is how they drifted and were then put back by editing one to match the
     /// other. One place, two named answers, and the difference argued here.
     /// </remarks>
-    internal static readonly string[] OfTheApplication = ["*.cs", "*.xaml", "*.csproj"];
+    public static readonly string[] OfTheApplication = ["*.cs", "*.xaml", "*.csproj"];
 
     /// <summary>The same question about this tool, which compiles no XAML.</summary>
-    internal static readonly string[] OfThisTool = ["*.cs", "*.csproj"];
+    public static readonly string[] OfThisTool = ["*.cs", "*.csproj"];
 
     /// <summary>
     /// The two files above every project folder that are sources of the running application all the
@@ -64,7 +73,7 @@ internal static class Sources
     /// to walk it, and once to find the checkout it is in. Both callers hand over
     /// <see cref="ProjectsBehind"/>'s answer, which is already one.
     /// </param>
-    internal static (string Path, DateTime Written)? NewestUnder(
+    public static (string Path, DateTime Written)? NewestUnder(
         IReadOnlyList<string> folders, IReadOnlyList<string> kinds)
     {
         var newest = folders
@@ -105,12 +114,18 @@ internal static class Sources
     /// the compile's inputs. So close, build, start clears it exactly as the refusal says.
     /// </para>
     /// <para>
-    /// <b>Additive, and that is what stands in for a probe.</b> <c>tools/</c> is run by hand and
-    /// nothing under <c>tests/</c> may depend on it, so what there is instead is that this can only
-    /// make the answer <em>newer</em> — and newer is the direction that refuses. What it cannot do
-    /// is refuse wrongly. What it can do, and what nothing here would say, is go quiet: a checkout
-    /// this finds no root above, or a rename of either file, puts the two staleness rules back to
-    /// watching only the project folders, which is where they were before this existed.
+    /// <b>Additive, so the only way it can be wrong is by going quiet.</b> This can only make the
+    /// answer <em>newer</em>, and newer is the direction that refuses, so it cannot refuse wrongly.
+    /// What it can do is stop watching: a checkout it finds no root above, or a rename of either
+    /// file, puts the two staleness rules back to watching only the project folders, which is where
+    /// they were before this existed — and a staleness rule that quietly stopped watching hands an
+    /// agent yesterday's tree described as today's.
+    /// </para>
+    /// <para>
+    /// That used to be argued rather than held, because <c>tools/</c> is run by hand and had no
+    /// suite. <c>tests/MeetingTranscriber.UiProbe.Tests/</c> is that suite now: it references this
+    /// project to reach the halves that open no window and never drives it, which is the whole of
+    /// what <c>docs/layout.md</c> narrowed to let it exist.
     /// </para>
     /// </remarks>
     private static IEnumerable<string> AtTheRootAbove(IReadOnlyList<string> folders) =>

@@ -125,13 +125,19 @@ public static class MeetingRenderer
 
         var transcript = DeepgramTranscriptParser.ParseFile(file.FullName, meeting.SourceProfile);
         var turns = Turns.Group(transcript.Segments);
-        Replace(context, meeting.Id, turns);
+
+        // One layer for the whole render, so everything it writes about this pass carries the
+        // instant the pass is. It is handed to the swap rather than a clock the swap would only
+        // pass on: the human layer is the single writer of these rows, which is the whole of why
+        // the swap has to go through it at all.
+        var human = new HumanLayer(context, now);
+        Replace(context, meeting.Id, turns, human);
 
         // The profile is the meeting's own and not a caller's, which is what keeps the label this
         // writes and the label the turns carry the same one: both come off the row this render is
         // of. It never overrules a person — `Assign` refuses that in its own right — and it settles
         // nothing at all until somebody has said who is using this install.
-        new HumanLayer(context, now).SettleTheMicrophone(meeting.Id, meeting.SourceProfile, transcript.Segments);
+        human.SettleTheMicrophone(meeting.Id, meeting.SourceProfile, transcript.Segments);
 
         return turns;
     }
@@ -205,7 +211,11 @@ public static class MeetingRenderer
     /// state every read here starts from anyway.
     /// </para>
     /// </remarks>
-    private static void Replace(CorpusDbContext context, Guid meeting, IReadOnlyList<Turn> turns)
+    private static void Replace(
+        CorpusDbContext context,
+        Guid meeting,
+        IReadOnlyList<Turn> turns,
+        HumanLayer human)
     {
         RefuseStrandedClaims(context, meeting, turns);
 
@@ -241,6 +251,16 @@ public static class MeetingRenderer
             }
 
             context.SaveChanges();
+
+            // After the save and still inside the savepoint, both on purpose, and this is the only
+            // reason the swap needs the human layer at all. After, because it reads the meeting's
+            // turns to decide — it is told a meeting and not a set of labels, so the labels it
+            // asks about have to be the ones this swap just wrote. Inside, because everything
+            // below can still throw, and a render that was refused must not have taken assignments
+            // off a meeting that still carries the turns they hang off: rows somebody made by
+            // listening, gone for a render that did not happen.
+            human.ForgetVoicesNoTurnHas(meeting);
+
             enclosing.ReleaseSavepoint(BeforeTheTurnsGo);
             own?.Commit();
         }

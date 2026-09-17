@@ -24,11 +24,11 @@
          WinMM along with it, and this application opens none of the three. -->
     <PackageVersion Include="NAudio.Wasapi" Version="2.3.0" />
     <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.3.1" />
-    <!-- The UI probe's MCP server, and only that one. `.Core` and not `ModelContextProtocol`
-         because the latter is the hosting and DI layer on top, and a hand-run tool with one
-         mutable session and seven verbs has nothing to put in a container. The app's own MCP
-         server is the other choice and pins the meta-package when it is built: docs/packages.md
-         carries a row for each. -->
+    <!-- Both MCP servers here. `.Core` and not `ModelContextProtocol` because the latter is the
+         hosting and DI layer on top, and neither of these has a host to put it in: the probe holds
+         one mutable session and seven verbs, and the corpus server holds no session at all — so
+         what the meta-package would add is a container for six static delegates, and three more
+         assemblies inside the MSIX. docs/packages.md carries the row. -->
     <PackageVersion Include="ModelContextProtocol.Core" Version="2.2.0" />
     <PackageVersion Include="Shouldly" Version="4.3.0" />
     <!-- Transitive pin. Microsoft.Data.Sqlite 10.0.10 still asks for the 2.1.x bundle, whose

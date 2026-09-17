@@ -88,7 +88,8 @@ public sealed class CaptureMark : IDisposable
     /// </summary>
     /// <param name="folder">The folder the recording is being written into.</param>
     /// <exception cref="AudioCaptureException">
-    /// A capture is already recording into this folder, or there is no folder to claim.
+    /// The folder would not be claimed — another capture recording into it is the likeliest reason
+    /// and is not the only one — or there is no folder to claim.
     /// </exception>
     public static CaptureMark Take(DirectoryInfo folder)
     {
@@ -103,12 +104,22 @@ public sealed class CaptureMark : IDisposable
             throw new AudioCaptureException(
                 $"There is no folder at '{folder.FullName}' to record into.", gone);
         }
-        catch (IOException taken)
+        catch (Exception taken) when (taken is IOException or UnauthorizedAccessException)
         {
+            // Hedged for the reason `SavingMark.Take`'s is, and this one is read off the button
+            // somebody just pressed: another recording is what it almost always is and is not what
+            // has been checked. A full disk, a path too long, a volume that will not take the
+            // handle and a folder somebody else's access rules own all arrive here, and a person
+            // told to wait for a recording nothing is holding has been sent to look in the one
+            // place there is nothing to find. `UnauthorizedAccessException` is caught beside
+            // `IOException` for that last one, which is not an `IOException` and left as its own
+            // the operating system's sentence about a '.capturing' file.
             throw new AudioCaptureException(
-                $"A capture is already recording into '{folder.FullName}': something held its mark "
-                + "open throughout, and two recordings writing one folder would each be half a "
-                + "meeting. This one is refused rather than started, and nothing was recorded.",
+                $"'{folder.FullName}' could not be claimed to record into: {taken.Message} A "
+                + "capture holds a mark on the folder for as long as it lasts, because two "
+                + "recordings writing one folder would each be half a meeting. If something is "
+                + "already recording into it, let that one finish. This one is refused rather "
+                + "than started, and nothing was recorded.",
                 taken);
         }
     }

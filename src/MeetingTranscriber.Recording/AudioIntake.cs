@@ -72,7 +72,11 @@ public sealed record BroughtMeeting(
 /// one takes audio nobody has paid for anything about yet, so what it produces is a meeting at
 /// <see cref="MeetingStage.Recorded"/> — the same rung a recording that was just stopped lands on,
 /// with transcribing it a separate press somebody makes once they have decided they want it.
-/// Nothing is queued here for the same reason nothing is queued by stopping.
+/// <b>Nothing is queued here, and stopping a recording now does queue what was settled.</b> The two
+/// are not the same act and the preference says which it is about: somebody answered what should
+/// happen when a recording of theirs ends, and audio arriving from outside is not one. What that
+/// person meant about a folder somebody hands the application is a question nobody has been
+/// asked.
 /// </para>
 /// <para>
 /// <b>Two channels are the meeting's two sources only when the audio is what this application

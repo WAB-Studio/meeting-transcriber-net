@@ -77,31 +77,74 @@ public static class MeetingCommands
     }
 
     /// <summary>
-    /// The flags that say what a meeting is, which only the half that mints one may be given.
+    /// What has been read off the line so far, every slot still unanswered.
     /// </summary>
     /// <remarks>
-    /// It sits between the two halves that use it because both have to agree about it and nothing
-    /// makes them: <see cref="Told"/> reads exactly these five, and
-    /// <see cref="OnlyTheMeeting"/> refuses exactly these five. A sixth added to one and not the
-    /// other is silent — the flag would be read on one half and land in
-    /// <c>EnsureNothingLeftOver</c>'s "this command takes no …" on the other, which is the sentence
-    /// this list exists to avoid.
+    /// The fold below accumulates into this and not into <see cref="MeetingDetails"/>, and the
+    /// difference is the seed. A <c>MeetingDetails</c> to start from would have to carry a
+    /// <c>default(UtcTimestamp)</c> — the one value <see cref="UtcTimestamp"/>'s factories exist to
+    /// keep unreachable, year one — and a <c>default(SourceProfile)</c>, which is the <c>0</c>
+    /// every method on <c>SourceProfiles</c> throws on. Both would be overwritten before anything
+    /// read them, today; neither would be the day a flag ahead of them stops throwing. Nulls carry
+    /// the same *unanswered* meaning and construct nothing.
     /// </remarks>
-    private static readonly string[] WhatAMeetingAlreadySays =
-        ["--context", "--language", "--profile", "--started-at", "--title"];
+    private readonly record struct Partly(
+        UtcTimestamp? StartedAt,
+        SourceProfile? Profile,
+        string? Language,
+        string? Title,
+        string? Context);
+
+    /// <summary>One flag that says what a meeting is, and how the half that mints one reads it.</summary>
+    private readonly record struct WhatItSays(string Flag, Func<Arguments, Partly, Partly> Read);
+
+    /// <summary>
+    /// Every flag that says what a meeting is, paired with how the half that mints one reads it.
+    /// </summary>
+    /// <remarks>
+    /// One table and not two lists, because the two halves have to agree about it and a flag
+    /// spelled twice is a flag that can be added once: <see cref="Told"/> folds this to build a
+    /// meeting and <see cref="OnlyTheMeeting"/> reads the names off it to refuse by name, so a
+    /// sixth flag arrives on both halves or on neither. The order here is the order a line is read
+    /// in, which decides which missing flag a line missing two of them is told about first. It is
+    /// not the order the refusal names them in — that one sorts, so the sentence a person reads
+    /// does not move when somebody reorders a fold.
+    /// </remarks>
+    private static readonly WhatItSays[] WhatAMeetingAlreadySays =
+        [
+            new("--started-at", (told, so) => so with { StartedAt = told.Instant("--started-at") }),
+            new("--profile", (told, so) => so with { Profile = told.Profile("--profile") }),
+            new("--language", (told, so) => so with { Language = told.Language("--language", DefaultLanguage) }),
+            new("--title", (told, so) => so with { Title = told.Optional("--title") }),
+            new("--context", (told, so) => so with { Context = told.Optional("--context") }),
+        ];
 
     /// <summary>What the command line knows about a meeting nothing in the corpus does.</summary>
+    /// <remarks>
+    /// The two required slots are answered by their own readers throwing, not by this method:
+    /// <c>Instant</c> and <c>Profile</c> refuse a line that does not carry them, in the words
+    /// somebody typing needs. So a null here is not a line typed wrong — it is this table having
+    /// lost the row that reads that flag, which is a mistake in this file and says so.
+    /// </remarks>
     private static MeetingDetails Told(Arguments arguments)
     {
-        var details = new MeetingDetails(
-            arguments.Instant("--started-at"),
-            arguments.Profile("--profile"),
-            arguments.Language("--language", DefaultLanguage),
-            arguments.Optional("--title"),
-            arguments.Optional("--context"));
+        var told = WhatAMeetingAlreadySays.Aggregate(
+            default(Partly),
+            (so, says) => says.Read(arguments, so));
+
         arguments.EnsureNothingLeftOver();
-        return details;
+
+        return new MeetingDetails(
+            told.StartedAt ?? throw NothingReads("--started-at"),
+            told.Profile ?? throw NothingReads("--profile"),
+            told.Language ?? DefaultLanguage,
+            told.Title,
+            told.Context);
     }
+
+    private static InvalidOperationException NothingReads(string flag) =>
+        new($"{flag} is not in {nameof(WhatAMeetingAlreadySays)}, so nothing on this command reads "
+            + "it and a meeting would be minted without it.");
 
     /// <summary>
     /// The meeting a response is being filed onto, and nothing else off this command line.
@@ -134,7 +177,14 @@ public static class MeetingCommands
         // flag that may not be given here at all. Asking marks it read either way, so
         // `EnsureNothingLeftOver` below does not then answer "this command takes no --title" —
         // false of the command, and true only of this half of it.
-        var told = WhatAMeetingAlreadySays.Where(arguments.WasGiven).ToArray();
+        // Sorted, and not in the table's order: the table is ordered by what a line is read in,
+        // which is a fact about error priority, and a person reading this sentence should not see
+        // it reshuffle because somebody moved a fold.
+        var told = WhatAMeetingAlreadySays
+            .Select(says => says.Flag)
+            .Where(arguments.WasGiven)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
 
         if (told.Length > 0)
         {

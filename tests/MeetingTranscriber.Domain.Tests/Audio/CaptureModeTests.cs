@@ -10,8 +10,8 @@ namespace MeetingTranscriber.Domain.Tests.Audio;
 public class CaptureModeTests
 {
     [Theory]
-    [InlineData(CaptureMode.ProcessLoopback, "process_loopback")]
-    [InlineData(CaptureMode.FullLoopback, "full_loopback")]
+    [InlineData(CaptureMode.OneProgram, "one_program")]
+    [InlineData(CaptureMode.WholeMachine, "whole_machine")]
     public void Modes_round_trip_through_the_name_they_are_stored_under(CaptureMode mode, string wireName)
     {
         mode.ToWireName().ShouldBe(wireName);
@@ -25,7 +25,22 @@ public class CaptureModeTests
     [Fact]
     public void An_unknown_stored_name_is_not_guessed_at()
     {
-        Should.Throw<AudioContractException>(() => CaptureModes.FromWireName("FullLoopback"));
+        Should.Throw<AudioContractException>(() => CaptureModes.FromWireName("WholeMachine"));
+    }
+
+    /// <summary>
+    /// The names these two replaced are not read back either, and that is a decision rather than
+    /// an omission: nothing has shipped, so a card or a row written under the old vocabulary is
+    /// refused loudly instead of guessed at. It is stated here because the alternative — a pair of
+    /// quiet compatibility arms — is what somebody reaches for the first time an old spool folder
+    /// will not open, and the answer is to finish or discard the folder.
+    /// </summary>
+    [Theory]
+    [InlineData("process_loopback")]
+    [InlineData("full_loopback")]
+    public void The_names_these_two_replaced_are_refused_and_not_carried_forward(string retired)
+    {
+        Should.Throw<AudioContractException>(() => CaptureModes.FromWireName(retired));
     }
 
     [Fact]

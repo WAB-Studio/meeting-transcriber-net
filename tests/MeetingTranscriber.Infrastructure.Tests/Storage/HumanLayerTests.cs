@@ -500,6 +500,70 @@ public class HumanLayerTests
     }
 
     /// <summary>
+    /// A meeting transcribed again into a different set of labels leaves rows saying somebody spoke
+    /// where, as this corpus now reads it, they did not. The row is the lie an agent reading
+    /// <c>speaker_assignments</c> straight gets, and search's <c>EXISTS</c> only hides it.
+    /// </summary>
+    /// <remarks>
+    /// The voice a turn still carries is the other half of one fact and not a second one: without
+    /// it the delete could have been written as <i>take every assignment off and let the render put
+    /// them back</i>, and nothing puts back a name somebody typed. So the row that stays is checked
+    /// down to who and how and when, which is everything a re-write would have lost.
+    /// </remarks>
+    [Fact]
+    public void A_voice_no_turn_carries_is_forgotten_and_one_a_turn_carries_is_left_alone()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var fixture = new HumanLayerFixture(context, corpus.Root);
+        var human = fixture.HumanLayer;
+
+        var meeting = fixture.Meeting("la daily");
+        fixture.Spoke(meeting, ordinal: 0, AudioChannel.Microphone);
+        var settled = human.Assign(meeting.Id, fixture.LabelOf(AudioChannel.Microphone), human.Add("Ada"));
+        human.Assign(meeting.Id, fixture.LabelOf(AudioChannel.Loopback), human.Add("Jo"));
+
+        human.ForgetVoicesNoTurnHas(meeting.Id).ShouldBe(1);
+
+        var kept = context.SpeakerAssignments.AsNoTracking().ShouldHaveSingleItem();
+        kept.SpeakerLabel.ShouldBe(fixture.LabelOf(AudioChannel.Microphone));
+        kept.PersonId.ShouldBe(settled.PersonId);
+        kept.AssignedBy.ShouldBe(SpeakerAssignmentSource.Person);
+        kept.AssignedAt.ShouldBe(settled.AssignedAt);
+    }
+
+    /// <summary>
+    /// Another meeting's rows are another meeting's. A label is only unique inside one meeting —
+    /// <c>ch1:speaker_0</c> is every meeting's first microphone voice — so a delete that read the
+    /// label and not the meeting would take somebody's name off a meeting nothing re-rendered, and
+    /// a turn of the wrong meeting would keep one that should have gone.
+    /// </summary>
+    [Fact]
+    public void Forgetting_a_voice_reaches_no_other_meeting()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var fixture = new HumanLayerFixture(context, corpus.Root);
+        var human = fixture.HumanLayer;
+
+        var rendered = fixture.Meeting("la que se re-renderiza");
+        var untouched = fixture.Meeting("la otra");
+        var label = fixture.LabelOf(AudioChannel.Microphone);
+        var ada = human.Add("Ada");
+
+        // The turn is the other meeting's, so the label is carried in this corpus and not by the
+        // meeting being re-derived. A subquery that forgot which meeting it was reading would keep
+        // the row this asserts went.
+        fixture.Spoke(untouched, ordinal: 0, AudioChannel.Microphone);
+        human.Assign(rendered.Id, label, ada);
+        human.Assign(untouched.Id, label, ada);
+
+        human.ForgetVoicesNoTurnHas(rendered.Id).ShouldBe(1);
+
+        context.SpeakerAssignments.AsNoTracking().ShouldHaveSingleItem().MeetingId.ShouldBe(untouched.Id);
+    }
+
+    /// <summary>
     /// Somebody's own one to one is a meeting they attended and are the subject of, so the two roles
     /// are two rows — and taking one off has to leave the other, which is what a single row per
     /// person could not do.
@@ -974,6 +1038,40 @@ internal sealed class HumanLayerFixture
         _context.Meetings.Add(meeting);
         _context.SaveChanges();
         return meeting;
+    }
+
+    /// <summary>
+    /// The label the corpus would store for the first voice a provider numbered on that channel.
+    /// </summary>
+    /// <remarks>
+    /// Built by <see cref="SpeakerLabels.For"/> and never spelled out, which is the criterion
+    /// <c>ISA.md</c> records against the importer: a writer or a deleter of
+    /// <c>speaker_assignments</c> is right only if both sides of the comparison come from the same
+    /// function. A literal here would stay green through a change to that function while every
+    /// assignment of every meeting was deleted on every render.
+    /// </remarks>
+    public string LabelOf(AudioChannel channel) => SpeakerLabels.For(channel, speaker: 0);
+
+    /// <summary>A turn of that meeting on that channel, as a render would have written it.</summary>
+    public Utterance Spoke(Meeting meeting, int ordinal, AudioChannel channel)
+    {
+        ArgumentNullException.ThrowIfNull(meeting);
+
+        var turn = new Utterance
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting.Id,
+            Ordinal = ordinal,
+            Start = Duration.FromMilliseconds(ordinal * 1_000),
+            End = Duration.FromMilliseconds((ordinal * 1_000) + 500),
+            Channel = channel,
+            SpeakerLabel = LabelOf(channel),
+            Text = "algo dicho",
+        };
+
+        _context.Utterances.Add(turn);
+        _context.SaveChanges();
+        return turn;
     }
 
     /// <summary>

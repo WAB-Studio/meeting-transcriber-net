@@ -16,12 +16,17 @@ public class CaptureRun
 
     // 'Others' is channel 0 and 'Me' is channel 1. The names follow the contract so neither
     // property can be read as the other source.
-    public string? OthersDeviceId { get; set; }
-
-    public string? OthersDeviceName { get; set; }
-
+    //
+    // Channel 0 has no device and never will: neither following one program nor recording
+    // everything this machine plays names an endpoint. A card claiming otherwise is refused where
+    // the card is read, in `SpoolManifest`, and `capture_source_changes` carries the same refusal
+    // as a CHECK.
     public CaptureMode OthersCaptureMode { get; set; }
 
+    /// <summary>
+    /// The program channel 0 followed, and nothing when it took the whole machine. It is the mode
+    /// said again as a name, so a CHECK on this table keeps the two in step rather than the caller.
+    /// </summary>
     public string? OthersProcess { get; set; }
 
     public string? MeDeviceId { get; set; }

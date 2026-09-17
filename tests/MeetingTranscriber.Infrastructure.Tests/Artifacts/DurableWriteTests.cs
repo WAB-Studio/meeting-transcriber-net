@@ -250,6 +250,94 @@ public class DurableWriteTests
     }
 
     /// <summary>
+    /// The file and the row are two different questions, and a disk that lost a file only answers
+    /// one of them. Somebody whose <c>deepgram.json</c> went missing hands a different response
+    /// over; the corpus still records what was paid for at that path, and the bytes disagreeing
+    /// with the row is the whole of the refusal.
+    /// </summary>
+    /// <remarks>
+    /// The message names the recorded hash and not only the path, because the one thing somebody in
+    /// this state needs is which file to go and find in a backup.
+    /// </remarks>
+    [Fact]
+    public void A_source_whose_file_is_gone_is_still_refused_when_the_corpus_records_other_bytes()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var path = CorpusFiles.PathFor(meeting, "deepgram.json");
+
+        var paid = DurableArtifact.WriteText(
+            context, meeting, ArtifactKind.DeepgramResponse, path, When, "{\"paid\":true}");
+        CorpusFiles.Locate(corpus.Root, path).Delete();
+
+        var refused = Should.Throw<ArtifactWriteException>(() => DurableArtifact.WriteText(
+            context, meeting, ArtifactKind.DeepgramResponse, path, When, "{\"paid\":false}"));
+
+        refused.Message.ShouldContain(paid.Sha256[..12]);
+
+        var artifact = context.Artifacts.ShouldHaveSingleItem();
+        artifact.Sha256.ShouldBe(paid.Sha256);
+        artifact.ByteSize.ShouldBe(paid.ByteSize);
+        Files(corpus).ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The same state with the file still there gets the sentence about the file, and that is what
+    /// decides the order of the two refusals. A message telling somebody their file went missing
+    /// while it is sitting there would send them to <c>restore</c>, which refuses a path that has a
+    /// file — so the row is only ever asked about once the file is gone.
+    /// </summary>
+    [Fact]
+    public void A_source_still_on_disk_is_refused_for_the_file_and_not_for_the_row()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var path = CorpusFiles.PathFor(meeting, "deepgram.json");
+
+        DurableArtifact.WriteText(
+            context, meeting, ArtifactKind.DeepgramResponse, path, When, "{\"paid\":true}");
+
+        var refused = Should.Throw<ArtifactWriteException>(() => DurableArtifact.WriteText(
+            context, meeting, ArtifactKind.DeepgramResponse, path, When, "{\"paid\":false}"));
+
+        refused.Message.ShouldContain("is already there");
+        refused.Message.ShouldNotContain("gone missing");
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, path).FullName).ShouldBe("{\"paid\":true}");
+        EveryRowReReads(context);
+    }
+
+    /// <summary>
+    /// The case the hash comparison must not refuse, and the reason it is a comparison and not a
+    /// bare <i>the row exists</i>: over a file somebody lost, the same bytes handed over again are
+    /// the one thing that puts the corpus back the way it was. It is only reachable with the file
+    /// gone — with the file there, the refusal above turns identical bytes away too, because
+    /// nothing needs writing.
+    /// </summary>
+    [Fact]
+    public void The_same_source_filed_again_over_a_missing_file_puts_it_back()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var path = CorpusFiles.PathFor(meeting, "deepgram.json");
+
+        var paid = DurableArtifact.WriteText(
+            context, meeting, ArtifactKind.DeepgramResponse, path, When, "{\"paid\":true}");
+        CorpusFiles.Locate(corpus.Root, path).Delete();
+
+        var again = DurableArtifact.WriteText(
+            context, meeting, ArtifactKind.DeepgramResponse, path, When, "{\"paid\":true}");
+
+        again.Id.ShouldBe(paid.Id);
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, path).FullName).ShouldBe("{\"paid\":true}");
+        context.Artifacts.Count().ShouldBe(1);
+        Files(corpus).ShouldBe([$"meetings/{meeting}/deepgram.json"]);
+        EveryRowReReads(context);
+    }
+
+    /// <summary>
     /// The one source that rule does not reach, and the reason the question is asked as *can this
     /// be produced again* rather than *is this a source*. The card is regenerated from the meetings
     /// row every time it is written, so refusing to replace it would protect nothing and cost the

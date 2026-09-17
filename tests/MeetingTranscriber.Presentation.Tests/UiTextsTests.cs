@@ -77,8 +77,15 @@ public class UiTextsTests
         // called something is not translated.** A channel's chip is the index the provider reports
         // back, and `docs/design.md` §Type puts every number that gets compared to another one in
         // mono; the engine is what Deepgram called that model; and the product's name is the
-        // product's. The last one is the same answer once more: a daily is called a daily in both,
-        // and the word came into Spanish from the ceremony rather than being translated out of it.
+        // product's. `TheShapeDaily` is the same answer once more: a daily is called a daily in
+        // both, and the word came into Spanish from the ceremony rather than being translated out
+        // of it.
+        //
+        // The settings screen added three. `TheEngineThatSummarises` is the maker's answer a fifth
+        // time — Anthropic called that model Claude. The two costs are not words at all:
+        // `docs/design.md` §The artboards says an amount goes as `[costo]` until a run produces a
+        // real number, so what is in them is a placeholder standing where a figure will be, and
+        // `min` is the unit the figure is per.
         string[] sameEitherWayOnPurpose =
         [
             nameof(UiTexts.Channel0),
@@ -87,8 +94,11 @@ public class UiTextsTests
             nameof(UiTexts.No),
             nameof(UiTexts.SpanishName),
             nameof(UiTexts.TheApplicationsName),
+            nameof(UiTexts.TheEngineThatSummarises),
             nameof(UiTexts.TheEngineThatTranscribes),
             nameof(UiTexts.TheShapeDaily),
+            nameof(UiTexts.WhatAMinuteCosts),
+            nameof(UiTexts.WhatItCosts),
         ];
 
         var sameEitherWay = Catalogue

@@ -55,6 +55,7 @@ first screen to need one settles it — but every screen after that uses the sam
 | Zona caliente — hot zone | `#EDD5C7` | the meter's segments above −12 dB | `HotZoneBrush` |
 | Olivo — olive | `#4F7561` | alive and well; see above | `OliveBrush` |
 | Pico — peak | `#C2683C` | wants attention; see above | `PeakBrush` |
+| Sin responder — unanswered | `#C3BFB6` | a speaker nobody has named; an unticked box; the ring of an unchosen radio | `UnansweredBrush` |
 
 Speakers get their own three, and only these three:
 
@@ -79,16 +80,17 @@ So a colour this page has decided and no screen has yet drawn is listed here:
 | Value | What it is |
 | --- | --- |
 | `#A0567A` | the second speaker |
-| `#C3BFB6` | a speaker nobody has named; an unticked box; the ring of an unchosen radio |
 | `#B9B5AC` | the bars of an audio clip's waveform |
 
 Every colour written anywhere on this page is either a key of `Olivo.xaml` or a row of that table,
 and `OlivoTests` fails the build over a third case. The screen that first draws one settles it, in
 the change that draws it: the value leaves the table, the brush goes into `Olivo.xaml`, and the row
-joins the colour table above carrying the key it settled on — which takes that table to thirteen
-rows, and `OlivoTests` pins its length, so the pin moves in the same change. It is the same act as
-the twelve — the key is this page's suggestion and the first screen to need one settles it —
-happening one colour later. A value leaves whole: the row above lists every role it has, so the
+joins the colour table above carrying the key it settled on — which takes that table one row
+longer, and `OlivoTests` pins its length, so the pin moves in the same change. It is the same act as
+the ones already there — the key is this page's suggestion and the first screen to need one settles
+it — happening one colour later. `#C3BFB6` left this table that way: the settings screen was the
+first to draw the ring of an unchosen radio, and it took the value whole under `UnansweredBrush`,
+the other two roles included. A value leaves whole: the row above lists every role it has, so the
 screen that names one of them names the value, and two of those roles get two keys only on the day
 one of them has to diverge.
 

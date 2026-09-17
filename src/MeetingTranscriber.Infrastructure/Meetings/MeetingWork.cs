@@ -40,6 +40,18 @@ public sealed record MeetingAndWork(Meeting Meeting, OwedWork Owed);
 /// </remarks>
 public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
 {
+    /// <summary>
+    /// One instant that never advances, for a caller holding the instant rather than a clock: a
+    /// stop, where the job a recording's end creates is created at the moment that recording
+    /// ended. The same seam <c>HumanLayer</c> offers a render, and here for the same reason — a
+    /// caller that already knows the instant should not be able to hand this type a live clock and
+    /// hope it goes unread.
+    /// </summary>
+    public MeetingWork(CorpusDbContext context, UtcTimestamp at)
+        : this(context, new Frozen(at))
+    {
+    }
+
     private UtcTimestamp Now => UtcTimestamp.From(clock.GetUtcNow());
 
     /// <summary>
@@ -151,6 +163,49 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     public ProcessingJob Take(Guid meetingId) => Answer(meetingId, decline: false);
 
     /// <summary>
+    /// Takes the meeting's next stage when that stage is <paramref name="kind"/> and the meeting is
+    /// still offering it, and does nothing at all when it is not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="Take"/> with the question asked inside the transaction that answers it, which is
+    /// the whole reason this exists rather than a caller reading <see cref="On"/> first. That
+    /// caller's read and its write would be two transactions with a file write between them, and
+    /// in that gap another window's press reaches the same stage — after which <see cref="Take"/>
+    /// throws <see cref="MeetingStageException"/> at a caller that had just proved it would not.
+    /// The one caller is a recording being finished, where such a throw arrives with the audio
+    /// already committed and comes out of a handler that has no catch for it.
+    /// </para>
+    /// <para>
+    /// Nothing, and not a refusal, because for that caller a stage somebody has already asked for
+    /// is not a failure — it is the work being there. A recovery finish over a meeting whose
+    /// transcription was queued the first time round has to come back with the meeting finished,
+    /// and which of the two happened is said by the answer being the job or being null.
+    /// </para>
+    /// </remarks>
+    /// <param name="meetingId">The meeting.</param>
+    /// <param name="kind">The stage the caller decided should be queued.</param>
+    /// <returns>The job that was queued, or <c>null</c> when nothing was.</returns>
+    /// <exception cref="MeetingStageException">There is no such meeting in this corpus.</exception>
+    public ProcessingJob? TakeIfItIsOffered(Guid meetingId, JobKind kind)
+    {
+        using var write = context.Database.BeginTransaction();
+
+        var owed = On(meetingId);
+
+        if (!owed.MayBeTaken || owed.Next != kind)
+        {
+            return null;
+        }
+
+        var job = Taken(meetingId, kind, Now);
+        context.SaveChanges();
+        write.Commit();
+
+        return job;
+    }
+
+    /// <summary>
     /// Somebody said no to the meeting's next stage, for now. Hands back the job that carries
     /// that answer.
     /// </summary>
@@ -184,6 +239,11 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// corpus can both see a stage nobody has answered and both queue the work, which is two
     /// charges for one meeting the day something runs them. SQLite serialises writers, so the
     /// second of the two waits and then either fails or finds what the first left.
+    /// <para>
+    /// It refuses rather than answering nothing, which is <see cref="TakeIfItIsOffered"/>'s whole
+    /// difference: a person pressing a stage that has moved under them is owed a sentence, and a
+    /// stop that finds the work already there is owed silence.
+    /// </para>
     /// </remarks>
     private ProcessingJob Answer(Guid meetingId, bool decline)
     {
@@ -199,7 +259,10 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
                 + (decline ? "leave" : "take") + ".");
         }
 
-        var job = decline ? Left(meetingId, kind) : Taken(meetingId, kind);
+        // Once, and read twice: a decline cancels rows and writes one, and two reads of the
+        // clock a line apart would date them to two instants.
+        var now = Now;
+        var job = decline ? Left(meetingId, kind, now) : Taken(meetingId, kind, now);
         context.SaveChanges();
         write.Commit();
 
@@ -207,17 +270,16 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     }
 
     /// <summary>Queues the stage's work, and starts nothing.</summary>
-    private ProcessingJob Taken(Guid meetingId, JobKind kind)
+    private ProcessingJob Taken(Guid meetingId, JobKind kind, UtcTimestamp now)
     {
-        var job = ProcessingJob.Queue(Guid.NewGuid(), meetingId, kind, NextKey(meetingId, kind), Now);
+        var job = ProcessingJob.Queue(Guid.NewGuid(), meetingId, kind, NextKey(meetingId, kind), now);
         context.ProcessingJobs.Add(job);
         return job;
     }
 
     /// <summary>Records that the stage was turned down, in whichever of the three ways applies.</summary>
-    private ProcessingJob Left(Guid meetingId, JobKind kind)
+    private ProcessingJob Left(Guid meetingId, JobKind kind, UtcTimestamp now)
     {
-        var now = Now;
         var mine = context.ProcessingJobs
             .Where(job => job.MeetingId == meetingId && job.Kind == kind)
             .ToList();
@@ -275,4 +337,15 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
         .Where(job => meetings.Contains(job.MeetingId))
         .ToList()
         .ToLookup(job => job.MeetingId);
+
+    /// <summary>
+    /// A clock that answers one instant for ever. Four lines rather than a type shared with
+    /// <c>HumanLayer</c>, which has the same four: what would be shared is a
+    /// <see cref="TimeProvider"/> with one overridden method, and a project-wide name for that
+    /// costs every reader more than the copy costs either file.
+    /// </summary>
+    private sealed class Frozen(UtcTimestamp at) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => at.Value;
+    }
 }

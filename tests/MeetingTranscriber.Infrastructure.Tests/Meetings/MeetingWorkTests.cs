@@ -216,6 +216,81 @@ public class MeetingWorkTests
         job.StartedAt.ShouldBeNull();
     }
 
+    /// <summary>
+    /// Built on an instant rather than a clock, every row carries that instant.
+    /// </summary>
+    /// <remarks>
+    /// The caller this is for is a stop: a job created because a recording ended is created at the
+    /// moment the recording ended, and the finish that queues it already holds that instant because
+    /// somebody pressed a button at it. Every other caller is a press on a screen, which has none
+    /// and reads the clock — which is what the test above is over.
+    /// </remarks>
+    [Fact]
+    public void A_work_built_on_an_instant_writes_every_row_at_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+        var stopped = UtcTimestamp.From(new DateTimeOffset(2026, 8, 19, 9, 45, 0, TimeSpan.Zero));
+
+        var job = new MeetingWork(context, stopped).Take(meeting);
+
+        job.CreatedAt.ShouldBe(stopped);
+
+        // And not the machine's own clock, which is what every other caller gets and is what the
+        // instant exists to keep off this path.
+        job.CreatedAt.ShouldNotBe(UtcTimestamp.From(TimeProvider.System.GetUtcNow()));
+    }
+
+    /// <summary>
+    /// A stage taken only if it is offered queues it once and answers nothing the second time.
+    /// </summary>
+    /// <remarks>
+    /// The whole reason it exists rather than a caller reading <c>On</c> and then calling
+    /// <c>Take</c>: the caller is a recording being finished, a finish runs again over a meeting it
+    /// already finished, and the second run must come back with the meeting finished rather than
+    /// with a <see cref="MeetingStageException"/> thrown after the audio was committed.
+    /// </remarks>
+    [Fact]
+    public void A_stage_taken_only_if_it_is_offered_is_queued_once_and_refuses_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+        var stopped = UtcTimestamp.From(new DateTimeOffset(2026, 8, 19, 9, 45, 0, TimeSpan.Zero));
+        var work = new MeetingWork(context, stopped);
+
+        var queued = work.TakeIfItIsOffered(meeting, JobKind.Transcribe);
+
+        queued.ShouldNotBeNull();
+        queued.Kind.ShouldBe(JobKind.Transcribe);
+        queued.CreatedAt.ShouldBe(stopped);
+
+        work.TakeIfItIsOffered(meeting, JobKind.Transcribe).ShouldBeNull();
+        context.ProcessingJobs.Count(job => job.MeetingId == meeting).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// A stage that is not the one the meeting is offering is not queued in its place.
+    /// </summary>
+    /// <remarks>
+    /// The direction that would spend money on the wrong thing. A caller deciding
+    /// <see cref="JobKind.Extract"/> over a meeting whose next stage is transcription must get
+    /// nothing, not a transcription and not an extraction — the stage table is what says which one
+    /// a meeting is at, and a queue written past it is a job whose input does not exist.
+    /// </remarks>
+    [Fact]
+    public void A_stage_the_meeting_is_not_offering_is_not_queued_in_its_place()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+
+        new MeetingWork(context, Clock).TakeIfItIsOffered(meeting, JobKind.Extract).ShouldBeNull();
+
+        context.ProcessingJobs.ShouldBeEmpty();
+    }
+
     [Fact]
     public void A_stage_already_taken_is_not_offered_a_second_time()
     {
