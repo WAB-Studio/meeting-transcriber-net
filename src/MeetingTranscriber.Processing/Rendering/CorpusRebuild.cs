@@ -192,7 +192,8 @@ public static class CorpusRebuild
     /// this whole design exists to avoid, and it is why the wider sweep a caller that rolls its
     /// meeting back can afford — which this never does — would be wrong here. A tracked
     /// delete would need the same answer and there is none to give: nothing in this loop produces
-    /// one, because the turns of a meeting go through <c>ExecuteDelete</c>.
+    /// one, because the turns of a meeting and the speaker assignments beside them both go through
+    /// <c>ExecuteDelete</c>.
     /// </para>
     /// <para>
     /// A context of its own per meeting is the other shape, and it is what <see cref="OwedRenders"/>

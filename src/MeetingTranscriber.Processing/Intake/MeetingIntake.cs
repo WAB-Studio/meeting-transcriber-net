@@ -248,14 +248,12 @@ public static class MeetingIntake
         // response off the bytes, so "these bytes are new" and "this meeting has no response" are
         // two questions, and only the first has been asked.
         //
-        // `StagedArtifact` asks the second one too — and only about the file. It refuses a source
-        // it finds still on disk, so with `deepgram.json` present a second response is already
-        // turned away there. With the file lost — a partial restore, a sync client, somebody
-        // clearing a folder, which is the state `check` reports as Missing — there is nothing for
-        // it to find, and the write would land on the existing row: same path, new hash, new size,
-        // and one conversation's transcript filed under another meeting with `check` calling the
-        // corpus sound afterwards. A paid response is never written over, and a row is as much the
-        // corpus's record of it as the file is.
+        // `StagedArtifact` asks the second one too, about the file first and about the row once the
+        // file is gone — a never-replaceable kind whose existing row for this meeting and path
+        // records different bytes is refused there as of O-20260910-17. The block below is still
+        // not redundant and still fires first: it is keyed on the kind rather than the path, so it
+        // reaches a state the path check does not, and it says which meeting. A paid response is
+        // never written over, and a row is as much the corpus's record of it as the file is.
         if (context.Artifacts.FirstOrDefault(artifact =>
                 artifact.MeetingId == meetingId
                 && artifact.Kind == ArtifactKind.DeepgramResponse) is { } filed)

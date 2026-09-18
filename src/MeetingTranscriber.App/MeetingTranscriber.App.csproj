@@ -405,29 +405,9 @@
     -->
     <PropertyGroup>
       <_FacesRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'faces'))</_FacesRoot>
-      <_FacesRestoreSessionId>$([System.Guid]::NewGuid())</_FacesRestoreSessionId>
     </PropertyGroup>
 
     <RemoveDir Directories="$(_FacesRoot)" />
-
-    <!--
-      **A RID-specific publish needs a `project.assets.json` carrying a target for that RID, and the
-      solution's restore writes none** for a project declaring no `RuntimeIdentifiers`: without this
-      the publish stops on NETSDK1047. The two extra properties are the ones `/restore` itself
-      passes and both are load-bearing - a restore inside a running build otherwise leaves the
-      publish underneath reading the evaluation from before it, which is green on a machine that has
-      built once and red on a clean checkout.
-
-      `<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>` on the two faces deletes all of this, and it
-      is the better shape: `win-x64` is a fact about two projects that ship only inside an x64
-      package, and declaring it there would also stop this build and the solution's restore writing
-      each other's answer into five shared projects' assets files turn about. It is not done here
-      because those two csproj files belong to another share this batch; the PR says so.
-    -->
-    <MSBuild Projects="@(Face)"
-             Targets="Restore"
-             RemoveProperties="$(_FacePropertiesToDrop)"
-             Properties="$(_FacePublishProperties);ExcludeRestorePackageImports=true;MSBuildRestoreSessionId=$(_FacesRestoreSessionId)" />
 
     <MSBuild Projects="@(Face)"
              Targets="Publish"

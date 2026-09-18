@@ -76,87 +76,33 @@ public static class MeetingCommands
         return Cli.Ok;
     }
 
-    /// <summary>
-    /// What has been read off the line so far, every slot still unanswered.
-    /// </summary>
-    /// <remarks>
-    /// The fold below accumulates into this and not into <see cref="MeetingDetails"/>, and the
-    /// difference is the seed. A <c>MeetingDetails</c> to start from would have to carry a
-    /// <c>default(UtcTimestamp)</c> — the one value <see cref="UtcTimestamp"/>'s factories exist to
-    /// keep unreachable, year one — and a <c>default(SourceProfile)</c>, which is the <c>0</c>
-    /// every method on <c>SourceProfiles</c> throws on. Both would be overwritten before anything
-    /// read them, today; neither would be the day a flag ahead of them stops throwing. Nulls carry
-    /// the same *unanswered* meaning and construct nothing.
-    /// </remarks>
-    private readonly record struct Partly(
-        UtcTimestamp? StartedAt,
-        SourceProfile? Profile,
-        string? Language,
-        string? Title,
-        string? Context);
-
-    /// <summary>One flag that says what a meeting is, and how the half that mints one reads it.</summary>
-    private readonly record struct WhatItSays(string Flag, Func<Arguments, Partly, Partly> Read);
-
-    /// <summary>
-    /// Every flag that says what a meeting is, paired with how the half that mints one reads it.
-    /// </summary>
-    /// <remarks>
-    /// One table and not two lists, because the two halves have to agree about it and a flag
-    /// spelled twice is a flag that can be added once: <see cref="Told"/> folds this to build a
-    /// meeting and <see cref="OnlyTheMeeting"/> reads the names off it to refuse by name, so a
-    /// sixth flag arrives on both halves or on neither. The order here is the order a line is read
-    /// in, which decides which missing flag a line missing two of them is told about first. It is
-    /// not the order the refusal names them in — that one sorts, so the sentence a person reads
-    /// does not move when somebody reorders a fold.
-    /// </remarks>
-    private static readonly WhatItSays[] WhatAMeetingAlreadySays =
-        [
-            new("--started-at", (told, so) => so with { StartedAt = told.Instant("--started-at") }),
-            new("--profile", (told, so) => so with { Profile = told.Profile("--profile") }),
-            new("--language", (told, so) => so with { Language = told.Language("--language", DefaultLanguage) }),
-            new("--title", (told, so) => so with { Title = told.Optional("--title") }),
-            new("--context", (told, so) => so with { Context = told.Optional("--context") }),
-        ];
-
     /// <summary>What the command line knows about a meeting nothing in the corpus does.</summary>
-    /// <remarks>
-    /// The two required slots are answered by their own readers throwing, not by this method:
-    /// <c>Instant</c> and <c>Profile</c> refuse a line that does not carry them, in the words
-    /// somebody typing needs. So a null here is not a line typed wrong — it is this table having
-    /// lost the row that reads that flag, which is a mistake in this file and says so.
-    /// </remarks>
     private static MeetingDetails Told(Arguments arguments)
     {
-        var told = WhatAMeetingAlreadySays.Aggregate(
-            default(Partly),
-            (so, says) => says.Read(arguments, so));
+        var details = new MeetingDetails(
+            arguments.Instant("--started-at"),
+            arguments.Profile("--profile"),
+            arguments.Language("--language", DefaultLanguage),
+            arguments.Optional("--title"),
+            arguments.Optional("--context"));
 
         arguments.EnsureNothingLeftOver();
-
-        return new MeetingDetails(
-            told.StartedAt ?? throw NothingReads("--started-at"),
-            told.Profile ?? throw NothingReads("--profile"),
-            told.Language ?? DefaultLanguage,
-            told.Title,
-            told.Context);
+        return details;
     }
-
-    private static InvalidOperationException NothingReads(string flag) =>
-        new($"{flag} is not in {nameof(WhatAMeetingAlreadySays)}, so nothing on this command reads "
-            + "it and a meeting would be minted without it.");
 
     /// <summary>
     /// The meeting a response is being filed onto, and nothing else off this command line.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Every flag the other half takes is refused by name rather than ignored. The meeting already
-    /// says when it was, what it was recorded as, what was expected to be spoken in it and what it
-    /// is called, so a flag here would be a second answer to a question the corpus has already
-    /// settled — and for <c>--profile</c> it would be one that decides whether two channels are the
-    /// meeting's two sources. A flag silently doing nothing is worse than a refusal: somebody would
-    /// go on typing it and go on believing it.
+    /// Anything this command does not read is refused by name rather than ignored, and the sentence
+    /// after it says why — which is a sentence about this command and not about the flag, because it
+    /// is now appended to every unread flag and not only to the five the other half reads. The
+    /// meeting already says when it was, what it was recorded as, what was expected to be spoken in
+    /// it and what it is called, so a flag here would be a second answer to a question the corpus has
+    /// already settled — and for <c>--profile</c> it would be one that decides whether two channels
+    /// are the meeting's two sources. A flag silently doing nothing is worse than a refusal: somebody
+    /// would go on typing it and go on believing it.
     /// </para>
     /// <para>
     /// It is a <see cref="UsageException"/> and so <c>Cli.Misused</c>, because that is what this is:
@@ -165,36 +111,18 @@ public static class MeetingCommands
     /// error as one would make the same flag answer 1 with a value and 2 without it — so a script
     /// reading the code could no longer tell "you typed the line wrong" from "the corpus said no".
     /// It also prints the usage, which is where the alternation these flags belong to is written.
+    /// <c>Arguments.Refusing</c> builds a <see cref="UsageException"/> too, so the exit code is the
+    /// same one it always was.
     /// </para>
     /// </remarks>
     private static Guid OnlyTheMeeting(Arguments arguments, string named)
     {
         var meeting = Arguments.Meeting(named);
 
-        // Asked for presence and not for a value, so the answer is the same sentence whether or not
-        // somebody typed one after the flag. Read through `Optional` it would not be: a flag with no
-        // value throws "--title takes a value" first, which sends them back to type a value for a
-        // flag that may not be given here at all. Asking marks it read either way, so
-        // `EnsureNothingLeftOver` below does not then answer "this command takes no --title" —
-        // false of the command, and true only of this half of it.
-        // Sorted, and not in the table's order: the table is ordered by what a line is read in,
-        // which is a fact about error priority, and a person reading this sentence should not see
-        // it reshuffle because somebody moved a fold.
-        var told = WhatAMeetingAlreadySays
-            .Select(says => says.Flag)
-            .Where(arguments.WasGiven)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
+        arguments.EnsureNothingLeftOver(
+            $"This command is given --meeting, and meeting {meeting} already says when it was, what it "
+            + "was recorded as and what was spoken in it.");
 
-        if (told.Length > 0)
-        {
-            throw new UsageException(
-                $"{string.Join(", ", told)} cannot be given with --meeting. Meeting {meeting} "
-                + "already says when it was, what it was recorded as and what was spoken in it, "
-                + "and a response filed onto it never gets to say otherwise.");
-        }
-
-        arguments.EnsureNothingLeftOver();
         return meeting;
     }
 

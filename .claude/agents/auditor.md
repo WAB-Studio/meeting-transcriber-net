@@ -102,6 +102,15 @@ taste is not a finding. This is the one thing you may find against the card rath
 came back green with `Skipped: 0`, and the assertion cannot pass vacuously — an empty collection
 asserted empty, a mutation never run red, a name promising more than the body checks.
 
+**Whether a `## Verification` stub has the shape the format asks for, before any sentence inside
+it is weighed.** `.claude/skills/isa/references/format.md` says what a stub is: one line per
+closed claim, naming the test class or the command precisely enough to re-run, bounded by gates
+11 and 12, over a claim that is above it and marked closed. A stub that breaks one of those is a
+finding of its own, named by the gate it breaks, and it is reported rather than folded into a
+judgement about the evidence — a stub that has grown into a paragraph and evidence that does not
+prove its claim are two different defects, and collapsing them is how one of the two goes
+unanswered.
+
 **Whether the claim was cut to fit.** Read the words of every claim this PR ticks, back through
 `main`'s history and not through this diff:
 
@@ -135,6 +144,12 @@ day; a defect carried forward costs one entry in a file.
 - **`ask`** — the diff runs and a decision in it belongs to a person. It still merges. The question
   goes out and the card gains `question` so the pool skips it until the answer comes.
 - **`pass`** — nothing owed.
+
+**Two verdicts finding the same kind of defect in one artifact means the third names the artifact's
+form.** A card that comes back twice over the same shape of finding — a stub, a record, a plan — is
+not a card that keeps missing; it is one whose form nobody has written down. The third verdict says
+so, in `wrong`, naming the artifact and the rule it needs rather than the instance. Card #82 spent
+three rounds on exactly this.
 
 A claim cut to fit, or anything the card did not ask for inside a floor path, is `pass_with_followup`
 and an `owed` entry naming the claim — unless it is one of the two things above, and then it holds.

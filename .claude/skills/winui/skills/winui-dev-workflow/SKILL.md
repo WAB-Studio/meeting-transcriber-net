@@ -20,7 +20,7 @@ Creates an MVVM project with CommunityToolkit.Mvvm, TitleBar, MicaBackdrop, and 
 ### Install Packages
 
 This repo uses central package management: versions live in `Directory.Packages.props` and a
-`<PackageReference>` carries no `Version` — see `CLAUDE.md`. The end state of adding a package is
+`<PackageReference>` carries no `Version` — see `docs/conventions.md`. The end state of adding a package is
 two entries:
 
 ```xml

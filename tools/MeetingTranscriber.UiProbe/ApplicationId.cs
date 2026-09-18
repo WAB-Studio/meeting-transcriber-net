@@ -19,10 +19,14 @@ namespace MeetingTranscriber.UiProbe;
 /// </para>
 /// <para>
 /// What is left is the half Windows does not offer without an asynchronous call: which application
-/// inside the package to activate. The first <c>&lt;Application&gt;</c>, because this package
-/// declares one, and a package that declared two would need somebody to say which. Which manifest
-/// is <see cref="Repository"/>'s to say, and it is now a registered layout's rather than whichever
-/// build wrote one last.
+/// inside the package to activate. The first <c>&lt;Application&gt;</c>, and order is the contract:
+/// the package declares three — the window, then the two console faces, each carrying one
+/// <c>windows.appExecutionAlias</c>, because <c>MakeAppx</c> refuses two under one application.
+/// <c>PackageManifestTests.The_window_is_the_first_application_the_manifest_declares</c> is what
+/// holds the window first, and a probe that started a console face would wait for a window that
+/// never appears.
+/// Which manifest is <see cref="Repository"/>'s to say, and it is now a registered layout's rather
+/// than whichever build wrote one last.
 /// </para>
 /// </remarks>
 internal static class ApplicationId

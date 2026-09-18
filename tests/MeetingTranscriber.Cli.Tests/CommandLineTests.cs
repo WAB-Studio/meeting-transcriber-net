@@ -660,6 +660,10 @@ public class CommandLineTests
     /// the input saying no. It is also what prints the usage, where the alternation these flags
     /// belong to is written.
     /// </para>
+    /// <para>
+    /// These rows are examples now, and not a closed set: the refusal is anything this command does
+    /// not read, so a sixth flag is refused without anybody adding a row here.
+    /// </para>
     /// </remarks>
     [Theory]
     [InlineData("--profile", "multichannel")]
@@ -694,56 +698,18 @@ public class CommandLineTests
     }
 
     /// <summary>
-    /// The theory above names its flags one by one, so a sixth flag is refused by the command and
-    /// named by nothing here. This is what says the two sets are one set.
-    /// </summary>
-    /// <remarks>
-    /// Read off <c>MeetingCommands.WhatAMeetingAlreadySays</c>, which is the table the minting half
-    /// folds and the filing half refuses by name — so this asserts against the thing that decides
-    /// rather than against a third copy of the five. Private for the reason
-    /// <see cref="Inside(string)"/>'s two are, and reached the same way: a rename lands here as a
-    /// failure that says what went.
-    /// </remarks>
-    [Fact]
-    public void Every_flag_a_meeting_already_answers_is_one_this_suite_names()
-    {
-        var field = typeof(MeetingCommands).GetField(
-            "WhatAMeetingAlreadySays", BindingFlags.NonPublic | BindingFlags.Static)
-            ?? throw new InvalidOperationException(
-                "MeetingCommands.WhatAMeetingAlreadySays pairs a flag with how it is read, and it "
-                + "is gone or renamed.");
-
-        var table = (Array)(field.GetValue(null)
-            ?? throw new InvalidOperationException("WhatAMeetingAlreadySays answered nothing."));
-
-        var flags = table
-            .Cast<object>()
-            .Select(says => (string)Named(says, "Flag").GetValue(says)!)
-            .Order(StringComparer.Ordinal)
-            .ToList();
-
-        var named = typeof(CommandLineTests)
-            .GetMethod(nameof(Filing_a_response_onto_a_meeting_refuses_every_flag_that_meeting_already_answers))!
-            .GetCustomAttributes<InlineDataAttribute>()
-            .Select(row => (string)row.Data[0]!)
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
-            .ToList();
-
-        named.ShouldBe(flags);
-    }
-
-    /// <summary>
     /// A line carrying two of them names both, in the order the sentence has always used, which is
-    /// alphabetical and not the order the table folds in.
+    /// alphabetical — and the real command line, not a unit test in isolation, is what carries the
+    /// sentence saying why.
     /// </summary>
     /// <remarks>
     /// The theory above gives one flag at a time, so nothing held the joined sentence a person
-    /// actually reads. Without this, reordering the fold — a change about which missing flag is
-    /// reported first — silently rewrites a user-facing message.
-    /// <c>--language</c> and <c>--context</c> are the pair, and the choice matters: they are third
-    /// and fifth in the table and first and second alphabetically, so the two orders disagree. A
-    /// pair that read the same either way would pass whichever order the code used.
+    /// actually reads. <c>--language</c> and <c>--context</c> are the pair, and the choice matters:
+    /// they are first and second alphabetically, so a fold order that disagreed with the sentence
+    /// order would show up here. This is also the one place proving
+    /// <see cref="Arguments.EnsureNothingLeftOver(string)"/>'s <c>because</c> sentence really reaches
+    /// <c>import-response</c>'s refusal and not only the direct unit test against
+    /// <see cref="Arguments"/> below.
     /// </remarks>
     [Fact]
     public void Two_flags_a_meeting_already_answers_are_named_in_one_sentence_and_in_order()
@@ -761,17 +727,31 @@ public class CommandLineTests
             "presupuesto");
 
         run.Code.ShouldBe(Cli.Misused, run.Error);
-        run.Error.ShouldContain("--context, --language cannot be given with --meeting");
+        run.Error.ShouldContain("This command takes no --context, --language.");
+        run.Error.ShouldContain(
+            "already says when it was, what it was recorded as and what was spoken in it.");
     }
 
     /// <summary>
-    /// A member of a row of a private table, named rather than reached by tuple position, so a
-    /// shape change here says what moved instead of dereferencing null inside reflection.
+    /// A refusal built with <see cref="Arguments.EnsureNothingLeftOver(string)"/> names the unread
+    /// flags and carries the sentence saying why, rather than one or the other.
     /// </summary>
-    private static PropertyInfo Named(object says, string member) =>
-        says.GetType().GetProperty(member)
-        ?? throw new InvalidOperationException(
-            $"A row of WhatAMeetingAlreadySays no longer carries {member}.");
+    /// <remarks>
+    /// Direct against <see cref="Arguments"/> and not through a command line: this is the overload's
+    /// own contract, and the sentence is appended once, after the flags, and not folded into them.
+    /// </remarks>
+    [Fact]
+    public void A_command_that_reads_none_of_a_flag_says_why_as_well_as_which()
+    {
+        var arguments = Arguments.Parse(["--title", "x", "--context", "y"]);
+
+        var refusal = Should.Throw<UsageException>(
+            () => arguments.EnsureNothingLeftOver("Because the corpus already says."));
+
+        refusal.Message.ShouldContain("--context");
+        refusal.Message.ShouldContain("--title");
+        refusal.Message.ShouldContain("Because the corpus already says.");
+    }
 
     /// <summary>
     /// The usage is the only place somebody standing at a prompt would find the flag, and the only

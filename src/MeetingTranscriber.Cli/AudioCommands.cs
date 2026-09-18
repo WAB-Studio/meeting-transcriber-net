@@ -164,7 +164,7 @@ public static class AudioCommands
         {
             Report.Line(output, "folder", folder.FullName);
             Report.Line(output, "meeting", session.Card.MeetingId.ToString());
-            Report.Line(output, "channel 0", session.Mode.ToString());
+            Report.Line(output, "channel 0", session.Mode.ToWireName());
 
             foreach (var source in session.Sources)
             {
@@ -436,7 +436,7 @@ public static class AudioCommands
             Report.Line(output, "meeting", card.MeetingId.ToString());
             Report.Line(output, "started", card.StartedAt.ToStorage());
             Report.Line(output, "profile", card.Profile.ToWireName());
-            Report.Line(output, "channel 0", card.Mode.ToString());
+            Report.Line(output, "channel 0", card.Mode.ToWireName());
 
             foreach (var source in card.Sources)
             {
@@ -570,7 +570,7 @@ public static class AudioCommands
         var wholeMachine = WholeMachine.AtThePrompt(said =>
         {
             session.RecordTheWholeMachine();
-            Report.Line(said, "channel 0", $"{session.Mode} — {session.On(AudioChannel.Loopback).Listening.Name}");
+            Report.Line(said, "channel 0", $"{session.Mode.ToWireName()} — {session.On(AudioChannel.Loopback).Listening.Name}");
         });
 
         void Interrupt(object? sender, ConsoleCancelEventArgs pressed)
