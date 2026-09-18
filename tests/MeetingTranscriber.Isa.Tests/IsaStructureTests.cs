@@ -810,6 +810,113 @@ public class IsaStructureTests
     }
 
     /// <summary>
+    /// Every test a stub points at is a test this repository has.
+    /// </summary>
+    /// <remarks>
+    /// Three shapes and no more, because they are the three the section actually writes: a bare
+    /// class name, a class and a fact under it, and a leading-dot fact that hangs off a class the
+    /// stub named earlier. Anything else in backticks — a path, a command line, a file name, an
+    /// English sentence used as evidence — is not a test pointer and is not asked about here;
+    /// <see cref="Every_path_the_file_points_at_is_one_this_repository_has"/> is what answers for
+    /// paths.
+    /// <para>
+    /// ISC-34 carried a deliberately dead pointer for three weeks and nothing mechanical noticed.
+    /// What this cannot see is a pointer that names a live test saying something else, which is a
+    /// reading and stays a person's.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Every_test_a_stub_points_at_is_one_this_repository_has()
+    {
+        var pointers = isa.Stubs.SelectMany(stub => IsaDocument.PointersIn(stub)
+            .Select(pointer => (stub.Id, Pointer: pointer))).ToList();
+
+        // Without this the check below passes by finding nothing, which is how a rule that stopped
+        // recognising a pointer reads exactly like a file whose pointers are all sound.
+        pointers.ShouldNotBeEmpty("no backticked span in `ISA.md` was read as a test pointer, so this check reads nothing.");
+
+        var unresolved = pointers
+            .Where(pair => !Resolves(pair.Pointer))
+            .Select(pair => $"{pair.Id}: {Spelled(pair.Pointer)}")
+            .ToList();
+
+        unresolved.ShouldBeEmpty(
+            "a stub's evidence names a test this repository does not have — point the stub at "
+            + "where the probe lives now, spelled the way this repository spells it. If the probe "
+            + "is gone rather than moved, say so on the claim in words and not in backticks, so the "
+            + "dead name is not read as a live pointer.");
+    }
+
+    /// <summary>
+    /// A test pointer is told from a file name, an extension and a member that is not a fact.
+    /// </summary>
+    [Fact]
+    public void A_pointer_is_read_as_a_test_only_in_the_three_shapes_the_section_writes()
+    {
+        Pointers("`CorpusSchemaTests.cs`").ShouldBeEmpty(
+            "`cs` is not spelled like a fact — no initial capital, no underscore — so the span is "
+            + "nothing, and it is not re-read as a bare-class pointer on `CorpusSchemaTests`.");
+        Pointers("`.partial`").ShouldBeEmpty("`partial` is not spelled like a fact.");
+        Pointers("`ScreenTextsTests.Reads`").ShouldBeEmpty(
+            "`Reads` has no underscore, so it is not a fact, and it is a real member the "
+            + "inventory does not collect either way.");
+        Pointers("`OlivoTests.IsOneOf`").ShouldBeEmpty("the same: a helper, not a fact.");
+        Pointers("`CorpusImport.Tests`").ShouldBeEmpty(
+            "a project name. `CorpusImport` does not end in `Tests`, so it fails the class shape "
+            + "on the dot, and the bare-class shape does not match a span carrying a dot at all.");
+
+        var keys = Pointers(
+            "`DeepgramKeyTests` and `KeyCommandTests` green, "
+            + "`.Nothing_but_the_key_itself_reaches_the_credential_store` sweeps `src/`, "
+            + "`.Nothing_but_the_key_itself_reads_a_Deepgram_key` finds the type");
+
+        keys.ShouldContain(pointer => pointer.Class == "DeepgramKeyTests" && pointer.Fact == null);
+        keys.ShouldContain(pointer => pointer.Class == "KeyCommandTests" && pointer.Fact == null);
+
+        var firstDot = keys.Single(
+            pointer => pointer.Fact == "Nothing_but_the_key_itself_reaches_the_credential_store");
+        firstDot.ClassesNamedSoFar.ShouldBe(["DeepgramKeyTests", "KeyCommandTests"]);
+        Resolves(firstDot).ShouldBeTrue(
+            "the stub names DeepgramKeyTests first and KeyCommandTests second, and the fact is on "
+            + "the first — which is why the rule is any class this stub named, and not the last.");
+
+        var secondDot = keys.Single(
+            pointer => pointer.Fact == "Nothing_but_the_key_itself_reads_a_Deepgram_key");
+        Resolves(secondDot).ShouldBeTrue("the same.");
+    }
+
+    /// <summary>Whether a pointer names a test this repository really has, the shape it read as.</summary>
+    private static bool Resolves(IsaDocument.TestPointer pointer)
+    {
+        var tests = IsaDocument.Tests();
+
+        return pointer switch
+        {
+            { Class: { } bareClass, Fact: null } => tests.Classes.Contains(bareClass),
+            { Class: { } named, Fact: { } fact } =>
+                tests.FactsByClass.TryGetValue(named, out var factsOfClass) && factsOfClass.Contains(fact),
+            { Class: null, Fact: { } fact } => pointer.ClassesNamedSoFar.Count > 0
+                ? pointer.ClassesNamedSoFar.Any(named =>
+                    tests.FactsByClass.TryGetValue(named, out var factsOfClass) && factsOfClass.Contains(fact))
+                : tests.Facts.Contains(fact),
+            _ => false,
+        };
+    }
+
+    /// <summary>A pointer as a person reads it, for the message a failed resolution shows.</summary>
+    private static string Spelled(IsaDocument.TestPointer pointer) => pointer switch
+    {
+        { Class: { } named, Fact: { } fact } => $"{named}.{fact}",
+        { Class: { } named, Fact: null } => named,
+        { Class: null, Fact: { } fact } => $".{fact}",
+        _ => string.Empty,
+    };
+
+    /// <summary>What the pointer rule reads out of one stub's evidence, so a case is one line.</summary>
+    private static IReadOnlyList<IsaDocument.TestPointer> Pointers(string evidence) =>
+        IsaDocument.PointersIn(new IsaDocument.Stub("ISC-1", evidence, string.Empty));
+
+    /// <summary>
     /// Whether one of the file's pointers is a file or a folder this repository has, spelled the
     /// way this repository spells it.
     /// </summary>

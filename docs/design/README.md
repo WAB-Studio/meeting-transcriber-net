@@ -1,6 +1,6 @@
 # The Olivo artboards
 
-Eighteen screens as pictures. **`../design.md` is the authority** — this folder is what it was
+Nineteen screens as pictures. **`../design.md` is the authority** — this folder is what it was
 written from, and where the two disagree that document says so and wins.
 
 ## Opening one
@@ -23,7 +23,7 @@ Nothing under `src/` reads these files. They are read by people.
 
 ## What is here
 
-`canvas.json` is the index: it names the eighteen, lays them out on two pages — *Flujo* and
+`canvas.json` is the index: it names the nineteen, lays them out on two pages — *Flujo* and
 *Sistema* — and carries the notes written against them. Those notes are the shortest statement
 of why a screen is shaped the way it is, and they are mined into `../design.md`.
 
@@ -50,14 +50,15 @@ missing from this file.
 | Flujo | Afterwards | `Clasificar.dc.html` | What it was about |
 | Flujo | Afterwards | `QuienEsQuien.dc.html` | Who is who |
 | Flujo | Afterwards | `Correcciones.dc.html` | Words that come out wrong |
+| Flujo | Afterwards | `Historia.dc.html` | A node's story |
 | Flujo | Across the flow | `Primera.dc.html` | The first time it opens — who is using it |
 | Flujo | Across the flow | `Costo.dc.html` | What a charge costs, asked once |
 | Flujo | Across the flow | `Persona.dc.html` | Adding somebody, from wherever |
 | Sistema | — | `Sistema.dc.html` | Olivo — the system sheet |
 
-Every artboard is 1120 wide; the flow is 720 tall except `Reunion` (860), `Correcciones` (820) and
-`Configuracion` (760), and the system sheet is 3920. The *Afterwards* row reads left to right in
-the order a meeting gains things: recorded, transcribed, summarised.
+Every artboard is 1120 wide; the flow is 720 tall except `Reunion` (860), `Correcciones` (820),
+`Configuracion` (760) and `Historia` (860), and the system sheet is 3920. The *Afterwards* row reads
+left to right in the order a meeting gains things: recorded, transcribed, summarised.
 
 ## The names and the copy
 

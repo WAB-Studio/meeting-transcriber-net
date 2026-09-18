@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
@@ -191,7 +189,7 @@ public sealed class RecoveryCommandTests : IDisposable
     {
         Recorded("daily", both: true);
         SavingMark.Take(Folder("daily")).Dispose();
-        Marked(Folder("daily")).ShouldBeTrue();
+        FolderSnapshot.BeingSaved(Folder("daily")).ShouldBeTrue();
 
         var listed = CommandLine.Of("recordings", "--spool", root.FullName);
 
@@ -221,7 +219,7 @@ public sealed class RecoveryCommandTests : IDisposable
     {
         Recorded("daily", both: true);
         using var reading = ReadingMark.Take(Folder("daily"));
-        var before = Snapshot(Folder("daily"));
+        var before = FolderSnapshot.Of(Folder("daily"));
 
         var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--discard");
 
@@ -229,7 +227,7 @@ public sealed class RecoveryCommandTests : IDisposable
         run.Error.ShouldContain("reading the recording");
         run.Error.ShouldNotContain(".blocks");
 
-        Snapshot(Folder("daily")).ShouldBe(before);
+        FolderSnapshot.Of(Folder("daily")).ShouldBe(before);
         Folder("daily").Refresh();
         Folder("daily").Exists.ShouldBeTrue();
 
@@ -272,7 +270,7 @@ public sealed class RecoveryCommandTests : IDisposable
 
         run.Code.ShouldBe(Cli.Ok, run.Error);
         MeetingAudio.In(Folder("daily")).Exists.ShouldBeTrue();
-        MarkedAsRead(Folder("daily")).ShouldBeTrue();
+        FolderSnapshot.BeingRead(Folder("daily")).ShouldBeTrue();
         ReadingMark.IsHeldIn(Folder("daily")).ShouldBeFalse();
 
         using var reading = ReadingMark.Take(Folder("daily"));
@@ -304,7 +302,7 @@ public sealed class RecoveryCommandTests : IDisposable
         run.Code.ShouldBe(Cli.Refused, run.Output);
         MeetingAudio.In(Folder("weekly")).Exists.ShouldBeFalse();
 
-        MarkedAsRead(Folder("weekly")).ShouldBeTrue(
+        FolderSnapshot.BeingRead(Folder("weekly")).ShouldBeTrue(
             "the command failed before it reached Keep, so a mark in the folder can only be the "
             + "outer hold the keep branch takes over both of its passes");
         ReadingMark.IsHeldIn(Folder("weekly")).ShouldBeFalse();
@@ -627,40 +625,6 @@ public sealed class RecoveryCommandTests : IDisposable
         var file = BlockSpool.FileFor(Folder("daily"), channel);
         using var stream = file.Open(FileMode.Open, FileAccess.Write);
         stream.SetLength(file.Length - 32);
-    }
-
-    /// <summary>
-    /// Whether the mark a save writes is lying in this folder. Built here rather than asked of
-    /// <see cref="SavingMark"/>, which deliberately answers nothing about the file being there.
-    /// </summary>
-    private static bool Marked(DirectoryInfo folder) =>
-        File.Exists(Path.Combine(folder.FullName, SavingMark.FileName));
-
-    /// <summary>
-    /// Whether the mark a read writes is lying in this folder. Built here rather than asked of
-    /// <see cref="ReadingMark"/>, which deliberately answers nothing about the file being there.
-    /// </summary>
-    private static bool MarkedAsRead(DirectoryInfo folder) =>
-        File.Exists(Path.Combine(folder.FullName, ReadingMark.FileName));
-
-    /// <summary>
-    /// Every file in the folder by name and by content, which is what a recording being exactly
-    /// where it was means. Opened the way a backup opens a file: one of these is a mark this
-    /// process is holding for writing, and a read sharing less would be refused by it.
-    /// </summary>
-    private static string[] Snapshot(DirectoryInfo folder) =>
-    [
-        .. folder.GetFiles()
-            .Select(file => $"{file.Name} {Convert.ToHexString(Hashed(file))}")
-            .Order(StringComparer.Ordinal),
-    ];
-
-    private static byte[] Hashed(FileInfo file)
-    {
-        using var content = file.Open(
-            FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-
-        return SHA256.HashData(content);
     }
 
 }

@@ -143,6 +143,10 @@ yours to fix; once it has landed, CI names it on `main` and the only answer is a
 they cannot reach — whether the words were written ahead of the work or to fit it — is a reviewer's,
 and `references/format.md` says where it is asked.
 
+**The orchestrator reaches for this mid-batch, not only before one starts.** A planner comes back
+`blocked` on a card whose claim this file does not carry; the claim lands here, in the commit
+`run-day`'s §2 describes, that writes `ISA.md` and nothing else.
+
 **A closed claim that has to move takes its evidence with it.** The product changes under claims
 that stay true, and rewording one of those is honest and allowed — check 16 does not reach it. What
 check 17 refuses is the half of the act: the words moved and the `## Verification` stub left saying

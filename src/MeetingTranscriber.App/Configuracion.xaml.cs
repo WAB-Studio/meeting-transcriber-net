@@ -93,7 +93,7 @@ public sealed partial class Configuracion : UserControl
     /// <summary>True while the controls are being filled, so filling them is not somebody choosing.</summary>
     private bool _filling;
 
-    private TextLine? _status;
+    private readonly ScreenStatus _status = new();
 
     /// <summary>True once the window closed, so nothing draws into a control that is going.</summary>
     private bool _closed;
@@ -163,7 +163,7 @@ public sealed partial class Configuracion : UserControl
     public void Show()
     {
         _open = true;
-        _status = null;
+        _status.Nothing();
 
         ReadWhatHappensWhenARecordingEnds();
         ReadWhoIsUsingThis();
@@ -179,7 +179,7 @@ public sealed partial class Configuracion : UserControl
     public void Close()
     {
         _open = false;
-        _status = null;
+        _status.Nothing();
         Render();
     }
 
@@ -484,7 +484,7 @@ public sealed partial class Configuracion : UserControl
         // What the write said, rather than the corpus asked again — the same rule the row below
         // keeps: the write either threw or put this answer on the one row that carries it.
         _afterARecording = chosen;
-        _status = null;
+        _status.Nothing();
         ShowWhatHappensWhenARecordingEnds();
 
         // The corpus may not have existed a moment ago, and the line about where it is would still
@@ -656,13 +656,13 @@ public sealed partial class Configuracion : UserControl
     /// </remarks>
     private void Say(UiText text, params object?[] values)
     {
-        _status = TextLine.Says(text, values);
+        _status.Says(text, values);
         Render();
     }
 
     private void Render()
     {
-        StatusText.Text = _status?.In(_language) ?? string.Empty;
-        StatusText.Visibility = _status is null ? Visibility.Collapsed : Visibility.Visible;
+        StatusText.Text = _status.In(_language);
+        StatusText.Visibility = _status.IsSaying ? Visibility.Visible : Visibility.Collapsed;
     }
 }

@@ -100,13 +100,13 @@ public class CorpusLocationTests
     [Fact]
     public void An_application_data_folder_kept_off_the_profile_is_refused_like_any_other()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
-        var moved = new[] { Path.Combine(elsewhere.Folder.FullName, "UserData") };
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
+        var moved = new[] { Path.Combine(elsewhere.Root.FullName, "UserData") };
 
         CorpusLocation.GoesWhenThePackageDoes(Path.Combine(moved[0], "Meetings"), moved)
             .ShouldBeTrue();
         CorpusLocation.GoesWhenThePackageDoes(
-            Path.Combine(elsewhere.Folder.FullName, "Meetings"), moved).ShouldBeFalse();
+            Path.Combine(elsewhere.Root.FullName, "Meetings"), moved).ShouldBeFalse();
     }
 
     /// <summary>
@@ -117,13 +117,13 @@ public class CorpusLocationTests
     [Fact]
     public void A_first_corpus_is_never_put_under_app_data()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
         var virtualized = new DirectoryInfo(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             CorpusLocation.ApplicationFolderName));
 
         var resolved = new CorpusLocation(
-            new FileInfo(Path.Combine(elsewhere.Folder.FullName, CorpusLocation.SettingName)),
+            new FileInfo(Path.Combine(elsewhere.Root.FullName, CorpusLocation.SettingName)),
             virtualized).Resolve();
 
         resolved.Refusal.ShouldBe(CorpusRefusal.GoesWhenThePackageDoes);
@@ -205,8 +205,8 @@ public class CorpusLocationTests
     [Fact]
     public void A_folder_that_only_leads_into_the_container_goes_with_it_too()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
-        var link = Path.Combine(elsewhere.Folder.FullName, "corpus");
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
+        var link = Path.Combine(elsewhere.Root.FullName, "corpus");
         var inside = Path.Combine(
             CorpusLocation.PackageContainerOfThisUser(),
             $"MeetingTranscriber.Fabricated_{Guid.NewGuid():n}",
@@ -229,9 +229,9 @@ public class CorpusLocationTests
     [Fact]
     public void A_folder_that_leads_into_the_container_through_another_link_goes_with_it_too()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
-        var first = Path.Combine(elsewhere.Folder.FullName, "corpus");
-        var second = Path.Combine(elsewhere.Folder.FullName, "company-data");
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
+        var first = Path.Combine(elsewhere.Root.FullName, "corpus");
+        var second = Path.Combine(elsewhere.Root.FullName, "company-data");
         var inside = Path.Combine(
             CorpusLocation.PackageContainerOfThisUser(),
             $"MeetingTranscriber.Fabricated_{Guid.NewGuid():n}",
@@ -253,9 +253,9 @@ public class CorpusLocationTests
     [Fact]
     public void A_loop_of_links_is_answered_rather_than_followed()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
-        var here = Path.Combine(elsewhere.Folder.FullName, "here");
-        var there = Path.Combine(elsewhere.Folder.FullName, "there");
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
+        var here = Path.Combine(elsewhere.Root.FullName, "here");
+        var there = Path.Combine(elsewhere.Root.FullName, "there");
 
         Junction(here, there);
         Junction(there, here);
@@ -266,9 +266,9 @@ public class CorpusLocationTests
     [Fact]
     public void The_corpus_opens_where_the_setting_says()
     {
-        using var moved = new TemporaryFolderOutsideApplicationData();
+        using var moved = new CorpusOutsideApplicationData("corpus-location");
         var corpus = Corpus(moved);
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
         var location = At(elsewhere);
 
         location.Choose(corpus);
@@ -285,9 +285,9 @@ public class CorpusLocationTests
     [Fact]
     public void The_same_folder_opens_again_the_next_time_the_application_starts()
     {
-        using var moved = new TemporaryFolderOutsideApplicationData();
+        using var moved = new CorpusOutsideApplicationData("corpus-location");
         var corpus = Corpus(moved);
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
 
         At(elsewhere).Choose(corpus);
 
@@ -297,8 +297,8 @@ public class CorpusLocationTests
     [Fact]
     public void A_folder_that_does_not_answer_is_refused_naming_it()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
-        var gone = Path.Combine(elsewhere.Folder.FullName, "on-a-disk-nobody-plugged-in");
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
+        var gone = Path.Combine(elsewhere.Root.FullName, "on-a-disk-nobody-plugged-in");
         var location = Naming(elsewhere, gone);
 
         var resolved = location.Resolve();
@@ -316,8 +316,8 @@ public class CorpusLocationTests
     [Fact]
     public void A_folder_that_is_not_there_never_becomes_a_second_empty_corpus()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
-        var gone = new DirectoryInfo(Path.Combine(elsewhere.Folder.FullName, "unplugged"));
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
+        var gone = new DirectoryInfo(Path.Combine(elsewhere.Root.FullName, "unplugged"));
         var location = Naming(elsewhere, gone.FullName);
 
         location.Resolve().Refusal.ShouldNotBeNull();
@@ -330,14 +330,14 @@ public class CorpusLocationTests
     [Fact]
     public void A_folder_with_no_corpus_in_it_is_refused_rather_than_filled_with_a_new_one()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
-        using var empty = new TemporaryFolderOutsideApplicationData();
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
+        using var empty = new CorpusOutsideApplicationData("corpus-location");
 
-        var resolved = Naming(elsewhere, empty.Folder.FullName).Resolve();
+        var resolved = Naming(elsewhere, empty.Root.FullName).Resolve();
 
         resolved.Refusal.ShouldBe(CorpusRefusal.NoCorpusInTheFolder);
-        resolved.Path.ShouldBe(empty.Folder.FullName);
-        File.Exists(Path.Combine(empty.Folder.FullName, CorpusDatabase.DatabaseName)).ShouldBeFalse();
+        resolved.Path.ShouldBe(empty.Root.FullName);
+        File.Exists(Path.Combine(empty.Root.FullName, CorpusDatabase.DatabaseName)).ShouldBeFalse();
     }
 
     /// <summary>
@@ -348,11 +348,11 @@ public class CorpusLocationTests
     [Fact]
     public void A_corpus_file_of_no_bytes_is_not_a_corpus()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
-        using var halfMade = new TemporaryFolderOutsideApplicationData();
-        File.WriteAllBytes(Path.Combine(halfMade.Folder.FullName, CorpusDatabase.DatabaseName), []);
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
+        using var halfMade = new CorpusOutsideApplicationData("corpus-location");
+        File.WriteAllBytes(Path.Combine(halfMade.Root.FullName, CorpusDatabase.DatabaseName), []);
 
-        Naming(elsewhere, halfMade.Folder.FullName).Resolve().Refusal
+        Naming(elsewhere, halfMade.Root.FullName).Resolve().Refusal
             .ShouldBe(CorpusRefusal.NoCorpusInTheFolder);
     }
 
@@ -371,7 +371,7 @@ public class CorpusLocationTests
     [Fact]
     public void A_corpus_under_the_users_application_data_is_refused_though_it_is_there_and_whole()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
         var doomed = new DirectoryInfo(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             $"{CorpusLocation.ApplicationFolderName}.Fabricated_{Guid.NewGuid():n}"));
@@ -402,8 +402,8 @@ public class CorpusLocationTests
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                // Same call TemporaryFolderOutsideApplicationData makes, for the same two
-                // Windows refusals.
+                // Same call CorpusOutsideApplicationData makes, for the same two Windows
+                // refusals.
             }
         }
     }
@@ -423,7 +423,7 @@ public class CorpusLocationTests
     public void A_setting_saying_nothing_usable_is_refused_and_not_read_as_nobody_having_chosen(
         string written)
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
         var location = At(elsewhere);
         File.WriteAllText(location.Setting.FullName, written);
 
@@ -437,7 +437,7 @@ public class CorpusLocationTests
     [Fact]
     public void With_no_setting_at_all_the_folder_the_application_keeps_its_own_data_in_is_the_answer()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
         var location = At(elsewhere);
 
         var resolved = location.Resolve();
@@ -460,7 +460,7 @@ public class CorpusLocationTests
     [Fact]
     public void Somewhere_the_application_would_put_a_corpus_says_whether_one_is_there_yet()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
         var location = At(elsewhere);
 
         var firstRun = location.Resolve();
@@ -499,9 +499,9 @@ public class CorpusLocationTests
     [Fact]
     public void A_corpus_the_setting_names_says_it_is_already_there()
     {
-        using var moved = new TemporaryFolderOutsideApplicationData();
+        using var moved = new CorpusOutsideApplicationData("corpus-location");
         var corpus = Corpus(moved);
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
         var location = At(elsewhere);
 
         location.Choose(corpus);
@@ -516,9 +516,9 @@ public class CorpusLocationTests
     [Fact]
     public void Recording_where_the_corpus_is_leaves_no_half_written_pointer()
     {
-        using var moved = new TemporaryFolderOutsideApplicationData();
+        using var moved = new CorpusOutsideApplicationData("corpus-location");
         var corpus = Corpus(moved);
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
         var location = At(elsewhere);
 
         location.Choose(corpus);
@@ -536,11 +536,11 @@ public class CorpusLocationTests
     [Fact]
     public void A_folder_the_next_start_would_refuse_cannot_be_recorded_as_where_the_corpus_is()
     {
-        using var elsewhere = new TemporaryFolderOutsideApplicationData();
-        using var empty = new TemporaryFolderOutsideApplicationData();
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
+        using var empty = new CorpusOutsideApplicationData("corpus-location");
         var location = At(elsewhere);
 
-        Should.Throw<ArgumentException>(() => location.Choose(empty.Folder));
+        Should.Throw<ArgumentException>(() => location.Choose(empty.Root));
 
         File.Exists(location.Setting.FullName).ShouldBeFalse();
     }
@@ -561,10 +561,10 @@ public class CorpusLocationTests
     public void A_corpus_moved_somewhere_else_keeps_every_path_it_recorded()
     {
         // Not TemporaryCorpus, whose disposal deletes the folder this one has to move instead.
-        using var before = new TemporaryFolderOutsideApplicationData();
-        using var after = new TemporaryFolderOutsideApplicationData();
-        var origin = new DirectoryInfo(Path.Combine(before.Folder.FullName, "corpus"));
-        var destination = new DirectoryInfo(Path.Combine(after.Folder.FullName, "corpus"));
+        using var before = new CorpusOutsideApplicationData("corpus-location");
+        using var after = new CorpusOutsideApplicationData("corpus-location");
+        var origin = new DirectoryInfo(Path.Combine(before.Root.FullName, "corpus"));
+        var destination = new DirectoryInfo(Path.Combine(after.Root.FullName, "corpus"));
         string transcript;
         string response;
         origin.Create();
@@ -583,7 +583,7 @@ public class CorpusLocationTests
 
         try
         {
-            using var elsewhere = new TemporaryFolderOutsideApplicationData();
+            using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
             var location = At(elsewhere);
             location.Choose(destination);
 
@@ -676,12 +676,12 @@ public class CorpusLocationTests
     private static string ThisFile([CallerFilePath] string path = "") => Path.GetFullPath(path);
 
     /// <summary>A location whose setting and fallback are both inside a folder of this test's own.</summary>
-    private static CorpusLocation At(TemporaryFolderOutsideApplicationData folder) => new(
-        new FileInfo(Path.Combine(folder.Folder.FullName, CorpusLocation.SettingName)),
-        new DirectoryInfo(Path.Combine(folder.Folder.FullName, CorpusLocation.ApplicationFolderName)));
+    private static CorpusLocation At(CorpusOutsideApplicationData folder) => new(
+        new FileInfo(Path.Combine(folder.Root.FullName, CorpusLocation.SettingName)),
+        new DirectoryInfo(Path.Combine(folder.Root.FullName, CorpusLocation.ApplicationFolderName)));
 
     /// <summary>The same, with the setting already written by hand — including what Choose refuses.</summary>
-    private static CorpusLocation Naming(TemporaryFolderOutsideApplicationData folder, string path)
+    private static CorpusLocation Naming(CorpusOutsideApplicationData folder, string path)
     {
         var location = At(folder);
         File.WriteAllText(location.Setting.FullName, path);
@@ -693,13 +693,13 @@ public class CorpusLocationTests
     /// <c>Path.GetTempPath()</c> — <c>%LOCALAPPDATA%\Temp</c> on Windows, inside the one tree this
     /// rule refuses — so a corpus there would prove the refusal and never the thing being asserted.
     /// </summary>
-    private static DirectoryInfo Corpus(TemporaryFolderOutsideApplicationData folder)
+    private static DirectoryInfo Corpus(CorpusOutsideApplicationData folder)
     {
-        using (CorpusDatabase.OpenMigrated(folder.Folder))
+        using (CorpusDatabase.OpenMigrated(folder.Root))
         {
         }
 
-        return folder.Folder;
+        return folder.Root;
     }
 
     /// <summary>Whether this path is that folder or inside it, asked of paths and not of disks.</summary>
@@ -732,57 +732,5 @@ public class CorpusLocationTests
         context.Meetings.Add(meeting);
         context.SaveChanges();
         return meeting.Id;
-    }
-
-    /// <summary>
-    /// A folder of this test's own, which is not a corpus. <c>TemporaryCorpus</c> is the one for
-    /// corpora and makes one; what these need is somewhere to put a setting file, and somewhere a
-    /// corpus is deliberately not.
-    /// </summary>
-    /// <remarks>
-    /// The long name is the point. <c>FoldersTests</c> keeps a <c>TemporaryFolderUnderTemp</c>,
-    /// which is this same folder-and-shrug under <c>%TEMP%</c>, and until this pass both were
-    /// called <c>TemporaryFolder</c>. This one cannot be that one, for the reason the constructor
-    /// gives; that one could have been this one and is kept apart on the narrower ground given
-    /// where it is defined. Either way, a plain <c>TemporaryFolder</c> reads as though the two
-    /// were interchangeable in both directions, and they are not.
-    /// </remarks>
-    private sealed class TemporaryFolderOutsideApplicationData : IDisposable
-    {
-        public TemporaryFolderOutsideApplicationData()
-        {
-            // Not Path.GetTempPath(), which on Windows is %LOCALAPPDATA%\Temp — inside the one
-            // tree this whole class is about a corpus never being in. Every test below would prove
-            // the refusal and nothing else. What is left that is short, writable and outside it is
-            // the folder the test binary runs from, which is build output and goes with it.
-            Folder = new DirectoryInfo(Path.Combine(
-                AppContext.BaseDirectory, "corpus-location", Guid.NewGuid().ToString("n")[..8]));
-
-            CorpusLocation.GoesWhenThePackageDoes(Folder.FullName).ShouldBeFalse(
-                $"'{Folder.FullName}' is where these tests put a corpus, and a corpus there is "
-                + "refused for being under this user's application data. Whatever is being asserted "
-                + "below, that is what would be proved instead.");
-
-            Folder.Create();
-        }
-
-        public DirectoryInfo Folder { get; }
-
-        public void Dispose()
-        {
-            // Without this a pooled connection still holds a corpus made in here and the delete
-            // fails. Only this folder's, for the reason TemporaryCorpus gives.
-            CorpusDatabase.ClearPoolsFor(Folder);
-
-            try
-            {
-                Directory.Delete(Folder.FullName, recursive: true);
-            }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                // A leftover temp folder is not worth reddening a green test over, which is the
-                // same call TemporaryCorpus makes and for the same two Windows refusals.
-            }
-        }
     }
 }

@@ -17,12 +17,6 @@ namespace MeetingTranscriber.Testing;
 /// What is left that is short, writable and outside it is the folder the test binary runs from, so
 /// that is where this puts one. It is build output, so it goes with a clean.
 /// </para>
-/// <para>
-/// <b>There is a second copy of this in
-/// <c>tests/MeetingTranscriber.Infrastructure.Tests/Storage/CorpusLocationTests.cs</c></b>, which
-/// is where it started and which this was written from. That suite is not this change's to edit;
-/// moving it onto this one is a delete of thirty-eight lines and is worth doing.
-/// </para>
 /// </remarks>
 public sealed class CorpusOutsideApplicationData : IDisposable
 {

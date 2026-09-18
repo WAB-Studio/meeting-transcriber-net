@@ -396,6 +396,20 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
+    <!-- A pill you press. The value `Pill` draws and the row rank's behaviour, in one key, because a
+         filing chip on a meeting is both: it shows what the meeting is filed under and it opens that
+         node's history. The corner and the padding are `Pill`'s own values rather than numbers of its
+         own — a press shaped like a pill has to be the same shape as one. -->
+    <Style x:Key="PillButton" TargetType="Button" BasedOn="{StaticResource RowButtonOnCard}">
+        <Setter Property="Background" Value="{StaticResource PaperBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
+        <Setter Property="Height" Value="{StaticResource ControlHeight}" />
+        <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+        <Setter Property="Padding" Value="12,0,12,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
     <!-- One entry of an open list. Templated for the reason the picker below is and for one more:
          the platform draws the selected entry with an accent-coloured pill down its left edge, and
          `docs/design.md` §And five things this application is not says outright that this

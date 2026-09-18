@@ -76,16 +76,16 @@ public class ReadOnlyTests
     /// #130 asks to be proved.
     /// </summary>
     /// <remarks>
-    /// The six tools are six questions, and an agent can ask them and nothing else. What the corpus
-    /// is asked in SQL is asked by <c>MeetingTranscriber.Infrastructure</c>, where every string is
-    /// written down and every value is bound — so a tool that took SQL would be handing a caller
-    /// the one thing that list of questions exists instead of.
+    /// The eight tools are eight questions, and an agent can ask them and nothing else. What the
+    /// corpus is asked in SQL is asked by <c>MeetingTranscriber.Infrastructure</c>, where every
+    /// string is written down and every value is bound — so a tool that took SQL would be handing a
+    /// caller the one thing that list of questions exists instead of.
     /// </remarks>
     [Fact]
     public void Nothing_in_the_server_writes_its_own_SQL() =>
         Naming(@"FromSqlRaw|ExecuteSqlRaw|SqliteCommand|RawSql").ShouldBeEmpty(
-            "a tool that ran SQL would be a seventh tool answering any question at all, including "
-            + "the ones the other six are shaped to keep closed. The reads this server needs are "
+            "a tool that ran SQL would be a ninth tool answering any question at all, including "
+            + "the ones the other eight are shaped to keep closed. The reads this server needs are "
             + "written down in Infrastructure with their parameters bound.");
 
     /// <summary>
@@ -138,5 +138,8 @@ public class ReadOnlyTests
         $"{Path.DirectorySeparatorChar}{folder}{Path.DirectorySeparatorChar}",
         StringComparison.Ordinal);
 
+    // The repository root gains one owner this batch, tests/MeetingTranscriber.Testing/RepositoryTree,
+    // built on another share's branch of the same batch. Folding this copy onto it is owed rather
+    // than done: that type is not on this branch.
     private static string Here([CallerFilePath] string file = "") => file;
 }

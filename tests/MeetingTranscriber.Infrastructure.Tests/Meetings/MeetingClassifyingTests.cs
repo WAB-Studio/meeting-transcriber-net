@@ -155,6 +155,37 @@ public class MeetingClassifyingTests
             .ShouldBe(["Orchard"]);
     }
 
+    /// <summary>
+    /// <see cref="MeetingClassifying.PathTo(Guid)"/>, read by a node's own id rather than by a
+    /// meeting's filing — the story screen's read and not the filing screen's.
+    /// </summary>
+    [Fact]
+    public void A_nodes_path_comes_back_root_first()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayer(context, UtcTimestamp.From(DateTimeOffset.UtcNow));
+        var organization = human.Root(NodeKind.Organization, "acme");
+        var initiative = human.Under(organization, NodeKind.Initiative, "migración");
+        var topic = human.Under(initiative, NodeKind.Topic, "corte de agosto");
+
+        var path = new MeetingClassifying(context, TimeProvider.System).PathTo(topic.Id);
+
+        path.Nodes.Select(node => node.Name).ShouldBe(["acme", "migración", "corte de agosto"]);
+    }
+
+    [Fact]
+    public void A_node_this_corpus_does_not_hold_has_no_path()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var missing = Guid.NewGuid();
+
+        Should.Throw<ClassificationException>(
+                () => new MeetingClassifying(context, TimeProvider.System).PathTo(missing))
+            .Message.ShouldContain(missing.ToString());
+    }
+
     [Fact]
     public void What_the_screen_reads_back_is_the_same_paths_the_meeting_screen_draws()
     {

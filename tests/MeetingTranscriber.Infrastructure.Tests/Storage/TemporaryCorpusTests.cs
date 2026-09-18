@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-
 using MeetingTranscriber.Infrastructure.Storage;
 
 using Microsoft.Data.Sqlite;
@@ -68,9 +66,9 @@ public class TemporaryCorpusTests
     [Fact]
     public void No_test_empties_the_pools_of_every_corpus_in_the_process()
     {
-        var thisFile = ThisFile();
-        var tree = new DirectoryInfo(
-            Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", "..")));
+        var thisFile = RepositoryTree.At(
+            "tests/MeetingTranscriber.Infrastructure.Tests/Storage/TemporaryCorpusTests.cs").FullName;
+        var tree = RepositoryTree.Tests;
         var everyPool = nameof(SqliteConnection.ClearAllPools);
 
         var offenders = tree
@@ -93,12 +91,6 @@ public class TemporaryCorpusTests
         var separator = Path.DirectorySeparatorChar;
         return file.FullName.Contains($"{separator}obj{separator}", StringComparison.Ordinal);
     }
-
-    /// <summary>
-    /// This source file, from where it was compiled rather than from the working directory, the
-    /// way <c>IsaDocument</c> finds the repo root. The test tree is two folders up from it.
-    /// </summary>
-    private static string ThisFile([CallerFilePath] string path = "") => Path.GetFullPath(path);
 
     /// <summary>
     /// Which connection this context is actually on. Two contexts reporting the same handle were

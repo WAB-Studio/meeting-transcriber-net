@@ -11,7 +11,7 @@
     <!-- The one component that is this application's own, drawn from `docs/design.md` §The meter.
          One control and not one per channel: two meters is the contract — channel 0 is the others
          and channel 1 is you — and anything the same on two screens is one component before it is
-         on the second one. It is on five of the eighteen artboards.
+         on the second one. It is on five of the nineteen artboards.
 
          It shows now and never a history. A strip of the last few seconds answers for the process
          before this one, which is the wrong answer at the moment it is read.

@@ -64,7 +64,7 @@ public static class RecordingCommands
 
         Report.Line(output, "meeting", recording.MeetingId.ToString());
         Report.Line(output, "spool", recording.Spool.FullName);
-        Report.Line(output, "channel 0", recording.Card.Mode.ToString());
+        Report.Line(output, "channel 0", recording.Card.Mode.ToWireName());
 
         foreach (var source in recording.Sources)
         {
@@ -329,7 +329,7 @@ public static class RecordingCommands
             Report.Line(
                 said,
                 "channel 0",
-                $"{recording.Mode} — {recording.Sources.Single(source =>
+                $"{recording.Mode.ToWireName()} — {recording.Sources.Single(source =>
                     source.Channel == AudioChannel.Loopback).Listening.Name}");
         });
 

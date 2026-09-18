@@ -128,6 +128,20 @@ internal static class Answers
         quoted: {OneLine(statement.Quoted)}
         """;
 
+    /// <summary>One node of the tree a meeting is filed under, and where it sits in it.</summary>
+    /// <remarks>
+    /// It carries the parent's id and not the path up to the root: the whole tree comes back in one
+    /// answer, so the path is two lookups a reader already has in front of it, and a path repeated on
+    /// every node would be the deepest level's spelled three times.
+    /// </remarks>
+    internal static string Filed(Node node) =>
+        $"""
+        node_id: {node.Id}
+        kind: {WireNames<NodeKind>.Of(node.Kind)}
+        name: {OneLine(node.Name)}
+        inside: {node.ParentId?.ToString() ?? Nothing}
+        """;
+
     /// <summary>
     /// A whole answer: what it holds, then the blocks, then whether the limit cut it short.
     /// </summary>

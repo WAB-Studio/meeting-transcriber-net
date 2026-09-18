@@ -1,12 +1,10 @@
 using MeetingTranscriber.Domain.Artifacts;
-using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Meetings;
-using MeetingTranscriber.Infrastructure.Storage;
 
 namespace MeetingTranscriber.Infrastructure.Tests.Meetings;
 
@@ -32,7 +30,7 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
+        var meeting = MeetingRows.Recorded(context, Recorded, [], root: corpus.Root);
 
         var read = new MeetingReading(context, Clock).Of(meeting);
 
@@ -52,10 +50,19 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Guid.NewGuid();
+        var meeting = MeetingRows.Recorded(context, Recorded, []);
 
-        Add(context, NewMeeting(meeting));
-        Add(context, NewArtifact(meeting, ArtifactKind.Audio));
+        MeetingRows.Add(context, new Artifact
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            Kind = ArtifactKind.Audio,
+            Origin = ArtifactKind.Audio.OriginOf(),
+            RelativePath = CorpusFiles.PathFor(meeting, "audio.wav"),
+            ByteSize = 4,
+            Sha256 = new string('a', 64),
+            ConfirmedAt = Recorded,
+        });
 
         var read = new MeetingReading(context, Clock).Of(meeting);
 
@@ -75,8 +82,11 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
-        Summarise(context, meeting, accepted: true);
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0", "turn 1", "turn 2"], root: corpus.Root);
+        MeetingRows.Extracted(
+            context, meeting, Recorded, accepted: Recorded, "what the meeting was about",
+            actionAt: 1, questionAt: 2);
 
         var read = new MeetingReading(context, Clock).Of(meeting);
         var left = read.Screen.Left;
@@ -84,9 +94,9 @@ public class MeetingReadingTests
         left.Abstract.ShouldBe("what the meeting was about");
         left.Things.Count.ShouldBe(3);
         left.Things.ShouldAllBe(thing => thing.At > Duration.Zero);
-        left.Of(LeftKind.Decision).Single().Says.ShouldBe("what was settled");
-        left.Of(LeftKind.Action).Single().Says.ShouldBe("what is left to do");
-        left.Of(LeftKind.Question).Single().Says.ShouldBe("what was left unresolved");
+        left.Of(LeftKind.Decision).Single().Says.ShouldBe("what the meeting was about");
+        left.Of(LeftKind.Action).Single().Says.ShouldBe("what the meeting was about, to do");
+        left.Of(LeftKind.Question).Single().Says.ShouldBe("what the meeting was about, unresolved");
 
         // Earliest in the meeting first, which is the order a meeting is read in.
         left.MarkedAlongTheMeeting.ShouldBe([
@@ -105,8 +115,11 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
-        Summarise(context, meeting, accepted: false);
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0", "turn 1", "turn 2"], root: corpus.Root);
+        MeetingRows.Extracted(
+            context, meeting, Recorded, accepted: null, "what the meeting was about",
+            actionAt: 1, questionAt: 2);
 
         var left = new MeetingReading(context, Clock).Of(meeting).Screen.Left;
 
@@ -120,15 +133,20 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0", "turn 1", "turn 2"], root: corpus.Root);
 
-        Summarise(context, meeting, accepted: true, at: Recorded, saying: "the first go");
-        Summarise(
+        MeetingRows.Extracted(
+            context, meeting, Recorded, accepted: Recorded, "the first go",
+            actionAt: 1, questionAt: 2);
+        MeetingRows.Extracted(
             context,
             meeting,
-            accepted: true,
-            at: UtcTimestamp.From(Recorded.Value.AddHours(1)),
-            saying: "the second go");
+            UtcTimestamp.From(Recorded.Value.AddHours(1)),
+            accepted: UtcTimestamp.From(Recorded.Value.AddHours(1)),
+            "the second go",
+            actionAt: 1,
+            questionAt: 2);
 
         var left = new MeetingReading(context, Clock).Of(meeting).Screen.Left;
 
@@ -149,22 +167,26 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0", "turn 1", "turn 2"], root: corpus.Root);
 
         // The older extraction, accepted after the newer one — somebody read both and kept the first.
-        Summarise(
+        MeetingRows.Extracted(
             context,
             meeting,
-            accepted: true,
-            at: Recorded,
-            saying: "the older run, accepted later",
-            acceptedAt: UtcTimestamp.From(Recorded.Value.AddHours(2)));
-        Summarise(
+            Recorded,
+            accepted: UtcTimestamp.From(Recorded.Value.AddHours(2)),
+            "the older run, accepted later",
+            actionAt: 1,
+            questionAt: 2);
+        MeetingRows.Extracted(
             context,
             meeting,
-            accepted: true,
-            at: UtcTimestamp.From(Recorded.Value.AddHours(1)),
-            saying: "the newer run, accepted first");
+            UtcTimestamp.From(Recorded.Value.AddHours(1)),
+            accepted: UtcTimestamp.From(Recorded.Value.AddHours(1)),
+            "the newer run, accepted first",
+            actionAt: 1,
+            questionAt: 2);
 
         var left = new MeetingReading(context, Clock).Of(meeting).Screen.Left;
 
@@ -176,10 +198,19 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Guid.NewGuid();
+        var meeting = MeetingRows.Recorded(context, Recorded, []);
 
-        Add(context, NewMeeting(meeting));
-        Add(context, NewArtifact(meeting, ArtifactKind.DeepgramResponse));
+        MeetingRows.Add(context, new Artifact
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            Kind = ArtifactKind.DeepgramResponse,
+            Origin = ArtifactKind.DeepgramResponse.OriginOf(),
+            RelativePath = CorpusFiles.PathFor(meeting, "deepgram.json"),
+            ByteSize = 4,
+            Sha256 = new string('a', 64),
+            ConfirmedAt = Recorded,
+        });
 
         var read = new MeetingReading(context, Clock).Of(meeting);
 
@@ -197,9 +228,12 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
-        Transcribe(context, meeting);
-        Summarise(context, meeting, accepted: true);
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0", "turn 1", "turn 2"], root: corpus.Root);
+        MeetingRows.Transcribed(context, meeting, Recorded);
+        MeetingRows.Extracted(
+            context, meeting, Recorded, accepted: Recorded, "what the meeting was about",
+            actionAt: 1, questionAt: 2);
 
         var wrote = new MeetingReading(context, Clock).Of(meeting).Screen.Left.Wrote;
 
@@ -214,8 +248,8 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
-        Transcribe(context, meeting, finished: false);
+        var meeting = MeetingRows.Recorded(context, Recorded, [], root: corpus.Root);
+        MeetingRows.Transcribed(context, meeting, Recorded, finished: false);
 
         var wrote = new MeetingReading(context, Clock).Of(meeting).Screen.Left.Wrote;
 
@@ -228,12 +262,11 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
-
-        for (var ordinal = 0; ordinal < 10; ordinal++)
-        {
-            Add(context, NewTurn(meeting, ordinal));
-        }
+        var meeting = MeetingRows.Recorded(
+            context,
+            Recorded,
+            [.. Enumerable.Range(0, 10).Select(ordinal => $"turn {ordinal}")],
+            root: corpus.Root);
 
         var around = new MeetingReading(context, Clock).Around(meeting, 5);
 
@@ -245,10 +278,8 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
-
-        Add(context, NewTurn(meeting, 0));
-        Add(context, NewTurn(meeting, 1));
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0", "turn 1"], root: corpus.Root);
 
         new MeetingReading(context, Clock).Around(meeting, 0)
             .Select(turn => turn.Ordinal)
@@ -260,7 +291,7 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
+        var meeting = MeetingRows.Recorded(context, Recorded, [], root: corpus.Root);
 
         new MeetingReading(context, Clock).Around(meeting, 4).ShouldBeEmpty();
     }
@@ -270,7 +301,7 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
+        var meeting = MeetingRows.Recorded(context, Recorded, [], root: corpus.Root);
 
         new MeetingReading(context, Clock).Name(meeting, "Entrevista — Marina Robles");
 
@@ -289,7 +320,7 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
+        var meeting = MeetingRows.Recorded(context, Recorded, [], root: corpus.Root);
         var reading = new MeetingReading(context, Clock);
 
         reading.Name(meeting, "something");
@@ -305,7 +336,7 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
+        var meeting = MeetingRows.Recorded(context, Recorded, [], root: corpus.Root);
 
         new MeetingReading(context, Clock).Name(meeting, "  Llamada con proveedor  ");
 
@@ -317,7 +348,7 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
+        var meeting = MeetingRows.Recorded(context, Recorded, [], root: corpus.Root);
         var reading = new MeetingReading(context, Clock);
 
         reading.Name(meeting, "Llamada");
@@ -356,12 +387,8 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
-
-        for (var ordinal = 0; ordinal < 4; ordinal++)
-        {
-            Add(context, NewTurn(meeting, ordinal));
-        }
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0", "turn 1", "turn 2", "turn 3"], root: corpus.Root);
 
         var reading = new MeetingReading(context, Clock);
 
@@ -394,12 +421,8 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
-
-        for (var ordinal = 0; ordinal < 4; ordinal++)
-        {
-            Add(context, NewTurn(meeting, ordinal));
-        }
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0", "turn 1", "turn 2", "turn 3"], root: corpus.Root);
 
         new MeetingReading(context, Clock)
             .Between(meeting, Duration.Zero, Duration.FromMilliseconds(10_000), 2)
@@ -423,14 +446,14 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
+        var meeting = MeetingRows.Recorded(context, Recorded, [], root: corpus.Root);
 
         var produced = new string('7', 64);
-        Transcribe(context, meeting, response: produced);
+        MeetingRows.Transcribed(context, meeting, Recorded, produced);
 
         // A second response, paid for and filed later, whose own run has not come back. The turns
         // on disk are still the first one's.
-        Add(context, new Artifact
+        MeetingRows.Add(context, new Artifact
         {
             Id = Guid.NewGuid(),
             MeetingId = meeting,
@@ -454,216 +477,10 @@ public class MeetingReadingTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meeting = Record(context, corpus.Root);
+        var meeting = MeetingRows.Recorded(context, Recorded, [], root: corpus.Root);
 
         new MeetingReading(context, Clock).TranscribedFrom(meeting).ShouldBeNull();
     }
-
-    private static Guid Record(CorpusDbContext context, DirectoryInfo root)
-    {
-        var meeting = Guid.NewGuid();
-        Add(context, NewMeeting(meeting));
-
-        var audio = CorpusFiles.Locate(root, CorpusFiles.PathFor(meeting, "audio.wav"));
-        audio.Directory!.Create();
-        File.WriteAllBytes(audio.FullName, [0x52, 0x49, 0x46, 0x46]);
-
-        Add(context, NewArtifact(meeting, ArtifactKind.Audio));
-        return meeting;
-    }
-
-    /// <param name="response">
-    /// The paid response this run produced, filed as an artifact and named on the run. Nothing when
-    /// the fact is only about a run having finished, which is what every caller but one wants.
-    /// </param>
-    private static void Transcribe(
-        CorpusDbContext context, Guid meeting, bool finished = true, string? response = null)
-    {
-        var job = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Transcribe, $"{meeting}/1", Recorded);
-        Add(context, job);
-
-        Guid? filed = null;
-
-        if (response is not null)
-        {
-            filed = Guid.NewGuid();
-
-            Add(context, new Artifact
-            {
-                Id = filed.Value,
-                MeetingId = meeting,
-                Kind = ArtifactKind.DeepgramResponse,
-                Origin = ArtifactKind.DeepgramResponse.OriginOf(),
-                RelativePath = CorpusFiles.PathFor(meeting, "deepgram.json"),
-                ByteSize = 4,
-                Sha256 = response,
-                ConfirmedAt = Recorded,
-            });
-        }
-
-        Add(context, new TranscriptionRun
-        {
-            Id = Guid.NewGuid(),
-            MeetingId = meeting,
-            JobId = job.Id,
-            Provider = "deepgram",
-            Model = "nova-3",
-            SourceProfile = SourceProfile.Multichannel,
-            Language = "es",
-            AudioSha256 = new string('b', 64),
-            BillableConfigHash = new string('c', 64),
-            ResponseArtifactId = filed,
-            CreatedAt = Recorded,
-            FinishedAt = finished ? Recorded : null,
-        });
-    }
-
-    /// <summary>
-    /// One extraction, with a decision, an action and an open question, each cited to a turn of its
-    /// own. The three sit at three different offsets so the order they come back in says something.
-    /// </summary>
-    /// <remarks>
-    /// <paramref name="acceptedAt"/> defaults to the moment the run was made, which is what almost
-    /// every caller wants. Handing it in separately is how a run gets accepted at a different moment
-    /// from the one it was created at, which is the only way to tell the first step of the ordering
-    /// from the second.
-    /// </remarks>
-    private static Guid Summarise(
-        CorpusDbContext context,
-        Guid meeting,
-        bool accepted,
-        UtcTimestamp? at = null,
-        string saying = "what the meeting was about",
-        UtcTimestamp? acceptedAt = null)
-    {
-        var when = at ?? Recorded;
-        var job = ProcessingJob.Queue(
-            Guid.NewGuid(), meeting, JobKind.Extract, $"{meeting}/{Guid.NewGuid()}", when);
-
-        Add(context, job);
-
-        var run = new ExtractionRun
-        {
-            Id = Guid.NewGuid(),
-            MeetingId = meeting,
-            JobId = job.Id,
-            Provider = "claude-code",
-            PromptVersion = "1",
-            SchemaVersion = "1",
-            InputHash = new string('d', 64),
-            CreatedAt = when,
-            AcceptedAt = accepted ? acceptedAt ?? when : null,
-        };
-
-        Add(context, run);
-
-        // The citations anchor on turns, so the turns have to be there: the corpus refuses a claim
-        // whose citation lands nowhere, which is the rule this screen leans on.
-        for (var ordinal = 0; ordinal < 3; ordinal++)
-        {
-            if (!context.Utterances.Any(turn => turn.MeetingId == meeting && turn.Ordinal == ordinal))
-            {
-                Add(context, NewTurn(meeting, ordinal));
-            }
-        }
-
-        Add(context, new Summary
-        {
-            Id = Guid.NewGuid(),
-            MeetingId = meeting,
-            ExtractionRunId = run.Id,
-            Abstract = saying,
-            CreatedAt = when,
-        });
-
-        Add(context, new Decision
-        {
-            Id = Guid.NewGuid(),
-            MeetingId = meeting,
-            ExtractionRunId = run.Id,
-            Ordinal = 0,
-            Statement = "what was settled",
-            Evidence = Cited(meeting, 0),
-            CreatedAt = when,
-        });
-
-        Add(context, new ActionItem
-        {
-            Id = Guid.NewGuid(),
-            MeetingId = meeting,
-            ExtractionRunId = run.Id,
-            Ordinal = 0,
-            Statement = "what is left to do",
-            Evidence = Cited(meeting, 1),
-            CreatedAt = when,
-        });
-
-        Add(context, new OpenQuestion
-        {
-            Id = Guid.NewGuid(),
-            MeetingId = meeting,
-            ExtractionRunId = run.Id,
-            Ordinal = 0,
-            Question = "what was left unresolved",
-            Evidence = Cited(meeting, 2),
-            CreatedAt = when,
-        });
-
-        return run.Id;
-    }
-
-    private static Citation Cited(Guid meeting, int ordinal) => new()
-    {
-        MeetingId = meeting,
-        UtteranceOrdinal = ordinal,
-        Start = Duration.FromMilliseconds((ordinal + 1) * 1_000),
-        End = Duration.FromMilliseconds(((ordinal + 1) * 1_000) + 500),
-        SpeakerLabel = "ch1:speaker_0",
-        QuotedText = "what was actually said there",
-        SourceArtifactSha256 = new string('e', 64),
-    };
-
-    private static Utterance NewTurn(Guid meeting, int ordinal) => new()
-    {
-        Id = Guid.NewGuid(),
-        MeetingId = meeting,
-        Ordinal = ordinal,
-        Start = Duration.FromMilliseconds((ordinal + 1) * 1_000),
-        End = Duration.FromMilliseconds(((ordinal + 1) * 1_000) + 500),
-        Channel = AudioChannel.Microphone,
-        SpeakerLabel = "ch1:speaker_0",
-        Text = $"turn {ordinal}",
-    };
-
-    private static void Add(CorpusDbContext context, object row)
-    {
-        context.Add(row);
-        context.SaveChanges();
-    }
-
-    private static Meeting NewMeeting(Guid id) => new()
-    {
-        Id = id,
-        StartedAt = Recorded,
-        Duration = Duration.FromMilliseconds(1_360_000),
-        SourceProfile = SourceProfile.Multichannel,
-        Language = "es",
-        CreatedAt = Recorded,
-        UpdatedAt = Recorded,
-    };
-
-    private static Artifact NewArtifact(Guid meeting, ArtifactKind kind) => new()
-    {
-        Id = Guid.NewGuid(),
-        MeetingId = meeting,
-        Kind = kind,
-        Origin = kind.OriginOf(),
-        RelativePath = CorpusFiles.PathFor(
-            meeting, kind == ArtifactKind.Audio ? "audio.wav" : $"{kind}"),
-        ByteSize = 4,
-        Sha256 = new string('a', 64),
-        ConfirmedAt = Recorded,
-    };
 
     private sealed class FakeClock(DateTimeOffset now) : TimeProvider
     {

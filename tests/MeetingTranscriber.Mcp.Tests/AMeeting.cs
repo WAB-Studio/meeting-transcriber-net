@@ -1,3 +1,4 @@
+using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 
@@ -44,5 +45,20 @@ internal static class AMeeting
         MeetingRows.Extracted(context, meeting, when, accepted: when, Decided, Cited);
 
         return meeting;
+    }
+
+    /// <summary>The tree this suite's meeting is filed under: an organization, the work inside it,
+    /// and the subject inside that, with the meeting linked to the deepest one.</summary>
+    internal static (Guid Organization, Guid Initiative, Guid Topic) FiledUnder(
+        CorpusDbContext context, Guid meeting)
+    {
+        var human = new HumanLayer(context, StartedAt);
+        var organization = human.Root(NodeKind.Organization, "acme");
+        var initiative = human.Under(organization, NodeKind.Initiative, "migración");
+        var topic = human.Under(initiative, NodeKind.Topic, "presupuesto");
+
+        human.Link(meeting, topic, MeetingNodeRole.WorkOf);
+
+        return (organization.Id, initiative.Id, topic.Id);
     }
 }

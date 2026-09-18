@@ -97,7 +97,7 @@ public sealed partial class MainWindow : Window
     private readonly DispatcherTimer _watch = new() { Interval = TimeSpan.FromSeconds(1) };
 
     private UiLanguage _language;
-    private TextLine? _status;
+    private readonly ScreenStatus _status = new();
 
     /// <summary>True while the pickers are being filled, so refilling them is not a choice.</summary>
     private bool _filling;
@@ -221,6 +221,11 @@ public sealed partial class MainWindow : Window
         Reading.Open(corpus);
         Reading.Left += OnLeftTheMeeting;
         Reading.Classify += OnClassifyTheMeeting;
+        Reading.NodeChosen += OnNodeChosen;
+
+        NodeStory.Open(corpus);
+        NodeStory.Left += OnLeftTheNode;
+        NodeStory.MeetingChosen += OnMeetingChosenFromANode;
 
         Classifying.Open(corpus);
         Classifying.Filed += OnFiled;
@@ -300,6 +305,7 @@ public sealed partial class MainWindow : Window
         // the language before.
         Meetings.ReadIn(language);
         Reading.ReadIn(language);
+        NodeStory.ReadIn(language);
         Classifying.ReadIn(language);
         Settings.ReadIn(language);
         Refresh();
@@ -352,10 +358,15 @@ public sealed partial class MainWindow : Window
             // list raised into it, and a meeting being read in it. Read off the two controls rather
             // than kept, for the reason every other field here is — a copy of it updated by whichever
             // handler remembered to is how a screen comes to disagree with the arrangement it is in.
+            // NodeStory.IsShowingANode is redundant here today, and only by the accident of the one
+            // door into it: OnNodeChosen calls Reading.Pause() rather than Reading.Close(), so
+            // Reading.IsShowingAMeeting is already true for the whole of a node's story. It is named
+            // anyway, on the same rule Classifying.IsOpen already is for the same accident.
             TheRoomBelowHasTheWindow = Meetings.HasTheWholeWindow
                 || Reading.IsShowingAMeeting
                 || Classifying.IsOpen
-                || Settings.IsOpen,
+                || Settings.IsOpen
+                || NodeStory.IsShowingANode,
         };
     }
 
@@ -1392,20 +1403,24 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private void ShowWhatTheRoomIsShowing(RecorderScreen screen)
     {
-        // Four now, and the order is what says which wins. The settings are first because they
+        // Five now, and the order is what says which wins. The settings are first because they
         // are reached from the window itself and not from a meeting: the gear is pressable
         // whatever the room below is showing, so a screen underneath goes on holding whatever it
         // was holding and gets it back when this closes. Then filing, which is reached from the
         // meeting — so the meeting screen is still holding one, with its recording paused, for the
         // whole of it, and asking it whether it has the window would put two screens in one room.
+        // A node's story is reached from the meeting too, the same way filing is, so the meeting
+        // screen goes on holding one underneath it for the whole of it as well.
         var settings = Settings.IsOpen;
         var classifying = !settings && Classifying.IsOpen;
-        var reading = !settings && !classifying && Reading.IsShowingAMeeting;
+        var story = !settings && !classifying && NodeStory.IsShowingANode;
+        var reading = !settings && !classifying && !story && Reading.IsShowingAMeeting;
 
         Settings.Visibility = settings ? Visibility.Visible : Visibility.Collapsed;
         Classifying.Visibility = classifying ? Visibility.Visible : Visibility.Collapsed;
+        NodeStory.Visibility = story ? Visibility.Visible : Visibility.Collapsed;
         Reading.Visibility = reading ? Visibility.Visible : Visibility.Collapsed;
-        Meetings.Visibility = settings || classifying || reading
+        Meetings.Visibility = settings || classifying || story || reading
             ? Visibility.Collapsed
             : Visibility.Visible;
 
@@ -1470,6 +1485,44 @@ public sealed partial class MainWindow : Window
     private void OnClassifyTheMeeting(object? sender, Guid meeting)
     {
         Classifying.Show(meeting);
+        Refresh();
+    }
+
+    /// <summary>
+    /// Somebody pressed what a meeting is filed under, to read that node's own history.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ReadingAMeeting.Pause"/> and not <see cref="ReadingAMeeting.Close"/>, for the
+    /// reason its own remarks give about the filing screen: the meeting screen goes on holding its
+    /// meeting with the recording paused, and coming back is a redraw rather than a reopen.
+    /// </remarks>
+    private void OnNodeChosen(object? sender, Guid node)
+    {
+        Reading.Pause();
+        NodeStory.Show(node);
+        Refresh();
+    }
+
+    /// <summary>Somebody came back from a node's story to the meeting they opened it from.</summary>
+    private void OnLeftTheNode(object? sender, EventArgs e)
+    {
+        NodeStory.Close();
+        Refresh();
+    }
+
+    /// <summary>
+    /// Somebody opened one of the meetings inside a node's story.
+    /// </summary>
+    /// <remarks>
+    /// The one way back into the meeting screen that is not a redraw: the meeting being opened is
+    /// usually not the one <see cref="ReadingAMeeting"/> is still holding paused, so this goes
+    /// through <see cref="ReadingAMeeting.Show"/> rather than through
+    /// <see cref="ReadingAMeeting.ReadAgain"/>.
+    /// </remarks>
+    private void OnMeetingChosenFromANode(object? sender, Guid meeting)
+    {
+        NodeStory.Close();
+        Reading.Show(meeting);
         Refresh();
     }
 
@@ -2041,14 +2094,14 @@ public sealed partial class MainWindow : Window
 
     private void Status(UiText text, params object?[] values)
     {
-        _status = TextLine.Says(text, values);
+        _status.Says(text, values);
         Render();
     }
 
     private void Render()
     {
         OutputText.Text = string.Join(Environment.NewLine, _report.Select(line => line.In(_language)));
-        StatusText.Text = _status?.In(_language) ?? string.Empty;
+        StatusText.Text = _status.In(_language);
     }
 
     /// <summary>

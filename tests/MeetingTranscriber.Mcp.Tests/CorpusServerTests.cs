@@ -1,5 +1,6 @@
 using System.IO.Pipelines;
 
+using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 
@@ -10,7 +11,7 @@ using ModelContextProtocol.Server;
 namespace MeetingTranscriber.Mcp.Tests;
 
 /// <summary>
-/// The server as a client meets it: a real MCP session, a real handshake, and the six tools
+/// The server as a client meets it: a real MCP session, a real handshake, and the eight tools
 /// answering out of a corpus on disk.
 /// </summary>
 /// <remarks>
@@ -174,7 +175,7 @@ public class CorpusServerTests
     /// A whole set on both halves and never a <em>contains</em>, for the reason
     /// <c>PackageManifestTests</c> gives about capabilities: a parameter arriving is as much a thing
     /// to answer for as one leaving, because an agent types it and a client puts it in a JSON
-    /// schema. Red the day <c>meeting_id</c> becomes <c>reunion</c>, and red the day a seventh tool
+    /// schema. Red the day <c>meeting_id</c> becomes <c>reunion</c>, and red the day a ninth tool
     /// appears without anybody deciding it belongs on this surface.
     /// </remarks>
     [Fact]
@@ -187,20 +188,24 @@ public class CorpusServerTests
 
         tools.Select(tool => tool.Name).Order(StringComparer.Ordinal).ShouldBe([
             "buscar_reuniones",
+            "leer_nodo",
             "leer_resumen",
             "leer_turnos",
             "listar_acciones",
             "listar_decisiones",
+            "listar_nodos",
             "obtener_cita",
         ]);
 
-        // The five §8.2 spells, and the three this repository filled `filtros` in with.
+        // The six §8.2 spells, and the three this repository filled `filtros` in with.
         Parameters(tools, "buscar_reuniones").ShouldBe(["limite", "query"]);
         Parameters(tools, "leer_resumen").ShouldBe(["meeting_id"]);
         Parameters(tools, "leer_turnos").ShouldBe(["desde_ms", "hasta_ms", "meeting_id"]);
         Parameters(tools, "obtener_cita").ShouldBe(["meeting_id", "utterance_ordinal"]);
         Parameters(tools, "listar_decisiones").ShouldBe(["desde", "hasta", "limite"]);
         Parameters(tools, "listar_acciones").ShouldBe(["desde", "hasta", "limite"]);
+        Parameters(tools, "leer_nodo").ShouldBe(["limite", "nodo_id"]);
+        Parameters(tools, "listar_nodos").ShouldBe(["limite"]);
     }
 
     /// <summary>
@@ -446,6 +451,86 @@ public class CorpusServerTests
 
         after.ShouldNotBeError();
         after.Said().ShouldContain("found_in: turn");
+    }
+
+    /// <summary>
+    /// An agent finds a node with <c>listar_nodos</c> and reads the history of everything under it
+    /// with <c>leer_nodo</c>, one session.
+    /// </summary>
+    /// <remarks>Red the day the node tools' answers stop being filed through <c>Answers</c>.</remarks>
+    [Fact]
+    public async Task An_agent_finds_a_node_and_reads_the_history_of_everything_under_it()
+    {
+        using var corpus = new CorpusOutsideApplicationData("mcp");
+        Guid meeting;
+        Guid organization;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meeting = AMeeting.RecordedIn(context);
+            (organization, _, _) = AMeeting.FiledUnder(context, meeting);
+        }
+
+        await using var talking = await Conversation.Over(corpus);
+
+        var tree = await talking.Call("listar_nodos", new());
+        tree.ShouldNotBeError();
+        tree.Said().ShouldContain($"node_id: {organization}");
+
+        var history = await talking.Call("leer_nodo", new() { ["nodo_id"] = organization.ToString() });
+        history.ShouldNotBeError();
+        history.Said().ShouldContain($"meeting_id: {meeting}");
+        history.Said().ShouldContain($"started_at: {AMeeting.StartedAt}");
+        history.Said().ShouldContain($"says: {AMeeting.Decided}");
+        history.Said().ShouldContain("kind: decision");
+        history.Said().ShouldContain("kind: action");
+        history.Said().ShouldContain("kind: question");
+    }
+
+    /// <summary>A node id that is not one is answered in words, and not with a <see
+    /// cref="FormatException"/> out of the session.</summary>
+    [Fact]
+    public async Task A_node_id_that_is_not_one_is_answered_in_words()
+    {
+        using var corpus = new CorpusOutsideApplicationData("mcp");
+
+        using (var context = corpus.OpenMigrated())
+        {
+            AMeeting.RecordedIn(context);
+        }
+
+        await using var talking = await Conversation.Over(corpus);
+
+        var refused = await talking.Call("leer_nodo", new() { ["nodo_id"] = "el proyecto" });
+
+        refused.IsError.ShouldBe(true);
+        refused.Said().ShouldContain("node id");
+    }
+
+    /// <summary>
+    /// A node this corpus does not hold is answered in words and not with an empty list.
+    /// </summary>
+    /// <remarks>
+    /// Red with <see cref="ClassificationException"/> off <c>Answer</c>'s catch list, where the tool
+    /// call takes the exception out of the session as a defect.
+    /// </remarks>
+    [Fact]
+    public async Task A_node_this_corpus_does_not_hold_is_answered_in_words_and_not_with_an_empty_list()
+    {
+        using var corpus = new CorpusOutsideApplicationData("mcp");
+
+        using (var context = corpus.OpenMigrated())
+        {
+            AMeeting.RecordedIn(context);
+        }
+
+        await using var talking = await Conversation.Over(corpus);
+
+        var missing = Guid.NewGuid();
+        var refused = await talking.Call("leer_nodo", new() { ["nodo_id"] = missing.ToString() });
+
+        refused.IsError.ShouldBe(true);
+        refused.Said().ShouldContain(missing.ToString());
     }
 
     private static IReadOnlyList<string> Parameters(IEnumerable<McpClientTool> tools, string named)

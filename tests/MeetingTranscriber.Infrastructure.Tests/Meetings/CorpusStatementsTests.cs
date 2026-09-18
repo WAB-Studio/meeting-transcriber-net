@@ -216,11 +216,256 @@ public class CorpusStatementsTests
             .ShouldBe(["what was settled, unresolved"]);
     }
 
+    /// <summary>
+    /// A node's own meetings come back oldest first, the other order from the corpus-wide listings —
+    /// a node's story is read forward, like a history.
+    /// </summary>
+    [Fact]
+    public void A_nodes_own_meetings_come_back_oldest_first()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayer(context, August);
+        var root = human.Root(NodeKind.Organization, "acme");
+
+        var julyMeeting = Extracted(context, July, "july");
+        var augustMeeting = Extracted(context, August, "august");
+        human.Link(julyMeeting, root, MeetingNodeRole.WorkOf);
+        human.Link(augustMeeting, root, MeetingNodeRole.WorkOf);
+
+        // Extracted writes all three sections, so a node's read carries all three per meeting,
+        // meeting order first.
+        CorpusStatements.Under(context, root.Id, 20)
+            .Select(statement => statement.Says)
+            .ShouldBe([
+                "july", "july, to do", "july, unresolved",
+                "august", "august, to do", "august, unresolved",
+            ]);
+    }
+
+    /// <summary>
+    /// A node answers with everything hanging off its children, up to two levels down, and a node
+    /// with no children of its own answers only for itself.
+    /// </summary>
+    /// <remarks>Red with any one arm of <c>CorpusSearch.Underneath</c> dropped.</remarks>
+    [Fact]
+    public void A_node_answers_with_everything_hanging_off_its_children()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayer(context, August);
+        var organization = human.Root(NodeKind.Organization, "acme");
+        var initiative = human.Under(organization, NodeKind.Initiative, "migración");
+        var topic = human.Under(initiative, NodeKind.Topic, "corte de agosto");
+
+        var onOrganization = Extracted(context, August, "sobre la organización");
+        human.Link(onOrganization, organization, MeetingNodeRole.WorkOf);
+
+        var onInitiative = Extracted(context, UtcTimestamp.From(August.Value.AddHours(1)), "sobre la iniciativa");
+        human.Link(onInitiative, initiative, MeetingNodeRole.WorkOf);
+
+        var onTopic = Extracted(context, UtcTimestamp.From(August.Value.AddHours(2)), "sobre el tema");
+        human.Link(onTopic, topic, MeetingNodeRole.WorkOf);
+
+        CorpusStatements.Under(context, organization.Id, 20)
+            .Select(statement => statement.Says)
+            .ShouldBe([
+                "sobre la organización", "sobre la organización, to do", "sobre la organización, unresolved",
+                "sobre la iniciativa", "sobre la iniciativa, to do", "sobre la iniciativa, unresolved",
+                "sobre el tema", "sobre el tema, to do", "sobre el tema, unresolved",
+            ]);
+
+        CorpusStatements.Under(context, initiative.Id, 20)
+            .Select(statement => statement.Says)
+            .ShouldBe([
+                "sobre la iniciativa", "sobre la iniciativa, to do", "sobre la iniciativa, unresolved",
+                "sobre el tema", "sobre el tema, to do", "sobre el tema, unresolved",
+            ]);
+
+        CorpusStatements.Under(context, topic.Id, 20)
+            .Select(statement => statement.Says)
+            .ShouldBe(["sobre el tema", "sobre el tema, to do", "sobre el tema, unresolved"]);
+    }
+
+    /// <summary>
+    /// A meeting filed under two nodes below one parent answers that parent once, not twice.
+    /// </summary>
+    /// <remarks>Red with the <c>EXISTS</c> written as a join.</remarks>
+    [Fact]
+    public void A_meeting_filed_under_two_nodes_below_one_parent_is_answered_once()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayer(context, August);
+        var initiative = human.Root(NodeKind.Initiative, "migración");
+        var first = human.Under(initiative, NodeKind.Topic, "primer tema");
+        var second = human.Under(initiative, NodeKind.Topic, "segundo tema");
+
+        var meeting = Extracted(context, August, "lo que se dijo");
+        human.Link(meeting, first, MeetingNodeRole.WorkOf);
+        human.Link(meeting, second, MeetingNodeRole.WorkOf);
+
+        CorpusStatements.Under(context, initiative.Id, 20)
+            .Select(statement => statement.Says)
+            .ShouldBe(["lo que se dijo", "lo que se dijo, to do", "lo que se dijo, unresolved"]);
+    }
+
+    /// <summary>
+    /// The three sections of one meeting come back interleaved in the order they were said, and the
+    /// sentences here are chosen so the section order and the alphabetical order of the sentences
+    /// disagree — that is the whole point of the fact.
+    /// </summary>
+    /// <remarks>
+    /// Two mutations, and both move a row: <c>kind_rank</c> dropped from the <c>ORDER BY</c> puts
+    /// <c>"algo"</c> before <c>"lo primero"</c> at 1000 ms, because <c>says</c> then decides outright;
+    /// <c>at_ms</c> dropped groups the two decisions, moving <c>"lo segundo"</c> ahead of the two
+    /// inline entries at 1000 ms.
+    /// </remarks>
+    [Fact]
+    public void The_three_sections_come_back_interleaved_in_the_order_they_were_said()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayer(context, August);
+        var node = human.Root(NodeKind.Organization, "lo que importa");
+
+        var meeting = MeetingRows.Recorded(context, August, ["uno", "dos", "tres", "cuatro"]);
+        var run = MeetingRows.Extracted(context, meeting, August, accepted: August, "lo primero");
+        human.Link(meeting, node, MeetingNodeRole.WorkOf);
+
+        // An action whose sentence sorts before the decision's, at the same offset, so that the
+        // section key is the only thing putting the decision first. Ordinal 1 because
+        // (extraction_run_id, ordinal) is unique per table and Extracted writes 0 in each of the
+        // three.
+        MeetingRows.Add(context, new ActionItem
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            ExtractionRunId = run,
+            Ordinal = 1,
+            Statement = "algo",
+            Evidence = Citing(context, meeting, 0),
+            CreatedAt = August,
+        });
+
+        // A second decision at a later offset, so that the offset key is the only thing keeping it
+        // out of the run above — where the section key alone would put it second.
+        MeetingRows.Add(context, new Decision
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            ExtractionRunId = run,
+            Ordinal = 1,
+            Statement = "lo segundo",
+            Evidence = Citing(context, meeting, 2),
+            CreatedAt = August,
+        });
+
+        CorpusStatements.Under(context, node.Id, 20)
+            .Select(statement => statement.Says)
+            .ShouldBe(["lo primero", "algo", "lo primero, to do", "lo primero, unresolved", "lo segundo"]);
+    }
+
+    /// <summary>The sibling of <see cref="Only_the_extraction_a_person_accepted_last_answers"/>, over
+    /// <see cref="CorpusStatements.Under"/>.</summary>
+    /// <remarks>Red with <c>CorpusSearch.TheRunThatCounts</c> replaced by a plain join.</remarks>
+    [Fact]
+    public void Only_the_extraction_a_person_accepted_last_answers_about_a_node()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayer(context, August);
+        var node = human.Root(NodeKind.Organization, "lo que importa");
+        var meeting = Recorded(context, August);
+        human.Link(meeting, node, MeetingNodeRole.WorkOf);
+
+        MeetingRows.Extracted(context, meeting, August, accepted: August, "the first go");
+        MeetingRows.Extracted(
+            context,
+            meeting,
+            August,
+            accepted: UtcTimestamp.From(August.Value.AddHours(1)),
+            "the second go");
+
+        CorpusStatements.Under(context, node.Id, 20)
+            .Select(statement => statement.Says)
+            .ShouldBe(["the second go", "the second go, to do", "the second go, unresolved"]);
+    }
+
+    /// <summary>The sibling of <see cref="A_meeting_on_its_way_out_says_nothing"/>, over
+    /// <see cref="CorpusStatements.Under"/>.</summary>
+    /// <remarks>Red with the <c>lifecycle_state</c> filter dropped.</remarks>
+    [Fact]
+    public void A_meeting_on_its_way_out_says_nothing_about_its_node()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayer(context, August);
+        var node = human.Root(NodeKind.Organization, "lo que importa");
+        var meeting = Recorded(context, August);
+        human.Link(meeting, node, MeetingNodeRole.WorkOf);
+
+        MeetingRows.Extracted(context, meeting, August, accepted: August, "what was settled");
+
+        CorpusStatements.Under(context, node.Id, 20).Count.ShouldBe(3);
+
+        var onItsWayOut = context.Meetings.Single(row => row.Id == meeting);
+        onItsWayOut.LifecycleState = LifecycleState.Deleting;
+        onItsWayOut.DeletedAt = August;
+        context.SaveChanges();
+
+        CorpusStatements.Under(context, node.Id, 20).ShouldBeEmpty();
+    }
+
+    /// <summary>A node id this corpus does not hold is refused by name, and not answered with an
+    /// empty list — which would read as a node nothing was ever said about.</summary>
+    /// <remarks>Red with the existence check dropped, where the call answers with an empty list.</remarks>
+    [Fact]
+    public void A_node_this_corpus_does_not_hold_is_refused_by_name()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var missing = Guid.NewGuid();
+
+        Should.Throw<ClassificationException>(() => CorpusStatements.Under(context, missing, 20))
+            .Message.ShouldContain(missing.ToString());
+    }
+
     /// <summary>One meeting with one turn to cite, which is all any fact here reads.</summary>
     private static Guid Recorded(CorpusDbContext context, UtcTimestamp when) =>
         MeetingRows.Recorded(context, when, ["lo que se dijo"]);
 
     /// <summary>A meeting recorded and summarised in one go, for the facts about two of them.</summary>
-    private static void Extracted(CorpusDbContext context, UtcTimestamp when, string saying) =>
-        MeetingRows.Extracted(context, Recorded(context, when), when, accepted: when, saying);
+    private static Guid Extracted(CorpusDbContext context, UtcTimestamp when, string saying)
+    {
+        var meeting = Recorded(context, when);
+        MeetingRows.Extracted(context, meeting, when, accepted: when, saying);
+        return meeting;
+    }
+
+    /// <summary>
+    /// A citation on a turn that is really there, carrying what that turn really says.
+    /// </summary>
+    /// <remarks>
+    /// Nearly the private <c>MeetingRows.Citing</c> — the one difference is <c>Single</c> where it
+    /// uses <c>FirstOrDefault</c> and a custom throw, which this suite does not need since it never
+    /// cites an ordinal it did not just create — forced by the share boundary this batch drew: this
+    /// share may not open <c>MeetingRows.cs</c>, and that method is private to it. Folding this onto
+    /// a public <c>MeetingRows.Citing</c> is owed — see this card's <c>record.json</c>.
+    /// </remarks>
+    private static Citation Citing(CorpusDbContext context, Guid meeting, int ordinal)
+    {
+        var turn = context.Utterances.Single(row => row.MeetingId == meeting && row.Ordinal == ordinal);
+
+        return new Citation
+        {
+            MeetingId = meeting,
+            UtteranceOrdinal = turn.Ordinal,
+            Start = turn.Start,
+            End = turn.End,
+            SpeakerLabel = turn.SpeakerLabel,
+            QuotedText = turn.Text,
+            SourceArtifactSha256 = MeetingRows.QuotedFromSha256,
+        };
+    }
 }

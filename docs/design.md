@@ -11,7 +11,7 @@ was yesterday lives in `git log -- docs/design.md` and in the commit that change
 where somebody looking for it will know to go. A reason for a rule is welcome and is what makes a
 rule survive; a record of the rule it replaced is not.
 
-`docs/design/` holds the eighteen artboards — the screens as pictures, openable in a browser.
+`docs/design/` holds the nineteen artboards — the screens as pictures, openable in a browser.
 **They are reference and this document is the authority.** Where the two disagree, this page is what
 a screen is built from and the artboard is what gets corrected.
 
@@ -513,9 +513,9 @@ And what the code already required and still does:
 - **The application has no spare screens.** Recording and the meetings are one screen. The only
   thing that lives apart is the settings.
 
-## The eighteen screens
+## The nineteen screens
 
-`docs/design/` holds one file per screen. Seventeen are the flow and the eighteenth is the system
+`docs/design/` holds one file per screen. Eighteen are the flow and the nineteenth is the system
 sheet. `canvas.json` carries their layout and the notes, each naming the artboard it was written
 against. Two artboards have none, and a note nobody has written is not one this index invents.
 
@@ -628,6 +628,22 @@ context and what has already been fixed. **Neither list needs a model to have re
 summarising stopped being a screen per meeting and became a preference set once.** The two engines
 are separate choices with a separate cost each, and *a model on this machine* is one option among
 them rather than a special case. Amounts go as `[costo]`.
+
+**`Historia`** · A node's story. **The fourth kind of screen the product has**: every other one is
+about one meeting or about the list of them, and this one is about a thing several meetings hang
+off. It is reached by pressing what a meeting is filed under, on the meeting's own screen, which is
+what makes reading a project's history something you go and do. The header is the path down the
+tree as pills, and every pill above the last opens its own story — which is how *read the whole of
+this client* gets asked, and it is the one thing a panel inside a meeting could never answer. Under
+it, **one card per meeting, oldest first**, because a history is read forward: the meeting's date
+and its name are the card's heading and are the press that opens it, and inside it every decision,
+every action and every open question of that meeting in the order it was said, each with the minute
+it was said at. Decisions take an olive bullet and open questions a pico one, which is `Reunion`'s
+pair and means the same thing here; an action takes the rule's own grey. **There is no player and
+no transcript on it.** What this screen is for is reading across meetings; the minute is what says
+which meeting to open to hear one, and the transcript unfolds there. A node nothing has been said
+about says so in one line, and a node with more in it than the screen read says that in one line
+under the last card.
 
 ### Across the flow
 

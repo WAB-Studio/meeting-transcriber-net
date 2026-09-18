@@ -9,6 +9,9 @@
     <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
+    <!-- These two ship only inside an x64 package, so the RID is a fact about the project and not
+         a thing the build that publishes them has to pass down. -->
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <!-- The name the app execution alias publishes on the PATH, since the install directory's
          path changes with every version. `Package.appxmanifest` declares the alias and
          `MeetingTranscriber.App.csproj` is what puts this executable inside the package —

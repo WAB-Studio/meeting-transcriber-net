@@ -81,6 +81,134 @@ internal sealed partial class IsaDocument
     /// </remarks>
     public IReadOnlyList<string> Paths => _paths ??= ReadPaths(Lines);
 
+    private static TestInventory? _tests;
+
+    /// <summary>Every test class and every fact this repository has, read off the source under
+    /// <c>tests/</c>.</summary>
+    /// <remarks>
+    /// Off the source and never through a reference, which is this project's whole shape: it names
+    /// no <c>src/</c> project and reaches every suite by reading the tree, exactly as
+    /// <c>NothingUnderTestReachesTheNetworkTests</c> does. A regex and not a compiler: what the
+    /// gate checks is that somebody wrote a name down correctly, which is the same argument this
+    /// file's own header makes about parsing <c>ISA.md</c> literally — it proves a method of this
+    /// shape exists under this name, not that an attribute makes xunit run it, on the same
+    /// tolerance <c>TestClassLine</c> and <c>TestFactLine</c> already accept for a class or a
+    /// method the regex approximates rather than compiles.
+    /// <para>
+    /// <c>Classes</c> and <c>FactsByClass</c> are keyed by bare class name and not by project, so
+    /// two classes named alike in two projects — <c>CorpusRebuildTests</c> is one today — share one
+    /// entry and a pointer naming the wrong one's fact still resolves. That is the same gap
+    /// <c>IsaStructureTests.Every_path_the_file_points_at_is_one_this_repository_has</c>'s own
+    /// remarks already name for a path: holding a cited suite to the project cited beside it is a
+    /// card and not a line here, because it needs a pointer that carries both together on purpose
+    /// and none does today.
+    /// </para>
+    /// </remarks>
+    internal static TestInventory Tests() => _tests ??= BuildTestInventory();
+
+    private static TestInventory BuildTestInventory()
+    {
+        var classes = new HashSet<string>(StringComparer.Ordinal);
+        var factsByClass = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var facts = new HashSet<string>(StringComparer.Ordinal);
+
+        var testsRoot = new DirectoryInfo(System.IO.Path.Combine(Root().FullName, "tests"));
+
+        foreach (var file in testsRoot.EnumerateFiles("*.cs", SearchOption.AllDirectories))
+        {
+            if (file.FullName.Contains($"{System.IO.Path.DirectorySeparatorChar}bin{System.IO.Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                || file.FullName.Contains($"{System.IO.Path.DirectorySeparatorChar}obj{System.IO.Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string? currentClass = null;
+
+            foreach (var line in File.ReadLines(file.FullName))
+            {
+                var classMatch = TestClassLine().Match(line);
+                if (classMatch.Success)
+                {
+                    currentClass = classMatch.Groups["name"].Value;
+                    classes.Add(currentClass);
+                    continue;
+                }
+
+                var factMatch = TestFactLine().Match(line);
+                if (factMatch.Success && currentClass is not null)
+                {
+                    var fact = factMatch.Groups["name"].Value;
+                    facts.Add(fact);
+
+                    if (!factsByClass.TryGetValue(currentClass, out var factsOfClass))
+                    {
+                        factsOfClass = new HashSet<string>(StringComparer.Ordinal);
+                        factsByClass[currentClass] = factsOfClass;
+                    }
+
+                    factsOfClass.Add(fact);
+                }
+            }
+        }
+
+        return new TestInventory(
+            classes,
+            factsByClass.ToDictionary(
+                pair => pair.Key,
+                IReadOnlySet<string> (pair) => pair.Value,
+                StringComparer.Ordinal),
+            facts);
+    }
+
+    /// <summary>Every span of a stub that is a test pointer, in the order the stub writes them.</summary>
+    /// <remarks>
+    /// Three shapes and no more, because they are the three the section actually writes: a bare
+    /// class name, a class and a fact under it, and a leading-dot fact that hangs off a class the
+    /// stub named earlier. Anything else in backticks — a path, a command line, a file name, a
+    /// project name, an English sentence used as evidence — is skipped whole and never read as the
+    /// nearest thing to one, which is what keeps <c>CorpusImport.Tests</c> — a project name that
+    /// fails the class shape on the dot — from being misread as a bare-class pointer on
+    /// <c>CorpusImport</c>. A leading-dot fact resolves against any class named earlier in the same
+    /// stub, and against the whole tree when none was — this file's own stubs never write one
+    /// first, so the fallback is untested here and is exactly as wide as the format spec's own
+    /// words for it.
+    /// </remarks>
+    internal static IReadOnlyList<TestPointer> PointersIn(Stub stub)
+    {
+        var pointers = new List<TestPointer>();
+        var namedSoFar = new List<string>();
+
+        foreach (Match span in Pointer().Matches(stub.Evidence))
+        {
+            var text = span.Value.Trim('`');
+
+            var classAndFact = ClassAndFactPointer().Match(text);
+            if (classAndFact.Success)
+            {
+                pointers.Add(new TestPointer(
+                    classAndFact.Groups["class"].Value, classAndFact.Groups["fact"].Value, [.. namedSoFar]));
+                namedSoFar.Add(classAndFact.Groups["class"].Value);
+                continue;
+            }
+
+            var leadingDot = LeadingDotFactPointer().Match(text);
+            if (leadingDot.Success)
+            {
+                pointers.Add(new TestPointer(null, leadingDot.Groups["fact"].Value, [.. namedSoFar]));
+                continue;
+            }
+
+            var bareClass = BareClassPointer().Match(text);
+            if (bareClass.Success)
+            {
+                pointers.Add(new TestPointer(text, null, [.. namedSoFar]));
+                namedSoFar.Add(text);
+            }
+        }
+
+        return pointers;
+    }
+
     /// <summary>
     /// Where this repository is, found from this source file's compile-time path — the same way
     /// <c>DeepgramFixtures</c> finds the fixture folder. A path built from the working directory
@@ -308,6 +436,26 @@ internal sealed partial class IsaDocument
     [GeneratedRegex("`[^`]*`")]
     private static partial Regex Pointer();
 
+    /// <summary>A test class, off the source under <c>tests/</c>.</summary>
+    [GeneratedRegex(@"^\s*(?:public |internal |sealed |static |partial |abstract )*class (?<name>\w+)")]
+    private static partial Regex TestClassLine();
+
+    /// <summary>A fact — a test method — inside the class last opened.</summary>
+    [GeneratedRegex(@"^\s*(?:public |internal |protected |private )*(?:static )?(?:async )?(?:Task|void) (?<name>\w+)\(")]
+    private static partial Regex TestFactLine();
+
+    /// <summary>A bare class name: <c>DeepgramKeyTests</c>.</summary>
+    [GeneratedRegex(@"^[A-Z][A-Za-z0-9]*Tests$")]
+    private static partial Regex BareClassPointer();
+
+    /// <summary>A class and a fact under it: <c>ScreenTextsTests.Reads_the_right_words</c>.</summary>
+    [GeneratedRegex(@"^(?<class>[A-Z][A-Za-z0-9]*Tests)\.(?<fact>[A-Z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+)$")]
+    private static partial Regex ClassAndFactPointer();
+
+    /// <summary>A fact hanging off a class the stub named earlier: <c>.A_fact_is_named</c>.</summary>
+    [GeneratedRegex(@"^\.(?<fact>[A-Z][A-Za-z0-9]*(?:_[A-Za-z0-9]+)+)$")]
+    private static partial Regex LeadingDotFactPointer();
+
     /// <summary>
     /// Characters no path in this repository holds, each of which makes the span a different kind
     /// of thing. A wildcard or a bracket makes it a set of names, an angle bracket makes it a
@@ -357,6 +505,15 @@ internal sealed partial class IsaDocument
         span.Length <= LongestPointer ? string.Empty : span.Value[LongestPointer..];
 
     internal sealed record Claim(string Id, bool Closed, string Text, string Feature);
+
+    /// <summary>Every test class and every fact this repository has.</summary>
+    internal sealed record TestInventory(
+        IReadOnlySet<string> Classes,
+        IReadOnlyDictionary<string, IReadOnlySet<string>> FactsByClass,
+        IReadOnlySet<string> Facts);
+
+    /// <summary>A class, or a fact and the classes the stub had named by the time it wrote it.</summary>
+    internal sealed record TestPointer(string? Class, string? Fact, IReadOnlyList<string> ClassesNamedSoFar);
 
     /// <summary>
     /// A provenance stub: the claim it closes, everything after the `- ISC-N — ` prefix, and that

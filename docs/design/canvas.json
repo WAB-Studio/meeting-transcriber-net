@@ -137,6 +137,15 @@
       "page": "page-1"
     },
     {
+      "file": "Historia.dc.html",
+      "title": "La historia de un nodo",
+      "x": 7200,
+      "y": 1680,
+      "w": 1120,
+      "h": 860,
+      "page": "page-1"
+    },
+    {
       "file": "Primera.dc.html",
       "title": "La primera vez",
       "page": "page-1",
@@ -177,7 +186,7 @@
     {
       "id": "f-intro",
       "page": "page-1",
-      "text": "Diecisiete pantallas en este flujo. Fila 1: grabar. Fila 2: lo que pasa cuando la grabación termina o se rompe. Fila 3: lo que se hace con la reunión después. Fila 4: lo que cruza todo el flujo.\nDos lugares fijos para los botones en todas: a la izquierda lo neutro, a la derecha el acto, y lo que se pierde o se cobra apartado más a la izquierda. Un verbo por acto. Radios 4 / 8 / 12 y círculo sólo donde la cosa es genuinamente redonda. Una oración por pantalla, y sólo donde algo falló."
+      "text": "Dieciocho pantallas en este flujo. Fila 1: grabar. Fila 2: lo que pasa cuando la grabación termina o se rompe. Fila 3: lo que se hace con la reunión después, y la historia de un nodo entero. Fila 4: lo que cruza todo el flujo.\nDos lugares fijos para los botones en todas: a la izquierda lo neutro, a la derecha el acto, y lo que se pierde o se cobra apartado más a la izquierda. Un verbo por acto. Radios 4 / 8 / 12 y círculo sólo donde la cosa es genuinamente redonda. Una oración por pantalla, y sólo donde algo falló."
     },
     {
       "id": "f-inicio",
@@ -233,6 +242,11 @@
       "id": "c-correcciones",
       "file": "Correcciones.dc.html",
       "text": "El problema no era aplicar las correcciones sino encontrarlas: nadie va a leer el corpus buscando qué salió mal. Acá la persona escribe la palabra como va y el corpus le devuelve cómo quedó escrita; abajo aparecen solas las que sonaron dudosas y se parecen a algo que decís seguido. Ninguna de las dos listas necesita que un modelo lea las reuniones."
+    },
+    {
+      "id": "c-historia",
+      "file": "Historia.dc.html",
+      "text": "El camino es de cadenas y cada una arriba de la última abre su propia historia: es cómo se pregunta «toda la historia de este cliente», lo que un panel adentro de una reunión nunca podría contestar. Las tarjetas son una por reunión, de la más vieja a la más nueva, porque una historia se lee para adelante."
     },
     {
       "id": "f-abierto",

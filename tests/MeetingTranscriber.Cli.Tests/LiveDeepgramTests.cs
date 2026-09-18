@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
@@ -703,7 +701,7 @@ public sealed class LiveDeepgramTests : IDisposable
         const string InCode = "[assembly: " + Named;
         const string InAProjectFile = "<" + Named;
 
-        var repository = new DirectoryInfo(Path.GetFullPath(Path.Combine(Here(), "..", "..")));
+        var repository = RepositoryTree.Root;
 
         var declaring = repository
             .EnumerateFiles("*", SearchOption.AllDirectories)
@@ -741,12 +739,6 @@ public sealed class LiveDeepgramTests : IDisposable
     /// <summary>A keyboard nobody is at, for the paths that must never reach one.</summary>
     private static string? Nobody() =>
         throw new InvalidOperationException("Nothing on this path may ask anybody to confirm.");
-
-    /// <summary>
-    /// Where this file is, so the repository is found from the tree rather than from whatever
-    /// working directory the runner happened to start in.
-    /// </summary>
-    private static string Here([CallerFilePath] string path = "") => Path.GetDirectoryName(path)!;
 
     /// <summary>
     /// A stand-in for the provider that answers with a committed response and reaches no socket.

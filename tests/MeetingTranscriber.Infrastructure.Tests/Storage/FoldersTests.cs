@@ -139,6 +139,34 @@ public class FoldersTests
         Directory.Exists(from.FullName).ShouldBeTrue();
     }
 
+    /// <summary>
+    /// A whole-line comment, in every shape <see cref="SourceText.IsProse"/> claims to catch, and a
+    /// line of code that merely trails one — which it must not catch, or a guard built over this
+    /// would pass over the very thing it exists to find.
+    /// </summary>
+    [Fact]
+    public void A_line_that_is_all_comment_is_prose_and_a_trailing_comment_is_not()
+    {
+        SourceText.IsProse("// x").ShouldBeTrue();
+        SourceText.IsProse("/// x").ShouldBeTrue();
+        SourceText.IsProse(" * x").ShouldBeTrue();
+        SourceText.IsProse("var x = 1; // y").ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Where <see cref="RepositoryTree"/> says this repository is, checked against two things on
+    /// disk it did not have to name to be right: a file at the root and a project under <c>src</c>.
+    /// </summary>
+    [Fact]
+    public void The_repository_root_is_the_clone_this_binary_was_built_from()
+    {
+        RepositoryTree.At("CLAUDE.md").Exists.ShouldBeTrue();
+
+        RepositoryTree.Src.EnumerateDirectories()
+            .Select(folder => folder.Name)
+            .ShouldContain("MeetingTranscriber.Domain");
+    }
+
     private static DirectoryInfo Written(TemporaryFolderUnderTemp root, string name)
     {
         var folder = new DirectoryInfo(Path.Combine(root.Folder.FullName, name));
@@ -152,13 +180,12 @@ public class FoldersTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <c>CorpusLocationTests</c> keeps a <c>TemporaryFolderOutsideApplicationData</c>, which is
-    /// this same folder-and-shrug with a different root and a pool clear, and until this pass
-    /// both were called <c>TemporaryFolder</c>. The constraint runs one way: that one cannot be
-    /// this one, because <c>%TEMP%</c> is under this user's application data and a corpus there
-    /// is refused, which is the thing it exists to assert. This one could have been that one —
-    /// build output is writable, and clearing a pool over a folder holding no database does
-    /// nothing.
+    /// <c>CorpusLocationTests</c> keeps a <c>CorpusOutsideApplicationData</c>, which is this same
+    /// folder-and-shrug with a different root and a pool clear, and until an earlier pass both
+    /// were called <c>TemporaryFolder</c>. The constraint runs one way: that one cannot be this
+    /// one, because <c>%TEMP%</c> is under this user's application data and a corpus there is
+    /// refused, which is the thing it exists to assert. This one could have been that one — build
+    /// output is writable, and clearing a pool over a folder holding no database does nothing.
     /// </para>
     /// <para>
     /// It is not, because taking it would put an assertion about where a corpus may live in the

@@ -1,10 +1,10 @@
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Testing;
 
 namespace MeetingTranscriber.Audio.Tests;
 
@@ -689,7 +689,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
 
         var mark = new FileInfo(
             Path.Combine(Folder("daily").FullName, ReadingMark.FileName));
-        var before = Snapshot(Folder("daily"));
+        var before = FolderSnapshot.Of(Folder("daily"));
 
         using var holder = AnotherProcess.Holding(mark, FileShare.ReadWrite);
         try
@@ -705,7 +705,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
             refused.Message.ShouldNotContain(".blocks");
 
             // Every byte of it, and nothing left beside it either.
-            Snapshot(Folder("daily")).ShouldBe(before);
+            FolderSnapshot.Of(Folder("daily")).ShouldBe(before);
             root.EnumerateDirectories().Select(one => one.Name).ShouldBe(["daily"]);
         }
         finally
@@ -789,20 +789,20 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     public void A_read_that_ends_leaves_its_mark_behind_holding_nothing()
     {
         Recorded("daily", both: true);
-        MarkedAsRead(Folder("daily")).ShouldBeFalse();
+        FolderSnapshot.BeingRead(Folder("daily")).ShouldBeFalse();
 
         UnfinishedRecordings.At(Folder("daily")).Keep();
 
-        MarkedAsRead(Folder("daily")).ShouldBeTrue();
+        FolderSnapshot.BeingRead(Folder("daily")).ShouldBeTrue();
         ReadingMark.IsHeldIn(Folder("daily")).ShouldBeFalse();
 
         // Each of the two is held to it on its own rather than one covering for the other.
         Recorded("weekly", both: true);
-        MarkedAsRead(Folder("weekly")).ShouldBeFalse();
+        FolderSnapshot.BeingRead(Folder("weekly")).ShouldBeFalse();
 
         UnfinishedRecordings.At(Folder("weekly")).Export(Folder("out"));
 
-        MarkedAsRead(Folder("weekly")).ShouldBeTrue();
+        FolderSnapshot.BeingRead(Folder("weekly")).ShouldBeTrue();
         ReadingMark.IsHeldIn(Folder("weekly")).ShouldBeFalse();
 
         // And the way out through a refusal: the destination already holds one of the two names,
@@ -812,7 +812,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
         Should.Throw<AudioCaptureException>(
             () => UnfinishedRecordings.At(Folder("monthly")).Export(Folder("out")));
 
-        MarkedAsRead(Folder("monthly")).ShouldBeTrue();
+        FolderSnapshot.BeingRead(Folder("monthly")).ShouldBeTrue();
         ReadingMark.IsHeldIn(Folder("monthly")).ShouldBeFalse();
     }
 
@@ -825,7 +825,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     {
         Recorded("daily", both: true);
         ReadingMark.Take(Folder("daily")).Dispose();
-        MarkedAsRead(Folder("daily"))
+        FolderSnapshot.BeingRead(Folder("daily"))
             .ShouldBeTrue("the folder has to be carrying the mark for this to be about one");
 
         var recording = UnfinishedRecordings.At(Folder("daily"));
@@ -1126,7 +1126,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
         Recorded("daily", both: true);
         SavingMark.Take(Folder("daily")).Dispose();
 
-        Marked(Folder("daily"))
+        FolderSnapshot.BeingSaved(Folder("daily"))
             .ShouldBeTrue("the folder has to be carrying the mark for this to be about one");
 
         var recording = UnfinishedRecordings.At(Folder("daily"));
@@ -1480,13 +1480,10 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     }
 
     /// <summary>
-    /// The product's source tree, from where this file was compiled rather than from the working
-    /// directory.
+    /// The product's source tree, resolved from where this repository is rather than from the
+    /// working directory.
     /// </summary>
-    private static DirectoryInfo Tree() => new(Path.GetFullPath(Path.Combine(
-        Path.GetDirectoryName(ThisFile())!, "..", "..", "src")));
-
-    private static string ThisFile([System.Runtime.CompilerServices.CallerFilePath] string path = "") => path;
+    private static DirectoryInfo Tree() => RepositoryTree.Src;
 
     /// <summary>Changes one byte, the way a disk that did not keep what it was given would.</summary>
     private static void Corrupt(FileInfo file, long at)
@@ -1590,44 +1587,6 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
         {
             writer.Write(packet);
         }
-    }
-
-    /// <summary>
-    /// Whether the mark a save writes is lying in this folder. Built here rather than asked of
-    /// <see cref="SavingMark"/>, which deliberately answers nothing about the file being there.
-    /// </summary>
-    private static bool Marked(DirectoryInfo folder) =>
-        File.Exists(Path.Combine(folder.FullName, SavingMark.FileName));
-
-    /// <summary>
-    /// Whether the mark a read writes is lying in this folder. Built here rather than asked of
-    /// <see cref="ReadingMark"/>, which deliberately answers nothing about the file being there.
-    /// </summary>
-    private static bool MarkedAsRead(DirectoryInfo folder) =>
-        File.Exists(Path.Combine(folder.FullName, ReadingMark.FileName));
-
-    /// <summary>
-    /// Every file in the folder by name and by content, which is what "the folder survives with
-    /// everything in it" means. A length would pass over a file emptied and refilled.
-    /// </summary>
-    /// <remarks>
-    /// Opened the way a backup opens a file rather than the way <c>File.ReadAllBytes</c> does: one
-    /// of these files is a mark something is holding for writing, and a read sharing less than that
-    /// would be refused by the very holder the comparison is here to survive.
-    /// </remarks>
-    private static string[] Snapshot(DirectoryInfo folder) =>
-    [
-        .. folder.GetFiles()
-            .Select(file => $"{file.Name} {Convert.ToHexString(Hashed(file))}")
-            .Order(StringComparer.Ordinal),
-    ];
-
-    private static byte[] Hashed(FileInfo file)
-    {
-        using var content = file.Open(
-            FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-
-        return SHA256.HashData(content);
     }
 
 }

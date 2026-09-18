@@ -1,5 +1,6 @@
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
+
+using MeetingTranscriber.Testing;
 
 namespace MeetingTranscriber.Audio.Tests;
 
@@ -20,9 +21,9 @@ namespace MeetingTranscriber.Audio.Tests;
 /// </para>
 /// <para>
 /// Three things it does not reach, all of them true of <c>StoppingARecordingTests</c> in the
-/// Recording suite as well, which spells the same comment strip. It reads a <b>file on disk</b> at
-/// the path <c>[CallerFilePath]</c> resolved when this assembly was compiled, so it says nothing
-/// about the assembly under test. It reads <b>one</b> file, so a refusal reinstated in
+/// Recording suite as well, which shares the same comment strip through <c>SourceText</c>. It
+/// reads a <b>file on disk</b> at the path <c>RepositoryTree</c> resolves at compile time, so it
+/// says nothing about the assembly under test. It reads <b>one</b> file, so a refusal reinstated in
 /// <c>CaptureSession.Stop</c> or in <c>MeetingRecording.Stop</c> is invisible to it. And it reads
 /// past whole-line comments — every line whose first characters are <c>//</c>, <c>*</c> or
 /// <c>/*</c> is dropped, which is what keeps the prose explaining this rule from satisfying it, but
@@ -34,7 +35,7 @@ public partial class StoppingASourceTests
     [Fact]
     public void Only_a_stream_still_inside_its_device_refuses_the_stop()
     {
-        var body = TheBodyOfFinish().Match(CodeOf(TheSource()));
+        var body = TheBodyOfFinish().Match(SourceText.WithoutProse(TheSource()));
 
         body.Success.ShouldBeTrue(
             "CaptureSource.Finish is not where this reads for any more. What it guards is which "
@@ -73,19 +74,6 @@ public partial class StoppingASourceTests
     [GeneratedRegex(@"\bthrow\s+(?:new\s+)?(\w+)")]
     private static partial Regex Throws();
 
-    /// <summary>The file with every line that is only a comment taken out.</summary>
-    private static string CodeOf(FileInfo file) =>
-        string.Join('\n', File.ReadLines(file.FullName).Where(line => !IsProse(line)));
-
-    private static bool IsProse(string line) =>
-        line.TrimStart() is var start
-        && (start.StartsWith("//", StringComparison.Ordinal)
-            || start.StartsWith('*')
-            || start.StartsWith("/*", StringComparison.Ordinal));
-
-    private static FileInfo TheSource() => new(Path.GetFullPath(Path.Combine(
-        Path.GetDirectoryName(ThisFile())!, "..", "..",
-        "src", "MeetingTranscriber.Audio", "CaptureSource.cs")));
-
-    private static string ThisFile([CallerFilePath] string path = "") => path;
+    private static FileInfo TheSource() =>
+        RepositoryTree.At("src/MeetingTranscriber.Audio/CaptureSource.cs");
 }

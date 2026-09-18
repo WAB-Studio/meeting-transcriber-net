@@ -70,6 +70,15 @@ landing. Never what happened: the issues, the PRs and the commits carry that alr
 sha to every stage. Nothing in the batch resolves `origin/main` to decide what it is building
 against; the audit floor is still read at the trunk.
 
+**A claim the batch needs lands before the shares are cut.** A planner comes back `blocked` on a
+card whose claim `ISA.md` does not carry. Land that claim open through
+`.claude/skills/isa/SKILL.md`, in a commit of its own on `main` that writes no code, re-pin
+`<batch dir>/base` to it, and send that card back to the planner — the same **once** step 4 gives a
+`revise`. Re-pinning cannot stale a plan written against the commit before, because the commit
+carries `ISA.md` and nothing else. It is done here and not inside a share because
+`IsaStructureTests.A_claim_arrives_in_a_change_that_writes_no_code` measures the whole branch from
+its fork point: no share in any wave can issue an id, whatever else it writes.
+
 1. **Pick.** Spawn `picker` with a ceiling of eight candidates.
    - `no_tasks` or `blocked` → end the day. Say why.
    - Say the cards and the `why` in one line before you spawn anything else. Hand the planner both
@@ -82,6 +91,8 @@ against; the audit floor is still read at the trunk.
    between the workers it wants, naming for each share what it builds. What it drops is said and
    goes back to the pool unbuilt.
    - A card it returns `needs_grill` or `blocked` → §4, and the rest of the batch goes on.
+   - A card `blocked` on a claim `ISA.md` does not carry → land the claim as above and re-plan that
+     card once, rather than sending it to §4.
    - `already_done` → that card closed itself.
 4. **Validate, or don't.** Spawn `validator` once over the split when it holds more than one card,
    when any plan returned `floor_paths`, or when a plan carries a decision that holds up other parts

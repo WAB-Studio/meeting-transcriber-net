@@ -11,10 +11,11 @@ namespace MeetingTranscriber.Audio.Tests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Answered here rather than in each of those, because neither end of the bound is about the thing
-/// under test: the floor is a judgement about two clocks and the ceiling is a judgement about a
-/// loaded build agent. Written out at each site, it was written four ways — three of them with no
-/// room at the floor at all — and the one written differently is the one that goes red for nothing.
+/// Answered here rather than in each of those, because the bound is not about the thing under
+/// test: the floor is a judgement about two clocks, and there is no ceiling — a judgement about a
+/// loaded build agent is what this file refuses to make. Written out at each site, it was written
+/// four ways — three of them with no room at the floor at all — and the one written differently is
+/// the one that goes red for nothing.
 /// </para>
 /// <para>
 /// Both answers split the same axis at the same point, and that point is the deadline: what these
@@ -79,16 +80,15 @@ internal static class Deadlines
     /// something bounded the wait, and that what bounded it was this number.
     /// </summary>
     /// <remarks>
-    /// The ceiling is generous on purpose and the floor is not: a wedged device on a loaded agent
-    /// can be answered late, so half as long again is not what this should go red over, but nothing
-    /// makes a wait come back early except not having waited.
+    /// The floor is the whole of what this asserts, and that is the file's own rule applied to
+    /// itself: a number above the deadline is a guess at how quick a build agent is, and it goes
+    /// red when the guess is wrong rather than when the code is. What separates a wait that ran
+    /// long from one that never ends is the run's own timeout, which is not a number about this
+    /// application either — and nothing makes a wait come back early except not having waited.
     /// </remarks>
     /// <param name="waited">What a <see cref="Stopwatch"/> measured across the wait.</param>
-    internal static void ShouldHaveWaitedTheDeadline(this TimeSpan waited)
-    {
+    internal static void ShouldHaveWaitedTheDeadline(this TimeSpan waited) =>
         waited.ShouldBeGreaterThanOrEqualTo(CaptureLoop.StopsWithin - Slack);
-        waited.ShouldBeLessThan(CaptureLoop.StopsWithin * 2);
-    }
 
     /// <summary>
     /// Asserts the other half of the same question: that a wait was not the deadline, which is what

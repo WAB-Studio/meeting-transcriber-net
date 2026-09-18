@@ -116,7 +116,7 @@ public sealed partial class ReadingAMeeting : UserControl
     /// nothing writes nothing.</summary>
     private string _nameAsRead = string.Empty;
 
-    private TextLine? _status;
+    private readonly ScreenStatus _status = new();
 
     public ReadingAMeeting()
     {
@@ -129,6 +129,9 @@ public sealed partial class ReadingAMeeting : UserControl
 
     /// <summary>Somebody asked to file this meeting under what it was about.</summary>
     public event EventHandler<Guid>? Classify;
+
+    /// <summary>Somebody asked to read the history of something this meeting is filed under.</summary>
+    public event EventHandler<Guid>? NodeChosen;
 
     /// <summary>Whether this screen is showing a meeting.</summary>
     public bool IsShowingAMeeting => _meeting is not null;
@@ -235,7 +238,7 @@ public sealed partial class ReadingAMeeting : UserControl
     {
         _read = null;
         _filing = null;
-        _status = null;
+        _status.Nothing();
 
         if (_meeting is not { } meetingId)
         {
@@ -245,7 +248,7 @@ public sealed partial class ReadingAMeeting : UserControl
 
         if (Corpus().Folder is not { } folder)
         {
-            _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
+            _status.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
         }
         else
         {
@@ -262,11 +265,11 @@ public sealed partial class ReadingAMeeting : UserControl
             }
             catch (MeetingStageException gone)
             {
-                _status = TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, gone.Message);
+                _status.Says(UiTexts.ThatIsNoLongerHowItWas, gone.Message);
             }
             catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
             {
-                _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
+                _status.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
             }
         }
 
@@ -288,7 +291,7 @@ public sealed partial class ReadingAMeeting : UserControl
         _meeting = null;
         _read = null;
         _filing = null;
-        _status = null;
+        _status.Nothing();
         _nameAsRead = string.Empty;
         NameBox.Text = string.Empty;
         TheSections.Children.Clear();
@@ -339,7 +342,7 @@ public sealed partial class ReadingAMeeting : UserControl
             NameBox.Text = string.Empty;
             NameBox.IsEnabled = false;
             WhenText.Text = string.Empty;
-            StageText.Text = _status?.In(_language) ?? string.Empty;
+            StageText.Text = _status.In(_language);
             TranscribedText.Text = string.Empty;
             SummarisedText.Text = string.Empty;
             ClassifyButton.IsEnabled = false;
@@ -407,11 +410,12 @@ public sealed partial class ReadingAMeeting : UserControl
     /// What this meeting is filed under, and whether it is one to file at all.
     /// </summary>
     /// <remarks>
-    /// One chip per link, carrying the whole path down the tree rather than the node the meeting
+    /// One chip per place, carrying the whole path down the tree rather than the node the meeting
     /// hangs off: <em>ticket #4312</em> on its own names an incident belonging to nobody, and the
     /// company above it is what makes it a subject. Which of the three ways it relates to each is
-    /// not said here — this block asks one question, and the screen the press opens is where the
-    /// three columns are.
+    /// not said here — the chip is now the press that opens that node's own history, and which of
+    /// the three ways it relates is a question for the screen <see cref="Classify"/> opens, not
+    /// this one.
     /// </remarks>
     private void WhatItWasAbout(MeetingScreen screen)
     {
@@ -433,18 +437,28 @@ public sealed partial class ReadingAMeeting : UserControl
         // One chip per place and not per link. A meeting that is work of a company and has that
         // same company on the other side of the table is two links and one answer to the question
         // this block asks, and drawing the name twice reads as something gone wrong rather than as
-        // a filing. Which way each relates to it is the screen the press below opens.
+        // a filing — grouped on the deepest node's id rather than on the drawn path, which is the
+        // same fact the old text comparison protected.
         var places = filed
-            .Select(found => ScreenNumbers.Inside([.. found.Path.Nodes.Select(node => node.Name)]))
-            .Distinct(StringComparer.Ordinal);
+            .GroupBy(found => found.Path.Nodes[^1].Id)
+            .Select(group => group.First().Path);
 
-        foreach (var place in places)
+        foreach (var path in places)
         {
-            TheFiling.Children.Add(new Border
+            var node = path.Nodes[^1].Id;
+
+            var chip = new Button
             {
                 Style = Chrome("FiledUnder"),
-                Child = new TextBlock { Text = place, Style = Chrome("FiledUnderSays") },
-            });
+                Content = new TextBlock
+                {
+                    Text = ScreenNumbers.Inside([.. path.Nodes.Select(found => found.Name)]),
+                    Style = Chrome("FiledUnderSays"),
+                },
+            };
+
+            chip.Click += (_, _) => NodeChosen?.Invoke(this, node);
+            TheFiling.Children.Add(chip);
         }
     }
 
@@ -716,17 +730,21 @@ public sealed partial class ReadingAMeeting : UserControl
         }
         catch (MeetingStageException stale)
         {
-            _status = TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, stale.Message);
+            _status.Says(UiTexts.ThatIsNoLongerHowItWas, stale.Message);
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
-            _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+            _status.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
         }
 
-        var said = _status;
+        var said = _status.Line;
         Draw(theRecordingToo: false);
-        _status ??= said;
-        StageText.Text = _status?.In(_language) ?? StageText.Text;
+        _status.KeepsWhatWasSaid(said);
+
+        if (_status.IsSaying)
+        {
+            StageText.Text = _status.In(_language);
+        }
     }
 
     // ── The name ──────────────────────────────────────────────────────────────────────────────

@@ -178,18 +178,39 @@ public sealed class Arguments
     }
 
     /// <summary>Refuses a command that carries something no command of that name reads.</summary>
-    public void EnsureNothingLeftOver()
+    public void EnsureNothingLeftOver() => EnsureNothingLeftOver(string.Empty);
+
+    /// <summary>
+    /// The same refusal, with a sentence saying why this command in particular reads none of it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For the half of a command that takes a subject the corpus already describes: every flag the other
+    /// half reads is left unread here, so this refuses all of them by name without a second copy of what
+    /// those flags are. A list written out at the call site is a list that can be added to once, which
+    /// is what this replaced.
+    /// </para>
+    /// <para>
+    /// It goes through <see cref="Refusing"/> like every other refusal here, so on a command declaring
+    /// <c>InsteadOfRepeatingWhatWasTyped</c> the whole message is replaced and this sentence goes with
+    /// it. That is the substitution working rather than a loss: the one command that declares it is
+    /// <c>key</c>, whose line can be carrying a secret, and it reads none of these flags.
+    /// </para>
+    /// </remarks>
+    public void EnsureNothingLeftOver(string because)
     {
+        var suffix = because.Length == 0 ? string.Empty : $" {because}";
+
         var unread = options.Keys.Where(name => !read.Contains(name)).Order(StringComparer.Ordinal).ToArray();
         if (unread.Length > 0)
         {
-            throw Refusing($"This command takes no {string.Join(", ", unread)}.");
+            throw Refusing($"This command takes no {string.Join(", ", unread)}.{suffix}");
         }
 
         if (!valuesRead && values.Count > 0)
         {
             throw Refusing(
-                $"This command takes no arguments of its own, and got {string.Join(", ", values)}.");
+                $"This command takes no arguments of its own, and got {string.Join(", ", values)}.{suffix}");
         }
     }
 

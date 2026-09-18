@@ -130,7 +130,7 @@ card contradicting it hands somebody work that gets rejected for disagreeing wit
 built against. So before a `Decisions` bullet about anything a person sees is written, read what the
 page already says about it. Three places, and which one depends on what was settled:
 
-- **The screen** — `## The eighteen screens` names all eighteen, so finding it is one look. Read the
+- **The screen** — `## The nineteen screens` names all nineteen, so finding it is one look. Read the
   whole row it sits in and not only its bold entry: what the meetings list carries, what a recording
   screen may name, are written between the entries. And find the screen **the decision is about**,
   which is often not the one the card's `**Screen:**` line names — a meeting's name edited from a

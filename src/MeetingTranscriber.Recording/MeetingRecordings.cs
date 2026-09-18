@@ -496,10 +496,11 @@ public static class MeetingRecordings
         // null, and the next attempt finishes cleanly.
         //
         // Written the other way round it would not be a preference but a trap:
-        // `StagedArtifact.Refusals` asks about the destination file and not about the row, and an
-        // `ArtifactKind.Audio` is never rewritten — so a rollback that took the row back out from
-        // under a file already renamed into place would leave a meeting the application refuses to
-        // finish, every attempt answered with `AlreadyThere`, until somebody deletes that file.
+        // `StagedArtifact.Refusals` asks about the destination file first and about the row only
+        // when the file is gone, and an `ArtifactKind.Audio` is never rewritten — so a rollback
+        // that took the row back out from under a file already renamed into place would leave a
+        // meeting the application refuses to finish, every attempt answered with `AlreadyThere`,
+        // until somebody deletes that file.
         // Nothing an outside reader can see tells the two orders apart, so what pins this is
         // `MeetingRecordingsTests.No_reader_is_ever_handed_a_meeting_recorded_with_no_length`
         // asserting that `audio.wav` is not yet on disk when the length is saved.
