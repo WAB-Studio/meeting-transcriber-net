@@ -43,12 +43,18 @@ public static class MeetingRows
     /// and not through the artifact. Nothing when the meeting's turns came from no response
     /// anybody paid for, which is a meeting imported from a file somebody already had.
     /// </param>
+    /// <param name="root">
+    /// The corpus root, where the meeting's own <c>audio.wav</c> and its <c>Artifact</c> row are wanted.
+    /// Nothing where the suite is about rows alone, which is every caller but the one that reads a
+    /// meeting's recording off the disk.
+    /// </param>
     public static Guid Recorded(
         CorpusDbContext context,
         UtcTimestamp startedAt,
         IReadOnlyList<string> said,
         string? title = null,
-        string? responseSha256 = null)
+        string? responseSha256 = null,
+        DirectoryInfo? root = null)
     {
         ArgumentNullException.ThrowIfNull(said);
 
@@ -81,6 +87,25 @@ public static class MeetingRows
             });
         }
 
+        if (root is not null)
+        {
+            var audio = CorpusFiles.Locate(root, CorpusFiles.PathFor(meeting, "audio.wav"));
+            audio.Directory!.Create();
+            File.WriteAllBytes(audio.FullName, [0x52, 0x49, 0x46, 0x46]);
+
+            Add(context, new Artifact
+            {
+                Id = Guid.NewGuid(),
+                MeetingId = meeting,
+                Kind = ArtifactKind.Audio,
+                Origin = ArtifactKind.Audio.OriginOf(),
+                RelativePath = CorpusFiles.PathFor(meeting, "audio.wav"),
+                ByteSize = 4,
+                Sha256 = new string('a', 64),
+                ConfirmedAt = startedAt,
+            });
+        }
+
         if (responseSha256 is not null)
         {
             Transcribed(context, meeting, startedAt, responseSha256);
@@ -91,7 +116,7 @@ public static class MeetingRows
 
     /// <summary>
     /// One extraction of a meeting, with a decision, an action and an open question on it, each
-    /// cited to the same turn.
+    /// cited to a turn of its own.
     /// </summary>
     /// <param name="accepted">
     /// When a person accepted it, or nothing. A run nobody accepted is the case every reader of an
@@ -101,14 +126,22 @@ public static class MeetingRows
     /// What it settled. The action and the open question say the same with a word after it, so a
     /// suite can tell which section answered without three more parameters.
     /// </param>
-    /// <param name="citedTurn">Which turn all three anchor on. It has to be a turn that exists.</param>
+    /// <param name="citedTurn">
+    /// Which turn the decision anchors on. It has to be a turn that exists, and it is what the
+    /// action and the open question anchor on too where <paramref name="actionAt"/> or
+    /// <paramref name="questionAt"/> is not given.
+    /// </param>
+    /// <param name="actionAt">Which turn the action anchors on, or the same one the decision does.</param>
+    /// <param name="questionAt">Which turn the open question anchors on, or the same one.</param>
     public static Guid Extracted(
         CorpusDbContext context,
         Guid meeting,
         UtcTimestamp when,
         UtcTimestamp? accepted,
         string saying,
-        int citedTurn = 0)
+        int citedTurn = 0,
+        int? actionAt = null,
+        int? questionAt = null)
     {
         var job = ProcessingJob.Queue(
             Guid.NewGuid(), meeting, JobKind.Extract, $"{meeting}/{Guid.NewGuid()}", when);
@@ -157,7 +190,7 @@ public static class MeetingRows
             ExtractionRunId = run.Id,
             Ordinal = 0,
             Statement = $"{saying}, to do",
-            Evidence = Citing(context, meeting, citedTurn),
+            Evidence = Citing(context, meeting, actionAt ?? citedTurn),
             CreatedAt = when,
         });
 
@@ -168,7 +201,7 @@ public static class MeetingRows
             ExtractionRunId = run.Id,
             Ordinal = 0,
             Question = $"{saying}, unresolved",
-            Evidence = Citing(context, meeting, citedTurn),
+            Evidence = Citing(context, meeting, questionAt ?? citedTurn),
             CreatedAt = when,
         });
 
@@ -202,27 +235,38 @@ public static class MeetingRows
     }
 
     /// <summary>
-    /// The paid response, filed and recorded: the artifact row, and the finished transcription run
-    /// naming it. Both, because which response a meeting's turns came from is the run's answer and
-    /// not the newest artifact's — a meeting transcribed twice has two artifacts and the corpus
-    /// keeps both.
+    /// The paid response, filed and recorded, for a suite that needs a run without a meeting's turns
+    /// coming out of one.
     /// </summary>
-    private static void Transcribed(
-        CorpusDbContext context, Guid meeting, UtcTimestamp when, string sha256)
+    /// <param name="finished">
+    /// Whether the run came back. A run that was queued and never came back has a row and names no
+    /// provider under the meeting, which is a state a reader has to leave alone.
+    /// </param>
+    public static void Transcribed(
+        CorpusDbContext context,
+        Guid meeting,
+        UtcTimestamp when,
+        string? responseSha256 = null,
+        bool finished = true)
     {
-        var response = new Artifact
-        {
-            Id = Guid.NewGuid(),
-            MeetingId = meeting,
-            Kind = ArtifactKind.DeepgramResponse,
-            Origin = ArtifactKind.DeepgramResponse.OriginOf(),
-            RelativePath = CorpusFiles.PathFor(meeting, "deepgram.json"),
-            ByteSize = 4,
-            Sha256 = sha256,
-            ConfirmedAt = when,
-        };
+        Artifact? response = null;
 
-        Add(context, response);
+        if (responseSha256 is not null)
+        {
+            response = new Artifact
+            {
+                Id = Guid.NewGuid(),
+                MeetingId = meeting,
+                Kind = ArtifactKind.DeepgramResponse,
+                Origin = ArtifactKind.DeepgramResponse.OriginOf(),
+                RelativePath = CorpusFiles.PathFor(meeting, "deepgram.json"),
+                ByteSize = 4,
+                Sha256 = responseSha256,
+                ConfirmedAt = when,
+            };
+
+            Add(context, response);
+        }
 
         var job = ProcessingJob.Queue(
             Guid.NewGuid(), meeting, JobKind.Transcribe, $"{meeting}/{Guid.NewGuid()}", when);
@@ -240,9 +284,9 @@ public static class MeetingRows
             Language = "es",
             AudioSha256 = new string('b', 64),
             BillableConfigHash = new string('c', 64),
-            ResponseArtifactId = response.Id,
+            ResponseArtifactId = response?.Id,
             CreatedAt = when,
-            FinishedAt = when,
+            FinishedAt = finished ? when : null,
         });
     }
 
