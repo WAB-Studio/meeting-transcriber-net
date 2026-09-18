@@ -15,7 +15,7 @@ using ModelContextProtocol.Server;
 namespace MeetingTranscriber.Mcp;
 
 /// <summary>
-/// The six tools arquitectura.md §8.2 names, over one corpus, read-only.
+/// The eight tools arquitectura.md §8.2 names, over one corpus, read-only.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -64,6 +64,17 @@ public sealed class CorpusServer(CorpusLocation where)
 
         `listar_decisiones` and `listar_acciones` go the other way — across the corpus rather than
         into one meeting — for what was settled or left to do over a stretch of time.
+
+        `listar_nodos` and `leer_nodo` go the third way: into a project, a client or a subject rather
+        than into a meeting. `listar_nodos` is the whole tree — the organizations, the bodies of work
+        inside them and the subjects inside those — and it is how a node gets an id. `leer_nodo` reads
+        one node's history: everything the meetings filed under it settled, left to do and left open,
+        in the order it was said, oldest first, and it includes everything hanging off that node's
+        children — so asking an organization reads the whole of it.
+
+        It orders and it shows where each thing came from. It does not say what still stands: every
+        statement comes back with its meeting and its date, and judging them against each other is
+        the reader's.
 
         Every answer carries the meeting's id and when it started. Where something was said at a
         moment, the turn's position and its offset in milliseconds come with it: refer to it by
@@ -116,7 +127,7 @@ public sealed class CorpusServer(CorpusLocation where)
     /// <remarks>
     /// The transport is the caller's because it is the one thing that differs between the two ways
     /// this server is run: stdio for the executable, a pair of streams for the suite that proves
-    /// the tools. Everything a client sees — the name, the instructions, the six tools and what
+    /// the tools. Everything a client sees — the name, the instructions, the eight tools and what
     /// each answers — is the same object either way, which is what makes the second one evidence
     /// about the first.
     /// </remarks>
@@ -133,7 +144,8 @@ public sealed class CorpusServer(CorpusLocation where)
     };
 
     /// <summary>
-    /// The six of arquitectura.md §8.2, under the parameter names §8.2 spells.
+    /// The eight of arquitectura.md §8.2, the last two of them the node face §8.2 gained with
+    /// ISC-144 and ISC-145, under the parameter names §8.2 spells.
     /// </summary>
     /// <remarks>
     /// A tool's parameter is not a private name: an MCP client puts it in a JSON schema and an
@@ -275,6 +287,48 @@ public sealed class CorpusServer(CorpusLocation where)
             + "first, out of the one extraction of each that a person accepted. Each carries the "
             + "meeting it was left in and the turn it was left at.",
             Listing(LeftKind.Action, "actions")),
+
+        Tool(
+            "listar_nodos",
+            "Every node of the tree a meeting can be filed under: the organizations, the bodies of "
+            + "work inside them and the subjects inside those, root first. This is how a node gets "
+            + "an id — nothing else answers with one. Small: the tree stops at three levels and "
+            + "belongs to one person.",
+            (
+                [Description("How many at most. Above 200 is answered with 200.")]
+                int limite = CorpusSearch.DefaultLimit) =>
+                Answer(corpus =>
+                {
+                    var wanted = Answers.AtMost(limite);
+                    var tree = CorpusNodes.All(corpus);
+
+                    return Text(Answers.All(
+                        "nodes",
+                        [.. tree.Take(wanted).Select(Answers.Filed)],
+                        tree.Count > wanted));
+                })),
+
+        Tool(
+            "leer_nodo",
+            "One node's history: everything the meetings filed under it settled, left to do and "
+            + "left open, oldest first, each carrying the meeting it was said in and when that "
+            + "meeting was. It includes everything hanging off the node's children, so an "
+            + "organization reads the whole of it. It orders and shows where each thing came from, "
+            + "and says nothing about what still stands.",
+            (
+                [Description("The node's id, as listar_nodos gave it.")] string nodo_id,
+                [Description("How many at most. Above 200 is answered with 200.")]
+                int limite = CorpusSearch.DefaultLimit) =>
+                Answer(corpus =>
+                {
+                    var wanted = Answers.AtMost(limite);
+                    var statements = CorpusStatements.Under(corpus, Node(nodo_id), wanted + 1);
+
+                    return Text(Answers.All(
+                        "statements",
+                        [.. statements.Take(wanted).Select(Answers.Left)],
+                        statements.Count > wanted));
+                })),
     ];
 
     /// <summary>
@@ -321,6 +375,13 @@ public sealed class CorpusServer(CorpusLocation where)
         : throw new McpRefused(
             $"'{meeting_id}' is not a meeting id. They look like "
             + "8d0c1d6a-6f0e-4a3d-9d1a-2c9f4b5e6a70 and come back on every answer.");
+
+    /// <summary>A node id as an agent typed it, refused in words for the reason a meeting id is.</summary>
+    private static Guid Node(string nodo_id) => Guid.TryParse(nodo_id, out var node)
+        ? node
+        : throw new McpRefused(
+            $"'{nodo_id}' is not a node id. They look like "
+            + "8d0c1d6a-6f0e-4a3d-9d1a-2c9f4b5e6a70 and come back from listar_nodos.");
 
     /// <summary>
     /// A query with something in it.
@@ -385,21 +446,28 @@ public sealed class CorpusServer(CorpusLocation where)
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>The list is what these six tools can reach, and it was derived by walking them.</b> The
+    /// <b>The list is what these eight tools can reach, and it was derived by walking them.</b> The
     /// obvious thing to do was take <c>ScreenFailures.Reportable</c> — the closed list of what a
     /// read of the corpus says rather than stops over — and adapt it. That list is about a screen
     /// over the whole product, and taken by symmetry it comes out wrong in both directions here:
-    /// it names <c>DbUpdateException</c> and <c>ClassificationException</c>, which are the write
-    /// side and unreachable through a read-only connection, and it does not name
-    /// <see cref="MeetingStageException"/> or <see cref="CorpusSearchException"/>, which two of
-    /// these tools throw on ordinary input. So: what a tool here can reach, and nothing by analogy.
+    /// it names <c>DbUpdateException</c>, which is the write side and unreachable through a
+    /// read-only connection, and it names <c>ClassificationException</c> for a reason that is not
+    /// this one — a screen reports it when a person files a meeting, and here it is a node id an
+    /// agent typed. And it does not name <see cref="MeetingStageException"/> or
+    /// <see cref="CorpusSearchException"/>, which two of these tools throw on ordinary input. So:
+    /// what a tool here can reach, and nothing by analogy.
     /// </para>
     /// <para>
     /// <see cref="McpRefused"/> is everything this server decided to say itself — a corpus that is
     /// not there, an id that is not one, a bound that is not an instant.
     /// <see cref="MeetingStageException"/> is a meeting this corpus does not hold and
     /// <see cref="CorpusSearchException"/> is a query FTS5 will not parse; both are an agent's
-    /// input and both name it. <see cref="SqliteException"/> is the corpus itself refusing —
+    /// input and both name it.
+    /// <see cref="ClassificationException"/> is a node this corpus does not hold, which
+    /// <c>leer_nodo</c> throws on an id an agent typed wrong; it is here on the same rule as the
+    /// rest and not by analogy with <c>ScreenFailures.Reportable</c>, which names it for a
+    /// different reason entirely. The alternative was an empty answer, which reads as a node
+    /// nothing was ever said about. <see cref="SqliteException"/> is the corpus itself refusing —
     /// locked, unreadable, not a database — which is the one an agent can do nothing about and a
     /// person can. <see cref="IOException"/> and <see cref="UnauthorizedAccessException"/> are the
     /// filesystem's two. <b>They are here on the argument and not on a fact:</b> every path this
@@ -435,6 +503,7 @@ public sealed class CorpusServer(CorpusLocation where)
             refused is McpRefused
                 or MeetingStageException
                 or CorpusSearchException
+                or ClassificationException
                 or SqliteException
                 or IOException
                 or UnauthorizedAccessException)

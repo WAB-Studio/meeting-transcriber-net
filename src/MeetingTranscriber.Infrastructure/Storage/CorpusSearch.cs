@@ -283,6 +283,35 @@ public static class CorpusSearch
         """;
 
     /// <summary>
+    /// A node and everything hanging off it, as a predicate over a <c>nodes</c> row aliased
+    /// <c>under</c>. The caller supplies the SQL for the node being asked about — a column on its
+    /// own join, or a bound parameter — and joins <c>nodes AS under</c> itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One spelling, asked by both readers, for the reason <see cref="TheRunThatCounts"/> gives about
+    /// its own. Two joins and no recursion, which is what capping the tree at three levels bought: a
+    /// meeting filed under a ticket answers to the ticket, the initiative over it and the organization
+    /// over that. A second spelling in <c>CorpusStatements</c> would be a second answer to <em>how far
+    /// a node reaches</em>, and the two would come apart the day the cap moves.
+    /// </para>
+    /// <para>
+    /// The emitted text is not what it was, and that is not a defect: a raw string literal's value is
+    /// one unindented line and two continuations, and an interpolation hole takes it verbatim rather
+    /// than re-indenting it — so the two <c>OR</c> lines sit at column three of the emitted search
+    /// instead of aligned under <c>under.id</c>. Nothing reads that text. <c>EmittedSql</c> hears EF
+    /// Core's diagnostics and this query goes through <see cref="RawSql"/>, which executes its own
+    /// command; what holds this walk is <c>CorpusSearchTests</c>' four facts about how far the node
+    /// branch reaches.
+    /// </para>
+    /// </remarks>
+    internal static string Underneath(string node) => $"""
+        under.id = {node}
+           OR under.parent_id = {node}
+           OR under.parent_id IN (SELECT id FROM nodes WHERE parent_id = {node})
+        """;
+
+    /// <summary>
     /// Every branch and the ordering. Each joins its index back to the table it indexes and then to
     /// the meeting, so what comes back is the row as it is now rather than whatever the index
     /// happened to keep — the index holds no copy of the text, and this is where that shows.
@@ -317,9 +346,11 @@ public static class CorpusSearch
     /// </para>
     /// <para>
     /// The <c>EXISTS</c> on the voice branch is what makes its sentence true. An assignment hangs
-    /// off a label and nothing deletes one whose label stopped naming any turn, so a meeting
-    /// transcribed again into a different set of labels keeps the old rows — and this is the first
-    /// reader that does not reach the name through the label. <c>MeetingRenderer.Header</c> builds a
+    /// off a label, and the only thing that takes one off is a render —
+    /// <c>HumanLayer.ForgetVoicesNoTurnHas</c>, called from <c>MeetingRenderer.Replace</c> — so a
+    /// meeting transcribed again into a different set of labels keeps the old rows until it is
+    /// rendered again, which nothing forces — and this is the first reader that does not reach the
+    /// name through the label. <c>MeetingRenderer.Header</c> builds a
     /// label-to-name map, so a stale row falls out of the transcript silently; without the
     /// <c>EXISTS</c> it would fall <em>into</em> search instead, and somebody would be told the
     /// corpus knows this person spoke in a meeting whose transcript never names them, with no
@@ -417,9 +448,7 @@ public static class CorpusSearch
                    bm25(nodes_fts)
             FROM nodes_fts
             JOIN nodes AS found ON found.rowid = nodes_fts.rowid
-            JOIN nodes AS under ON under.id = found.id
-                                OR under.parent_id = found.id
-                                OR under.parent_id IN (SELECT id FROM nodes WHERE parent_id = found.id)
+            JOIN nodes AS under ON {Underneath("found.id")}
             JOIN meeting_nodes AS filed ON filed.node_id = under.id
             JOIN meetings AS meeting ON meeting.id = filed.meeting_id
             WHERE nodes_fts MATCH @query AND meeting.lifecycle_state = @active

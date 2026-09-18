@@ -1,6 +1,8 @@
 using System.Data;
 using System.Data.Common;
 
+using MeetingTranscriber.Domain.Time;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -74,6 +76,10 @@ internal static class RawSql
 
     /// <summary>One identity parameter on a command, written the way every id column stores one.</summary>
     public static void Bind(DbCommand command, string name, Guid value) => Add(command, name, value);
+
+    /// <summary>One instant on a command, written the way every instant in the corpus is stored.</summary>
+    public static void Bind(DbCommand command, string name, UtcTimestamp value) =>
+        Add(command, name, value.ToStorage());
 
     /// <summary>
     /// One parameter on a command, because what the caller has is a <see cref="DbCommand"/> and

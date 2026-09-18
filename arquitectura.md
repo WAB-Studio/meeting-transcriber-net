@@ -931,6 +931,8 @@ leer_turnos(meeting_id, desde_ms, hasta_ms)
 obtener_cita(meeting_id, utterance_ordinal)
 listar_decisiones(filtros)
 listar_acciones(filtros)
+listar_nodos(filtros)
+leer_nodo(nodo_id, filtros)
 ```
 
 El patrón esperado es:
@@ -939,6 +941,11 @@ El patrón esperado es:
 2. leer summaries de pocos resultados;
 3. abrir solo los turnos necesarios;
 4. responder con `meeting_id`, timestamp, cita y hash de fuente.
+
+El tercer camino no entra por una reunión sino por un nodo: `listar_nodos` da el id
+y `leer_nodo` lee la historia — lo que decidieron, dejaron por hacer y dejaron
+abierto todas las reuniones colgadas de él y de lo que cuelga de él — en orden y
+sin opinar sobre qué sigue en pie.
 
 El servidor MCP es otro ejecutable de la misma solución. Abre SQLite en modo
 lectura cuando sea posible, respeta paginación y límites de tamaño y comparte las

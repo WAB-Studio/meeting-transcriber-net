@@ -93,11 +93,9 @@ public static class CorpusStatements
     /// is chronological order. What is bound is that storage spelling and never a
     /// <see cref="DateTime"/>, which the provider would write its own way and which would then
     /// match nothing at all without failing — the one way <see cref="RawSql"/> says a raw read here
-    /// can be quietly wrong. It goes through the text overload because
-    /// <see cref="UtcTimestamp.ToStorage"/> answers text; the overload taking an
-    /// <see cref="UtcTimestamp"/> that <c>RawSql.Add</c>'s own remarks ask for would move that call
-    /// off every call site and into the signature, and is worth having the day there is a second
-    /// caller binding an instant. This is the first.
+    /// can be quietly wrong. It goes through the overload taking an <see cref="UtcTimestamp"/>,
+    /// which is where the conversion belongs: with it at the call site the rule would be a thing
+    /// every future caller has to remember, and <c>.ToString("o")</c> compiles and matches nothing.
     /// </para>
     /// <para>
     /// A bound nobody gave is left out of the SQL rather than bound as null, so every parameter
@@ -129,13 +127,73 @@ public static class CorpusStatements
 
             if (from is { } earliest)
             {
-                RawSql.Bind(command, "@from", earliest.ToStorage());
+                RawSql.Bind(command, "@from", earliest);
             }
 
             if (to is { } latest)
             {
-                RawSql.Bind(command, "@to", latest.ToStorage());
+                RawSql.Bind(command, "@to", latest);
             }
+        });
+    }
+
+    /// <summary>
+    /// Everything the meetings of one node were left with, oldest first — its own meetings and the
+    /// meetings of everything hanging off it.
+    /// </summary>
+    /// <param name="context">The corpus to read.</param>
+    /// <param name="node">The node to answer about.</param>
+    /// <param name="limit">How many rows at most.</param>
+    /// <exception cref="ClassificationException">This corpus holds no such node.</exception>
+    /// <remarks>
+    /// <para>
+    /// Oldest first, and the other listing newest first: a node's story is read forward, the way a
+    /// history is, where the corpus-wide listings answer <em>what did the meetings of August
+    /// settle</em> and put the newest meeting on top. Two questions, two orders, and the SQL says
+    /// so, so nobody decides it again at a call site.
+    /// </para>
+    /// <para>
+    /// The three sections come back interleaved. A node's history is read as one story, and three
+    /// lists a reader would have to interleave again is the shape <c>WhatTheAiLeft</c>'s own remarks
+    /// refuse one meeting at a time. The tie-break is
+    /// <see cref="WhatTheAiLeft.InTheOrderTheyWereSaid"/>'s and is the same four keys in the same
+    /// order — where it was said, then the section, then the turn's position, then the sentence —
+    /// with <c>said.ordinal</c> last so nothing ties at all.
+    /// </para>
+    /// <para>
+    /// An <c>EXISTS</c> and not a join: a meeting filed under two topics of one initiative joins
+    /// twice, and search needs the join because it scores the node row and pays for the duplicate
+    /// with <c>DISTINCT</c>. This read wants nothing off the node, so a semi-join says what it means
+    /// and cannot double a row whatever the filing is.
+    /// </para>
+    /// <para>
+    /// A node id the corpus does not hold is refused in words, not answered with nothing: an empty
+    /// answer reads as a node nothing was ever said about, and an agent or a person who mistyped an
+    /// id would believe it.
+    /// </para>
+    /// <para>
+    /// The <c>Guid</c> bind goes through the provider's mapping for a <c>Guid</c>, and the existence
+    /// check above goes through EF's — the caveat <c>MeetingReading</c>'s own remarks carry at
+    /// <c>MeetingReading.cs:433-440</c>. The two agree only because no <c>Guid</c> in this model
+    /// carries a conversion; give one a conversion and the symptom here is a node the check has just
+    /// found answering with nothing at all.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<Statement> Under(CorpusDbContext context, Guid node, int limit)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+
+        if (!context.Nodes.Any(row => row.Id == node))
+        {
+            throw new ClassificationException($"This corpus holds no node {node}.");
+        }
+
+        return RawSql.Rows(context, UnderSql(), ReadUnder, command =>
+        {
+            RawSql.Bind(command, "@active", Active);
+            RawSql.Bind(command, "@limit", limit);
+            RawSql.Bind(command, "@node", node);
         });
     }
 
@@ -204,6 +262,73 @@ public static class CorpusStatements
         UtcTimestamp.Parse(reader.GetString(1)),
         reader.IsDBNull(2) ? null : reader.GetString(2),
         kind,
+        reader.GetString(3),
+        reader.GetInt32(4),
+        Duration.FromMilliseconds(reader.GetInt64(5)),
+        reader.GetString(6),
+        reader.GetString(7),
+        reader.GetString(8));
+
+    /// <summary>
+    /// One arm per <see cref="LeftKind"/>, unioned, ranked and ordered oldest first. One column
+    /// carries the section and the order, and that is deliberate: there is no <c>kind</c> string
+    /// column beside <c>kind_rank</c>, because the value is written by this method out of a closed
+    /// enum in the same statement that reads it back. <c>LeftKind</c>'s numbers are the order a
+    /// meeting is read in, which is what
+    /// <see cref="WhatTheAiLeft.InTheOrderTheyWereSaid"/>'s <c>.ThenBy(thing => thing.Kind)</c>
+    /// already sorts on, so the rank and the section are one fact and not two.
+    /// </summary>
+    private static string UnderSql()
+    {
+        // Enum.GetValues is documented to sort by the constants' own binary value, so this walks
+        // Decision, Action, Question in that order without spelling it a second time — the order
+        // StoredIn's switch already fixes and {(int)kind} below already writes into kind_rank.
+        var arms = Enum.GetValues<LeftKind>().Select(kind =>
+        {
+            var (table, says) = StoredIn(kind);
+
+            return $"""
+                SELECT meeting.id             AS meeting_id,
+                       meeting.started_at     AS started_at,
+                       meeting.title          AS title,
+                       said.{says}            AS says,
+                       said.utterance_ordinal AS utterance_ordinal,
+                       said.start_ms          AS at_ms,
+                       said.quoted_text       AS quoted,
+                       said.speaker_label     AS speaker_label,
+                       said.source_artifact_sha256 AS source_sha256,
+                       {(int)kind}            AS kind_rank,
+                       said.ordinal           AS ordinal
+                FROM {table} AS said
+                JOIN meetings AS meeting ON meeting.id = said.meeting_id
+                WHERE meeting.lifecycle_state = @active
+                  AND said.extraction_run_id = {CorpusSearch.TheRunThatCounts("meeting.id")}
+                  AND EXISTS (SELECT 1
+                                FROM nodes AS under
+                                JOIN meeting_nodes AS filed ON filed.node_id = under.id
+                               WHERE filed.meeting_id = meeting.id
+                                 AND ({CorpusSearch.Underneath("@node")}))
+                """;
+        });
+
+        return $"""
+            SELECT * FROM ( {string.Join(" UNION ALL ", arms)} )
+            ORDER BY started_at, meeting_id, at_ms, kind_rank, utterance_ordinal, says, ordinal
+            LIMIT @limit;
+            """;
+    }
+
+    /// <summary>
+    /// One row of <see cref="Under"/>'s answer. The section is read back off <c>kind_rank</c> — a
+    /// value this method itself wrote — and not off a stored name, so
+    /// <c>WireNames&lt;LeftKind&gt;</c> is not reached: that type exists for a value the
+    /// <em>database</em> holds, and this one never leaves this method.
+    /// </summary>
+    private static Statement ReadUnder(DbDataReader reader) => new(
+        Guid.Parse(reader.GetString(0)),
+        UtcTimestamp.Parse(reader.GetString(1)),
+        reader.IsDBNull(2) ? null : reader.GetString(2),
+        (LeftKind)reader.GetInt32(9),
         reader.GetString(3),
         reader.GetInt32(4),
         Duration.FromMilliseconds(reader.GetInt64(5)),
