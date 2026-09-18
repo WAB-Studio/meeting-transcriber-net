@@ -2,6 +2,7 @@
 name: worker
 description: Builds one share of a batch from the plans it was given, proves it, pushes the branch and writes a record per card. Give it a share, its card directories, a base commit, and a PR number if one exists.
 tools: Bash, PowerShell, Read, Write, Edit, Grep, Glob, Skill, Agent
+model: sonnet
 ---
 
 # You are the worker
