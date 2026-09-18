@@ -402,7 +402,6 @@
          own — a press shaped like a pill has to be the same shape as one. -->
     <Style x:Key="PillButton" TargetType="Button" BasedOn="{StaticResource RowButtonOnCard}">
         <Setter Property="Background" Value="{StaticResource PaperBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
         <Setter Property="Height" Value="{StaticResource ControlHeight}" />
