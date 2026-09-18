@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 153/218
+progress: 153/222
 updated: 2026-09-18
 ---
 
@@ -176,6 +176,8 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-162: Anti: a question this machine has not come back from is not put to it again until it does, so a screen that looks every second costs one deadline and not one at every look.
 - [x] ISC-164: Anti: a question this machine has not come back from stops no other question about its devices being asked, so a meeting following a microphone that went away is never held up by a screen looking at what the machine plays through.
 - [ ] ISC-169: A meeting following one program goes on following another without the recording stopping.
+- [ ] ISC-185: The folder a meeting was recorded into is gone once the corpus holds that meeting's audio.
+- [ ] ISC-186: Anti: a recording's folder is never gone while the corpus does not hold, verified, what that folder was the only copy of.
 
 ### F4 · WinUI recorder
 Why: the application replaces OBS. Recording, pausing, stopping and recovering happen in one
@@ -228,6 +230,8 @@ Board: 3 · Grabador WinUI
 - [x] ISC-179: Every stage a meeting can be at is read from the one screen that meeting opens on.
 - [ ] ISC-180: Every thing an extraction left of a meeting says where in that meeting it was said.
 - [ ] ISC-180.1: The transcript at that moment opens under the thing that cited it, without leaving the screen it is read on.
+- [ ] ISC-187: What a meeting was about and who was in it is somebody's to settle, on the meeting itself.
+- [ ] ISC-188: Every speaker a recording left unnamed is somebody's to name, and that name is what every later reading of the meeting shows.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly
