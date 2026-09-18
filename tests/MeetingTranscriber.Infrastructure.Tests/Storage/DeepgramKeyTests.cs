@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Runtime.CompilerServices;
 using System.Runtime.Versioning;
 using System.Text.RegularExpressions;
 
@@ -207,8 +206,7 @@ public class DeepgramKeyTests : IDisposable
     /// </summary>
     private static IReadOnlyList<string> Naming(string pattern)
     {
-        var src = new DirectoryInfo(Path.GetFullPath(Path.Combine(
-            Path.GetDirectoryName(Here())!, "..", "..", "..", "src")));
+        var src = RepositoryTree.Src;
 
         return
         [
@@ -224,6 +222,4 @@ public class DeepgramKeyTests : IDisposable
     private static bool Inside(FileInfo file, string folder) => file.FullName.Contains(
         $"{Path.DirectorySeparatorChar}{folder}{Path.DirectorySeparatorChar}",
         StringComparison.Ordinal);
-
-    private static string Here([CallerFilePath] string file = "") => file;
 }

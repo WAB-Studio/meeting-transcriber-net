@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 
 namespace MeetingTranscriber.Recording.Tests;
@@ -16,13 +15,12 @@ namespace MeetingTranscriber.Recording.Tests;
 /// catches the line somebody deletes and not the rewrite somebody argues for.
 /// </para>
 /// <para>
-/// It reads past whole-line comments: every line whose first characters are <c>//</c>, <c>*</c> or
-/// <c>/*</c> is dropped before anything is matched, which is the exclusion <c>SavingCardTests</c>
-/// writes into its own pattern. Otherwise the comment explaining this rule would satisfy it, and a
-/// guard held up by its own explanation is one nobody can rely on. A comment trailing a line of
-/// code survives that strip and could still satisfy a match — <c>SourceLines</c> in the application
-/// tests is the index-based answer to that, and it is <c>internal</c> to a project this one cannot
-/// reach.
+/// It reads past whole-line comments, through <c>SourceText</c>, which is the exclusion
+/// <c>SavingCardTests</c> writes into its own pattern. Otherwise the comment explaining this rule
+/// would satisfy it, and a guard held up by its own explanation is one nobody can rely on. A
+/// comment trailing a line of code survives that strip and could still satisfy a match —
+/// <c>SourceLines</c> in the application tests is the index-based answer to that, and it is
+/// <c>internal</c> to a project this one cannot reach.
 /// </para>
 /// <para>
 /// Both of the shaped patterns bind to the <b>first</b> <c>catch</c> after the token they start
@@ -37,7 +35,7 @@ public partial class StoppingARecordingTests
     [Fact]
     public void A_recording_that_failed_still_lets_the_session_go()
     {
-        var code = CodeOf(TheRecording());
+        var code = SourceText.WithoutProse(TheRecording());
 
         StopsTheSession().Matches(code).Count.ShouldBe(
             1,
@@ -90,19 +88,6 @@ public partial class StoppingARecordingTests
         @"void LetGoOf\(CaptureSession session\)(?:(?!\bcatch\b)[\s\S])*?\bcatch\b(?!\s*\()")]
     private static partial Regex SwallowsWhateverLettingGoThrows();
 
-    /// <summary>The file with every line that is only a comment taken out.</summary>
-    private static string CodeOf(FileInfo file) =>
-        string.Join('\n', File.ReadLines(file.FullName).Where(line => !IsProse(line)));
-
-    private static bool IsProse(string line) =>
-        line.TrimStart() is var start
-        && (start.StartsWith("//", StringComparison.Ordinal)
-            || start.StartsWith('*')
-            || start.StartsWith("/*", StringComparison.Ordinal));
-
-    private static FileInfo TheRecording() => new(Path.GetFullPath(Path.Combine(
-        Path.GetDirectoryName(ThisFile())!, "..", "..",
-        "src", "MeetingTranscriber.Recording", "MeetingRecording.cs")));
-
-    private static string ThisFile([CallerFilePath] string path = "") => path;
+    private static FileInfo TheRecording() =>
+        RepositoryTree.At("src/MeetingTranscriber.Recording/MeetingRecording.cs");
 }

@@ -1,5 +1,3 @@
-using System.Runtime.CompilerServices;
-
 using MeetingTranscriber.Domain.Audio;
 
 namespace MeetingTranscriber.Testing;
@@ -76,7 +74,8 @@ public static class DeepgramFixtures
         [.. Inventory.Where(fixture => fixture.BothSidesHeard).Select(fixture => fixture.Name)];
 
     /// <summary>The directory the responses and the vocabulary are committed in.</summary>
-    public static DirectoryInfo Directory => Locate();
+    public static DirectoryInfo Directory { get; } =
+        new(Path.Combine(RepositoryTree.Tests.FullName, "fixtures", "deepgram"));
 
     /// <summary>
     /// The fixtures transcribed under one profile, for a test that is about what that profile
@@ -101,10 +100,6 @@ public static class DeepgramFixtures
     private static Fixture Entry(string name) =>
         Inventory.SingleOrDefault(fixture => fixture.Name == name)
         ?? throw new ArgumentOutOfRangeException(nameof(name), name, "Not a fixture.");
-
-    private static DirectoryInfo Locate([CallerFilePath] string thisFile = "") => new(
-        Path.GetFullPath(Path.Combine(
-            Path.GetDirectoryName(thisFile)!, "..", "fixtures", "deepgram")));
 
     /// <summary>One committed response: its name, and what a test needs to know before opening it.</summary>
     private sealed record Fixture(string Name, SourceProfile Profile, bool BothSidesHeard);
