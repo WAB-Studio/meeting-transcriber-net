@@ -101,7 +101,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// </summary>
     private MeetingFiling _chosen = MeetingFiling.Nothing;
 
-    private TextLine? _status;
+    private readonly ScreenStatus _status = new();
 
     /// <summary>
     /// True while this screen is building its own controls, so a picker being set to what it
@@ -179,7 +179,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
     {
         _meeting = null;
         _read = null;
-        _status = null;
+        _status.Nothing();
         _chosen = MeetingFiling.Nothing;
         _deeper.Clear();
         _naming = null;
@@ -325,7 +325,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
     private void Draw(bool theDraftToo)
     {
         _read = null;
-        _status = null;
+        _status.Nothing();
 
         if (theDraftToo)
         {
@@ -342,7 +342,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
 
         if (Corpus().Folder is not { } folder)
         {
-            _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
+            _status.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
         }
         else
         {
@@ -353,11 +353,11 @@ public sealed partial class ClassifyingAMeeting : UserControl
             }
             catch (MeetingStageException gone)
             {
-                _status = TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, gone.Message);
+                _status.Says(UiTexts.ThatIsNoLongerHowItWas, gone.Message);
             }
             catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
             {
-                _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
+                _status.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
             }
         }
 
@@ -381,7 +381,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// </remarks>
     private void Changed()
     {
-        _status = null;
+        _status.Nothing();
         Render();
     }
 
@@ -1062,7 +1062,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
                 : human.Under(parent, placed, name).Id, (TextLine?)null),
             out var made) is { } instead)
         {
-            _status = instead;
+            _status.Says(instead);
             _naming = null;
             Render();
             return;
@@ -1110,7 +1110,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
                 ? TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, wrong?.Name ?? name)
                 : null) is { } instead)
         {
-            _status = instead;
+            _status.Says(instead);
             _naming = null;
             Render();
             return;
@@ -1353,15 +1353,15 @@ public sealed partial class ClassifyingAMeeting : UserControl
         var slots = _chosen.Somebody.ToList();
         slots[slot] = slots[slot].Flipped(named);
         _chosen = _chosen with { Somebody = slots };
-        _status = null;
+        _status.Nothing();
         ShowTheStatus();
     }
 
     /// <summary>Puts the line saying what went wrong on the screen, or takes it off.</summary>
     private void ShowTheStatus()
     {
-        StatusText.Text = _status?.In(_language) ?? string.Empty;
-        StatusText.Visibility = _status is null ? Visibility.Collapsed : Visibility.Visible;
+        StatusText.Text = _status.In(_language);
+        StatusText.Visibility = _status.IsSaying ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ── Adding a person ───────────────────────────────────────────────────────────────────────
@@ -1563,13 +1563,13 @@ public sealed partial class ClassifyingAMeeting : UserControl
         }
         catch (MeetingStageException gone)
         {
-            _status = TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, gone.Message);
+            _status.Says(UiTexts.ThatIsNoLongerHowItWas, gone.Message);
             Render();
             return;
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
-            _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+            _status.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
             Render();
             return;
         }

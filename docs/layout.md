@@ -18,7 +18,7 @@ tools/MeetingTranscriber.UiProbe/         starts the application, reads its wind
                                           kills it — as a script, and as an MCP server an agent drives a turn
                                           at a time. It drives a corpus of its own and records real
                                           meetings into that
-tests/MeetingTranscriber.Testing/         what a test opens: corpus, SQL, fixture inventory
+tests/MeetingTranscriber.Testing/         what a test opens: corpus, SQL, fixture inventory, the repository's own tree
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```
 
@@ -45,9 +45,10 @@ billion frames of it, and a shorter one would be a different claim.
 
 `tests/MeetingTranscriber.Testing/` holds no test. It is where `TemporaryCorpus`, the corpus
 outside application data that the facts about *where* a corpus may live need, the rows a meeting
-somebody summarised is made of, the raw-SQL helpers and the inventory of the Deepgram fixtures
-live, so a suite that opens a corpus or walks the fixture set references it instead of carrying a
-copy — and adding a fixture is one edit every
+somebody summarised is made of, the raw-SQL helpers and the inventory of the Deepgram fixtures,
+where this clone is and what is under it, a source file read without the prose about it, and what a
+folder holds live, so a suite that opens a corpus or walks the fixture set references it instead of
+carrying a copy — and adding a fixture is one edit every
 suite sees. It stops at `Infrastructure` on purpose: `Domain.Tests` references it, and a path from
 there to `Processing` would let a domain rule be proved against the parser's own output.
 
@@ -72,8 +73,9 @@ this document and in the tree saying the prompt holds no rule of its own is stil
 each of them is about a rule that is not a live run's. What a provider *response* has to hold is not
 part of it and lives in `Processing` with `LiveInvariants`, for the reason that paragraph gives.
 
-`MeetingTranscriber.Mcp` is the corpus's other read-only face — six tools an agent asks about
-meetings somebody recorded — and it holds no rule of its own either, exactly as
+`MeetingTranscriber.Mcp` is the corpus's other read-only face — eight tools an agent asks about
+meetings somebody recorded, and about the nodes they are filed under — and it holds no rule of its
+own either, exactly as
 `MeetingTranscriber.Cli` does not: every tool is a read the application already does, and what it
 adds is a tool surface, a bounded answer and a sentence for each way a corpus can refuse to open.
 It references `Infrastructure` and `Domain` and no further, and the other three edges are each
@@ -230,7 +232,7 @@ project: it reads `ISA.md` at the repo root. The claims surface is a repo docume
 layer, so its gate does not belong under any one of them.
 
 What a screen looks like lives in `docs/design.md` — the tokens, the type ramp, the radii, the
-meter's anatomy and the rules the design imposes — with the eighteen artboards it was written from
+meter's anatomy and the rules the design imposes — with the nineteen artboards it was written from
 beside it in `docs/design/`. Nothing under `src/` reads that folder and nothing builds it: they are
 pictures a person opens. A screen is built from the prose, and the artboards are what the prose is
 checked against.

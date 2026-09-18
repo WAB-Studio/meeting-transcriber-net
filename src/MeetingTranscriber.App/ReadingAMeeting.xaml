@@ -67,10 +67,11 @@
 
             <!-- One thing this meeting was filed under: the whole path down the tree, as one chip.
                  The path and not its deepest node alone, because *ticket #4312* on its own says
-                 nothing and the company above it is what makes it a subject. It is a value shown
-                 here and changed on the screen the press below opens, which is what Olivo's pill
-                 without a chevron is for. -->
-            <Style x:Key="FiledUnder" TargetType="Border" BasedOn="{StaticResource Pill}">
+                 nothing and the company above it is what makes it a subject. It is the press that
+                 opens that node's own history — the whole path down the tree, and not only its
+                 deepest node, because what it opens is one node's story and the path is how
+                 somebody reads up from there. -->
+            <Style x:Key="FiledUnder" TargetType="Button" BasedOn="{StaticResource PillButton}">
                 <Setter Property="Padding" Value="11,0,11,0" />
             </Style>
 

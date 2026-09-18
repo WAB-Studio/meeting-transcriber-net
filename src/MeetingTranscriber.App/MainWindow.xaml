@@ -614,6 +614,11 @@
              it is up, exactly as it does behind the raised list. -->
         <local:Configuracion x:Name="Settings" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
 
+        <!-- A node's story, reached from a meeting's filing chip and never from anywhere else.
+             The meeting screen goes on holding what it was showing, paused, underneath — coming
+             back is the redraw filing already relies on and not a second reopen. -->
+        <local:ReadingANode x:Name="NodeStory" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
+
         <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" Margin="6,0,6,0">
             <TextBlock
                 x:Name="StatusText"

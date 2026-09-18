@@ -119,7 +119,7 @@ public sealed partial class MeetingsDrawer : UserControl
     private CorpusFolder? _corpus;
 
     private UiLanguage _language;
-    private TextLine? _status;
+    private readonly ScreenStatus _status = new();
 
     /// <summary>
     /// The meeting the recorder above is saving right now, when it is saving one.
@@ -361,13 +361,13 @@ public sealed partial class MeetingsDrawer : UserControl
     /// answer arriving from off the drawing thread, and the window it started in may be gone.
     /// </para>
     /// <para>
-    /// What the last press said stays, which is the same <c>_status ??= said</c> the two answers on
-    /// a card already do and is here for the sharper reason. This read is the list catching up with
-    /// somebody else's change, and nothing about it supersedes the sentence a person's own press
-    /// put there — clearing it would take "it is in the queue now" off the screen a second after
-    /// the press that spends the money. The watch is handed what every read of this list found, so a
-    /// change this window made is normally spent before a look ever sees it; what is left is a look
-    /// already running when the press landed, and this is what that one costs.
+    /// What the last press said stays, which is the same <see cref="ScreenStatus.KeepsWhatWasSaid"/>
+    /// the two answers on a card already do and is here for the sharper reason. This read is the
+    /// list catching up with somebody else's change, and nothing about it supersedes the sentence a
+    /// person's own press put there — clearing it would take "it is in the queue now" off the screen
+    /// a second after the press that spends the money. The watch is handed what every read of this
+    /// list found, so a change this window made is normally spent before a look ever sees it; what
+    /// is left is a look already running when the press landed, and this is what that one costs.
     /// </para>
     /// <para>
     /// A press's sentence and not a failed read's. The two share the one slot, so the sentence
@@ -391,9 +391,9 @@ public sealed partial class MeetingsDrawer : UserControl
                 return;
             }
 
-            var said = _theListRead ? _status : null;
+            var said = _theListRead ? _status.Line : null;
             Read();
-            _status ??= said;
+            _status.KeepsWhatWasSaid(said);
             SaysWhatItIsShowing();
         });
 
@@ -498,7 +498,7 @@ public sealed partial class MeetingsDrawer : UserControl
     {
         _meetings.Clear();
         _waiting = [];
-        _status = null;
+        _status.Nothing();
 
         // Whether the corpus answered, which is not whether there was anything in it and not
         // whether it was there at all. Those two are answers, and the watch holds them like any
@@ -515,7 +515,7 @@ public sealed partial class MeetingsDrawer : UserControl
             // The one case an empty list would be a lie about. A corpus folder is there exactly
             // when nothing refused it, so falling through here would tell somebody whose corpus is
             // unreachable that they have no meetings.
-            _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
+            _status.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
         }
         else if (CorpusDatabase.HoldsACorpus(folder))
         {
@@ -534,7 +534,7 @@ public sealed partial class MeetingsDrawer : UserControl
             }
             catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
             {
-                _status = TextLine.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
+                _status.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
                 answered = false;
             }
         }
@@ -546,7 +546,7 @@ public sealed partial class MeetingsDrawer : UserControl
             // artifacts is the one lie this method refuses to tell. Off a corpus this control has
             // read rather than off the one the application resolved, because a corpus made under
             // this screen — the first thing kept makes one — is the same thing to lose.
-            _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, folder.FullName);
+            _status.Says(UiTexts.TheCorpusCouldNotBeOpened, folder.FullName);
         }
 
         Render();
@@ -777,7 +777,7 @@ public sealed partial class MeetingsDrawer : UserControl
         // Nothing about how many there are when the corpus would not open or would not be read:
         // an empty list is not the same fact as no meetings, and "there is none here yet" over a
         // corpus nobody reached is the lie Read refuses to tell one line further up.
-        CountText.Text = _status is not null
+        CountText.Text = _status.IsSaying
             ? string.Empty
             : _meetings.Count == 0 && _waiting.Count == 0
                 ? In(UiTexts.NoMeetingsHereYet)
@@ -786,7 +786,7 @@ public sealed partial class MeetingsDrawer : UserControl
                     _meetings.Count(entry => entry.Owed.IsOwed)
                         + _waiting.Count(row => row.WaitsOnSomebody));
 
-        MeetingsStatusText.Text = _status?.In(_language) ?? string.Empty;
+        MeetingsStatusText.Text = _status.In(_language);
     }
 
     /// <summary>The press somebody was on when this list was last drawn, and how they got to it.</summary>
@@ -1289,7 +1289,7 @@ public sealed partial class MeetingsDrawer : UserControl
         {
             // Said, not swallowed. A button that visibly does nothing is worse than one that says
             // the corpus is not reachable, which is what the list already says.
-            _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
+            _status.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
             SaysWhatItIsShowing();
             return;
         }
@@ -1330,7 +1330,7 @@ public sealed partial class MeetingsDrawer : UserControl
         // not what is on disk, and "it is in the queue now" over the top of that reads as a screen
         // with nothing wrong in it.
         Read();
-        _status ??= said;
+        _status.KeepsWhatWasSaid(said);
         SaysWhatItIsShowing();
     }
 
@@ -1376,7 +1376,7 @@ public sealed partial class MeetingsDrawer : UserControl
         if (Corpus().Folder is not { } folder)
         {
             // Said, not swallowed, for the reason the presses above say it.
-            _status = TextLine.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
+            _status.Says(UiTexts.TheCorpusCouldNotBeOpened, Corpus().Path);
             SaysWhatItIsShowing();
             return;
         }
@@ -1409,7 +1409,8 @@ public sealed partial class MeetingsDrawer : UserControl
             // without a sentence, while a keep has nothing else on screen at all. Whatever the
             // re-read itself had to say still wins over both, for the reason the presses above
             // give.
-            _status ??= _keeping is null ? said : TextLine.Says(UiTexts.TheRecordingIsBeingKept);
+            _status.KeepsWhatWasSaid(
+                _keeping is null ? said : TextLine.Says(UiTexts.TheRecordingIsBeingKept));
             SaysWhatItIsShowing();
             return;
         }
@@ -1419,7 +1420,7 @@ public sealed partial class MeetingsDrawer : UserControl
         // rest lose only their keep — Answers is what says so — so what is drawn is a list still
         // answering about the recordings this press is not about.
         _keeping = waiting;
-        _status = TextLine.Says(UiTexts.TheRecordingIsBeingKept);
+        _status.Says(UiTexts.TheRecordingIsBeingKept);
         Render();
 
         try
@@ -1466,7 +1467,7 @@ public sealed partial class MeetingsDrawer : UserControl
         }
 
         Read();
-        _status ??= said;
+        _status.KeepsWhatWasSaid(said);
         SaysWhatItIsShowing();
     }
 

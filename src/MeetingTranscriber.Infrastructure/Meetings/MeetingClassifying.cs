@@ -145,6 +145,27 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
     }
 
     /// <summary>
+    /// One node with everything above it, root first — the path the screen about that node draws.
+    /// </summary>
+    /// <remarks>
+    /// It shares the private <see cref="PathTo(Node, IReadOnlyDictionary{Guid, Node})"/> with
+    /// <see cref="Filing"/> for that method's own reason: a second walk up the tree is a second place
+    /// to get the order wrong, and the two screens would then disagree about one node.
+    /// </remarks>
+    /// <exception cref="ClassificationException">This corpus holds no such node.</exception>
+    public NodePath PathTo(Guid nodeId)
+    {
+        var byId = context.Nodes.AsNoTracking().ToDictionary(node => node.Id);
+
+        if (!byId.TryGetValue(nodeId, out var found))
+        {
+            throw new ClassificationException($"This corpus holds no node {nodeId}.");
+        }
+
+        return PathTo(found, byId);
+    }
+
+    /// <summary>
     /// Files the meeting under exactly what is on the screen, and takes off what is not.
     /// </summary>
     /// <remarks>

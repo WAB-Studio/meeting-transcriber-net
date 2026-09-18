@@ -910,6 +910,27 @@ public static class UiTexts
     public static UiText TheShapeFilledByHand { get; } =
         new("Ninguna — la lleno yo", "None — I will fill it in");
 
+    // ── A node's story ────────────────────────────────────────────────────────────────────────
+
+    // The screen is reached from one meeting and returns to it, exactly as the filing screen is —
+    // so it reuses BackToTheMeeting above rather than saying the same sentence a second time.
+
+    // What this screen is about, over the path. Mono at the data rank, like *sobre qué fue* on the
+    // meeting's own screen: it names the block rather than heading a part of the screen.
+    public static UiText WhatWasSaidAboutThis { get; } =
+        new("lo que se dijo de esto", "what was said about this");
+
+    // A node nothing has been said about. A real state and not a gap: a node somebody made on the
+    // classification screen before any meeting was filed under it has no story yet, and saying so is
+    // the answer.
+    public static UiText NothingHasBeenSaidAboutThisYet { get; } =
+        new("Todavía no se dijo nada de esto", "Nothing has been said about this yet");
+
+    // Under the last card, when the read came back full. How much more is not said: what the screen
+    // knows is that it was cut and never by how much.
+    public static UiText ThereIsMoreThanThisScreenShows { get; } =
+        new("Hay más de lo que entra en esta pantalla", "There is more here than this screen shows");
+
     // ── The settings screen, the one that lives apart ────────────────────────────────
 
     // What the gear on the front door opens, and the screen's own title. The gear says this out
