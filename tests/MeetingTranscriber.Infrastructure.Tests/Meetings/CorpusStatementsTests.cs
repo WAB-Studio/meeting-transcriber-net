@@ -379,7 +379,7 @@ public class CorpusStatementsTests
             ExtractionRunId = run,
             Ordinal = 1,
             Statement = "algo",
-            Evidence = Citing(context, meeting, 0),
+            Evidence = MeetingRows.Citing(context, meeting, 0),
             CreatedAt = August,
         });
 
@@ -392,7 +392,7 @@ public class CorpusStatementsTests
             ExtractionRunId = run,
             Ordinal = 1,
             Statement = "lo segundo",
-            Evidence = Citing(context, meeting, 2),
+            Evidence = MeetingRows.Citing(context, meeting, 2),
             CreatedAt = August,
         });
 
@@ -476,31 +476,5 @@ public class CorpusStatementsTests
         var meeting = Recorded(context, when);
         MeetingRows.Extracted(context, meeting, when, accepted: when, saying);
         return meeting;
-    }
-
-    /// <summary>
-    /// A citation on a turn that is really there, carrying what that turn really says.
-    /// </summary>
-    /// <remarks>
-    /// Nearly the private <c>MeetingRows.Citing</c> — the one difference is <c>Single</c> where it
-    /// uses <c>FirstOrDefault</c> and a custom throw, which this suite does not need since it never
-    /// cites an ordinal it did not just create — forced by the share boundary this batch drew: this
-    /// share may not open <c>MeetingRows.cs</c>, and that method is private to it. Folding this onto
-    /// a public <c>MeetingRows.Citing</c> is owed — see this card's <c>record.json</c>.
-    /// </remarks>
-    private static Citation Citing(CorpusDbContext context, Guid meeting, int ordinal)
-    {
-        var turn = context.Utterances.Single(row => row.MeetingId == meeting && row.Ordinal == ordinal);
-
-        return new Citation
-        {
-            MeetingId = meeting,
-            UtteranceOrdinal = turn.Ordinal,
-            Start = turn.Start,
-            End = turn.End,
-            SpeakerLabel = turn.SpeakerLabel,
-            QuotedText = turn.Text,
-            SourceArtifactSha256 = MeetingRows.QuotedFromSha256,
-        };
     }
 }
