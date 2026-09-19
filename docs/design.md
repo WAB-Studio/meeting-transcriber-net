@@ -230,6 +230,7 @@ already named.
 | Start, pause, stop a recording | *Empezar a grabar* · *Pausar* · *Detener* |
 | Try the same thing again | *Reintentar* |
 | Point a channel somewhere else | *Cambiar* |
+| Change where the corpus is kept | *Cambiar* |
 | Take the whole machine instead | *Grabar toda la máquina* |
 | Buy a transcription or a summary | *Transcribir* · *Resumir* |
 | Put names on the voices | *Decir quién es quién* |

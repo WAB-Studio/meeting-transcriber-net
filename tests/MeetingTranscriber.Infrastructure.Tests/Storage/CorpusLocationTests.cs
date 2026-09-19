@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Runtime.CompilerServices;
 
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
@@ -341,6 +340,40 @@ public class CorpusLocationTests
     }
 
     /// <summary>
+    /// The trap a folder picker has to not fall into: a folder a person names is held to the same
+    /// rules a folder the setting names already is, because both paths run through
+    /// <see cref="CorpusLocation.Inspect"/> and neither is a second opinion of its own.
+    /// </summary>
+    [Fact]
+    public void A_folder_a_person_picks_is_held_to_the_same_rules_as_one_the_setting_names()
+    {
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
+        using var empty = new CorpusOutsideApplicationData("corpus-location");
+
+        var gone = new DirectoryInfo(
+            Path.Combine(elsewhere.Root.FullName, "on-a-disk-nobody-plugged-in"));
+        var noCorpus = new DirectoryInfo(empty.Root.FullName);
+        var underAppData = new DirectoryInfo(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "AppData", "Local", CorpusLocation.ApplicationFolderName));
+
+        foreach (var (folder, expected) in new (DirectoryInfo Folder, CorpusRefusal Refusal)[]
+        {
+            (gone, CorpusRefusal.FolderDoesNotAnswer),
+            (noCorpus, CorpusRefusal.NoCorpusInTheFolder),
+            (underAppData, CorpusRefusal.GoesWhenThePackageDoes),
+        })
+        {
+            var picked = CorpusLocation.Inspect(folder);
+            var named = Naming(elsewhere, folder.FullName).Resolve();
+
+            picked.Refusal.ShouldBe(expected);
+            picked.Refusal.ShouldBe(named.Refusal);
+            picked.Path.ShouldBe(named.Path);
+        }
+    }
+
+    /// <summary>
     /// A <c>corpus.db</c> of no bytes is what a create cut off part way leaves, and it is neither
     /// a corpus nor nothing: SQLite will not put it into WAL, so the migration that would make it
     /// a corpus is refused as a write to a read-only database.
@@ -609,9 +642,7 @@ public class CorpusLocationTests
     [Fact]
     public void Nothing_the_application_is_built_out_of_asks_the_package_where_to_write()
     {
-        var thisFile = ThisFile();
-        var product = new DirectoryInfo(
-            Path.GetFullPath(Path.Combine(Path.GetDirectoryName(thisFile)!, "..", "..", "..", "src")));
+        var product = RepositoryTree.Src;
         const string PackageLocalFolder = "ApplicationData.Current";
 
         product.Exists.ShouldBeTrue($"'{product.FullName}' is where the product is.");
@@ -668,12 +699,6 @@ public class CorpusLocationTests
         return file.FullName.Contains($"{separator}obj{separator}", StringComparison.Ordinal)
             || file.FullName.Contains($"{separator}bin{separator}", StringComparison.Ordinal);
     }
-
-    /// <summary>
-    /// This source file, from where it was compiled rather than from the working directory, the
-    /// way <c>IsaDocument</c> and <c>TemporaryCorpusTests</c> find what they read.
-    /// </summary>
-    private static string ThisFile([CallerFilePath] string path = "") => Path.GetFullPath(path);
 
     /// <summary>A location whose setting and fallback are both inside a folder of this test's own.</summary>
     private static CorpusLocation At(CorpusOutsideApplicationData folder) => new(

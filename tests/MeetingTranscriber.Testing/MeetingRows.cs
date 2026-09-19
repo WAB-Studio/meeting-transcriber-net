@@ -295,7 +295,12 @@ public static class MeetingRows
     /// corpus refuses one that lands nowhere, and a quotation that does not match the turn is the
     /// failure every reader of a citation exists to catch.
     /// </summary>
-    private static Citation Citing(CorpusDbContext context, Guid meeting, int ordinal)
+    /// <remarks>
+    /// <c>FirstOrDefault</c> and not <c>Single</c>: <c>(MeetingId, Ordinal)</c> is an alternate key
+    /// on <c>utterances</c>, so a second turn at one ordinal is refused before this ever runs, and
+    /// the two are equivalent here.
+    /// </remarks>
+    public static Citation Citing(CorpusDbContext context, Guid meeting, int ordinal)
     {
         var turn = context.Utterances
             .FirstOrDefault(row => row.MeetingId == meeting && row.Ordinal == ordinal)

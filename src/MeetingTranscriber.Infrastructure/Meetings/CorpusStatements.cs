@@ -161,6 +161,20 @@ public static class CorpusStatements
     /// with <c>said.ordinal</c> last so nothing ties at all.
     /// </para>
     /// <para>
+    /// The tie on <c>says</c> is broken here under SQLite's <c>BINARY</c> and on the meeting's own
+    /// screen under <see cref="StringComparer.Ordinal"/>, and those are two rules rather than one.
+    /// They agree for every string in the Basic Multilingual Plane and can disagree the moment two
+    /// sentences first differ at a supplementary-plane character — an emoji, most of the historic
+    /// scripts — because <c>BINARY</c> compares UTF-8 bytes and <see cref="StringComparer.Ordinal"/>
+    /// compares UTF-16 code units. Two things said in the same recorded millisecond, in the same
+    /// section, in the same turn, whose sentences differ only there, would come back in one order in
+    /// a node's history and in the other on the meeting. That is accepted and named rather than
+    /// closed: closing it means either a collation of this application's own registered on every
+    /// connection, or re-sorting in C#, which cannot work here at all — the <c>LIMIT</c> is applied
+    /// in SQL, so a re-sort would reorder the page instead of choosing it. No fixture reaches it
+    /// today, so what would find it first is somebody reading the same two sentences on two screens.
+    /// </para>
+    /// <para>
     /// An <c>EXISTS</c> and not a join: a meeting filed under two topics of one initiative joins
     /// twice, and search needs the join because it scores the node row and pays for the duplicate
     /// with <c>DISTINCT</c>. This read wants nothing off the node, so a semi-join says what it means
@@ -229,35 +243,69 @@ public static class CorpusStatements
     /// <see cref="WhatTheAiLeft.InTheOrderTheyWereSaid"/> was written against.
     /// </para>
     /// </remarks>
-    private static string Sql(LeftKind kind, string window)
+    private static string Sql(LeftKind kind, string window) =>
+        $"""
+        {OneSection(kind, extraColumns: "", extraWhere: window)}
+        ORDER BY meeting.started_at DESC, meeting.id, said.utterance_ordinal, said.ordinal
+        LIMIT @limit;
+        """;
+
+    /// <summary>
+    /// The nine-column projection <see cref="Sql"/> and <see cref="UnderSql"/> both read, written
+    /// once: the same <c>SELECT</c>, the same <c>FROM</c>/<c>JOIN</c> and the same two fixed
+    /// <c>WHERE</c> clauses. What genuinely differs between the two callers — the order, the
+    /// grouping and what else each rejects — is left for each to append after this returns.
+    /// </summary>
+    /// <param name="kind">Which of the three sections to project — picks the table and the column.</param>
+    /// <param name="extraColumns">Columns appended after the nine, comma-led, or empty. Both
+    /// callers are this file's own and the fragment is never anything a person or a provider
+    /// sent — nothing here binds a parameter this way.</param>
+    /// <param name="extraWhere">A clause appended after the two fixed ones, leading with its own
+    /// <c>AND</c>, or empty. The same trust <paramref name="extraColumns"/> carries.</param>
+    /// <remarks>
+    /// Every column here is aliased, which costs <see cref="Of"/> nothing — <see cref="Read"/> takes
+    /// its columns by ordinal — and is the only shape in which one string can serve
+    /// <see cref="UnderSql"/> too: that caller wraps this in an outer <c>SELECT * FROM (…)</c> whose
+    /// own <c>ORDER BY</c> can see nothing but these names. A shared projection written without them
+    /// would compile, pass every <see cref="Of"/> fact and fail every <see cref="Under"/> query at
+    /// SQLite with <c>no such column</c>.
+    /// </remarks>
+    private static string OneSection(LeftKind kind, string extraColumns, string extraWhere)
     {
         var (table, says) = StoredIn(kind);
 
         return $"""
-            SELECT meeting.id,
-                   meeting.started_at,
-                   meeting.title,
-                   said.{says},
-                   said.utterance_ordinal,
-                   said.start_ms,
-                   said.quoted_text,
-                   said.speaker_label,
-                   said.source_artifact_sha256
+            SELECT meeting.id                   AS meeting_id,
+                   meeting.started_at           AS started_at,
+                   meeting.title                AS title,
+                   said.{says}                  AS says,
+                   said.utterance_ordinal       AS utterance_ordinal,
+                   said.start_ms                AS at_ms,
+                   said.quoted_text             AS quoted,
+                   said.speaker_label           AS speaker_label,
+                   said.source_artifact_sha256  AS source_sha256{extraColumns}
             FROM {table} AS said
             JOIN meetings AS meeting ON meeting.id = said.meeting_id
             WHERE meeting.lifecycle_state = @active
-              AND said.extraction_run_id = {CorpusSearch.TheRunThatCounts("meeting.id")}{window}
-            ORDER BY meeting.started_at DESC, meeting.id, said.utterance_ordinal, said.ordinal
-            LIMIT @limit;
+              AND said.extraction_run_id = {CorpusSearch.TheRunThatCounts("meeting.id")}{extraWhere}
             """;
     }
 
     /// <summary>
-    /// One row, in the order the query selects. The section is the one that was asked for rather
-    /// than one read back off the row: a table is what makes a decision a decision here, and there
-    /// is no column saying so.
+    /// One row, in the order <see cref="OneSection"/> selects. The section is the one that was
+    /// asked for rather than one read back off the row: a table is what makes a decision a decision
+    /// here, and there is no column saying so.
     /// </summary>
-    private static Func<DbDataReader, Statement> Read(LeftKind kind) => reader => new Statement(
+    private static Func<DbDataReader, Statement> Read(LeftKind kind) => reader => Row(reader, kind);
+
+    /// <summary>
+    /// The ten-argument construction <see cref="Read"/> and <see cref="ReadUnder"/> both do, written
+    /// once. <paramref name="kind"/> is the one field the two readers do not get the same way —
+    /// <see cref="Read"/> closes over the kind it was asked for, <see cref="ReadUnder"/> reads it
+    /// back off <c>kind_rank</c> — so it stays a parameter here rather than something this method
+    /// works out for itself.
+    /// </summary>
+    private static Statement Row(DbDataReader reader, LeftKind kind) => new(
         Guid.Parse(reader.GetString(0)),
         UtcTimestamp.Parse(reader.GetString(1)),
         reader.IsDBNull(2) ? null : reader.GetString(2),
@@ -282,34 +330,21 @@ public static class CorpusStatements
     {
         // Enum.GetValues is documented to sort by the constants' own binary value, so this walks
         // Decision, Action, Question in that order without spelling it a second time — the order
-        // StoredIn's switch already fixes and {(int)kind} below already writes into kind_rank.
-        var arms = Enum.GetValues<LeftKind>().Select(kind =>
-        {
-            var (table, says) = StoredIn(kind);
+        // StoredIn's switch already fixes and (int)kind below already writes into kind_rank.
+        var exists = $"""
 
-            return $"""
-                SELECT meeting.id             AS meeting_id,
-                       meeting.started_at     AS started_at,
-                       meeting.title          AS title,
-                       said.{says}            AS says,
-                       said.utterance_ordinal AS utterance_ordinal,
-                       said.start_ms          AS at_ms,
-                       said.quoted_text       AS quoted,
-                       said.speaker_label     AS speaker_label,
-                       said.source_artifact_sha256 AS source_sha256,
-                       {(int)kind}            AS kind_rank,
-                       said.ordinal           AS ordinal
-                FROM {table} AS said
-                JOIN meetings AS meeting ON meeting.id = said.meeting_id
-                WHERE meeting.lifecycle_state = @active
-                  AND said.extraction_run_id = {CorpusSearch.TheRunThatCounts("meeting.id")}
-                  AND EXISTS (SELECT 1
-                                FROM nodes AS under
-                                JOIN meeting_nodes AS filed ON filed.node_id = under.id
-                               WHERE filed.meeting_id = meeting.id
-                                 AND ({CorpusSearch.Underneath("@node")}))
-                """;
-        });
+              AND EXISTS (SELECT 1
+                            FROM nodes AS under
+                            JOIN meeting_nodes AS filed ON filed.node_id = under.id
+                           WHERE filed.meeting_id = meeting.id
+                             AND ({CorpusSearch.Underneath("@node")}))
+            """;
+
+        var arms = Enum.GetValues<LeftKind>().Select(kind =>
+            OneSection(
+                kind,
+                extraColumns: $", {(int)kind} AS kind_rank, said.ordinal AS ordinal",
+                extraWhere: exists));
 
         return $"""
             SELECT * FROM ( {string.Join(" UNION ALL ", arms)} )
@@ -324,15 +359,5 @@ public static class CorpusStatements
     /// <c>WireNames&lt;LeftKind&gt;</c> is not reached: that type exists for a value the
     /// <em>database</em> holds, and this one never leaves this method.
     /// </summary>
-    private static Statement ReadUnder(DbDataReader reader) => new(
-        Guid.Parse(reader.GetString(0)),
-        UtcTimestamp.Parse(reader.GetString(1)),
-        reader.IsDBNull(2) ? null : reader.GetString(2),
-        (LeftKind)reader.GetInt32(9),
-        reader.GetString(3),
-        reader.GetInt32(4),
-        Duration.FromMilliseconds(reader.GetInt64(5)),
-        reader.GetString(6),
-        reader.GetString(7),
-        reader.GetString(8));
+    private static Statement ReadUnder(DbDataReader reader) => Row(reader, (LeftKind)reader.GetInt32(9));
 }

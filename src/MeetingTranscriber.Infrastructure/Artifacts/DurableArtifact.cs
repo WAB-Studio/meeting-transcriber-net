@@ -11,8 +11,9 @@ namespace MeetingTranscriber.Infrastructure.Artifacts;
 public sealed class ArtifactWriteException(string message) : Exception(message);
 
 /// <summary>
-/// The one way an artifact reaches the corpus: written whole somewhere else, checked, and only
-/// then put where its name says it is.
+/// How almost every artifact reaches the corpus: written whole somewhere else, checked, and only
+/// then put where its name says it is. <see cref="Adopt"/> is the one exception, for the one
+/// caller that can prove the same invariant a different way.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -62,6 +63,91 @@ public static class DurableArtifact
     {
         using var staged = StagedArtifact.Stage(context, meetingId, kind, relativePath, contents);
         return staged.Commit(now);
+    }
+
+    /// <summary>
+    /// Records a file that is already where its name says it is, rather than writing one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The one thing in this type that neither writes a byte nor reads one. The caller has just
+    /// produced the bytes it is claiming — from blocks that make the same file every time — and is
+    /// handing over the size and the hash it already read, rather than asking this to read them
+    /// under whatever lock the caller is holding. That is the whole of what makes adopting safe
+    /// here and nowhere else: <see cref="ArtifactReconciler"/> goes on never touching a file with no
+    /// row, because it cannot know what those bytes were meant to be and a caller that just made
+    /// them can.
+    /// </para>
+    /// <para>
+    /// It refuses a kind <see cref="Artifacts.MayBeReplaced"/> says the corpus may freely rewrite,
+    /// because the safety argument above only holds for a kind never rewritten: only there is a file
+    /// standing where nothing points sure enough to be trusted on the caller's word alone. It
+    /// refuses when the corpus already holds a row for this path — a row means this is not an
+    /// adoption, and the caller has asked the wrong question — and it refuses when the file is not
+    /// there. The existence check is the one thing this still asks of the disk, and it is
+    /// deliberately last: the row says a file is there, so the last thing before writing it asks.
+    /// The window between the hash the caller read and this check is the one <see cref="StagedArtifact"/>
+    /// has always lived with, and it is named rather than closed.
+    /// </para>
+    /// <para><b>It does not call <see cref="CorpusDbContext.SaveChanges"/>.</b> The row lands in
+    /// whatever unit of work the caller is holding, which is the whole point of a caller adopting a
+    /// file from inside its own transaction.</para>
+    /// </remarks>
+    /// <exception cref="ArtifactWriteException">
+    /// <paramref name="kind"/> may be replaced, the corpus already has a row at this path, or there
+    /// is no file there to adopt.
+    /// </exception>
+    public static Artifact Adopt(
+        CorpusDbContext context,
+        Guid meetingId,
+        ArtifactKind kind,
+        string relativePath,
+        long byteSize,
+        string sha256,
+        UtcTimestamp now)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sha256);
+        CorpusFiles.EnsureBelongsTo(meetingId, relativePath);
+
+        if (kind.MayBeReplaced())
+        {
+            throw new ArtifactWriteException(
+                $"A {kind} may not be adopted. This method's whole safety argument is that the "
+                + "caller has just produced the bytes it is claiming from something that makes the "
+                + "same file every time — true of a kind never rewritten, and not a reason to trust "
+                + "a file blind for a kind the corpus can freely replace.");
+        }
+
+        if (context.Artifacts.Any(row => row.MeetingId == meetingId && row.RelativePath == relativePath))
+        {
+            throw new ArtifactWriteException(
+                $"'{relativePath}' already has a row. Adopting is for a file the corpus has never "
+                + "heard of, and this one is not that.");
+        }
+
+        var file = CorpusFiles.Locate(context.Root, relativePath);
+        file.Refresh();
+        if (!file.Exists)
+        {
+            throw new ArtifactWriteException(
+                $"'{relativePath}' is not on disk, so there is nothing at that path to adopt.");
+        }
+
+        var artifact = new Artifact
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meetingId,
+            Kind = kind,
+            Origin = kind.OriginOf(),
+            RelativePath = relativePath,
+            ByteSize = byteSize,
+            Sha256 = sha256,
+            ConfirmedAt = now,
+        };
+        context.Artifacts.Add(artifact);
+
+        return artifact;
     }
 
     /// <summary>Writes a text artifact — a transcript, a manifest — as UTF-8 with no BOM.</summary>

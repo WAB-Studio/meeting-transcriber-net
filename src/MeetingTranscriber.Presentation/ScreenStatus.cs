@@ -6,11 +6,16 @@ namespace MeetingTranscriber.Presentation;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Five screens keep a <c>TextLine? _status</c>, a way of setting it, a way of clearing it and a
-/// line of rendering, and they had already drifted: two of them carry a press's sentence across a
-/// re-read and the rest do not. One engine, and the difference between the two is a named act
-/// rather than a habit — <see cref="Says(UiText, object?[])"/> overwrites and
+/// Five screens kept a <c>TextLine? _status</c>, a way of setting it, a way of clearing it and a
+/// line of rendering, and they had drifted: two of them carried a press's sentence across a re-read
+/// and the rest did not. One engine now, and the difference between the two is a named act rather
+/// than a habit — <see cref="Says(UiText, object?[])"/> overwrites and
 /// <see cref="KeepsWhatWasSaid"/> is the carry-over.
+/// </para>
+/// <para>
+/// <c>PackagingChecksWindow</c> keeps a <c>TextLine? _status</c> of its own and is not a sixth that
+/// was missed. It is the temporary scaffold of the two packaging checks and it goes when they go,
+/// so moving its field here would be moving something already on its way out.
 /// </para>
 /// <para>
 /// Here and not beside a window, for the reason <c>docs/layout.md</c> gives: this is what a screen

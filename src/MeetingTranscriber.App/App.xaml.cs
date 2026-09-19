@@ -64,13 +64,84 @@ public partial class App : Application
         _language = UiLanguages.Resolve(_choice.Read(), WindowsLanguages());
         _corpus = CorpusLocation.OfThisUser().Resolve();
 
-        var window = new MainWindow(_language, _corpus);
+        OpenMainWindow(_corpus);
+
+        StartWhatThisLaunchOwesTheCorpus(_corpus);
+    }
+
+    /// <summary>
+    /// Builds the main window over <paramref name="corpus"/>, subscribes what it raises, and puts
+    /// it on screen. A method of its own and not inlined into <see cref="OnLaunched"/>, because
+    /// <see cref="OnCorpusChosen"/> does this a second time over a second corpus, once somebody has
+    /// picked a folder from the refusal a first corpus was opened with.
+    /// </summary>
+    private void OpenMainWindow(CorpusFolder corpus)
+    {
+        var window = new MainWindow(_language, corpus);
         window.LanguageChosen += OnLanguageChosen;
         window.PackagingChecksAsked += OnPackagingChecksAsked;
-        window.Closed += (_, _) => _main = null;
+        window.CorpusChosen += OnCorpusChosen;
+
+        // The sender is compared before clearing anything, and not merely for the closing window's
+        // own sake: while there is only one window this always agrees with `_main`, but
+        // `OnCorpusChosen` replaces it while the old one is still on screen, and closing that old
+        // window still fires this handler. Without the comparison it would clear `_main` out from
+        // under the window that just replaced it.
+        window.Closed += (sender, _) =>
+        {
+            if (ReferenceEquals(sender, _main))
+            {
+                _main = null;
+            }
+        };
 
         _main = window;
         _main.Activate();
+    }
+
+    /// <summary>
+    /// Somebody named a folder this application can open its corpus from, on the settings screen of
+    /// a window whose corpus was refused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The setting is re-resolved rather than carried on the event, which is why
+    /// <see cref="MainWindow.CorpusChosen"/> takes no folder to begin with: the setting is what the
+    /// next launch will read, and a screen that opened a corpus the setting does not name would be
+    /// a second answer to the one question this application cannot be wrong about. A folder that
+    /// went between the picker and here comes back as a refusal, and the new window draws it.
+    /// </para>
+    /// <para>
+    /// A window replaced and not five controls re-opened. Each of <c>MeetingsDrawer</c>,
+    /// <c>ReadingAMeeting</c>, <c>ReadingANode</c>, <c>ClassifyingAMeeting</c> and
+    /// <c>Configuracion</c> takes its corpus through an <c>Open</c> that refuses being called
+    /// twice, and relaxing all five is a change to every screen in the application for a press that
+    /// can only happen in one state — a refused corpus, where nothing is recording, no meeting is
+    /// open and no list is drawn, so there is nothing on screen to lose.
+    /// </para>
+    /// <para>
+    /// The old window is closed after the new one is up and activated, and its own <c>Closed</c>
+    /// handler still runs — that is unavoidable, it is how Windows ends a window — but does nothing,
+    /// because <see cref="OpenMainWindow"/> keys it to its own <c>sender</c> and <c>_main</c> is
+    /// already the new window by the time it fires.
+    /// </para>
+    /// <para>
+    /// <see cref="StartWhatThisLaunchOwesTheCorpus"/> runs again last, over the new corpus, the same
+    /// method <see cref="OnLaunched"/> calls and never a second start of its own —
+    /// <c>LaunchWorkTests</c> counts how many places in this file start background work, and it
+    /// counts occurrences of the text rather than calls, so calling the one method twice costs
+    /// nothing where a second <c>Task.Run</c> would go red.
+    /// </para>
+    /// </remarks>
+    private void OnCorpusChosen(object? sender, EventArgs e)
+    {
+        _corpus = CorpusLocation.OfThisUser().Resolve();
+
+        var closing = _main;
+
+        OpenMainWindow(_corpus);
+
+        closing?.Close();
 
         StartWhatThisLaunchOwesTheCorpus(_corpus);
     }

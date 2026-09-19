@@ -4,8 +4,10 @@ using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
 using MeetingTranscriber.Recording;
 
+using Microsoft.UI;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.Windows.Storage.Pickers;
 
 namespace MeetingTranscriber.App;
 
@@ -57,10 +59,24 @@ public sealed partial class Configuracion : UserControl
     /// </summary>
     private CorpusFolder? _corpus;
 
+    /// <summary>
+    /// The window this screen is on, which the folder picker needs and a <c>UserControl</c> has
+    /// none of its own. Handed over alongside the corpus rather than reached for through
+    /// <c>XamlRoot</c>, which is one more thing to be null while the screen is being built.
+    /// </summary>
+    private WindowId _window;
+
     private UiLanguage _language;
 
     /// <summary>Whether this screen is up. There is no meeting under it, so nothing else says.</summary>
     private bool _open;
+
+    /// <summary>
+    /// Whether a folder picker is up, or the folder it answered with is being written. The shape
+    /// <see cref="_writingTheAnswer"/> already has, so a second press cannot land while the first
+    /// is still running.
+    /// </summary>
+    private bool _choosingAFolder;
 
     /// <summary>
     /// What the row about who is using the application knows that the field itself does not: what
@@ -109,15 +125,25 @@ public sealed partial class Configuracion : UserControl
     /// </summary>
     public event EventHandler<UiLanguage>? LanguageChosen;
 
+    /// <summary>
+    /// Somebody named a folder this application can open its corpus from and it was recorded as
+    /// where the corpus is. What is done about it is not this screen's, the same way the language
+    /// is not: it is raised on up through the window. No folder rides with it — the one answer that
+    /// matters is the setting this just wrote, which the application re-reads rather than trusting
+    /// a folder handed across a screen boundary, so a payload here would be a fact nothing reads.
+    /// </summary>
+    public event EventHandler? CorpusChosen;
+
     /// <summary>Whether this screen is on the window.</summary>
     public bool IsOpen => _open;
 
     /// <summary>
-    /// Hands over the corpus this install keeps its meetings in. Reads nothing: nothing on this
-    /// screen is answered until it is shown.
+    /// Hands over the corpus this install keeps its meetings in, and the window it is on, which
+    /// the folder picker needs. Reads nothing: nothing on this screen is answered until it is
+    /// shown.
     /// </summary>
     /// <exception cref="InvalidOperationException">It was opened twice.</exception>
-    public void Open(CorpusFolder corpus)
+    public void Open(CorpusFolder corpus, WindowId window)
     {
         ArgumentNullException.ThrowIfNull(corpus);
 
@@ -127,6 +153,7 @@ public sealed partial class Configuracion : UserControl
         }
 
         _corpus = corpus;
+        _window = window;
     }
 
     /// <summary>Which language this screen is being read in.</summary>
@@ -401,9 +428,158 @@ public sealed partial class Configuracion : UserControl
         // One entry, read once. Every arm above takes the path and nothing else, so there is no
         // second case here and no punctuation for this screen to choose between two of them.
         CorpusText.Text = text.In(_language, Corpus().Path);
+
+        // Drawn only over a refused corpus: a corpus that opened is moved by moving the files and
+        // then saying so, and no screen offers the first half.
+        ChangeWhereItIsKept.Visibility = Corpus().Refusal is null
+            ? Visibility.Collapsed
+            : Visibility.Visible;
     }
 
     private void OnBack(object sender, RoutedEventArgs e) => Left?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>
+    /// Somebody asked to change where the corpus is kept, which is only offered over a refused
+    /// one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The Windows App SDK picker and not <c>Windows.Storage.Pickers.FolderPicker</c>: the older
+    /// one throws <c>COMException</c> unless <c>WinRT.Interop.InitializeWithWindow.Initialize</c>
+    /// has run first and throws from <c>PickSingleFolderAsync</c> unless <c>FileTypeFilter</c> has
+    /// an entry. This one takes the window id in its constructor and needs neither.
+    /// </para>
+    /// <para>
+    /// A folder somebody picked is held to the same rules a folder the setting names already is —
+    /// <see cref="CorpusLocation.Inspect"/>, through the same table <see cref="SayWhereTheCorpusIs"/>
+    /// reads, <see cref="RefusalOfAPickedFolder"/>.
+    /// </para>
+    /// <para>
+    /// <b>Which line says which folder.</b> Two of them are on screen at once and they name
+    /// different things: after a picked folder is refused, <see cref="CorpusText"/> goes on naming
+    /// the folder the setting points at — it is the line that says where the corpus is, and it is
+    /// still where the corpus is — while the status line names the folder that was just picked and
+    /// what was wrong with it. <see cref="SayWhereTheCorpusIs"/> is therefore not called after a
+    /// refused pick, and is called after a successful one — where the window is being replaced
+    /// anyway.
+    /// </para>
+    /// <para>
+    /// <b>Two guards and not one, because they are two different failures.</b> Only the picker
+    /// itself is wrapped in a bare <c>catch</c>: it is a call into Windows, not this application's
+    /// own code, so there is nothing narrower to name it by, and an <c>async void</c> handler
+    /// cannot let anything escape it. Writing the chosen folder into the setting is this
+    /// application's own file write and takes the same guard every other write on this screen
+    /// does — <see cref="ScreenFailures.Reportable"/>, unwidened — because a disk-full or a locked
+    /// settings file is not the picker failing to open, and saying so would send somebody looking
+    /// at the wrong thing. <see cref="CorpusLocation.Choose"/> re-runs <see cref="CorpusLocation.Inspect"/>
+    /// itself before it writes, so the folder going between this handler's own inspection and that
+    /// one — unplugged, an ACL revoked — is a real, narrow window and not a closed one; accepted
+    /// rather than defended against, the way every window this narrow is elsewhere in this corpus.
+    /// </para>
+    /// </remarks>
+    private async void OnChangeWhereItIsKept(object sender, RoutedEventArgs e)
+    {
+        if (_choosingAFolder || Corpus().Refusal is null)
+        {
+            return;
+        }
+
+        _choosingAFolder = true;
+        ChangeWhereItIsKept.IsEnabled = false;
+
+        try
+        {
+            DirectoryInfo folder;
+
+            try
+            {
+                var picker = new FolderPicker(_window);
+                var picked = await picker.PickSingleFolderAsync();
+
+                if (picked is null)
+                {
+                    // Nothing chosen is nothing said and nothing done.
+                    return;
+                }
+
+                folder = new DirectoryInfo(picked.Path);
+            }
+            catch (Exception failedToOpen) when (failedToOpen is not OutOfMemoryException)
+            {
+                if (!_closed)
+                {
+                    Say(UiTexts.TheFolderPickerDidNotOpen);
+                }
+
+                return;
+            }
+
+            var inspected = CorpusLocation.Inspect(folder);
+
+            if (inspected.Refusal is { } refusal)
+            {
+                if (!_closed)
+                {
+                    Say(RefusalOfAPickedFolder(refusal), inspected.Path);
+                }
+
+                return;
+            }
+
+            try
+            {
+                await Task.Run(() => CorpusLocation.OfThisUser().Choose(folder));
+            }
+            catch (Exception refused) when (ScreenFailures.Reportable(refused))
+            {
+                if (!_closed)
+                {
+                    Say(UiTexts.ThatDidNotGoThrough, refused.Message);
+                }
+
+                return;
+            }
+
+            if (_closed)
+            {
+                return;
+            }
+
+            CorpusChosen?.Invoke(this, EventArgs.Empty);
+        }
+        finally
+        {
+            _choosingAFolder = false;
+
+            if (!_closed)
+            {
+                ChangeWhereItIsKept.IsEnabled = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The same table <see cref="SayWhereTheCorpusIs"/> reads, for a refusal <see cref="CorpusLocation.Inspect"/>
+    /// answered rather than one read off <see cref="Corpus"/>. Kept exhaustive over the whole of
+    /// <see cref="CorpusRefusal"/> and not narrowed to the three a picker can actually produce —
+    /// <see cref="CorpusRefusal.SettingSaysNothingUsable"/> is about the setting file and a picker
+    /// never touches it — because an exhaustive table is what <c>CorpusTextTests</c> can hold to
+    /// <see cref="CorpusRefusal"/> the same way it already holds the one above; a table narrowed to
+    /// what is reachable today has no such test and drifts silently the day a fifth refusal is
+    /// added.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The corpus refused for a reason this screen has no words for.
+    /// </exception>
+    private static UiText RefusalOfAPickedFolder(CorpusRefusal refusal) => refusal switch
+    {
+        CorpusRefusal.SettingSaysNothingUsable => UiTexts.TheSettingSaysNothingUsable,
+        CorpusRefusal.FolderDoesNotAnswer => UiTexts.TheCorpusFolderDidNotAnswer,
+        CorpusRefusal.NoCorpusInTheFolder => UiTexts.ThereIsNoCorpusInThatFolder,
+        CorpusRefusal.GoesWhenThePackageDoes => UiTexts.TheCorpusFolderGoesWhenThePackageDoes,
+        _ => throw new InvalidOperationException(
+            $"This screen has no text for corpus refusal '{refusal}' from a picked folder."),
+    };
 
     /// <summary>
     /// Somebody chose what should happen when a recording ends.

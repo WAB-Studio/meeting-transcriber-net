@@ -81,8 +81,19 @@ stands.
 
 Write it for somebody who will build from it **without opening the repo again**. Name every file by
 its path, every symbol by the name it will have, every test by the name it will have and the
-mutation that turns it red, and every call site that has to change with a signature. Where new prose
-goes into the source — a summary, a remark, a comment — write the words, not a description of them.
+mutation that turns it red, and every call site that has to change with a signature.
+
+**A plan never writes a method body.** What it names is the file, the symbol, the signature, the
+test, the mutation that reddens it, the order that has to hold and the trap in the code as it
+stands; the body is the worker's, who compiles. C# inside a plan is the one thing here that no
+command ever checks, so it is where being precise buys nothing and being wrong is invisible until
+four workers have built from it.
+
+What the plan puts in words is still written whole — a summary, a remark, a comment, an error
+message — because none of that compiles either and nothing verifies it afterwards.
+
+The test, section by section: *can a literal constructor still produce this bug without
+contradicting a written line?* If it cannot, the constraint is enough and the code is not needed.
 
 Where you cannot name something, say so and say what has to be read to find out.
 

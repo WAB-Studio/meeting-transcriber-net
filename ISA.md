@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 153/222
+progress: 155/222
 updated: 2026-09-18
 ---
 
@@ -176,8 +176,8 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-162: Anti: a question this machine has not come back from is not put to it again until it does, so a screen that looks every second costs one deadline and not one at every look.
 - [x] ISC-164: Anti: a question this machine has not come back from stops no other question about its devices being asked, so a meeting following a microphone that went away is never held up by a screen looking at what the machine plays through.
 - [ ] ISC-169: A meeting following one program goes on following another without the recording stopping.
-- [ ] ISC-185: The folder a meeting was recorded into is gone once the corpus holds that meeting's audio.
-- [ ] ISC-186: Anti: a recording's folder is never gone while the corpus does not hold, verified, what that folder was the only copy of.
+- [x] ISC-185: The folder a meeting was recorded into is gone once the corpus holds that meeting's audio.
+- [x] ISC-186: Anti: a recording's folder is never gone while the corpus does not hold, verified, what that folder was the only copy of.
 
 ### F4 · WinUI recorder
 Why: the application replaces OBS. Recording, pausing, stopping and recovering happen in one
@@ -586,6 +586,8 @@ Board: 7 · Distribución y backup
   claim stays open however the walk comes out, and card #86, which owns the mark, owns both halves.
 
 ## Verification
+- ISC-185 — `MeetingRecordingsTests.A_stopped_recording_leaves_nothing_in_the_spool` and `WaitingRecordingsTests.A_recovery_leaves_nothing_in_the_spool_either` (`tests/MeetingTranscriber.Recording.Tests`), plus `CorpusRecoveryCommandTests.Keeping_a_recording_leaves_a_meeting_with_its_audio_in_the_corpus` (`tests/MeetingTranscriber.Cli.Tests`), green 2026-09-18: each asserts the spool folder is gone once the corpus holds the audio, verified
+- ISC-186 — `MeetingRecordingsTests.A_stop_that_could_not_write_its_job_row_leaves_no_meeting_recorded_and_un_queued` (asserts the spool untouched on a refused commit), `.A_finish_whose_corpus_copy_is_gone_leaves_the_recording_where_it_is`, `.A_folder_something_is_holding_is_left_and_said_so` and `.The_mark_is_let_go_however_the_finish_ends` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-09-18; `RemovingARecordingTests.A_recording_something_is_holding_is_not_removed` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-09-18, the same anti one level down
 - ISC-163 — `DeviceEnquiryTests` and `.Both_questions_this_application_asks_about_devices_go_through_the_deadline` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-20. Red 2026-08-20 with the question run on the caller's thread instead: the six-test run was killed at 120 s with one of them still going at 1 m 57 s, where bounded they take 21 s. Red again with the memory ignored, where `AudioDevices.Microphones()` enumerated this machine's real endpoints and answered. That a third question added beside the two would be inside the ask, and why `AudioDevices.Open` and `AudioDevices.EngineFormat` are not, is read off `AudioDevices`
 - ISC-162 — `DeviceEnquiryTests.A_question_that_has_not_come_back_is_not_put_to_the_machine_again` and `.Two_lookers_that_arrive_together_pay_the_deadline_once_each_and_no_more` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-20. Red 2026-08-20 with the memory ignored: 4 of the 7 failed and the second look reached the machine and waited five seconds of its own. Narrowed on 2026-08-20 from every question about this machine's devices to the one asked; `git log -- ISA.md` holds what it used to say, and ISC-164 is the half that says why. What no probe reaches is two callers of one question at once, because the product has none
 - ISC-164 — `DeviceEnquiryTests.A_question_still_out_there_leaves_a_different_one_asked` and `.Two_lookers_that_arrive_together_pay_the_deadline_once_each_and_no_more` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-20 and 2026-09-02, the first saying a wedged playback device leaves the microphones unrefused and `.Both_questions_this_application_asks_about_devices_go_through_the_deadline` saying `AudioDevices.Microphones()` is that call, which compose to the watcher's seam without enumerating a real endpoint. Red 2026-09-02 with the memory unscoped: that test and `Two_lookers` failed, waiting the whole deadline on the microphones. Red again 4 of 7 with the memory ignored altogether. What no probe reaches is the meeting itself, since a microphone unplugged mid-recording needs hardware

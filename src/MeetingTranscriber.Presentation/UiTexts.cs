@@ -433,9 +433,29 @@ public static class UiTexts
         "{0} goes when the application is uninstalled, and the responses already paid for would go "
         + "with it.");
 
-    public static UiText ChoosingAnotherFolderIsNotHereYet { get; } = new(
-        "Elegir otra carpeta todavía no se hace desde esta pantalla.",
-        "Choosing another folder is not done from this screen yet.");
+    // It said choosing another folder was not done from this screen yet until #148 built the press
+    // that does it — on Configuración, beside the same refusal — so this sentence sends somebody
+    // there now rather than pretending nothing can be done about it.
+    public static UiText ChangeWhereTheCorpusIsFromSettings { get; } = new(
+        "El corpus no se pudo abrir. Para cambiar dónde se guarda, andá a Configuración.",
+        "The corpus could not be opened. To change where it is kept, go to Settings.");
+
+    /// <summary>
+    /// The press beside the line saying where the corpus is. The word is the artboard's —
+    /// <c>docs/design/Configuracion.dc.html</c> draws <em>Cambiar</em> on this row — and not a
+    /// sentence of its own, because the line above it has already said what the row is about. It
+    /// is on the screen only when the corpus was refused: a corpus that opened is moved by moving
+    /// the files and then saying so, and no screen offers the first half.
+    /// </summary>
+    public static UiText ChangeWhereItIsKept { get; } = new("Cambiar", "Change");
+
+    /// <summary>
+    /// What a picker refusing to open says. The Windows App SDK picker used here does not throw
+    /// the older picker's <c>COMException</c>, but an <c>async void</c> handler still cannot let
+    /// anything it throws escape, so this is what is said instead of the application going away.
+    /// </summary>
+    public static UiText TheFolderPickerDidNotOpen { get; } = new(
+        "Windows no abrió el selector de carpetas.", "Windows did not open the folder picker.");
 
     // ── Who is using the application ──────────────────────────────────────────────────────────
 
@@ -926,8 +946,11 @@ public static class UiTexts
     public static UiText NothingHasBeenSaidAboutThisYet { get; } =
         new("Todavía no se dijo nada de esto", "Nothing has been said about this yet");
 
-    // Under the last card, when the read came back full. How much more is not said: what the screen
-    // knows is that it was cut and never by how much.
+    // Under the last card, when the read came back full — and alone, in the empty arm, when the
+    // first card alone already filled the read and none was drawn at all: that arm's other text,
+    // NothingHasBeenSaidAboutThisYet, would say nothing was ever said, and this is the one there
+    // that says the truer thing, that the screen was cut instead. How much more is not said either
+    // way: what the screen knows is that it was cut and never by how much.
     public static UiText ThereIsMoreThanThisScreenShows { get; } =
         new("Hay más de lo que entra en esta pantalla", "There is more here than this screen shows");
 

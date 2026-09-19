@@ -39,6 +39,9 @@ public sealed partial class PackagingChecksWindow : Window
     private readonly List<TextLine> _report = [];
 
     private UiLanguage _language;
+
+    // Deliberately not ScreenStatus: this window is scaffolding that goes when ISC-110 closes, so
+    // it keeps its own field rather than joining an engine built for the five screens that stay.
     private TextLine? _status;
 
     public PackagingChecksWindow(UiLanguage language)

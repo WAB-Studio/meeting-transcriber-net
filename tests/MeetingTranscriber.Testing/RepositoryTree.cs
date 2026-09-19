@@ -25,12 +25,6 @@ namespace MeetingTranscriber.Testing;
 /// under <c>tests/</c> at all. Said here and not five times, because five files each saying
 /// <em>do not fold me</em> is five copies of one rule.
 /// </para>
-/// <para>
-/// Two more are in projects that do reference this one and still carry their own today:
-/// <c>tests/MeetingTranscriber.Mcp.Tests/ReadOnlyTests.cs</c> and
-/// <c>tests/MeetingTranscriber.Infrastructure.Tests/Storage/CorpusLocationTests.cs</c>. Those two
-/// are owed rather than exempt.
-/// </para>
 /// </remarks>
 public static class RepositoryTree
 {

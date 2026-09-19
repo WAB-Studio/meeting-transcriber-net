@@ -222,21 +222,37 @@
                      and the line around it is not — `docs/design.md` §Type: text never goes in
                      mono, and a number that is part of a sentence is text.
 
-                     *Cambiar* is drawn on the artboard and is not here: relocating a corpus is a
-                     folder picker nothing in this application has yet, and a button that opens
-                     nothing is the live control that does nothing. So the line names the folder and
-                     offers nothing. -->
-                <StackPanel Spacing="4">
-                    <TextBlock
-                        Text="{x:Bind In(loc:UiTexts.WhereItIsKept)}"
-                        Style="{StaticResource BodyText}"
-                        Foreground="{StaticResource SecondaryTextBrush}" />
-                    <TextBlock
-                        x:Name="CorpusText"
-                        Style="{StaticResource BodyText}"
-                        Foreground="{StaticResource SecondaryTextBrush}"
-                        TextWrapping="Wrap" />
-                </StackPanel>
+                     *Cambiar* is beside it now, and only when the corpus was refused: a corpus
+                     that opened is moved by moving the files and then saying so, and no screen
+                     offers the first half — that is the artboard's other *Cambiar*, over a corpus
+                     that opened, and this card does not build it. -->
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock
+                            Text="{x:Bind In(loc:UiTexts.WhereItIsKept)}"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{StaticResource SecondaryTextBrush}" />
+                        <TextBlock
+                            x:Name="CorpusText"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{StaticResource SecondaryTextBrush}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <Button
+                        x:Name="ChangeWhereItIsKept"
+                        Grid.Column="1"
+                        VerticalAlignment="Bottom"
+                        Style="{StaticResource PillButton}"
+                        Click="OnChangeWhereItIsKept"
+                        Visibility="Collapsed"
+                        Content="{x:Bind In(loc:UiTexts.ChangeWhereItIsKept)}" />
+                </Grid>
 
                 <TextBlock
                     Text="{x:Bind In(loc:UiTexts.EachIsPaidForSeparately)}"
