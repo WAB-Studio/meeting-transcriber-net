@@ -63,6 +63,31 @@ public class ReadingANodeTests
     }
 
     /// <summary>
+    /// A node whose first meeting alone fills the read comes back with no runs at all, and that is
+    /// a read that was cut and not a node nobody has said anything about.
+    /// </summary>
+    /// <remarks>
+    /// Read out of source, like the two checks above, because the difference is which catalogue
+    /// entry a branch names and not something a fact over <c>WholeMeetings</c> alone could show —
+    /// the wrong text is still a string, drawn by a screen no test here opens.
+    /// </remarks>
+    [Fact]
+    public void The_empty_arm_of_the_node_screen_chooses_its_line_off_whether_there_is_more()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        var arm = Regex.Match(
+            source,
+            @"if \(meetings\.Count == 0\)\s*\{(?<body>.*?)\n {8}\}",
+            RegexOptions.Singleline);
+
+        arm.Success.ShouldBeTrue("The empty arm of Render moved or was renamed.");
+
+        arm.Groups["body"].Value.ShouldContain(nameof(UiTexts.NothingHasBeenSaidAboutThisYet));
+        arm.Groups["body"].Value.ShouldContain(nameof(UiTexts.ThereIsMoreThanThisScreenShows));
+    }
+
+    /// <summary>
     /// The filing chip's press and the screen it opens are wired to each other, there and back.
     /// </summary>
     /// <remarks>

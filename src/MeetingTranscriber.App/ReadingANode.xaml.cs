@@ -181,7 +181,7 @@ public sealed partial class ReadingANode : UserControl
         {
             TheStory.Children.Add(new TextBlock
             {
-                Text = In(UiTexts.NothingHasBeenSaidAboutThisYet),
+                Text = In(hasMore ? UiTexts.ThereIsMoreThanThisScreenShows : UiTexts.NothingHasBeenSaidAboutThisYet),
                 Style = Chrome("NothingSaidYet"),
             });
 
@@ -247,7 +247,9 @@ public sealed partial class ReadingANode : UserControl
     /// <see cref="HowMuchOfANodesStoryIsRead"/> bounds rows and not meetings, so a cut can land
     /// inside one — the read brings one row past the bound for exactly this: where that row
     /// shares a meeting with the last run kept, that meeting is not whole here and its run is
-    /// dropped rather than shown half full.
+    /// dropped rather than shown half full. When the only run kept is the one dropped, this comes
+    /// back with no runs at all and <c>hasMore</c> true — a read that was cut, not a node nobody
+    /// has said anything about.
     /// </remarks>
     private static (IReadOnlyList<IReadOnlyList<Statement>> Meetings, bool HasMore) WholeMeetings(
         IReadOnlyList<Statement> said)
