@@ -705,14 +705,16 @@ public static class UnfinishedRecordings
     /// what a recording is.
     /// </para>
     /// <para>
-    /// Internal until something outside this project has a product reason to remove a recording.
-    /// A public one beside <see cref="UnfinishedRecording.Discard"/> would today be a second way to
-    /// remove a recording with neither
-    /// <see cref="UnfinishedRecording.EnsureThereIsSomethingToDecide"/> nor
-    /// <see cref="EnsureRemovable"/> in front of it — and the sweep that holds this rule greps for
-    /// spellings rather than for visibility, so the modifier is what holds it and nothing else
-    /// would object. Widening it is one line, and whoever does has to say what stands in front of
-    /// it instead.
+    /// Internal, and it stays that way — <see cref="RemoveNowTheCorpusHoldsIt"/> is beside it in
+    /// this same file, which is what a caller outside this project reaches instead. There is one
+    /// caller now: <c>MeetingRecordings.Finish</c> calls it once the corpus holds this recording's
+    /// audio under a write that was hashed and read back. What stands in front of it there is
+    /// <see cref="EnsureRemovable"/> and that write — not
+    /// <see cref="UnfinishedRecording.EnsureThereIsSomethingToDecide"/>, because a recording that
+    /// has become a meeting is one the decision has already been made about, and asking again would
+    /// refuse the only caller that has earned it. A second public door beside
+    /// <see cref="UnfinishedRecording.Discard"/> would still be a second way to remove a recording
+    /// with neither of those in front of it, which is why this stays the one way in.
     /// </para>
     /// <para>
     /// Every way out of it is an <see cref="AudioCaptureException"/>. A raw <see cref="IOException"/>
@@ -747,6 +749,32 @@ public static class UnfinishedRecordings
         }
 
         ThrowAwayTheCopy(aside, folder);
+    }
+
+    /// <summary>
+    /// Removes a recording the corpus has already filed, without asking whether it is still
+    /// somebody's to decide about.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="EnsureRemovable"/> and then <see cref="Remove"/> — and deliberately not
+    /// <see cref="UnfinishedRecording.EnsureThereIsSomethingToDecide"/>, which is the whole
+    /// difference from every other way in. That check refuses a recording nobody has decided about
+    /// yet; this one is for a recording that has been decided — it is a meeting now, filed and
+    /// hashed — so asking it would be asking whether something that already happened is still open.
+    /// </remarks>
+    /// <param name="recording">
+    /// The recording, read fresh over the folder its meeting's audio was materialised from —
+    /// <see cref="At"/> is how the rest of this product gets one for a folder it already knows.
+    /// </param>
+    /// <exception cref="AudioCaptureException">
+    /// Something is still holding the folder, or the folder has already gone.
+    /// </exception>
+    public static void RemoveNowTheCorpusHoldsIt(UnfinishedRecording recording)
+    {
+        ArgumentNullException.ThrowIfNull(recording);
+
+        EnsureRemovable(recording);
+        Remove(recording);
     }
 
     /// <summary>

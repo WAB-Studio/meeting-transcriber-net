@@ -356,7 +356,8 @@ public static class WaitingRecordings
     /// It is the same finish stopping performs, and deliberately so. A meeting recovered after a
     /// crash is not a lesser meeting — it is the same blocks read the same way — and a second path
     /// that produced a nearly-identical file would be the one nobody exercises until the day
-    /// somebody needs it.
+    /// somebody needs it. That sameness reaches the spool too: a recovery leaves nothing behind
+    /// either, once the corpus holds what it was the only copy of, verified.
     /// </para>
     /// <para>
     /// The run is written again from the card first when the corpus never got it, which is what

@@ -115,11 +115,24 @@ public sealed class PreparedRecording : IDisposable
 /// it has to be the fact. Reported rather than assumed, so a caller reads the answer instead of
 /// the absence of one.
 /// </param>
+/// <param name="SpoolLeft">
+/// What kept the recording's own folder from going, or nothing when it went. It is never a
+/// failure of the meeting: by the time this is written the meeting is filed and as long as it
+/// turned out to be. Four things answer it. The corpus's copy of the audio is not on disk, does
+/// not read back to the hash its row carries, or could not be read at all — a scanner, a backup
+/// agent or a concurrent <c>check --verify-contents</c> holding the file the instant this asked —
+/// in which case the folder is the only copy of the meeting this finish can vouch for and keeping
+/// it is the whole point. Something was holding the folder itself at that instant, which is a
+/// second window, a prompt or a scanner, and the sentence is the engine's own. Or the removal
+/// stopped part-way, in which case what is left is not the folder but the copy it was renamed to,
+/// which <c>check</c> reports and <c>docs/corpus.md</c> says how to read.
+/// </param>
 public sealed record FinishedRecording(
     Guid MeetingId,
     Artifact Audio,
     Duration Length,
-    IReadOnlyList<JobKind> Queued);
+    IReadOnlyList<JobKind> Queued,
+    string? SpoolLeft);
 
 /// <summary>
 /// Recording a meeting into a corpus: the steps that put rows and files where the rest of the
@@ -317,9 +330,10 @@ public static class MeetingRecordings
     /// standing at that path once it hashes to what this finish just made. Either way the bytes and
     /// the row describing them arrive together, and the row is never taken on trust: the hash is of
     /// what was actually written, or of what was found to agree with it. The copy the engine makes
-    /// beside the spools is left where it is: those blocks are still the only recording of the
-    /// meeting that exists independently of this write, and deciding what happens to a spool is
-    /// somebody's, never a side effect of stopping.
+    /// beside the spools goes once this write has confirmed, hashed and read back, what it is the
+    /// only copy of: those blocks stop being a source the moment the corpus holds that recording as
+    /// its own file, and removing them is what this method does next rather than somebody's to
+    /// decide.
     /// </para>
     /// <para>
     /// The row describing that audio and the meeting's length arrive in one commit, so no reader is
@@ -347,13 +361,19 @@ public static class MeetingRecordings
     /// that held them dying, which is what recovery finds.
     /// </para>
     /// <para>
-    /// It holds the folder for as long as it runs, through <see cref="SavingMark"/>, and that is
-    /// the one thing about a save anything else can see. Between the devices being let go of and
-    /// the meeting's length landing there is nothing else to tell these blocks from a recording
-    /// nobody stopped, and this may take minutes; the mark is what keeps a second reader from
-    /// offering the three answers over them, and what keeps a second finish from starting. It is
-    /// let go however this ends, and a process that never got to let go of it leaves a file nothing
-    /// is holding, which every reader reads as no save at all.
+    /// It holds the folder from the take until one statement before the removal — not for the
+    /// whole of this, any more — through <see cref="SavingMark"/>, and that is the one thing about
+    /// a save anything else can see. Between the devices being let go of and the meeting's length
+    /// landing there is nothing else to tell these blocks from a recording nobody stopped, and this
+    /// may take minutes; the mark is what keeps a second reader from offering the three answers
+    /// over them, and what keeps a second finish from starting. Letting it go before the removal
+    /// rather than after opens a window of its own — a second finish over the same recording can
+    /// arrive in it — and it is safe because the meeting is committed by then: the worst that
+    /// second finish can do is hold the folder for the instant this one's own removal then runs in,
+    /// which <see cref="UnfinishedRecordings.EnsureRemovable"/> refuses and this method reports on
+    /// <see cref="FinishedRecording.SpoolLeft"/> rather than raises. It is let go however this ends,
+    /// and a process that never got to let go of it leaves a file nothing is holding, which every
+    /// reader reads as no save at all.
     /// </para>
     /// </remarks>
     /// <param name="corpus">The corpus the meeting is being recorded into.</param>
@@ -603,7 +623,60 @@ public static class MeetingRecordings
         // here used to claim.
         MeetingManifest.Write(corpus, meeting.Id, now);
 
-        return new FinishedRecording(meeting.Id, audio, made.Length, started);
+        // Asked while the mark is still held. It reads the corpus's own copy of the audio and
+        // touches neither the spool nor the mark, so nothing is gained by asking after letting go
+        // — and asking first is what keeps the window between the mark going and the removal the
+        // one instant the decision above names, rather than the length of a hash of this meeting's
+        // audio.
+        //
+        // Everything this read can throw is absorbed here too, for the same reason the removal
+        // below is: the meeting is committed by the time this line runs, so a transient lock on
+        // the corpus's own gigabyte-sized copy — a real-time scanner over a file just renamed into
+        // place, a backup agent, `check --verify-contents` running at the same instant — must not
+        // surface as a failed finish. `Standing`'s and `Filed`'s hashing, above, need no such catch:
+        // both run before `BeginTransaction`, where nothing has been committed and a throw is
+        // honest.
+        string? spoolStays;
+        try
+        {
+            spoolStays = WhyTheSpoolStays(corpus, audio);
+        }
+        catch (Exception unreadable) when (unreadable is IOException or UnauthorizedAccessException)
+        {
+            spoolStays = "the corpus's own copy of this meeting's audio could not be read to "
+                + $"verify it: {unreadable.Message}";
+        }
+
+        // Let go here, on the line before the removal — not left to the `using` at the top of this
+        // method, whose disposal would otherwise run after the removal rather than before it.
+        // `SavingMark.Dispose` is idempotent, so the `using` still runs at the end of this method
+        // and does nothing the second time. Every throw between the take and this line already let
+        // go of it: `using var saving` wraps the rest of this method in its own release, so nothing
+        // between here and there is a plain local a throw could walk past.
+        saving?.Dispose();
+
+        string? spoolLeft;
+        if (spoolStays is not null)
+        {
+            spoolLeft = spoolStays;
+        }
+        else
+        {
+            try
+            {
+                UnfinishedRecordings.RemoveNowTheCorpusHoldsIt(UnfinishedRecordings.At(spool));
+                spoolLeft = null;
+            }
+            catch (AudioCaptureException notRemoved)
+            {
+                // The meeting is filed by the time this line runs, and a finish that threw here
+                // would tell somebody their meeting failed when it did not. Absorbed and reported
+                // on `FinishedRecording.SpoolLeft` instead.
+                spoolLeft = notRemoved.Message;
+            }
+        }
+
+        return new FinishedRecording(meeting.Id, audio, made.Length, started, spoolLeft);
     }
 
     /// <summary>
@@ -671,19 +744,61 @@ public static class MeetingRecordings
         return filed;
     }
 
-    /// <summary>The destination file, when it is on disk, and nothing when it is not.</summary>
+    /// <summary>A file, when it is on disk, and nothing when it is not.</summary>
     /// <remarks>
     /// Asked of the disk again rather than trusted from an earlier listing — a <see cref="FileInfo"/>
     /// answers from when it was made, which is the trap <see cref="DurableArtifact"/>'s own remarks
-    /// name — and asked only when <see cref="Filed"/> found no row, which is the one case a file
-    /// standing here could be this finish's own adopt path completing something interrupted rather
-    /// than a defect.
+    /// name. Two callers ask it of two different paths: this finish's own destination, only when
+    /// <see cref="Filed"/> found no row — the one case a file standing there could be an interrupted
+    /// adopt path completing rather than a defect — and, from <see cref="WhyTheSpoolStays"/>, the
+    /// corpus's already-recorded copy, asked again outside every lock to confirm it is still what
+    /// its row says.
     /// </remarks>
     private static FileInfo? Standing(CorpusDbContext corpus, string relativePath)
     {
         var file = CorpusFiles.Locate(corpus.Root, relativePath);
         file.Refresh();
         return file.Exists ? file : null;
+    }
+
+    /// <summary>
+    /// Why the spool a finish just read stays, or nothing when it may go: the second
+    /// <c>Sha256Of(</c> in this file, and the one that is outside the corpus's write lock for a
+    /// different reason than the others — it runs after <c>filing.Commit()</c>, where the
+    /// <c>COMMIT</c> has already released it, and not merely before <c>BeginTransaction(</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is what ISC-186 turns on, and not the commit above it. `Finish` reaches a committed
+    /// `Duration` by three routes, and only two of them establish that the corpus holds the audio:
+    /// the staged path wrote it, hashed it and read it back, and the adopt path hashed what was
+    /// standing there. The `filed` path reads the destination not at all — `Filed` answers a row
+    /// when one exists and the hash of what was poured *out of the spool* matches it, and its own
+    /// remarks say a row whose file has gone is still answered as filed. So this asks the one
+    /// question none of the three routes already answered: does the corpus's own copy, at the path
+    /// the row names, read back to the hash the row carries, right now.
+    /// </para>
+    /// <para>
+    /// It costs one read of the corpus's audio per finish, on every path, outside every lock — not
+    /// waste even where the bytes were just written, because <see cref="StagedArtifact"/> hashes
+    /// the temporary and reads the temporary back, never the file at the path the row names. This
+    /// is the first and only time anything reads the file there, and it happens in the one moment
+    /// in this product where the spool is about to stop being the only other copy.
+    /// </para>
+    /// </remarks>
+    private static string? WhyTheSpoolStays(CorpusDbContext corpus, Artifact audio)
+    {
+        if (Standing(corpus, audio.RelativePath) is not { } file)
+        {
+            return "the corpus's own copy of this meeting's audio is not on disk";
+        }
+
+        if (!string.Equals(CorpusFiles.Sha256Of(file), audio.Sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            return "the corpus's own copy of this meeting's audio does not read back to the hash its row carries";
+        }
+
+        return null;
     }
 
     /// <summary>

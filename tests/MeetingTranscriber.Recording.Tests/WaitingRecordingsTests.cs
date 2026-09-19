@@ -361,6 +361,32 @@ public sealed class WaitingRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// ISC-185 through the other door: a recovery is the same finish stopping performs, and it
+    /// leaves the spool exactly as empty.
+    /// </summary>
+    [Fact]
+    public void A_recovery_leaves_nothing_in_the_spool_either()
+    {
+        Guid recorded;
+        DirectoryInfo spool;
+        using (var recording = corpus.OpenMigrated())
+        {
+            var card = Killed(recording, seconds: 2);
+            recorded = card.MeetingId;
+            spool = CorpusFiles.SpoolFolderFor(corpus.Root, recorded);
+        }
+
+        using var started = corpus.Open();
+        var waiting = WaitingRecordings.In(started).Single();
+
+        var finished = WaitingRecordings.Recover(started, waiting, openedAgainAt);
+
+        finished.SpoolLeft.ShouldBeNull();
+        spool.Refresh();
+        spool.Exists.ShouldBeFalse();
+    }
+
+    /// <summary>
     /// ISC-126.1, inside a save that is really running. A second reader of the same corpus, which
     /// is what another window, a prompt or the next start is, is not offered the meeting the save
     /// is making — and the same reader was offered both answers a moment before and is again a
@@ -398,10 +424,11 @@ public sealed class WaitingRecordingsTests : IDisposable
         during.ShouldBe([WaitingStanding.BeingSavedNow]);
         heldWhenTold.ShouldBe([true]);
 
-        // And the folder is let go of when the save ends, mark still lying there and holding
-        // nobody: the meeting is off the list because it has a length now, not because of a file.
-        Marked(spool).ShouldBeTrue();
-        SavingMark.IsHeldIn(spool).ShouldBeFalse();
+        // And the folder is gone by the time the save ends — the corpus holds this recording's
+        // audio, verified, so there is nothing left for the mark to lie in. The meeting is off the
+        // list because it has a length now, not because of a folder.
+        spool.Refresh();
+        spool.Exists.ShouldBeFalse();
         using var reopened = corpus.Open();
         WaitingRecordings.In(reopened).ShouldBeEmpty();
 
@@ -692,12 +719,5 @@ public sealed class WaitingRecordingsTests : IDisposable
             .OrderBy(file => file.FullName, StringComparer.Ordinal)
             .Select(file => $"{file.FullName} {CorpusFiles.Sha256Of(file)}"),
     ];
-
-    /// <summary>
-    /// Whether the mark a save writes is lying in this folder. Built here rather than asked of
-    /// <see cref="SavingMark"/>, which deliberately answers nothing about the file being there.
-    /// </summary>
-    private static bool Marked(DirectoryInfo folder) =>
-        File.Exists(Path.Combine(folder.FullName, SavingMark.FileName));
 
 }

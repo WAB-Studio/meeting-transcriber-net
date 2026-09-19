@@ -51,24 +51,36 @@ only while nothing has been poured out of them, and the poured files are derivat
 blocks are still beside them. Carrying the blocks resolves both. Carrying a poured file instead is
 keeping the audio and losing the source.
 
+**The folder goes at the verified write.** A recording's own folder under `spool/` is a source for
+exactly as long as the corpus does not hold, hashed and read back, what that folder is the only
+copy of — the blocks, which become the meeting's `audio.wav`; `changes.jsonl`, which becomes
+`capture_source_changes`; and the card, which becomes the `capture_runs` row. The commit that lands
+all of those is the instant the folder stops being a source, and `MeetingRecordings.Finish` removes
+it on the next line — `UnfinishedRecordings.RemoveNowTheCorpusHoldsIt`, which is the same
+rename-then-erase `--discard` goes through. Before that commit nothing removes it, whatever failed.
+A folder still standing after a finish was held by something at that instant; its files are what
+`check` reports as spooled, and `FinishedRecording.SpoolLeft` says what held it.
+
 **`spool/.removing-<meeting_id>/<meeting_id>/` is a recording somebody threw away, part-way out, and
 is neither too.** Throwing a recording away renames its folder into that one and then removes the
 copy, so a discard something is still reading is refused with the recording exactly as it was rather
 than emptied as far as the first held file. For the instant between those two steps the whole
 recording is under that path, which is what a backup sweeping `spool/` would find. A backup that
-skipped it loses nothing: what is in it is a recording whose owner already said to throw it away.
+skipped it loses nothing: the corpus holds the meeting either way, whether what is in it is a
+recording whose owner already said to throw it away or one a finish had already filed.
 
-One still there after a start is a discard that did not finish — a machine that died inside one, or
-a delete that stayed refused. It holds whatever the delete had not reached yet, so it may be the
-whole recording or a part of one. **Nothing in the product ever cleans it**: the sweep of folders
-nothing was recorded into names it and removes nothing, and no second discard of that recording is
-reachable, because the recording is no longer under a name anything offers. Deleting it by hand is
-safe. `check` says nothing about the recording in it, on purpose: what is in it is a recording whose
-owner already said to throw it away, nothing offers it again and nothing cleans it, so a line about
-it never goes away however anybody acts on it, and a check that stands red stops being read. The two
-things it still reports from in there are a write that never finished and a copy a replace set
-aside, because `sweep` takes those wherever they are and the two commands may not disagree about a
-file.
+One still there after a start is a discard that did not finish, or just as likely now a finish that
+did not finish — the removal goes through the same rename-then-erase either way. It is a machine
+that died inside one, or a delete that stayed refused. It holds whatever the delete had not reached
+yet, so it may be the whole recording or a part of one. **Nothing in the product ever cleans it**:
+the sweep of folders nothing was recorded into names it and removes nothing, and no second removal
+of that recording is reachable, because the recording is no longer under a name anything offers.
+Deleting it by hand is safe. `check` says nothing about the recording in it, on purpose: what is in
+it is a recording whose owner already said to throw it away, or one a finish had already filed —
+either way nothing offers it again and nothing cleans it, so a line about it never goes away
+however anybody acts on it, and a check that stands red stops being read. The two things it still
+reports from in there are a write that never finished and a copy a replace set aside, because
+`sweep` takes those wherever they are and the two commands may not disagree about a file.
 
 `capture.mark` is taken by whatever makes the folder — in `MeetingRecordings.Open` for a meeting
 recorded into a corpus, and in `CaptureSession.Start` for a capture into a folder somebody named at

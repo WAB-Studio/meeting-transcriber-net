@@ -976,12 +976,14 @@ public sealed class MeetingRecordingsTests : IDisposable
     public void A_stop_that_could_not_write_its_job_row_leaves_no_meeting_recorded_and_un_queued()
     {
         Guid recorded;
+        DirectoryInfo spool;
         using (var context = corpus.OpenMigrated())
         {
             new CorpusSettings(context).WhenARecordingEnds(AfterARecording.Transcribe, now);
 
             using var prepared = MeetingRecordings.Open(context, "es", now);
             recorded = prepared.MeetingId;
+            spool = prepared.Spool;
             Fabricated.Spools(prepared.Spool, seconds: 2);
 
             var card = Fabricated.CardFor(prepared.MeetingId, now);
@@ -1001,6 +1003,15 @@ public sealed class MeetingRecordingsTests : IDisposable
 
             Should.Throw<InvalidOperationException>(
                 () => MeetingRecordings.Finish(context, recorded, now + Duration.FromSeconds(2)));
+
+            // ISC-186's first half: refused this late — after the length, the audio row and the
+            // queueing's own row were all staged inside the one transaction — still leaves the
+            // spool exactly as it was. The removal sits after `filing.Commit()` and never runs.
+            spool.Refresh();
+            spool.Exists.ShouldBeTrue();
+            BlockSpool.FileFor(spool, AudioChannel.Loopback).Exists.ShouldBeTrue();
+            BlockSpool.FileFor(spool, AudioChannel.Microphone).Exists.ShouldBeTrue();
+            SpoolManifest.In(spool).Exists.ShouldBeTrue();
         }
 
         using (var reopened = corpus.Open())
@@ -1017,6 +1028,137 @@ public sealed class MeetingRecordingsTests : IDisposable
 
         using var final = corpus.Open();
         final.ProcessingJobs.Single().Kind.ShouldBe(JobKind.Transcribe);
+    }
+
+    /// <summary>
+    /// ISC-185. Stopping a recording leaves the corpus holding the audio, verified, and nothing
+    /// left in the spool that fed it.
+    /// </summary>
+    [Fact]
+    public void A_stopped_recording_leaves_nothing_in_the_spool()
+    {
+        using var context = corpus.OpenMigrated();
+        Guid meetingId;
+        var spool = Recorded(context, out meetingId, seconds: 2);
+
+        var finished = MeetingRecordings.Finish(context, meetingId, now + Duration.FromSeconds(2));
+
+        finished.SpoolLeft.ShouldBeNull();
+        spool.Refresh();
+        spool.Exists.ShouldBeFalse();
+
+        using var reopened = corpus.Open();
+        var meeting = reopened.Meetings.Single();
+        meeting.Duration.ShouldBe(finished.Length);
+
+        var audio = reopened.Artifacts.Single(row => row.Kind == ArtifactKind.Audio);
+        var written = CorpusFiles.Locate(corpus.Root, audio.RelativePath);
+        CorpusFiles.Sha256Of(written).ShouldBe(audio.Sha256);
+    }
+
+    /// <summary>
+    /// ISC-186's second half, and the one the <c>filed</c> path needs. A row already there and the
+    /// destination it names gone from under it — the state <c>Filed</c>'s own remarks name as its
+    /// reason for existing — completes the meeting from the row alone, and the spool is the only
+    /// remaining copy, so it is left and said so.
+    /// </summary>
+    [Fact]
+    public void A_finish_whose_corpus_copy_is_gone_leaves_the_recording_where_it_is()
+    {
+        using var context = corpus.OpenMigrated();
+        var spool = Recorded(context, out var meetingId, seconds: 2);
+        var path = CorpusFiles.PathFor(meetingId, MeetingAudio.FileName);
+        FileAudioDirectly(context, meetingId, spool);
+
+        CorpusFiles.Locate(corpus.Root, path).Delete();
+
+        var finished = MeetingRecordings.Finish(context, meetingId, now + Duration.FromSeconds(2));
+
+        finished.SpoolLeft.ShouldNotBeNull();
+        finished.SpoolLeft.ShouldContain("not on disk");
+
+        spool.Refresh();
+        spool.Exists.ShouldBeTrue();
+        BlockSpool.FileFor(spool, AudioChannel.Loopback).Exists.ShouldBeTrue();
+        BlockSpool.FileFor(spool, AudioChannel.Microphone).Exists.ShouldBeTrue();
+
+        using var reopened = corpus.Open();
+        reopened.Meetings.Single().Duration.ShouldBe(finished.Length);
+    }
+
+    /// <summary>
+    /// Something reading the spool at the instant the mark is let go is not overruled: the meeting
+    /// is made all the same, and the folder is left with the engine's own sentence on it rather
+    /// than a removal raised as though the meeting had failed.
+    /// </summary>
+    [Fact]
+    public void A_folder_something_is_holding_is_left_and_said_so()
+    {
+        using var context = corpus.OpenMigrated();
+        Guid meetingId;
+        var spool = Recorded(context, out meetingId, seconds: 2);
+
+        using var reading = ReadingMark.Take(spool);
+
+        var finished = MeetingRecordings.Finish(context, meetingId, now + Duration.FromSeconds(2));
+
+        finished.SpoolLeft.ShouldNotBeNull();
+        finished.SpoolLeft.ShouldContain("reading");
+
+        spool.Refresh();
+        spool.Exists.ShouldBeTrue();
+
+        using var reopened = corpus.Open();
+        reopened.Meetings.Single().Duration.ShouldBe(finished.Length);
+        reopened.Artifacts.Count(row => row.Kind == ArtifactKind.Audio).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// The mark a save holds is let go however the finish ends, including a throw before the
+    /// removal is ever reached — a plain local a throw could walk past would hold it for the rest
+    /// of the process, refusing every later decision about that folder.
+    /// </summary>
+    [Fact]
+    public void The_mark_is_let_go_however_the_finish_ends()
+    {
+        using var context = corpus.OpenMigrated();
+        Guid meetingId;
+        var spool = Recorded(context, out meetingId, seconds: 2);
+
+        File.AppendAllText(
+            SpoolChanges.In(spool).FullName, "{\"at\": " + Environment.NewLine);
+
+        Should.Throw<AudioCaptureException>(
+            () => MeetingRecordings.Finish(context, meetingId, now + Duration.FromSeconds(2)));
+
+        SavingMark.IsHeldIn(spool).ShouldBeFalse();
+
+        using var reopened = corpus.Open();
+        WaitingRecordings.In(reopened).Select(recording => recording.MeetingId).ShouldContain(meetingId);
+    }
+
+    /// <summary>
+    /// Builds a recording exactly the way the rest of this file does, but with the press disposed
+    /// before it returns — so its claim over the spool is gone before a caller finishes it, and a
+    /// removal this finish attempts is never refused by a handle this method itself left open.
+    /// </summary>
+    private DirectoryInfo Recorded(CorpusDbContext context, out Guid meetingId, double seconds)
+    {
+        DirectoryInfo spool;
+        Guid id;
+        using (var prepared = MeetingRecordings.Open(context, "es", now))
+        {
+            id = prepared.MeetingId;
+            spool = prepared.Spool;
+            Fabricated.Spools(prepared.Spool, seconds);
+
+            var card = Fabricated.CardFor(prepared.MeetingId, now);
+            SpoolManifest.Write(prepared.Spool, card);
+            MeetingRecordings.Began(context, card);
+        }
+
+        meetingId = id;
+        return spool;
     }
 
     /// <summary>

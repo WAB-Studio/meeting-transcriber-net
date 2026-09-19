@@ -192,7 +192,13 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
             "recovery", "--corpus", Root, "--meeting", meeting.ToString(), "--keep");
 
         kept.Code.ShouldBe(Cli.Ok, kept.Error);
-        MeetingAudio.In(folder).Exists.ShouldBeTrue();
+
+        // The meeting having been made despite a mark nothing was holding, read off the corpus's
+        // own copy — the spool's own `audio.wav` is gone with the rest of the folder once the
+        // corpus holds it, verified.
+        CorpusFiles.Locate(corpus.Root, kept.Value("audio")).Exists.ShouldBeTrue();
+        folder.Refresh();
+        folder.Exists.ShouldBeFalse();
     }
 
     [Fact]
@@ -225,6 +231,10 @@ public sealed class CorpusRecoveryCommandTests : IDisposable
         var audio = CorpusFiles.Locate(corpus.Root, run.Value("audio"));
         audio.Exists.ShouldBeTrue(audio.FullName);
         CorpusFiles.Sha256Of(audio).ShouldBe(run.Value("sha256"));
+
+        // ISC-185, at the surface a person meets it: the spool folder is gone once the corpus
+        // holds the audio, verified.
+        CorpusFiles.SpoolFolderFor(corpus.Root, meeting).Exists.ShouldBeFalse();
 
         // And it is not waiting any more, which is the difference between a meeting made and a
         // file written: the next start offers nothing.
