@@ -217,6 +217,41 @@ public class CorpusStatementsTests
     }
 
     /// <summary>
+    /// Every field a statement carries, read through <see cref="CorpusStatements.Of"/> and through
+    /// <see cref="CorpusStatements.Under"/>, answers the same — but for <see cref="Statement.Kind"/>,
+    /// which each read is asked for differently.
+    /// </summary>
+    /// <remarks>
+    /// Red with a column added to one of <c>OneSection</c>'s two callers and forgotten in the
+    /// other: the shared projection still compiles, and this is the only fact comparing the two
+    /// reads field for field.
+    /// </remarks>
+    [Fact]
+    public void Both_reads_of_a_statement_answer_with_the_same_nine_fields()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayer(context, August);
+        var node = human.Root(NodeKind.Organization, "acme");
+        var meeting = Extracted(context, August, "lo que se dijo");
+        human.Link(meeting, node, MeetingNodeRole.WorkOf);
+
+        var of = CorpusStatements.Of(context, LeftKind.Decision, null, null, 20).Single();
+        var under = CorpusStatements.Under(context, node.Id, 20)
+            .Single(statement => statement.Kind == LeftKind.Decision);
+
+        of.MeetingId.ShouldBe(under.MeetingId);
+        of.StartedAt.ShouldBe(under.StartedAt);
+        of.Title.ShouldBe(under.Title);
+        of.Says.ShouldBe(under.Says);
+        of.TurnOrdinal.ShouldBe(under.TurnOrdinal);
+        of.At.ShouldBe(under.At);
+        of.Quoted.ShouldBe(under.Quoted);
+        of.SpeakerLabel.ShouldBe(under.SpeakerLabel);
+        of.SourceSha256.ShouldBe(under.SourceSha256);
+    }
+
+    /// <summary>
     /// A node's own meetings come back oldest first, the other order from the corpus-wide listings —
     /// a node's story is read forward, like a history.
     /// </summary>

@@ -104,6 +104,7 @@ public sealed record WhatTheAiLeft(
     /// Puts things in the order they were said, which is the order a meeting is read in.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Stable, and the tie-break is deliberate rather than incidental: two things cited to the
     /// same turn come out in a fixed order every time the screen is drawn, so a list does not
     /// shuffle under somebody between one look and the next. The section decides first and the
@@ -112,6 +113,13 @@ public sealed record WhatTheAiLeft(
     /// decisions cited to one turn have an order too. Sorting on three keys and leaving a fourth
     /// tie to whatever order three separate queries came back in is a promise this would keep
     /// almost always, which is the kind that is noticed once and never reproduced.
+    /// </para>
+    /// <para>
+    /// The fourth key here is <see cref="StringComparer.Ordinal"/>, over UTF-16 code units. A
+    /// node's own history breaks the same tie in SQL, under SQLite's <c>BINARY</c> collation over
+    /// UTF-8 bytes instead — <c>CorpusStatements.Under</c>'s remarks say where and why the two can
+    /// disagree, on a supplementary-plane character neither ordering is wrong to choose.
+    /// </para>
     /// </remarks>
     public static IReadOnlyList<LeftThing> InTheOrderTheyWereSaid(IEnumerable<LeftThing> things)
     {
