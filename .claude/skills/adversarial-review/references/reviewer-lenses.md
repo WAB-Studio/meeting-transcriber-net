@@ -26,6 +26,9 @@ Challenge correctness and completeness. Ask:
   words were narrowed to fit — in the diff, or ahead of the branch and so in no diff — proves
   nothing, whatever its probe says. `git log -L '/^- \[.\] ISC-N: /,+1:ISA.md' origin/main` prints
   what the claim used to say.
+- Where does the diff match a plan that was wrong on paper? Literal code inside a plan is never
+  compiled, so a body copied out of one carries whatever the plan got wrong, and both read as
+  agreeing.
 
 Map findings to: prove-it-works, fix-root-causes, serialize-shared-state-mutations.
 
