@@ -271,6 +271,29 @@ public class MeetingWorkTests
     }
 
     /// <summary>
+    /// O-20260916-13. A caller already holding a transaction gets its queueing inside it, so rolling
+    /// that transaction back takes the job row with it rather than leaving it queued over whatever
+    /// the caller undid.
+    /// </summary>
+    [Fact]
+    public void Queueing_inside_a_transaction_the_caller_opened_joins_it_rather_than_refusing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+        var work = new MeetingWork(context, Clock);
+
+        using (var write = context.Database.BeginTransaction())
+        {
+            work.TakeIfItIsOffered(meeting, JobKind.Transcribe).ShouldNotBeNull();
+            write.Rollback();
+        }
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.ShouldBeEmpty();
+    }
+
+    /// <summary>
     /// A stage that is not the one the meeting is offering is not queued in its place.
     /// </summary>
     /// <remarks>

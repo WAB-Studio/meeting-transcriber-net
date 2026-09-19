@@ -289,17 +289,15 @@ public sealed class WaitingRecordingsTests : IDisposable
         Guid recorded;
         using (var recording = corpus.OpenMigrated())
         {
-            recorded = Killed(recording, seconds: 2).MeetingId;
-            WaitingRecordings.Recover(recording, WaitingRecordings.In(recording).Single(), openedAgainAt);
+            var card = Killed(recording, seconds: 2);
+            recorded = card.MeetingId;
 
             // The corpus as a machine that died in the window a finish used to have would have left
-            // it: the audio filed, the length never written, the run never closed.
-            var meeting = recording.Meetings.Single();
-            var run = recording.CaptureRuns.Single();
-            meeting.Duration = null;
-            run.FinishedAt = null;
-            run.Recovered = false;
-            recording.SaveChanges();
+            // it: the audio filed, the length never written, the run never closed. Filed directly
+            // rather than by recovering and reverting, because a recovery that actually completed
+            // would take the spool with it, and this state needs the spool still there for the
+            // recovery under test to read.
+            FileAudioDirectly(recording, recorded, CorpusFiles.SpoolFolderFor(corpus.Root, recorded));
         }
 
         using var started = corpus.Open();
@@ -319,6 +317,45 @@ public sealed class WaitingRecordingsTests : IDisposable
         reopened.CaptureRuns.Single().FinishedAt.ShouldBe(openedAgainAt);
 
         // One audio artifact, not two, and it is the one that was already filed.
+        reopened.Artifacts.Count(artifact => artifact.Kind == ArtifactKind.Audio).ShouldBe(1);
+        WaitingRecordings.In(reopened).ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The other door onto the same state #310 makes completable: a rename that outran its commit
+    /// is reached through a recovery just as it is through a stop, and both doors adopt rather than
+    /// refuse it.
+    /// </summary>
+    [Fact]
+    public void A_recovery_from_the_waiting_list_finishes_a_meeting_whose_audio_is_already_in_place()
+    {
+        Guid recorded;
+        string hash;
+        using (var recording = corpus.OpenMigrated())
+        {
+            var card = Killed(recording, seconds: 2);
+            recorded = card.MeetingId;
+
+            var spool = CorpusFiles.SpoolFolderFor(corpus.Root, recorded);
+            hash = FileAudioDirectly(recording, recorded, spool);
+
+            // What a rename that outran its commit leaves — the file is there and nothing names it.
+            recording.Artifacts.RemoveRange(
+                recording.Artifacts.Where(row => row.Kind == ArtifactKind.Audio));
+            recording.SaveChanges();
+        }
+
+        using var started = corpus.Open();
+        var waiting = WaitingRecordings.In(started);
+        waiting.Count.ShouldBe(1);
+        waiting[0].MeetingId.ShouldBe(recorded);
+        waiting[0].Unrecoverable.ShouldBeNull();
+
+        var finished = WaitingRecordings.Recover(started, waiting[0], openedAgainAt);
+        finished.Audio.Sha256.ShouldBe(hash);
+
+        using var reopened = corpus.Open();
+        reopened.Meetings.Single().Duration.ShouldBe(finished.Length);
         reopened.Artifacts.Count(artifact => artifact.Kind == ArtifactKind.Audio).ShouldBe(1);
         WaitingRecordings.In(reopened).ShouldBeEmpty();
     }
@@ -607,6 +644,31 @@ public sealed class WaitingRecordingsTests : IDisposable
         Fabricated.KilledMidBlock(BlockSpool.FileFor(prepared.Spool, AudioChannel.Microphone), inside: 700);
 
         return card;
+    }
+
+    /// <summary>
+    /// Files this meeting's audio directly — staged and committed without going through
+    /// <see cref="MeetingRecordings.Finish"/> or <see cref="WaitingRecordings.Recover"/> — the way
+    /// the two facts about a rename that outran its commit build the state it leaves: the
+    /// destination filed with the spool's own bytes. Returns the hash the row was given.
+    /// </summary>
+    private string FileAudioDirectly(CorpusDbContext context, Guid meetingId, DirectoryInfo spool)
+    {
+        var made = MeetingAudio.Materialise(spool);
+        var path = CorpusFiles.PathFor(meetingId, MeetingAudio.FileName);
+
+        using var staged = StagedArtifact.Stage(
+            context,
+            meetingId,
+            ArtifactKind.Audio,
+            path,
+            into =>
+            {
+                using var read = made.File.OpenRead();
+                read.CopyTo(into);
+            });
+
+        return staged.Commit(recordedAt).Sha256;
     }
 
     /// <summary>

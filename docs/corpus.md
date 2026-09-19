@@ -258,7 +258,11 @@ The two cannot be written together, so the order decides which one is wrong firs
 goes: the file lands, then the row. A corpus that says less than it holds is recovered by looking;
 one that says more is a corpus that lies when it is read. `ArtifactReconciler` is what looks —
 unfinished writes, which it may delete because they were never artifacts, and files with no row,
-which it never touches because one of them may be the only copy of something that was paid for.
+which it never touches because one of them may be the only copy of something that was paid for. A
+finish over a meeting's own audio is the one caller allowed past that: it has just produced the
+bytes it is claiming, so it may adopt the file standing at its destination once that file hashes to
+them, and it refuses loudly — leaving the file exactly as it was — when what is standing there
+hashes to anything else.
 
 ## The two files that live beside a destination
 

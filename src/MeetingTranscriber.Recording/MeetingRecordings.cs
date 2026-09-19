@@ -312,11 +312,14 @@ public static class MeetingRecordings
     /// work a stop is allowed to queue at all.
     /// </para>
     /// <para>
-    /// The audio lands in the meeting's folder through the corpus's own write, so the bytes and the
-    /// row describing them arrive together and the hash is of what was actually written. The copy
-    /// the engine makes beside the spools is left where it is: those blocks are still the only
-    /// recording of the meeting that exists independently of this write, and deciding what happens
-    /// to a spool is somebody's, never a side effect of stopping.
+    /// The audio lands in the meeting's folder through the corpus's own write, or — when a rename
+    /// already put it there and only the row was never written — is adopted from what is already
+    /// standing at that path once it hashes to what this finish just made. Either way the bytes and
+    /// the row describing them arrive together, and the row is never taken on trust: the hash is of
+    /// what was actually written, or of what was found to agree with it. The copy the engine makes
+    /// beside the spools is left where it is: those blocks are still the only recording of the
+    /// meeting that exists independently of this write, and deciding what happens to a spool is
+    /// somebody's, never a side effect of stopping.
     /// </para>
     /// <para>
     /// The row describing that audio and the meeting's length arrive in one commit, so no reader is
@@ -422,7 +425,35 @@ public static class MeetingRecordings
         var made = MeetingAudio.Materialise(spool);
         var path = CorpusFiles.PathFor(meeting.Id, MeetingAudio.FileName);
 
-        var filed = Filed(corpus, meeting.Id, path, made);
+        // The hash of what this finish materialised, taken once and shared: `Filed` needs it to
+        // confirm a row it already holds, and the standing-file check below needs it to confirm a
+        // file with no row. Two `Sha256Of` calls over one file would be two answers to one question,
+        // and both of the answers this method still needs are asked here — outside the corpus's
+        // write lock, for the reason the staging comment below gives.
+        var hash = CorpusFiles.Sha256Of(made.File);
+        var filed = Filed(corpus, meeting.Id, path, hash);
+
+        // Asked before `StagedArtifact.Stage`, and that ordering is the trap: `Stage` writes a
+        // `.partial` beside the destination and only finds out at `Refusals`/`Move` that an `Audio`
+        // may not be rewritten, so staging first would mean writing a whole meeting's audio to disk
+        // before refusing it. A `FileInfo` answers from when it was made, which is why this asks the
+        // disk again rather than trusting a listing taken earlier.
+        var standing = filed is null ? Standing(corpus, path) : null;
+        var standingHash = standing is null ? null : CorpusFiles.Sha256Of(standing);
+
+        // The other half of `Filed`'s question, asked of a file instead of a row: a destination this
+        // corpus has no row for and that does not hash to what this finish just made is refused here,
+        // loudly, before the transaction — a recording is never written over another one, whether
+        // what is standing there is a row or a file.
+        if (standing is not null
+            && !string.Equals(standingHash, hash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new RecordingException(
+                $"'{path}' is already there and is not the recording this finish made. The corpus "
+                + $"records nothing at that path, and what is standing there is {standingHash} "
+                + $"rather than {hash}. One of the two is not this meeting, and a recording is "
+                + "never written over another one.");
+        }
 
         // Staged outside the transaction, and only its commit is inside. Writing the copy, flushing
         // it to the disk, hashing what was meant and hashing what came back off a fresh handle are
@@ -432,7 +463,10 @@ public static class MeetingRecordings
         // of meeting would refuse every other writer in the application — somebody being named on
         // another meeting, a classification being filed, a job finishing — for as long as the copy
         // took. Staged outside, the lock is held for two saves.
-        using var staging = filed is null
+        //
+        // Three cases and not two: a row already there, a file already there with no row hashing to
+        // what this finish made, or neither — and only the third stages anything at all.
+        using var staging = filed is null && standing is null
             ? StagedArtifact.Stage(
                 corpus,
                 meeting.Id,
@@ -484,54 +518,52 @@ public static class MeetingRecordings
 
         Moved(corpus, meeting.Id, changed);
 
+        // A standing file with no row is adopted here — after `Moved` and before the save — so its
+        // row lands in the same `SaveChanges` and the same rollback as the length. Adopted after the
+        // save, the only save left would be the manifest's own incidental one, outside the
+        // transaction whose whole point is that the row and the length are one commit; adopted after
+        // a refusal that save then goes back over, `WaitingRecordings.In` would stop listing a
+        // meeting whose length never landed, and no later finish could ever reach it again.
+        var adopted = standing is not null
+            ? DurableArtifact.Adopt(
+                corpus, meeting.Id, ArtifactKind.Audio, path, standing.Length, standingHash!, now)
+            : null;
+
         corpus.SaveChanges();
 
         // The audio row is committed after the length and not before it — the reverse of the order
         // these two lines used to sit in, and the same order `MeetingArchive.Filed` writes in. This
-        // save is the one that renames `audio.wav` into
-        // place, and that is the only step in this method nothing can undo, so it goes last:
-        // everything that can still be refused for free has been asked and accepted before anything
-        // irreversible happens. A save that throws above this line rolls back over a folder nothing
-        // was moved into, the recording is still on the waiting list because the length went back to
-        // null, and the next attempt finishes cleanly.
+        // is nine lines about `staging!.Commit(now)` alone, and not a label for three sources: on
+        // the `filed` and `adopted` paths a row was already saved, above or a statement earlier, and
+        // nothing here is irreversible. `staging!.Commit(now)` is the one save in this method that
+        // renames `audio.wav` into place, and that is the only step here nothing can undo, so it
+        // goes last: everything that can still be refused for free has been asked and accepted
+        // before anything irreversible happens. A save that throws above this line rolls back over a
+        // folder nothing was moved into, the recording is still on the waiting list because the
+        // length went back to null, and the next attempt finishes cleanly.
         //
         // Written the other way round it would not be a preference but a trap:
         // `StagedArtifact.Refusals` asks about the destination file first and about the row only
         // when the file is gone, and an `ArtifactKind.Audio` is never rewritten — so a rollback
         // that took the row back out from under a file already renamed into place would leave a
         // meeting the application refuses to finish, every attempt answered with `AlreadyThere`,
-        // until somebody deletes that file.
+        // until this same finish adopted the file it left behind.
         // Nothing an outside reader can see tells the two orders apart, so what pins this is
         // `MeetingRecordingsTests.No_reader_is_ever_handed_a_meeting_recorded_with_no_length`
         // asserting that `audio.wav` is not yet on disk when the length is saved.
-        var audio = filed ?? staging!.Commit(now);
+        var audio = filed ?? adopted ?? staging!.Commit(now);
 
-        filing.Commit();
-
-        // After the commit and outside it, which is the answer `MeetingIntake.Record` already
-        // reached for a paid response and for the same reason — its own comment says a transaction
-        // over both "would have rolled the response's row back and left the file behind as something
-        // nothing may adopt". The card is a derivative the corpus writes again from the row just
-        // committed, so a refused card leaves a meeting that is recorded, has its length and plays,
-        // with one file `ArtifactReconciler.Check` names and a rebuild replaces. Inside, the same
-        // refusal would roll the audio row back over a file already renamed into place — the trap
-        // above — and the meeting could then never be finished without somebody deleting that file
-        // by hand. `MeetingArchive.Filed` is the one other place this order is written, for every
-        // door a meeting arrives through, and it reaches the same answer for the same reason.
-        //
-        // Not because of the length: the card carries the meeting, when it started, the profile, the
-        // language and the title, and says nothing about how long it is — which is what the sentence
-        // here used to claim.
-        MeetingManifest.Write(corpus, meeting.Id, now);
-
-        // After `filing.Commit()` and after the card, and that ordering is not a preference:
-        // `Finish` opens a bare transaction that refuses a caller holding one, and `MeetingWork`
-        // opens its own, so queueing inside this method's transaction would be the second
-        // `BeginTransaction` on a context already inside one. What that costs is stated in
-        // `WhatStoppingStarts`' own remarks and is the smaller of the two prices — a machine that
-        // dies in this gap leaves a meeting recorded, playable and un-queued, which is one press on
-        // its row; the other order leaves the audio row rolled back under a file already renamed
-        // into place, which nothing can repair.
+        // Inside the transaction and before `filing.Commit()`, so what a stop decided to queue moves
+        // with the audio rather than after it. `MeetingWork.On` works the stage out from the
+        // meeting's artifacts, and the meeting is `MeetingStage.Recorded` only once the `Audio` row
+        // exists — which is the line above — so this has to run after it: queued earlier,
+        // `TakeIfItIsOffered` answers null for every kind and nothing is ever queued, silently.
+        // `MeetingWork.TakeIfItIsOffered` now joins a transaction it finds already open rather than
+        // refusing it, which is what makes this safe: a machine that dies between the audio landing
+        // and the job row being written used to leave a meeting recorded, playable and un-queued;
+        // now the whole transaction goes back, and the price is a rollback over a file already
+        // renamed into place — payable only because the adopt path above recovers exactly that
+        // state on the next attempt.
         //
         // The clock is frozen at the instant this finish was asked about, so the row a stop writes
         // carries the moment the recording ended rather than the moment the write reached SQLite.
@@ -552,6 +584,24 @@ public static class MeetingRecordings
                 started.Add(kind);
             }
         }
+
+        filing.Commit();
+
+        // After the commit and outside it, which is the answer `MeetingIntake.Record` already
+        // reached for a paid response and for the same reason — its own comment says a transaction
+        // over both "would have rolled the response's row back and left the file behind as something
+        // nothing may adopt". The card is a derivative the corpus writes again from the row just
+        // committed, so a refused card leaves a meeting that is recorded, has its length and plays,
+        // with one file `ArtifactReconciler.Check` names and a rebuild replaces. Inside, the same
+        // refusal would roll the audio row back over a file already renamed into place — the trap
+        // above — and the meeting would need this same finish's own adopt path to reach it again.
+        // `MeetingArchive.Filed` is the one other place this order is written, for every door a
+        // meeting arrives through, and it reaches the same answer for the same reason.
+        //
+        // Not because of the length: the card carries the meeting, when it started, the profile, the
+        // language and the title, and says nothing about how long it is — which is what the sentence
+        // here used to claim.
+        MeetingManifest.Write(corpus, meeting.Id, now);
 
         return new FinishedRecording(meeting.Id, audio, made.Length, started);
     }
@@ -583,13 +633,13 @@ public static class MeetingRecordings
     /// It is no longer a recovery from a half-written corpus this method's own caller produces: the
     /// audio row and the length are one commit, and a rollback takes both. That is why
     /// <c>WaitingRecordingsTests.A_finish_that_was_cut_off_after_filing_the_audio_is_still_waiting_and_completes</c>
-    /// builds its state by hand. What it still does not answer for is a finish cut off between
-    /// <c>StagedArtifact.Move</c> renaming the file into place and the commit landing: there is no
-    /// row for this to find then, and the destination standing there is refused by the same rule.
-    /// That window is a rename, one save of one row and the <c>COMMIT</c>; it was the first two of
-    /// those before the length joined the commit; and closing it means letting a finish adopt a file
-    /// hashing to what it just made, which is a change to what the corpus may adopt with nobody
-    /// watching.
+    /// builds its state by hand. A finish cut off between <c>StagedArtifact.Move</c> renaming the
+    /// file into place and the commit landing used to be a window nothing here answered for: there
+    /// is no row for this to find then, and the destination standing there was refused by the same
+    /// rule that refuses a mismatched one, until the next attempt deleted the file by hand. That
+    /// window is closed by <see cref="Standing"/> below and <see cref="DurableArtifact.Adopt"/>,
+    /// which let a finish adopt a file hashing to what it just made — a change to what the corpus
+    /// may adopt with nobody watching, and the one this caller is trusted to make.
     /// </para>
     /// <para>
     /// Only when the bytes are the same, and the hash is what says so. The recording is read out of
@@ -598,7 +648,7 @@ public static class MeetingRecordings
     /// than reconciled — one of the two is a meeting nothing else would ever notice was wrong.
     /// </para>
     /// </remarks>
-    private static Artifact? Filed(CorpusDbContext corpus, Guid meetingId, string path, Materialised made)
+    private static Artifact? Filed(CorpusDbContext corpus, Guid meetingId, string path, string hash)
     {
         var filed = corpus.Artifacts.FirstOrDefault(
             row => row.MeetingId == meetingId
@@ -610,16 +660,30 @@ public static class MeetingRecordings
             return null;
         }
 
-        var hash = CorpusFiles.Sha256Of(made.File);
         if (!string.Equals(filed.Sha256, hash, StringComparison.OrdinalIgnoreCase))
         {
             throw new RecordingException(
-                $"Meeting {meetingId} already has its audio filed, and the recording in "
-                + $"'{made.File.Directory?.FullName}' does not hash to it. One of the two is not "
-                + "this meeting, and a recording is never written over another one.");
+                $"Meeting {meetingId} already has its audio filed, and the recording this finish "
+                + "just made does not hash to it. One of the two is not this meeting, and a "
+                + "recording is never written over another one.");
         }
 
         return filed;
+    }
+
+    /// <summary>The destination file, when it is on disk, and nothing when it is not.</summary>
+    /// <remarks>
+    /// Asked of the disk again rather than trusted from an earlier listing — a <see cref="FileInfo"/>
+    /// answers from when it was made, which is the trap <see cref="DurableArtifact"/>'s own remarks
+    /// name — and asked only when <see cref="Filed"/> found no row, which is the one case a file
+    /// standing here could be this finish's own adopt path completing something interrupted rather
+    /// than a defect.
+    /// </remarks>
+    private static FileInfo? Standing(CorpusDbContext corpus, string relativePath)
+    {
+        var file = CorpusFiles.Locate(corpus.Root, relativePath);
+        file.Refresh();
+        return file.Exists ? file : null;
     }
 
     /// <summary>

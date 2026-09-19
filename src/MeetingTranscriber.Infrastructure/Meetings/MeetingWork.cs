@@ -189,7 +189,14 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// <exception cref="MeetingStageException">There is no such meeting in this corpus.</exception>
     public ProcessingJob? TakeIfItIsOffered(Guid meetingId, JobKind kind)
     {
-        using var write = context.Database.BeginTransaction();
+        // Joins a transaction the caller is already holding rather than refusing it, which is the
+        // shape every other writer over this corpus spells: begin one only when the context is not
+        // already in one, and commit only the one this method began. A caller holding one gets its
+        // queueing inside it — a stop is the one caller today, and it is why the audio and the job
+        // row can land or roll back together — and a caller holding none gets exactly what it had.
+        using var write = context.Database.CurrentTransaction is null
+            ? context.Database.BeginTransaction()
+            : null;
 
         var owed = On(meetingId);
 
@@ -200,7 +207,7 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
 
         var job = Taken(meetingId, kind, Now);
         context.SaveChanges();
-        write.Commit();
+        write?.Commit();
 
         return job;
     }
@@ -244,10 +251,18 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// difference: a person pressing a stage that has moved under them is owed a sentence, and a
     /// stop that finds the work already there is owed silence.
     /// </para>
+    /// <para>
+    /// Joins a transaction the caller already holds rather than refusing it, for the reason
+    /// <see cref="TakeIfItIsOffered"/> gives. Both of this type's two callers today — a person
+    /// pressing a button, and a caller reading the answer back — hold none of their own, so this is
+    /// unobserved on either path; it is here so the two methods spell the one rule the same way.
+    /// </para>
     /// </remarks>
     private ProcessingJob Answer(Guid meetingId, bool decline)
     {
-        using var write = context.Database.BeginTransaction();
+        using var write = context.Database.CurrentTransaction is null
+            ? context.Database.BeginTransaction()
+            : null;
 
         var owed = On(meetingId);
         var allowed = decline ? owed.MayBeLeft : owed.MayBeTaken;
@@ -264,7 +279,7 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
         var now = Now;
         var job = decline ? Left(meetingId, kind, now) : Taken(meetingId, kind, now);
         context.SaveChanges();
-        write.Commit();
+        write?.Commit();
 
         return job;
     }

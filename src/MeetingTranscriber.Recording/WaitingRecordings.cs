@@ -434,12 +434,14 @@ public static class WaitingRecordings
     /// </para>
     /// <para>
     /// Finishing again from the same blocks is what puts that right, and it is allowed for every
-    /// state a commit can leave — the blocks are the recording and the file is read out of them, so
-    /// it produces the same bytes every time. The one state it is not allowed from is the moment
-    /// named above: a rename that outran its commit leaves <c>audio.wav</c> in the meeting's folder
-    /// with no row naming it, and every later finish is refused for writing over audio that is never
-    /// rewritten. This list keeps offering that recording and cannot complete it, and the way out is
-    /// somebody deleting that file — which the refusal says by name.
+    /// state a commit can leave, including the moment named above. A rename that outran its commit
+    /// leaves <c>audio.wav</c> in the meeting's folder with no row naming it, and the next finish
+    /// over the same recording adopts that file rather than refusing it — <c>MeetingRecordings.Standing</c>
+    /// finds it, and it is put under a row once it hashes to what this finish just made from the same
+    /// blocks. A file there that does not hash to that is refused loudly instead, because one of the
+    /// two is then not this meeting and a recording is never written over another one — that is the
+    /// one case this list still cannot complete, and it is a corruption to look at rather than a file
+    /// to delete by hand.
     /// </para>
     /// </remarks>
     private static bool StillWaiting(WaitingRecording recording) =>

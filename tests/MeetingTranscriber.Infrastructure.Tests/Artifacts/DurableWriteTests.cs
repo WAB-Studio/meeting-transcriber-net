@@ -189,6 +189,128 @@ public class DurableWriteTests
     }
 
     /// <summary>
+    /// A file already sitting where its name says it is gets a row rather than a write — the size
+    /// and the hash the caller already read, and never a byte read or written here.
+    /// </summary>
+    [Fact]
+    public void A_file_already_in_place_is_recorded_with_the_size_and_the_hash_it_was_given()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var path = CorpusFiles.PathFor(meeting, "audio.wav");
+        var file = CorpusFiles.Locate(corpus.Root, path);
+        file.Directory!.Create();
+        File.WriteAllBytes(file.FullName, [1, 2, 3, 4]);
+        var hash = CorpusFiles.Sha256Of(file);
+
+        var artifact = DurableArtifact.Adopt(
+            context, meeting, ArtifactKind.Audio, path, file.Length, hash, When);
+        context.SaveChanges();
+
+        artifact.RelativePath.ShouldBe(path);
+        artifact.Origin.ShouldBe(ArtifactOrigin.Source);
+        artifact.ByteSize.ShouldBe(4);
+        artifact.Sha256.ShouldBe(hash);
+        artifact.ConfirmedAt.ShouldBe(When);
+        File.ReadAllBytes(file.FullName).ShouldBe(new byte[] { 1, 2, 3, 4 });
+        EveryRowReReads(context);
+    }
+
+    /// <summary>
+    /// A kind the corpus may freely replace is never adopted: the safety argument for trusting a
+    /// caller's word about a file's bytes only holds for a kind never rewritten.
+    /// </summary>
+    [Fact]
+    public void A_kind_the_corpus_may_replace_is_not_adopted()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var path = CorpusFiles.PathFor(meeting, "manifest.json");
+        var file = CorpusFiles.Locate(corpus.Root, path);
+        file.Directory!.Create();
+        File.WriteAllBytes(file.FullName, [1, 2, 3, 4]);
+
+        Should.Throw<ArtifactWriteException>(() => DurableArtifact.Adopt(
+            context, meeting, ArtifactKind.Manifest, path, file.Length, CorpusFiles.Sha256Of(file), When));
+
+        context.Artifacts.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The existence check <see cref="DurableArtifact.Adopt"/> still owes the invariant: a row
+    /// naming a file that is not there is the one direction this whole type exists to refuse.
+    /// </summary>
+    [Fact]
+    public void A_file_that_is_not_there_is_not_adopted()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var path = CorpusFiles.PathFor(meeting, "audio.wav");
+
+        Should.Throw<ArtifactWriteException>(() => DurableArtifact.Adopt(
+            context, meeting, ArtifactKind.Audio, path, 4, new string('a', 64), When));
+
+        context.Artifacts.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A row already there means this is not an adoption, and the caller has asked the wrong
+    /// question rather than found a file with nothing naming it.
+    /// </summary>
+    [Fact]
+    public void A_path_the_corpus_already_has_a_row_for_is_not_adopted()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var path = CorpusFiles.PathFor(meeting, "audio.wav");
+
+        DurableArtifact.WriteText(context, meeting, ArtifactKind.Manifest, path, When, "first");
+
+        var file = CorpusFiles.Locate(corpus.Root, path);
+        Should.Throw<ArtifactWriteException>(() => DurableArtifact.Adopt(
+            context, meeting, ArtifactKind.Audio, path, file.Length, CorpusFiles.Sha256Of(file), When));
+
+        context.Artifacts.Count().ShouldBe(1);
+        context.Artifacts.Single().Kind.ShouldBe(ArtifactKind.Manifest);
+    }
+
+    /// <summary>
+    /// Adopting writes no row of its own: the row lands in whatever unit of work the caller is
+    /// holding, and a caller with none has to save it.
+    /// </summary>
+    /// <remarks>
+    /// Red with a <c>SaveChanges</c> inside <see cref="DurableArtifact.Adopt"/>, which is the
+    /// defect that would put the row outside a caller's own transaction — the one thing this method
+    /// exists to let a caller compose over.
+    /// </remarks>
+    [Fact]
+    public void Adopting_writes_no_row_of_its_own_until_the_caller_saves()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context);
+        var path = CorpusFiles.PathFor(meeting, "audio.wav");
+        var file = CorpusFiles.Locate(corpus.Root, path);
+        file.Directory!.Create();
+        File.WriteAllBytes(file.FullName, [9, 9]);
+
+        DurableArtifact.Adopt(
+            context, meeting, ArtifactKind.Audio, path, file.Length, CorpusFiles.Sha256Of(file), When);
+
+        using var reading = corpus.Open();
+        reading.Artifacts.ShouldBeEmpty();
+
+        context.SaveChanges();
+
+        using var reopened = corpus.Open();
+        reopened.Artifacts.ShouldHaveSingleItem();
+    }
+
+    /// <summary>
     /// Cut between step five and step six, which is the one the order was chosen for. The file is
     /// in place and the corpus has not recorded it — so the corpus says less than the truth, which
     /// is recoverable, instead of more, which is not.

@@ -809,6 +809,242 @@ public sealed class MeetingRecordingsTests : IDisposable
             .Exists.ShouldBeFalse();
     }
 
+    /// <summary>
+    /// The state a rename that outran its commit leaves — the destination filed, no row naming it —
+    /// is exactly what the next attempt adopts, rather than the finish nothing can ever complete
+    /// it left before.
+    /// </summary>
+    [Fact]
+    public void A_finish_cut_off_between_the_rename_and_the_commit_completes_on_the_next_attempt()
+    {
+        Guid recorded;
+        string path;
+        string hash;
+        using (var context = corpus.OpenMigrated())
+        {
+            using var prepared = MeetingRecordings.Open(context, "es", now);
+            recorded = prepared.MeetingId;
+            Fabricated.Spools(prepared.Spool, seconds: 2);
+
+            var card = Fabricated.CardFor(prepared.MeetingId, now);
+            SpoolManifest.Write(prepared.Spool, card);
+            MeetingRecordings.Began(context, card);
+
+            // What a rename that outran its commit leaves: the destination is there, filed with the
+            // bytes the spool holds, and nothing in the corpus names it. Built by staging and
+            // committing the file directly and then taking the row back, rather than by finishing
+            // and interrupting it, because an interrupted finish never reaches the step that would
+            // remove this meeting's own spool.
+            path = CorpusFiles.PathFor(prepared.MeetingId, MeetingAudio.FileName);
+            hash = FileAudioDirectly(context, prepared.MeetingId, prepared.Spool);
+
+            context.Artifacts.RemoveRange(context.Artifacts.Where(row => row.Kind == ArtifactKind.Audio));
+            context.SaveChanges();
+        }
+
+        using var reopened = corpus.Open();
+        var again = MeetingRecordings.Finish(reopened, recorded, now + Duration.FromSeconds(5));
+
+        again.Audio.Sha256.ShouldBe(hash);
+        again.Length.Milliseconds.ShouldBeInRange(1_950, 2_050);
+
+        using var checked_ = corpus.Open();
+        checked_.Meetings.Single().Duration.ShouldBe(again.Length);
+        checked_.Artifacts.Count(row => row.Kind == ArtifactKind.Audio).ShouldBe(1);
+
+        var written = CorpusFiles.Locate(corpus.Root, path);
+        CorpusFiles.Sha256Of(written).ShouldBe(hash);
+    }
+
+    /// <summary>
+    /// A destination this corpus has no row for is refused, loudly, when it does not hash to what
+    /// this finish just made — one of the two is not this meeting, and neither the row nor the file
+    /// is touched.
+    /// </summary>
+    [Fact]
+    public void A_file_standing_where_the_audio_goes_that_is_not_this_recording_is_refused()
+    {
+        using var context = corpus.OpenMigrated();
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
+
+        var card = Fabricated.CardFor(prepared.MeetingId, now);
+        SpoolManifest.Write(prepared.Spool, card);
+        MeetingRecordings.Began(context, card);
+
+        var path = CorpusFiles.PathFor(prepared.MeetingId, MeetingAudio.FileName);
+        var destination = CorpusFiles.Locate(corpus.Root, path);
+        destination.Directory!.Create();
+        File.WriteAllBytes(destination.FullName, [9, 9, 9, 9]);
+
+        Should.Throw<RecordingException>(
+            () => MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(2)));
+
+        using var reopened = corpus.Open();
+        reopened.Artifacts.Any(row => row.Kind == ArtifactKind.Audio).ShouldBeFalse();
+        reopened.Meetings.Single().Duration.ShouldBeNull();
+        File.ReadAllBytes(destination.FullName).ShouldBe(new byte[] { 9, 9, 9, 9 });
+    }
+
+    /// <summary>
+    /// A source guard, because the rule — nothing this finish hashes is hashed under the corpus's
+    /// write lock — is about a moment in the run and not a position in the file. It reads the text
+    /// between the one <c>BeginTransaction(</c> and the one <c>filing.Commit()</c> and refuses any
+    /// <c>Sha256Of(</c> standing in it, rather than asking whether every occurrence in the whole
+    /// file precedes the transaction — which would go red the moment a second hasher, declared the
+    /// way every other private helper in this file is declared, sits below <c>Finish</c> in the
+    /// source rather than above it.
+    /// </summary>
+    [Fact]
+    public void Nothing_this_finish_hashes_is_hashed_under_the_corpus_write_lock()
+    {
+        var code = SourceText.WithoutProse(
+            RepositoryTree.At("src/MeetingTranscriber.Recording/MeetingRecordings.cs"));
+
+        var begin = code.IndexOf("BeginTransaction(", StringComparison.Ordinal);
+        var commit = code.IndexOf("filing.Commit()", StringComparison.Ordinal);
+
+        begin.ShouldBeGreaterThanOrEqualTo(0);
+        commit.ShouldBeGreaterThan(begin);
+
+        code[begin..commit].ShouldNotContain(
+            "Sha256Of(",
+            customMessage:
+            "MeetingRecordings.cs hashes something between the one BeginTransaction( and the one "
+            + "filing.Commit() — everything this finish hashes has to be read outside the corpus's "
+            + "write lock, because an hour of two-channel audio is over a gigabyte and hashing it "
+            + "under the lock would refuse every other writer for as long as the disk took.");
+    }
+
+    /// <summary>
+    /// The row an adopted file gets and the length land in one save, so a card that cannot be
+    /// written afterwards leaves both rather than a length with no audio row under it.
+    /// </summary>
+    /// <remarks>
+    /// Green on the position this method commits the adopted row at only because the manifest's own
+    /// save produced neither — with the adopt moved past <c>filing.Commit()</c> this would be green
+    /// for the wrong reason, because the manifest's incidental save would have written the row.
+    /// </remarks>
+    [Fact]
+    public void The_length_and_the_audio_row_of_an_adopted_file_are_one_save()
+    {
+        using var context = corpus.OpenMigrated();
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
+
+        var card = Fabricated.CardFor(prepared.MeetingId, now);
+        SpoolManifest.Write(prepared.Spool, card);
+        MeetingRecordings.Began(context, card);
+
+        FileAudioDirectly(context, prepared.MeetingId, prepared.Spool);
+
+        context.Artifacts.RemoveRange(context.Artifacts.Where(row => row.Kind == ArtifactKind.Audio));
+        context.SaveChanges();
+
+        var manifest = CorpusFiles.Locate(
+            corpus.Root, CorpusFiles.PathFor(prepared.MeetingId, MeetingManifest.FileName));
+        manifest.Directory!.Create();
+        File.WriteAllText(manifest.FullName, "{}");
+
+        using var held = manifest.Open(new FileStreamOptions
+        {
+            Mode = FileMode.Open,
+            Access = FileAccess.Read,
+            Share = FileShare.None,
+        });
+
+        var refused = Should.Throw<Exception>(
+            () => MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(5)));
+
+        (refused is IOException or UnauthorizedAccessException).ShouldBeTrue(
+            $"the manifest write should refuse over a held file; it threw {refused.GetType()}");
+
+        held.Dispose();
+
+        using var reopened = corpus.Open();
+        var meeting = reopened.Meetings.Single();
+        meeting.Duration.ShouldNotBeNull();
+        reopened.Artifacts.Count(row => row.Kind == ArtifactKind.Audio).ShouldBe(1);
+    }
+
+    /// <summary>
+    /// O-20260916-13. A stop that could not write the job row it decided to queue leaves the whole
+    /// transaction rolled back — no audio row, no length — because the queueing now runs inside it.
+    /// The next attempt over the same blocks completes with the job queued.
+    /// </summary>
+    [Fact]
+    public void A_stop_that_could_not_write_its_job_row_leaves_no_meeting_recorded_and_un_queued()
+    {
+        Guid recorded;
+        using (var context = corpus.OpenMigrated())
+        {
+            new CorpusSettings(context).WhenARecordingEnds(AfterARecording.Transcribe, now);
+
+            using var prepared = MeetingRecordings.Open(context, "es", now);
+            recorded = prepared.MeetingId;
+            Fabricated.Spools(prepared.Spool, seconds: 2);
+
+            var card = Fabricated.CardFor(prepared.MeetingId, now);
+            SpoolManifest.Write(prepared.Spool, card);
+            MeetingRecordings.Began(context, card);
+
+            // Trips on the one save that writes the job row this finish decided to queue, and no
+            // other — the length and the audio row's saves must complete unhindered so what this
+            // proves is the queueing's own save rolling the whole transaction back with it.
+            context.SavingChanges += (_, _) =>
+            {
+                if (context.ChangeTracker.Entries<ProcessingJob>().Any(entry => entry.State == EntityState.Added))
+                {
+                    throw new InvalidOperationException("the job row could not be written");
+                }
+            };
+
+            Should.Throw<InvalidOperationException>(
+                () => MeetingRecordings.Finish(context, recorded, now + Duration.FromSeconds(2)));
+        }
+
+        using (var reopened = corpus.Open())
+        {
+            reopened.Meetings.Single().Duration.ShouldBeNull();
+            reopened.Artifacts.Any(row => row.Kind == ArtifactKind.Audio).ShouldBeFalse();
+            reopened.ProcessingJobs.ShouldBeEmpty();
+        }
+
+        using var retry = corpus.Open();
+        var again = MeetingRecordings.Finish(retry, recorded, now + Duration.FromSeconds(5));
+
+        again.Queued.ShouldBe([JobKind.Transcribe]);
+
+        using var final = corpus.Open();
+        final.ProcessingJobs.Single().Kind.ShouldBe(JobKind.Transcribe);
+    }
+
+    /// <summary>
+    /// Files this meeting's audio directly — staged and committed without going through
+    /// <see cref="MeetingRecordings.Finish"/> — the way several facts here build the state a rename
+    /// that outran its commit, or an adopted file, leaves: the destination filed with the spool's
+    /// own bytes, at <see cref="CorpusFiles.PathFor"/> a caller already knows. Returns the hash the
+    /// row was given, which is the file's own.
+    /// </summary>
+    private string FileAudioDirectly(CorpusDbContext context, Guid meetingId, DirectoryInfo spool)
+    {
+        var made = MeetingAudio.Materialise(spool);
+        var path = CorpusFiles.PathFor(meetingId, MeetingAudio.FileName);
+
+        using var staged = StagedArtifact.Stage(
+            context,
+            meetingId,
+            ArtifactKind.Audio,
+            path,
+            into =>
+            {
+                using var read = made.File.OpenRead();
+                read.CopyTo(into);
+            });
+
+        return staged.Commit(now).Sha256;
+    }
+
     public void Dispose() => corpus.Dispose();
 
     /// <summary>Takes the database away, leaving everything the corpus wrote to disk.</summary>
