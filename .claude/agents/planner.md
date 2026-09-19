@@ -105,8 +105,9 @@ Say nothing about how you found any of it. Size each card's section to the card.
 fill from `secondary` while there is room. What you do not take goes in `dropped`, unplanned, and
 the next pick finds it.
 
-**Know what you are filling.** `max_workers` workers run at once, each an `opus` with a million
-tokens of context. Size every share to that, and aim for shares that finish together.
+**Know what you are filling.** `max_workers` workers run at once, each a `sonnet`. Its context is
+what limits how wide a share may be. Size every share to that, and aim for shares that finish
+together.
 
 **Compute what a change closes before you give any path to anybody.** A consequence the build
 already knows about — a comment naming a symbol it deletes, a document describing a command it
@@ -131,7 +132,8 @@ The criteria are yours, and these hold whatever you choose:
   of one. A second wave opens what the wave before it wrote.
 - **A share is worth a worker, and no more than one.** Roughly a hundred non-comment lines is the
   floor; below that, fold it into the share it is nearest. The ceiling is what one worker can hold
-  and still prove: seventeen hundred non-comment lines has been carried once, and was near the top.
+  and still prove: around eight hundred and fifty non-comment lines has been carried, and was near
+  the top.
 - **A card is split only where its parts decide nothing in common.** Where what one part settles is
   not something the other part touches, split it and say so. Where both parts bear on one contract,
   one name, one convention, it stays whole, whatever that costs in balance.
