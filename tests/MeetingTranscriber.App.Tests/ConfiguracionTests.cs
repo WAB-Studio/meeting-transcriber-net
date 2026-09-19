@@ -82,8 +82,9 @@ public class ConfiguracionTests
 
         // The corpus is handed over once, the way every other sub-screen is given one: without it
         // the screen throws the moment it is drawn, because everything on it is an answer about
-        // this install.
-        window.ShouldContain("Settings.Open(corpus)");
+        // this install. The window id goes with it, which is what #148's folder picker needs and a
+        // UserControl has none of its own.
+        window.ShouldContain("Settings.Open(corpus, AppWindow.Id)");
 
         // And the way back, which is the other half of a sub-screen: it is reached from one place
         // and returns to it. The handler by name and not `Settings.Close()`, which the window also
@@ -96,5 +97,117 @@ public class ConfiguracionTests
         screen.ShouldContain("LanguageChosen?.Invoke(this, chosen)");
         window.ShouldContain("Settings.LanguageChosen += OnLanguageChosenInTheSettings");
         window.ShouldContain("LanguageChosen?.Invoke(this, language)");
+    }
+
+    /// <summary>
+    /// A folder chosen on the settings screen reaches the application, through the window, the
+    /// same three files the language wire above runs through.
+    /// </summary>
+    [Fact]
+    public void A_folder_chosen_on_the_settings_screen_reaches_the_application()
+    {
+        var window = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "MainWindow.xaml.cs")).FullName);
+
+        var app = File.ReadAllText(AppSources.At(Path.Combine("MeetingTranscriber.App", "App.xaml.cs")).FullName);
+
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        screen.ShouldContain("CorpusChosen?.Invoke(this, EventArgs.Empty)");
+        window.ShouldContain("Settings.CorpusChosen += OnCorpusChosenInTheSettings");
+        window.ShouldContain("CorpusChosen?.Invoke(this, EventArgs.Empty)");
+        app.ShouldContain("window.CorpusChosen += OnCorpusChosen");
+    }
+
+    /// <summary>
+    /// The press that changes the corpus folder is on the screen and says what the catalogue says.
+    /// </summary>
+    [Fact]
+    public void The_press_that_changes_the_corpus_folder_is_on_the_screen_and_says_what_the_catalogue_says()
+    {
+        var markup = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
+
+        markup.ShouldContain("x:Name=\"ChangeWhereItIsKept\"");
+        markup.ShouldContain("Click=\"OnChangeWhereItIsKept\"");
+        markup.ShouldContain("In(loc:UiTexts.ChangeWhereItIsKept)");
+    }
+
+    /// <summary>
+    /// The press that changes the corpus folder is drawn only when the corpus was refused, which
+    /// is the one state it exists to answer.
+    /// </summary>
+    [Fact]
+    public void The_press_that_changes_the_corpus_folder_is_drawn_only_when_the_corpus_was_refused()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        screen.ShouldContain("ChangeWhereItIsKept.Visibility = Corpus().Refusal is null");
+    }
+
+    /// <summary>
+    /// The folder picker this screen opens is the Windows App SDK one, which does not need a window
+    /// handle the older <c>Windows.Storage.Pickers.FolderPicker</c> would.
+    /// </summary>
+    [Fact]
+    public void The_folder_picker_is_the_one_that_does_not_need_a_window_handle()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        screen.ShouldContain("using Microsoft.Windows.Storage.Pickers;");
+
+        // The naive substring check is red over a correct build: "Windows.Storage.Pickers" is
+        // itself a substring of "Microsoft.Windows.Storage.Pickers". What is checked instead is the
+        // `using` that would bring the older picker in, which this screen must never carry.
+        screen.ShouldNotContain("using Windows.Storage.Pickers;");
+    }
+
+    /// <summary>
+    /// Nothing escapes the press that opens a folder picker, because the handler is <c>async void</c>
+    /// and anything that leaves one is the application going away.
+    /// </summary>
+    /// <remarks>
+    /// The picker itself is a call into Windows and not this application's own write, so it is
+    /// guarded by a bare <c>catch</c> of its own rather than by widening
+    /// <c>ScreenFailures.Reportable</c> — that list has one owner, and a picker's refusal is not a
+    /// thing every screen should report. Writing the chosen folder into the setting is this
+    /// application's own file write and is caught separately, through that same list unwidened,
+    /// which the assertion below does not have to see to know the picker's own catch is not built
+    /// by widening it: it names the filter written beside it instead.
+    /// </remarks>
+    [Fact]
+    public void Nothing_escapes_the_press_that_opens_a_folder_picker()
+    {
+        var handler = Handler("private async void OnChangeWhereItIsKept(");
+
+        handler.ShouldContain(
+            "catch (Exception failedToOpen) when (failedToOpen is not OutOfMemoryException)");
+    }
+
+    /// <summary>
+    /// The handler's own body, from its signature to the closing brace that balances it, so a
+    /// negative assertion over it says nothing about the rest of the screen.
+    /// </summary>
+    private static string Handler(string signature)
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        var start = screen.IndexOf(signature, StringComparison.Ordinal);
+        start.ShouldBeGreaterThanOrEqualTo(0, $"{Screen} no longer has '{signature}'.");
+
+        var opens = screen.IndexOf('{', start);
+        var depth = 0;
+        for (var at = opens; at < screen.Length; at++)
+        {
+            if (screen[at] == '{')
+            {
+                depth++;
+            }
+            else if (screen[at] == '}' && --depth == 0)
+            {
+                return screen[start..(at + 1)];
+            }
+        }
+
+        throw new InvalidOperationException($"'{signature}' in {Screen} never closes.");
     }
 }

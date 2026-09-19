@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 
 namespace MeetingTranscriber.Mcp.Tests;
@@ -116,8 +115,8 @@ public class ReadOnlyTests
     /// </summary>
     private static IReadOnlyList<string> Naming(string pattern)
     {
-        var project = new DirectoryInfo(Path.GetFullPath(Path.Combine(
-            Path.GetDirectoryName(Here())!, "..", "..", "src", "MeetingTranscriber.Mcp")));
+        var project = new DirectoryInfo(
+            Path.Combine(RepositoryTree.Src.FullName, "MeetingTranscriber.Mcp"));
 
         project.Exists.ShouldBeTrue(
             $"'{project.FullName}' is the project these sweeps are about, and a sweep over a folder "
@@ -137,9 +136,4 @@ public class ReadOnlyTests
     private static bool Inside(FileInfo file, string folder) => file.FullName.Contains(
         $"{Path.DirectorySeparatorChar}{folder}{Path.DirectorySeparatorChar}",
         StringComparison.Ordinal);
-
-    // The repository root gains one owner this batch, tests/MeetingTranscriber.Testing/RepositoryTree,
-    // built on another share's branch of the same batch. Folding this copy onto it is owed rather
-    // than done: that type is not on this branch.
-    private static string Here([CallerFilePath] string file = "") => file;
 }

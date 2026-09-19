@@ -235,9 +235,10 @@ public sealed partial class MainWindow : Window
         // it rather than answered there: which language the application is read in is the
         // application's answer and this window is what carries it outward, so the screen that
         // offers the picker says somebody chose and nothing more.
-        Settings.Open(corpus);
+        Settings.Open(corpus, AppWindow.Id);
         Settings.Left += OnLeftTheSettings;
         Settings.LanguageChosen += OnLanguageChosenInTheSettings;
+        Settings.CorpusChosen += OnCorpusChosenInTheSettings;
 
         // Read off the drawer once here as well as on every move, so which position the screen
         // opens in is the drawer's answer rather than two defaults that happen to agree.
@@ -283,6 +284,14 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Somebody asked for the packaging checks, which are a window of their own.</summary>
     public event EventHandler? PackagingChecksAsked;
+
+    /// <summary>
+    /// The corpus setting was changed to a folder somebody named, on the settings screen. What is
+    /// done about it is not this window's: it is raised on up through the application, which is
+    /// what owns that answer and what replaces this window over it. No folder rides with it, for
+    /// the reason <see cref="Configuracion.CorpusChosen"/>'s own remarks give.
+    /// </summary>
+    public event EventHandler? CorpusChosen;
 
     /// <summary>
     /// Reads the whole window in this language: what the XAML bound, the title, the pickers, what
@@ -916,7 +925,7 @@ public sealed partial class MainWindow : Window
         switch (state)
         {
             case RecorderState.WithoutACorpus:
-                Status(UiTexts.ChoosingAnotherFolderIsNotHereYet);
+                Status(UiTexts.ChangeWhereTheCorpusIsFromSettings);
                 break;
             case RecorderState.Choosing:
                 Status(UiTexts.ReadyToRecord);
@@ -1583,6 +1592,14 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void OnLanguageChosenInTheSettings(object? sender, UiLanguage language) =>
         LanguageChosen?.Invoke(this, language);
+
+    /// <summary>
+    /// The corpus setting was changed on the settings screen. It is raised on rather than answered
+    /// here: which corpus this application is open on is the application's answer, and this window
+    /// is what carries it outward.
+    /// </summary>
+    private void OnCorpusChosenInTheSettings(object? sender, EventArgs e) =>
+        CorpusChosen?.Invoke(this, EventArgs.Empty);
 
     private void OnOpenPackagingChecks(object sender, RoutedEventArgs e) =>
         PackagingChecksAsked?.Invoke(this, EventArgs.Empty);
