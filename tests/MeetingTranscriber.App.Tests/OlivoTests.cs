@@ -288,6 +288,48 @@ public partial class OlivoTests
         .SelectMany(child => child.Name.LocalName == "Style.Setters" ? child.Elements() : [child])
         .Where(child => child.Name.LocalName == "Setter");
 
+    /// <summary>The dictionary's own <c>Style</c>, found by its <c>x:Key</c>.</summary>
+    private static XElement StyleNamed(string key) => Olivo()
+        .Descendants()
+        .Where(element => element.Name.LocalName == "Style")
+        .SingleOrDefault(element => (string?)element.Attribute(XName.Get("Key", X)) == key)
+        ?? throw new InvalidOperationException($"Olivo.xaml declares no style x:Key=\"{key}\".");
+
+    /// <summary>
+    /// A pill you press is the shape of a pill: every property <c>Pill</c> sets and
+    /// <c>PillButton</c> also sets carries the same value in both.
+    /// </summary>
+    /// <remarks>
+    /// The comment above <c>PillButton</c> in <c>Olivo.xaml</c> states a rule the markup itself
+    /// cannot enforce — a <c>Setter.Value</c> is not shared between two styles of different
+    /// <c>TargetType</c> — so the values are copied by hand and nothing before this tied them.
+    /// <c>ShouldNotBeEmpty</c> over the compared properties is the mutation that matters: an empty
+    /// intersection is a green check over an unchecked rule, whether from an <c>x:Key</c> renamed
+    /// or a style's setters emptied.
+    /// </remarks>
+    [Fact]
+    public void A_pill_you_press_is_the_shape_of_a_pill()
+    {
+        var pill = SettersOf(StyleNamed("Pill")).ToDictionary(
+            setter => (string?)setter.Attribute("Property") ?? string.Empty,
+            ValueOf,
+            StringComparer.Ordinal);
+
+        var pillButton = SettersOf(StyleNamed("PillButton")).ToDictionary(
+            setter => (string?)setter.Attribute("Property") ?? string.Empty,
+            ValueOf,
+            StringComparer.Ordinal);
+
+        var shared = pill.Keys.Intersect(pillButton.Keys, StringComparer.Ordinal).ToArray();
+
+        shared.ShouldNotBeEmpty();
+
+        foreach (var property in shared)
+        {
+            pillButton[property].ShouldBe(pill[property], property);
+        }
+    }
+
     /// <summary>
     /// Every shape <see cref="FadedIn"/> has to tell apart. The second row is the one that fails on
     /// <c>main</c> as this card was written: the check it holds had never run.
