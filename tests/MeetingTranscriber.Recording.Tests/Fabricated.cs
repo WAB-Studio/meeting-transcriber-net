@@ -1,8 +1,11 @@
 ﻿using System.Buffers.Binary;
 
 using MeetingTranscriber.Audio;
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Artifacts;
+using MeetingTranscriber.Infrastructure.Storage;
 
 namespace MeetingTranscriber.Recording.Tests;
 
@@ -98,6 +101,34 @@ internal static class Fabricated
 
         using var file = spool.Open(FileMode.Open, FileAccess.Write, FileShare.None);
         file.Write(new byte[8]);
+    }
+
+    /// <summary>
+    /// Files this meeting's audio directly — staged and committed without going through
+    /// <see cref="MeetingRecordings.Finish"/> or <see cref="WaitingRecordings.Recover"/> — the way
+    /// several facts across this assembly build the state a rename that outran its commit, or an
+    /// adopted file, leaves: the destination filed with the spool's own bytes, at
+    /// <see cref="CorpusFiles.PathFor"/> a caller already knows. Returns the hash the row was
+    /// given, which is the file's own.
+    /// </summary>
+    internal static string FileAudioDirectly(
+        CorpusDbContext context, Guid meetingId, DirectoryInfo spool, UtcTimestamp now)
+    {
+        var made = MeetingAudio.Materialise(spool);
+        var path = CorpusFiles.PathFor(meetingId, MeetingAudio.FileName);
+
+        using var staged = StagedArtifact.Stage(
+            context,
+            meetingId,
+            ArtifactKind.Audio,
+            path,
+            into =>
+            {
+                using var read = made.File.OpenRead();
+                read.CopyTo(into);
+            });
+
+        return staged.Commit(now).Sha256;
     }
 
     /// <summary>The blocks a device would hand over across that many seconds.</summary>

@@ -297,7 +297,7 @@ public sealed class WaitingRecordingsTests : IDisposable
             // rather than by recovering and reverting, because a recovery that actually completed
             // would take the spool with it, and this state needs the spool still there for the
             // recovery under test to read.
-            FileAudioDirectly(recording, recorded, CorpusFiles.SpoolFolderFor(corpus.Root, recorded));
+            Fabricated.FileAudioDirectly(recording, recorded, CorpusFiles.SpoolFolderFor(corpus.Root, recorded), recordedAt);
         }
 
         using var started = corpus.Open();
@@ -337,7 +337,7 @@ public sealed class WaitingRecordingsTests : IDisposable
             recorded = card.MeetingId;
 
             var spool = CorpusFiles.SpoolFolderFor(corpus.Root, recorded);
-            hash = FileAudioDirectly(recording, recorded, spool);
+            hash = Fabricated.FileAudioDirectly(recording, recorded, spool, recordedAt);
 
             // What a rename that outran its commit leaves — the file is there and nothing names it.
             recording.Artifacts.RemoveRange(
@@ -671,31 +671,6 @@ public sealed class WaitingRecordingsTests : IDisposable
         Fabricated.KilledMidBlock(BlockSpool.FileFor(prepared.Spool, AudioChannel.Microphone), inside: 700);
 
         return card;
-    }
-
-    /// <summary>
-    /// Files this meeting's audio directly — staged and committed without going through
-    /// <see cref="MeetingRecordings.Finish"/> or <see cref="WaitingRecordings.Recover"/> — the way
-    /// the two facts about a rename that outran its commit build the state it leaves: the
-    /// destination filed with the spool's own bytes. Returns the hash the row was given.
-    /// </summary>
-    private string FileAudioDirectly(CorpusDbContext context, Guid meetingId, DirectoryInfo spool)
-    {
-        var made = MeetingAudio.Materialise(spool);
-        var path = CorpusFiles.PathFor(meetingId, MeetingAudio.FileName);
-
-        using var staged = StagedArtifact.Stage(
-            context,
-            meetingId,
-            ArtifactKind.Audio,
-            path,
-            into =>
-            {
-                using var read = made.File.OpenRead();
-                read.CopyTo(into);
-            });
-
-        return staged.Commit(recordedAt).Sha256;
     }
 
     /// <summary>

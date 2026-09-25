@@ -210,16 +210,10 @@ public class DeepgramKeyTests : IDisposable
 
         return
         [
-            .. src
-                .EnumerateFiles("*.cs", SearchOption.AllDirectories)
-                .Where(file => !Inside(file, "obj") && !Inside(file, "bin"))
+            .. RepositoryTree.SourceUnder(src)
                 .Where(file => Regex.IsMatch(File.ReadAllText(file.FullName), pattern))
                 .Select(file => file.FullName[(src.FullName.Length + 1)..])
                 .Order(StringComparer.Ordinal),
         ];
     }
-
-    private static bool Inside(FileInfo file, string folder) => file.FullName.Contains(
-        $"{Path.DirectorySeparatorChar}{folder}{Path.DirectorySeparatorChar}",
-        StringComparison.Ordinal);
 }

@@ -263,7 +263,7 @@ public partial class NothingUnderTestReachesTheNetworkTests
     /// direction is a start this never sees.
     /// </remarks>
     [GeneratedRegex(@"\bProcessStartInfo\b|\bProcess\.Start\b|\bnew\s+Process\b")]
-    private static partial Regex Starts();
+    internal static partial Regex Starts();
 
     /// <summary>
     /// A line that is all comment, which is the whole of what is taken out. It matches from the
@@ -272,7 +272,7 @@ public partial class NothingUnderTestReachesTheNetworkTests
     /// remarks on this class give.
     /// </summary>
     [GeneratedRegex(@"^[ \t]*(//|/\*|\*).*$", RegexOptions.Multiline)]
-    private static partial Regex Comment();
+    internal static partial Regex Comment();
 
     /// <summary>
     /// One of the forbidden names, matched as a whole word and with case: <c>\bSocket\b</c> does not
@@ -319,7 +319,7 @@ public partial class NothingUnderTestReachesTheNetworkTests
         return read;
     }
 
-    private static bool Built(FileInfo file) =>
+    internal static bool Built(FileInfo file) =>
         file.FullName.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
         || file.FullName.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
 
