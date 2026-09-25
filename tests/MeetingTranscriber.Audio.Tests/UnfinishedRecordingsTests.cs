@@ -1416,11 +1416,11 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
         }
     }
 
-    /// <summary>Every source file of the product, which is what the sweeps are over.</summary>
-    private static IEnumerable<FileInfo> Sources() => Tree()
-        .EnumerateFiles("*.cs", SearchOption.AllDirectories)
-        .Where(file => !file.FullName.Contains(
-            $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal));
+    /// <summary>
+    /// Every source file of the product, which is what the sweeps are over. The walk now skips
+    /// <c>bin</c> as well as <c>obj</c>, which no build output was ever meant to be read through.
+    /// </summary>
+    private static IReadOnlyList<FileInfo> Sources() => RepositoryTree.SourceUnder(Tree());
 
     private const string DirectoryDelete = "Directory.Delete";
     private const string DirectoryMove = "Directory.Move";

@@ -836,7 +836,7 @@ public sealed class MeetingRecordingsTests : IDisposable
             // and interrupting it, because an interrupted finish never reaches the step that would
             // remove this meeting's own spool.
             path = CorpusFiles.PathFor(prepared.MeetingId, MeetingAudio.FileName);
-            hash = FileAudioDirectly(context, prepared.MeetingId, prepared.Spool);
+            hash = Fabricated.FileAudioDirectly(context, prepared.MeetingId, prepared.Spool, now);
 
             context.Artifacts.RemoveRange(context.Artifacts.Where(row => row.Kind == ArtifactKind.Audio));
             context.SaveChanges();
@@ -936,7 +936,7 @@ public sealed class MeetingRecordingsTests : IDisposable
         SpoolManifest.Write(prepared.Spool, card);
         MeetingRecordings.Began(context, card);
 
-        FileAudioDirectly(context, prepared.MeetingId, prepared.Spool);
+        Fabricated.FileAudioDirectly(context, prepared.MeetingId, prepared.Spool, now);
 
         context.Artifacts.RemoveRange(context.Artifacts.Where(row => row.Kind == ArtifactKind.Audio));
         context.SaveChanges();
@@ -1068,7 +1068,7 @@ public sealed class MeetingRecordingsTests : IDisposable
         using var context = corpus.OpenMigrated();
         var spool = Recorded(context, out var meetingId, seconds: 2);
         var path = CorpusFiles.PathFor(meetingId, MeetingAudio.FileName);
-        FileAudioDirectly(context, meetingId, spool);
+        Fabricated.FileAudioDirectly(context, meetingId, spool, now);
 
         CorpusFiles.Locate(corpus.Root, path).Delete();
 
@@ -1159,32 +1159,6 @@ public sealed class MeetingRecordingsTests : IDisposable
 
         meetingId = id;
         return spool;
-    }
-
-    /// <summary>
-    /// Files this meeting's audio directly — staged and committed without going through
-    /// <see cref="MeetingRecordings.Finish"/> — the way several facts here build the state a rename
-    /// that outran its commit, or an adopted file, leaves: the destination filed with the spool's
-    /// own bytes, at <see cref="CorpusFiles.PathFor"/> a caller already knows. Returns the hash the
-    /// row was given, which is the file's own.
-    /// </summary>
-    private string FileAudioDirectly(CorpusDbContext context, Guid meetingId, DirectoryInfo spool)
-    {
-        var made = MeetingAudio.Materialise(spool);
-        var path = CorpusFiles.PathFor(meetingId, MeetingAudio.FileName);
-
-        using var staged = StagedArtifact.Stage(
-            context,
-            meetingId,
-            ArtifactKind.Audio,
-            path,
-            into =>
-            {
-                using var read = made.File.OpenRead();
-                read.CopyTo(into);
-            });
-
-        return staged.Commit(now).Sha256;
     }
 
     public void Dispose() => corpus.Dispose();
