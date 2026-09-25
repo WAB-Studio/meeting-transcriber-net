@@ -220,11 +220,19 @@ public static class CorpusFiles
     /// volume and unique to this write.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Beside it because a rename is only atomic within a volume and the corpus is wherever the
     /// user put it; unique because two writes to one destination must not meet in the temporary
     /// they were each about to move from.
+    /// </para>
+    /// <para>
+    /// Public because a paid response arrives through one too: <c>TranscribingAMeeting</c> writes
+    /// what the provider sends back into one of these and files it through <c>MeetingIntake</c>,
+    /// holding it from the first byte until it is filed or kept, so a sweep never takes one and a
+    /// call cut off part-way leaves a name a sweep is already right about.
+    /// </para>
     /// </remarks>
-    internal static FileInfo UnfinishedBeside(FileInfo destination) =>
+    public static FileInfo UnfinishedBeside(FileInfo destination) =>
         Beside(destination, UnfinishedSuffix);
 
     /// <summary>

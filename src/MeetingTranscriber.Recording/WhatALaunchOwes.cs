@@ -1,3 +1,4 @@
+using MeetingTranscriber.Processing.Jobs;
 using MeetingTranscriber.Processing.Rendering;
 
 namespace MeetingTranscriber.Recording;
@@ -50,7 +51,15 @@ public sealed record LaunchDone(IReadOnlyList<string> Ran, IReadOnlyList<string>
 /// it, and that is <see cref="MeetingsNobodyRecorded"/>'s to change, not this list's.
 /// </para>
 /// <para>
-/// <b>The sweep is first and the renders wait behind it.</b> Both orders are correct; this one is
+/// <b>The restart's jobs are first.</b> <see cref="JobsARestartFound"/> is bounded by what a crash
+/// left behind rather than by the disk, so it costs nothing to run before either sweep. It has to
+/// run before anything reads the meetings list: a job it has not yet settled is a meeting a screen
+/// would read as still being sent when the process that was sending it is gone. And it stops nothing
+/// a live instance of this application is running — <see cref="RunnerLease"/> is what tells the two
+/// apart.
+/// </para>
+/// <para>
+/// <b>The sweep is ahead of the renders.</b> Both orders are correct; this one is
 /// better twice over. A phantom meeting is visible in the meetings list — which
 /// <see cref="MeetingsWatch"/> re-reads every two seconds — for the length of a sweep rather than
 /// for the length of a whole catch-up, which on a corpus with a backlog is many meetings' worth of
@@ -73,18 +82,20 @@ public sealed record LaunchDone(IReadOnlyList<string> Ran, IReadOnlyList<string>
 /// the launch it would rescue is one the next launch does over anyway.
 /// </para>
 /// <para>
-/// <b>What a third chore inherits.</b> It goes in <see cref="InOrder"/>, after the two above, and
-/// that is the whole of what adding one means: it runs alone, on the calling thread, and it does
-/// not have to absorb what it throws because <see cref="RunIn(DirectoryInfo, IReadOnlyList{LaunchChore})"/>
-/// does that for it. Its own report reaches <see cref="LaunchDone.Left"/> with its name on it
-/// without it arranging anything. Nobody adding one has to reason about the two already there.
+/// <b>What a third chore inherits.</b> It goes in <see cref="InOrder"/>, at whichever position lets
+/// it pay for what the cost of the chores in front of it settles first — the restart's sweep above
+/// is not last for exactly this reason — and that is the whole of what adding one means: it runs
+/// alone, on the calling thread, and it does not have to absorb what it throws because
+/// <see cref="RunIn(DirectoryInfo, IReadOnlyList{LaunchChore})"/> does that for it. Its own report
+/// reaches <see cref="LaunchDone.Left"/> with its name on it without it arranging anything. Nobody
+/// adding one has to reason about the ones already there.
 /// </para>
 /// <para>
 /// <b>The report is built and nobody reads it yet.</b> The one caller drops the
 /// <see cref="LaunchDone"/>, exactly as it already dropped the <see cref="MeetingsSwept"/> and the
 /// <see cref="RendersCaughtUp"/> — why nobody is told is argued on <see cref="OwedRenders"/> and on
 /// <see cref="MeetingsNobodyRecorded"/>, and is not re-argued here. What building it buys today is
-/// that the tests below are its reader, and that every line either chore was already producing
+/// that the tests below are its reader, and that every line a chore was already producing
 /// arrives in one list under the name of the chore that produced it.
 /// </para>
 /// <para>
@@ -93,28 +104,35 @@ public sealed record LaunchDone(IReadOnlyList<string> Ran, IReadOnlyList<string>
 /// capture is holding is a decline, which a healthy launch produces every time somebody is
 /// recording, and a response the parser can never read is a failure. Only the chore's name tells
 /// them apart. A line on the window driven straight off this list would say something went wrong on
-/// an ordinary launch. Telling the two apart is the screen decision both chores already record as
-/// owed, and whoever takes it splits this list — one place to split, rather than two lists to find.
+/// an ordinary launch. Telling the two apart is the screen decision every chore that reports one
+/// already records as owed, and whoever takes it splits this list — one place to split, rather than
+/// two lists to find.
 /// </para>
 /// <para>
 /// Synchronous, on the caller's thread, and it starts nothing. Which thread this goes on is the
 /// application's decision and stays there, the same split <c>docs/layout.md</c> already states for
 /// the renders: the rule lives where a build agent runs it, and what the application holds is the
-/// call and the thread it goes on.
+/// call and the thread it goes on. <c>JobRunner</c> is not one of these chores: the application
+/// starts its pump after this list returns, on the same thread that ran it.
 /// </para>
 /// </remarks>
 public static class WhatALaunchOwes
 {
     /// <summary>
     /// What a launch owes the corpus, in the order it is owed. The order is the point: see the
-    /// class remarks for why the sweep is first and what that costs.
+    /// class remarks for why the restart's jobs are first, why the sweep comes ahead of the
+    /// renders, and what each costs.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Both names are report strings and neither reaches a screen, so they are written here rather
-    /// than in the catalogue a person reads. If a launch report is ever said out loud, that is the
-    /// decision <see cref="OwedRenders"/> and <see cref="MeetingsNobodyRecorded"/> already record
-    /// as owed, and it needs words in the catalogue rather than these.
+    /// All three names are report strings and none reaches a screen, so they are written here
+    /// rather than in the catalogue a person reads. If a launch report is ever said out loud, that
+    /// is the decision <see cref="OwedRenders"/> and <see cref="MeetingsNobodyRecorded"/> already
+    /// record as owed, and it needs words in the catalogue rather than these.
+    /// </para>
+    /// <para>
+    /// <b>The restart's jobs.</b> Ahead of both sweeps, for the reason the class remarks give: the
+    /// meetings list depends on it being settled, and it costs nothing to run first.
     /// </para>
     /// <para>
     /// <b>The sweep.</b> At launch, because a start is where the folders left by every press before
@@ -130,15 +148,18 @@ public static class WhatALaunchOwes
     /// <para>
     /// <b>The renders.</b> Here, and not on the meetings screen opening. The response arriving is
     /// what puts a meeting in this state, and launch is where the application learns of one that
-    /// arrived while it was closed — today it is the only place it can learn of one at all, because
-    /// nothing in this application runs a transcription: taking a stage queues a job and starts
-    /// nothing, so there is no completion to hang this off yet. Hanging it on the screen instead
-    /// would tie the work to how often somebody looks at a list, which is not what decides the
-    /// files.
+    /// arrived while it was closed. <c>JobRunner</c> files what it sends through <c>MeetingIntake</c>,
+    /// which renders on the way in — but filing and rendering are not one write, so a call whose
+    /// response was filed and whose render then failed leaves exactly the state this chore has
+    /// always existed to find. Hanging it on the screen instead would tie the work to how often
+    /// somebody looks at a list, which is not what decides the files.
     /// </para>
     /// </remarks>
     public static IReadOnlyList<LaunchChore> InOrder { get; } =
     [
+        new LaunchChore(
+            "the jobs a restart found running",
+            root => JobsARestartFound.In(root).Left),
         new LaunchChore(
             "the meetings nobody recorded",
             root => MeetingsNobodyRecorded.SweepIn(root).Left),
@@ -163,22 +184,22 @@ public static class WhatALaunchOwes
     /// The one-argument overload above is what a launch calls, and <see cref="InOrder"/> is what it
     /// runs; nothing in the product passes its own list. What passing one buys is a chore that can
     /// be made to throw, to hang on to a thread id, or to report a line on demand — none of which
-    /// either real chore will do — so the order, the one-at-a-time and the boundary below are held
+    /// any real chore will do — so the order, the one-at-a-time and the boundary below are held
     /// by tests rather than asserted in prose. There is no <c>InternalsVisibleTo</c> in this
     /// repository, so the seam is public or it does not exist.
     /// </para>
     /// <para>
     /// A chore that threw does not stop the ones behind it, and its message lands in
-    /// <see cref="LaunchDone.Left"/> under its name instead. Said honestly: neither chore in
-    /// <see cref="InOrder"/> can reach this <c>catch</c> — both already absorb everything but
+    /// <see cref="LaunchDone.Left"/> under its name instead. Said honestly: no chore in
+    /// <see cref="InOrder"/> can reach this <c>catch</c>, because all three absorb everything but
     /// running out of memory past their argument checks — so what it is for is a defect in one of
-    /// them and, mostly, a third chore that does not exist yet and does not have to argue the
-    /// boundary for itself. That is inherited machinery, not a defence against anything the two
+    /// them and, mostly, a fourth chore that does not exist yet and does not have to argue the
+    /// boundary for itself. That is inherited machinery, not a defence against anything the three
     /// real chores do today.
     /// </para>
     /// <para>
-    /// Running out of memory is the exception that leaves, which is the same closed exclusion both
-    /// existing chores state for themselves: attempting the rest of a launch under the pressure
+    /// Running out of memory is the exception that leaves, which is the same closed exclusion all
+    /// three existing chores state for themselves: attempting the rest of a launch under the pressure
     /// that just refused one is building the next attempt out of the same exhaustion. What that
     /// buys is precisely the chores behind it not being attempted — it is not a way of ending the
     /// application, because the one caller discards the task and nobody observes what escapes.

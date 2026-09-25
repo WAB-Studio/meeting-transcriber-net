@@ -69,9 +69,26 @@ internal sealed class FakeDeepgram : HttpMessageHandler
     internal static FakeDeepgram AnsweringWith(HttpStatusCode status, string body) => new(
         (_, _) => Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body) }));
 
-    /// <summary>Does not answer at all, the way a machine with no route out does not.</summary>
-    internal static FakeDeepgram Unreachable() => new(
-        (_, _) => throw new HttpRequestException("No such host is known."));
+    /// <summary>
+    /// The connection fails with nothing on it saying whether one was ever made.
+    /// </summary>
+    internal static FakeDeepgram ConnectionFailing() => new(
+        (_, _) => throw new HttpRequestException("The connection failed."));
+
+    /// <summary>
+    /// Fails the way a machine with no route out does: a name that never resolved, so nothing of
+    /// the request ever left this machine.
+    /// </summary>
+    internal static FakeDeepgram NeverConnecting() => new(
+        (_, _) => throw new HttpRequestException(
+            HttpRequestError.NameResolutionError, "No such host is known."));
+
+    /// <summary>
+    /// Fails with the given reason before anything reached the provider, for a theory that has to
+    /// walk every value this call trusts to mean that.
+    /// </summary>
+    internal static FakeDeepgram FailingToConnect(HttpRequestError error) => new(
+        (_, _) => throw new HttpRequestException(error, "The connection never opened."));
 
     /// <summary>
     /// Takes the call and never comes back, so whatever timeout the client carries is what ends it.

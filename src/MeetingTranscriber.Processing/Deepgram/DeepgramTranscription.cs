@@ -21,8 +21,9 @@ namespace MeetingTranscriber.Processing.Deepgram;
 /// The key is a <see cref="string"/> and reaches this from a front end that is already Windows.
 /// This project is plain <c>net10.0</c> and names neither the type a key is stored under nor the
 /// credential store it comes out of; <c>docs/layout.md</c> says why, and a naming test in
-/// <c>MeetingTranscriber.Infrastructure.Tests</c> fails on a third file naming that type — in a
-/// comment as readily as in code, which is why this sentence is spelled the long way round. The key
+/// <c>MeetingTranscriber.Infrastructure.Tests</c> fails on any file it does not list naming that
+/// type — in a comment as readily as in code, which is why this sentence is spelled the long way
+/// round. The key
 /// is held in no field here either: it is a parameter for the length of one call, put in one
 /// header, and never in the URL, where it would be in the provider's request log and in every proxy
 /// between here and there.
@@ -142,15 +143,29 @@ public sealed class DeepgramTranscription
         }
         catch (HttpRequestException noAnswer)
         {
-            // One arm and not two. HttpRequestException covers a name that would not resolve, a
-            // connection that was refused, and a connection that died while the audio was going up
-            // or while this end waited for the headers — and the last of those is the biggest
-            // window in the call, with a complete file already at the provider. Nothing on the
-            // exception separates them, so nothing here claims to.
+            // HttpRequestError is what separates the two, and only it: a name that would not
+            // resolve, a connection that was refused, and a secure channel that failed to open are
+            // the whole of "no byte of this ever reached the provider", so no charge could have
+            // happened. Everything else HttpRequestException covers — a connection that died while
+            // the audio was going up or while this end waited for the headers, which is the biggest
+            // window in the call, with a complete file already at the provider — this end cannot
+            // read apart, and does not claim to.
+            if (noAnswer.HttpRequestError is HttpRequestError.NameResolutionError
+                or HttpRequestError.ConnectionError
+                or HttpRequestError.SecureConnectionError)
+            {
+                throw new DeepgramCallException(
+                    "Deepgram could not be reached: no connection to it was ever made, so nothing "
+                    + $"was sent and nothing was charged: {noAnswer.Message}",
+                    mayHaveBeenCharged: false,
+                    noAnswer);
+            }
+
             throw new DeepgramCallException(
                 "Deepgram could not be reached, or the connection did not survive the call. "
                 + "Whether it charged for the request is not something this end can tell, so "
                 + $"nothing is sent again on its own: {noAnswer.Message}",
+                mayHaveBeenCharged: true,
                 noAnswer);
         }
         catch (OperationCanceledException ranOut) when (ranOut.InnerException is TimeoutException)
@@ -164,6 +179,7 @@ public sealed class DeepgramTranscription
                 "Deepgram did not answer within the time this call was given. Whether it charged "
                 + "for the request is not something this end can tell, so nothing is sent again on "
                 + "its own.",
+                mayHaveBeenCharged: true,
                 ranOut);
         }
 
@@ -225,6 +241,7 @@ public sealed class DeepgramTranscription
                     "Deepgram answered and the response did not arrive whole. It transcribed the "
                     + "audio and it charged for it, and what reached this call is a fragment: it "
                     + "is not a response and must not be filed as one.",
+                    mayHaveBeenCharged: true,
                     cutOff);
             }
 
@@ -267,6 +284,11 @@ public sealed class DeepgramTranscription
         var said = await Said(answered, cancellation).ConfigureAwait(false);
         var status = (int)answered.StatusCode;
 
+        // TooManyRequests sits with the refusals and not with the failures, and what that costs is
+        // worth saying: nothing was transcribed and nothing was charged, so the job fails for good
+        // and the meeting drops back to being offered. It is not retried, because nothing in this
+        // application is — a rate the provider will lift in a minute and a key it will never accept
+        // get the same answer here, which is ask again when you want to.
         var what = answered.StatusCode switch
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
@@ -283,7 +305,8 @@ public sealed class DeepgramTranscription
         };
 
         return new DeepgramCallException(
-            said is null ? $"{what} ({status})" : $"{what} ({status}: {said})");
+            said is null ? $"{what} ({status})" : $"{what} ({status}: {said})",
+            mayHaveBeenCharged: status >= 500);
     }
 
     /// <summary>

@@ -38,6 +38,20 @@ public class DeepgramRequestTests
             .ShouldNotBe(new DeepgramRequest(SourceProfile.Diarize, "es"));
     }
 
+    /// <summary>
+    /// The pair that decides whether a request has already been paid for: two requests asking the
+    /// same thing hash the same, and two asking differently do not.
+    /// </summary>
+    [Fact]
+    public void Two_requests_asking_the_same_thing_hash_the_same_and_two_asking_differently_do_not()
+    {
+        new DeepgramRequest(SourceProfile.Multichannel, "es").BillableConfigHash.ShouldBe(
+            new DeepgramRequest(SourceProfile.Multichannel, "es").BillableConfigHash);
+
+        new DeepgramRequest(SourceProfile.Multichannel, "es").BillableConfigHash.ShouldNotBe(
+            new DeepgramRequest(SourceProfile.Diarize, "es").BillableConfigHash);
+    }
+
     [Fact]
     public void The_options_are_the_query_of_the_url_it_is_sent_to()
     {

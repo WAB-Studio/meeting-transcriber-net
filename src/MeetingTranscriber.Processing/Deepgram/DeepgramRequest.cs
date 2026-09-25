@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 using MeetingTranscriber.Domain.Audio;
 
 namespace MeetingTranscriber.Processing.Deepgram;
@@ -60,6 +63,7 @@ public sealed record DeepgramRequest
         Profile = profile;
         Language = language.Trim();
         Options = OptionsFor(profile, Language);
+        BillableConfigHash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(Options)));
     }
 
     /// <summary>
@@ -75,6 +79,14 @@ public sealed record DeepgramRequest
 
     /// <summary>The query string, ordered, exactly as it goes on the wire.</summary>
     public string Options { get; }
+
+    /// <summary>
+    /// With the audio's own hash, the pair that decides whether a request has already been paid
+    /// for. It is taken over <see cref="Options"/> and nothing else, because that is already
+    /// everything billable and already spells itself the same way every time — a hash over
+    /// anything wider would make two identical asks look like two different ones.
+    /// </summary>
+    public string BillableConfigHash { get; }
 
     /// <summary>Where this request is sent.</summary>
     public Uri At() => new(Deepgram, $"{Listen}?{Options}");
