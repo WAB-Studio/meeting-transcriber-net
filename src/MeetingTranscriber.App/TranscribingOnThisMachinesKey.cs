@@ -20,11 +20,11 @@ namespace MeetingTranscriber.App;
 internal static class TranscribingOnThisMachinesKey
 {
     /// <summary>
-    /// How long one call may take, upload and all — the same span and the same reason
-    /// <c>DeepgramCommands.LongEnoughForAWholeMeeting</c> gives: the default 100 seconds kills every
-    /// real call, and a whole meeting is what this sends.
+    /// How long one call may take, upload and all — <see cref="DeepgramTranscription.LongEnoughForAWholeMeeting"/>,
+    /// the one declaration this and <c>DeepgramCommands</c> both use: the default 100 seconds kills
+    /// every real call, and a whole meeting is what this sends.
     /// </summary>
-    private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromMinutes(30) };
+    private static readonly HttpClient Client = new() { Timeout = DeepgramTranscription.LongEnoughForAWholeMeeting };
 
     /// <summary>
     /// What the application's runner sends with. The key is read fresh at every call and held in no
