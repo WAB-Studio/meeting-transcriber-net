@@ -1,4 +1,6 @@
 using MeetingTranscriber.Domain.Artifacts;
+using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
@@ -7,15 +9,15 @@ namespace MeetingTranscriber.Recording.Tests;
 
 /// <summary>
 /// What a launch owes the corpus, done one piece at a time in a stated order — and what adding a
-/// third piece costs somebody, which is the whole reason the list exists.
+/// fourth piece costs somebody, which is the whole reason the list exists.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The first four run fabricated chores through the two-argument <c>RunIn</c>, because what they
 /// hold is the list's own rules — the order, the one-at-a-time, the boundary a chore that throws
-/// runs into — and a real chore cannot be made to throw on demand. The fifth runs the real
-/// <see cref="WhatALaunchOwes.InOrder"/> end to end over one corpus, and it is what says the two
-/// entries in it are still the sweep and the renders.
+/// runs into — and a real chore cannot be made to throw on demand. The fifth and sixth run the real
+/// <see cref="WhatALaunchOwes.InOrder"/> end to end over one corpus, and together they are what says
+/// the three entries in it are the restart's jobs, the sweep and the renders, in that order.
 /// </para>
 /// <para>
 /// <see cref="Filed"/> and <see cref="Transcribed"/> are copied from
@@ -93,8 +95,8 @@ public sealed class WhatALaunchOwesTests
     /// written down, and the rest of what the launch owes still happens.
     /// </summary>
     /// <remarks>
-    /// The exception is deliberately of a type nothing on either real chore's path throws. What is
-    /// held here is "whatever a third one raises", not a list — a list is what goes wrong the first
+    /// The exception is deliberately of a type nothing on any real chore's path throws. What is
+    /// held here is "whatever a fourth one raises", not a list — a list is what goes wrong the first
     /// time a path is a junction.
     /// </remarks>
     [Fact]
@@ -113,8 +115,8 @@ public sealed class WhatALaunchOwesTests
     }
 
     /// <summary>
-    /// The one exception that leaves, which is the same closed exclusion both real chores state for
-    /// themselves.
+    /// The one exception that leaves, which is the same closed exclusion all three real chores
+    /// state for themselves.
     /// </summary>
     [Fact]
     public void Running_out_of_memory_stops_the_launch_rather_than_being_written_down()
@@ -163,7 +165,12 @@ public sealed class WhatALaunchOwesTests
 
         var done = WhatALaunchOwes.RunIn(corpus.Root);
 
-        done.Ran.ShouldBe(["the meetings nobody recorded", "the renders nobody asked for"]);
+        done.Ran.ShouldBe(
+            [
+                "the jobs a restart found running",
+                "the meetings nobody recorded",
+                "the renders nobody asked for",
+            ]);
         done.Left.ShouldBeEmpty();
 
         using var context = corpus.Open();
@@ -182,6 +189,31 @@ public sealed class WhatALaunchOwesTests
         {
             CorpusFiles.Locate(corpus.Root, artifact.RelativePath).Exists.ShouldBeTrue();
         }
+    }
+
+    /// <summary>
+    /// Goes red with the chore appended last: a job a restart found running has to be settled
+    /// before the meetings list is ever read, and running first is what this proves rather than
+    /// merely being present in <see cref="WhatALaunchOwes.InOrder"/>.
+    /// </summary>
+    [Fact]
+    public void A_launch_settles_what_a_restart_found_running_before_anything_else()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid job;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            var meeting = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+            job = RecordedMeetings.Started(context, meeting, When);
+        }
+
+        var done = WhatALaunchOwes.RunIn(corpus.Root);
+
+        done.Ran[0].ShouldBe("the jobs a restart found running");
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Single(row => row.Id == job).State.ShouldBe(JobState.AwaitingUser);
     }
 
     /// <summary>

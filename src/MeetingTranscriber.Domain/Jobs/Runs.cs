@@ -140,14 +140,25 @@ public class TranscriptionRun
 
     public string? PriceTableVersion { get; set; }
 
+    /// <summary>
+    /// When somebody agreed to what this call would cost, having been shown an estimate. Nothing
+    /// asks yet, so nothing writes it (ISC-85).
+    /// </summary>
     public UtcTimestamp? ApprovedAt { get; set; }
 
+    /// <summary>The response this call brought back, once the corpus holds it.</summary>
     public Guid? ResponseArtifactId { get; set; }
 
     public UtcTimestamp CreatedAt { get; set; }
 
+    /// <summary>
+    /// When the call came back and its response was filed. It is set together with
+    /// <see cref="ResponseArtifactId"/> and never apart from it. A run without it is a call that
+    /// was made and did not come back filed, and <c>MeetingReading</c> names nobody over it.
+    /// </summary>
     public UtcTimestamp? FinishedAt { get; set; }
 
+    /// <summary>What stopped this call, in the words of whatever stopped it. Null while nothing has.</summary>
     public string? LastError { get; set; }
 }
 

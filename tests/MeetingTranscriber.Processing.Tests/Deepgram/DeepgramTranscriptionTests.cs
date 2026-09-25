@@ -165,6 +165,7 @@ public sealed class DeepgramTranscriptionTests : IDisposable
         refused.Message.ShouldContain("401");
         refused.Message.ShouldContain("Token is invalid or expired");
         refused.Message.ShouldNotContain(Key);
+        refused.MayHaveBeenCharged.ShouldBeFalse();
     }
 
     /// <summary>
@@ -172,15 +173,51 @@ public sealed class DeepgramTranscriptionTests : IDisposable
     /// dropped mid-upload leaves Deepgram holding a whole file it may already have transcribed.
     /// </summary>
     [Fact]
-    public async Task A_provider_that_could_not_be_reached_promises_nothing_about_the_charge()
+    public async Task A_connection_that_failed_with_nothing_said_about_where_promises_nothing_about_the_charge()
     {
-        using var fake = FakeDeepgram.Unreachable();
+        using var fake = FakeDeepgram.ConnectionFailing();
 
         var refused = await ShouldRefuseAsync(fake, SourceProfile.Multichannel);
 
         refused.InnerException.ShouldBeOfType<HttpRequestException>();
         refused.Message.ShouldContain("is not something this end can tell");
         refused.Message.ShouldNotContain("nothing was charged");
+        refused.MayHaveBeenCharged.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// The one arm that can say the connection was never made at all: a name that never resolved,
+    /// so nothing of the request left this machine. Red the day <c>NameResolutionError</c> comes
+    /// out of the set of three that promise no charge.
+    /// </summary>
+    [Fact]
+    public async Task A_provider_that_was_never_reached_says_nothing_was_charged()
+    {
+        using var fake = FakeDeepgram.NeverConnecting();
+
+        var refused = await ShouldRefuseAsync(fake, SourceProfile.Multichannel);
+
+        refused.Message.ShouldContain("nothing was sent and nothing was charged");
+        refused.MayHaveBeenCharged.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The other two of the set of three, walked explicitly rather than trusted on
+    /// <see cref="HttpRequestError.NameResolutionError"/>'s word alone. Red the day either one
+    /// stops meaning no byte of the request ever reached the provider.
+    /// </summary>
+    [Theory]
+    [InlineData(HttpRequestError.ConnectionError)]
+    [InlineData(HttpRequestError.SecureConnectionError)]
+    public async Task Every_kind_of_connection_that_never_opened_says_nothing_was_charged(
+        HttpRequestError error)
+    {
+        using var fake = FakeDeepgram.FailingToConnect(error);
+
+        var refused = await ShouldRefuseAsync(fake, SourceProfile.Multichannel);
+
+        refused.Message.ShouldContain("nothing was sent and nothing was charged");
+        refused.MayHaveBeenCharged.ShouldBeFalse();
     }
 
     /// <summary>
@@ -197,6 +234,7 @@ public sealed class DeepgramTranscriptionTests : IDisposable
 
         refused.Message.ShouldContain("did not answer within the time this call was given");
         refused.Message.ShouldContain("is not something this end can tell");
+        refused.MayHaveBeenCharged.ShouldBeTrue();
     }
 
     /// <summary>
@@ -228,6 +266,30 @@ public sealed class DeepgramTranscriptionTests : IDisposable
 
         refused.Message.ShouldContain("500");
         refused.Message.ShouldContain("is not something this end can tell");
+        refused.MayHaveBeenCharged.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Every failure the provider can refuse with, and whether it could have been charged — the
+    /// pair <see cref="DeepgramCallException.MayHaveBeenCharged"/> exists to say. Red the day 429
+    /// moves to the charged side, or a 5xx moves off it.
+    /// </summary>
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest, false)]
+    [InlineData(HttpStatusCode.Unauthorized, false)]
+    [InlineData(HttpStatusCode.PaymentRequired, false)]
+    [InlineData(HttpStatusCode.Forbidden, false)]
+    [InlineData(HttpStatusCode.TooManyRequests, false)]
+    [InlineData(HttpStatusCode.InternalServerError, true)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, true)]
+    public async Task A_refusal_says_whether_it_could_have_been_charged(
+        HttpStatusCode status, bool mayHaveBeenCharged)
+    {
+        using var fake = FakeDeepgram.AnsweringWith(status, "");
+
+        var refused = await ShouldRefuseAsync(fake, SourceProfile.Multichannel);
+
+        refused.MayHaveBeenCharged.ShouldBe(mayHaveBeenCharged);
     }
 
     /// <summary>
@@ -246,6 +308,7 @@ public sealed class DeepgramTranscriptionTests : IDisposable
 
         refused.Message.ShouldContain("did not arrive whole");
         refused.Message.ShouldContain("charged");
+        refused.MayHaveBeenCharged.ShouldBeTrue();
 
         // Assignable and not exact: .NET's HTTP/2 path raises HttpIOException, which is an
         // IOException and is what the call promises to have handled.

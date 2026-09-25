@@ -230,7 +230,7 @@ public class MeetingReadingTests
         using var context = corpus.OpenMigrated();
         var meeting = MeetingRows.Recorded(
             context, Recorded, ["turn 0", "turn 1", "turn 2"], root: corpus.Root);
-        MeetingRows.Transcribed(context, meeting, Recorded);
+        MeetingRows.Transcribed(context, meeting, Recorded, responseSha256: new string('d', 64));
         MeetingRows.Extracted(
             context, meeting, Recorded, accepted: Recorded, "what the meeting was about",
             actionAt: 1, questionAt: 2);
