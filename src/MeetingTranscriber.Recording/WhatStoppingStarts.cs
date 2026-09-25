@@ -20,8 +20,10 @@ namespace MeetingTranscriber.Recording;
 /// has just stopped is at <c>MeetingStage.Recorded</c>; summarising is a stage it cannot be offered
 /// yet, because the transcription a summary is made from does not exist — and queueing work whose
 /// input does not exist is the one thing <c>JobStates</c> cannot describe. What the preference says
-/// about summarising is therefore read again by whatever finishes a transcription, and that is
-/// nothing today.
+/// about summarising is read by nothing yet. What finishes a transcription is <c>JobRunner</c>, and
+/// it queues no summary when one lands: nothing in this product summarises, and a job whose input
+/// exists and whose runner does not is a meeting reading as under way for ever with its press gone —
+/// worse than the press being there.
 /// </para>
 /// <para>
 /// One place and not an <c>if</c> inside whichever caller needed it first. A second one written

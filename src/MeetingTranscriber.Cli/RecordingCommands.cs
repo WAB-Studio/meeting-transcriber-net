@@ -19,8 +19,9 @@ namespace MeetingTranscriber.Cli;
 public static class RecordingCommands
 {
     /// <summary>
-    /// Records a meeting into the corpus, optionally pausing partway, and stops — which finishes
-    /// the recording and starts nothing.
+    /// Records a meeting into the corpus, optionally pausing partway, and stops. The command itself
+    /// starts nothing. What the stop queues, when the corpus's settings ask for it, is sent by the
+    /// application the next time it is running on this corpus.
     /// </summary>
     public static int Record(Arguments arguments, TextWriter output)
     {
@@ -85,7 +86,8 @@ public static class RecordingCommands
             string.Create(CultureInfo.InvariantCulture, $"{finished.Audio.ByteSize / 1024d / 1024d:0.0} MB"));
 
         // Said out loud, every time, because it is the promise and not an omission: stopping
-        // finished the recording and set nothing going.
+        // finished the recording and queued only what the settings asked for; this command sends
+        // none of it — the application's runner does, the next time it holds this corpus.
         Report.Line(
             output,
             "queued",

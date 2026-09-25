@@ -189,6 +189,13 @@ before `RecordButton` is anything but disabled. Saving a six-minute meeting took
 here, so a script meaning to catch the saving state samples it with consecutive `see`s rather than
 a `sleep`.
 
+**A probe session can spend.** The Deepgram key is this user's and not the corpus's. A probe
+that presses *Transcribir* or *Reintentar* sends real audio to Deepgram on this machine's key.
+So does a probe corpus whose settings say to transcribe when a recording ends, for every
+recording the probe stops, and so does `record` run at a prompt into such a corpus, the next time
+the application opens it. Do none of these unless the run is meant to spend, or run with no key
+kept.
+
 ## The verbs
 
 - `see` — the tree of the screen, and a picture of the window. Changes nothing.
