@@ -64,8 +64,7 @@ public class TemporaryCorpusTests
     /// the call reads as harmless, and what it breaks is somebody else's test, sometimes.
     /// </summary>
     /// <remarks>
-    /// The walk now skips <c>bin</c> as well as <c>obj</c>, which no build output was ever meant
-    /// to be read through.
+    /// The walk skips <c>bin</c> as well as <c>obj</c>: neither holds source this rule is about.
     /// </remarks>
     [Fact]
     public void No_test_empties_the_pools_of_every_corpus_in_the_process()

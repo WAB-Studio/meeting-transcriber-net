@@ -33,10 +33,12 @@ public sealed class RowPressesTests
             RowPresses.ToLeave(AMeeting),
             RowPresses.ToTake(AMeeting, JobKind.Transcribe),
             RowPresses.ToTake(AMeeting, JobKind.Extract),
+            RowPresses.ToTryAgain(AMeeting),
             RowPresses.ToOpen(AnotherMeeting),
             RowPresses.ToLeave(AnotherMeeting),
             RowPresses.ToTake(AnotherMeeting, JobKind.Transcribe),
             RowPresses.ToTake(AnotherMeeting, JobKind.Extract),
+            RowPresses.ToTryAgain(AnotherMeeting),
             RowPresses.ToAnswer("a-folder", WaitingAnswer.Keep),
             RowPresses.ToAnswer("a-folder", WaitingAnswer.Discard),
             RowPresses.ToAnswer("another-folder", WaitingAnswer.Keep),
@@ -67,6 +69,7 @@ public sealed class RowPressesTests
             .ShouldBe(RowPresses.ToTake(AMeeting, JobKind.Transcribe));
         RowPresses.ToTake(AMeeting, JobKind.Extract)
             .ShouldBe(RowPresses.ToTake(AMeeting, JobKind.Extract));
+        RowPresses.ToTryAgain(AMeeting).ShouldBe(RowPresses.ToTryAgain(AMeeting));
         RowPresses.ToAnswer("a-folder", WaitingAnswer.Keep)
             .ShouldBe(RowPresses.ToAnswer("a-folder", WaitingAnswer.Keep));
         RowPresses.ToAnswer("a-folder", WaitingAnswer.Discard)

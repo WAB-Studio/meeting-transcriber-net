@@ -240,7 +240,7 @@ public class MeetingIntakeTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meetingId = Recorded(context, SourceProfile.Multichannel);
+        var meetingId = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
 
         var received = ReceiveInto(context, meetingId);
 
@@ -282,7 +282,7 @@ public class MeetingIntakeTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meetingId = Recorded(context, SourceProfile.Multichannel);
+        var meetingId = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
 
         ReceiveInto(context, meetingId);
 
@@ -301,7 +301,7 @@ public class MeetingIntakeTests
 
         using (var context = corpus.OpenMigrated())
         {
-            meetingId = Recorded(context, SourceProfile.Multichannel, AnHour);
+            meetingId = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When, AnHour);
             ReceiveInto(context, meetingId);
         }
 
@@ -322,7 +322,7 @@ public class MeetingIntakeTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meetingId = Recorded(context, recordedAs);
+        var meetingId = RecordedMeetings.Recorded(context, recordedAs, When);
 
         Should.Throw<AudioContractException>(() => ReceiveInto(context, meetingId, response));
 
@@ -346,7 +346,7 @@ public class MeetingIntakeTests
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var itsOwn = Receive(context, corpus.Root);
-        var meetingId = Recorded(context, SourceProfile.Multichannel);
+        var meetingId = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
 
         var refused = Should.Throw<IntakeException>(() => ReceiveInto(context, meetingId));
 
@@ -382,7 +382,7 @@ public class MeetingIntakeTests
 
         using (var context = corpus.OpenMigrated())
         {
-            meetingId = Recorded(context, SourceProfile.Multichannel);
+            meetingId = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
             ReceiveInto(context, meetingId);
 
             var refused = Should.Throw<IntakeException>(() => MeetingIntake.ReceiveInto(
@@ -436,7 +436,7 @@ public class MeetingIntakeTests
 
         using (var context = corpus.OpenMigrated())
         {
-            meetingId = Recorded(context, SourceProfile.Multichannel);
+            meetingId = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
             var first = ReceiveInto(context, meetingId);
             sha256 = first.Response.Sha256;
 
@@ -472,7 +472,7 @@ public class MeetingIntakeTests
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
-        var meetingId = Recorded(context, SourceProfile.Multichannel);
+        var meetingId = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
 
         var first = ReceiveInto(context, meetingId);
         var confirmed = first.Response.ConfirmedAt;
@@ -561,52 +561,4 @@ public class MeetingIntakeTests
         CorpusDbContext context, Guid meetingId, string response = Fixture) =>
         MeetingIntake.ReceiveInto(
             context, meetingId, new FileInfo(DeepgramFixtures.PathOf(response)), When);
-
-    /// <summary>
-    /// A meeting this corpus recorded, built out of exactly what <c>ReceiveInto</c> reads: a row
-    /// with a profile and a length, and one <c>audio</c> artifact under it.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// By hand rather than through <c>AudioIntake.Bring</c>, and not by choice: this project targets
-    /// <c>net10.0</c> and <c>MeetingTranscriber.Recording</c> targets <c>net10.0-windows…</c>, so
-    /// there is no reference to make. It is also the only way to get a <c>Multichannel</c> meeting
-    /// with no response, which is what a real recording is and what the audio door never produces —
-    /// it mixes anything it is not sure about down to one track and files it as <c>Diarize</c>.
-    /// </para>
-    /// <para>
-    /// The bytes under the audio row are not audio. Nothing on this path opens that file: the
-    /// response is what is parsed and the length is the row's. What the file has to be is present
-    /// and hashed, which is what makes <c>ArtifactReconciler.Check</c> sound afterwards.
-    /// </para>
-    /// </remarks>
-    private static Guid Recorded(
-        CorpusDbContext context, SourceProfile profile, Duration? length = null)
-    {
-        var meetingId = Guid.NewGuid();
-
-        context.Meetings.Add(new Meeting
-        {
-            Id = meetingId,
-            Title = "la de los jueves",
-            StartedAt = When,
-            Duration = length ?? AnHour,
-            SourceProfile = profile,
-            Language = "es",
-            LifecycleState = LifecycleState.Active,
-            CreatedAt = When,
-            UpdatedAt = When,
-        });
-        context.SaveChanges();
-
-        DurableArtifact.Write(
-            context,
-            meetingId,
-            ArtifactKind.Audio,
-            CorpusFiles.PathFor(meetingId, RecordingFiles.Recording),
-            When,
-            into => into.Write("stands in for the recording"u8));
-
-        return meetingId;
-    }
 }

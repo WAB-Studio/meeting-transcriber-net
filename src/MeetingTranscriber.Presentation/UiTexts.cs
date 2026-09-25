@@ -329,12 +329,12 @@ public static class UiTexts
         + "and it does not come back; channel 0 is still recording.");
 
     /// <summary>
-    /// The act on the microphone's notice. <c>docs/design.md</c> §Fallo is what makes it this word:
-    /// a source that is alive and silent is answered by pointing somewhere else, and a device that
-    /// stopped responding is answered by trying that same device again. <em>Cambiar</em> is on that
-    /// page too, as the neutral press on the left rather than the answer.
+    /// The one word for trying the same thing again, wherever it is offered: a microphone that
+    /// stopped responding (<c>docs/design.md</c> §Fallo), and a meeting stopped on a person. One
+    /// entry, because two entries with one word are how a translation changes in one place and not
+    /// the other.
     /// </summary>
-    public static UiText TryTheMicrophoneAgain { get; } = new("Reintentar", "Try again");
+    public static UiText TryAgain { get; } = new("Reintentar", "Try again");
 
     /// <summary>
     /// What the meter says where the level would be, for a channel whose device is gone.
@@ -656,6 +656,10 @@ public static class UiTexts
     public static UiText AlreadyInTheQueue { get; } = new(
         "Ya está en cola. Todavía no corrió nada, así que ignorarla la saca.",
         "Already queued. Nothing has run yet, so ignoring it takes it back out.");
+
+    public static UiText AlreadySent { get; } = new(
+        "En curso: ya se envió, así que no se puede ignorar.",
+        "Under way: it has been sent, so it cannot be ignored.");
 
     public static UiText StoppedWaitingForAPerson { get; } = new(
         "Detenida esperando a una persona: puede haber un cobro que ya ocurrió, así que no se "

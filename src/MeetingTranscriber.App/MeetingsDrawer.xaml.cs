@@ -1198,13 +1198,19 @@ public sealed partial class MeetingsDrawer : UserControl
             lines.Children.Add(new TextBlock
             {
                 Text = In(standing),
-                Style = Chrome(entry.Owed.WaitsOnSomebody ? "MeetingStoppedOnAPerson" : "MeetingLine"),
+                Style = Chrome(entry.Owed.Standing switch
+                {
+                    StageStanding.Running => "MeetingRunning",
+                    _ when entry.Owed.WaitsOnSomebody => "MeetingStoppedOnAPerson",
+                    _ => "MeetingLine",
+                }),
             });
         }
 
-        if (entry.Owed.Next is { } next && (entry.Owed.MayBeTaken || entry.Owed.MayBeLeft))
+        if (entry.MayBeTriedAgain
+            || (entry.Owed.Next is not null && (entry.Owed.MayBeTaken || entry.Owed.MayBeLeft)))
         {
-            lines.Children.Add(Presses(entry.Meeting.Id, next, entry.Owed));
+            lines.Children.Add(Presses(entry));
         }
 
         return new Border { Style = Chrome("MeetingCard"), Child = lines };
@@ -1238,7 +1244,8 @@ public sealed partial class MeetingsDrawer : UserControl
     }
 
     /// <summary>
-    /// The stage's two answers, each on screen only when it is one somebody may give.
+    /// The stage's two answers, each on screen only when it is one somebody may give — or, on a
+    /// row stopped on a person, the one answer that stage has instead.
     /// </summary>
     /// <remarks>
     /// They come and go independently, and the one case where they differ is the one worth having
@@ -1248,14 +1255,24 @@ public sealed partial class MeetingsDrawer : UserControl
     /// <para>
     /// The order is <c>docs/design.md</c>'s grammar and not the order they were written in: the
     /// neutral answer is on the left and the act is on the right. Ignoring is the neutral one — the
-    /// meeting stays where it is and the same button comes back — and taking the stage is what
-    /// opens the charge, so it is the one on the right in every row of this list and on every other
-    /// screen. A pair that read the other way round on one screen is where somebody presses the
-    /// expensive one out of habit.
+    /// meeting stays where it is and the same button comes back — and taking the stage spends at
+    /// once until the dialogue exists, so it is the one on the right in every row of this list and
+    /// on every other screen. A pair that read the other way round on one screen is where somebody
+    /// presses the expensive one out of habit.
+    /// </para>
+    /// <para>
+    /// A row stopped on a person carries one answer, and it stays on the right: <em>Reintentar</em>
+    /// is the same act as <em>Transcribir</em> — buying a transcription of this meeting again — so
+    /// it takes the same place in the grammar rather than becoming a third kind of button. Nothing
+    /// on that row can be ignored: <see cref="OwedWork.MayBeLeft"/> already refuses it, because
+    /// dropping a charge that may already have happened would throw away the only record that it
+    /// might have.
     /// </para>
     /// </remarks>
-    private UIElement Presses(Guid meeting, JobKind next, OwedWork owed)
+    private UIElement Presses(MeetingAndWork entry)
     {
+        var meeting = entry.Meeting.Id;
+        var owed = entry.Owed;
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(0, 8, 0, 0) };
 
         if (owed.MayBeLeft)
@@ -1266,7 +1283,14 @@ public sealed partial class MeetingsDrawer : UserControl
             row.Children.Add(leave);
         }
 
-        if (owed.MayBeTaken)
+        if (entry.MayBeTriedAgain)
+        {
+            var tryAgain = new Button { Content = In(UiTexts.TryAgain), Style = Chrome("TakeTheStage") };
+            KnownAs(tryAgain, RowPresses.ToTryAgain(meeting));
+            tryAgain.Click += (_, _) => Retry(meeting);
+            row.Children.Add(tryAgain);
+        }
+        else if (owed.MayBeTaken && owed.Next is { } next)
         {
             var take = new Button { Content = In(MeetingWords.Action(next)), Style = Chrome("TakeTheStage") };
 
@@ -1279,11 +1303,14 @@ public sealed partial class MeetingsDrawer : UserControl
     }
 
     /// <summary>
-    /// One of the two presses, and the reason neither checks anything first: what is allowed is
-    /// re-read against the corpus inside the call, so a screen drawn before somebody pressed the
-    /// same button in another window cannot spend on what it still shows.
+    /// One of the three presses that spend or unspend against a meeting's row, and the reason
+    /// none of them check anything first: what is allowed is re-read against the corpus inside
+    /// the call, so a screen drawn before somebody pressed the same button in another window
+    /// cannot spend on what it still shows.
     /// </summary>
-    private void Answer(Guid meeting, bool decline)
+    /// <param name="attempt">What this press asks <see cref="MeetingWork"/> to do.</param>
+    /// <param name="succeeded">What is said when it goes through.</param>
+    private void Press(Action<MeetingWork> attempt, UiText succeeded)
     {
         if (Corpus().Folder is not { } folder)
         {
@@ -1299,18 +1326,8 @@ public sealed partial class MeetingsDrawer : UserControl
         try
         {
             using var context = CorpusDatabase.Open(folder);
-            var work = new MeetingWork(context, TimeProvider.System);
-
-            if (decline)
-            {
-                work.Decline(meeting);
-            }
-            else
-            {
-                work.Take(meeting);
-            }
-
-            said = TextLine.Says(decline ? UiTexts.ItIsIgnoredForNow : UiTexts.ItIsInTheQueueNow);
+            attempt(new MeetingWork(context, TimeProvider.System));
+            said = TextLine.Says(succeeded);
         }
         catch (MeetingStageException)
         {
@@ -1333,6 +1350,24 @@ public sealed partial class MeetingsDrawer : UserControl
         _status.KeepsWhatWasSaid(said);
         SaysWhatItIsShowing();
     }
+
+    /// <summary>Take or leave the stage <see cref="Presses"/> offered.</summary>
+    private void Answer(Guid meeting, bool decline) => Press(
+        work =>
+        {
+            if (decline)
+            {
+                work.Decline(meeting);
+            }
+            else
+            {
+                work.Take(meeting);
+            }
+        },
+        decline ? UiTexts.ItIsIgnoredForNow : UiTexts.ItIsInTheQueueNow);
+
+    /// <summary>The one answer a meeting stopped on a person has: send its unsettled job again.</summary>
+    private void Retry(Guid meeting) => Press(work => work.TryAgain(meeting), UiTexts.ItIsInTheQueueNow);
 
     /// <summary>
     /// One of the two answers about a recording nobody got to stop.

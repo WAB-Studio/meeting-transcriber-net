@@ -529,7 +529,7 @@
                 Style="{StaticResource NormalButtonOnPaper}"
                 Visibility="Collapsed"
                 Click="OnTryTheMicrophoneAgain"
-                Content="{x:Bind In(loc:UiTexts.TryTheMicrophoneAgain)}" />
+                Content="{x:Bind In(loc:UiTexts.TryAgain)}" />
             <!-- Told, not bound, for the reason channel 0's line says. -->
             <TextBlock
                 x:Name="MineMoved"

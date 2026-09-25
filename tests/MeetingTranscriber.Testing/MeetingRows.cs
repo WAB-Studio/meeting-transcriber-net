@@ -239,8 +239,9 @@ public static class MeetingRows
     /// coming out of one.
     /// </summary>
     /// <param name="finished">
-    /// Whether the run came back. A run that was queued and never came back has a row and names no
-    /// provider under the meeting, which is a state a reader has to leave alone.
+    /// Whether the run came back. <c>FinishedAt</c> is set together with <c>ResponseArtifactId</c>
+    /// and never apart from it, so a run that was queued and never came back — the state a reader
+    /// has to leave alone — is a row with neither.
     /// </param>
     public static void Transcribed(
         CorpusDbContext context,

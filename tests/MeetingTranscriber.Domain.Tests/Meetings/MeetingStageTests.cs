@@ -167,6 +167,36 @@ public class MeetingStageTests
     }
 
     [Fact]
+    public void A_stage_whose_work_has_been_sent_can_neither_be_asked_for_again_nor_left()
+    {
+        // Once the job is running, what it sends may already have been charged for: taking it
+        // again would be paying twice, and leaving it would throw away the only record that a
+        // charge might have happened.
+        var sent = Job(JobKind.Transcribe);
+        sent.Start(Noon);
+
+        var owed = OwedWork.Of(TheMeeting, [ArtifactKind.Audio], [sent]);
+
+        owed.Standing.ShouldBe(StageStanding.Running);
+        owed.MayBeTaken.ShouldBeFalse();
+        owed.MayBeLeft.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Work_sent_is_shown_over_work_queued_beside_it()
+    {
+        // A re-offer of a stage whose first attempt is already out leaves two rows of one kind:
+        // one running and one still waiting behind it. The running one is asked first, or a card
+        // drawn over both would read as merely queued while a call is out spending money.
+        var running = Job(JobKind.Transcribe);
+        running.Start(Noon);
+
+        var owed = OwedWork.Of(TheMeeting, [ArtifactKind.Audio], [running, Job(JobKind.Transcribe)]);
+
+        owed.Standing.ShouldBe(StageStanding.Running);
+    }
+
+    [Fact]
     public void A_stage_stopped_on_a_person_is_said_so_and_offers_no_press()
     {
         // The state with money on it: a charge that may already have happened. Anything that let
@@ -224,7 +254,7 @@ public class MeetingStageTests
     public void A_stage_whose_attempt_failed_for_good_is_owed_and_offered_exactly_as_before()
     {
         // Work that did not happen leaves the stage where it was. What a person is told about the
-        // failure belongs beside whatever produced it, and nothing runs a job yet.
+        // failure belongs beside whatever produced it, and that is what runs it.
         var lost = Job(JobKind.Transcribe);
         lost.Start(Noon);
         lost.FailPermanently("the audio is not something the provider accepts", Noon);

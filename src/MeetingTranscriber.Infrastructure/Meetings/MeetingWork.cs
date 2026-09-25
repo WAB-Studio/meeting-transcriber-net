@@ -11,7 +11,16 @@ namespace MeetingTranscriber.Infrastructure.Meetings;
 /// <summary>One meeting and what the application still owes it.</summary>
 /// <param name="Meeting">The row, which is what a person reads the meeting by.</param>
 /// <param name="Owed">The stage it is at and where that stands.</param>
-public sealed record MeetingAndWork(Meeting Meeting, OwedWork Owed);
+public sealed record MeetingAndWork(Meeting Meeting, OwedWork Owed)
+{
+    /// <summary>
+    /// Whether <em>Reintentar</em> belongs on this meeting's row. A meeting on its way out is
+    /// owed nothing whatever stage it reached, so it is never offered even when something on it
+    /// is stopped on a person; and the only thing a person can settle is a stop — nothing else on
+    /// this record is trying it again's to answer.
+    /// </summary>
+    public bool MayBeTriedAgain => Meeting.LifecycleState is LifecycleState.Active && Owed.WaitsOnSomebody;
+}
 
 /// <summary>
 /// What the application owes every meeting in a corpus, and the two answers a person can give
@@ -26,16 +35,19 @@ public sealed record MeetingAndWork(Meeting Meeting, OwedWork Owed);
 /// remembered: it is being worked out from rows and files that never went anywhere.
 /// </para>
 /// <para>
-/// The writing half is two methods and they are not mirrors. Taking a stage queues its job.
+/// The writing half is three methods and none of them are mirrors. Taking a stage queues its job.
 /// Leaving it records that it was turned down — and cancels whatever was queued for it, because
 /// work nobody has run is work nobody has paid for, and the press that spends money should not be
 /// the one with no way back. Neither moves the meeting: a stage that was left is the same stage,
-/// still offering the same action, which is what makes ignoring safe to press.
+/// still offering the same action, which is what makes ignoring safe to press. Trying again is the
+/// one answer a meeting stopped on a person has, and it goes through
+/// <see cref="ProcessingJob.Requeue"/> — the one move <c>arquitectura.md</c> §5.4 lets a person
+/// make on a job that already ran.
 /// </para>
 /// <para>
-/// Both re-read the meeting before they write. A screen that has been open a while is a screen
-/// showing what was true when it was drawn, and the press that matters most — the one that spends
-/// money — is exactly the one a stale screen would get wrong.
+/// All three re-read the meeting before they write. A screen that has been open a while is a
+/// screen showing what was true when it was drawn, and the press that matters most — the one that
+/// spends money — is exactly the one a stale screen would get wrong.
 /// </para>
 /// </remarks>
 public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
@@ -63,8 +75,9 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// application owes nothing to a meeting somebody asked it to get rid of, and offering to pay
     /// for one would be the worst possible time to be asked. Keeping the ones that are stopped
     /// costs that nothing, because <see cref="StageStanding.StoppedOnAPerson"/> refuses both
-    /// answers, so such a meeting comes back carrying no action at all. What it does carry is a
-    /// charge that may already have happened and nobody has settled — `status` counts those, and
+    /// answers, so such a meeting comes back carrying no action at all — including trying again,
+    /// which is offered only on a meeting that is here. What it does carry is a charge that may
+    /// already have happened and nobody has settled — `status` counts those, and
     /// this is the only place that says which meeting — so dropping it would make the deletion the
     /// thing that hid the charge.
     /// </para>
@@ -152,10 +165,10 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// will do it.
     /// </summary>
     /// <remarks>
-    /// The job is queued and nothing starts it, which is the whole of what this version promises:
-    /// every stage that spends money or quota waits to be told, and being told is a row, not a
-    /// provider call. What runs it is the runner's, and the state it is left in — pending, due
-    /// immediately — is what the runner reads.
+    /// The job is queued here and started by nothing here: being told is a row, not a provider
+    /// call. What sends it is <c>JobRunner</c>, which reads exactly the state this leaves —
+    /// pending, due immediately — within one look at the queue, on this machine's key, with no
+    /// price shown until the dialogue ISC-85 asks for exists.
     /// </remarks>
     /// <exception cref="MeetingStageException">
     /// This meeting's stage has no action, or its standing is one where taking it would do harm.
@@ -237,6 +250,56 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// This meeting's stage has no action, or its standing is one nobody may answer for.
     /// </exception>
     public ProcessingJob Decline(Guid meetingId) => Answer(meetingId, decline: true);
+
+    /// <summary>
+    /// Somebody asked, on a meeting stopped on a person, to try the unsettled job again. Puts
+    /// every one of them back in the queue and hands back the jobs that were moved.
+    /// </summary>
+    /// <remarks>
+    /// The one move a person may make over a job that already ran (<c>arquitectura.md</c> §5.4):
+    /// there is no way to ask the provider whether the earlier attempt landed, so what a press here
+    /// buys is another attempt, not an answer about the first one. The runner sends it within one
+    /// look at the queue.
+    /// </remarks>
+    /// <exception cref="MeetingStageException">
+    /// This meeting is not here, or nothing on it is waiting on a person to try again.
+    /// </exception>
+    public IReadOnlyList<ProcessingJob> TryAgain(Guid meetingId)
+    {
+        using var write = context.Database.CurrentTransaction is null
+            ? context.Database.BeginTransaction()
+            : null;
+
+        var owed = On(meetingId);
+        var meeting = context.Meetings.AsNoTracking().First(row => row.Id == meetingId);
+
+        if (!new MeetingAndWork(meeting, owed).MayBeTriedAgain)
+        {
+            // Two different reasons share this refusal, and the message says which: a meeting
+            // still here but with nothing waiting on a person is the ordinary case, and a
+            // meeting on its way out is refused whatever its jobs say — `Listed`'s remarks give
+            // that one its own reason.
+            var why = meeting.LifecycleState is not LifecycleState.Active
+                ? "it is on its way out"
+                : "nothing on it is waiting on a person to try again";
+
+            throw new MeetingStageException($"Meeting {meetingId} is {owed.Stage} and {owed.Standing}, and {why}.");
+        }
+
+        // Every job waiting on a person and not the stage's own kind alone: a charge that may
+        // already have happened is the meeting's problem wherever in the meeting it happened,
+        // which is `OwedWork.StopsOnAPerson`'s own rule and the reason this press exists at all.
+        var jobs = context.ProcessingJobs
+            .Where(job => job.MeetingId == meetingId)
+            .Where(OwedWork.StopsOnAPerson)
+            .ToList();
+
+        jobs.ForEach(job => job.Requeue());
+        context.SaveChanges();
+        write?.Commit();
+
+        return jobs;
+    }
 
     /// <summary>
     /// The two answers, which are one read followed by one write and have to stay that way.

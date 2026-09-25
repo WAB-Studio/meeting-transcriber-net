@@ -12,10 +12,12 @@ safe operation, and it has to stay that way.
 ## On disk
 
 ```text
+runner.mark              neither    held by the one process running this corpus's queue, and empty
 meetings/<meeting_id>/
   manifest.json          source     recovery card, readable without the database
   audio.wav              source     if the user's retention policy keeps it
   deepgram.json          source     paid, immutable
+  deepgram.refused.<run>.json  source     paid, whole, and not filed; kept until a person moves it
   extractions/<id>.json  source     one file per accepted extraction, older ones kept
   transcript.md          derived
   utterances.jsonl       derived
@@ -38,6 +40,20 @@ nothing ever reads whether one is there. What each means is carried by a process
 a backup that restored one would restore a fact that stopped being true when that process ended, and
 one that dropped it loses nothing. Nothing clears the one a crashed save, a crashed capture or a
 crashed read leaves, because a file nothing holds already reads as no save, no capture and no read.
+
+**`runner.mark` is a lease and not a record.** The process sending this corpus's queue holds it
+open, so a second instance of the application neither sends nor stops a call the first one is
+making; a crash lets it go with the process. Like the spool's marks it holds no bytes, a backup
+that restored it would restore nothing, and it is outside the two folders `check` walks.
+
+**`deepgram.refused.<run>.json` is a paid response the corpus would not file, and nothing
+deletes it.** The runner writes a response into a `.partial` and files it through the same door
+`import-response` uses. When that door refuses a response that arrived whole — it does not read,
+its channels disagree with how the meeting was recorded, or another response was filed onto the
+meeting while the call was out — the bytes were still paid for, so they are renamed out of the
+one suffix a sweep deletes and kept under the run that bought them. There is no row for it, so
+`check` names it as a file with no row until somebody moves it or deletes it; nothing files it on
+its own, because what to make of a response the corpus refused is a person's question.
 
 **`audio.wav` is a source under `meetings/` and a derivative under `spool/`, and that is not a
 contradiction in the table.** What differs is what is beside each of them: in the spool folder the
@@ -301,6 +317,9 @@ refused, the file is left and the command says which ones it left. A temporary n
 dead write; one something holds is a live one. That is the liveness test, and there is no clock in
 it — but it is the artifact write's own, and the `.partial` files the audio engine writes beside a
 recording it is materialising are held only while something is reading or writing them.
+
+A response on its way in from the provider is one of these too, and it is held from its first
+byte until it is filed or kept, so a `sweep` never takes one.
 
 A `.superseded` file on disk means the machine stopped inside a replace, or the tidy-up at the end
 of one was refused. Which of those it is is not a guess: the copy is named for the destination it

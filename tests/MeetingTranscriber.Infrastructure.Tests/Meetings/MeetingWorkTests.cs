@@ -332,6 +332,31 @@ public class MeetingWorkTests
     }
 
     [Fact]
+    public void A_stage_whose_work_has_been_sent_can_be_neither_taken_nor_left()
+    {
+        // Once a call is out, neither answer is the application's to give: taking it again would
+        // pay twice, and leaving it would throw away the only record that a charge may already
+        // have happened.
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+        var work = new MeetingWork(context, Clock);
+
+        var job = work.Take(meeting);
+        job.Start(UtcTimestamp.From(Clock.GetUtcNow()));
+        context.SaveChanges();
+
+        work.On(meeting).Standing.ShouldBe(StageStanding.Running);
+        work.On(meeting).MayBeTaken.ShouldBeFalse();
+        work.On(meeting).MayBeLeft.ShouldBeFalse();
+        Should.Throw<MeetingStageException>(() => work.Take(meeting));
+        Should.Throw<MeetingStageException>(() => work.Decline(meeting));
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Single(row => row.MeetingId == meeting).State.ShouldBe(JobState.Running);
+    }
+
+    [Fact]
     public void A_stage_asked_for_and_not_yet_run_can_be_taken_back()
     {
         // Otherwise the one press that spends money is the only one on the screen with no way
@@ -480,8 +505,8 @@ public class MeetingWorkTests
     [Fact]
     public void A_meeting_with_an_unsettled_charge_offers_nothing_and_says_why()
     {
-        // Nothing in the application settles one of these yet, so the meetings list is the only
-        // place it shows at all. The one thing that must not happen is the button being there.
+        // The meetings list is the only place one shows, and what settles it there is somebody
+        // trying it again — never the press that took the stage.
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
         var meeting = Record(context);
@@ -500,6 +525,83 @@ public class MeetingWorkTests
 
         Should.Throw<MeetingStageException>(() => work.Take(meeting));
         Should.Throw<MeetingStageException>(() => work.Decline(meeting));
+    }
+
+    [Fact]
+    public void A_meeting_stopped_on_a_person_is_queued_again_when_somebody_tries_it_again()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+        var work = new MeetingWork(context, Clock);
+
+        var uncertain = work.Take(meeting);
+        uncertain.Start(UtcTimestamp.From(Clock.GetUtcNow()));
+        uncertain.RecoverAfterRestart().ShouldBeTrue();
+        context.SaveChanges();
+
+        var tried = work.TryAgain(meeting);
+
+        tried.Count.ShouldBe(1);
+        tried[0].Id.ShouldBe(uncertain.Id);
+        tried[0].State.ShouldBe(JobState.Pending);
+        tried[0].AwaitingReason.ShouldBeNull();
+        tried[0].NextAttemptAt.ShouldBeNull();
+
+        // Unchanged: this is another attempt at the same job, not a fresh one.
+        tried[0].Attempt.ShouldBe(1);
+
+        work.On(meeting).Standing.ShouldBe(StageStanding.Underway);
+    }
+
+    [Fact]
+    public void Trying_again_requeues_every_job_waiting_on_a_person_not_only_the_stage_it_offers()
+    {
+        // OwedWork.StopsOnAPerson is meeting-wide and not stage-scoped: a capture a restart
+        // stopped and a transcription a restart stopped can both be waiting on the same meeting
+        // at once, and one press settles every one of them.
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+        var work = new MeetingWork(context, Clock);
+
+        var transcription = work.Take(meeting);
+        transcription.Start(UtcTimestamp.From(Clock.GetUtcNow()));
+        transcription.RecoverAfterRestart().ShouldBeTrue();
+        context.SaveChanges();
+
+        var capture = ProcessingJob.Queue(
+            Guid.NewGuid(), meeting, JobKind.Capture, $"{meeting}/capture-1", Recorded);
+        capture.Start(Recorded);
+        capture.RecoverAfterRestart().ShouldBeTrue();
+        Add(context, capture);
+
+        var tried = work.TryAgain(meeting);
+
+        tried.Select(job => job.Id).ShouldBe([transcription.Id, capture.Id], ignoreOrder: true);
+        tried.ShouldAllBe(job => job.State == JobState.Pending);
+    }
+
+    [Fact]
+    public void Trying_again_a_meeting_nobody_is_waiting_on_is_refused_and_writes_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+        var work = new MeetingWork(context, Clock);
+
+        Should.Throw<MeetingStageException>(() => work.TryAgain(meeting));
+
+        context.ProcessingJobs.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Trying_again_a_meeting_this_corpus_does_not_hold_is_said_so_rather_than_answered_for()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Should.Throw<MeetingStageException>(() => new MeetingWork(context, Clock).TryAgain(Guid.NewGuid()));
     }
 
     [Fact]

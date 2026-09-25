@@ -1417,8 +1417,8 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     }
 
     /// <summary>
-    /// Every source file of the product, which is what the sweeps are over. The walk now skips
-    /// <c>bin</c> as well as <c>obj</c>, which no build output was ever meant to be read through.
+    /// Every source file of the product, which is what the sweeps are over. The walk skips
+    /// <c>bin</c> as well as <c>obj</c>: neither holds source this rule is about.
     /// </summary>
     private static IReadOnlyList<FileInfo> Sources() => RepositoryTree.SourceUnder(Tree());
 

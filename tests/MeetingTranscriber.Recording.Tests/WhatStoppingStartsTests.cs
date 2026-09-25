@@ -29,8 +29,9 @@ public class WhatStoppingStartsTests
     /// <remarks>
     /// The meeting has no transcription for a summary to be made from, so an <c>Extract</c> queued
     /// here would be a job whose input does not exist — the one thing <c>JobStates</c> cannot
-    /// describe. What the second half of that answer means is read again by whatever finishes the
-    /// transcription, and nothing finishes one yet.
+    /// describe. What the second half of that answer means is read by nothing yet:
+    /// <c>JobRunner</c>, which finishes a transcription, queues no summary when one lands, because
+    /// nothing in this product summarises yet.
     /// </remarks>
     [Fact]
     public void Summarising_is_not_queued_at_the_stop_even_when_it_was_settled() =>

@@ -7,13 +7,16 @@ namespace MeetingTranscriber.Isa.Tests;
 /// one.
 /// </summary>
 /// <remarks>
-/// The walk and the two regexes are <see cref="NothingUnderTestReachesTheNetworkTests"/>'s own,
-/// reused and not copied — <see cref="NothingUnderTestReachesTheNetworkTests.Starts"/> is the one
-/// place a process start is spelled in this repository, over <c>tests/</c> today, and this applies
-/// it to <c>src/</c> instead, so a start is spelled one way wherever it is read. What is this
-/// file's own is the inventory: a file that starts a process under <c>src/</c> is on the product's
-/// own path rather than a suite's, so every entry here says why what it starts costs nobody who
-/// has not already reached the corner of the screen that starts it.
+/// The two regexes and the build-output skip are
+/// <see cref="NothingUnderTestReachesTheNetworkTests"/>'s own, reused and not copied —
+/// <see cref="NothingUnderTestReachesTheNetworkTests.Starts"/> is the one place a process start is
+/// spelled in this repository, over <c>tests/</c> today, and this applies it to <c>src/</c>
+/// instead, so a start is spelled one way wherever it is read. The walk is written out here rather
+/// than taken from that class's own, because that one reads <c>tests/</c> and skips the file
+/// holding its rule. What is this file's own is the inventory: a file that starts a process under
+/// <c>src/</c> is on the product's own path rather than a suite's, so every entry here says why
+/// what it starts costs nobody who has not already reached the corner of the screen that starts
+/// it.
 /// <para>
 /// It reads source text, not compiled IL, so what it cannot see is a process started from inside a
 /// referenced package, a <c>P/Invoke</c>, or a call spelled through an alias or a helper method —
