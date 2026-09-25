@@ -46,6 +46,7 @@ internal static class MeetingWords
         StageStanding.StoppedOnAPerson => UiTexts.StoppedWaitingForAPerson,
         StageStanding.Declined => UiTexts.IgnoredForNow,
         StageStanding.NothingToDo => null,
+        StageStanding.Running => UiTexts.AlreadySent,
         _ => throw new InvalidOperationException($"No screen has text for stage standing '{standing}'."),
     };
 

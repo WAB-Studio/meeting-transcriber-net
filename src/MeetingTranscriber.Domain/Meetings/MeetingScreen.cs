@@ -73,8 +73,10 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAu
     /// </summary>
     /// <remarks>
     /// The same two answers the list carries and worked out the same way, because they are the
-    /// same question asked from another screen. Pressing it costs nothing: what it opens is where
-    /// the charge is agreed to, which is not this screen's either.
+    /// same question asked from another screen. Pressing it queues the stage, and the runner sends
+    /// what is queued on this machine's key within one look at the queue. <c>docs/design.md</c>
+    /// puts a dialogue saying what that costs in front of the charge, and that dialogue is not
+    /// built yet (ISC-85).
     /// </remarks>
     public JobKind? TheActOffered => Owed.MayBeTaken ? Owed.Next : null;
 

@@ -332,6 +332,31 @@ public class MeetingWorkTests
     }
 
     [Fact]
+    public void A_stage_whose_work_has_been_sent_can_be_neither_taken_nor_left()
+    {
+        // Once a call is out, neither answer is the application's to give: taking it again would
+        // pay twice, and leaving it would throw away the only record that a charge may already
+        // have happened.
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+        var work = new MeetingWork(context, Clock);
+
+        var job = work.Take(meeting);
+        job.Start(UtcTimestamp.From(Clock.GetUtcNow()));
+        context.SaveChanges();
+
+        work.On(meeting).Standing.ShouldBe(StageStanding.Running);
+        work.On(meeting).MayBeTaken.ShouldBeFalse();
+        work.On(meeting).MayBeLeft.ShouldBeFalse();
+        Should.Throw<MeetingStageException>(() => work.Take(meeting));
+        Should.Throw<MeetingStageException>(() => work.Decline(meeting));
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Single(row => row.MeetingId == meeting).State.ShouldBe(JobState.Running);
+    }
+
+    [Fact]
     public void A_stage_asked_for_and_not_yet_run_can_be_taken_back()
     {
         // Otherwise the one press that spends money is the only one on the screen with no way
