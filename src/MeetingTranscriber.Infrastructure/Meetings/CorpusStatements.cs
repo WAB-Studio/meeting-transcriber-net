@@ -29,6 +29,10 @@ namespace MeetingTranscriber.Infrastructure.Meetings;
 /// <param name="SourceSha256">
 /// The artifact the quote was read out of, off the citation's own column.
 /// </param>
+/// <param name="SpeakerName">
+/// Who that voice is, when somebody said — the person the label is settled onto on that meeting —
+/// or null while nobody has.
+/// </param>
 public sealed record Statement(
     Guid MeetingId,
     UtcTimestamp StartedAt,
@@ -39,7 +43,8 @@ public sealed record Statement(
     Duration At,
     string Quoted,
     string SpeakerLabel,
-    string SourceSha256);
+    string SourceSha256,
+    string? SpeakerName);
 
 /// <summary>
 /// Everything one section left across the whole corpus: every decision, every action, or every
@@ -251,13 +256,13 @@ public static class CorpusStatements
         """;
 
     /// <summary>
-    /// The nine-column projection <see cref="Sql"/> and <see cref="UnderSql"/> both read, written
+    /// The ten-column projection <see cref="Sql"/> and <see cref="UnderSql"/> both read, written
     /// once: the same <c>SELECT</c>, the same <c>FROM</c>/<c>JOIN</c> and the same two fixed
     /// <c>WHERE</c> clauses. What genuinely differs between the two callers — the order, the
     /// grouping and what else each rejects — is left for each to append after this returns.
     /// </summary>
     /// <param name="kind">Which of the three sections to project — picks the table and the column.</param>
-    /// <param name="extraColumns">Columns appended after the nine, comma-led, or empty. Both
+    /// <param name="extraColumns">Columns appended after the ten, comma-led, or empty. Both
     /// callers are this file's own and the fragment is never anything a person or a provider
     /// sent — nothing here binds a parameter this way.</param>
     /// <param name="extraWhere">A clause appended after the two fixed ones, leading with its own
@@ -269,6 +274,12 @@ public static class CorpusStatements
     /// own <c>ORDER BY</c> can see nothing but these names. A shared projection written without them
     /// would compile, pass every <see cref="Of"/> fact and fail every <see cref="Under"/> query at
     /// SQLite with <c>no such column</c>.
+    /// <para>
+    /// <c>speaker_name</c> is a scalar subquery rather than a join: a join would multiply a row for
+    /// a label two people have been assigned across the corpus's history, and this table holds
+    /// exactly one row per <c>(meeting_id, speaker_label)</c> today, so the subquery reads the same
+    /// answer at the cost of one lookup and no risk of a row doubling if that ever changes.
+    /// </para>
     /// </remarks>
     private static string OneSection(LeftKind kind, string extraColumns, string extraWhere)
     {
@@ -283,7 +294,12 @@ public static class CorpusStatements
                    said.start_ms                AS at_ms,
                    said.quoted_text             AS quoted,
                    said.speaker_label           AS speaker_label,
-                   said.source_artifact_sha256  AS source_sha256{extraColumns}
+                   said.source_artifact_sha256  AS source_sha256,
+                   (SELECT people.display_name
+                      FROM speaker_assignments
+                      JOIN people ON people.id = speaker_assignments.person_id
+                     WHERE speaker_assignments.meeting_id = said.meeting_id
+                       AND speaker_assignments.speaker_label = said.speaker_label) AS speaker_name{extraColumns}
             FROM {table} AS said
             JOIN meetings AS meeting ON meeting.id = said.meeting_id
             WHERE meeting.lifecycle_state = @active
@@ -299,10 +315,10 @@ public static class CorpusStatements
     private static Func<DbDataReader, Statement> Read(LeftKind kind) => reader => Row(reader, kind);
 
     /// <summary>
-    /// The ten-argument construction <see cref="Read"/> and <see cref="ReadUnder"/> both do, written
-    /// once. <paramref name="kind"/> is the one field the two readers do not get the same way —
-    /// <see cref="Read"/> closes over the kind it was asked for, <see cref="ReadUnder"/> reads it
-    /// back off <c>kind_rank</c> — so it stays a parameter here rather than something this method
+    /// The eleven-argument construction <see cref="Read"/> and <see cref="ReadUnder"/> both do,
+    /// written once. <paramref name="kind"/> is the one field the two readers do not get the same
+    /// way — <see cref="Read"/> closes over the kind it was asked for, <see cref="ReadUnder"/> reads
+    /// it back off <c>kind_rank</c> — so it stays a parameter here rather than something this method
     /// works out for itself.
     /// </summary>
     private static Statement Row(DbDataReader reader, LeftKind kind) => new(
@@ -315,7 +331,8 @@ public static class CorpusStatements
         Duration.FromMilliseconds(reader.GetInt64(5)),
         reader.GetString(6),
         reader.GetString(7),
-        reader.GetString(8));
+        reader.GetString(8),
+        reader.IsDBNull(9) ? null : reader.GetString(9));
 
     /// <summary>
     /// One arm per <see cref="LeftKind"/>, unioned, ranked and ordered oldest first. One column
@@ -359,5 +376,9 @@ public static class CorpusStatements
     /// <c>WireNames&lt;LeftKind&gt;</c> is not reached: that type exists for a value the
     /// <em>database</em> holds, and this one never leaves this method.
     /// </summary>
-    private static Statement ReadUnder(DbDataReader reader) => Row(reader, (LeftKind)reader.GetInt32(9));
+    /// <remarks>
+    /// <c>kind_rank</c> reads at index 10 rather than 9: <see cref="OneSection"/>'s own ten columns
+    /// come first, and <see cref="UnderSql"/> appends <c>kind_rank</c> then <c>ordinal</c> after them.
+    /// </remarks>
+    private static Statement ReadUnder(DbDataReader reader) => Row(reader, (LeftKind)reader.GetInt32(10));
 }

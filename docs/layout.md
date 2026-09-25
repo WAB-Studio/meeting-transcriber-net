@@ -210,9 +210,12 @@ can see both the sweep and the renders — `Cli` sees both and holds no rule of 
 application has no probe a build agent could run, and the opposite edge would push WASAPI under
 `Processing`. The rule for which meetings are owed a render still lives on the `Processing` side,
 where a build agent runs it; what the application holds is the call and the thread it goes on. The
-edge is narrow on purpose — it is there for `WhatALaunchOwes` and nothing else — and the reason it
-can be is the direction: `Processing` knows nothing about a window, so nothing came back the other
-way.
+edge is narrow on purpose — it is there for `WhatALaunchOwes`, and for the two acts that change a
+name a transcript shows — `NamingTheVoices`, which saves the names on a meeting's voices, and
+`RenamingSomebody`, which corrects a person's name — each of which renders the meetings it touches
+again in the same transaction, so a name saved is a name the transcript already shows — and the
+reason it can be is the direction: `Processing` knows nothing about a window, so nothing came back
+the other way.
 
 `MeetingTranscriber.Presentation` holds every word a person reads and nothing else — the
 catalogue, the rule that picks a language, and the choice on disk. It references nothing and

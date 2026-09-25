@@ -24,9 +24,14 @@
        of its own, the app has no probe a build agent could run, and Processing may not see this
        side without WASAPI arriving under it.
 
-       The edge is for WhatALaunchOwes and nothing else. Everything else in this project is the
-       audio engine composed with the corpus, and a recording rule reaching for a transcript has
-       taken a wrong turn — the reference makes that compile, which is not the same as allowing it. -->
+       The edge is for WhatALaunchOwes, for NamingTheVoices and for RenamingSomebody. The second
+       saves the names somebody put on a meeting's voices and renders that meeting's files again in
+       one transaction. The third corrects a person's name and renders again every meeting whose
+       voices name them in one transaction.
+
+       Everything else in this project is the audio engine composed with the corpus, and a
+       recording rule reaching for a transcript has taken a wrong turn — the reference makes that
+       compile, which is not the same as allowing it. -->
   <ItemGroup>
     <ProjectReference Include="..\MeetingTranscriber.Processing\MeetingTranscriber.Processing.csproj" />
   </ItemGroup>

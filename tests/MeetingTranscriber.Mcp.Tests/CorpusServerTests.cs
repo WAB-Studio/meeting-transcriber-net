@@ -134,6 +134,68 @@ public class CorpusServerTests
     }
 
     /// <summary>
+    /// A voice somebody named is answered with their name beside its label, in every tool that reads
+    /// a turn one at a time — and <c>none</c> until then.
+    /// </summary>
+    /// <remarks>
+    /// An agent reading <c>ch1:speaker_0</c> cannot tell it is Renata; <c>speaker_name</c> is what
+    /// says so, on every anchored turn <see cref="CorpusServer"/> answers with.
+    /// </remarks>
+    [Fact]
+    public async Task A_voice_somebody_named_is_answered_with_their_name_beside_its_label()
+    {
+        using var corpus = new CorpusOutsideApplicationData("mcp");
+        Guid meeting;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meeting = AMeeting.RecordedIn(context);
+        }
+
+        await using var talking = await Conversation.Over(corpus);
+
+        var before = await talking.Call("leer_turnos", new()
+        {
+            ["meeting_id"] = meeting.ToString(),
+            ["desde_ms"] = 0,
+            ["hasta_ms"] = 10_000,
+        });
+        before.ShouldNotBeError();
+        before.Said().ShouldContain("speaker_name: none");
+
+        using (var context = corpus.OpenMigrated())
+        {
+            var human = new HumanLayer(context, AMeeting.StartedAt);
+            human.Assign(meeting, MeetingRows.SpeakerLabel, human.Add("Renata"));
+        }
+
+        var turns = await talking.Call("leer_turnos", new()
+        {
+            ["meeting_id"] = meeting.ToString(),
+            ["desde_ms"] = 0,
+            ["hasta_ms"] = 10_000,
+        });
+        turns.ShouldNotBeError();
+        turns.Said().ShouldContain("speaker_name: Renata");
+
+        var cited = await talking.Call("obtener_cita", new()
+        {
+            ["meeting_id"] = meeting.ToString(),
+            ["utterance_ordinal"] = AMeeting.Cited,
+        });
+        cited.ShouldNotBeError();
+        cited.Said().ShouldContain("speaker_name: Renata");
+
+        var summary = await talking.Call("leer_resumen", new() { ["meeting_id"] = meeting.ToString() });
+        summary.ShouldNotBeError();
+        summary.Said().ShouldContain("speaker_name: Renata");
+
+        var listed = await talking.Call("listar_decisiones", new());
+        listed.ShouldNotBeError();
+        listed.Said().ShouldContain("speaker_name: Renata");
+    }
+
+    /// <summary>
     /// An answer cut short says so, and one that was not does not.
     /// </summary>
     /// <remarks>

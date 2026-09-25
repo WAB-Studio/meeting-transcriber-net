@@ -36,7 +36,8 @@ public sealed record MeetingAsRead(Meeting Meeting, MeetingScreen Screen, FileIn
 /// <para>
 /// It was the screen's read and is now the meeting's. <see cref="Of"/> is still exactly what the
 /// screen needs, and the reads beside it — <see cref="Row"/>, <see cref="Between"/>,
-/// <see cref="TranscribedFrom"/> — are what a reader that is not a screen asks about one meeting.
+/// <see cref="EveryTurn"/>, <see cref="TranscribedFrom"/> — are what a reader that is not a screen
+/// asks about one meeting.
 /// The alternative was a second type over the same tables, which would have put two answers to
 /// <em>which turns does this meeting have</em> in one assembly.
 /// </para>
@@ -75,6 +76,17 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     public Meeting Row(Guid meetingId) =>
         context.Meetings.AsNoTracking().FirstOrDefault(row => row.Id == meetingId)
             ?? throw new MeetingStageException($"This corpus holds no meeting {meetingId}.");
+
+    /// <summary>Every turn of the meeting, in ordinal order.</summary>
+    /// <remarks>
+    /// What the screen that names voices needs, and what <see cref="WhoIsWho.Of"/> is built from:
+    /// that screen asks about a whole meeting rather than one stretch of it, so it reads through
+    /// <see cref="AsTurns"/> like every other read here and not through a second projection.
+    /// </remarks>
+    public IReadOnlyList<Turn> EveryTurn(Guid meetingId) =>
+        AsTurns(context.Utterances
+            .Where(turn => turn.MeetingId == meetingId)
+            .OrderBy(turn => turn.Ordinal));
 
     /// <summary>One meeting, as the screen that reads it needs it.</summary>
     /// <exception cref="MeetingStageException">There is no such meeting in this corpus.</exception>

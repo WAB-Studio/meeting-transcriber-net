@@ -1,4 +1,6 @@
 using MeetingTranscriber.Domain.Meetings;
+using MeetingTranscriber.Processing.Deepgram;
+using MeetingTranscriber.Processing.Rendering;
 
 namespace MeetingTranscriber.Recording.Tests;
 
@@ -37,5 +39,28 @@ public class ScreenFailuresTests
     {
         ScreenFailures.Reportable(new InvalidOperationException("Sequence contains no elements."))
             .ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// A meeting that cannot be rendered again — a response the corpus names and the disk does not
+    /// have — is something a screen says, the moment saving the names on a meeting's voices or
+    /// correcting a person's name renders files again.
+    /// </summary>
+    [Fact]
+    public void A_meeting_that_cannot_be_rendered_is_something_to_say()
+    {
+        ScreenFailures.Reportable(new RenderException("Meeting has no response to render from."))
+            .ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// A response this build cannot read is something to say, for the same reason: it arrives from
+    /// the same render a screen now reaches.
+    /// </summary>
+    [Fact]
+    public void A_response_this_build_cannot_read_is_something_to_say()
+    {
+        ScreenFailures.Reportable(new DeepgramResponseException("Missing something the parser needs."))
+            .ShouldBeTrue();
     }
 }

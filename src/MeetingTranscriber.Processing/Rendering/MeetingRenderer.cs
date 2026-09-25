@@ -32,10 +32,11 @@ public sealed record RenderedMeeting(int Turns, Artifact Transcript, Artifact Ut
 /// <para>
 /// It replaces the turns of the meeting it renders, so a claim citing one of them stops it. That is
 /// the constraint doing its job rather than a gap: deleting turns out from under the claims that
-/// cite them is what a projection deleted out of order looks like, and putting the claims back is
-/// the rebuild's business, not this one's. Where the caller has deferred that constraint to make
-/// the swap possible at all, <see cref="RefuseStrandedClaims"/> is what still stops it, by name and
-/// before anything is deleted.
+/// cite them is what a projection deleted out of order looks like, and deferring that check to a
+/// commit is the caller's business and not this one's — <c>CorpusRebuild</c> does it for the whole
+/// corpus and <c>RenderingAgain</c> for one meeting. Where the caller has deferred that constraint
+/// to make the swap possible at all, <see cref="RefuseStrandedClaims"/> is what still stops it, by
+/// name and before anything is deleted.
 /// </para>
 /// </remarks>
 public static class MeetingRenderer
@@ -171,7 +172,8 @@ public static class MeetingRenderer
     /// </para>
     /// <para>
     /// Deleting a turn a claim cites is only possible at all while foreign keys are deferred, which
-    /// is the caller's to arrange and <c>CorpusRebuild</c> is what arranges it. That is why the
+    /// is the caller's to arrange: <c>CorpusRebuild</c> arranges it for the whole corpus, and
+    /// <c>RenderingAgain</c> for one meeting. That is why the
     /// undo has to reach the delete and not only the insert: the delete raises the deferred count
     /// once per claim, and a refusal that left it raised would take the caller's whole commit rather
     /// than the meeting. Rolling back to a savepoint lowers it again and leaves the deferral itself
