@@ -828,23 +828,125 @@ public class IsaStructureTests
     [Fact]
     public void Every_test_a_stub_points_at_is_one_this_repository_has()
     {
-        var pointers = isa.Stubs.SelectMany(stub => IsaDocument.PointersIn(stub)
-            .Select(pointer => (stub.Id, Pointer: pointer))).ToList();
+        var found = 0;
+        var unresolved = new List<string>();
+
+        foreach (var stub in isa.Stubs)
+        {
+            var pointersOfStub = IsaDocument.PointersIn(stub);
+            found += pointersOfStub.Count;
+
+            unresolved.AddRange(pointersOfStub
+                .Where(pointer => !Resolves(pointer, pointersOfStub))
+                .Select(pointer => $"{stub.Id}: {Spelled(pointer)}"));
+        }
 
         // Without this the check below passes by finding nothing, which is how a rule that stopped
         // recognising a pointer reads exactly like a file whose pointers are all sound.
-        pointers.ShouldNotBeEmpty("no backticked span in `ISA.md` was read as a test pointer, so this check reads nothing.");
-
-        var unresolved = pointers
-            .Where(pair => !Resolves(pair.Pointer))
-            .Select(pair => $"{pair.Id}: {Spelled(pair.Pointer)}")
-            .ToList();
+        found.ShouldBeGreaterThan(0, "no backticked span in `ISA.md` was read as a test pointer, so this check reads nothing.");
 
         unresolved.ShouldBeEmpty(
             "a stub's evidence names a test this repository does not have — point the stub at "
-            + "where the probe lives now, spelled the way this repository spells it. If the probe "
-            + "is gone rather than moved, say so on the claim in words and not in backticks, so the "
-            + "dead name is not read as a live pointer.");
+            + "where the probe lives now, spelled the way this repository spells it, and a class "
+            + "two suites carry names its project after it. If the probe is gone rather than "
+            + "moved, say so on the claim in words and not in backticks, so the dead name is not "
+            + "read as a live pointer.");
+    }
+
+    /// <summary>
+    /// Goes red with <c>Resolves</c> reading a bare class name across the merged tree instead of
+    /// holding it to the project a run wrote after it.
+    /// </summary>
+    [Fact]
+    public void A_class_two_suites_carry_is_held_to_the_project_written_after_it()
+    {
+        var wrongProject = Pointers(
+            "`CorpusRebuildTests.A_claim_still_points_at_the_turn_it_came_from` "
+            + "(`tests/MeetingTranscriber.Infrastructure.Tests`)");
+
+        Resolves(wrongProject.Single(), wrongProject).ShouldBeFalse(
+            "the fact lives in `Processing.Tests`' `CorpusRebuildTests`, not the class of the same "
+            + "name in `Infrastructure.Tests`.");
+
+        var rightProject = Pointers(
+            "`CorpusRebuildTests.A_claim_still_points_at_the_turn_it_came_from` "
+            + "(`tests/MeetingTranscriber.Processing.Tests`)");
+
+        Resolves(rightProject.Single(), rightProject).ShouldBeTrue();
+    }
+
+    /// <summary>Goes red with an unbound ambiguous name falling back to the merged tree.</summary>
+    [Fact]
+    public void A_class_two_suites_carry_with_no_project_after_it_does_not_resolve()
+    {
+        var unbound = Pointers("`CorpusRebuildTests.A_claim_still_points_at_the_turn_it_came_from`");
+
+        Resolves(unbound.Single(), unbound).ShouldBeFalse(
+            "`CorpusRebuildTests` is carried by two projects and nothing here says which one, so "
+            + "resolving it against the merged tree — what this rule replaced — would let a "
+            + "pointer citing the wrong project's fact through by accident.");
+    }
+
+    /// <summary>Goes red with only the class nearest a run bound by it.</summary>
+    [Fact]
+    public void A_run_of_projects_binds_every_pointer_since_the_last_run()
+    {
+        var pointers = Pointers(
+            "`CliWalkthroughTests.The_same_response_imported_twice_is_one_meeting`, "
+            + "`AudioIntakeTests.The_same_audio_brought_in_twice_is_one_meeting`, "
+            + "`ImportAudioCommandTests.Bringing_the_same_audio_in_twice_is_one_meeting` and "
+            + "`MeetingIntakeTests.A_response_for_a_meeting_this_corpus_recorded_leaves_one_meeting` "
+            + "(`tests/MeetingTranscriber.Cli.Tests`, `tests/MeetingTranscriber.Recording.Tests`, "
+            + "`tests/MeetingTranscriber.Processing.Tests`) — ISC-34's own shape.");
+
+        pointers.Count.ShouldBe(4);
+        pointers.ShouldAllBe(pointer => Resolves(pointer, pointers));
+    }
+
+    /// <summary>Goes red with a later run rebinding a leading-dot fact written before it.</summary>
+    [Fact]
+    public void A_fact_after_its_class_keeps_the_project_its_class_was_bound_to()
+    {
+        var pointers = Pointers(
+            "`MeetingRecordingsTests.What_channel_0_stopped_following_and_when_is_in_the_corpus_with_the_folder_gone` "
+            + "(`tests/MeetingTranscriber.Recording.Tests`), beside it "
+            + "`.A_recording_that_changed_nothing_leaves_nothing_saying_it_did` and "
+            + "`CorpusSchemaTests.A_change_on_channel_0_cannot_name_a_device` "
+            + "(`tests/MeetingTranscriber.Infrastructure.Tests`) — ISC-184's own shape.");
+
+        pointers.Count.ShouldBe(3);
+        pointers.ShouldAllBe(pointer => Resolves(pointer, pointers),
+            "the leading-dot fact keeps `MeetingRecordingsTests`' own run; a run that rebound it to "
+            + "`CorpusSchemaTests`' later one would send it looking in `Infrastructure.Tests`, "
+            + "where the class it hangs off does not live.");
+    }
+
+    /// <summary>
+    /// Goes red — wrongly resolving — with a leading-dot fact's class looked up by unioning every
+    /// project its name was ever bound to in the stub, rather than by the naming nearest before it.
+    /// `ISC-37` and `ISC-127` each cite `CorpusRebuildTests` twice in one stub, bound to two
+    /// different projects, which is the real shape this doubles.
+    /// </summary>
+    [Fact]
+    public void A_fact_after_two_bindings_of_its_class_keeps_the_nearer_one()
+    {
+        var pointers = Pointers(
+            "`CorpusRebuildTests.A_claim_cannot_cite_a_turn_the_meeting_never_had` "
+            + "(`tests/MeetingTranscriber.Infrastructure.Tests`), and later "
+            + "`CorpusRebuildTests.A_claim_still_points_at_the_turn_it_came_from` "
+            + "(`tests/MeetingTranscriber.Processing.Tests`), beside it "
+            + "`.Deleting_every_derived_row_and_projecting_again_leaves_every_other_table_as_it_was` "
+            + "— ISC-37's own shape, doubled.");
+
+        pointers.Count.ShouldBe(3);
+        Resolves(pointers[0], pointers).ShouldBeTrue();
+        Resolves(pointers[1], pointers).ShouldBeTrue();
+        Resolves(pointers[2], pointers).ShouldBeFalse(
+            "the fact this leading dot names lives under `Infrastructure.Tests`' "
+            + "`CorpusRebuildTests` — the class's first naming in this stub — but the naming "
+            + "nearest before it is bound to `Processing.Tests`, where the fact does not live, and "
+            + "a leading-dot fact keeps the nearer naming, never every project the class was ever "
+            + "bound to.");
     }
 
     /// <summary>
@@ -876,31 +978,115 @@ public class IsaStructureTests
         var firstDot = keys.Single(
             pointer => pointer.Fact == "Nothing_but_the_key_itself_reaches_the_credential_store");
         firstDot.ClassesNamedSoFar.ShouldBe(["DeepgramKeyTests", "KeyCommandTests"]);
-        Resolves(firstDot).ShouldBeTrue(
+        Resolves(firstDot, keys).ShouldBeTrue(
             "the stub names DeepgramKeyTests first and KeyCommandTests second, and the fact is on "
             + "the first — which is why the rule is any class this stub named, and not the last.");
 
         var secondDot = keys.Single(
             pointer => pointer.Fact == "Nothing_but_the_key_itself_reads_a_Deepgram_key");
-        Resolves(secondDot).ShouldBeTrue("the same.");
+        Resolves(secondDot, keys).ShouldBeTrue("the same.");
     }
 
-    /// <summary>Whether a pointer names a test this repository really has, the shape it read as.</summary>
-    private static bool Resolves(IsaDocument.TestPointer pointer)
+    /// <summary>
+    /// Whether a pointer names a test this repository really has, the shape it read as, holding a
+    /// class two suites carry to the project a run bound it to. <paramref name="stub"/> is every
+    /// pointer <see cref="IsaDocument.PointersIn"/> read out of the same stub, which is where a
+    /// leading-dot fact's own class looks its bound projects up.
+    /// </summary>
+    private static bool Resolves(IsaDocument.TestPointer pointer, IReadOnlyList<IsaDocument.TestPointer> stub)
     {
         var tests = IsaDocument.Tests();
 
         return pointer switch
         {
-            { Class: { } bareClass, Fact: null } => tests.Classes.Contains(bareClass),
-            { Class: { } named, Fact: { } fact } =>
-                tests.FactsByClass.TryGetValue(named, out var factsOfClass) && factsOfClass.Contains(fact),
+            { Class: { } bareClass, Fact: null } => ResolvesClass(bareClass, pointer.Projects, tests),
+            { Class: { } named, Fact: { } fact } => ResolvesFact(named, fact, pointer.Projects, tests),
             { Class: null, Fact: { } fact } => pointer.ClassesNamedSoFar.Count > 0
                 ? pointer.ClassesNamedSoFar.Any(named =>
-                    tests.FactsByClass.TryGetValue(named, out var factsOfClass) && factsOfClass.Contains(fact))
+                    ResolvesFact(named, fact, ProjectsBoundTo(named, PositionOf(pointer, stub), stub), tests))
                 : tests.Facts.Contains(fact),
             _ => false,
         };
+    }
+
+    /// <summary>
+    /// A bare class pointer: sound against a project it was bound to, or — with no run after it —
+    /// sound only when the class is not one two suites carry.
+    /// </summary>
+    private static bool ResolvesClass(
+        string bareClass, IReadOnlyList<string> projects, IsaDocument.TestInventory tests)
+    {
+        if (!tests.ProjectsByClass.TryGetValue(bareClass, out var carriedBy))
+        {
+            return false;
+        }
+
+        return projects.Count > 0 ? projects.Any(carriedBy.Contains) : carriedBy.Count == 1;
+    }
+
+    /// <summary>The same rule as <see cref="ResolvesClass"/>, over a fact under the class.</summary>
+    private static bool ResolvesFact(
+        string className, string fact, IReadOnlyList<string> projects, IsaDocument.TestInventory tests)
+    {
+        if (projects.Count > 0)
+        {
+            return projects.Any(project =>
+                tests.FactsByProjectAndClass.TryGetValue((project, className), out var factsOfProject)
+                && factsOfProject.Contains(fact));
+        }
+
+        if (!tests.ProjectsByClass.TryGetValue(className, out var carriedBy) || carriedBy.Count != 1)
+        {
+            return false;
+        }
+
+        return tests.FactsByClass.TryGetValue(className, out var factsOfClass) && factsOfClass.Contains(fact);
+    }
+
+    /// <summary>
+    /// Where <paramref name="pointer"/> sits in <paramref name="stub"/>, so
+    /// <see cref="ProjectsBoundTo"/> can walk backward from it. Records compare by value, so this is
+    /// the first position an equal pointer sits at — sound here because nothing calls it with a
+    /// pointer <paramref name="stub"/> does not itself contain.
+    /// </summary>
+    private static int PositionOf(IsaDocument.TestPointer pointer, IReadOnlyList<IsaDocument.TestPointer> stub)
+    {
+        for (var i = 0; i < stub.Count; i++)
+        {
+            if (stub[i] == pointer)
+            {
+                return i;
+            }
+        }
+
+        return stub.Count;
+    }
+
+    /// <summary>
+    /// The projects a run bound <paramref name="className"/> to at its <em>nearest</em> naming
+    /// before position <paramref name="beforeIndex"/> in <paramref name="stub"/> — empty when that
+    /// naming was never bound by a run, which is what tells <see cref="ResolvesFact"/> to fall back
+    /// to whichever project carries the class alone.
+    /// </summary>
+    /// <remarks>
+    /// One class can be named — and separately bound — more than once in a stub: `ISC-37` and
+    /// `ISC-127` each cite `CorpusRebuildTests` twice, bound to two different projects. A
+    /// leading-dot fact hangs off whichever of those namings sits nearest before it, never off an
+    /// earlier one it does not follow, so this walks backward from <paramref name="beforeIndex"/>
+    /// and stops at the first naming — bound or not.
+    /// </remarks>
+    private static IReadOnlyList<string> ProjectsBoundTo(
+        string className, int beforeIndex, IReadOnlyList<IsaDocument.TestPointer> stub)
+    {
+        for (var i = beforeIndex - 1; i >= 0; i--)
+        {
+            if (stub[i].Class == className)
+            {
+                return stub[i].Projects;
+            }
+        }
+
+        return [];
     }
 
     /// <summary>A pointer as a person reads it, for the message a failed resolution shows.</summary>

@@ -95,13 +95,12 @@ internal sealed partial class IsaDocument
     /// tolerance <c>TestClassLine</c> and <c>TestFactLine</c> already accept for a class or a
     /// method the regex approximates rather than compiles.
     /// <para>
-    /// <c>Classes</c> and <c>FactsByClass</c> are keyed by bare class name and not by project, so
-    /// two classes named alike in two projects — <c>CorpusRebuildTests</c> is one today — share one
-    /// entry and a pointer naming the wrong one's fact still resolves. That is the same gap
-    /// <c>IsaStructureTests.Every_path_the_file_points_at_is_one_this_repository_has</c>'s own
-    /// remarks already name for a path: holding a cited suite to the project cited beside it is a
-    /// card and not a line here, because it needs a pointer that carries both together on purpose
-    /// and none does today.
+    /// <c>Classes</c>, <c>FactsByClass</c> and <c>Facts</c> are keyed by bare class name and not
+    /// by project, so two classes named alike in two projects — <c>CorpusRebuildTests</c> is one
+    /// today — share one entry there. <c>ProjectsByClass</c> and <c>FactsByProjectAndClass</c> are
+    /// the project-aware halves that hold a cited suite to the project cited beside it: a class two
+    /// suites carry names its project after it, and <c>IsaStructureTests.Resolves</c> is where the
+    /// rule lives.
     /// </para>
     /// </remarks>
     internal static TestInventory Tests() => _tests ??= BuildTestInventory();
@@ -111,6 +110,8 @@ internal sealed partial class IsaDocument
         var classes = new HashSet<string>(StringComparer.Ordinal);
         var factsByClass = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         var facts = new HashSet<string>(StringComparer.Ordinal);
+        var projectsByClass = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var factsByProjectAndClass = new Dictionary<(string Project, string Class), HashSet<string>>();
 
         var testsRoot = new DirectoryInfo(System.IO.Path.Combine(Root().FullName, "tests"));
 
@@ -122,6 +123,11 @@ internal sealed partial class IsaDocument
                 continue;
             }
 
+            // The project is the directory directly under `tests/`, which is what a stub's own
+            // `(`tests/<Project>`)` pointer names.
+            var project = System.IO.Path.GetRelativePath(testsRoot.FullName, file.FullName)
+                .Split(System.IO.Path.DirectorySeparatorChar)[0];
+
             string? currentClass = null;
 
             foreach (var line in File.ReadLines(file.FullName))
@@ -131,6 +137,14 @@ internal sealed partial class IsaDocument
                 {
                     currentClass = classMatch.Groups["name"].Value;
                     classes.Add(currentClass);
+
+                    if (!projectsByClass.TryGetValue(currentClass, out var projectsOfClass))
+                    {
+                        projectsOfClass = new HashSet<string>(StringComparer.Ordinal);
+                        projectsByClass[currentClass] = projectsOfClass;
+                    }
+
+                    projectsOfClass.Add(project);
                     continue;
                 }
 
@@ -147,6 +161,15 @@ internal sealed partial class IsaDocument
                     }
 
                     factsOfClass.Add(fact);
+
+                    var key = (project, currentClass);
+                    if (!factsByProjectAndClass.TryGetValue(key, out var factsOfProjectAndClass))
+                    {
+                        factsOfProjectAndClass = new HashSet<string>(StringComparer.Ordinal);
+                        factsByProjectAndClass[key] = factsOfProjectAndClass;
+                    }
+
+                    factsOfProjectAndClass.Add(fact);
                 }
             }
         }
@@ -157,36 +180,90 @@ internal sealed partial class IsaDocument
                 pair => pair.Key,
                 IReadOnlySet<string> (pair) => pair.Value,
                 StringComparer.Ordinal),
-            facts);
+            facts,
+            projectsByClass.ToDictionary(
+                pair => pair.Key,
+                IReadOnlySet<string> (pair) => pair.Value,
+                StringComparer.Ordinal),
+            factsByProjectAndClass.ToDictionary(
+                pair => pair.Key,
+                IReadOnlySet<string> (pair) => pair.Value));
     }
 
     /// <summary>Every span of a stub that is a test pointer, in the order the stub writes them.</summary>
     /// <remarks>
     /// Three shapes and no more, because they are the three the section actually writes: a bare
     /// class name, a class and a fact under it, and a leading-dot fact that hangs off a class the
-    /// stub named earlier. Anything else in backticks — a path, a command line, a file name, a
-    /// project name, an English sentence used as evidence — is skipped whole and never read as the
-    /// nearest thing to one, which is what keeps <c>CorpusImport.Tests</c> — a project name that
-    /// fails the class shape on the dot — from being misread as a bare-class pointer on
-    /// <c>CorpusImport</c>. A leading-dot fact resolves against any class named earlier in the same
-    /// stub, and against the whole tree when none was — this file's own stubs never write one
-    /// first, so the fallback is untested here and is exactly as wide as the format spec's own
-    /// words for it.
+    /// stub named earlier. Anything else in backticks — a path, a command line, a file name, an
+    /// English sentence used as evidence — is skipped whole and never read as the nearest thing to
+    /// one, which is what keeps <c>CorpusImport.Tests</c> — a project name that fails the class
+    /// shape on the dot — from being misread as a bare-class pointer on <c>CorpusImport</c>. A
+    /// leading-dot fact resolves against any class named earlier in the same stub, and against the
+    /// whole tree when none was — this file's own stubs never write one first, so the fallback is
+    /// untested here and is exactly as wide as the format spec's own words for it.
+    /// <para>
+    /// A fourth shape is read alongside the three, but produces no pointer of its own: a run of one
+    /// or more <c>`tests/&lt;Project&gt;`</c> spans, separated only by a comma, <c>and</c>, or
+    /// parentheses, binds every class and class-and-fact pointer written since the previous run in
+    /// the same stub — the rule <c>IsaStructureTests.Resolves</c> reads <see cref="TestPointer.Projects"/>
+    /// by. A leading-dot fact is never in that set: a run never rebinds one, which is why it always
+    /// carries an empty <see cref="TestPointer.Projects"/>.
+    /// </para>
     /// </remarks>
     internal static IReadOnlyList<TestPointer> PointersIn(Stub stub)
     {
         var pointers = new List<TestPointer>();
         var namedSoFar = new List<string>();
+        var pendingSinceLastRun = new List<int>();
+        var runProjects = new List<string>();
+        Match? lastProjectSpan = null;
+
+        void FinishRun()
+        {
+            if (runProjects.Count == 0)
+            {
+                return;
+            }
+
+            var bound = runProjects.ToArray();
+            foreach (var index in pendingSinceLastRun)
+            {
+                pointers[index] = pointers[index] with { Projects = bound };
+            }
+
+            pendingSinceLastRun.Clear();
+            runProjects.Clear();
+            lastProjectSpan = null;
+        }
 
         foreach (Match span in Pointer().Matches(stub.Evidence))
         {
             var text = span.Value.Trim('`');
 
+            var project = ProjectPointer().Match(text);
+            if (project.Success)
+            {
+                var joinsRun = lastProjectSpan is { } previous
+                    && IsARunSeparator(stub.Evidence[(previous.Index + previous.Length)..span.Index]);
+
+                if (!joinsRun)
+                {
+                    FinishRun();
+                }
+
+                runProjects.Add(project.Groups["project"].Value);
+                lastProjectSpan = span;
+                continue;
+            }
+
+            FinishRun();
+
             var classAndFact = ClassAndFactPointer().Match(text);
             if (classAndFact.Success)
             {
                 pointers.Add(new TestPointer(
-                    classAndFact.Groups["class"].Value, classAndFact.Groups["fact"].Value, [.. namedSoFar]));
+                    classAndFact.Groups["class"].Value, classAndFact.Groups["fact"].Value, [.. namedSoFar], []));
+                pendingSinceLastRun.Add(pointers.Count - 1);
                 namedSoFar.Add(classAndFact.Groups["class"].Value);
                 continue;
             }
@@ -194,20 +271,26 @@ internal sealed partial class IsaDocument
             var leadingDot = LeadingDotFactPointer().Match(text);
             if (leadingDot.Success)
             {
-                pointers.Add(new TestPointer(null, leadingDot.Groups["fact"].Value, [.. namedSoFar]));
+                pointers.Add(new TestPointer(null, leadingDot.Groups["fact"].Value, [.. namedSoFar], []));
                 continue;
             }
 
             var bareClass = BareClassPointer().Match(text);
             if (bareClass.Success)
             {
-                pointers.Add(new TestPointer(text, null, [.. namedSoFar]));
+                pointers.Add(new TestPointer(text, null, [.. namedSoFar], []));
+                pendingSinceLastRun.Add(pointers.Count - 1);
                 namedSoFar.Add(text);
             }
         }
 
+        FinishRun();
+
         return pointers;
     }
+
+    /// <summary>Whether the text between two project spans is only a comma, <c>and</c>, or parentheses.</summary>
+    private static bool IsARunSeparator(string between) => RunSeparator().IsMatch(between);
 
     /// <summary>
     /// Where this repository is, found from this source file's compile-time path — the same way
@@ -457,6 +540,20 @@ internal sealed partial class IsaDocument
     private static partial Regex LeadingDotFactPointer();
 
     /// <summary>
+    /// One project of a run: <c>tests/MeetingTranscriber.Infrastructure.Tests</c>. Every directory
+    /// <see cref="BuildTestInventory"/> ever reads a class off of satisfies this shape today, but
+    /// nothing keeps the two in step — a project folder this does not match would leave a run
+    /// unrecognised rather than misbound, since <see cref="TestInventory.ProjectsByClass"/> only
+    /// ever holds names <see cref="BuildTestInventory"/> actually found.
+    /// </summary>
+    [GeneratedRegex(@"^tests/(?<project>[A-Za-z][A-Za-z0-9_.]*)$")]
+    private static partial Regex ProjectPointer();
+
+    /// <summary>The text a run tolerates between two of its project spans.</summary>
+    [GeneratedRegex(@"^[\s,()]*(?:and[\s,()]*)*$")]
+    private static partial Regex RunSeparator();
+
+    /// <summary>
     /// Characters no path in this repository holds, each of which makes the span a different kind
     /// of thing. A wildcard or a bracket makes it a set of names, an angle bracket makes it a
     /// shape, and a colon or a hash makes it a place inside a file — <c>tests/X.Tests/Foo.cs:120</c>
@@ -507,13 +604,28 @@ internal sealed partial class IsaDocument
     internal sealed record Claim(string Id, bool Closed, string Text, string Feature);
 
     /// <summary>Every test class and every fact this repository has.</summary>
+    /// <remarks>
+    /// <paramref name="ProjectsByClass"/> and <paramref name="FactsByProjectAndClass"/> are the
+    /// project-aware halves <see cref="Classes"/>, <see cref="FactsByClass"/> and
+    /// <see cref="Facts"/> do not carry: which project, or projects, a class two suites share
+    /// sits in, and which facts sit under it there. The project is the directory directly under
+    /// <c>tests/</c>.
+    /// </remarks>
     internal sealed record TestInventory(
         IReadOnlySet<string> Classes,
         IReadOnlyDictionary<string, IReadOnlySet<string>> FactsByClass,
-        IReadOnlySet<string> Facts);
+        IReadOnlySet<string> Facts,
+        IReadOnlyDictionary<string, IReadOnlySet<string>> ProjectsByClass,
+        IReadOnlyDictionary<(string Project, string Class), IReadOnlySet<string>> FactsByProjectAndClass);
 
-    /// <summary>A class, or a fact and the classes the stub had named by the time it wrote it.</summary>
-    internal sealed record TestPointer(string? Class, string? Fact, IReadOnlyList<string> ClassesNamedSoFar);
+    /// <summary>
+    /// A class, or a fact and the classes the stub had named by the time it wrote it.
+    /// <paramref name="Projects"/> is the run bound to a class or class-and-fact pointer — empty
+    /// when none follows it in the stub, and always empty on a leading-dot fact, which a run never
+    /// rebinds.
+    /// </summary>
+    internal sealed record TestPointer(
+        string? Class, string? Fact, IReadOnlyList<string> ClassesNamedSoFar, IReadOnlyList<string> Projects);
 
     /// <summary>
     /// A provenance stub: the claim it closes, everything after the `- ISC-N — ` prefix, and that
