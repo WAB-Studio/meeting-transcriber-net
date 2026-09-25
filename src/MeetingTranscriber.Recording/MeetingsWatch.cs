@@ -13,9 +13,9 @@ namespace MeetingTranscriber.Recording;
 /// <para>
 /// A meeting's stage is not something the corpus announces. It is read off the files a meeting has
 /// and the jobs it carries, and both of those move where nothing tells a window: the command line
-/// files a response somebody paid for, a second window answers a stage, and — the moment anything
-/// runs a job on its own — every meeting that finishes transcribing does it while somebody is
-/// looking at the list. So this looks, and it is the only thing that looks. Everywhere else the
+/// files a response somebody paid for, a second window answers a stage, and the runner finishes
+/// every transcription while somebody may be looking at the list. So this looks, and it is the
+/// only thing that looks. Everywhere else the
 /// list is read is the application drawing what it has just done, at once rather than within a
 /// look; none of those is a moment picked because the list might have gone stale by then.
 /// </para>

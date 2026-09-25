@@ -3,7 +3,8 @@ namespace MeetingTranscriber.App.Tests;
 /// <summary>
 /// A launch used to start two detached tasks over one corpus, and the fix was to make the list of
 /// what a launch owes the thing that decides the order. This holds the half of that the application
-/// itself has to keep: one place where background work starts, pointed at that list.
+/// itself has to keep: one place where background work starts, pointed at that list and then at the
+/// runner's pump.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -69,11 +70,39 @@ public sealed class LaunchWorkTests
     public void The_application_starts_background_work_in_one_place_only()
     {
         StartsWork.SelectMany(Occurrences).ShouldHaveSingleItem(
-            "App.xaml.cs starts background work in more than one place. If what was added is work a "
-            + "launch owes the corpus, it belongs in WhatALaunchOwes.InOrder, which is what says "
-            + "what order a launch's work runs in and is what keeps two writers off one corpus. If "
-            + "it is not launch work, it needs a home and an argument of its own, and this file is "
-            + "not it.");
+            "App.xaml.cs starts background work in more than one place. The one Task.Run here "
+            + "carries the launch's ordered list and then the runner's pump, in that order and on "
+            + "one thread of work, so two writers are never started over one corpus. If what was "
+            + "added is work a launch owes the corpus, it belongs in WhatALaunchOwes.InOrder; if it "
+            + "is anything else, it needs a home and an argument of its own, and this file is not "
+            + "it.");
+    }
+
+    /// <summary>
+    /// The runner is started only after the launch's own ordered list has returned, and never
+    /// before the restart's own sweep inside it has had its turn.
+    /// </summary>
+    /// <remarks>
+    /// Goes red with the two swapped: <c>JobRunner.PumpAsync(</c> ahead of the last
+    /// <c>WhatALaunchOwes.RunIn(</c> would start the pump sending a job the restart sweep has not
+    /// yet had the chance to stop on a person.
+    /// </remarks>
+    [Fact]
+    public void The_runner_starts_only_after_the_launch_has_paid_what_it_owes()
+    {
+        var lastOwed = Occurrences("WhatALaunchOwes.RunIn(").Max();
+        var pump = Occurrences("JobRunner.PumpAsync(").ShouldHaveSingleItem();
+
+        pump.ShouldBeGreaterThan(
+            lastOwed,
+            "App.xaml.cs starts the runner's pump before the launch's own ordered list has run, so "
+            + "the pump could send a job the restart sweep has not yet had the chance to stop on a "
+            + "person.");
+
+        Occurrences("JobsARestartFound.").ShouldBeEmpty(
+            "App.xaml.cs settles the jobs a restart found running itself. What a launch owes the "
+            + "corpus is decided in WhatALaunchOwes.InOrder, so that the order is stated somewhere "
+            + "a test can run it.");
     }
 
     /// <summary>

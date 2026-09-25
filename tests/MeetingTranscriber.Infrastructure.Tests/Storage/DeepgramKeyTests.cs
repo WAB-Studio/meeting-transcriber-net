@@ -174,8 +174,8 @@ public class DeepgramKeyTests : IDisposable
                 + "DeepgramKey to be one.");
 
     /// <summary>
-    /// And nothing but the key itself and the command that puts one there names the type. The wider
-    /// half: who holds a key, as opposed to who can reach the store.
+    /// And nothing but the key itself and the three files that put one there or spend with one
+    /// names the type. The wider half: who holds a key, as opposed to who can reach the store.
     /// </summary>
     /// <remarks>
     /// Matched as the whole word, so <c>DeepgramKeyException</c> does not trip it. Catching the
@@ -188,15 +188,16 @@ public class DeepgramKeyTests : IDisposable
         Naming(@"\bDeepgramKey\b(?!Exception)")
             .ShouldBe(
                 [
+                    Path.Combine("MeetingTranscriber.App", "TranscribingOnThisMachinesKey.cs"),
                     Path.Combine("MeetingTranscriber.Cli", "DeepgramCommands.cs"),
                     Path.Combine("MeetingTranscriber.Cli", "KeyCommands.cs"),
                     Path.Combine("MeetingTranscriber.Infrastructure", "Storage", "DeepgramKey.cs"),
                 ],
                 "a Deepgram key is read by the thing about to spend money with it and by nothing "
-                + "else, so a fourth file naming this type is a place the key can be written down. "
+                + "else, so a fifth file naming this type is a place the key can be written down. "
                 + "The answer is to add the caller here on purpose, saying what it does with the "
-                + "key — DeepgramCommands is on it because it is the one thing that spends with a "
-                + "key — and never to widen the rule.");
+                + "key — DeepgramCommands and TranscribingOnThisMachinesKey are on it because they "
+                + "are the two things that spend with a key — and never to widen the rule.");
 
     /// <summary>
     /// Which files under <c>src/</c> match <paramref name="pattern"/>, as paths from the project

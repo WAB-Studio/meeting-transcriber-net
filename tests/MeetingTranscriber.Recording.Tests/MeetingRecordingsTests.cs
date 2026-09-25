@@ -413,7 +413,8 @@ public sealed class MeetingRecordingsTests : IDisposable
 
     /// <summary>
     /// ISC-157.1. A recording somebody asked to have transcribed comes out of the stop with exactly
-    /// that queued, and nothing runs it.
+    /// that queued, and the stop runs none of it: what sends it is the runner, which
+    /// <c>AfterAStopTests</c> holds.
     /// </summary>
     /// <remarks>
     /// Read back through a second connection, so what is asserted is the database and not a row
@@ -451,8 +452,8 @@ public sealed class MeetingRecordingsTests : IDisposable
     /// </summary>
     /// <remarks>
     /// The meeting has nothing for a summary to be made from, so an <c>Extract</c> row here would
-    /// describe a stage this meeting cannot be at. What the rest of that answer means is read again
-    /// by whatever finishes the transcription, and nothing does yet.
+    /// describe a stage this meeting cannot be at. What the rest of that answer means is read by
+    /// nothing yet: the runner that finishes the transcription queues no summary.
     /// </remarks>
     [Fact]
     public void Stopping_a_recording_somebody_asked_to_summarise_queues_only_the_transcription()

@@ -1,5 +1,6 @@
 ﻿using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
+using MeetingTranscriber.Processing.Jobs;
 using MeetingTranscriber.Recording;
 
 using Microsoft.UI.Xaml;
@@ -45,6 +46,16 @@ public partial class App : Application
     /// person's meetings end up in two places.
     /// </summary>
     private CorpusFolder? _corpus;
+
+    /// <summary>
+    /// What lets go of the runner's pump over whichever corpus <see cref="_corpus"/> named last.
+    /// One per launch of <see cref="StartWhatThisLaunchOwesTheCorpus"/>, cancelled before the next
+    /// is made and never disposed here: the pump this cancels may still be reading its token on
+    /// another thread when the next corpus is chosen, and disposing out from under that read is
+    /// the race, not the fix. Letting it go is the process ending or the pump itself finishing —
+    /// either way, nobody but the pump reads it again.
+    /// </summary>
+    private CancellationTokenSource? _work;
 
     /// <summary>
     /// Initializes the singleton application object.  This is the first line of authored code
@@ -147,13 +158,15 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Starts everything this launch owes the corpus it just opened.
+    /// Starts everything this launch owes the corpus it just opened, and then the runner's pump
+    /// over that same corpus.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// What that work is, and what order it runs in, is <see cref="WhatALaunchOwes.InOrder"/>'s and
-    /// is not restated here. What this holds is the application's half: that it happens at all, on
-    /// a thread that is not the one the window draws on, after the window is up. A launch used to
+    /// What the launch's own work is, and what order it runs in, is
+    /// <see cref="WhatALaunchOwes.InOrder"/>'s and is not restated here. What this holds is the
+    /// application's half: that it happens at all, on a thread that is not the one the window draws
+    /// on, after the window is up, and that the runner starts only once it has. A launch used to
     /// start two of these side by side, and the list is what replaced them — anything a launch
     /// comes to owe belongs in it rather than beside this call.
     /// </para>
@@ -163,23 +176,49 @@ public partial class App : Application
     /// screen waits for it either.
     /// </para>
     /// <para>
-    /// Discarding the task is an accepted silence and not a second one. <c>RunIn</c> answers with
-    /// what happened instead of throwing about it, for everything a disk or a corpus can refuse, so
-    /// what is dropped here is the report and never the work. What that report would be worth
-    /// saying out loud is argued where the work is, and nothing on this side could act on it.
+    /// <b>One <see cref="_work"/> at a time.</b> A corpus chosen a second time — from the settings
+    /// screen of a window whose first corpus was refused — cancels whatever pump is running over
+    /// the corpus this is replacing before starting the next. <c>OnCorpusChosen</c> reaches this
+    /// only after a refused corpus, where the first call here found no folder to start a pump over
+    /// at all, so the cancel is usually a no-op; it is still what keeps this correct on the day that
+    /// stops being true.
     /// </para>
     /// <para>
-    /// The one thing it does not answer with is running out of memory, which leaves <c>RunIn</c> so
-    /// that the chores behind the one that met it are not attempted. That is dropped here too, and
-    /// it has to be: a heap that is gone is not something a window can be asked about, and this
-    /// application does not get to end itself over work a launch owed a corpus.
+    /// Discarding the task is an accepted silence and not a second one. <c>RunIn</c> answers with
+    /// what happened instead of throwing about it, for everything a disk or a corpus can refuse, so
+    /// what is dropped here is the launch's own report, and never the work. The pump's own report —
+    /// <c>JobsRun.Left</c> and <c>RestartSettled.Left</c> — is read by nobody yet either, for the
+    /// same reason: nothing on this side could act on it. The task itself ends when its token is
+    /// cancelled or the process ends; a call in flight at either moment is stopped on a person by
+    /// whoever next takes the corpus's lease, never by this method.
+    /// </para>
+    /// <para>
+    /// The one thing neither answers with is running out of memory. <c>RunIn</c> leaves it so the
+    /// chores behind the one that met it are not attempted, and <c>JobRunner.PumpAsync</c> leaves it
+    /// so the pump does not carry on building its next look out of the same exhaustion. Both are
+    /// dropped here too, and have to be: a heap that is gone is not something a window can be asked
+    /// about, and this application does not get to end itself over work a launch owed a corpus.
     /// </para>
     /// </remarks>
-    private static void StartWhatThisLaunchOwesTheCorpus(CorpusFolder corpus)
+    private void StartWhatThisLaunchOwesTheCorpus(CorpusFolder corpus)
     {
         if (corpus.Folder is { } folder)
         {
-            _ = Task.Run(() => WhatALaunchOwes.RunIn(folder));
+            _work?.Cancel();
+            var work = new CancellationTokenSource();
+            _work = work;
+
+            _ = Task.Run(async () =>
+            {
+                WhatALaunchOwes.RunIn(folder);
+
+                await JobRunner.PumpAsync(
+                    folder,
+                    TimeProvider.System,
+                    TranscribingOnThisMachinesKey.Sending(),
+                    JobRunner.HowOftenTheQueueIsLookedAt,
+                    work.Token).ConfigureAwait(false);
+            });
         }
     }
 

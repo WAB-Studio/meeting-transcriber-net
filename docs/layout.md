@@ -11,7 +11,7 @@ src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
 src/MeetingTranscriber.Mcp/               the corpus answered read-only over stdio, for an agent
 src/MeetingTranscriber.Presentation/      what the application says, and what language it says it in
-src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries
+src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries, and the runner that sends what is queued
 src/MeetingTranscriber.Recording/         a meeting recorded into a corpus, and what a launch owes one: where the sides meet
 tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
 tools/MeetingTranscriber.UiProbe/         starts the application, reads its window, presses what is on it and
@@ -65,9 +65,11 @@ started either name.
 
 **One exception, named, and it is a live run.** `LiveCheck` and `SendingMark` are rules and they are
 here: which files a run sends, how much audio that is, what the ceiling allows, what a person
-confirmed, and the claim over the folder the responses land in. They are here because nothing else
-in the product spends money and there is no live command in the application, so there is no service
-above this one for them to be a call into. That is the whole of the exception and it does not grow —
+confirmed, and the claim over the folder the responses land in. The application spends now too,
+through `JobRunner`, on whatever a stop or a press queued — but that is a service call, the same
+shape every other rule in this document is about a call into, and these two are not: they are a
+prompt's own rules about a folder somebody named on its command line, with nothing behind them a
+service could be a call into. That is the whole of the exception and it does not grow —
 the prompt may hold what a live run decides and nothing else — which is why every other sentence in
 this document and in the tree saying the prompt holds no rule of its own is still true as written:
 each of them is about a rule that is not a live run's. What a provider *response* has to hold is not
@@ -190,7 +192,15 @@ edge would make SQLite depend on how a Deepgram response is parsed.
 
 `Recording` references `Processing`, and rendering reaches the application only through it: the
 application names two projects, `Presentation` for the words and `Recording` for everything else,
-and it is the second of those the whole corpus stack arrives on. The rendered files are the one
+and it is the second of those the whole corpus stack arrives on. Its one exception, and it is
+narrower than the renders' own: `App.xaml.cs` itself starts `JobRunner`'s pump, and
+`TranscribingOnThisMachinesKey` binds the key it sends with, so this one call site names
+`Processing` where the renders never made the application name anything past `Recording`. Both
+reach it through the reference `App.csproj`'s own comment already says brings `Processing` along —
+the same closure `App.xaml.cs` already reaches `Infrastructure` through — so a second, explicit
+`ProjectReference` would only restate what that comment already commits to. The rule still lives
+where a build agent runs it — `Processing` and everything under it — and what the application
+holds is the call and the thread it goes on. The rendered files are the one
 thing a person is never asked about — they cost nothing and can be produced again, so no screen
 offers them and nothing at a prompt is supposed to be needed for them to exist. Something
 therefore has to produce them without being asked, and that is work a launch owes the corpus,

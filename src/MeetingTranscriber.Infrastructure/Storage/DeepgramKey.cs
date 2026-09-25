@@ -47,9 +47,11 @@ public sealed class DeepgramKeyException : Exception
 /// holds it is two sweeps in <c>DeepgramKeyTests</c>:
 /// <c>Nothing_but_the_key_itself_reaches_the_credential_store</c>, which fails when a second file
 /// under <c>src/</c> names <c>CredentialManager</c>, and
-/// <c>Nothing_but_the_key_itself_reads_a_Deepgram_key</c>, which fails when a fourth names this
-/// type — the three on it are <c>MeetingTranscriber.Cli\KeyCommands.cs</c>, which puts a key there,
-/// <c>MeetingTranscriber.Cli\DeepgramCommands.cs</c>, which spends with one, and this file.
+/// <c>Nothing_but_the_key_itself_reads_a_Deepgram_key</c>, which fails when a file it does not
+/// list names this type. The four listed are <c>MeetingTranscriber.Cli\KeyCommands.cs</c>, which
+/// puts a key there, <c>MeetingTranscriber.Cli\DeepgramCommands.cs</c>, which spends with one,
+/// <c>MeetingTranscriber.App\TranscribingOnThisMachinesKey.cs</c>, which spends with one for the
+/// application's runner, in the one assembly no suite can reference, and this file.
 /// </para>
 /// <para>
 /// An instance over a target name, with one static factory for the name the product uses. The
