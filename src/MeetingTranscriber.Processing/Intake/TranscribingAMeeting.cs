@@ -204,8 +204,25 @@ public static class TranscribingAMeeting
                 CreatedAt = UtcTimestamp.From(clock.GetUtcNow()),
             };
 
-            context.TranscriptionRuns.Add(run);
-            context.SaveChanges();
+            try
+            {
+                context.TranscriptionRuns.Add(run);
+                context.SaveChanges();
+            }
+            catch (Exception refused) when (refused is not OutOfMemoryException)
+            {
+                // The write handle must close before the temporary can be removed: it was opened
+                // with FileShare.Read, which admits another reader but refuses a delete while it
+                // is open. Nothing has been sent yet, so nothing to undo but the file this attempt
+                // opened for itself.
+                await writing.DisposeAsync().ConfigureAwait(false);
+                TryDelete(temporary);
+
+                return new TranscriptionEnded(
+                    TranscriptionOutcome.NothingWasCharged,
+                    "The transcription could not be written into the corpus before anything was "
+                    + $"sent: {refused.Message} Nothing was sent and nothing was charged.");
+            }
         }
 
         try
@@ -231,8 +248,14 @@ public static class TranscribingAMeeting
 
         // The read handle is opened before the write handle closes (Decides), so the temporary is
         // never unheld between the two: a sweep run in that gap would read it as a dead write and
-        // take a response that was just paid for.
-        var reading = new FileStream(
+        // take a response that was just paid for. It is `using` as a safety net against the handle
+        // itself leaking on a throw this method does not otherwise guard against — most of all
+        // `filing.SaveChanges()` below, which can still fail after `ReceiveInto` has already filed
+        // the response; that leaves the run row unresolved and the temporary undeleted, and is an
+        // unguarded gap of its own, owed separately. Every explicit `Dispose()` below stays: the
+        // file has to be let go before it is deleted or moved, and a dispose the `using` runs after
+        // one of those is a no-op on a stream already closed.
+        using var reading = new FileStream(
             temporary.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         await writing.DisposeAsync().ConfigureAwait(false);
         var hash = CorpusFiles.Sha256Of(reading);
