@@ -53,6 +53,14 @@ public static class RowPresses
     /// </remarks>
     public static string ToLeave(Guid meeting) => $"{meeting}:leave";
 
+    /// <summary>The press that queues again a job stopped on a person, on this meeting.</summary>
+    /// <remarks>
+    /// No act in it either, for the same reason <see cref="ToLeave"/> gives: <em>Reintentar</em>
+    /// is offered wherever a meeting is stopped on a person and asks for nothing but that, so
+    /// there is no second thing for the id to name.
+    /// </remarks>
+    public static string ToTryAgain(Guid meeting) => $"{meeting}:again";
+
     /// <summary>The press that asks for this meeting's next act, named for the act it buys.</summary>
     /// <param name="meeting">Which meeting the row is of.</param>
     /// <param name="act">
