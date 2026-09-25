@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Meetings;
@@ -214,6 +216,45 @@ public sealed class MeetingArchiveTests : IDisposable
         brought.Action.ShouldBe("audio imported");
         brought.Actor.ShouldBe(AuditActor.App);
         brought.Detail.ShouldBe("the audio at 'C:\\elsewhere\\meeting.wav'");
+    }
+
+    /// <summary>
+    /// The write lock this method takes is over the rows and the rename, and never over copying
+    /// the file in — so a caller with a setting to save is not made to wait out
+    /// <see cref="CorpusDatabase.BusyTimeoutMilliseconds"/> for as long as the copy takes.
+    /// </summary>
+    [Fact]
+    public void A_second_writer_is_not_kept_waiting_while_the_file_is_copied()
+    {
+        var meetingId = Guid.NewGuid();
+        var elapsed = TimeSpan.Zero;
+
+        var arriving = SomeAudio() with
+        {
+            Contents = into =>
+            {
+                var clock = Stopwatch.StartNew();
+                using (var second = corpus.Open())
+                {
+                    new CorpusSettings(second).WhenARecordingEnds(AfterARecording.Transcribe, Now);
+                }
+
+                elapsed = clock.Elapsed;
+                into.Write("RIFF"u8);
+            },
+        };
+
+        using (var context = corpus.OpenMigrated())
+        {
+            MeetingArchive.New(context, AMeeting(meetingId), arriving, Now);
+        }
+
+        elapsed.ShouldBeLessThan(
+            TimeSpan.FromMilliseconds(CorpusDatabase.BusyTimeoutMilliseconds / 2.0),
+            "a second writer should not be kept waiting on a lock the copy has not yet taken");
+
+        using var reopened = corpus.Open();
+        new CorpusSettings(reopened).WhenARecordingEnds().ShouldBe(AfterARecording.Transcribe);
     }
 
     public void Dispose() => corpus.Dispose();
