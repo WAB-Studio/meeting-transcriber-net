@@ -9,8 +9,8 @@ namespace MeetingTranscriber.Audio.Tests;
 /// </summary>
 /// <remarks>
 /// A file of its own rather than facts added to <see cref="UnfinishedRecordingsTests"/>, which is
-/// <c>jobs</c>'s this batch — see <c>UnfinishedRecordings.Remove</c>'s own remarks for who the
-/// second caller is and what stands in front of it.
+/// about the three answers offered for a recording nobody has decided about; this method is the
+/// one way in that skips that question.
 /// </remarks>
 public sealed class RemovingARecordingTests : IDisposable
 {

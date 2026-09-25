@@ -62,15 +62,17 @@ public sealed record ArrivedOn(
 /// all three and was written twice over before this existed.
 /// </para>
 /// <para>
-/// <b>A fourth writer is outside it, and that is settled rather than unfinished.</b>
-/// <c>MeetingRecordings</c> opens a meeting before there is anything to file — no source, no length
-/// and no verb, which is why <see cref="NewMeeting.Duration"/> can be non-null here — and
-/// <c>Finish</c> stages the recording's audio <em>outside</em> its transaction, because an hour of
-/// WAV copied under SQLite's <c>BEGIN IMMEDIATE</c> would refuse every other writer in the
-/// application for minutes. <see cref="ArrivedOn.Contents"/> goes straight to
-/// <c>DurableArtifact.Write</c>, which stages and commits as one act, so this shape cannot express
-/// that: folding <c>Finish</c> in would mean taking a staged artifact instead. That is a real
-/// question and it is not this type's.
+/// <b>The file is staged before the transaction opens, and that is the lock and not a nicety.</b>
+/// SQLite takes its one write lock at <c>BEGIN IMMEDIATE</c>, so a copy made inside the transaction
+/// keeps every other writer waiting on a five-second <c>busy_timeout</c> for as long as the file
+/// takes — minutes, for a long meeting brought in from outside. Staged first, the only thing the
+/// lock is held across is the rows and the rename. <c>MeetingRecordings</c> stays a fourth writer
+/// outside this for its own reason: it opens a meeting before there is anything to file, with no
+/// source, no length and no verb. The price is paid the other way round: a call the row save was
+/// always going to refuse — <see cref="New"/> over an id already held, <see cref="Onto"/> over a
+/// meeting that is not there — now stages the whole file before finding that out, where the row
+/// used to be checked first. <see cref="Onto"/>'s own remarks already choose not to look before
+/// that refusal, so this is the same choice paying for the copy too, not a new one.
 /// </para>
 /// <para>
 /// <b>The recovery card is written after the commit and never inside it.</b> The source is a kind
@@ -109,7 +111,8 @@ public sealed record ArrivedOn(
 /// does not exist. The cost is on the record rather than hidden — a caller inside its own unit of
 /// work gets the rows in that unit of work and the card inside it too, which is the trap the
 /// paragraphs above argue against, so a caller that wants what they promise opens no transaction
-/// of its own.
+/// of its own. A caller holding one also holds the lock across the staging, which is the same cost
+/// said once more.
 /// </para>
 /// </remarks>
 public static class MeetingArchive
@@ -184,6 +187,15 @@ public static class MeetingArchive
         ArgumentException.ThrowIfNullOrWhiteSpace(source.Verb);
         ArgumentException.ThrowIfNullOrWhiteSpace(source.FileName);
 
+        // Staged before the transaction opens, for the reason this type's remarks give: the write
+        // lock is taken at `BEGIN IMMEDIATE`, so a second writer is never kept waiting on the copy.
+        using var staged = StagedArtifact.Stage(
+            corpus,
+            meetingId,
+            source.Kind,
+            CorpusFiles.PathFor(meetingId, source.FileName),
+            source.Contents);
+
         using var filing = corpus.Database.CurrentTransaction is null
             ? corpus.Database.BeginTransaction()
             : null;
@@ -223,13 +235,7 @@ public static class MeetingArchive
         // Before the file, because an artifact cannot point at a row that is not there yet.
         corpus.SaveChanges();
 
-        var stored = DurableArtifact.Write(
-            corpus,
-            meetingId,
-            source.Kind,
-            CorpusFiles.PathFor(meetingId, source.FileName),
-            now,
-            source.Contents);
+        var stored = staged.Commit(now);
 
         filing?.Commit();
 

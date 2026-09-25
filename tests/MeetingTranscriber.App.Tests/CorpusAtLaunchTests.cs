@@ -11,8 +11,7 @@ namespace MeetingTranscriber.App.Tests;
 /// </para>
 /// <para>
 /// A file of its own and not a fact added to <c>LaunchWorkTests</c>: that class is about where
-/// background work starts, this is about the corpus, and <c>LaunchWorkTests.cs</c> belongs to
-/// another share of the batch #148 was built in, which this one may not enter.
+/// background work starts, this is about the corpus, and the two go red for different reasons.
 /// </para>
 /// </remarks>
 public sealed class CorpusAtLaunchTests
