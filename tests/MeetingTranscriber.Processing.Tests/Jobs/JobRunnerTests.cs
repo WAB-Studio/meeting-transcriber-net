@@ -518,6 +518,65 @@ public sealed class JobRunnerTests
         reopened.ProcessingJobs.Single(row => row.Id == pendingJob).State.ShouldBe(JobState.Succeeded);
     }
 
+    /// <summary>
+    /// Goes red when <c>Start</c> is stamped with the pass's own <c>now</c> instead of a fresh
+    /// read at the moment it is taken, and red when <c>Apply</c> is stamped that same way instead
+    /// of a fresh read once the call has ended.
+    /// </summary>
+    [Fact]
+    public async Task Each_job_is_stamped_with_when_its_own_call_began_and_ended()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid job1Id, job2Id;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            var first = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+            var job1 = new MeetingWork(context, When).Take(first);
+            context.SaveChanges();
+            job1Id = job1.Id;
+
+            var second = RecordedMeetings.Recorded(
+                context, SourceProfile.Multichannel, When + Duration.FromSeconds(1));
+            var job2 = new MeetingWork(context, When + Duration.FromSeconds(1)).Take(second);
+            context.SaveChanges();
+            job2Id = job2.Id;
+        }
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        var clock = new MovingClock(When.Value);
+        var calls = 0;
+
+        // Two different fixtures: the same response bytes filed for two different meetings is a
+        // conflict the corpus itself refuses, and that refusal is not what this test is about.
+        SendingToTheProvider send = async (_, _, response, stopping) =>
+        {
+            clock.Advance(TimeSpan.FromSeconds(60));
+            var fixture = Interlocked.Increment(ref calls) == 1
+                ? DeepgramFixtures.TwoChannelShort
+                : DeepgramFixtures.TwoChannelLong;
+            await using var body = File.OpenRead(DeepgramFixtures.PathOf(fixture));
+            await body.CopyToAsync(response, stopping);
+            return body.Length;
+        };
+
+        var run = await JobRunner.RunWhatIsDueAsync(
+            lease, clock, send, TestContext.Current.CancellationToken);
+
+        run.Left.ShouldBeEmpty();
+
+        using var reopened = corpus.Open();
+        var stamped1 = reopened.ProcessingJobs.Single(row => row.Id == job1Id);
+        var stamped2 = reopened.ProcessingJobs.Single(row => row.Id == job2Id);
+
+        stamped1.StartedAt.ShouldBe(When);
+        stamped1.FinishedAt.ShouldBe(When + Duration.FromSeconds(60));
+        stamped2.StartedAt.ShouldBe(When + Duration.FromSeconds(60));
+        stamped2.FinishedAt.ShouldBe(When + Duration.FromSeconds(120));
+    }
+
     private static SendingToTheProvider FixtureBody(string fixture) =>
         async (_, _, response, stopping) =>
         {
@@ -547,5 +606,18 @@ public sealed class JobRunnerTests
 
             public ValueTask DisposeAsync() => ValueTask.CompletedTask;
         }
+    }
+
+    /// <summary>
+    /// A clock that only moves when a test moves it, for telling two stamps taken moments apart
+    /// in the same call apart from one another.
+    /// </summary>
+    private sealed class MovingClock(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset _now = start;
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan by) => _now = _now.Add(by);
     }
 }

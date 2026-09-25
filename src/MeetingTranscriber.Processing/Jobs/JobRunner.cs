@@ -124,8 +124,10 @@ public static class JobRunner
                 {
                     using var transaction = taking.Database.BeginTransaction();
 
+                    var startedAt = UtcTimestamp.From(clock.GetUtcNow());
+
                     var job = taking.ProcessingJobs.FirstOrDefault(row => row.Id == candidate.Id);
-                    if (job is null || !job.IsDue(now))
+                    if (job is null || !job.IsDue(startedAt))
                     {
                         // Taken, moved or gone between the read above and here — another pass over
                         // this same corpus cannot happen while this one holds the lease, so what did
@@ -134,7 +136,7 @@ public static class JobRunner
                         continue;
                     }
 
-                    job.Start(now);
+                    job.Start(startedAt);
                     taking.SaveChanges();
                     transaction.Commit();
 
@@ -185,7 +187,7 @@ public static class JobRunner
                     }
                     else
                     {
-                        Apply(fresh, ended, now);
+                        Apply(fresh, ended, UtcTimestamp.From(clock.GetUtcNow()));
 
                         try
                         {
