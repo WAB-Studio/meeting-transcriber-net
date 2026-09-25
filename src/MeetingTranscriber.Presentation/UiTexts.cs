@@ -657,6 +657,10 @@ public static class UiTexts
         "Ya está en cola. Todavía no corrió nada, así que ignorarla la saca.",
         "Already queued. Nothing has run yet, so ignoring it takes it back out.");
 
+    public static UiText AlreadySent { get; } = new(
+        "En curso: ya se envió, así que no se puede ignorar.",
+        "Under way: it has been sent, so it cannot be ignored.");
+
     public static UiText StoppedWaitingForAPerson { get; } = new(
         "Detenida esperando a una persona: puede haber un cobro que ya ocurrió, así que no se "
         + "reintenta sola.",

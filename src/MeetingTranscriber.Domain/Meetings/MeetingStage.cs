@@ -41,8 +41,8 @@ public enum StageStanding
     Offered = 1,
 
     /// <summary>
-    /// A job for this stage is queued or running. There is nothing to start twice, and it can
-    /// still be left: work nobody has run is work nobody has paid for.
+    /// A job for this stage is queued and nothing has started it. There is nothing to start
+    /// twice, and it can still be left: work nobody has run is work nobody has paid for.
     /// </summary>
     Underway = 2,
 
@@ -66,6 +66,13 @@ public enum StageStanding
     /// meeting reading as one still waiting to be told something.
     /// </summary>
     NothingToDo = 5,
+
+    /// <summary>
+    /// A job for this stage has been started. What it sends may already have been charged, so it
+    /// can neither be asked for again nor left, and the application is waiting on it rather than
+    /// on anybody.
+    /// </summary>
+    Running = 6,
 }
 
 /// <summary>
@@ -202,7 +209,8 @@ public static class MeetingStages
     /// oversight: an attempt that failed for good is work that did not happen, so the stage is
     /// owed and offered exactly as it was before anybody tried. What a person is told about the
     /// failure belongs beside whatever runs jobs, which is where the failure is produced and where
-    /// what to do about it is known; nothing runs one yet.
+    /// what to do about it is known — <c>JobRunner</c>, which writes it onto the job's own row and
+    /// tells nobody yet.
     /// </para>
     /// <para>
     /// <see cref="JobState.AwaitingUser"/> is not here either, and for the opposite reason: it is
@@ -218,7 +226,14 @@ public static class MeetingStages
 
         var seen = states.ToHashSet();
 
-        if (seen.Any(state => state is JobState.Running || state.IsQueued()))
+        // Sent, before anything about the queue: a job in flight is never merely queued, however
+        // many others of the same kind are sitting behind it.
+        if (seen.Contains(JobState.Running))
+        {
+            return StageStanding.Running;
+        }
+
+        if (seen.Any(state => state.IsQueued()))
         {
             return StageStanding.Underway;
         }
@@ -238,7 +253,8 @@ public static class MeetingStages
     public static bool MayBeTaken(this StageStanding standing) => standing switch
     {
         StageStanding.Offered or StageStanding.Declined => true,
-        StageStanding.Underway or StageStanding.StoppedOnAPerson or StageStanding.NothingToDo => false,
+        StageStanding.Underway or StageStanding.StoppedOnAPerson or StageStanding.NothingToDo
+            or StageStanding.Running => false,
         _ => throw new ArgumentOutOfRangeException(nameof(standing), standing, "Unknown stage standing."),
     };
 
@@ -262,7 +278,7 @@ public static class MeetingStages
     public static bool MayBeLeft(this StageStanding standing) => standing switch
     {
         StageStanding.Offered or StageStanding.Declined or StageStanding.Underway => true,
-        StageStanding.StoppedOnAPerson or StageStanding.NothingToDo => false,
+        StageStanding.StoppedOnAPerson or StageStanding.NothingToDo or StageStanding.Running => false,
         _ => throw new ArgumentOutOfRangeException(nameof(standing), standing, "Unknown stage standing."),
     };
 

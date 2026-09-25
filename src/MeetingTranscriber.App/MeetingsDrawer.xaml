@@ -78,12 +78,25 @@
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
 
-            <!-- The act on the right of a row, and the normal rank rather than pico. A button that
-                 opens the question is not the button that answers it: *Transcribir* and *Resumir*
-                 cost nothing to press — they open the dialogue where the charge is agreed to — and
-                 a list of twelve meetings with twelve orange buttons spends the colour that is
-                 supposed to mean *this one costs money*. A row is tarjeta, so its buttons are papel
-                 with a 1px rule. -->
+            <!-- The one row that is running is the one olive status (`docs/design.md`
+                 §Controls): it is not waiting on a person and it is not merely queued, so it takes
+                 neither of the other two tints and reads as the application's own work in
+                 progress. -->
+            <Style x:Key="MeetingRunning" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{StaticResource OliveBrush}" />
+            </Style>
+
+            <!-- The act on the right of a row, and the normal rank rather than pico. *Transcribir*
+                 spends at once now, on this machine's own key, with no price shown —
+                 `docs/design.md` puts a dialogue in front of that charge and it is not built yet
+                 (ISC-85). It keeps the normal rank anyway: §Controls gives pico to what costs
+                 money and the normal rank to a press that opens the question, and this one goes
+                 back to opening one the day the dialogue lands — dressing it in pico now would be
+                 undressing it again within the change that builds that dialogue, and a list of
+                 twelve meetings would spend the one colour that means *this costs money* twelve
+                 times over in the meantime. *Reintentar* takes this style too: it is the same act,
+                 buying a transcription of this meeting again. A row is tarjeta, so its buttons are
+                 papel with a 1px rule. -->
             <Style x:Key="TakeTheStage" TargetType="Button" BasedOn="{StaticResource RowButtonOnCard}" />
 
             <!-- The two tints `docs/design.md` fixes, and the only thing that tells a row waiting

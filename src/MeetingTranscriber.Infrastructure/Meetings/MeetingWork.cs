@@ -152,10 +152,10 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// will do it.
     /// </summary>
     /// <remarks>
-    /// The job is queued and nothing starts it, which is the whole of what this version promises:
-    /// every stage that spends money or quota waits to be told, and being told is a row, not a
-    /// provider call. What runs it is the runner's, and the state it is left in — pending, due
-    /// immediately — is what the runner reads.
+    /// The job is queued here and started by nothing here: being told is a row, not a provider
+    /// call. What sends it is <c>JobRunner</c>, which reads exactly the state this leaves —
+    /// pending, due immediately — within one look at the queue, on this machine's key, with no
+    /// price shown until the dialogue ISC-85 asks for exists.
     /// </remarks>
     /// <exception cref="MeetingStageException">
     /// This meeting's stage has no action, or its standing is one where taking it would do harm.

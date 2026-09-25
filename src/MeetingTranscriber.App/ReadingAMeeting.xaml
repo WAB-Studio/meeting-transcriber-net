@@ -94,11 +94,14 @@
             </Style>
 
             <!-- The act on the right, and the normal rank rather than pico or the platform's
-                 accent. `docs/design.md` §Controls: a button that opens the question is not the
-                 button that answers it — *Transcribir* opens the dialogue where the charge is
-                 agreed to, and pico belongs on the act inside that dialogue. The accent brush this
-                 replaced was the system's own, which §And five things this application is not
-                 rules out on its own: this application has two colours and they are on that page. -->
+                 accent. *Transcribir* spends at once now, on this machine's own key, with no price
+                 shown — `docs/design.md` puts a dialogue in front of that charge and it is not
+                 built yet (ISC-85). `docs/design.md` §Controls keeps the rank normal anyway: pico
+                 belongs to what costs money and the normal rank to a press that opens the
+                 question, which is where this one goes back to the day the dialogue lands. The
+                 accent brush this replaced was the system's own, which §And five things this
+                 application is not rules out on its own: this application has two colours and
+                 they are on that page. -->
             <Style x:Key="TakeTheStage" TargetType="Button" BasedOn="{StaticResource RowButtonOnCard}" />
 
             <!-- One mark along the track for each thing the AI left, so where each of them falls

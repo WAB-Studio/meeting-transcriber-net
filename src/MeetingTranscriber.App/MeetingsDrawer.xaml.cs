@@ -1198,7 +1198,12 @@ public sealed partial class MeetingsDrawer : UserControl
             lines.Children.Add(new TextBlock
             {
                 Text = In(standing),
-                Style = Chrome(entry.Owed.WaitsOnSomebody ? "MeetingStoppedOnAPerson" : "MeetingLine"),
+                Style = Chrome(entry.Owed.Standing switch
+                {
+                    StageStanding.Running => "MeetingRunning",
+                    _ when entry.Owed.WaitsOnSomebody => "MeetingStoppedOnAPerson",
+                    _ => "MeetingLine",
+                }),
             });
         }
 
@@ -1248,10 +1253,10 @@ public sealed partial class MeetingsDrawer : UserControl
     /// <para>
     /// The order is <c>docs/design.md</c>'s grammar and not the order they were written in: the
     /// neutral answer is on the left and the act is on the right. Ignoring is the neutral one — the
-    /// meeting stays where it is and the same button comes back — and taking the stage is what
-    /// opens the charge, so it is the one on the right in every row of this list and on every other
-    /// screen. A pair that read the other way round on one screen is where somebody presses the
-    /// expensive one out of habit.
+    /// meeting stays where it is and the same button comes back — and taking the stage spends at
+    /// once until the dialogue exists, so it is the one on the right in every row of this list and
+    /// on every other screen. A pair that read the other way round on one screen is where somebody
+    /// presses the expensive one out of habit.
     /// </para>
     /// </remarks>
     private UIElement Presses(Guid meeting, JobKind next, OwedWork owed)
