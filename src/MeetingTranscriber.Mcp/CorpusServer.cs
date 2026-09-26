@@ -192,6 +192,7 @@ public sealed class CorpusServer(CorpusLocation where)
                     var reading = new MeetingReading(corpus, TimeProvider.System);
                     var read = reading.Of(meeting);
                     var left = read.Screen.Left;
+                    var voices = new MeetingVoices(corpus, TimeProvider.System).Heard(meeting);
 
                     return Text(string.Join(
                         Environment.NewLine,
@@ -202,7 +203,8 @@ public sealed class CorpusServer(CorpusLocation where)
                         string.Empty,
                         Answers.All(
                             "things the extraction left",
-                            [.. left.Things.Take(Answers.MostRowsInOneAnswer).Select(Answers.Left)],
+                            [.. left.Things.Take(Answers.MostRowsInOneAnswer)
+                                .Select(thing => Answers.Left(thing, voices.NameOf(thing.SpeakerLabel)))],
                             left.Things.Count > Answers.MostRowsInOneAnswer)));
                 })),
 
@@ -235,6 +237,7 @@ public sealed class CorpusServer(CorpusLocation where)
                     // audio file that reading the screen would cost.
                     var reading = new MeetingReading(corpus, TimeProvider.System);
                     var about = reading.Row(meeting);
+                    var voices = new MeetingVoices(corpus, TimeProvider.System).Heard(meeting);
 
                     // One past the bound, in the query: the stretch asked for can be the whole of a
                     // three-hour meeting, and the extra row is what says there was more without
@@ -246,7 +249,8 @@ public sealed class CorpusServer(CorpusLocation where)
                         + Environment.NewLine + Environment.NewLine
                         + Answers.All(
                             "turns",
-                            [.. turns.Take(Answers.MostRowsInOneAnswer).Select(Answers.Said)],
+                            [.. turns.Take(Answers.MostRowsInOneAnswer)
+                                .Select(turn => Answers.Said(turn, voices.NameOf(turn.SpeakerLabel)))],
                             turns.Count > Answers.MostRowsInOneAnswer));
                 })),
 
@@ -267,11 +271,15 @@ public sealed class CorpusServer(CorpusLocation where)
                     var reading = new MeetingReading(corpus, TimeProvider.System);
                     var about = reading.Row(meeting);
                     var turns = reading.Around(meeting, at);
+                    var voices = new MeetingVoices(corpus, TimeProvider.System).Heard(meeting);
 
                     return Text(
                         Answers.About(about, reading.TranscribedFrom(meeting))
                         + Environment.NewLine + Environment.NewLine
-                        + Answers.All("turns", [.. turns.Select(Answers.Said)], more: false));
+                        + Answers.All(
+                            "turns",
+                            [.. turns.Select(turn => Answers.Said(turn, voices.NameOf(turn.SpeakerLabel)))],
+                            more: false));
                 })),
 
         Tool(

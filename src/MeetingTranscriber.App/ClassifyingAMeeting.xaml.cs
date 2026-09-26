@@ -1,5 +1,3 @@
-using System.Globalization;
-
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Meetings;
@@ -112,15 +110,6 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// <summary>Which pill, if any, somebody is typing a name into, and what that name is for.</summary>
     private AFieldOnAPill? _naming;
 
-    /// <summary>
-    /// Which place for somebody the dialogue was opened from, and whoever it is correcting — or
-    /// nobody, which is the dialogue adding one.
-    /// </summary>
-    private (int Slot, Person? Correcting)? _namingSomebody;
-
-    /// <summary>The organizations the dialogue offers, in the order it offers them.</summary>
-    private IReadOnlyList<Node> _organizations = [];
-
     public ClassifyingAMeeting() => InitializeComponent();
 
     /// <summary>The meeting was filed, and this screen is done with it.</summary>
@@ -183,8 +172,6 @@ public sealed partial class ClassifyingAMeeting : UserControl
         _chosen = MeetingFiling.Nothing;
         _deeper.Clear();
         _naming = null;
-        _namingSomebody = null;
-        _organizations = [];
 
         TheShapes.Children.Clear();
         Columns.Children.Clear();
@@ -409,7 +396,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
 
             SaveButton.IsEnabled = true;
             UnclassifyButton.IsEnabled = true;
-            WhichMeetingText.Text = WhichMeeting(read.Meeting);
+            WhichMeetingText.Text = ScreenNumbers.Which(read.Meeting);
 
             TheShapesOnOffer();
             TheColumns(read);
@@ -420,15 +407,6 @@ public sealed partial class ClassifyingAMeeting : UserControl
             _drawing = false;
         }
     }
-
-    /// <summary>
-    /// Which meeting this is: its name and when it was. A meeting nobody has named is the moment on
-    /// its own rather than the moment after a gap.
-    /// </summary>
-    private static string WhichMeeting(Meeting meeting) =>
-        string.IsNullOrWhiteSpace(meeting.Title)
-            ? ScreenNumbers.At(meeting.StartedAt)
-            : ScreenNumbers.Beside(meeting.Title, ScreenNumbers.At(meeting.StartedAt));
 
     // ── The fourteen ──────────────────────────────────────────────────────────────────────────
 
@@ -621,7 +599,9 @@ public sealed partial class ClassifyingAMeeting : UserControl
             extras.Add((UiTexts.CorrectThisName, () => Naming(AFieldOnAPill.ACorrection(role, row, level, here))));
         }
 
-        return APicker(
+        return OneOfThese.Build(
+            In,
+            Chrome("Picker"),
             [.. WhatMayStandAt(read, path, level).Select(node => (node.Id, node.Name))],
             standing,
 
@@ -629,116 +609,10 @@ public sealed partial class ClassifyingAMeeting : UserControl
             // deeper pill offered was the children of this one.
             chosen => PutAt(role, row, level, chosen),
             extras,
-            Heading(role),
-            APillAt(role, row, level));
-    }
-
-    /// <summary>
-    /// One pill over a list of things the corpus holds, with a way to say <em>none</em> and a way to
-    /// name one that is not there yet.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// One construction and not one per list. The pills over the tree and the pill over the people
-    /// are the same control asking the same three-part question — one of these, none of them, or a
-    /// new one — and the index arithmetic that turns an answer back into an id is where that gets
-    /// quietly wrong. It was written twice before this, and the same off-by-one had to be fixed in
-    /// both. What each list offers past the rows themselves is the caller's, and is why this takes a
-    /// list rather than one callback: a pill over the tree offers two ways to name a new one at the
-    /// top and one below it, a row of people offers adding somebody, and each of them offers
-    /// correcting whatever already stands there. The arithmetic that reads an answer back is still
-    /// written once.
-    /// </para>
-    /// <para>
-    /// <c>SelectedIndex</c> is set before anything is subscribed, so the value this screen writes
-    /// cannot come back as somebody having chosen it. The list is strings and never the rows
-    /// themselves: a <c>ComboBox</c> handed objects draws whatever they say about themselves, which
-    /// is a technical name on a screen that must not have one.
-    /// </para>
-    /// </remarks>
-    /// <param name="offered">What the corpus holds that may stand here, in the order it is offered.</param>
-    /// <param name="standing">What stands here now, or nothing.</param>
-    /// <param name="chose">Called with what was chosen, or with nothing for <em>Ninguno</em>.</param>
-    /// <param name="alsoOffered">
-    /// What the list offers past the things the corpus holds: naming one that is not there, and
-    /// correcting the name of the one standing here. In the order they appear, which is the order
-    /// the index arithmetic below reads them back in.
-    /// </param>
-    /// <param name="column">
-    /// The words over this pill, which is what it is called while nothing stands in it. The four
-    /// columns already have them and they are already what a person reads on this screen; a second
-    /// set of words for the same four would be two spellings of one thing.
-    /// </param>
-    /// <param name="named">
-    /// Where this pill stands, as the id an agent addresses it by. A caller's parameter and not
-    /// worked out here, because it is the caller that holds the coordinates.
-    /// </param>
-    private ComboBox APicker(
-        IReadOnlyList<(Guid Id, string Name)> offered,
-        Guid? standing,
-        Action<Guid?> chose,
-        IReadOnlyList<(UiText Words, Action Chose)> alsoOffered,
-        UiText column,
-        string named)
-    {
-        var picker = new ComboBox
-        {
-            Style = Chrome("Picker"),
-            PlaceholderText = In(UiTexts.NoneOfThese),
-            ItemsSource = (string[])
-            [
-                In(UiTexts.NoneOfThese),
-                .. offered.Select(one => one.Name),
-                .. alsoOffered.Select(one => In(one.Words)),
-            ],
-        };
-
-        // Nothing chosen when nothing stands here, and nothing chosen when what stands here is not
-        // on the list — which is the answer that has to be spelt out. A position defaulting to zero
-        // would put the pill on the first thing the list offers and read as an answer somebody
-        // gave, which on the row of people is another person's name.
-        var at = offered
-            .Select((one, position) => (one.Id, At: position))
-            .FirstOrDefault(found => found.Id == standing, (Id: Guid.Empty, At: -1));
-
-        picker.SelectedIndex = at.At < 0 ? -1 : at.At + 1;
-
-        // Where it stands, which is what an agent addresses it by, and never the words. An id is
-        // unique by construction, is the same in both languages, and does not move when somebody
-        // answers the pill — where the name is none of those three: the column's own heading is
-        // drawn beside these pills and carries the identical string, two empty pills in one column
-        // carry it as each other, and the name is re-read off the selection on every redraw. All
-        // three are `Search.One` finding two things or a different thing, which is a walk that
-        // cannot be written rather than one that goes wrong quietly.
-        AutomationProperties.SetAutomationId(picker, named);
-
-        // What stands in it, and the column it is in when nothing does. A glyph with no name is
-        // nothing to a screen reader, and so is a pill: the tree showed a bare `ComboBox`, which is
-        // why this screen's proof could not be driven and had to be reasoned about. The name moves
-        // as the answer moves, because it is read off the same `at` the selection is — so it can
-        // never say one thing while the pill shows another — and it is what somebody sees, which
-        // the column alone is not once a column holds two pills. That last ambiguity is real and is
-        // the id's to answer, not this line's: what a person hears and what a script types are two
-        // questions, and a name bent into a key would be worse at both.
-        AutomationProperties.SetName(picker, at.At < 0 ? In(column) : offered[at.At].Name);
-
-        picker.SelectionChanged += (_, _) =>
-        {
-            if (_drawing || picker.SelectedIndex < 0)
-            {
-                return;
-            }
-
-            if (picker.SelectedIndex > offered.Count)
-            {
-                alsoOffered[picker.SelectedIndex - offered.Count - 1].Chose();
-                return;
-            }
-
-            chose(picker.SelectedIndex == 0 ? null : offered[picker.SelectedIndex - 1].Id);
-        };
-
-        return picker;
+            UiTexts.NoneOfThese,
+            In(Heading(role)),
+            APillAt(role, row, level),
+            () => _drawing);
     }
 
     /// <summary>
@@ -818,24 +692,26 @@ public sealed partial class ClassifyingAMeeting : UserControl
     // ── Naming something the corpus does not have yet ──────────────────────────────────────────
 
     /// <summary>
-    /// Opens the corpus, hands <paramref name="write"/> the one way this screen adds to its
+    /// Opens the corpus, hands <paramref name="write"/> the one way this screen adds to the tree's
     /// vocabulary, and lets it go — answering with the line to say when it did not go through, and
     /// with nothing when it did.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Three presses on this screen write a node or a person, and before this each spelled out the
-    /// same ladder: the folder, the context, the layer, the corpus saying no, the corpus failing.
-    /// That is what made the <c>First</c>-versus-<c>FirstOrDefault</c> divergence #296 fixed
-    /// possible — the same lookup written three times, only one of which was right.
+    /// Two presses on this screen write a node — naming one and correcting one — and before
+    /// <see cref="InTheCorpus{T}"/> existed each spelled out the same ladder on its own: the folder,
+    /// the context, the layer, the corpus saying no, the corpus failing. That is what made the
+    /// <c>First</c>-versus-<c>FirstOrDefault</c> divergence #296 fixed possible — the same lookup
+    /// written more than once, only one of which was right. This is that ladder now, for the tree's
+    /// own vocabulary; adding or correcting a person is <see cref="AddingSomebody"/>'s, in a
+    /// transaction of its own.
     /// </para>
     /// <para>
-    /// What it deliberately does not take over is the exits, which is why this hands a line back
-    /// rather than drawing one. The three do different things with the same sentence: two put it on
-    /// the screen's own status line and redraw, one cancels a dialogue so three typed fields are not
-    /// lost to a corpus that was locked for a second. Folding those together would be one exit that
-    /// is wrong on two of the three call sites, and it is the reason this is a design decision
-    /// rather than a lift.
+    /// What it deliberately does not take over is the exit, which is why this hands a line back
+    /// rather than drawing one: <see cref="NameANode"/> and <see cref="CorrectTheName"/> both put it
+    /// on the screen's own status line and redraw. A caller with a different exit — a dialogue to
+    /// close rather than a field to clear — is <see cref="AddingSomebody"/>'s own case, and it does
+    /// not come through here at all.
     /// </para>
     /// <para>
     /// A <see cref="TextLine"/> and not a string, because the line is what somebody reads in their
@@ -843,21 +719,20 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// and a caller handed a rendered string would have nothing left to say it with.
     /// </para>
     /// <para>
-    /// One transaction, around every write to the vocabulary and not only around the pair that
-    /// needs one. Adding a person is <c>HumanLayer.Add</c> and <c>.Join</c>, each of which saves,
-    /// and a refusal on the second leaves the first on disk with nothing on screen pointing at it —
-    /// so the obvious next move adds a second person of the same name. Putting the transaction here
-    /// rather than at that one call site means the next press that grows into two writes is atomic
-    /// because of where it is written, and not because whoever wrote it remembered. A transaction
-    /// around one write costs nothing. It is not every write on this screen: <c>OnSave</c> files the
-    /// meeting through <c>MeetingClassifying</c> and owns its own, which is why the two are separate
-    /// openings rather than one.
+    /// One transaction, even though naming or correcting a node is a single write today. A
+    /// transaction around one write costs nothing, and it is what keeps this the ladder a second
+    /// write could join without anybody having to remember to add one — <see cref="AddingSomebody"/>
+    /// needs exactly that for adding a person, which is two writes, <c>HumanLayer.Add</c> and
+    /// <c>.Join</c>, and opens its own transaction around them rather than reaching back into this
+    /// one. It is not every write on this screen: <c>OnSave</c> files the meeting through
+    /// <c>MeetingClassifying</c> and owns its own, which is why the two are separate openings rather
+    /// than one.
     /// </para>
     /// <para>
     /// <paramref name="write"/> answering with a line is the corpus having moved underneath
-    /// somebody — a node renamed away, a person already gone — which is not a failure and is not
-    /// thrown. Nothing is committed on that answer, so a write that got half way leaves the corpus
-    /// as it was found.
+    /// somebody — a node renamed away, or the corpus refusing a name already used beside it — which
+    /// is not a failure and is not thrown. Nothing is committed on that answer, so a write that got
+    /// half way leaves the corpus as it was found.
     /// </para>
     /// </remarks>
     private TextLine? InTheCorpus<T>(Func<HumanLayer, (T Made, TextLine? Instead)> write, out T made)
@@ -1200,7 +1075,9 @@ public sealed partial class ClassifyingAMeeting : UserControl
             extras.Add((UiTexts.CorrectThisName, () => _ = AskWhoTheyAre(read, slot, them)));
         }
 
-        var picker = APicker(
+        var picker = OneOfThese.Build(
+            In,
+            Chrome("Picker"),
             offered,
             person.PersonId,
 
@@ -1208,8 +1085,10 @@ public sealed partial class ClassifyingAMeeting : UserControl
             // nobody, which files nothing.
             chosen => PutSomebodyIn(slot, chosen),
             extras,
-            UiTexts.Who,
-            APlaceAt(slot));
+            UiTexts.NoneOfThese,
+            In(UiTexts.Who),
+            APlaceAt(slot),
+            () => _drawing);
 
         Grid.SetColumn(picker, 0);
         row.Children.Add(picker);
@@ -1371,165 +1250,30 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// </summary>
     /// <remarks>
     /// The second of the two <c>docs/design.md</c> §Notices allows, and the list is closed — which is
-    /// why naming a node is done on the pill and not in a third one. It does two jobs and is not two
-    /// dialogues: adding somebody and correcting the name of somebody already there are the same form
-    /// with one field, and a second notice for the second job would be a third notice.
+    /// why naming a node is done on the pill and not in a third one. It is <see cref="AddingSomebody"/>,
+    /// shared with <c>SayingWhoIsWho</c>, which needs the same form for the same two jobs: adding
+    /// somebody and correcting the name of somebody already there.
     /// </remarks>
     private async Task AskWhoTheyAre(MeetingAsClassified read, int slot, Person? correcting)
     {
-        _namingSomebody = (slot, correcting);
-        AddingSomebody.Title = In(correcting is null ? UiTexts.AddSomebody : UiTexts.AboutThisPerson);
-        TheirNameBox.Text = correcting?.DisplayName ?? string.Empty;
-        TheirYearBox.Text = string.Empty;
-        DialogueStatusText.Text = string.Empty;
-        DialogueStatusText.Visibility = Visibility.Collapsed;
+        var organizations = read.Tree
+            .Where(node => node.ParentId is null && node.Kind is NodeKind.Organization)
+            .ToArray();
 
-        // Nobody is added without a name, and the act says so by being dead rather than by refusing
-        // afterwards: a form that takes a press and answers with a complaint is a form that asked
-        // for the press. Correcting one opens with the name already in the box, so it opens alive.
-        AddingSomebody.IsPrimaryButtonEnabled = correcting is not null;
+        var made = await AskingWhoTheyAre.AskAsync(Corpus(), _language, Root.XamlRoot, organizations, correcting);
 
-        // Where somebody belongs is not what this dialogue edits when it is correcting a name. An
-        // affiliation is about a person across years and this screen is about one meeting, so the two
-        // fields come off rather than standing there doing nothing.
-        var asking = correcting is null ? Visibility.Visible : Visibility.Collapsed;
-        TheirOrganizationLine.Visibility = asking;
-        TheirYearBox.Visibility = asking;
-
-        _organizations = [.. read.Tree.Where(node => node.ParentId is null && node.Kind is NodeKind.Organization)];
-
-        TheirOrganization.ItemsSource = (string[])
-        [
-            In(UiTexts.NoneOfThese),
-            .. _organizations.Select(node => node.Name),
-        ];
-
-        TheirOrganization.SelectedIndex = 0;
-
-        // A dialogue declared in this screen's own markup is already in the window's tree and has
-        // its root; one that is not would throw where it is shown, off a build with nothing wrong
-        // in it and no test in this repository that opens a window.
-        if (AddingSomebody.XamlRoot is null)
+        if (made is { } id)
         {
-            AddingSomebody.XamlRoot = Root.XamlRoot;
-        }
-
-        try
-        {
-            await AddingSomebody.ShowAsync();
-        }
-        finally
-        {
-            // Cleared however it ended, and not only where somebody was written: a place left
-            // pointing at a cancelled dialogue is a place the next press would fill in.
-            _namingSomebody = null;
-
-            // The pill that opened this is showing *Nombrar uno nuevo…* as though it were an
-            // answer. Drawing again puts it back to whoever is in the place now, which is the
-            // person just written or nobody at all.
-            Render();
-        }
-    }
-
-    private void OnTheirNameTyped(object sender, TextChangedEventArgs e) =>
-        AddingSomebody.IsPrimaryButtonEnabled = !string.IsNullOrWhiteSpace(TheirNameBox.Text);
-
-    /// <summary>
-    /// Writes somebody the corpus does not have yet, and puts them in the place that asked.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The dialogue stays open on a refusal, because the alternative is losing three fields
-    /// somebody typed to a corpus that was locked for a second.
-    /// </para>
-    /// <para>
-    /// Adding somebody is two writes, and they are one act. <c>HumanLayer.Add</c> and <c>.Join</c>
-    /// each save; a refusal on the second would leave the person on disk, the dialogue open, and
-    /// nothing on the screen pointing at them — so the obvious next move, fixing the year and
-    /// pressing again, adds a <em>second</em> person of the same name. That is exactly what the
-    /// picker on the row exists to prevent: a corpus that grows a person per meeting is one where
-    /// searching a person stops finding the meetings they are on. The transaction that stops it is
-    /// <see cref="InTheCorpus{T}"/>'s and covers every write this screen makes to the corpus's
-    /// vocabulary, for the reason given there.
-    /// </para>
-    /// </remarks>
-    private void OnSomebodyNamed(ContentDialog sender, ContentDialogButtonClickEventArgs args)
-    {
-        ArgumentNullException.ThrowIfNull(args);
-
-        var name = (TheirNameBox.Text ?? string.Empty).Trim();
-
-        // The act is dead until there is a name, so an empty one is not something a person did.
-        // A corpus that would not open is, and it is the one the sentence below is about.
-        if (name.Length == 0 || _namingSomebody is not { } asked)
-        {
-            args.Cancel = true;
+            Draw(theDraftToo: false);
+            PutSomebodyIn(slot, id);
             return;
         }
 
-        if (InTheCorpus(
-            human =>
-            {
-                if (asked.Correcting is { } correcting)
-                {
-                    // The name that is going and not the one being typed: what changed underneath
-                    // somebody is the person they were correcting.
-                    return human.Rename(correcting, name) is null
-                        ? (Guid.Empty, TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, correcting.DisplayName))
-                        : (correcting.Id, null);
-                }
-
-                var chosen = TheirOrganization.SelectedIndex - 1;
-                var organization = chosen >= 0 && chosen < _organizations.Count ? _organizations[chosen] : null;
-                var person = human.Add(name);
-
-                if (organization is not null)
-                {
-                    // No year is what Affiliation already means by no start — as far back as this
-                    // corpus goes — and not a guess at one.
-                    human.Join(person, organization, TheFirstOfTheYear(TheirYearBox.Text));
-                }
-
-                return (person.Id, (TextLine?)null);
-            },
-            out var made) is { } instead)
-        {
-            args.Cancel = true;
-            SayInTheDialogue(instead);
-            return;
-        }
-
-        _namingSomebody = null;
-        Draw(theDraftToo: false);
-
-        // The same person as before when this was a correction, which is a no-op that keeps one
-        // exit: `ChosenPerson` is replaced with `this person`, and the two badges ride along on the
-        // `with`, so nothing somebody set on that row moves.
-        PutSomebodyIn(asked.Slot, made);
+        // The pill that opened this is showing *Nombrar uno nuevo…* as though it were an answer.
+        // Drawing again puts it back to whoever is in the place now, which is nobody: the dialogue
+        // was left without writing anything.
+        Render();
     }
-
-    private void SayInTheDialogue(TextLine line)
-    {
-        DialogueStatusText.Text = line.In(_language);
-        DialogueStatusText.Visibility = Visibility.Visible;
-    }
-
-    /// <summary>
-    /// The first instant of the year somebody typed, or nothing when they typed nothing readable.
-    /// </summary>
-    /// <remarks>
-    /// A year and not a date, because that is the whole of what this screen shows about a period —
-    /// and a start read back at a finer grain than it was asked for would be an invention. The
-    /// instant is <see cref="ScreenNumbers.TheStartOfTheYear"/>'s and is deliberately not built
-    /// here: what makes it right is that it is the exact inverse of the way the year is read back
-    /// out beside the person, and two halves of one round trip written in two places is how one of
-    /// them comes to be a midnight in the wrong zone.
-    /// </remarks>
-    private static UtcTimestamp? TheFirstOfTheYear(string? typed) =>
-        int.TryParse((typed ?? string.Empty).Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var year)
-        && year is >= 1 and <= 9999
-            ? ScreenNumbers.TheStartOfTheYear(year)
-            : null;
 
     // ── The two answers ───────────────────────────────────────────────────────────────────────
 

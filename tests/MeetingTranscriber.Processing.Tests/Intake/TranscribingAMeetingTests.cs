@@ -164,6 +164,39 @@ public sealed class TranscribingAMeetingTests
         ended.Said.ShouldContain("no Deepgram key");
     }
 
+    /// <summary>Goes red with the catch removed, and red with the <c>TryDelete</c> removed.</summary>
+    [Fact]
+    public async Task A_run_the_corpus_would_not_record_is_never_sent_and_leaves_nothing_behind()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, job) = Queue(corpus);
+
+        using (var context = corpus.Open())
+        {
+            Sql.Execute(
+                context,
+                "CREATE TRIGGER refuse_every_run BEFORE INSERT ON transcription_runs "
+                + "BEGIN SELECT RAISE(ABORT, 'refused for this test'); END;");
+        }
+
+        var called = false;
+        SendingToTheProvider send = (_, _, _, _) =>
+        {
+            called = true;
+            return Task.FromResult(0L);
+        };
+
+        var ended = await TranscribingAMeeting.TranscribeAsync(
+            corpus.Root, job, send, TimeProvider.System, TestContext.Current.CancellationToken);
+
+        ended.Outcome.ShouldBe(TranscriptionOutcome.NothingWasCharged);
+        ended.Said.ShouldNotBeNull();
+        ended.Said.ShouldEndWith("Nothing was sent and nothing was charged.");
+        called.ShouldBeFalse();
+
+        MeetingFolder(corpus, meeting).EnumerateFiles($"*{CorpusFiles.UnfinishedSuffix}").ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task A_call_that_may_have_been_charged_stops_on_what_it_cannot_know()
     {

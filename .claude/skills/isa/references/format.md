@@ -153,6 +153,11 @@ the non-matching projects exit non-zero on zero tests.
 claim that only a live Deepgram run can close records that run's date and approved budget in its
 stub, and CI is not asked to hold it.
 
+**A class two suites carry names its project after it**, `` `ClassName` (`tests/Project`) `` or
+`` `ClassName.Fact` (`tests/Project`) ``, and a run of one or more project spans — separated only
+by a comma, `and`, or parentheses — binds every class and class-and-fact pointer written since the
+previous run in the same stub.
+
 ## Probe placement
 
 Attach the probe where the thing meets its consumer, and verify through that boundary rather
@@ -284,10 +289,9 @@ and English sentences, and a gate reddening on `Turns.Group` is a gate somebody 
 resolves is asked of the disk segment by segment rather than of `File.Exists`, so a pointer spelled
 `TESTS/…` is red: Windows opens it, and GitHub and a case-sensitive checkout do not. It has found
 nothing yet, over seventeen distinct paths and eighty-one citations; what it is worth is the next
-move. Two things it does not reach: a pointer that resolves and is wrong — a suite cited under the
-project it no longer sits in passes, which is exactly what #246 did — and a root directory deleted
-whole, which stops its own paths being read as paths at all. Both are named in
-`IsaStructureTests`, with what a second gate over the first one would cost.
+move. One thing it does not reach: a root directory deleted whole, which stops its own paths being
+read as paths at all. It is named in `IsaStructureTests`, with what a second gate over it would
+cost.
 
 **A dead pointer is repaired by moving the pointer, never by deleting it.** A stub naming a probe
 that was renamed points at the probe; a stub naming a probe that is gone is a closed claim whose

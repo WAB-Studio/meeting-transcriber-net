@@ -66,17 +66,6 @@ public delegate Task<long> Transcribing(LiveAudio sent, Stream wrote, Cancellati
 /// </remarks>
 public static class DeepgramCommands
 {
-    /// <summary>
-    /// How long one call may take, upload and all.
-    /// </summary>
-    /// <remarks>
-    /// The default 100 seconds kills every real call — <see cref="DeepgramTranscription"/>'s
-    /// constructor says so and says it cost money to find out: the timeout covers the upload as
-    /// well as the wait, and it stops covering anything once the response headers arrive. A whole
-    /// meeting is what this command sends, so this is what a whole meeting needs.
-    /// </remarks>
-    private static readonly TimeSpan LongEnoughForAWholeMeeting = TimeSpan.FromMinutes(30);
-
     /// <summary>The command as the table runs it: this prompt's keyboard, and this machine's key.</summary>
     /// <remarks>
     /// <see langword="internal"/> and not public, which is how this repository keeps something out
@@ -206,7 +195,7 @@ public static class DeepgramCommands
     private static int WithThisMachinesKey(
         LiveCheck run, DirectoryInfo into, string language, TextWriter output)
     {
-        using var http = new HttpClient { Timeout = LongEnoughForAWholeMeeting };
+        using var http = new HttpClient { Timeout = DeepgramTranscription.LongEnoughForAWholeMeeting };
         var transcription = new DeepgramTranscription(http);
         var key = DeepgramKey.OfThisInstall().Read();
 

@@ -99,6 +99,9 @@ public sealed partial class ReadingAMeeting : UserControl
     /// </summary>
     private IReadOnlyList<(MeetingNodeRole Role, NodePath Path)>? _filing;
 
+    /// <summary>Who spoke on this meeting, read with it, for the card that offers naming them.</summary>
+    private WhoIsWho? _voices;
+
     /// <summary>
     /// The recording being played, held open for as long as this screen is showing the meeting it
     /// belongs to. Null when there is no audio, or when the machine would not play it.
@@ -129,6 +132,9 @@ public sealed partial class ReadingAMeeting : UserControl
 
     /// <summary>Somebody asked to file this meeting under what it was about.</summary>
     public event EventHandler<Guid>? Classify;
+
+    /// <summary>Somebody asked to name who spoke on this meeting.</summary>
+    public event EventHandler<Guid>? NameTheVoices;
 
     /// <summary>Somebody asked to read the history of something this meeting is filed under.</summary>
     public event EventHandler<Guid>? NodeChosen;
@@ -238,6 +244,7 @@ public sealed partial class ReadingAMeeting : UserControl
     {
         _read = null;
         _filing = null;
+        _voices = null;
         _status.Nothing();
 
         if (_meeting is not { } meetingId)
@@ -262,6 +269,7 @@ public sealed partial class ReadingAMeeting : UserControl
                 using var context = CorpusDatabase.Open(folder);
                 _read = new MeetingReading(context, TimeProvider.System).Of(meetingId);
                 _filing = new MeetingClassifying(context, TimeProvider.System).Filing(meetingId);
+                _voices = new MeetingVoices(context, TimeProvider.System).Heard(meetingId);
             }
             catch (MeetingStageException gone)
             {
@@ -291,12 +299,14 @@ public sealed partial class ReadingAMeeting : UserControl
         _meeting = null;
         _read = null;
         _filing = null;
+        _voices = null;
         _status.Nothing();
         _nameAsRead = string.Empty;
         NameBox.Text = string.Empty;
         TheSections.Children.Clear();
         Presses.Children.Clear();
         TheFiling.Children.Clear();
+        TheVoices.Children.Clear();
     }
 
     /// <summary>
@@ -336,6 +346,7 @@ public sealed partial class ReadingAMeeting : UserControl
         TheSections.Children.Clear();
         Presses.Children.Clear();
         TheFiling.Children.Clear();
+        TheVoices.Children.Clear();
 
         if (_read is not { } read)
         {
@@ -346,6 +357,7 @@ public sealed partial class ReadingAMeeting : UserControl
             TranscribedText.Text = string.Empty;
             SummarisedText.Text = string.Empty;
             ClassifyButton.IsEnabled = false;
+            WhoSpokeCard.Visibility = Visibility.Collapsed;
 
             if (theRecordingToo)
             {
@@ -366,6 +378,7 @@ public sealed partial class ReadingAMeeting : UserControl
         WhatWasLeft(read.Screen.Left);
         TheActOnOffer(read.Screen);
         WhatItWasAbout(read.Screen);
+        WhoSpokeSection();
 
         if (theRecordingToo)
         {
@@ -459,6 +472,28 @@ public sealed partial class ReadingAMeeting : UserControl
 
             chip.Click += (_, _) => NodeChosen?.Invoke(this, node);
             TheFiling.Children.Add(chip);
+        }
+    }
+
+    /// <summary>
+    /// Who spoke, and the way to say who is who. Collapsed rather than drawn empty: a meeting
+    /// nothing has transcribed yet has no voices to offer, and a card with nothing in it but a
+    /// button reading <em>Decir quién es quién</em> is not a card this screen has anything to show.
+    /// </summary>
+    private void WhoSpokeSection()
+    {
+        var voices = _voices?.Voices ?? [];
+
+        WhoSpokeCard.Visibility = voices.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        foreach (var voice in voices)
+        {
+            TheVoices.Children.Add(new TextBlock
+            {
+                Text = ScreenNumbers.Beside(
+                    VoiceWords.ReadsAs(voice, _language), VoiceWords.TurnsSaid(voice.TurnsSaid, _language)),
+                Style = Chrome("Data"),
+            });
         }
     }
 
@@ -632,11 +667,13 @@ public sealed partial class ReadingAMeeting : UserControl
         }
 
         IReadOnlyList<Turn> turns;
+        WhoIsWho voices;
 
         try
         {
             using var context = CorpusDatabase.Open(folder);
             turns = new MeetingReading(context, TimeProvider.System).Around(meeting, thing.TurnOrdinal);
+            voices = new MeetingVoices(context, TimeProvider.System).Heard(meeting);
         }
         catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
         {
@@ -645,25 +682,31 @@ public sealed partial class ReadingAMeeting : UserControl
 
         // No branch for an empty answer, and that is a fact about the corpus rather than an
         // omission: a citation is a foreign key onto the turn it names, so a thing the AI left
-        // cannot be here at all unless the turn it was said in is there to unfold.
-        return [.. turns.Select(turn => Spoken(turn.SpeakerLabel, turn.Start, turn.Text))];
+        // cannot be here at all unless the turn it was said in is there to unfold — and every label
+        // a turn of this meeting carries is one WhoIsWho.Of built a voice for, from the same turns.
+        return
+        [
+            .. turns.Select(turn => Spoken(
+                VoiceWords.ReadsAs(voices.ForLabel(turn.SpeakerLabel)!, _language), turn.Start, turn.Text)),
+        ];
     }
 
     /// <summary>
     /// One turn, as a line of the transcript.
     /// </summary>
     /// <remarks>
-    /// The speaker goes as the label the corpus stores and never as a person's name, because
-    /// nothing on this screen says who a label is: putting a name here would be this screen
-    /// deciding something <c>speaker_assignments</c> is the only thing allowed to answer.
+    /// <paramref name="who"/> is <see cref="VoiceWords.ReadsAs"/>'s: their name once somebody has
+    /// named their voice, and the same handle <c>SayingWhoIsWho</c> shows until then. Never the
+    /// label <c>speaker_assignments</c> stores it under, which is <see cref="WhoIsWho"/>'s alone to
+    /// read.
     /// </remarks>
-    private UIElement Spoken(string speakerLabel, Duration at, string text)
+    private UIElement Spoken(string who, Duration at, string text)
     {
         var line = new StackPanel { Spacing = 2 };
 
         line.Children.Add(new TextBlock
         {
-            Text = ScreenNumbers.Beside(speakerLabel, ScreenNumbers.Long(at)),
+            Text = ScreenNumbers.Beside(who, ScreenNumbers.Long(at)),
             Style = Chrome("Data"),
         });
 
@@ -1057,6 +1100,22 @@ public sealed partial class ReadingAMeeting : UserControl
         if (_meeting is { } meeting)
         {
             Classify?.Invoke(this, meeting);
+        }
+    }
+
+    /// <summary>Somebody asked to name who spoke on this meeting. <see cref="OnClassify"/>'s order.</summary>
+    private void OnNameTheVoices(object sender, RoutedEventArgs e)
+    {
+        if (!CommitTheName())
+        {
+            return;
+        }
+
+        Pause();
+
+        if (_meeting is { } meeting)
+        {
+            NameTheVoices?.Invoke(this, meeting);
         }
     }
 }

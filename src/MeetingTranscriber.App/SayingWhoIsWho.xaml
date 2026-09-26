@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="MeetingTranscriber.App.SayingWhoIsWho"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MeetingTranscriber.App"
+    xmlns:loc="using:MeetingTranscriber.Presentation"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Who is who, on one meeting. One card per voice its turns carry: what it is called until
+         somebody names it, how much it said, and its longest turn as a quotation. A voice the
+         recording already settled — the microphone's own, when it caught exactly one speaker —
+         shows the name in a pill and no picker; every other voice offers everybody the corpus
+         holds, naming somebody new, and correcting whoever already stands there.
+
+         What is on it is built in the code-behind and not templated here, for the reason the
+         meeting screen's sections are: how many voices there are is an answer, not a layout. What
+         stays here is the look, as the styles below, so the code-behind chooses a style and never a
+         colour.
+
+         Nothing is written until *Guardar*, which is `SaveVoicesButton` — the one control on this
+         screen a walk of the packaged build addresses by that name, because `ReadingAMeeting` and
+         `ClassifyingAMeeting` each carry their own `BackButton` too. -->
+
+    <Grid x:Name="Root" RowSpacing="18">
+        <Grid.Resources>
+            <!-- Every Olivo *style* this screen builds in code is aliased here first. `Chrome` is a
+                 ResourceDictionary indexer over this screen's own resources and does not walk up to
+                 the application's, so a code-behind naming an Olivo key directly is green in CI and
+                 throws on the UI thread the moment a card is drawn. -->
+
+            <Style x:Key="VoiceCard" TargetType="Border" BasedOn="{StaticResource Card}" />
+
+            <!-- A voice nobody has named yet. `docs/design.md`'s own colour table gives this exact
+                 case — a speaker nobody has named, the ring of an unchosen radio — to
+                 `UnansweredBrush`, not to Olivo: Olivo is what is alive and being recorded, and an
+                 unnamed voice is the opposite of settled. The 1.5px is the artboard's own weight
+                 rather than the optional control's 1px rule — this is a card and not a button — and
+                 it is a literal rather than a number `OlivoTests` watches, the same way
+                 `ClassifyingAMeeting.xaml` writes literal thicknesses on its own glyphs. -->
+            <Style x:Key="VoiceCardUnnamed" TargetType="Border" BasedOn="{StaticResource VoiceCard}">
+                <Setter Property="BorderBrush" Value="{StaticResource UnansweredBrush}" />
+                <Setter Property="BorderThickness" Value="1.5" />
+            </Style>
+
+            <!-- What a voice is called: the section rank, because a card's whole point is this one
+                 line. -->
+            <Style x:Key="VoiceHeading" TargetType="TextBlock" BasedOn="{StaticResource SectionText}" />
+
+            <Style x:Key="VoiceData" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
+
+            <!-- The quotation: the transcript rank, capped at two lines so four voices on a card
+                 does not turn into a page of somebody else's words. -->
+            <Style x:Key="VoiceQuoted" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}">
+                <Setter Property="TextWrapping" Value="Wrap" />
+                <Setter Property="MaxLines" Value="2" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+
+            <!-- *una sola voz*, on the microphone's own card: olivo fill with papel ink, which is
+                 the rank Olivo gives the selected option of a set — this one is settled and needs
+                 no choosing. -->
+            <Style x:Key="OnlyOneVoiceTag" TargetType="Border" BasedOn="{StaticResource Pill}">
+                <Setter Property="Background" Value="{StaticResource OliveBrush}" />
+                <Setter Property="Height" Value="Auto" />
+                <Setter Property="Padding" Value="9,3,9,3" />
+            </Style>
+
+            <Style x:Key="OnlyOneVoiceTagSays" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{StaticResource PaperBrush}" />
+            </Style>
+
+            <!-- The name shown and not chosen, on a voice the recording already settled. The pill
+                 without the chevron, which is what Olivo says a value shown here and changed
+                 elsewhere wears — `ClassifyingAMeeting.xaml`'s own `TheirName`. -->
+            <Style x:Key="TheirName" TargetType="Border" BasedOn="{StaticResource Pill}" />
+
+            <Style x:Key="TheirNameSays" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}" />
+
+            <!-- The picker over everybody the corpus holds, naming somebody new, and correcting
+                 whoever already stands there — `ClassifyingAMeeting.xaml`'s own `Picker`. -->
+            <Style x:Key="Picker" TargetType="ComboBox" BasedOn="{StaticResource DropDown}">
+                <Setter Property="HorizontalAlignment" Value="Left" />
+                <Setter Property="MinWidth" Value="180" />
+                <Setter Property="FontSize" Value="{StaticResource TranscriptSize}" />
+            </Style>
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- The header. A sub-screen: it is reached from one meeting and returns to it. -->
+        <Grid Grid.Row="0" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Button
+                x:Name="BackButton"
+                Grid.Column="0"
+                VerticalAlignment="Top"
+                Style="{StaticResource ButtonAtTheMargin}"
+                Click="OnLeave"
+                Content="{x:Bind In(loc:UiTexts.BackToTheMeeting)}" />
+
+            <StackPanel Grid.Column="1" Spacing="1">
+                <TextBlock
+                    Style="{StaticResource SubScreenTitleText}"
+                    Text="{x:Bind In(loc:UiTexts.WhoIsWho)}" />
+
+                <TextBlock x:Name="WhichMeetingText" Style="{StaticResource DataText}" />
+            </StackPanel>
+        </Grid>
+
+        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="{StaticResource LargeCardPadding}">
+            <Grid RowSpacing="12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <ScrollViewer Grid.Row="0">
+                    <StackPanel x:Name="TheVoices" Spacing="12" />
+                </ScrollViewer>
+
+                <TextBlock
+                    x:Name="StatusText"
+                    Grid.Row="1"
+                    Style="{StaticResource BodyText}"
+                    Foreground="{StaticResource PeakBrush}"
+                    TextWrapping="Wrap"
+                    Visibility="Collapsed" />
+
+                <!-- The two answers, in the two places the grammar fixes: the neutral one on the
+                     left empties nothing and writes nothing, the act on the right is what saves. -->
+                <Grid Grid.Row="2" ColumnSpacing="10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button
+                        x:Name="CancelButton"
+                        Grid.Column="0"
+                        HorizontalAlignment="Right"
+                        Style="{StaticResource ButtonAtTheMargin}"
+                        Click="OnLeave"
+                        Content="{x:Bind In(loc:UiTexts.Cancel)}" />
+
+                    <Button
+                        x:Name="SaveVoicesButton"
+                        Grid.Column="1"
+                        Style="{StaticResource PrincipalActButton}"
+                        Click="OnSave"
+                        Content="{x:Bind In(loc:UiTexts.Save)}" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- The one dialogue this screen shares with `ClassifyingAMeeting`: adding a person the
+             corpus does not have yet, and correcting the name of one it already does. -->
+        <local:AddingSomebody x:Name="AskingWhoTheyAre" />
+    </Grid>
+</UserControl>

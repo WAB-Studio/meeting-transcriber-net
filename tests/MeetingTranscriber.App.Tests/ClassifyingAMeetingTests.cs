@@ -294,10 +294,10 @@ public class ClassifyingAMeetingTests
     /// pills carrying the identical string.
     /// </para>
     /// <para>
-    /// That <c>APicker</c> takes a column and an id is the compiler's to enforce and not a test's;
-    /// what no compiler can say is that the parameters are used on the control, and that no second
-    /// picker is built somewhere else without them. <c>TheirOrganization</c> in the markup is not a
-    /// second one — XAML gives it an <c>x:Name</c>, which is where an id comes from there.
+    /// That <c>OneOfThese.Build</c> takes a name and an id is the compiler's to enforce and not a
+    /// test's; what no compiler can say is that the parameters are used on the control, and that no
+    /// second picker is built somewhere else without them. <c>TheirOrganization</c> in the markup is
+    /// not a second one — XAML gives it an <c>x:Name</c>, which is where an id comes from there.
     /// </para>
     /// <para>
     /// Read as text, so it is a cheap guard and not a structural impossibility: <c>ComboBox picker
@@ -308,43 +308,55 @@ public class ClassifyingAMeetingTests
     [Fact]
     public void Every_pill_this_screen_builds_can_be_addressed_by_name()
     {
-        var source = File.ReadAllText(AppSources.At(Screen).FullName);
-        var picker = Body(source, "private ComboBox APicker(");
+        var oneOfThese = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "OneOfThese.cs")).FullName);
 
-        picker.ShouldContain(
+        oneOfThese.ShouldContain(
             "AutomationProperties.SetName(picker",
-            customMessage: "APicker returns a control with no name on it, so every pill on this "
-            + "screen is a bare ComboBox to a screen reader.");
+            customMessage: "OneOfThese.Build returns a control with no name on it, so every pill "
+            + "built through it is a bare ComboBox to a screen reader.");
 
-        picker.ShouldContain(
+        oneOfThese.ShouldContain(
             "AutomationProperties.SetAutomationId(picker",
-            customMessage: "APicker returns a control with no id on it, so no `choose` can reach a "
-            + "pill: the words are not unique on this screen and they move when somebody answers.");
+            customMessage: "OneOfThese.Build returns a control with no id on it, so no `choose` "
+            + "can reach a pill: the words are not unique on a screen and they move when "
+            + "somebody answers.");
 
         // The field that stands where a pill was is the only thing on this screen that commits on
         // Enter, so a walk that cannot address it cannot finish an act.
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
         Body(source, "private UIElement AName(").ShouldContain(
             "AutomationProperties.SetAutomationId(typing",
             customMessage: "the field a new name is typed into has no id, so nothing can send it "
             + "the Enter that writes the name.");
 
-        SourceLines.Occurrences(source, "new ComboBox").Count().ShouldBe(
+        oneOfThese.ShouldContain(
+            "new ComboBox",
+            customMessage: "the application's one ComboBox construction has moved out of "
+            + "OneOfThese.cs, which is where this check expects to find it.");
+
+        var occurrences = AppSources.With(".cs")
+            .Sum(file => SourceLines.Occurrences(File.ReadAllText(file.FullName), "new ComboBox").Count());
+
+        occurrences.ShouldBe(
             1,
-            "this screen builds a ComboBox somewhere other than APicker, and that one is addressed "
-            + "by nothing. Build it through APicker, which is also where the index arithmetic "
-            + "lives.");
+            "the application builds a ComboBox somewhere other than OneOfThese.Build, and that "
+            + "one is addressed by nothing. Build it through OneOfThese, which is also where the "
+            + "index arithmetic lives.");
     }
 
     /// <summary>
-    /// The corpus is opened once for each thing this screen does to it, and adding to its
-    /// vocabulary is one of them.
+    /// The corpus is opened once for each thing this screen does to it, and naming or correcting a
+    /// node is one of them.
     /// </summary>
     /// <remarks>
-    /// Three presses wrote a node or a person, each spelling out the same ladder — the folder, the
-    /// context, the layer, the corpus saying no, the corpus failing — and it is what made the
-    /// <c>First</c>-versus-<c>FirstOrDefault</c> divergence #296 fixed possible: the same lookup
-    /// written three times, only one of which was right. <c>InTheCorpus</c> is that ladder now, and
-    /// a fourth caller opening the corpus for itself is what this goes red on.
+    /// Two presses write a node — naming one and correcting one — each spelling out the same ladder
+    /// before <c>InTheCorpus</c> existed: the folder, the context, the layer, the corpus saying no,
+    /// the corpus failing. That is what made the <c>First</c>-versus-<c>FirstOrDefault</c>
+    /// divergence #296 fixed possible — the same lookup written more than once, only one of which
+    /// was right. Adding a person moved to <c>AddingSomebody</c>, pinned in
+    /// <c>SayingWhoIsWhoTests</c>, and a fourth caller opening the corpus for a node is what this
+    /// still goes red on.
     /// </remarks>
     [Fact]
     public void This_screen_opens_the_corpus_once_for_each_thing_it_does_to_it()
@@ -353,17 +365,19 @@ public class ClassifyingAMeetingTests
 
         SourceLines.Occurrences(source, "new HumanLayer(").Count().ShouldBe(
             1,
-            "adding a node or a person is written more than once, which is the shape the "
-            + "divergence #296 fixed grew in. InTheCorpus is the one place that opens the corpus "
-            + "to write vocabulary; a press that writes some calls it.");
+            "naming a node or correcting one is written more than once, which is the shape the "
+            + "divergence #296 fixed grew in. InTheCorpus is the one place on this screen that "
+            + "opens the corpus to write the tree's vocabulary; adding or correcting a person is "
+            + "AddingSomebody's.");
 
         SourceLines.Occurrences(source, "CorpusDatabase.Open(").Count().ShouldBe(
             3,
             "this screen opens the corpus three times and each is a different thing it does: Draw "
-            + "reads the meeting, InTheCorpus writes the vocabulary a pill offers, and OnSave files "
-            + "it. A fourth opening is a fourth thing this screen does to the corpus, and the "
-            + "answer is to say here what it is — not to raise the number. Read as text, so a "
-            + "construction spelled another way walks past it.");
+            + "reads the meeting, InTheCorpus writes the tree's vocabulary, and OnSave files it. "
+            + "Adding or correcting a person opens its own, in AddingSomebody, and is not one of "
+            + "these three. A fourth opening here is a fourth thing this screen does to the "
+            + "corpus, and the answer is to say here what it is — not to raise the number. Read as "
+            + "text, so a construction spelled another way walks past it.");
     }
 
     /// <summary>

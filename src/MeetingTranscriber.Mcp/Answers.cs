@@ -94,11 +94,12 @@ internal static class Answers
     }
 
     /// <summary>One turn, as it is quoted.</summary>
-    internal static string Said(Turn turn) =>
+    internal static string Said(Turn turn, string? speakerName) =>
         $"""
         utterance_ordinal: {turn.Ordinal}
         at_ms: {turn.Start.Milliseconds}
         speaker: {turn.SpeakerLabel}
+        speaker_name: {speakerName ?? Nothing}
         says: {OneLine(turn.Text)}
         """;
 
@@ -111,8 +112,8 @@ internal static class Answers
     /// on that read at all. <c>obtener_cita</c> opens the turn it points at, and
     /// <c>listar_decisiones</c> and <c>listar_acciones</c> answer with the quote and its hash.
     /// </remarks>
-    internal static string Left(LeftThing thing) =>
-        Anchored(thing.Kind, thing.TurnOrdinal, thing.At, thing.SpeakerLabel, thing.Says);
+    internal static string Left(LeftThing thing, string? speakerName) =>
+        Anchored(thing.Kind, thing.TurnOrdinal, thing.At, thing.SpeakerLabel, speakerName, thing.Says);
 
     /// <summary>
     /// One decision, action or open question of the whole corpus, with the meeting it was left in
@@ -123,7 +124,7 @@ internal static class Answers
         meeting_id: {statement.MeetingId}
         started_at: {statement.StartedAt}
         title: {OneLine(statement.Title)}
-        {Anchored(statement.Kind, statement.TurnOrdinal, statement.At, statement.SpeakerLabel, statement.Says)}
+        {Anchored(statement.Kind, statement.TurnOrdinal, statement.At, statement.SpeakerLabel, statement.SpeakerName, statement.Says)}
         source_sha256: {statement.SourceSha256}
         quoted: {OneLine(statement.Quoted)}
         """;
@@ -168,12 +169,14 @@ internal static class Answers
     /// meeting and the same decision read out of the corpus are not two formats an agent has to
     /// learn.
     /// </summary>
-    private static string Anchored(LeftKind kind, int ordinal, Duration at, string speaker, string says) =>
+    private static string Anchored(
+        LeftKind kind, int ordinal, Duration at, string speaker, string? speakerName, string says) =>
         $"""
         kind: {WireNames<LeftKind>.Of(kind)}
         utterance_ordinal: {ordinal}
         at_ms: {at.Milliseconds}
         speaker: {speaker}
+        speaker_name: {speakerName ?? Nothing}
         says: {OneLine(says)}
         """;
 

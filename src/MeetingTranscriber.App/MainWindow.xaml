@@ -608,9 +608,14 @@
              paused — for as long as this is up. -->
         <local:ClassifyingAMeeting x:Name="Classifying" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
 
-        <!-- The settings, in that same room. It is the one of the four that is not about a meeting
+        <!-- Naming that meeting's voices, in the same room again — a sub-screen of a sub-screen the
+             same way filing is, reached from the meeting's own card and returning to it with the
+             recording kept paused. -->
+        <local:SayingWhoIsWho x:Name="Voices" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
+
+        <!-- The settings, in that same room. It is the one of the five that is not about a meeting
              at all: it is reached from the gear above rather than from the list, which is why it
-             wins the room over all three of the others. A meeting under way keeps the strip while
+             wins the room over all four of the others. A meeting under way keeps the strip while
              it is up, exactly as it does behind the raised list. -->
         <local:Configuracion x:Name="Settings" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
 

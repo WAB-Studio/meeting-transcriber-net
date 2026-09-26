@@ -1,5 +1,7 @@
 using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Meetings;
+using MeetingTranscriber.Processing.Deepgram;
+using MeetingTranscriber.Processing.Rendering;
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -20,9 +22,9 @@ namespace MeetingTranscriber.Recording;
 /// rather than reached through its base for exactly that reason. What it is for is the
 /// classification tree refusing something a person just typed — a name already used beside it,
 /// something still pointing at what they are removing — and the screen that does that reaches it
-/// today: <c>ClassifyingAMeeting</c> adds a person and joins them to an organisation inside a
-/// handler guarded only by this list, so before it was named here a second person with a name the
-/// corpus already held closed the window.
+/// today: the dialogue that adds a person joins them to an organisation inside a handler guarded
+/// only by this list, so before it was named here a second person with a name the corpus already
+/// held closed the window.
 /// </para>
 /// <para>
 /// The set is closed on refusals a person can read, and it is worth saying what keeps it that way.
@@ -36,9 +38,12 @@ namespace MeetingTranscriber.Recording;
 /// The list is closed on purpose, and what it guards is worth being exact about: the handlers that
 /// ask it are <c>async void</c>, so anything not named here reaches the dispatcher and takes the
 /// application down in the middle of a meeting. What is named is what the layers underneath
-/// actually throw — the audio engine's refusal, the recording's own, the filesystem's two, and
-/// SQLite's, which arrives from a corpus that is locked, unwritable or not a database and which the
-/// command line already answers with a refusal rather than with a stack trace.
+/// actually throw — the audio engine's refusal, the recording's own, the filesystem's two, SQLite's,
+/// which arrives from a corpus that is locked, unwritable or not a database and which the command
+/// line already answers with a refusal rather than with a stack trace, and the renderer's two,
+/// which a screen reaches the moment saving the names on a meeting's voices, or correcting a
+/// person's name, renders files again: a response the corpus names and the disk does not have, and
+/// a response this build cannot read.
 /// </para>
 /// <para>
 /// One list, and every screen and every reader of the corpus asks it. A second copy is how this
@@ -58,5 +63,7 @@ public static class ScreenFailures
         or DbUpdateException
         or AudioCaptureException
         or RecordingException
-        or ClassificationException;
+        or ClassificationException
+        or RenderException
+        or DeepgramResponseException;
 }

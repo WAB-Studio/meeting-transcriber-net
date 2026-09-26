@@ -49,6 +49,15 @@ public sealed class DeepgramTranscription
     /// </summary>
     private const int MostOfARefusalWorthQuoting = 400;
 
+    /// <summary>
+    /// How long one call may take, upload and all. The default 100 seconds kills every real call —
+    /// the timeout covers the upload as well as the wait, and it stops covering anything once the
+    /// response headers arrive. A whole meeting is what a caller sends, so this is what a whole
+    /// meeting needs. The one declaration both callers share: <c>DeepgramCommands</c> on the
+    /// command line, and <c>TranscribingOnThisMachinesKey</c> in the application.
+    /// </summary>
+    public static readonly TimeSpan LongEnoughForAWholeMeeting = TimeSpan.FromMinutes(30);
+
     private readonly HttpClient http;
 
     /// <param name="http">

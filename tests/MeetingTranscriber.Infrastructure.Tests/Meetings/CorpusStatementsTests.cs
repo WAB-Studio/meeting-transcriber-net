@@ -86,6 +86,39 @@ public class CorpusStatementsTests
     }
 
     /// <summary>
+    /// A statement names whoever the voice it quotes belongs to, once somebody has named it, and
+    /// null while nobody has — through both <see cref="CorpusStatements.Of"/> and
+    /// <see cref="CorpusStatements.Under"/>.
+    /// </summary>
+    [Fact]
+    public void A_statement_names_whoever_said_it_once_somebody_named_the_voice()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayer(context, August);
+        var node = human.Root(NodeKind.Organization, "acme");
+        var meeting = Extracted(context, August, "lo que se dijo");
+        human.Link(meeting, node, MeetingNodeRole.WorkOf);
+
+        CorpusStatements.Of(context, LeftKind.Decision, null, null, 20).Single().SpeakerName.ShouldBeNull();
+        CorpusStatements.Under(context, node.Id, 20)
+            .Single(statement => statement.Kind == LeftKind.Decision)
+            .SpeakerName.ShouldBeNull();
+
+        var somebody = human.Add("Renata");
+        human.Assign(meeting, MeetingRows.SpeakerLabel, somebody);
+
+        CorpusStatements.Of(context, LeftKind.Decision, null, null, 20)
+            .Single()
+            .SpeakerName
+            .ShouldBe("Renata");
+        CorpusStatements.Under(context, node.Id, 20)
+            .Single(statement => statement.Kind == LeftKind.Decision)
+            .SpeakerName
+            .ShouldBe("Renata");
+    }
+
+    /// <summary>
     /// A run nobody accepted is not read at all, because acceptance is what says a person looked at
     /// what the model wrote and let it into the corpus.
     /// </summary>
@@ -227,7 +260,7 @@ public class CorpusStatementsTests
     /// reads field for field.
     /// </remarks>
     [Fact]
-    public void Both_reads_of_a_statement_answer_with_the_same_nine_fields()
+    public void Both_reads_of_a_statement_answer_with_the_same_ten_fields()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
@@ -249,6 +282,7 @@ public class CorpusStatementsTests
         of.Quoted.ShouldBe(under.Quoted);
         of.SpeakerLabel.ShouldBe(under.SpeakerLabel);
         of.SourceSha256.ShouldBe(under.SourceSha256);
+        of.SpeakerName.ShouldBe(under.SpeakerName);
     }
 
     /// <summary>
