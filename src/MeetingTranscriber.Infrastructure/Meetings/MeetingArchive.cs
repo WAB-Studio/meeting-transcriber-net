@@ -55,11 +55,12 @@ public sealed record ArrivedOn(
 /// </summary>
 /// <remarks>
 /// <para>
-/// Three doors arrive down this: a paid response somebody already has, audio somebody brought in,
-/// and a response filed onto a meeting the corpus recorded. Each decides what it can decide — what
-/// the file is, how long the meeting turned out to be, and the verb the audit keeps for it — and
-/// none of them decides the order the rows and the file land in, because that order is the same for
-/// all three and was written twice over before this existed.
+/// Four doors arrive down this: a paid response somebody already has, audio somebody brought in, a
+/// response filed onto a meeting the corpus recorded, and a later version filed onto a meeting that
+/// already has one. Each decides what it can decide — what the file is, how long the meeting turned
+/// out to be, and the verb the audit keeps for it — and none of them decides the order the rows and
+/// the file land in, because that order is the same for all four and was written twice over before
+/// this existed.
 /// </para>
 /// <para>
 /// <b>The file is staged before the transaction opens, and that is the lock and not a nicety.</b>

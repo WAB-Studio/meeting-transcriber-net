@@ -1,4 +1,5 @@
-﻿using MeetingTranscriber.Domain.Audio;
+﻿using MeetingTranscriber.Domain.Artifacts;
+using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Intake;
@@ -43,7 +44,7 @@ public static class MeetingCommands
         ArgumentNullException.ThrowIfNull(output);
 
         var corpus = Corpus.At(arguments);
-        var response = new FileInfo(arguments.Only($"The {MeetingIntake.ResponseFileName} to import"));
+        var response = new FileInfo(arguments.Only($"The {ResponseVersions.First} to import"));
 
         // Which door this is, and every flag that door takes, is settled before the corpus is
         // opened. A line that will be refused for what was typed on it refuses for that, rather

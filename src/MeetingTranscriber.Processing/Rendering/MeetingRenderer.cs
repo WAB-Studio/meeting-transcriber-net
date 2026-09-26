@@ -94,6 +94,51 @@ public static class MeetingRenderer
         written.Single(artifact => artifact.Kind == kind);
 
     /// <summary>
+    /// The response a meeting renders from: its highest version, and never its newest row.
+    /// </summary>
+    /// <remarks>
+    /// <c>ConfirmedAt</c> moves on every put-back and the name does not, so ranking by it would let
+    /// a response somebody's disk had lost and this corpus restored outrank one filed properly and
+    /// long ago. Every derivative of a meeting comes from one response, and this is the one rule
+    /// that says which.
+    /// </remarks>
+    private static Artifact Response(CorpusDbContext context, Meeting meeting)
+    {
+        var responses = context.Artifacts
+            .Where(artifact => artifact.MeetingId == meeting.Id && artifact.Kind == ArtifactKind.DeepgramResponse)
+            .ToArray();
+
+        if (responses.Length == 0)
+        {
+            throw new RenderException(
+                $"Meeting {meeting.Id} has no response to render from; nothing derived can be produced without it.");
+        }
+
+        Artifact? highest = null;
+        var highestVersion = 0;
+
+        foreach (var response in responses)
+        {
+            if (ResponseVersions.VersionOf(response) is not { } version)
+            {
+                throw new RenderException(
+                    $"Meeting {meeting.Id} names '{response.RelativePath}' as a response and that is "
+                    + "not a name in the series, so which response the meeting is read from cannot "
+                    + $"be settled. A response is '{ResponseVersions.First}' or 'deepgram.v<n>.json' "
+                    + "from 2 up.");
+            }
+
+            if (version > highestVersion)
+            {
+                highest = response;
+                highestVersion = version;
+            }
+        }
+
+        return highest!;
+    }
+
+    /// <summary>
     /// Reads the response and puts the meeting's turns back, all of them or none of them, and
     /// settles the one speaker the recording settles by itself.
     /// </summary>
@@ -112,11 +157,7 @@ public static class MeetingRenderer
     /// </remarks>
     private static IReadOnlyList<Turn> Project(CorpusDbContext context, Meeting meeting, UtcTimestamp now)
     {
-        var response = context.Artifacts.FirstOrDefault(
-                artifact => artifact.MeetingId == meeting.Id && artifact.Kind == ArtifactKind.DeepgramResponse)
-            ?? throw new RenderException(
-                $"Meeting {meeting.Id} has no response to render from; nothing derived can be produced without it.");
-
+        var response = Response(context, meeting);
         var file = CorpusFiles.Locate(context.Root, response.RelativePath);
         if (!file.Exists)
         {

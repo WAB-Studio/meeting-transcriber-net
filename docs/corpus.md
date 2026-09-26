@@ -17,6 +17,7 @@ meetings/<meeting_id>/
   manifest.json          source     recovery card, readable without the database
   audio.wav              source     if the user's retention policy keeps it
   deepgram.json          source     paid, immutable
+  deepgram.v<n>.json     source     paid, immutable: each transcription after the first, beside it
   deepgram.refused.<run>.json  source     paid, whole, and not filed; kept until a person moves it
   extractions/<id>.json  source     one file per accepted extraction, older ones kept
   transcript.md          derived
@@ -47,13 +48,21 @@ making; a crash lets it go with the process. Like the spool's marks it holds no 
 that restored it would restore nothing, and it is outside the two folders `check` walks.
 
 **`deepgram.refused.<run>.json` is a paid response the corpus would not file, and nothing
-deletes it.** The runner writes a response into a `.partial` and files it through the same door
-`import-response` uses. When that door refuses a response that arrived whole — it does not read,
-its channels disagree with how the meeting was recorded, or another response was filed onto the
-meeting while the call was out — the bytes were still paid for, so they are renamed out of the
-one suffix a sweep deletes and kept under the run that bought them. There is no row for it, so
-`check` names it as a file with no row until somebody moves it or deletes it; nothing files it on
-its own, because what to make of a response the corpus refused is a person's question.
+deletes it.** The runner writes a response into a `.partial` and files it through `MeetingIntake`,
+where a meeting's first comes in the way `import-response` files it, and every later one comes in
+beside it. When that door refuses a response that arrived whole — it does not read, its channels
+disagree with how the meeting was recorded, or another response was filed onto the meeting while
+the call was out — the bytes were still paid for, so they are renamed out of the one suffix a
+sweep deletes and kept under the run that bought them. There is no row for it, so `check` names it
+as a file with no row until somebody moves it or deletes it; nothing files it on its own, because
+what to make of a response the corpus refused is a person's question.
+
+**A meeting's response is a series, and the version is in the name and nowhere else.** The first
+is `deepgram.json`; each one after it is `deepgram.v<n>.json`, filed beside every version before
+it. The meeting is read from the highest version it has, never from the newest row: a response put
+back onto a corpus that lost it moves `ConfirmedAt`, and the name is what stays true. No response
+is ever replaced, so a backup carries every version and a deletion may touch none of them.
+`ResponseVersions`, in `src/MeetingTranscriber.Domain/Artifacts/`, is where the rule lives.
 
 **`audio.wav` is a source under `meetings/` and a derivative under `spool/`, and that is not a
 contradiction in the table.** What differs is what is beside each of them: in the spool folder the
@@ -385,7 +394,7 @@ because they are the ones the row records, which is what identified the meeting 
 
 Two consequences worth stating plainly:
 
-- A rerender never touches `deepgram.json` or an earlier extraction. A new extraction gets a new
+- A rerender never touches a paid response or an earlier extraction. A new extraction gets a new
   id and the previous one stays.
 - Names and corrections are applied when rendering. They are never written into the raw response,
   because that response is what a citation is checked against.

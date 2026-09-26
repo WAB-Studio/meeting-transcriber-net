@@ -141,8 +141,10 @@ public class TranscriptionRun
     public string? PriceTableVersion { get; set; }
 
     /// <summary>
-    /// When somebody agreed to what this call would cost, having been shown an estimate. Nothing
-    /// asks yet, so nothing writes it (ISC-85).
+    /// When somebody agreed to this call. Written for a meeting transcribed again, at the instant
+    /// its minutes were typed back — an agreement to the minutes and not to a price, so
+    /// <see cref="EstimatedCostMicros"/> stays empty beside it until the estimate ISC-85 asks for
+    /// exists. A first transcription's press shows no price yet, so nothing writes it there.
     /// </summary>
     public UtcTimestamp? ApprovedAt { get; set; }
 

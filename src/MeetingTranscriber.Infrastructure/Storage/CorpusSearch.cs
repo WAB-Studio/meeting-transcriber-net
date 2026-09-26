@@ -348,9 +348,11 @@ public static class CorpusSearch
     /// The <c>EXISTS</c> on the voice branch is what makes its sentence true. An assignment hangs
     /// off a label, and the only thing that takes one off is a render —
     /// <c>HumanLayer.ForgetVoicesNoTurnHas</c>, called from <c>MeetingRenderer.Replace</c> — so a
-    /// meeting transcribed again into a different set of labels keeps the old rows until it is
-    /// rendered again, which nothing forces — and this is the first reader that does not reach the
-    /// name through the label. <c>MeetingRenderer.Header</c> builds a
+    /// meeting transcribed again into a different set of labels keeps them only until the render
+    /// that follows its filing swaps the turns. A render refused before that swap leaves them
+    /// standing, and one that fails after it, while writing the files, has already taken them — and
+    /// this is the first reader that does not reach the name through the label.
+    /// <c>MeetingRenderer.Header</c> builds a
     /// label-to-name map, so a stale row falls out of the transcript silently; without the
     /// <c>EXISTS</c> it would fall <em>into</em> search instead, and somebody would be told the
     /// corpus knows this person spoke in a meeting whose transcript never names them, with no

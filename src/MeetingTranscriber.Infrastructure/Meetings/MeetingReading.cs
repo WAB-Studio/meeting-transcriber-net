@@ -191,6 +191,15 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     /// out of is the citation's own <c>SourceArtifactSha256</c>, which is a different question and
     /// is stored on the row for exactly this reason.
     /// </para>
+    /// <para>
+    /// <b>A re-transcription keeps this true, and two of its edges are worth saying plainly.</b> A
+    /// response filed and read whose run could not then be recorded still names the response
+    /// before this one — the write that would have moved this answer forward failed, and until it
+    /// is written again this still reads as the last thing that really happened. A render refused
+    /// before its turns were swapped leaves this naming the new response over turns that are still
+    /// the old one's, until `render &lt;id&gt;` runs. Both are said at the moment they happen, by the
+    /// answer the transcription gives — see <c>TranscribingAMeeting</c>'s own remarks on each.
+    /// </para>
     /// </remarks>
     public string? TranscribedFrom(Guid meetingId)
     {

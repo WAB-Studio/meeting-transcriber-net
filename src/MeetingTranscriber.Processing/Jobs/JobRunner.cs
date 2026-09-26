@@ -13,7 +13,8 @@ public sealed record JobsRun(IReadOnlyList<Guid> Ran, IReadOnlyList<string> Left
 
 /// <summary>
 /// Sends every <see cref="JobKind.Transcribe"/> job that is due, one corpus at a time, under the
-/// corpus's own <see cref="RunnerLease"/>.
+/// corpus's own <see cref="RunnerLease"/> — and the one a person asked to be sent again, through
+/// <see cref="SendAgainAsync"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -33,14 +34,15 @@ public sealed record JobsRun(IReadOnlyList<Guid> Ran, IReadOnlyList<string> Left
 /// fresher one, which is what the re-read before the write is for.
 /// </para>
 /// <para>
-/// <b>The guard is a convention this method keeps, not one the row enforces.</b> The re-read and
-/// the write below it are two round trips with nothing between them: no transaction holds the row,
-/// and <c>ProcessingJob</c> carries no concurrency token, so what actually closes the gap is that
-/// this is the one writer of a job's terminal move today, run one job at a time, under a lease that
-/// makes it the only pass touching this corpus at all. A second writer of an outcome — a person's
-/// retry answers a job differently and does not compete here, but a future path that could — would
-/// have to repeat this same re-read-and-compare by hand; nothing below stops it from skipping that
-/// and overwriting a fresher attempt.
+/// <b>The guard is a convention <see cref="RunWhatIsDueAsync"/> and <see cref="SendAgainAsync"/> both
+/// keep, not one the row enforces.</b> The re-read and the write below it are two round trips with
+/// nothing between them: no transaction holds the row, and <c>ProcessingJob</c> carries no
+/// concurrency token, so what actually closes the gap is that these two are the one writer of a
+/// job's terminal move today, one job at a time, under a lease that makes either the only caller
+/// touching this corpus at all. A second writer of an outcome — a person's retry answers a job
+/// differently and does not compete here, but a future path that could — would have to repeat this
+/// same re-read-and-compare by hand; nothing below stops it from skipping that and overwriting a
+/// fresher attempt.
 /// </para>
 /// <para>
 /// <b>A pass lets out two things only: running out of memory, and a cancellation of the caller's own
@@ -117,93 +119,27 @@ public static class JobRunner
                     break;
                 }
 
-                Guid meetingId;
-                int attempt;
+                var startedAt = UtcTimestamp.From(clock.GetUtcNow());
+                var taken = Take(root, candidate.Id, startedAt);
 
-                using (var taking = CorpusDatabase.Open(root))
+                if (taken is not { } job)
                 {
-                    using var transaction = taking.Database.BeginTransaction();
-
-                    var startedAt = UtcTimestamp.From(clock.GetUtcNow());
-
-                    var job = taking.ProcessingJobs.FirstOrDefault(row => row.Id == candidate.Id);
-                    if (job is null || !job.IsDue(startedAt))
-                    {
-                        // Taken, moved or gone between the read above and here — another pass over
-                        // this same corpus cannot happen while this one holds the lease, so what did
-                        // this is a person, or a test standing in for one. Either way it is not this
-                        // pass's to report: the job is exactly where whoever moved it left it.
-                        continue;
-                    }
-
-                    job.Start(startedAt);
-                    taking.SaveChanges();
-                    transaction.Commit();
-
-                    meetingId = job.MeetingId;
-                    attempt = job.Attempt;
+                    // Taken, moved or gone between the read above and here — another pass over this
+                    // same corpus cannot happen while this one holds the lease, so what did this is
+                    // a person, or a test standing in for one. Either way it is not this pass's to
+                    // report: the job is exactly where whoever moved it left it.
+                    continue;
                 }
 
                 ran.Add(candidate.Id);
 
-                TranscriptionEnded ended;
-                try
-                {
-                    ended = await TranscribingAMeeting
-                        .TranscribeAsync(root, candidate.Id, send, clock, stopping)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (stopping.IsCancellationRequested)
-                {
-                    // Left exactly as TranscribeAsync left it — Running, with no move written. The
-                    // next holder of this corpus's lease is what settles it, the same as a process
-                    // that died mid-call. Rethrown rather than turned into a line: this is the one
-                    // thing a pass lets out other than running out of memory.
-                    throw;
-                }
-                catch (Exception thrown) when (thrown is not OutOfMemoryException)
-                {
-                    // Nothing this runner recognises — TranscribeAsync itself only ever answers or
-                    // throws for a job that was never really started, so reaching here is a defect
-                    // somewhere else in the stack. Treated as MayHaveBeenCharged and not as a crash:
-                    // a pass over a queue of several meetings owes the rest of them a try, and the
-                    // same arm already asks a person about anything this end cannot read.
-                    ended = new TranscriptionEnded(
-                        TranscriptionOutcome.MayHaveBeenCharged,
-                        "The transcription stopped in a way this runner did not expect: "
-                        + $"{thrown.Message} Whether the provider charged for it is not something "
-                        + "this end can tell, so nothing is sent again on its own.");
-                }
+                var ended = await Called(
+                        () => TranscribingAMeeting.TranscribeAsync(root, candidate.Id, send, clock, stopping),
+                        stopping)
+                    .ConfigureAwait(false);
 
-                using (var writing = CorpusDatabase.Open(root))
-                {
-                    var fresh = writing.ProcessingJobs.FirstOrDefault(row => row.Id == candidate.Id);
-
-                    if (fresh is null || fresh.State != JobState.Running || fresh.Attempt != attempt)
-                    {
-                        left.Add(
-                            $"{meetingId}: the job was {fresh?.State} at attempt {fresh?.Attempt} by "
-                            + $"the time its call ended, so it was left as it stood: {ended.Said}");
-                    }
-                    else
-                    {
-                        Apply(fresh, ended, UtcTimestamp.From(clock.GetUtcNow()));
-
-                        try
-                        {
-                            writing.SaveChanges();
-                        }
-                        catch (Exception refused) when (refused is not OutOfMemoryException)
-                        {
-                            left.Add($"{meetingId}: the job's own move could not be written: {refused.Message}");
-                        }
-
-                        if (ended.Said is not null)
-                        {
-                            left.Add($"{meetingId}: {ended.Said}");
-                        }
-                    }
-                }
+                left.AddRange(Settle(
+                    root, candidate.Id, job.MeetingId, job.Attempt, ended, UtcTimestamp.From(clock.GetUtcNow())));
             }
         }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested)
@@ -220,6 +156,157 @@ public static class JobRunner
         }
 
         return new JobsRun(ran, left);
+    }
+
+    /// <summary>
+    /// Sends <paramref name="jobId"/> again, once a person has agreed to it at a prompt, under
+    /// <paramref name="lease"/>'s corpus.
+    /// </summary>
+    /// <remarks>
+    /// The take, the call and the guarded settle are the same three steps <see cref="RunWhatIsDueAsync"/>
+    /// runs for each job it finds due — <see cref="Take"/>, <see cref="Called"/> and
+    /// <see cref="Settle"/> — asked here for the one job a person named instead of for every job a
+    /// look of the queue finds. There is one copy of the guard and one <see cref="Apply"/> either
+    /// way.
+    /// </remarks>
+    /// <param name="lease">The corpus's runner lease, already held.</param>
+    /// <param name="jobId">The <see cref="JobKind.Transcribe"/> job a person asked to be sent again.</param>
+    /// <param name="approvedAt">When the minutes were typed back, carried onto the run.</param>
+    /// <param name="clock">Where every timestamp this writes comes from.</param>
+    /// <param name="send">What actually reaches the provider.</param>
+    /// <param name="stopping">Cancels the call in flight.</param>
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="jobId"/> is not a transcription waiting to be sent. Nothing is sent.
+    /// </exception>
+    public static async Task<JobsRun> SendAgainAsync(
+        RunnerLease lease,
+        Guid jobId,
+        UtcTimestamp approvedAt,
+        TimeProvider clock,
+        SendingToTheProvider send,
+        CancellationToken stopping = default)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(send);
+
+        var root = lease.Root;
+        var startedAt = UtcTimestamp.From(clock.GetUtcNow());
+
+        var taken = Take(root, jobId, startedAt)
+            ?? throw new InvalidOperationException(
+                $"Job {jobId} is not a transcription waiting to be sent, so nothing is sent for it.");
+
+        var ended = await Called(
+                () => TranscribingAMeeting.TranscribeAgainAsync(root, jobId, approvedAt, send, clock, stopping),
+                stopping)
+            .ConfigureAwait(false);
+
+        var left = Settle(
+            root, jobId, taken.MeetingId, taken.Attempt, ended, UtcTimestamp.From(clock.GetUtcNow()));
+
+        return new JobsRun([jobId], left);
+    }
+
+    /// <summary>What one job taken to be sent was, before the call it is taken for.</summary>
+    private readonly record struct TakenJob(Guid MeetingId, int Attempt);
+
+    /// <summary>
+    /// Moves <paramref name="jobId"/> to <see cref="JobState.Running"/> in its own transaction, or
+    /// answers nothing when it is not a <see cref="JobKind.Transcribe"/> job due at
+    /// <paramref name="startedAt"/>.
+    /// </summary>
+    private static TakenJob? Take(DirectoryInfo root, Guid jobId, UtcTimestamp startedAt)
+    {
+        using var taking = CorpusDatabase.Open(root);
+        using var transaction = taking.Database.BeginTransaction();
+
+        var job = taking.ProcessingJobs.FirstOrDefault(row => row.Id == jobId);
+        if (job is null || job.Kind != JobKind.Transcribe || !job.IsDue(startedAt))
+        {
+            return null;
+        }
+
+        job.Start(startedAt);
+        taking.SaveChanges();
+        transaction.Commit();
+
+        return new TakenJob(job.MeetingId, job.Attempt);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="attempt"/> and turns anything it throws but a cancellation of
+    /// <paramref name="stopping"/> into a <see cref="TranscriptionOutcome.MayHaveBeenCharged"/>
+    /// answer, because a job taken but never sent-and-settled is not one either caller can leave
+    /// unresolved.
+    /// </summary>
+    private static async Task<TranscriptionEnded> Called(
+        Func<Task<TranscriptionEnded>> attempt, CancellationToken stopping)
+    {
+        try
+        {
+            return await attempt().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+        {
+            // Left exactly as the call left it — Running, with no move written. The next holder of
+            // this corpus's lease is what settles it, the same as a process that died mid-call.
+            // Rethrown rather than turned into a line: this is the one thing a pass lets out other
+            // than running out of memory.
+            throw;
+        }
+        catch (Exception thrown) when (thrown is not OutOfMemoryException)
+        {
+            // Nothing this runner recognises — the call itself only ever answers or throws for a
+            // job that was never really started, so reaching here is a defect somewhere else in the
+            // stack. Treated as MayHaveBeenCharged and not as a crash: a pass over a queue of
+            // several meetings owes the rest of them a try, and the same arm already asks a person
+            // about anything this end cannot read.
+            return new TranscriptionEnded(
+                TranscriptionOutcome.MayHaveBeenCharged,
+                "The transcription stopped in a way this runner did not expect: "
+                + $"{thrown.Message} Whether the provider charged for it is not something "
+                + "this end can tell, so nothing is sent again on its own.");
+        }
+    }
+
+    /// <summary>
+    /// Turns what a call came to into the job's own terminal move, guarded on the attempt that made
+    /// the call, and answers what is left to say about it.
+    /// </summary>
+    private static IReadOnlyList<string> Settle(
+        DirectoryInfo root, Guid jobId, Guid meetingId, int attempt, TranscriptionEnded ended, UtcTimestamp now)
+    {
+        using var writing = CorpusDatabase.Open(root);
+        var fresh = writing.ProcessingJobs.FirstOrDefault(row => row.Id == jobId);
+
+        if (fresh is null || fresh.State != JobState.Running || fresh.Attempt != attempt)
+        {
+            return
+            [
+                $"{meetingId}: the job was {fresh?.State} at attempt {fresh?.Attempt} by the time "
+                + $"its call ended, so it was left as it stood: {ended.Said}",
+            ];
+        }
+
+        Apply(fresh, ended, now);
+        var left = new List<string>();
+
+        try
+        {
+            writing.SaveChanges();
+        }
+        catch (Exception refused) when (refused is not OutOfMemoryException)
+        {
+            left.Add($"{meetingId}: the job's own move could not be written: {refused.Message}");
+        }
+
+        if (ended.Said is not null)
+        {
+            left.Add($"{meetingId}: {ended.Said}");
+        }
+
+        return left;
     }
 
     /// <summary>

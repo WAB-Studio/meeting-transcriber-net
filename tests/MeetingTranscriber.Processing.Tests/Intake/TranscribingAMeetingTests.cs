@@ -234,7 +234,7 @@ public sealed class TranscribingAMeetingTests
         ended.Outcome.ShouldBe(TranscriptionOutcome.MayHaveBeenCharged);
 
         var destination = CorpusFiles.Locate(
-            corpus.Root, CorpusFiles.PathFor(meeting, MeetingIntake.ResponseFileName));
+            corpus.Root, CorpusFiles.PathFor(meeting, ResponseVersions.First));
         destination.Refresh();
         destination.Exists.ShouldBeFalse();
 
@@ -436,6 +436,197 @@ public sealed class TranscribingAMeetingTests
             corpus.Root, job, send, TimeProvider.System, cancelling.Token);
 
         ended.Outcome.ShouldBe(TranscriptionOutcome.Filed);
+    }
+
+    /// <summary>The card's first Proof.</summary>
+    [Fact]
+    public async Task Transcribing_again_files_a_new_version_beside_the_first_and_leaves_it_untouched()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid meeting, job;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meeting = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+            MeetingIntake.ReceiveInto(
+                context, meeting, new FileInfo(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelShort)), When);
+            job = QueueDirectly(context, meeting);
+        }
+
+        var approvedAt = When + Duration.FromSeconds(1);
+
+        var ended = await TranscribingAMeeting.TranscribeAgainAsync(
+            corpus.Root, job, approvedAt, FixtureBody(DeepgramFixtures.TwoChannelOneVoiceMe),
+            TimeProvider.System, TestContext.Current.CancellationToken);
+
+        ended.Outcome.ShouldBe(TranscriptionOutcome.Filed);
+        ended.Said.ShouldBeNull();
+
+        using var reopened = corpus.Open();
+
+        var firstRow = reopened.Artifacts.Single(row =>
+            row.MeetingId == meeting && row.RelativePath == CorpusFiles.PathFor(meeting, ResponseVersions.First));
+        var firstSha = CorpusFiles.Sha256Of(new FileInfo(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelShort)));
+        firstRow.Sha256.ShouldBe(firstSha);
+        CorpusFiles.Sha256Of(CorpusFiles.Locate(corpus.Root, firstRow.RelativePath)).ShouldBe(firstSha);
+
+        var secondRow = reopened.Artifacts.Single(row =>
+            row.MeetingId == meeting
+            && row.RelativePath == CorpusFiles.PathFor(meeting, ResponseVersions.Named(2)));
+        secondRow.Sha256.ShouldBe(
+            CorpusFiles.Sha256Of(new FileInfo(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelOneVoiceMe))));
+
+        reopened.TranscriptionRuns.Single(row => row.JobId == job).ApprovedAt.ShouldBe(approvedAt);
+
+        MeetingFolder(corpus, meeting).EnumerateFiles($"*{CorpusFiles.UnfinishedSuffix}").ShouldBeEmpty();
+    }
+
+    /// <summary>Goes red when the two paths share the sentence, and red when the render-failed
+    /// branch stops marking the run finished.</summary>
+    [Fact]
+    public async Task A_render_that_fails_after_another_version_is_filed_does_not_promise_a_launch_will_fix_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid meeting, job;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meeting = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+            MeetingIntake.ReceiveInto(
+                context, meeting, new FileInfo(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelShort)), When);
+            job = QueueDirectly(context, meeting);
+        }
+
+        var transcript = CorpusFiles.Locate(corpus.Root, CorpusFiles.PathFor(meeting, "transcript.md"));
+        transcript.Delete();
+        Directory.CreateDirectory(transcript.FullName);
+
+        var ended = await TranscribingAMeeting.TranscribeAgainAsync(
+            corpus.Root, job, When + Duration.FromSeconds(1), FixtureBody(DeepgramFixtures.TwoChannelOneVoiceMe),
+            TimeProvider.System, TestContext.Current.CancellationToken);
+
+        ended.Outcome.ShouldBe(TranscriptionOutcome.Filed);
+        ended.Said.ShouldNotBeNull();
+        ended.Said.ShouldContain("version 2");
+        ended.Said.ShouldContain("render ");
+        ended.Said.ShouldContain(meeting.ToString());
+        ended.Said.ShouldNotContain("next launch");
+        ended.Said.ShouldNotContain("still reads");
+
+        using var reopened = corpus.Open();
+        var secondRow = reopened.Artifacts.Single(row =>
+            row.MeetingId == meeting
+            && row.RelativePath == CorpusFiles.PathFor(meeting, ResponseVersions.Named(2)));
+
+        var run = reopened.TranscriptionRuns.Single(row => row.JobId == job);
+        run.FinishedAt.ShouldNotBeNull();
+        run.ResponseArtifactId.ShouldBe(secondRow.Id);
+
+        new MeetingReading(reopened, TimeProvider.System).TranscribedFrom(meeting).ShouldBe(secondRow.Sha256);
+    }
+
+    [Fact]
+    public async Task Transcribing_again_moves_what_the_meeting_says_its_turns_came_from()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid meeting, job;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meeting = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+            MeetingIntake.ReceiveInto(
+                context, meeting, new FileInfo(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelShort)), When);
+            job = QueueDirectly(context, meeting);
+        }
+
+        var ended = await TranscribingAMeeting.TranscribeAgainAsync(
+            corpus.Root, job, When + Duration.FromSeconds(1), FixtureBody(DeepgramFixtures.TwoChannelOneVoiceMe),
+            TimeProvider.System, TestContext.Current.CancellationToken);
+
+        ended.Outcome.ShouldBe(TranscriptionOutcome.Filed);
+
+        using var reopened = corpus.Open();
+        var secondSha = reopened.Artifacts.Single(row =>
+                row.MeetingId == meeting
+                && row.RelativePath == CorpusFiles.PathFor(meeting, ResponseVersions.Named(2)))
+            .Sha256;
+
+        new MeetingReading(reopened, TimeProvider.System).TranscribedFrom(meeting).ShouldBe(secondSha);
+    }
+
+    /// <summary>O-20260925-13. Goes red when the guard is removed: the exception escapes and the
+    /// test throws.</summary>
+    [Fact]
+    public async Task A_response_filed_whose_run_could_not_be_updated_is_still_filed_and_says_so()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, job) = Queue(corpus);
+
+        using (var context = corpus.Open())
+        {
+            Sql.Execute(
+                context,
+                "CREATE TRIGGER refuse_every_update BEFORE UPDATE ON transcription_runs "
+                + "BEGIN SELECT RAISE(ABORT, 'refused for this test'); END;");
+        }
+
+        var ended = await TranscribingAMeeting.TranscribeAsync(
+            corpus.Root, job, FixtureBody(DeepgramFixtures.TwoChannelShort), TimeProvider.System,
+            TestContext.Current.CancellationToken);
+
+        ended.Outcome.ShouldBe(TranscriptionOutcome.Filed);
+        ended.Said.ShouldNotBeNull();
+        ended.Said.ShouldContain("filed");
+        ended.Said.ShouldContain("could not be written");
+
+        using var reopened = corpus.Open();
+        reopened.Artifacts
+            .Count(row => row.MeetingId == meeting && row.Kind == ArtifactKind.DeepgramResponse)
+            .ShouldBe(1);
+        reopened.TranscriptionRuns.Single(row => row.JobId == job).FinishedAt.ShouldBeNull();
+
+        MeetingFolder(corpus, meeting).EnumerateFiles($"*{CorpusFiles.UnfinishedSuffix}").ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_re_transcription_whose_run_could_not_be_recorded_says_its_turns_are_named_for_the_response_before()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, job) = Queue(corpus);
+
+        var first = await TranscribingAMeeting.TranscribeAsync(
+            corpus.Root, job, FixtureBody(DeepgramFixtures.TwoChannelShort), TimeProvider.System,
+            TestContext.Current.CancellationToken);
+        first.Outcome.ShouldBe(TranscriptionOutcome.Filed);
+
+        string firstSha;
+        Guid againJob;
+
+        using (var context = corpus.Open())
+        {
+            firstSha = context.Artifacts.Single(row =>
+                row.MeetingId == meeting && row.Kind == ArtifactKind.DeepgramResponse).Sha256;
+
+            Sql.Execute(
+                context,
+                "CREATE TRIGGER refuse_every_update BEFORE UPDATE ON transcription_runs "
+                + "BEGIN SELECT RAISE(ABORT, 'refused for this test'); END;");
+
+            againJob = QueueDirectly(context, meeting);
+        }
+
+        var ended = await TranscribingAMeeting.TranscribeAgainAsync(
+            corpus.Root, againJob, When + Duration.FromSeconds(1), FixtureBody(DeepgramFixtures.TwoChannelOneVoiceMe),
+            TimeProvider.System, TestContext.Current.CancellationToken);
+
+        ended.Outcome.ShouldBe(TranscriptionOutcome.Filed);
+        ended.Said.ShouldNotBeNull();
+        ended.Said.ShouldEndWith(
+            "Until that record is written, what this meeting says its turns were read from still "
+            + "names the response before this one.");
+
+        using var reopened = corpus.Open();
+        new MeetingReading(reopened, TimeProvider.System).TranscribedFrom(meeting).ShouldBe(firstSha);
     }
 
     private static (Guid Meeting, Guid Job) Queue(TemporaryCorpus corpus)
