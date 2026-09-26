@@ -259,55 +259,13 @@
 
         <!-- Adding a person, and correcting one — the second and last dialogue `docs/design.md`
              §Notices allows. It has two callers now and both are on this screen: the entry on an
-             empty place, and the entry on a place somebody already stands in. It still lives in
-             this file rather than in a control of its own because the caller that would make moving
-             it worth anything is `QuienEsQuien`, and that screen is not built — an abstraction for a
-             caller that does not exist costs more than the duplication it saved, and the day that
-             screen arrives is the day this moves.
-
-             Its title is set where it is opened rather than bound here, because it is one of two.
+             empty place, and the entry on a place somebody already stands in. This is
+             `AddingSomebody`, shared with `SayingWhoIsWho`, which is the screen that names voices
+             and needs the same form for the same two jobs.
 
              Naming a node is not a third dialogue for the same reason it is not a second: it
              happens on the pill, in place, where the picker offering it stands — and so does
              correcting one. -->
-        <ContentDialog
-            x:Name="AddingSomebody"
-            PrimaryButtonClick="OnSomebodyNamed"
-            PrimaryButtonText="{x:Bind In(loc:UiTexts.Save)}"
-            CloseButtonText="{x:Bind In(loc:UiTexts.Cancel)}">
-            <StackPanel Spacing="12" MinWidth="320">
-                <TextBox
-                    x:Name="TheirNameBox"
-                    Style="{StaticResource TypedField}"
-                    TextChanged="OnTheirNameTyped"
-                    Header="{x:Bind In(loc:UiTexts.NameOfAPerson)}" />
-
-                <!-- The organization is said beside the picker and never as a header on it: a pill
-                     has no part to draw one, so a `Header` here binds, builds green and shows
-                     nothing at all. -->
-                <StackPanel x:Name="TheirOrganizationLine" Spacing="6">
-                    <TextBlock
-                        Style="{StaticResource BodyText}"
-                        Text="{x:Bind In(loc:UiTexts.Organization)}" />
-                    <ComboBox x:Name="TheirOrganization" Style="{StaticResource DropDown}" />
-                </StackPanel>
-
-                <!-- Optional, and empty means what `Affiliation` already means by no start: as far
-                     back as this corpus goes. A year and not a date, because a period on a person
-                     is read against the meeting's own year and nothing finer. -->
-                <TextBox
-                    x:Name="TheirYearBox"
-                    Style="{StaticResource TypedField}"
-                    MaxLength="4"
-                    Header="{x:Bind In(loc:UiTexts.From)}" />
-
-                <TextBlock
-                    x:Name="DialogueStatusText"
-                    Style="{StaticResource BodyText}"
-                    Foreground="{StaticResource PeakBrush}"
-                    TextWrapping="Wrap"
-                    Visibility="Collapsed" />
-            </StackPanel>
-        </ContentDialog>
+        <local:AddingSomebody x:Name="AskingWhoTheyAre" />
     </Grid>
 </UserControl>

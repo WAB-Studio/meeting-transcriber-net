@@ -122,4 +122,22 @@ internal static class ScreenNumbers
     /// </remarks>
     public static string Long(Duration length) =>
         length.ToTimeSpan().ToString(@"h\:mm\:ss", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Which meeting this is: its name and when it was. A meeting nobody has named is the moment on
+    /// its own rather than the moment after a gap.
+    /// </summary>
+    /// <remarks>
+    /// Moved out of <c>ClassifyingAMeeting</c>, whole: the screen that names voices needs the same
+    /// header the screen that files a meeting already draws, and a second copy of this ternary is
+    /// how the two come to disagree about what an unnamed meeting is called.
+    /// </remarks>
+    public static string Which(Meeting meeting)
+    {
+        ArgumentNullException.ThrowIfNull(meeting);
+
+        return string.IsNullOrWhiteSpace(meeting.Title)
+            ? At(meeting.StartedAt)
+            : Beside(meeting.Title, At(meeting.StartedAt));
+    }
 }

@@ -221,6 +221,7 @@ public sealed partial class MainWindow : Window
         Reading.Open(corpus);
         Reading.Left += OnLeftTheMeeting;
         Reading.Classify += OnClassifyTheMeeting;
+        Reading.NameTheVoices += OnNameTheVoices;
         Reading.NodeChosen += OnNodeChosen;
 
         NodeStory.Open(corpus);
@@ -230,6 +231,10 @@ public sealed partial class MainWindow : Window
         Classifying.Open(corpus);
         Classifying.Filed += OnFiled;
         Classifying.Left += OnLeftTheClassification;
+
+        Voices.Open(corpus);
+        Voices.Named += OnVoicesNamed;
+        Voices.Left += OnLeftTheVoices;
 
         // The fourth, and the one that is not about a meeting. The language is raised on up from
         // it rather than answered there: which language the application is read in is the
@@ -316,6 +321,7 @@ public sealed partial class MainWindow : Window
         Reading.ReadIn(language);
         NodeStory.ReadIn(language);
         Classifying.ReadIn(language);
+        Voices.ReadIn(language);
         Settings.ReadIn(language);
         Refresh();
     }
@@ -370,10 +376,12 @@ public sealed partial class MainWindow : Window
             // NodeStory.IsShowingANode is redundant here today, and only by the accident of the one
             // door into it: OnNodeChosen calls Reading.Pause() rather than Reading.Close(), so
             // Reading.IsShowingAMeeting is already true for the whole of a node's story. It is named
-            // anyway, on the same rule Classifying.IsOpen already is for the same accident.
+            // anyway, on the same rule Classifying.IsOpen and Voices.IsOpen already are for the same
+            // accident.
             TheRoomBelowHasTheWindow = Meetings.HasTheWholeWindow
                 || Reading.IsShowingAMeeting
                 || Classifying.IsOpen
+                || Voices.IsOpen
                 || Settings.IsOpen
                 || NodeStory.IsShowingANode,
         };
@@ -1412,24 +1420,28 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private void ShowWhatTheRoomIsShowing(RecorderScreen screen)
     {
-        // Five now, and the order is what says which wins. The settings are first because they
+        // Six now, and the order is what says which wins. The settings are first because they
         // are reached from the window itself and not from a meeting: the gear is pressable
         // whatever the room below is showing, so a screen underneath goes on holding whatever it
         // was holding and gets it back when this closes. Then filing, which is reached from the
         // meeting — so the meeting screen is still holding one, with its recording paused, for the
         // whole of it, and asking it whether it has the window would put two screens in one room.
-        // A node's story is reached from the meeting too, the same way filing is, so the meeting
-        // screen goes on holding one underneath it for the whole of it as well.
+        // Naming the voices is reached from the meeting too, on exactly the same terms as filing,
+        // and wins over it because the two are never both open at once — nothing on either screen
+        // opens the other. A node's story is reached from the meeting as well, so the meeting
+        // screen goes on holding one underneath it for the whole of it too.
         var settings = Settings.IsOpen;
         var classifying = !settings && Classifying.IsOpen;
-        var story = !settings && !classifying && NodeStory.IsShowingANode;
-        var reading = !settings && !classifying && !story && Reading.IsShowingAMeeting;
+        var voices = !settings && !classifying && Voices.IsOpen;
+        var story = !settings && !classifying && !voices && NodeStory.IsShowingANode;
+        var reading = !settings && !classifying && !voices && !story && Reading.IsShowingAMeeting;
 
         Settings.Visibility = settings ? Visibility.Visible : Visibility.Collapsed;
         Classifying.Visibility = classifying ? Visibility.Visible : Visibility.Collapsed;
+        Voices.Visibility = voices ? Visibility.Visible : Visibility.Collapsed;
         NodeStory.Visibility = story ? Visibility.Visible : Visibility.Collapsed;
         Reading.Visibility = reading ? Visibility.Visible : Visibility.Collapsed;
-        Meetings.Visibility = settings || classifying || story || reading
+        Meetings.Visibility = settings || classifying || voices || story || reading
             ? Visibility.Collapsed
             : Visibility.Visible;
 
@@ -1498,6 +1510,16 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Somebody asked to name who spoke on the meeting they are reading. Shown before the room is
+    /// rearranged, for the reason <see cref="OnMeetingChosen"/> gives.
+    /// </summary>
+    private void OnNameTheVoices(object? sender, Guid meeting)
+    {
+        Voices.Show(meeting);
+        Refresh();
+    }
+
+    /// <summary>
     /// Somebody pressed what a meeting is filed under, to read that node's own history.
     /// </summary>
     /// <remarks>
@@ -1554,6 +1576,28 @@ public sealed partial class MainWindow : Window
     private void OnLeftTheClassification(object? sender, EventArgs e)
     {
         Classifying.Close();
+        Refresh();
+    }
+
+    /// <summary>
+    /// The names were saved. The screen that reads the meeting is still holding it, so coming back
+    /// is a redraw and not a reopen — its who-spoke card and its unfolded transcript have changed,
+    /// and its recording has not.
+    /// </summary>
+    private void OnVoicesNamed(object? sender, Guid meeting)
+    {
+        Voices.Close();
+        Reading.ReadAgain();
+        Refresh();
+    }
+
+    /// <summary>
+    /// Somebody came back from naming the voices without naming anybody. Nothing was written, so
+    /// nothing is read again.
+    /// </summary>
+    private void OnLeftTheVoices(object? sender, EventArgs e)
+    {
+        Voices.Close();
         Refresh();
     }
 
@@ -2052,6 +2096,7 @@ public sealed partial class MainWindow : Window
         // got round to them — with the recording still coming out of the machine until it did.
         Reading.Close();
         Classifying.Close();
+        Voices.Close();
 
         // The settings hold no file and no device, so this is not about letting anything go: it is
         // the same `_closed` the list keeps, for the same reason. A name being written into the

@@ -223,6 +223,26 @@
                             Content="{x:Bind In(loc:UiTexts.Classify)}" />
                     </StackPanel>
                 </Border>
+
+                <!-- Who spoke, and the way to say who is who. Collapsed rather than drawn empty:
+                     a meeting nothing has transcribed yet has no voices to offer. The label is
+                     mono at the data rank, like *sobre qué fue* and *esto lo escribió* above it. -->
+                <Border x:Name="WhoSpokeCard" Style="{StaticResource ReadingCard}">
+                    <StackPanel Spacing="10">
+                        <TextBlock
+                            Style="{StaticResource DataText}"
+                            Text="{x:Bind In(loc:UiTexts.WhoSpoke)}" />
+
+                        <StackPanel x:Name="TheVoices" Spacing="4" />
+
+                        <Button
+                            x:Name="NameTheVoicesButton"
+                            HorizontalAlignment="Right"
+                            Style="{StaticResource TakeTheStage}"
+                            Click="OnNameTheVoices"
+                            Content="{x:Bind In(loc:UiTexts.SayWhoIsWho)}" />
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </Grid>
 
