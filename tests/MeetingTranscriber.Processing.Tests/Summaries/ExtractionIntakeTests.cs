@@ -70,7 +70,11 @@ public class ExtractionIntakeTests
         run.AcceptedAt.ShouldBeNull();
         run.OutputArtifactId.ShouldBeNull();
 
-        context.ExtractionRefusals.Count(row => row.ExtractionRunId == run.Id).ShouldBe(1);
+        context.ExtractionRefusals
+            .Where(row => row.ExtractionRunId == run.Id)
+            .Select(row => new ExtractionRefusal(row.Condition, row.Path, row.Statement))
+            .ToList()
+            .ShouldBe([new ExtractionRefusal(ExtractionCondition.NotTheSchema, "abstract", null)]);
         context.Summaries.Any(row => row.ExtractionRunId == run.Id).ShouldBeFalse();
         context.Decisions.Any(row => row.ExtractionRunId == run.Id).ShouldBeFalse();
         context.ActionItems.Any(row => row.ExtractionRunId == run.Id).ShouldBeFalse();
@@ -110,6 +114,33 @@ public class ExtractionIntakeTests
         var read = new MeetingReading(context, TimeProvider.System).Of(meeting);
         read.Screen.Left.Abstract.ShouldBe("Se decidio la fecha de lanzamiento.");
         read.Screen.Left.Things.Select(thing => thing.Says).ShouldBe(["Lanzar el viernes."]);
+    }
+
+    /// <summary>ISC-143.</summary>
+    /// <remarks>
+    /// A fact over the door's own write and not over a row a test helper built by hand — a door
+    /// that stored the wrong <c>Condition</c> or a <c>Statement</c> of <c>null</c> would leave
+    /// every other fact in this file and in <c>MeetingReadingTests</c> green, because none of them
+    /// reads a refusal <see cref="ExtractionIntake.Receive"/> itself wrote back through the screen.
+    /// </remarks>
+    [Fact]
+    public void A_refusal_the_door_stores_is_what_the_meeting_says()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var (meeting, jobId, prepared) = ArrangeStartedExtraction(
+            context, ["Este es el primer turno de la reunion."]);
+
+        var broken = Accepted(meeting);
+        Remove(broken, "decisions[0].evidence");
+
+        var received = ExtractionIntake.Receive(context, AttemptFor(jobId, prepared.Hash, broken), Recorded);
+        received.Accepted.ShouldBeFalse();
+
+        var screen = new MeetingReading(context, TimeProvider.System).Of(meeting).Screen;
+
+        screen.WhyTheSummaryWasRefused.ShouldBe(
+            new ExtractionRefusal(ExtractionCondition.NoEvidence, "decisions[0]", "Lanzar el viernes."));
     }
 
     [Fact]
