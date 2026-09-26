@@ -128,6 +128,7 @@ public sealed class TranscribingAMeetingTests
         ended.Outcome.ShouldBe(TranscriptionOutcome.NothingWasCharged);
         ended.Said.ShouldNotBeNull();
         ended.Said.ShouldContain("Nothing was sent and nothing was charged");
+        ended.Failure.ShouldBe(JobFailure.AudioMissing);
         called.ShouldBeFalse();
     }
 
@@ -144,6 +145,7 @@ public sealed class TranscribingAMeetingTests
         ended.Outcome.ShouldBe(TranscriptionOutcome.NothingWasCharged);
         ended.Said.ShouldNotBeNull();
         ended.Said.ShouldContain("nothing was charged");
+        ended.Failure.ShouldBe(JobFailure.ProviderNotReached);
     }
 
     [Fact]
@@ -162,6 +164,7 @@ public sealed class TranscribingAMeetingTests
         ended.Outcome.ShouldBe(TranscriptionOutcome.NothingWasCharged);
         ended.Said.ShouldNotBeNull();
         ended.Said.ShouldContain("no Deepgram key");
+        ended.Failure.ShouldBe(JobFailure.NoKeyOnThisMachine);
     }
 
     /// <summary>Goes red with the catch removed, and red with the <c>TryDelete</c> removed.</summary>
@@ -192,6 +195,7 @@ public sealed class TranscribingAMeetingTests
         ended.Outcome.ShouldBe(TranscriptionOutcome.NothingWasCharged);
         ended.Said.ShouldNotBeNull();
         ended.Said.ShouldEndWith("Nothing was sent and nothing was charged.");
+        ended.Failure.ShouldBe(JobFailure.CorpusRefused);
         called.ShouldBeFalse();
 
         MeetingFolder(corpus, meeting).EnumerateFiles($"*{CorpusFiles.UnfinishedSuffix}").ShouldBeEmpty();
@@ -213,6 +217,7 @@ public sealed class TranscribingAMeetingTests
         ended.Said.ShouldNotBeNull();
         ended.Said.ShouldContain("the socket vanished");
         ended.Said.ShouldContain("is not something this end can tell");
+        ended.Failure.ShouldBeNull();
     }
 
     /// <summary>Goes red with the bytes written at <c>deepgram.json</c> instead of beside it.</summary>
@@ -225,13 +230,14 @@ public sealed class TranscribingAMeetingTests
         SendingToTheProvider send = async (_, _, response, stopping) =>
         {
             await response.WriteAsync(new byte[] { 1, 2, 3, 4 }, stopping);
-            throw new DeepgramCallException("the connection dropped mid-body", mayHaveBeenCharged: true);
+            throw new DeepgramCallException("the connection dropped mid-body", whyNothingWasCharged: null);
         };
 
         var ended = await TranscribingAMeeting.TranscribeAsync(
             corpus.Root, job, send, TimeProvider.System, TestContext.Current.CancellationToken);
 
         ended.Outcome.ShouldBe(TranscriptionOutcome.MayHaveBeenCharged);
+        ended.Failure.ShouldBeNull();
 
         var destination = CorpusFiles.Locate(
             corpus.Root, CorpusFiles.PathFor(meeting, ResponseVersions.First));
@@ -262,6 +268,7 @@ public sealed class TranscribingAMeetingTests
         ended.Said.ShouldNotBeNull();
         ended.Said.ShouldContain("paid for");
         ended.Said.ShouldContain("check names it");
+        ended.Failure.ShouldBeNull();
 
         var folder = MeetingFolder(corpus, meeting);
         folder.EnumerateFiles($"*{CorpusFiles.UnfinishedSuffix}").ShouldBeEmpty();
@@ -333,6 +340,7 @@ public sealed class TranscribingAMeetingTests
         ended.Outcome.ShouldBe(TranscriptionOutcome.MayHaveBeenCharged);
         ended.Said.ShouldNotBeNull();
         ended.Said.ShouldContain("paid for");
+        ended.Failure.ShouldBeNull();
 
         MeetingFolder(corpus, meeting).EnumerateFiles("deepgram.refused.*.json").Count().ShouldBe(1);
     }

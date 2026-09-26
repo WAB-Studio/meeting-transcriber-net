@@ -155,7 +155,7 @@ public sealed class JobRunnerTests
         lease.ShouldNotBeNull();
 
         SendingToTheProvider send = (_, _, _, _) => throw new DeepgramCallException(
-            "Deepgram would not accept this machine's key.", mayHaveBeenCharged: false);
+            "Deepgram would not accept this machine's key.", JobFailure.KeyRefused);
 
         var run = await JobRunner.RunWhatIsDueAsync(
             lease, TimeProvider.System, send, TestContext.Current.CancellationToken);
@@ -166,6 +166,7 @@ public sealed class JobRunnerTests
         var job2 = reopened.ProcessingJobs.Single(row => row.Id == jobId);
         job2.State.ShouldBe(JobState.FailedPermanent);
         job2.LastError.ShouldNotBeNull();
+        job2.Failure.ShouldBe(JobFailure.KeyRefused);
     }
 
     /// <summary>Goes red with <c>MayHaveBeenCharged</c> answered with <c>FailPermanently</c>.</summary>
@@ -187,7 +188,7 @@ public sealed class JobRunnerTests
         lease.ShouldNotBeNull();
 
         SendingToTheProvider send = (_, _, _, _) => throw new DeepgramCallException(
-            "Deepgram failed the request on its own side.", mayHaveBeenCharged: true);
+            "Deepgram failed the request on its own side.", whyNothingWasCharged: null);
 
         var run = await JobRunner.RunWhatIsDueAsync(
             lease, TimeProvider.System, send, TestContext.Current.CancellationToken);

@@ -455,6 +455,44 @@ public class CorpusSchemaTests
     }
 
     /// <summary>
+    /// The same pairing as <see cref="Only_a_job_waiting_for_a_person_carries_a_reason_for_waiting"/>,
+    /// over why a job failed for good rather than over why it waits.
+    /// </summary>
+    [Fact]
+    public void A_failure_is_stored_only_on_a_job_that_failed_for_good()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        InsertMeeting(context);
+
+        Should.Throw<SqliteException>(() => InsertJob(
+            context, id: "j0", state: "pending", failure: "key_refused"));
+    }
+
+    /// <summary>The other half of the same CHECK: a permanent failure with nothing to show for it.</summary>
+    [Fact]
+    public void A_job_that_failed_for_good_carries_its_kind()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        InsertMeeting(context);
+
+        Should.Throw<SqliteException>(() => InsertJob(context, id: "j0", state: "failed_permanent"));
+    }
+
+    /// <summary>Red when the CHECK is only <c>failure IS NULL OR …</c>.</summary>
+    [Fact]
+    public void A_failure_the_corpus_does_not_name_is_refused()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        InsertMeeting(context);
+
+        Should.Throw<SqliteException>(() => InsertJob(
+            context, id: "j0", state: "failed_permanent", failure: "not_a_real_kind"));
+    }
+
+    /// <summary>
     /// Where a run stands is its job's, and the job cannot be taken out from under it: a call
     /// somebody paid for whose state nothing holds is worse than one that refuses to be deleted.
     /// </summary>
@@ -728,20 +766,23 @@ public class CorpusSchemaTests
 
     /// <summary>
     /// A job. The reason defaults to whatever the state needs, so a test that wants the two out of
-    /// step has to ask for it.
+    /// step has to ask for it. <paramref name="failure"/> never defaults to what the state needs —
+    /// the tests over <c>ck_processing_jobs_failure</c> want the two out of step on purpose.
     /// </summary>
     private static void InsertJob(
         CorpusDbContext context,
         string id,
         string state,
         string? awaitingReason = null,
-        bool defaultReason = true)
+        bool defaultReason = true,
+        string? failure = null)
     {
         var reason = awaitingReason ?? (defaultReason && state == "awaiting_user" ? "a cost nobody approved" : null);
         Sql.Execute(context, $"""
-            INSERT INTO processing_jobs (id, meeting_id, kind, state, awaiting_reason, idempotency_key, created_at, attempt)
+            INSERT INTO processing_jobs (id, meeting_id, kind, state, awaiting_reason, failure, idempotency_key, created_at, attempt)
             VALUES ('{id}', '{MeetingId}', 'transcribe', '{state}',
-                    {(reason is null ? "NULL" : $"'{reason}'")}, '{id}', '{When}', 0);
+                    {(reason is null ? "NULL" : $"'{reason}'")},
+                    {(failure is null ? "NULL" : $"'{failure}'")}, '{id}', '{When}', 0);
             """);
     }
 }

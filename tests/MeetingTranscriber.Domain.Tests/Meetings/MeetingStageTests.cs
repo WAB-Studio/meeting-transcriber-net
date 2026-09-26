@@ -254,16 +254,52 @@ public class MeetingStageTests
     public void A_stage_whose_attempt_failed_for_good_is_owed_and_offered_exactly_as_before()
     {
         // Work that did not happen leaves the stage where it was. What a person is told about the
-        // failure belongs beside whatever produced it, and that is what runs it.
+        // failure belongs beside whatever produced it, and that is what runs it — OwedWork.Failed
+        // is how a screen learns it.
         var lost = Job(JobKind.Transcribe);
         lost.Start(Noon);
-        lost.FailPermanently("the audio is not something the provider accepts", Noon);
+        lost.FailPermanently(JobFailure.KeyRefused, "Deepgram would not accept this machine's key.", Noon);
 
         var owed = OwedWork.Of(TheMeeting, [ArtifactKind.Audio], [lost]);
 
         owed.Standing.ShouldBe(StageStanding.Offered);
         owed.MayBeTaken.ShouldBeTrue();
         owed.IsOwed.ShouldBeTrue();
+        owed.Failed.ShouldBe(JobFailure.KeyRefused);
+    }
+
+    [Fact]
+    public void A_failure_an_answer_came_after_is_not_said_again()
+    {
+        // A restart, or a person, that produced a later attempt of the same kind is what
+        // OwedWork.Of orders on: the newest attempt decides, and a failure an answer came after is
+        // not the one a screen shows.
+        var failed = ProcessingJob.Queue(Guid.NewGuid(), TheMeeting, JobKind.Transcribe, "a", Noon);
+        failed.Start(Noon);
+        failed.FailPermanently(JobFailure.KeyRefused, "Deepgram would not accept this machine's key.", Noon);
+
+        var pending = ProcessingJob.Queue(
+            Guid.NewGuid(), TheMeeting, JobKind.Transcribe, "b", Noon + Duration.FromSeconds(60));
+
+        var owed = OwedWork.Of(TheMeeting, [ArtifactKind.Audio], [failed, pending]);
+
+        owed.Failed.ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_failure_of_another_kind_is_not_the_stages()
+    {
+        // A Recorded meeting's next stage is Transcribe. A failed Extract job is not what that
+        // offer is shown against.
+        var strayed = Job(JobKind.Extract);
+        strayed.Start(Noon);
+        strayed.FailPermanently(JobFailure.OutOfCredit, "an extraction failed", Noon);
+
+        var owed = OwedWork.Of(TheMeeting, [ArtifactKind.Audio], [strayed]);
+
+        owed.Stage.ShouldBe(MeetingStage.Recorded);
+        owed.Next.ShouldBe(JobKind.Transcribe);
+        owed.Failed.ShouldBeNull();
     }
 
     [Fact]
@@ -405,7 +441,7 @@ public class MeetingStageTests
                 break;
             case JobState.FailedPermanent:
                 job.Start(Noon);
-                job.FailPermanently("the audio is not something the provider accepts", Noon);
+                job.FailPermanently(JobFailure.RequestRefused, "the audio is not something the provider accepts", Noon);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(

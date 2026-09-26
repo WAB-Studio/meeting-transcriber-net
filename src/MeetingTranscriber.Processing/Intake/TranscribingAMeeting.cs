@@ -47,7 +47,13 @@ public enum TranscriptionOutcome
 /// Never blank for the two failures. Null for <see cref="TranscriptionOutcome.AlreadyTranscribed"/>,
 /// and null for <see cref="TranscriptionOutcome.Filed"/> unless the render after the filing failed.
 /// </param>
-public sealed record TranscriptionEnded(TranscriptionOutcome Outcome, string? Said);
+/// <param name="Failure">
+/// What was observed, set exactly when <paramref name="Outcome"/> is
+/// <see cref="TranscriptionOutcome.NothingWasCharged"/>. No guard enforces that here: <c>Apply</c>'s
+/// own throw on a missing kind is loud enough, and every construction of this type is in the two
+/// files that own it.
+/// </param>
+public sealed record TranscriptionEnded(TranscriptionOutcome Outcome, string? Said, JobFailure? Failure = null);
 
 /// <summary>
 /// A meeting being transcribed: sending its audio, and turning what came back — or what stopped it —
@@ -216,7 +222,8 @@ public static class TranscribingAMeeting
                 return new TranscriptionEnded(
                     TranscriptionOutcome.NothingWasCharged,
                     $"Meeting {meetingId} has no audio in this corpus, so there was nothing to "
-                    + "send. Nothing was sent and nothing was charged.");
+                    + "send. Nothing was sent and nothing was charged.",
+                    JobFailure.AudioMissing);
             }
 
             audioFile = CorpusFiles.Locate(root, audio.RelativePath);
@@ -228,7 +235,8 @@ public static class TranscribingAMeeting
 
             if (!audioFile.Exists)
             {
-                return new TranscriptionEnded(TranscriptionOutcome.NothingWasCharged, audioMissingMessage);
+                return new TranscriptionEnded(
+                    TranscriptionOutcome.NothingWasCharged, audioMissingMessage, JobFailure.AudioMissing);
             }
 
             var meeting = context.Meetings.First(row => row.Id == meetingId);
@@ -254,7 +262,8 @@ public static class TranscribingAMeeting
                 return new TranscriptionEnded(
                     TranscriptionOutcome.NothingWasCharged,
                     $"The response could not be given somewhere to land: {failed.Message} "
-                    + "Nothing was sent and nothing was charged.");
+                    + "Nothing was sent and nothing was charged.",
+                    JobFailure.CorpusRefused);
             }
 
             run = new TranscriptionRun
@@ -293,7 +302,8 @@ public static class TranscribingAMeeting
                 return new TranscriptionEnded(
                     TranscriptionOutcome.NothingWasCharged,
                     "The transcription could not be written into the corpus before anything was "
-                    + $"sent: {refused.Message} Nothing was sent and nothing was charged.");
+                    + $"sent: {refused.Message} Nothing was sent and nothing was charged.",
+                    JobFailure.CorpusRefused);
             }
         }
 
@@ -313,9 +323,9 @@ public static class TranscribingAMeeting
                 throw;
             }
 
-            var (outcome, said) = Answered(thrown, audioFile, audioMissingMessage);
+            var (outcome, said, failure) = Answered(thrown, audioFile, audioMissingMessage);
             WriteLastError(root, run.Id, said);
-            return new TranscriptionEnded(outcome, said);
+            return new TranscriptionEnded(outcome, said, failure);
         }
 
         // The read handle is opened before the write handle closes (Decides), so the temporary is
@@ -435,29 +445,29 @@ public static class TranscribingAMeeting
     /// <summary>
     /// What the send's own exception says about whether this meeting may have been charged for.
     /// </summary>
-    private static (TranscriptionOutcome Outcome, string Said) Answered(
+    private static (TranscriptionOutcome Outcome, string Said, JobFailure? Failure) Answered(
         Exception thrown, FileInfo audio, string audioMissingMessage) => thrown switch
         {
-            DeepgramKeyException keyless => (TranscriptionOutcome.NothingWasCharged, keyless.Message),
+            DeepgramKeyException keyless =>
+                (TranscriptionOutcome.NothingWasCharged, keyless.Message, JobFailure.NoKeyOnThisMachine),
 
             // SendAsync opens the audio before it sends anything, so a file that vanished after this
             // method already confirmed it is the one case a missing file can still mean "nothing left
             // the machine" this late.
             FileNotFoundException gone
                 when string.Equals(gone.FileName, audio.FullName, StringComparison.Ordinal) =>
-                (TranscriptionOutcome.NothingWasCharged, audioMissingMessage),
+                (TranscriptionOutcome.NothingWasCharged, audioMissingMessage, JobFailure.AudioMissing),
 
-            DeepgramCallException failed => (
-                failed.MayHaveBeenCharged
-                    ? TranscriptionOutcome.MayHaveBeenCharged
-                    : TranscriptionOutcome.NothingWasCharged,
-                failed.Message),
+            DeepgramCallException failed => failed.WhyNothingWasCharged is { } kind
+                ? (TranscriptionOutcome.NothingWasCharged, failed.Message, kind)
+                : (TranscriptionOutcome.MayHaveBeenCharged, failed.Message, null),
 
             _ => (
                 TranscriptionOutcome.MayHaveBeenCharged,
                 "The call to the provider failed in a way this end cannot read: "
                 + $"{thrown.Message} Whether it was charged is not something this end can tell, so "
-                + "nothing is sent again on its own."),
+                + "nothing is sent again on its own.",
+                null),
         };
 
     /// <summary>

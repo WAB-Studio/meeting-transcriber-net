@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
 
+using MeetingTranscriber.Domain.Jobs;
+
 namespace MeetingTranscriber.Processing.Deepgram;
 
 /// <summary>
@@ -166,7 +168,7 @@ public sealed class DeepgramTranscription
                 throw new DeepgramCallException(
                     "Deepgram could not be reached: no connection to it was ever made, so nothing "
                     + $"was sent and nothing was charged: {noAnswer.Message}",
-                    mayHaveBeenCharged: false,
+                    JobFailure.ProviderNotReached,
                     noAnswer);
             }
 
@@ -174,7 +176,7 @@ public sealed class DeepgramTranscription
                 "Deepgram could not be reached, or the connection did not survive the call. "
                 + "Whether it charged for the request is not something this end can tell, so "
                 + $"nothing is sent again on its own: {noAnswer.Message}",
-                mayHaveBeenCharged: true,
+                whyNothingWasCharged: null,
                 noAnswer);
         }
         catch (OperationCanceledException ranOut) when (ranOut.InnerException is TimeoutException)
@@ -188,7 +190,7 @@ public sealed class DeepgramTranscription
                 "Deepgram did not answer within the time this call was given. Whether it charged "
                 + "for the request is not something this end can tell, so nothing is sent again on "
                 + "its own.",
-                mayHaveBeenCharged: true,
+                whyNothingWasCharged: null,
                 ranOut);
         }
 
@@ -250,7 +252,7 @@ public sealed class DeepgramTranscription
                     "Deepgram answered and the response did not arrive whole. It transcribed the "
                     + "audio and it charged for it, and what reached this call is a fragment: it "
                     + "is not a response and must not be filed as one.",
-                    mayHaveBeenCharged: true,
+                    whyNothingWasCharged: null,
                     cutOff);
             }
 
@@ -298,24 +300,32 @@ public sealed class DeepgramTranscription
         // and the meeting drops back to being offered. It is not retried, because nothing in this
         // application is — a rate the provider will lift in a minute and a key it will never accept
         // get the same answer here, which is ask again when you want to.
-        var what = answered.StatusCode switch
+        var (what, kind) = answered.StatusCode switch
         {
-            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden => (
                 "Deepgram would not accept this machine's key. Nothing was transcribed and nothing "
                 + "was charged. Nothing about the key is quoted here on purpose.",
-            HttpStatusCode.PaymentRequired or HttpStatusCode.TooManyRequests =>
+                JobFailure.KeyRefused),
+            HttpStatusCode.PaymentRequired => (
                 "Deepgram would not take this request: the account behind this key is out of "
-                + "credit or over its rate. Nothing was transcribed.",
-            _ when status >= 500 =>
+                + "credit. Nothing was transcribed.",
+                JobFailure.OutOfCredit),
+            HttpStatusCode.TooManyRequests => (
+                "Deepgram would not take this request yet: the account behind this key is over "
+                + "its rate. Nothing was transcribed.",
+                JobFailure.OverItsRate),
+            _ when status >= 500 => (
                 "Deepgram failed the request on its own side. Whether it charged for it is not "
                 + "something this end can tell, so nothing is sent again on its own.",
-            _ =>
+                (JobFailure?)null),
+            _ => (
                 "Deepgram refused the request. Nothing was transcribed.",
+                JobFailure.RequestRefused),
         };
 
         return new DeepgramCallException(
             said is null ? $"{what} ({status})" : $"{what} ({status}: {said})",
-            mayHaveBeenCharged: status >= 500);
+            whyNothingWasCharged: kind);
     }
 
     /// <summary>

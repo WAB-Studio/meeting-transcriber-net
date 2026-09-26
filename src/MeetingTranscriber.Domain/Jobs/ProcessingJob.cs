@@ -42,6 +42,13 @@ public class ProcessingJob
     public string? LastError { get; private set; }
 
     /// <summary>
+    /// Why this job failed for good, as what was observed. Null until <see cref="FailPermanently"/>
+    /// sets it, and there is no other writer — a terminal state is never cleared, so neither is
+    /// this.
+    /// </summary>
+    public JobFailure? Failure { get; private set; }
+
+    /// <summary>
     /// Why this job is waiting for a person, and null unless it is. A cost to approve and a
     /// restart that found the work half done are the two reasons, and neither is a failure: they
     /// are kept apart from <see cref="LastError"/> because the column somebody opens to find out
@@ -119,12 +126,13 @@ public class ProcessingJob
         FinishedAt = null;
     }
 
-    /// <summary>The attempt failed in a way no retry fixes.</summary>
-    public void FailPermanently(string error, UtcTimestamp now)
+    /// <summary>The attempt failed in a way no retry fixes, as <paramref name="failure"/> observed.</summary>
+    public void FailPermanently(JobFailure failure, string error, UtcTimestamp now)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(error);
 
         MoveTo(JobState.FailedPermanent);
+        Failure = failure;
         LastError = error;
         FinishedAt = now;
         NextAttemptAt = null;

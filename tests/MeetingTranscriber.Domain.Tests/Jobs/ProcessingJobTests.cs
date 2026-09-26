@@ -229,7 +229,7 @@ public class ProcessingJobTests
         Should.Throw<JobTransitionException>(() => job.Start(Later(20)));
         Should.Throw<JobTransitionException>(() => job.Succeed(Later(20)));
         Should.Throw<JobTransitionException>(() => job.FailRetryable("again", Later(30)));
-        Should.Throw<JobTransitionException>(() => job.FailPermanently("again", Later(20)));
+        Should.Throw<JobTransitionException>(() => job.FailPermanently(JobFailure.KeyRefused, "again", Later(20)));
         Should.Throw<JobTransitionException>(() => job.Cancel(Later(20)));
         Should.Throw<JobTransitionException>(() => job.AwaitUser("look at this"));
         Should.Throw<JobTransitionException>(() => job.Requeue());
@@ -254,8 +254,20 @@ public class ProcessingJobTests
         job.Start(Later(1));
 
         Should.Throw<ArgumentException>(() => job.FailRetryable(" ", Later(2)));
-        Should.Throw<ArgumentException>(() => job.FailPermanently(string.Empty, Later(2)));
+        Should.Throw<ArgumentException>(() => job.FailPermanently(JobFailure.KeyRefused, string.Empty, Later(2)));
         job.State.ShouldBe(JobState.Running);
+    }
+
+    [Fact]
+    public void A_job_that_failed_for_good_says_which_kind_of_failure()
+    {
+        var job = NewJob();
+        job.Start(Later(1));
+
+        job.FailPermanently(JobFailure.KeyRefused, "Deepgram would not accept this machine's key.", Later(2));
+
+        job.Failure.ShouldBe(JobFailure.KeyRefused);
+        job.State.ShouldBe(JobState.FailedPermanent);
     }
 
     [Fact]
@@ -288,7 +300,7 @@ public class ProcessingJobTests
                 job.Succeed(Later(2));
                 break;
             case JobState.FailedPermanent:
-                job.FailPermanently("the audio file is gone", Later(2));
+                job.FailPermanently(JobFailure.AudioMissing, "the audio file is gone", Later(2));
                 break;
             case JobState.Cancelled:
                 job.Cancel(Later(2));

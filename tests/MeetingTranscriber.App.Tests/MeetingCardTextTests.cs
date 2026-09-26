@@ -55,6 +55,7 @@ public class MeetingCardTextTests
         ["StageStanding"] = Standings,
         ["WaitingStanding"] = Waitings,
         ["WhyNotAMeeting"] = Reasons,
+        ["JobFailure"] = Failures,
     };
 
     public static TheoryData<string> Tables() => [.. Held.Keys];
@@ -233,4 +234,7 @@ public class MeetingCardTextTests
 
     private static EnumTable Actions() => EnumTable.Read(
         Words, "kind", "JobKind", Path.Combine("MeetingTranscriber.Domain", "Jobs", "JobKind.cs"));
+
+    private static EnumTable Failures() => EnumTable.Read(
+        Words, "failure", "JobFailure", Path.Combine("MeetingTranscriber.Domain", "Jobs", "JobFailure.cs"));
 }

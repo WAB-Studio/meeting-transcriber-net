@@ -420,7 +420,10 @@ public static class JobRunner
             case TranscriptionOutcome.NothingWasCharged:
                 // Never a FailRetryable: nothing in this application retries anything on its own,
                 // and the one way out of an offer refused is a person pressing it again.
-                job.FailPermanently(ended.Said!, now);
+                // ended.Failure!.Value throws InvalidOperationException on a missing kind rather
+                // than guessing one — a defect one level up, in whichever site answered
+                // NothingWasCharged with no kind attached.
+                job.FailPermanently(ended.Failure!.Value, ended.Said!, now);
                 break;
 
             case TranscriptionOutcome.MayHaveBeenCharged:

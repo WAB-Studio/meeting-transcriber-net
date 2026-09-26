@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Processing.Deepgram;
 
 namespace MeetingTranscriber.Processing.Tests.Deepgram;
@@ -199,6 +200,7 @@ public sealed class DeepgramTranscriptionTests : IDisposable
 
         refused.Message.ShouldContain("nothing was sent and nothing was charged");
         refused.MayHaveBeenCharged.ShouldBeFalse();
+        refused.WhyNothingWasCharged.ShouldBe(JobFailure.ProviderNotReached);
     }
 
     /// <summary>
@@ -218,6 +220,7 @@ public sealed class DeepgramTranscriptionTests : IDisposable
 
         refused.Message.ShouldContain("nothing was sent and nothing was charged");
         refused.MayHaveBeenCharged.ShouldBeFalse();
+        refused.WhyNothingWasCharged.ShouldBe(JobFailure.ProviderNotReached);
     }
 
     /// <summary>
@@ -270,26 +273,27 @@ public sealed class DeepgramTranscriptionTests : IDisposable
     }
 
     /// <summary>
-    /// Every failure the provider can refuse with, and whether it could have been charged — the
-    /// pair <see cref="DeepgramCallException.MayHaveBeenCharged"/> exists to say. Red the day 429
+    /// Every failure the provider can refuse with, and what kind — or none — it says was observed.
+    /// <see cref="DeepgramCallException.MayHaveBeenCharged"/> is read off that kind. Red the day 429
     /// moves to the charged side, or a 5xx moves off it.
     /// </summary>
     [Theory]
-    [InlineData(HttpStatusCode.BadRequest, false)]
-    [InlineData(HttpStatusCode.Unauthorized, false)]
-    [InlineData(HttpStatusCode.PaymentRequired, false)]
-    [InlineData(HttpStatusCode.Forbidden, false)]
-    [InlineData(HttpStatusCode.TooManyRequests, false)]
-    [InlineData(HttpStatusCode.InternalServerError, true)]
-    [InlineData(HttpStatusCode.ServiceUnavailable, true)]
+    [InlineData(HttpStatusCode.BadRequest, JobFailure.RequestRefused)]
+    [InlineData(HttpStatusCode.Unauthorized, JobFailure.KeyRefused)]
+    [InlineData(HttpStatusCode.PaymentRequired, JobFailure.OutOfCredit)]
+    [InlineData(HttpStatusCode.Forbidden, JobFailure.KeyRefused)]
+    [InlineData(HttpStatusCode.TooManyRequests, JobFailure.OverItsRate)]
+    [InlineData(HttpStatusCode.InternalServerError, null)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, null)]
     public async Task A_refusal_says_whether_it_could_have_been_charged(
-        HttpStatusCode status, bool mayHaveBeenCharged)
+        HttpStatusCode status, JobFailure? kind)
     {
         using var fake = FakeDeepgram.AnsweringWith(status, "");
 
         var refused = await ShouldRefuseAsync(fake, SourceProfile.Multichannel);
 
-        refused.MayHaveBeenCharged.ShouldBe(mayHaveBeenCharged);
+        refused.WhyNothingWasCharged.ShouldBe(kind);
+        refused.MayHaveBeenCharged.ShouldBe(kind is null);
     }
 
     /// <summary>

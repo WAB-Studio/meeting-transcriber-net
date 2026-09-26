@@ -671,6 +671,41 @@ public static class UiTexts
         "Ignorada por ahora. Se puede pedir cuando quieras.",
         "Ignored for now. It can be asked for whenever you like.");
 
+    // Why a transcription failed for good, one per JobFailure, chosen from the kind and never from
+    // LastError's own English. Above the press, on the meeting's own row.
+
+    public static UiText NotSentNoKeyOnThisMachine { get; } = new(
+        "No se envió: esta máquina no guarda ninguna clave de Deepgram. No se cobró nada.",
+        "Not sent: no Deepgram key is kept on this machine. Nothing was charged.");
+
+    public static UiText DeepgramRefusedTheKey { get; } = new(
+        "Deepgram no aceptó la clave de esta máquina. No se transcribió ni se cobró nada.",
+        "Deepgram would not accept this machine's key. Nothing was transcribed or charged.");
+
+    public static UiText DeepgramAccountOutOfCredit { get; } = new(
+        "Deepgram rechazó la cuenta: no le queda crédito. No se transcribió nada.",
+        "Deepgram refused the account: it is out of credit. Nothing was transcribed.");
+
+    public static UiText DeepgramAccountOverItsRate { get; } = new(
+        "Deepgram pidió esperar: la cuenta pasó su límite de pedidos. No se transcribió nada.",
+        "Deepgram asked to wait: the account went over its rate. Nothing was transcribed.");
+
+    public static UiText DeepgramRefusedTheRequest { get; } = new(
+        "Deepgram rechazó el pedido. No se transcribió nada.",
+        "Deepgram refused the request. Nothing was transcribed.");
+
+    public static UiText DeepgramWasNotReached { get; } = new(
+        "No se pudo llegar a Deepgram: no se abrió ninguna conexión. No se envió ni se cobró nada.",
+        "Deepgram could not be reached: no connection was ever made. Nothing was sent or charged.");
+
+    public static UiText NotSentTheAudioIsMissing { get; } = new(
+        "No se envió: el audio de esta reunión no está en su carpeta. No se cobró nada.",
+        "Not sent: this meeting's audio is not in its folder. Nothing was charged.");
+
+    public static UiText NotSentTheCorpusRefused { get; } = new(
+        "No se envió: la carpeta de reuniones no aceptó el intento. No se cobró nada.",
+        "Not sent: the meetings folder would not take the attempt. Nothing was charged.");
+
     // The two answers, and what comes back of them.
 
     public static UiText Transcribe { get; } = new("Transcribir", "Transcribe");
@@ -942,9 +977,11 @@ public static class UiTexts
 
     public static UiText SayWhoIsWho { get; } = new("Decir quién es quién", "Say who is who");
 
-    // What a voice is called until somebody names it. The install's own user never sees this one:
-    // the microphone's own voice is settled already, and every other voice on the recording is a
-    // number, never the label the corpus stores it under.
+    // What a voice is called until somebody names it, and what it stays called on the microphone's
+    // own card either way. It goes without a picker only once a Channel row has settled it
+    // (HumanLayer.SettleTheMicrophone), which needs the install to know its user — until then it is
+    // offered a picker like any other voice. Every other voice on the recording is a number, never
+    // the label the corpus stores it under.
     public static UiText YourMicrophone { get; } = new("Tu micrófono", "Your microphone");
 
     public static UiText VoiceNumbered { get; } = new("Voz {0}", "Voice {0}");
@@ -955,8 +992,9 @@ public static class UiTexts
 
     public static UiText TurnsSaid { get; } = new("{0} turnos", "{0} turns");
 
-    // The tag on the microphone's own card: it is settled already, docs/design.md §QuienEsQuien's
-    // own words, and there is no picker on it.
+    // The tag on the microphone's own card, drawn either way (docs/design.md §QuienEsQuien's own
+    // words). Whether it also carries a picker turns on whether a Channel row has settled it, which
+    // needs the install to know its user — not on this tag.
     public static UiText OnlyOneVoice { get; } = new("una sola voz", "only one voice");
 
     // The placeholder on a voice's picker, over Everybody rather than over Ninguno: a voice

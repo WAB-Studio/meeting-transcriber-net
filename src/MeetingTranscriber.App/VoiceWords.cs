@@ -8,8 +8,8 @@ namespace MeetingTranscriber.App;
 /// <see cref="Voice"/> — each already read in the language it is asked for.
 /// </summary>
 /// <remarks>
-/// Held apart from <see cref="Voice"/> itself, which is <c>Infrastructure</c> and carries no
-/// language: a screen turns what it decided into words, and never the other way round.
+/// Held apart from <see cref="Voice"/> itself, which is <c>Domain</c> and carries no language: a
+/// screen turns what it decided into words, and never the other way round.
 /// </remarks>
 internal static class VoiceWords
 {

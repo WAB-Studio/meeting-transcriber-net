@@ -236,9 +236,12 @@ public sealed partial class SayingWhoIsWho : UserControl
             Style = Chrome("VoiceHeading"),
         });
 
-        // A voice the recording settled is shown and not offered: `docs/design.md` §QuienEsQuien
-        // says it is settled already and says so, and it is the one voice this loop never puts a
-        // picker on.
+        // The microphone's own card carries this tag either way: `docs/design.md` §QuienEsQuien's
+        // own words. It goes without a picker only once a Channel row has settled it
+        // (HumanLayer.SettleTheMicrophone), which needs the install to know its user — `settled`
+        // above is what actually gates the picker (the ternary at the end of this method), and not
+        // this tag. Until the install has a user, the microphone's own voice is offered a picker
+        // like any other one.
         if (voice.IsTheMicrophonesOwn)
         {
             heading.Children.Add(new Border

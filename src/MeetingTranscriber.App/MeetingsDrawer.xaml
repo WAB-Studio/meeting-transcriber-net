@@ -78,6 +78,14 @@
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
 
+            <!-- Why a transcription failed for good, above the press. Louder by ink for the same
+                 reason MeetingStoppedOnAPerson is: this is the one line on the row saying that the
+                 application's own attempt did not happen, and a caption grey would read as one more
+                 status among the others. -->
+            <Style x:Key="MeetingFailed" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+
             <!-- The one row that is running is the one olive status (`docs/design.md`
                  §Controls): it is not waiting on a person and it is not merely queued, so it takes
                  neither of the other two tints and reads as the application's own work in

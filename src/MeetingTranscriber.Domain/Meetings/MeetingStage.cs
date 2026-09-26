@@ -208,9 +208,9 @@ public static class MeetingStages
     /// does <see cref="JobState.FailedPermanent"/>, and that is a decision rather than an
     /// oversight: an attempt that failed for good is work that did not happen, so the stage is
     /// owed and offered exactly as it was before anybody tried. What a person is told about the
-    /// failure belongs beside whatever runs jobs, which is where the failure is produced and where
-    /// what to do about it is known — <c>JobRunner</c>, which writes it onto the job's own row and
-    /// tells nobody yet.
+    /// failure belongs beside whatever runs jobs, which is where the failure is produced —
+    /// <c>JobRunner</c> writes its kind on the job's own row, and <see cref="OwedWork.Failed"/> is
+    /// how a screen is told.
     /// </para>
     /// <para>
     /// <see cref="JobState.AwaitingUser"/> is not here either, and for the opposite reason: it is

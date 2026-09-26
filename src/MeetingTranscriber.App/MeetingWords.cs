@@ -65,4 +65,21 @@ internal static class MeetingWords
         JobKind.Extract => UiTexts.Summarise,
         _ => throw new InvalidOperationException($"No screen offers anything for job kind '{kind}'."),
     };
+
+    /// <summary>
+    /// What a screen says about why a stage's attempt failed for good, chosen from the kind and
+    /// never from <c>LastError</c>'s own English.
+    /// </summary>
+    public static UiText Failed(JobFailure failure) => failure switch
+    {
+        JobFailure.NoKeyOnThisMachine => UiTexts.NotSentNoKeyOnThisMachine,
+        JobFailure.KeyRefused => UiTexts.DeepgramRefusedTheKey,
+        JobFailure.OutOfCredit => UiTexts.DeepgramAccountOutOfCredit,
+        JobFailure.OverItsRate => UiTexts.DeepgramAccountOverItsRate,
+        JobFailure.RequestRefused => UiTexts.DeepgramRefusedTheRequest,
+        JobFailure.ProviderNotReached => UiTexts.DeepgramWasNotReached,
+        JobFailure.AudioMissing => UiTexts.NotSentTheAudioIsMissing,
+        JobFailure.CorpusRefused => UiTexts.NotSentTheCorpusRefused,
+        _ => throw new InvalidOperationException($"No screen has text for job failure '{failure}'."),
+    };
 }
