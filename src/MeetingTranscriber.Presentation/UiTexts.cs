@@ -671,8 +671,8 @@ public static class UiTexts
         "Ignorada por ahora. Se puede pedir cuando quieras.",
         "Ignored for now. It can be asked for whenever you like.");
 
-    // Why a transcription failed for good, one per JobFailure, chosen from the kind and never from
-    // LastError's own English. Above the press, on the meeting's own row.
+    // Why a transcription or a summary failed for good, one per JobFailure, chosen from the kind
+    // and never from LastError's own English. Above the press, on the meeting's own row.
 
     public static UiText NotSentNoKeyOnThisMachine { get; } = new(
         "No se envió: esta máquina no guarda ninguna clave de Deepgram. No se cobró nada.",
@@ -705,6 +705,10 @@ public static class UiTexts
     public static UiText NotSentTheCorpusRefused { get; } = new(
         "No se envió: la carpeta de reuniones no aceptó el intento. No se cobró nada.",
         "Not sent: the meetings folder would not take the attempt. Nothing was charged.");
+
+    public static UiText TheSummaryWasNotAccepted { get; } = new(
+        "El resumen que llegó no se aceptó. Se puede pedir otro.",
+        "The summary that came back was not accepted. Another can be asked for.");
 
     // The two answers, and what comes back of them.
 
@@ -788,6 +792,49 @@ public static class UiTexts
     public static UiText TheCorpusDoesNotSayWhoSummarisedIt { get; } = new(
         "El corpus no dice quién armó el resumen.",
         "The corpus does not say what put the summary together.");
+
+    // Why the meeting has no summary: the last attempt was refused. One sentence naming the
+    // condition, from ExtractionCondition, filled into one of these two depending on whether the
+    // refusal is about one statement or about the document as a whole.
+    public static UiText SummaryNotAccepted { get; } = new(
+        "No hay resumen: el último que llegó no se aceptó. {0}",
+        "There is no summary: the last one that came back was not accepted. {0}");
+
+    public static UiText SummaryNotAcceptedOn { get; } = new(
+        "No hay resumen: el último que llegó no se aceptó. {0} Sobre «{1}».",
+        "There is no summary: the last one that came back was not accepted. {0} On “{1}”.");
+
+    public static UiText RefusedNotTheSchema { get; } = new(
+        "Lo que devolvió no tiene la forma de un resumen.",
+        "What came back is not in the shape of a summary.");
+
+    public static UiText RefusedInputNotAsPrepared { get; } = new(
+        "No se hizo sobre la transcripción de esta reunión tal como está ahora.",
+        "It was not made from this meeting's transcript as it stands now.");
+
+    public static UiText RefusedAnotherMeeting { get; } = new(
+        "Dice ser de otra reunión.",
+        "It says it is about another meeting.");
+
+    public static UiText RefusedSpeakerNotInTheMeeting { get; } = new(
+        "Nombra una voz que esta reunión no tiene.",
+        "It names a voice this meeting does not have.");
+
+    public static UiText RefusedNoEvidence { get; } = new(
+        "Afirma algo sin citar dónde se dijo.",
+        "It states something without citing where it was said.");
+
+    public static UiText RefusedNoSuchTurn { get; } = new(
+        "Cita un turno que esta reunión no tiene.",
+        "It cites a turn this meeting does not have.");
+
+    public static UiText RefusedNotTheTurnCited { get; } = new(
+        "Cita un turno con un momento o una voz que no son los de ese turno.",
+        "It cites a turn at a moment or in a voice that is not that turn's.");
+
+    public static UiText RefusedQuoteNotInTheTurn { get; } = new(
+        "Cita palabras que ese turno no dice.",
+        "It quotes words that turn does not say.");
 
     // The player. Hearing what a meeting recorded never costs anything and never waits on a
     // transcription, so none of these words says anything about either.

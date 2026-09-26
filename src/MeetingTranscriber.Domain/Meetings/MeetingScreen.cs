@@ -113,6 +113,15 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAu
 
     /// <summary>Where each thing the AI left sits along the meeting.</summary>
     public IReadOnlyList<Duration> MarkedAlongTheMeeting => Left.MarkedAlongTheMeeting;
+
+    /// <summary>
+    /// The first reason the latest summary attempt was refused, or nothing. An init property and
+    /// not a fifth positional member, for the reason <see cref="OwedWork.Failed"/> gives. Set only
+    /// while the meeting has no summary: <c>MeetingReading</c> reads it off the newest Extract job's
+    /// own run, and a meeting that has since gained a summary has moved past that job's kind
+    /// entirely.
+    /// </summary>
+    public ExtractionRefusal? WhyTheSummaryWasRefused { get; init; }
 }
 
 /// <summary>

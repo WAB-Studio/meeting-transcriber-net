@@ -97,7 +97,14 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
         var owed = new MeetingWork(context, clock).On(meetingId);
         var audio = Audio(meetingId, out var recorded);
 
-        return new MeetingAsRead(meeting, new MeetingScreen(owed, Left(meetingId), recorded), audio);
+        var screen = new MeetingScreen(owed, Left(meetingId), recorded)
+        {
+            WhyTheSummaryWasRefused = owed.Failed is JobFailure.ExtractionRefused
+                ? RefusalOfTheNewestExtraction(meetingId)
+                : null,
+        };
+
+        return new MeetingAsRead(meeting, screen, audio);
     }
 
     /// <summary>
@@ -175,16 +182,12 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The run that <em>finished</em> and the artifact that run recorded, which is the corpus's own
-    /// link from the turns on disk to what they were read out of. Not the newest response filed
+    /// <c>turn_sources</c>' own row: it names the response the turns <em>were swapped from</em>,
+    /// written by the one render that put those turns in place. Not the newest response filed
     /// against the meeting: re-transcribing files a new one and never replaces the old, so between
     /// a response landing and the projection being rebuilt from it the newest artifact is a
     /// response these turns did not come from — and a hash a reader checks a quote against and
     /// cannot find is worse than no hash, because it is actionable and wrong.
-    /// </para>
-    /// <para>
-    /// The same ordering as the transcription <see cref="Wrote"/> names, so the provider a reader
-    /// is shown and the hash beside it are the one run and not two answers to two queries.
     /// </para>
     /// <para>
     /// This is about the live projection. What a decision, an action or an open question was quoted
@@ -192,35 +195,22 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     /// is stored on the row for exactly this reason.
     /// </para>
     /// <para>
-    /// <b>A re-transcription keeps this true, and two of its edges are worth saying plainly.</b> A
-    /// response filed and read whose run could not then be recorded still names the response
-    /// before this one — the write that would have moved this answer forward failed, and until it
-    /// is written again this still reads as the last thing that really happened. A render refused
-    /// before its turns were swapped leaves this naming the new response over turns that are still
-    /// the old one's, until `render &lt;id&gt;` runs. Both are said at the moment they happen, by the
-    /// answer the transcription gives — see <c>TranscribingAMeeting</c>'s own remarks on each.
+    /// A render refused before the swap leaves this naming the response before it, because nothing
+    /// wrote a new row to name instead. And <see cref="Wrote"/> names the run that <em>finished</em>,
+    /// so after such a refusal the two can name different responses — each true of what it
+    /// describes: one of the call that was paid for, the other of the turns actually on disk.
     /// </para>
     /// </remarks>
-    public string? TranscribedFrom(Guid meetingId)
-    {
-        var response = context.TranscriptionRuns
+    public string? TranscribedFrom(Guid meetingId) =>
+        context.TurnSources
             .AsNoTracking()
-            .Where(run => run.MeetingId == meetingId
-                && run.FinishedAt != null
-                && run.ResponseArtifactId != null)
-            .OrderByDescending(run => run.FinishedAt)
-            .ThenByDescending(run => run.CreatedAt)
-            .Select(run => run.ResponseArtifactId)
+            .Where(source => source.MeetingId == meetingId)
+            .Join(
+                context.Artifacts.AsNoTracking(),
+                source => source.ResponseArtifactId,
+                artifact => artifact.Id,
+                (source, artifact) => artifact.Sha256)
             .FirstOrDefault();
-
-        return response is null
-            ? null
-            : context.Artifacts
-                .AsNoTracking()
-                .Where(artifact => artifact.Id == response)
-                .Select(artifact => artifact.Sha256)
-                .FirstOrDefault();
-    }
 
     /// <summary>
     /// Whatever rows a read narrowed to, as turns, in the order it put them in. One projection
@@ -410,6 +400,49 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     }
 
     /// <summary>
+    /// The first reason the meeting's newest Extract job's own run was refused, or none.
+    /// </summary>
+    /// <remarks>
+    /// Only called once <see cref="Of"/> has already read <c>owed.Failed</c> as
+    /// <see cref="JobFailure.ExtractionRefused"/>, so the newest Extract job by
+    /// <see cref="ProcessingJob.CreatedAt"/> — the same "newest" <c>OwedWork.Of</c> uses — is the
+    /// one whose run failed to hold up. It has exactly one refusal row at ordinal zero or more, and
+    /// the first is what a person reads.
+    /// <para>
+    /// A second query and not <c>OwedWork.Of</c>'s own answer, because that method only carries the
+    /// failure kind out of the meeting's jobs and never the job's own id. It orders by
+    /// <c>CreatedAt</c> with no tiebreak on that same trust: <c>OwedWork.Of</c>'s own remarks are
+    /// where that is safe to do, because <c>MeetingWork</c> refuses a second job of a kind while an
+    /// earlier one is not yet terminal, so two Extract jobs of one meeting never share a
+    /// <c>CreatedAt</c>. A change to that rule has to come here too.
+    /// </para>
+    /// </remarks>
+    private ExtractionRefusal? RefusalOfTheNewestExtraction(Guid meetingId)
+    {
+        var jobId = context.ProcessingJobs
+            .AsNoTracking()
+            .Where(job => job.MeetingId == meetingId && job.Kind == JobKind.Extract)
+            .OrderByDescending(job => job.CreatedAt)
+            .Select(job => (Guid?)job.Id)
+            .FirstOrDefault();
+
+        if (jobId is not { } id)
+        {
+            return null;
+        }
+
+        return context.ExtractionRuns
+            .AsNoTracking()
+            .Where(run => run.JobId == id)
+            .Join(
+                context.ExtractionRefusals.AsNoTracking().Where(refusal => refusal.Ordinal == 0),
+                run => run.Id,
+                refusal => refusal.ExtractionRunId,
+                (run, refusal) => new ExtractionRefusal(refusal.Condition, refusal.Path, refusal.Statement))
+            .FirstOrDefault();
+    }
+
+    /// <summary>
     /// <see cref="CorpusSearch.TheRunThatCounts"/> asked about one meeting, with the correlation
     /// replaced by a bound parameter.
     /// </summary>
@@ -433,9 +466,9 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     /// one somebody accepted last, and that is the answer.
     /// </para>
     /// <para>
-    /// A run nobody accepted is not read at all. Acceptance is what says a person looked at what
-    /// the model wrote and let it into the corpus, and a screen that showed the unaccepted ones
-    /// would be putting sentences nobody has vouched for under the meeting's own name.
+    /// A run nobody accepted is not read at all. A run that was refused or never filed is one whose
+    /// sentences never held up against the meeting, and a screen that showed one of those would be
+    /// putting words nothing checked under the meeting's own name.
     /// </para>
     /// <para>
     /// Asked once and handed to both readers rather than asked by each, and the order runs out to

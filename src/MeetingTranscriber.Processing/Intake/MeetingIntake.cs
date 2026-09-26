@@ -1,5 +1,6 @@
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
@@ -52,6 +53,23 @@ public sealed record ReceivedMeeting(
     IReadOnlyList<string> PutBack);
 
 /// <summary>
+/// What <see cref="MeetingIntake.ReceiveWhatWasRefused"/> did: the filing itself, which run it
+/// finished, and whether that run's job was this call's to settle.
+/// </summary>
+/// <param name="JobSettled">
+/// True when the run's job was <see cref="JobState.AwaitingUser"/> and this call moved it to
+/// <see cref="JobState.Succeeded"/>. False when somebody had already requeued it, in which case it
+/// is left exactly where it was: a job somebody put back in the queue is the runner's to send, not
+/// this door's to declare finished under it.
+/// </param>
+/// <param name="KeptPath">
+/// The stored path of the file this run's own refusal kept — this method's caller already needs it
+/// named, so it is handed over rather than left for a report to reconstruct from a run id and a
+/// naming convention that belongs to <c>TranscribingAMeeting</c>.
+/// </param>
+public sealed record RefusedResponseFiled(ReceivedMeeting Received, Guid RunId, bool JobSettled, string KeptPath);
+
+/// <summary>
 /// A paid Deepgram response on disk becoming a meeting of this corpus: the response filed as the
 /// source it is, and everything derived from it produced here.
 /// </summary>
@@ -70,7 +88,9 @@ public sealed record ReceivedMeeting(
 /// <see cref="ReceiveAgainInto"/> files a later version onto a meeting that already has one, and it
 /// is the only one of the three that can make a meeting hold two paid responses. What none of them
 /// is is a call to a provider: nothing here spends anything, and a response arrives already paid
-/// for.
+/// for. <see cref="ReceiveWhatWasRefused"/> is not a fourth door: it is
+/// <see cref="ReceiveAgainInto"/> called for a response one of the meeting's own runs already paid
+/// for and the corpus kept rather than filed.
 /// </para>
 /// <para>
 /// Everything they share is written once and called by all three, and the list is worth reading
@@ -315,6 +335,142 @@ public static class MeetingIntake
 
             return Derived(context, meetingId, new Filed(stored, manifest, [], WasAlreadyThere: false), now);
         });
+
+    /// <summary>
+    /// A paid response the corpus refused to file, filed now from the copy it kept — with no charge
+    /// and no prompt to a provider, because these bytes have already been paid for once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The order that has to hold: the meeting has to be here; hash <paramref name="response"/>;
+    /// find, oldest first, the meeting's own unfinished <c>transcription_runs</c> row whose job is
+    /// still <see cref="JobState.AwaitingUser"/> and whose kept refused file is these same bytes;
+    /// file through <see cref="ReceiveAgainInto"/>; then finish that run and move its job to
+    /// <see cref="JobState.Succeeded"/> — the one move <c>JobStates</c> keeps for a paid response
+    /// already on disk. A run with no match is refused before anything is touched: this is not a
+    /// call that files just any response onto just any unfinished run, only the one this meeting is
+    /// still waiting on.
+    /// </para>
+    /// <para>
+    /// <b>The job has to be <see cref="JobState.AwaitingUser"/>, and not merely the run
+    /// unfinished.</b> Trying again is answered two ways: this door, and
+    /// <c>MeetingWork.TryAgain</c> requeuing the same job for a fresh attempt. A requeue that then
+    /// succeeds leaves the old run's row exactly as it was — <c>FinishedAt</c> null, its kept file
+    /// still on disk — even though the meeting now has a real, accepted response from the newer
+    /// attempt. Matching on the run alone would let that stale, already-superseded copy be filed as
+    /// a later version than the one that actually came back; matching on the job's own state as
+    /// well turns it into the same refusal an unmatched run gets, because by then this is no longer
+    /// what the meeting is waiting on.
+    /// </para>
+    /// <para>
+    /// <b>Trap.</b> A second run of this same command, after a first one that finished the run,
+    /// finds no unfinished run left and is refused — which is the honest answer, not a fault: the
+    /// run this bytes belonged to is not waiting on anybody any more.
+    /// </para>
+    /// <para>
+    /// <b>Trap.</b> A first run that filed the response but could not save the run's own row is run
+    /// again: <see cref="ReceiveAgainInto"/> takes its <c>AlreadyHere</c> branch — these bytes are
+    /// already the meeting's response — and this method still goes on to finish the run and settle
+    /// the job. That is why the run is found by reading the kept file, and not by asking whether an
+    /// artifact already exists: the artifact from the first attempt is exactly what would make the
+    /// second look unnecessary if it were asked instead.
+    /// </para>
+    /// </remarks>
+    /// <param name="meetingId">The meeting the refused response belongs to.</param>
+    /// <exception cref="IntakeException">
+    /// There is no such meeting, no unfinished run of it still waiting on a person kept these bytes
+    /// as its refused response, or <see cref="ReceiveAgainInto"/> itself refuses. Either way nothing
+    /// is filed.
+    /// </exception>
+    public static RefusedResponseFiled ReceiveWhatWasRefused(
+        CorpusDbContext context,
+        Guid meetingId,
+        FileInfo response,
+        UtcTimestamp now)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(response);
+
+        _ = context.Meetings.FirstOrDefault(row => row.Id == meetingId)
+            ?? throw new IntakeException(
+                $"There is no meeting {meetingId} in this corpus. A response is filed onto a "
+                + "meeting that is already here; a response for a meeting nothing knows about "
+                + "becomes a meeting of its own instead.");
+
+        string hash;
+        using (var opened = Opened(response))
+        {
+            hash = CorpusFiles.Sha256Of(opened);
+        }
+
+        var run = context.TranscriptionRuns
+            .Where(row => row.MeetingId == meetingId && row.FinishedAt == null)
+            .OrderBy(row => row.CreatedAt)
+            .ThenBy(row => row.Id)
+            .AsEnumerable()
+            .FirstOrDefault(candidate =>
+                StillAwaitingAPerson(context, candidate.JobId)
+                && KeptBytesMatch(context, meetingId, candidate.Id, hash));
+
+        if (run is null)
+        {
+            throw new IntakeException(
+                $"Meeting {meetingId} has no unfinished transcription whose kept response is these "
+                + "bytes, so this is not a response the corpus refused. Only a response one of this "
+                + "meeting's own runs paid for and the corpus would not file is filed this way. "
+                + "Nothing was filed.");
+        }
+
+        var received = ReceiveAgainInto(context, meetingId, response, now);
+
+        run.FinishedAt = now;
+        run.ResponseArtifactId = received.Response.Id;
+
+        var job = context.ProcessingJobs.First(row => row.Id == run.JobId);
+        var settled = false;
+        if (job.State == JobState.AwaitingUser)
+        {
+            job.Succeed(now);
+            settled = true;
+        }
+
+        context.SaveChanges();
+
+        var keptPath = CorpusFiles.PathFor(meetingId, TranscribingAMeeting.RefusedResponseFileName(run.Id));
+        return new RefusedResponseFiled(received, run.Id, settled, keptPath);
+    }
+
+    /// <summary>Whether this job is still the one thing a stuck meeting is waiting on a person for.</summary>
+    private static bool StillAwaitingAPerson(CorpusDbContext context, Guid jobId) =>
+        context.ProcessingJobs.FirstOrDefault(row => row.Id == jobId)?.State == JobState.AwaitingUser;
+
+    /// <summary>
+    /// Whether the file a run's own refusal kept is still there and is these same bytes. A file
+    /// this cannot read — gone, or held, between the exists check and the read — is not a match,
+    /// the same as one that was never there: the corpus's own report line on a successful filing
+    /// says the kept copy "can be deleted", so a candidate racing that deletion is expected, not a
+    /// fault this should crash on.
+    /// </summary>
+    private static bool KeptBytesMatch(CorpusDbContext context, Guid meetingId, Guid runId, string hash)
+    {
+        var kept = CorpusFiles.Locate(
+            context.Root, CorpusFiles.PathFor(meetingId, TranscribingAMeeting.RefusedResponseFileName(runId)));
+        kept.Refresh();
+
+        if (!kept.Exists)
+        {
+            return false;
+        }
+
+        try
+        {
+            return CorpusFiles.Sha256Of(kept) == hash;
+        }
+        catch (Exception vanished) when (vanished is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// Everything <see cref="ReceiveInto"/> and <see cref="ReceiveAgainInto"/> share: the meeting

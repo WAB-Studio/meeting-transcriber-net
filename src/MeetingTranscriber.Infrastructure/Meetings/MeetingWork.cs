@@ -40,15 +40,17 @@ public sealed record MeetingAndWork(Meeting Meeting, OwedWork Owed)
 /// work nobody has run is work nobody has paid for, and the press that spends money should not be
 /// the one with no way back. Neither moves the meeting: a stage that was left is the same stage,
 /// still offering the same action, which is what makes ignoring safe to press. Trying again is the
-/// one answer a meeting stopped on a person has, and it goes through
+/// one answer this type gives a meeting stopped on a person, and it goes through
 /// <see cref="ProcessingJob.Requeue"/> — the one move <c>arquitectura.md</c> §5.4 lets a person
-/// make on a job that already ran. The fourth queues a transcription of a meeting that already has
-/// one, because somebody typed its minutes back at a prompt: it starts nothing, exactly as
+/// make on a job that already ran. A stop whose paid response the corpus kept has a second one, at
+/// a prompt: <c>MeetingIntake.ReceiveWhatWasRefused</c> files it and settles the job without
+/// sending anything. The fourth queues a transcription of a meeting that already has one, because
+/// somebody typed its minutes back at a prompt: it starts nothing, exactly as
 /// <see cref="Taken"/> does for the other three, and <c>JobRunner.SendAgainAsync</c> is what sends
 /// it.
 /// </para>
 /// <para>
-/// All three re-read the meeting before they write. A screen that has been open a while is a
+/// All four re-read the meeting before they write. A screen that has been open a while is a
 /// screen showing what was true when it was drawn, and the press that matters most — the one that
 /// spends money — is exactly the one a stale screen would get wrong.
 /// </para>

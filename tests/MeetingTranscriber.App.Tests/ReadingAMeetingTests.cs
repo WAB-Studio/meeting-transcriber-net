@@ -50,6 +50,15 @@ public class ReadingAMeetingTests
                 Path.Combine("MeetingTranscriber.Domain", "Meetings", "MeetingScreen.cs"))
             .ShouldNameItsWholeEnum("RecordedAudio");
 
+    [Fact]
+    public void Every_condition_a_summary_can_be_refused_for_has_a_sentence_on_this_screen() =>
+        EnumTable.Read(
+                Screen,
+                "condition",
+                "ExtractionCondition",
+                Path.Combine("MeetingTranscriber.Domain", "Knowledge", "ExtractionCondition.cs"))
+            .ShouldNameItsWholeEnum("ExtractionCondition");
+
     /// <summary>
     /// Every style this screen looks up by name is one it declares.
     /// </summary>

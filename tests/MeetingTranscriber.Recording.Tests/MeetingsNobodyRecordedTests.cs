@@ -403,6 +403,10 @@ public sealed class MeetingsNobodyRecordedTests : IDisposable
             nameof(TranscriptionRun),
             nameof(ExtractionRun),
             nameof(Utterance),
+
+            // Only a render writes one, a render needs a response artifact, and a response needs
+            // the meeting's audio (MeetingIntake.ReceiveOnto's audio guard) — downstream too.
+            nameof(TurnSource),
             nameof(Summary),
             nameof(Decision),
             nameof(ActionItem),

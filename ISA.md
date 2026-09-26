@@ -1,7 +1,7 @@
 ﻿---
 phase: climbing
-progress: 159/222
-updated: 2026-09-25
+progress: 162/222
+updated: 2026-09-26
 ---
 
 # ISA — meeting-transcriber-net
@@ -252,12 +252,12 @@ Why: a meeting becomes a summary whose every claim resolves to something said, u
 own Claude Code credits — and the product stays whole when Claude Code is not installed.
 Board: 5 · Summaries
 - [x] ISC-89: Anti: recording, transcription, rendering, search and recovery all work with Claude Code absent.
-- [ ] ISC-90: A summary that fails validation is stored as a failed run, not as a summary.
+- [x] ISC-90: A summary that fails validation is stored as a failed run, not as a summary.
 - [x] ISC-91: A second extraction leaves the first one's state alone and starts its own blank.
 - [ ] ISC-115: A rejected summary is handed back once, saying what was wrong with it.
 - [ ] ISC-116: Anti: a statement nothing said supports can come back only without that statement — one that comes back pointing at something else for the same statement is refused.
-- [ ] ISC-142: Anti: what an extraction produced without validating is never shown as the meeting's summary.
-- [ ] ISC-143: A meeting left without a summary says which condition failed and on which statement.
+- [x] ISC-142: Anti: what an extraction produced without validating is never shown as the meeting's summary.
+- [x] ISC-143: A meeting left without a summary says which condition failed and on which statement.
 
 ### F7 · Local knowledge
 Why: people and agents query the corpus with no server, no network and no cloud, and every
@@ -746,3 +746,6 @@ Board: 7 · Distribución y backup
 - ISC-145 — `CorpusStatementsTests.A_node_answers_with_everything_hanging_off_its_children` and `.A_meeting_filed_under_two_nodes_below_one_parent_is_answered_once` (`tests/MeetingTranscriber.Infrastructure.Tests`) green 2026-09-18, over `CorpusSearch.Underneath`, the walk search's own node branch already made — two joins and no recursion, capped at three levels. Red with any one of its three arms dropped: an organization stops answering for its initiative's or its topic's meetings. Red with the `EXISTS` written as a join: a meeting filed under two topics of one initiative answers its parent twice instead of once. Not reached: a screen reading this, on `nodescreen`'s branch of this same batch
 - ISC-89 — `ClaudeCodeIsOptionalTests` (`tests/MeetingTranscriber.Isa.Tests`), red 2026-09-25 with a `Process.Start` written into `MeetingRecordings.cs` and red with the inventory emptied, both reverted; `dotnet test --no-build` over the solution with every folder holding a `claude` executable removed from `PATH` and `Get-Command claude` failing first, green 2026-09-25. Not reached: a summary, which does not exist yet; a dependency on Claude Code that is not a process start, and one started from inside a referenced package rather than in source text — none exist today, checked by reading every `.csproj`
 - ISC-87 — `JobsARestartFoundTests.A_job_a_restart_found_running_stops_on_a_person` and `.A_corpus_whose_queue_another_instance_is_running_is_not_stopped_under_it`, `JobRunnerTests.A_call_that_may_already_have_been_charged_for_stops_on_a_person`, `.A_send_the_application_walked_out_of_leaves_the_job_where_a_restart_will_find_it` and `.Nothing_waiting_on_a_person_is_ever_started_by_itself` (`tests/MeetingTranscriber.Processing.Tests`), and `WhatALaunchOwesTests.A_launch_settles_what_a_restart_found_running_before_anything_else` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-09-25. A restart is a running job nobody holds the corpus's runner lease over. Not reached: a process really killed mid-call.
+- ISC-90 — `ExtractionIntakeTests.A_summary_that_fails_validation_is_stored_as_a_failed_run_and_not_as_a_summary` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-26. Checks the run row carries `RawOutputHash` and neither `AcceptedAt` nor `OutputArtifactId`, one `ExtractionRunRefusal` row per refusal, no `Summary`, `Decision`, `ActionItem` or `OpenQuestion` row and no `Extraction` artifact, and the job `failed_permanent` with `JobFailure.ExtractionRefused`. Red with the rows projected before the verdict.
+- ISC-142 — `ExtractionIntakeTests.A_refused_extraction_leaves_the_one_already_accepted_as_the_summary` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-26. An accepted run followed by a refused one on the same meeting: `MeetingReading.Of`'s screen still shows the first run's abstract and things. Red with `AcceptedAt` set on a refused run.
+- ISC-143 — `MeetingReadingTests.A_meeting_left_without_a_summary_says_which_condition_failed_and_on_which_statement` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `ExtractionIntakeTests.A_refusal_the_door_stores_is_what_the_meeting_says` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-26. `MeetingRows.RefusedExtraction` with a `NoEvidence` refusal at `decisions[0]` carrying its statement; `MeetingReading.Of`'s `screen.WhyTheSummaryWasRefused` equals it, and `.A_meeting_that_has_a_summary_says_nothing_about_an_attempt_that_was_refused` (same suite) shows an accepted run afterwards clears it. The second fact files a decision missing its evidence through `ExtractionIntake.Receive` itself and reads the same field back, proving the door's own write and not only a row a test helper built by hand. Red with `MeetingReading.Of` no longer reading the refusal off the newest Extract job's own run, and with `ExtractionIntake.Receive` storing the wrong `Condition` or a `Statement` of `null`. Not reached: the line drawn on a running window, which no build agent can open.

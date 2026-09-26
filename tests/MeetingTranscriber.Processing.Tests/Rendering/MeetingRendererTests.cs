@@ -6,8 +6,10 @@ using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
+using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Deepgram;
+using MeetingTranscriber.Processing.Intake;
 using MeetingTranscriber.Processing.Rendering;
 using MeetingTranscriber.Processing.Tests.Deepgram;
 
@@ -426,6 +428,64 @@ public class MeetingRendererTests
         File.ReadAllText(transcript).ShouldContain("Renata");
     }
 
+    [Fact]
+    public void A_render_names_the_response_its_turns_were_projected_from()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root, DeepgramFixtures.TwoChannelShort);
+        WithAudio(context, meeting);
+
+        MeetingRenderer.Render(context, meeting, When);
+
+        var received = MeetingIntake.ReceiveAgainInto(
+            context,
+            meeting,
+            new FileInfo(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelOneVoiceMe)),
+            When + Duration.FromSeconds(1));
+
+        new MeetingReading(context, TimeProvider.System).TranscribedFrom(meeting)
+            .ShouldBe(received.Response.Sha256);
+    }
+
+    [Fact]
+    public void A_render_refused_while_its_turns_are_swapped_leaves_the_meeting_naming_the_response_it_had()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+
+        MeetingRenderer.Render(context, meeting, When);
+        var firstSha = new MeetingReading(context, TimeProvider.System).TranscribedFrom(meeting);
+
+        // Put a second response in place by hand — not through ReceiveAgainInto, whose own render
+        // would meet the trigger below first — the way MeetingReadingTests adds one.
+        var second = CorpusFiles.Locate(corpus.Root, CorpusFiles.PathFor(meeting, ResponseVersions.Named(2)));
+        File.Copy(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelOneVoiceMe), second.FullName);
+        context.Artifacts.Add(new Artifact
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            Kind = ArtifactKind.DeepgramResponse,
+            Origin = ArtifactKind.DeepgramResponse.OriginOf(),
+            RelativePath = CorpusFiles.PathFor(meeting, ResponseVersions.Named(2)),
+            ByteSize = second.Length,
+            Sha256 = CorpusFiles.Sha256Of(second),
+            ConfirmedAt = When,
+        });
+        context.SaveChanges();
+
+        Sql.Execute(
+            context,
+            "CREATE TRIGGER refuse_every_insert BEFORE INSERT ON utterances "
+            + "BEGIN SELECT RAISE(ABORT, 'refused for this test'); END;");
+
+        Should.Throw<Exception>(() => MeetingRenderer.Render(context, meeting, When + Duration.FromSeconds(1)));
+
+        using var reopened = corpus.Open();
+        new MeetingReading(reopened, TimeProvider.System).TranscribedFrom(meeting).ShouldBe(firstSha);
+    }
+
     /// <summary>Every turn of one meeting as text, for comparing a render against the one before.</summary>
     private static List<string> Turns(CorpusDbContext context, Guid meeting) =>
     [
@@ -661,6 +721,25 @@ public class MeetingRendererTests
             PersonId = person.Id,
             AssignedBy = SpeakerAssignmentSource.Person,
             AssignedAt = When,
+        });
+        context.SaveChanges();
+    }
+
+    /// <summary>
+    /// The audio row <c>MeetingIntake</c>'s doors ask for before filing a response onto a meeting.
+    /// </summary>
+    private static void WithAudio(CorpusDbContext context, Guid meeting)
+    {
+        context.Artifacts.Add(new Artifact
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            Kind = ArtifactKind.Audio,
+            Origin = ArtifactKind.Audio.OriginOf(),
+            RelativePath = CorpusFiles.PathFor(meeting, "audio.wav"),
+            ByteSize = 4,
+            Sha256 = new string('a', 64),
+            ConfirmedAt = When,
         });
         context.SaveChanges();
     }

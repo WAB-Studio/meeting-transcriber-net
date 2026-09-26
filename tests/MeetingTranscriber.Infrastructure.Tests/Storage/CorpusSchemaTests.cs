@@ -547,6 +547,20 @@ public class CorpusSchemaTests
         }
     }
 
+    [Fact]
+    public void A_refusal_for_a_condition_nobody_named_is_refused_by_the_corpus()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        InsertMeeting(context);
+        InsertExtractionRun(context, id: "e0");
+
+        Should.Throw<SqliteException>(() => Sql.Execute(context, """
+            INSERT INTO extraction_refusals (extraction_run_id, ordinal, condition, path, statement)
+            VALUES ('e0', 0, 'bogus', '$', NULL);
+            """)).Message.ShouldContain("ck_extraction_refusals_condition");
+    }
+
     /// <summary>
     /// What a restart does to a run: nothing, because there is nothing to do. The job it belongs
     /// to is where it stands, so recovering the job is what moves the run — and a run left in
@@ -752,15 +766,21 @@ public class CorpusSchemaTests
     /// </summary>
     private static void InsertSummary(CorpusDbContext context, string @abstract, string body)
     {
-        InsertJob(context, id: "j-extract", state: "succeeded");
-        Sql.Execute(context, $"""
-            INSERT INTO extraction_runs (id, meeting_id, job_id, provider, prompt_version, schema_version, input_hash, created_at)
-            VALUES ('e0', '{MeetingId}', 'j-extract', 'claude_code', '1', '1', '{Sha256}', '{When}');
-            """);
+        InsertExtractionRun(context, id: "e0");
 
         Sql.Execute(context, $"""
             INSERT INTO summaries (id, meeting_id, extraction_run_id, abstract, body, created_at)
             VALUES ('s0', '{MeetingId}', 'e0', '{@abstract}', '{body}', '{When}');
+            """);
+    }
+
+    /// <summary>A run needs the job that ran it, which is the only row saying where it stands.</summary>
+    private static void InsertExtractionRun(CorpusDbContext context, string id)
+    {
+        InsertJob(context, id: "j-extract", state: "succeeded");
+        Sql.Execute(context, $"""
+            INSERT INTO extraction_runs (id, meeting_id, job_id, provider, prompt_version, schema_version, input_hash, created_at)
+            VALUES ('{id}', '{MeetingId}', 'j-extract', 'claude_code', '1', '1', '{Sha256}', '{When}');
             """);
     }
 

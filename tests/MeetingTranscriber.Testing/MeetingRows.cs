@@ -38,10 +38,10 @@ public static class MeetingRows
     /// </param>
     /// <param name="title">What somebody called it, or nothing.</param>
     /// <param name="responseSha256">
-    /// The hash of the paid response, filed as an artifact and recorded on a finished transcription
-    /// run — both, because the corpus's link from turns to what produced them runs through the run
-    /// and not through the artifact. Nothing when the meeting's turns came from no response
-    /// anybody paid for, which is a meeting imported from a file somebody already had.
+    /// The hash of the paid response: filed as an artifact, recorded on a finished transcription
+    /// run, and named again on the meeting's turn source — the turn source is the link
+    /// <c>MeetingReading.TranscribedFrom</c> follows. Nothing when the meeting's turns came from no
+    /// response anybody paid for, which is a meeting imported from a file somebody already had.
     /// </param>
     /// <param name="root">
     /// The corpus root, where the meeting's own <c>audio.wav</c> and its <c>Artifact</c> row are wanted.
@@ -119,7 +119,7 @@ public static class MeetingRows
     /// cited to a turn of its own.
     /// </summary>
     /// <param name="accepted">
-    /// When a person accepted it, or nothing. A run nobody accepted is the case every reader of an
+    /// When it was accepted, or nothing. A run nobody accepted is the case every reader of an
     /// extraction has to leave alone, so it is a parameter and not an assumption.
     /// </param>
     /// <param name="saying">
@@ -289,6 +289,77 @@ public static class MeetingRows
             CreatedAt = when,
             FinishedAt = finished ? when : null,
         });
+
+        // The link MeetingReading.TranscribedFrom follows, written wherever a real render would
+        // write it: once there is a response to name and the call that brought it is done.
+        if (response is not null && finished)
+        {
+            var source = context.TurnSources.FirstOrDefault(row => row.MeetingId == meeting);
+            if (source is null)
+            {
+                Add(context, new TurnSource
+                {
+                    MeetingId = meeting,
+                    ResponseArtifactId = response.Id,
+                    ProjectedAt = when,
+                });
+            }
+            else
+            {
+                source.ResponseArtifactId = response.Id;
+                source.ProjectedAt = when;
+                context.SaveChanges();
+            }
+        }
+    }
+
+    /// <summary>
+    /// A summary that was refused: an Extract job started and failed for good, and a run with no
+    /// <c>AcceptedAt</c> carrying one refusal row per argument, in order.
+    /// </summary>
+    public static Guid RefusedExtraction(
+        CorpusDbContext context, Guid meeting, UtcTimestamp when, params ExtractionRefusal[] refusals)
+    {
+        ArgumentNullException.ThrowIfNull(refusals);
+
+        var job = ProcessingJob.Queue(
+            Guid.NewGuid(), meeting, JobKind.Extract, $"{meeting}/{Guid.NewGuid()}", when);
+        job.Start(when);
+
+        Add(context, job);
+
+        var run = new ExtractionRun
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            JobId = job.Id,
+            Provider = "claude-code",
+            PromptVersion = "1",
+            SchemaVersion = "1",
+            InputHash = new string('d', 64),
+            RawOutputHash = new string('e', 64),
+            CreatedAt = when,
+        };
+
+        Add(context, run);
+
+        for (var ordinal = 0; ordinal < refusals.Length; ordinal++)
+        {
+            var refusal = refusals[ordinal];
+            Add(context, new ExtractionRunRefusal
+            {
+                ExtractionRunId = run.Id,
+                Ordinal = ordinal,
+                Condition = refusal.Condition,
+                Path = refusal.Path,
+                Statement = refusal.Statement,
+            });
+        }
+
+        job.FailPermanently(JobFailure.ExtractionRefused, "refused", when);
+        context.SaveChanges();
+
+        return run.Id;
     }
 
     /// <summary>
