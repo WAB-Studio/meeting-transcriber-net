@@ -25,8 +25,9 @@ namespace MeetingTranscriber.Mcp;
 /// </para>
 /// <para>
 /// <b>What a source hash means depends on what is being answered, so it is read two ways.</b> A
-/// transcript comes from the response the meeting's finished transcription run recorded, which is
-/// <see cref="MeetingReading.TranscribedFrom"/>. A decision, an action or an open question comes
+/// transcript comes from the response the meeting's stored turns were projected from, which is
+/// <see cref="MeetingReading.TranscribedFrom"/> — not necessarily the newest response filed, nor
+/// the run that finished last. A decision, an action or an open question comes
 /// from whatever its citation was quoted out of, which is the row's own column — and the two are
 /// different the moment a meeting is transcribed twice, which the corpus is built to allow. A hash
 /// a reader checks a quote against and cannot find is worse than no hash.

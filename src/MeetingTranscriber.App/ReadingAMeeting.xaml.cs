@@ -414,10 +414,36 @@ public sealed partial class ReadingAMeeting : UserControl
 
         SummarisedText.Text = wrote is { Summariser: { } model, SummarisedAt: { } then }
             ? UiTexts.SummarisedBy.In(_language, model, ScreenNumbers.At(then))
-            : In(screen.ThereIsASummary
-                ? UiTexts.TheCorpusDoesNotSayWhoSummarisedIt
-                : UiTexts.NobodyHasSummarisedThisYet);
+            : screen.WhyTheSummaryWasRefused is { } refusal
+                ? RefusedText(refusal)
+                : In(screen.ThereIsASummary
+                    ? UiTexts.TheCorpusDoesNotSayWhoSummarisedIt
+                    : UiTexts.NobodyHasSummarisedThisYet);
     }
+
+    /// <summary>What the screen says about a summary attempt that was refused.</summary>
+    private string RefusedText(ExtractionRefusal refusal)
+    {
+        var condition = RefusedBecause(refusal.Condition).In(_language);
+
+        return refusal.Statement is { } statement
+            ? UiTexts.SummaryNotAcceptedOn.In(_language, condition, statement)
+            : UiTexts.SummaryNotAccepted.In(_language, condition);
+    }
+
+    /// <summary>The sentence naming why an extraction was refused, one per condition.</summary>
+    private static UiText RefusedBecause(ExtractionCondition condition) => condition switch
+    {
+        ExtractionCondition.NotTheSchema => UiTexts.RefusedNotTheSchema,
+        ExtractionCondition.InputNotAsPrepared => UiTexts.RefusedInputNotAsPrepared,
+        ExtractionCondition.AnotherMeeting => UiTexts.RefusedAnotherMeeting,
+        ExtractionCondition.SpeakerNotInTheMeeting => UiTexts.RefusedSpeakerNotInTheMeeting,
+        ExtractionCondition.NoEvidence => UiTexts.RefusedNoEvidence,
+        ExtractionCondition.NoSuchTurn => UiTexts.RefusedNoSuchTurn,
+        ExtractionCondition.NotTheTurnCited => UiTexts.RefusedNotTheTurnCited,
+        ExtractionCondition.QuoteNotInTheTurn => UiTexts.RefusedQuoteNotInTheTurn,
+        _ => throw new InvalidOperationException($"No screen has text for extraction condition '{condition}'."),
+    };
 
     /// <summary>
     /// What this meeting is filed under, and whether it is one to file at all.

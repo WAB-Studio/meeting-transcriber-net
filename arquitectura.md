@@ -297,7 +297,9 @@ capture_source_changes
 processing_jobs
 transcription_runs
 extraction_runs
+extraction_refusals
 utterances
+turn_sources
 summaries
 decisions
 action_items
@@ -890,7 +892,10 @@ preparó, y no hay nada ahí que corregir. Es corrida fallida directa.
 Una sola corrección, y después corrida fallida. Un segundo intento sobre el mismo contexto rara
 vez trae algo nuevo y cada uno gasta cuota del usuario, que la app no promete gratis (§7.2).
 
-Un error deja el job reintentable y no modifica la última extracción aceptada.
+Un error del proveedor —un timeout, un proceso que muere— deja el job reintentable. Una
+extracción rechazada es una corrida fallida: el job termina y la reunión vuelve a ofrecer el
+resumen, sin que nada lo reintente solo. Ninguno de los dos modifica la última extracción
+aceptada.
 Reintentar un summary nunca llama otra vez a Deepgram.
 
 ---

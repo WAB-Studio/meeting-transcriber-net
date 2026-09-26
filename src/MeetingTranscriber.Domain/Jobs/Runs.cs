@@ -1,4 +1,5 @@
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Domain.Jobs;
@@ -191,10 +192,36 @@ public class ExtractionRun
 
     public Guid? OutputArtifactId { get; set; }
 
-    /// <summary>A new extraction never edits the one before it. Accepting one is what supersedes it.</summary>
+    /// <summary>
+    /// When the filing found it held up against the meeting. A run that did not has none, and
+    /// never gains one.
+    /// </summary>
     public UtcTimestamp? AcceptedAt { get; set; }
 
     public UtcTimestamp CreatedAt { get; set; }
 
     public string? LastError { get; set; }
+}
+
+/// <summary>One reason an extraction was refused, in the order the check found it.</summary>
+/// <remarks>
+/// <para>It is a source, part of the run's record: what a refused attempt is refused for is kept
+/// exactly like everything else the run produced, and never overwritten by a later attempt.</para>
+/// <para>
+/// It is not an <see cref="Knowledge.IExtractionPosition"/>. Nobody pins a note to a refusal, and
+/// implementing that interface here would also pull this table into the discovered set
+/// <c>ExtractionPositionTests</c> holds every anchored kind to.
+/// </para>
+/// </remarks>
+public sealed class ExtractionRunRefusal
+{
+    public Guid ExtractionRunId { get; set; }
+
+    public int Ordinal { get; set; }
+
+    public ExtractionCondition Condition { get; set; }
+
+    public required string Path { get; set; }
+
+    public string? Statement { get; set; }
 }

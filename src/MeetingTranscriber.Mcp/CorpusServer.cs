@@ -183,7 +183,7 @@ public sealed class CorpusServer(CorpusLocation where)
             "leer_resumen",
             "What one meeting was about, who transcribed and summarised it, and everything the "
             + "accepted extraction left: its decisions, what it left to do, and what it left open. "
-            + "Only the extraction a person accepted last answers. To quote one of them, open the "
+            + "Only the extraction accepted last answers. To quote one of them, open the "
             + "turn it points at with `obtener_cita`.",
             ([Description("The meeting's id, as another answer gave it.")] string meeting_id) =>
                 Answer(corpus =>
@@ -285,14 +285,14 @@ public sealed class CorpusServer(CorpusLocation where)
         Tool(
             "listar_decisiones",
             "Everything the meetings of a stretch of time settled, newest meeting first, out of "
-            + "the one extraction of each that a person accepted. Each carries the meeting it was "
+            + "the one extraction of each that was accepted. Each carries the meeting it was "
             + "settled in and the turn it was settled at.",
             Listing(LeftKind.Decision, "decisions")),
 
         Tool(
             "listar_acciones",
             "Everything the meetings of a stretch of time left for somebody to do, newest meeting "
-            + "first, out of the one extraction of each that a person accepted. Each carries the "
+            + "first, out of the one extraction of each that was accepted. Each carries the "
             + "meeting it was left in and the turn it was left at.",
             Listing(LeftKind.Action, "actions")),
 

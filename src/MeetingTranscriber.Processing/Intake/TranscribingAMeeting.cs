@@ -382,11 +382,7 @@ public static class TranscribingAMeeting
                 ? "The response was filed and read; the record of which call bought it needed a "
                   + $"second attempt: {failed.Message}"
                 : "The response was filed and read, and the record of which call bought it could "
-                  + $"not be written: {failed.Message} Nothing was lost and nothing is sent again."
-                  + (again
-                      ? " Until that record is written, what this meeting says its turns were read "
-                        + "from still names the response before this one."
-                      : string.Empty);
+                  + $"not be written: {failed.Message} Nothing was lost and nothing is sent again.";
 
             return new TranscriptionEnded(TranscriptionOutcome.Filed, said);
         }
@@ -509,9 +505,9 @@ public static class TranscribingAMeeting
             // (Decides 11), so this branch is reached whether the failure was before or after it.
             // The re-transcription path says which version was filed and that render alone is
             // owed, rather than promising a launch will fix it or naming which version a reader
-            // is shown until then — that is TranscribedFrom's own remark (Decides 15). The
-            // first-transcription path keeps its words, because there is only ever the one version
-            // for a launch to render again.
+            // is shown until then — that is `turn_sources`' own record, written when the owed
+            // render runs. The first-transcription path keeps its words, because there is only
+            // ever the one version for a launch to render again.
             var said = again
                 ? $"The response was filed as version {ResponseVersions.VersionOf(already)} and "
                   + $"paid for, and what is read out of it was not all written: {message} "
@@ -546,7 +542,8 @@ public static class TranscribingAMeeting
         return new TranscriptionEnded(
             TranscriptionOutcome.MayHaveBeenCharged,
             $"{message} What the provider sent back was paid for and is kept at '{keptWhere}', "
-            + "where nothing files it and check names it until somebody moves or deletes it.");
+            + "where nothing files it on its own and check names it until somebody moves or "
+            + "deletes it.");
     }
 
     private static void WriteLastError(DirectoryInfo root, Guid runId, string message)

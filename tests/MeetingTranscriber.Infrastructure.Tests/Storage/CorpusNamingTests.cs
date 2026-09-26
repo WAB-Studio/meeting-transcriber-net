@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Jobs;
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
@@ -75,6 +76,15 @@ public partial class CorpusNamingTests
         (JobFailure.ProviderNotReached, "provider_not_reached"),
         (JobFailure.AudioMissing, "audio_missing"),
         (JobFailure.CorpusRefused, "corpus_refused"),
+        (JobFailure.ExtractionRefused, "extraction_refused"),
+        (ExtractionCondition.NotTheSchema, "not_the_schema"),
+        (ExtractionCondition.InputNotAsPrepared, "input_not_as_prepared"),
+        (ExtractionCondition.AnotherMeeting, "another_meeting"),
+        (ExtractionCondition.SpeakerNotInTheMeeting, "speaker_not_in_the_meeting"),
+        (ExtractionCondition.NoEvidence, "no_evidence"),
+        (ExtractionCondition.NoSuchTurn, "no_such_turn"),
+        (ExtractionCondition.NotTheTurnCited, "not_the_turn_cited"),
+        (ExtractionCondition.QuoteNotInTheTurn, "quote_not_in_the_turn"),
 
         // The classification vocabulary, closed against the thirteen meetings arquitectura.md §5.3
         // lists. A rename changes what is on disk and the CHECK behind it at the same time, and
@@ -407,6 +417,28 @@ public partial class CorpusNamingTests
             ignoreOrder: true);
     }
 
+    [Fact]
+    public void A_refused_extraction_is_stored_under_exactly_these_columns()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Sql.Strings(context, "SELECT name FROM pragma_table_info('extraction_refusals');").ShouldBe(
+            ["extraction_run_id", "ordinal", "condition", "path", "statement"],
+            ignoreOrder: true);
+    }
+
+    [Fact]
+    public void What_a_meeting_s_turns_came_from_is_stored_under_exactly_these_columns()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Sql.Strings(context, "SELECT name FROM pragma_table_info('turn_sources');").ShouldBe(
+            ["meeting_id", "response_artifact_id", "projected_at"],
+            ignoreOrder: true);
+    }
+
     /// <summary>
     /// The mode and the program are one fact in two columns: channel 0 following a program names
     /// it, and channel 0 on the whole machine names nothing. A row where they disagree describes a
@@ -477,6 +509,7 @@ public partial class CorpusNamingTests
         TerminologyMatchMode mode => WireNames<TerminologyMatchMode>.Of(mode),
         AuditActor actor => WireNames<AuditActor>.Of(actor),
         JobFailure failure => WireNames<JobFailure>.Of(failure),
+        ExtractionCondition condition => WireNames<ExtractionCondition>.Of(condition),
         _ => throw new ArgumentOutOfRangeException(nameof(value), value, "Add the enum to this switch."),
     };
 }

@@ -597,7 +597,7 @@ public sealed class TranscribingAMeetingTests
     }
 
     [Fact]
-    public async Task A_re_transcription_whose_run_could_not_be_recorded_says_its_turns_are_named_for_the_response_before()
+    public async Task A_re_transcription_whose_run_could_not_be_recorded_still_names_the_response_its_turns_came_from()
     {
         using var corpus = new TemporaryCorpus();
         var (meeting, job) = Queue(corpus);
@@ -607,14 +607,10 @@ public sealed class TranscribingAMeetingTests
             TestContext.Current.CancellationToken);
         first.Outcome.ShouldBe(TranscriptionOutcome.Filed);
 
-        string firstSha;
         Guid againJob;
 
         using (var context = corpus.Open())
         {
-            firstSha = context.Artifacts.Single(row =>
-                row.MeetingId == meeting && row.Kind == ArtifactKind.DeepgramResponse).Sha256;
-
             Sql.Execute(
                 context,
                 "CREATE TRIGGER refuse_every_update BEFORE UPDATE ON transcription_runs "
@@ -629,12 +625,16 @@ public sealed class TranscribingAMeetingTests
 
         ended.Outcome.ShouldBe(TranscriptionOutcome.Filed);
         ended.Said.ShouldNotBeNull();
-        ended.Said.ShouldEndWith(
-            "Until that record is written, what this meeting says its turns were read from still "
-            + "names the response before this one.");
+        ended.Said.ShouldEndWith("Nothing was lost and nothing is sent again.");
+        ended.Said.ShouldContain("could not be written");
 
         using var reopened = corpus.Open();
-        new MeetingReading(reopened, TimeProvider.System).TranscribedFrom(meeting).ShouldBe(firstSha);
+        var secondSha = reopened.Artifacts.Single(row =>
+                row.MeetingId == meeting
+                && row.RelativePath == CorpusFiles.PathFor(meeting, ResponseVersions.Named(2)))
+            .Sha256;
+
+        new MeetingReading(reopened, TimeProvider.System).TranscribedFrom(meeting).ShouldBe(secondSha);
     }
 
     private static (Guid Meeting, Guid Job) Queue(TemporaryCorpus corpus)

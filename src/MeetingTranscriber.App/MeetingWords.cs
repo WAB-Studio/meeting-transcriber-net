@@ -80,6 +80,7 @@ internal static class MeetingWords
         JobFailure.ProviderNotReached => UiTexts.DeepgramWasNotReached,
         JobFailure.AudioMissing => UiTexts.NotSentTheAudioIsMissing,
         JobFailure.CorpusRefused => UiTexts.NotSentTheCorpusRefused,
+        JobFailure.ExtractionRefused => UiTexts.TheSummaryWasNotAccepted,
         _ => throw new InvalidOperationException($"No screen has text for job failure '{failure}'."),
     };
 }

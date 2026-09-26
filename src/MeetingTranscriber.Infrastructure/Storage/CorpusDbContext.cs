@@ -91,7 +91,11 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
     public DbSet<ExtractionRun> ExtractionRuns => Set<ExtractionRun>();
 
+    public DbSet<ExtractionRunRefusal> ExtractionRefusals => Set<ExtractionRunRefusal>();
+
     public DbSet<Utterance> Utterances => Set<Utterance>();
+
+    public DbSet<TurnSource> TurnSources => Set<TurnSource>();
 
     public DbSet<Summary> Summaries => Set<Summary>();
 
@@ -450,8 +454,9 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
                 // Every permanent failure carries what was observed, and nothing else does.
                 // FailPermanently is the only writer of both columns together, so the schema is
-                // only restating what the domain already requires — an Extract failure will need
-                // kinds of its own before anything of that kind fails one for good.
+                // only restating what the domain already requires. `extraction_refused` is the
+                // Extract kind: an extraction the meeting does not support fails its job for good
+                // exactly like a transcription that never came back does.
                 table.HasCheckConstraint(
                     "ck_processing_jobs_failure",
                     $"(state = '{FailedPermanent}') = (failure IS NOT NULL)");
@@ -510,6 +515,21 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             run.HasOne<Artifact>().WithMany().HasForeignKey(entity => entity.OutputArtifactId)
                 .OnDelete(DeleteBehavior.SetNull);
         });
+
+        modelBuilder.Entity<ExtractionRunRefusal>(refusal =>
+        {
+            refusal.ToTable("extraction_refusals", table =>
+            {
+                table.HasCheckConstraint("ck_extraction_refusals_ordinal", "ordinal >= 0");
+                table.HasCheckConstraint(
+                    "ck_extraction_refusals_condition",
+                    $"condition IN ({WireNames<ExtractionCondition>.AsSqlList()})");
+            });
+
+            refusal.HasKey(entity => new { entity.ExtractionRunId, entity.Ordinal });
+            refusal.HasOne<ExtractionRun>().WithMany().HasForeignKey(entity => entity.ExtractionRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 
     private static void ConfigureProjections(ModelBuilder modelBuilder)
@@ -533,6 +553,16 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             utterance.HasAlternateKey(entity => new { entity.MeetingId, entity.Ordinal });
             utterance.HasIndex(entity => new { entity.MeetingId, entity.Start });
             utterance.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TurnSource>(source =>
+        {
+            source.ToTable("turn_sources");
+            source.HasKey(entity => entity.MeetingId);
+            source.HasOne<Meeting>().WithMany().HasForeignKey(entity => entity.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            source.HasOne<Artifact>().WithMany().HasForeignKey(entity => entity.ResponseArtifactId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

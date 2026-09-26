@@ -257,6 +257,40 @@ public class MeetingReadingTests
         wrote.TranscribedAt.ShouldBeNull();
     }
 
+    /// <summary>ISC-143.</summary>
+    [Fact]
+    public void A_meeting_left_without_a_summary_says_which_condition_failed_and_on_which_statement()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0"], responseSha256: new string('a', 64), root: corpus.Root);
+        var refusal = new ExtractionRefusal(ExtractionCondition.NoEvidence, "decisions[0]", "Lanzar el viernes.");
+        MeetingRows.RefusedExtraction(context, meeting, Recorded, refusal);
+
+        var screen = new MeetingReading(context, Clock).Of(meeting).Screen;
+
+        screen.WhyTheSummaryWasRefused.ShouldBe(refusal);
+    }
+
+    [Fact]
+    public void A_meeting_that_has_a_summary_says_nothing_about_an_attempt_that_was_refused()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0"], responseSha256: new string('a', 64), root: corpus.Root);
+        MeetingRows.RefusedExtraction(
+            context, meeting, Recorded, new ExtractionRefusal(ExtractionCondition.NoEvidence, "decisions[0]", null));
+
+        var later = UtcTimestamp.From(Recorded.Value.AddSeconds(1));
+        MeetingRows.Extracted(context, meeting, later, accepted: later, "what the meeting was about");
+
+        var screen = new MeetingReading(context, Clock).Of(meeting).Screen;
+
+        screen.WhyTheSummaryWasRefused.ShouldBeNull();
+    }
+
     [Fact]
     public void A_citation_opens_the_turns_around_the_one_it_anchors_on()
     {
@@ -431,18 +465,18 @@ public class MeetingReadingTests
     }
 
     /// <summary>
-    /// A transcript says which paid response produced it, off the run that finished and not off the
-    /// newest response filed against the meeting.
+    /// A transcript says which paid response its turns were projected from, off the turn source and
+    /// not off the newest response filed against the meeting.
     /// </summary>
     /// <remarks>
     /// The two come apart exactly where it matters. A meeting transcribed a second time has a newer
     /// response on disk from the moment the job confirms it, and its turns are still the first
-    /// response's until the projection is rebuilt — so answering from the artifact hands a reader a
-    /// hash the quotation is not in, which is a corpus inconsistency that does not exist. Red the
-    /// day this reads the artifacts table instead of the run.
+    /// response's until the projection is rendered again — so answering from the newest artifact
+    /// hands a reader a hash the quotation is not in, which is a corpus inconsistency that does not
+    /// exist. Red the day this reads the newest response artifact instead of the turn source.
     /// </remarks>
     [Fact]
-    public void A_transcript_says_which_response_the_run_that_finished_produced_it_from()
+    public void A_transcript_says_which_response_its_turns_were_projected_from()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();

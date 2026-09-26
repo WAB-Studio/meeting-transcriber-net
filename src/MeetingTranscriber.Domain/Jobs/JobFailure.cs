@@ -6,9 +6,8 @@ namespace MeetingTranscriber.Domain.Jobs;
 /// <remarks>
 /// A person reads a word chosen from this, never <see cref="ProcessingJob.LastError"/> verbatim:
 /// that column is for whoever is diagnosing, and this is for the meeting's own row. There are
-/// eight members because there are eight things that were actually observed about a transcription
-/// that did not happen — an extraction failing for good will need kinds of its own before it can
-/// carry one of these.
+/// nine members: eight about a transcription that did not happen, and one about a summary that
+/// was refused.
 /// </remarks>
 public enum JobFailure
 {
@@ -35,4 +34,9 @@ public enum JobFailure
 
     /// <summary>The corpus would not record the attempt before anything was sent.</summary>
     CorpusRefused = 8,
+
+    /// <summary>
+    /// The summary that came back did not hold up against the meeting, and was not accepted.
+    /// </summary>
+    ExtractionRefused = 9,
 }
