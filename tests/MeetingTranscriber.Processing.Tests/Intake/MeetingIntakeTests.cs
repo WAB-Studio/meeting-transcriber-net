@@ -332,7 +332,7 @@ public class MeetingIntakeTests
 
         var folder = new DirectoryInfo(
             Path.Combine(corpus.Root.FullName, CorpusFiles.Meetings, meetingId.ToString()));
-        folder.EnumerateFiles(MeetingIntake.ResponseFileName).ShouldBeEmpty();
+        folder.EnumerateFiles(ResponseVersions.First).ShouldBeEmpty();
         folder.EnumerateFiles($"*{CorpusFiles.UnfinishedSuffix}").ShouldBeEmpty();
     }
 
@@ -495,6 +495,109 @@ public class MeetingIntakeTests
         ArtifactReconciler.Check(context, verifyContents: true).ShouldBeEmpty();
     }
 
+    /// <summary>The card's first Proof through this door.</summary>
+    [Fact]
+    public void Another_version_is_filed_beside_the_first_and_the_first_is_untouched()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meetingId = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+
+        var first = ReceiveInto(context, meetingId, DeepgramFixtures.TwoChannelShort);
+        var firstBytesOnDisk = CorpusFiles.Sha256Of(
+            CorpusFiles.Locate(corpus.Root, first.Response.RelativePath));
+
+        var second = ReceiveAgainInto(context, meetingId, DeepgramFixtures.TwoChannelOneVoiceMe, Later);
+
+        context.Artifacts
+            .Count(row => row.MeetingId == meetingId && row.Kind == ArtifactKind.DeepgramResponse)
+            .ShouldBe(2);
+
+        var refreshedFirst = context.Artifacts.Single(row => row.Id == first.Response.Id);
+        refreshedFirst.Sha256.ShouldBe(first.Response.Sha256);
+        refreshedFirst.RelativePath.ShouldBe(CorpusFiles.PathFor(meetingId, ResponseVersions.First));
+        CorpusFiles.Sha256Of(CorpusFiles.Locate(corpus.Root, refreshedFirst.RelativePath))
+            .ShouldBe(firstBytesOnDisk);
+
+        second.Response.RelativePath.ShouldBe(CorpusFiles.PathFor(meetingId, ResponseVersions.Named(2)));
+
+        context.AuditEvents
+            .Count(row => row.MeetingId == meetingId && row.Action == "response filed again")
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public void The_same_bytes_filed_as_another_version_are_one_filing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meetingId = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+
+        ReceiveInto(context, meetingId, DeepgramFixtures.TwoChannelShort);
+
+        var again = ReceiveAgainInto(context, meetingId, DeepgramFixtures.TwoChannelShort, Later);
+
+        again.WasAlreadyThere.ShouldBeTrue();
+        context.Artifacts
+            .Count(row => row.MeetingId == meetingId && row.Kind == ArtifactKind.DeepgramResponse)
+            .ShouldBe(1);
+
+        var folder = new DirectoryInfo(
+            Path.Combine(corpus.Root.FullName, CorpusFiles.Meetings, meetingId.ToString()));
+        folder.EnumerateFiles("deepgram*.json").Count().ShouldBe(1);
+    }
+
+    [Fact]
+    public void A_third_response_is_the_third_version()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meetingId = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+
+        ReceiveInto(context, meetingId, DeepgramFixtures.TwoChannelShort);
+        ReceiveAgainInto(context, meetingId, DeepgramFixtures.TwoChannelOneVoiceMe, Later);
+        ReceiveAgainInto(context, meetingId, DeepgramFixtures.TwoChannelSilentMe, Later);
+
+        var paths = context.Artifacts
+            .Where(row => row.MeetingId == meetingId && row.Kind == ArtifactKind.DeepgramResponse)
+            .Select(row => row.RelativePath)
+            .ToArray();
+
+        paths.ShouldBe(
+            [
+                CorpusFiles.PathFor(meetingId, ResponseVersions.First),
+                CorpusFiles.PathFor(meetingId, ResponseVersions.Named(2)),
+                CorpusFiles.PathFor(meetingId, ResponseVersions.Named(3)),
+            ],
+            ignoreOrder: true);
+    }
+
+    [Fact]
+    public void A_response_name_outside_the_series_is_refused_before_anything_is_filed()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meetingId = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+
+        ReceiveInto(context, meetingId, DeepgramFixtures.TwoChannelShort);
+
+        DurableArtifact.Write(
+            context,
+            meetingId,
+            ArtifactKind.DeepgramResponse,
+            CorpusFiles.PathFor(meetingId, "somebody-elses.json"),
+            Later,
+            stream => stream.Write("{}"u8));
+
+        var refused = Should.Throw<IntakeException>(() => ReceiveAgainInto(
+            context, meetingId, DeepgramFixtures.TwoChannelOneVoiceMe, Later));
+
+        refused.Message.ShouldContain("somebody-elses.json");
+        context.Artifacts
+            .Count(row => row.MeetingId == meetingId && row.Kind == ArtifactKind.DeepgramResponse)
+            .ShouldBe(2);
+    }
+
     /// <summary>
     /// The state a meeting still being recorded is in, the state one whose stop never finished is
     /// in, and the state <c>MeetingRecordings.Open</c> leaves behind when nothing follows it. All
@@ -561,4 +664,9 @@ public class MeetingIntakeTests
         CorpusDbContext context, Guid meetingId, string response = Fixture) =>
         MeetingIntake.ReceiveInto(
             context, meetingId, new FileInfo(DeepgramFixtures.PathOf(response)), When);
+
+    private static ReceivedMeeting ReceiveAgainInto(
+        CorpusDbContext context, Guid meetingId, string response, UtcTimestamp now) =>
+        MeetingIntake.ReceiveAgainInto(
+            context, meetingId, new FileInfo(DeepgramFixtures.PathOf(response)), now);
 }

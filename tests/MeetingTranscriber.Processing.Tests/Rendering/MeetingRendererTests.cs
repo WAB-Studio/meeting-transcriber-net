@@ -7,6 +7,7 @@ using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Storage;
+using MeetingTranscriber.Processing.Deepgram;
 using MeetingTranscriber.Processing.Rendering;
 using MeetingTranscriber.Processing.Tests.Deepgram;
 
@@ -197,6 +198,91 @@ public class MeetingRendererTests
 
         Should.Throw<RenderException>(
             () => MeetingRenderer.Render(context, Guid.NewGuid(), When));
+    }
+
+    /// <summary>
+    /// The response's version, and not which row is newest by <c>ConfirmedAt</c>, decides which one
+    /// a meeting renders from. <c>ConfirmedAt</c> moves on every put-back and the name does not.
+    /// </summary>
+    [Fact]
+    public void The_transcript_is_rendered_from_the_newest_version()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Meeting(context, DeepgramFixtures.ProfileOf(DeepgramFixtures.TwoChannelShort));
+
+        DurableArtifact.Write(
+            context,
+            meeting,
+            ArtifactKind.DeepgramResponse,
+            CorpusFiles.PathFor(meeting, ResponseVersions.First),
+            When,
+            stream =>
+            {
+                using var response = File.OpenRead(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelShort));
+                response.CopyTo(stream);
+            });
+
+        // Confirmed well before the first version, so a pick that ranked on ConfirmedAt would
+        // choose the first — and this is what proves the version is what decides it instead.
+        var confirmedEarlier = UtcTimestamp.From(new DateTimeOffset(2026, 3, 3, 9, 0, 0, TimeSpan.Zero));
+
+        DurableArtifact.Write(
+            context,
+            meeting,
+            ArtifactKind.DeepgramResponse,
+            CorpusFiles.PathFor(meeting, ResponseVersions.Named(2)),
+            confirmedEarlier,
+            stream =>
+            {
+                using var response = File.OpenRead(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelOneVoiceMe));
+                response.CopyTo(stream);
+            });
+
+        MeetingRenderer.Render(context, meeting, When);
+
+        var expected = MeetingTranscriber.Domain.Knowledge.Turns.Group(DeepgramTranscriptParser.ParseFile(
+            DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelOneVoiceMe),
+            DeepgramFixtures.ProfileOf(DeepgramFixtures.TwoChannelOneVoiceMe)).Segments);
+
+        var stored = context.Utterances
+            .Where(turn => turn.MeetingId == meeting)
+            .OrderBy(turn => turn.Ordinal)
+            .AsEnumerable()
+            .Select(turn => new Turn(
+                turn.Ordinal, turn.Start, turn.End, turn.Channel, turn.SpeakerLabel, turn.Text, turn.Confidence))
+            .ToArray();
+
+        stored.ShouldBe(expected);
+    }
+
+    /// <summary>
+    /// A response row this corpus never named by <see cref="ResponseVersions"/>'s rule stops a
+    /// render cold, rather than being ranked around.
+    /// </summary>
+    [Fact]
+    public void A_response_whose_name_is_not_in_the_series_stops_the_render()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+        MeetingRenderer.Render(context, meeting, When);
+        var had = Turns(context, meeting);
+        had.ShouldNotBeEmpty();
+
+        DurableArtifact.Write(
+            context,
+            meeting,
+            ArtifactKind.DeepgramResponse,
+            CorpusFiles.PathFor(meeting, "somebody-elses.json"),
+            When,
+            stream => stream.Write("{}"u8));
+
+        var refused = Should.Throw<RenderException>(
+            () => MeetingRenderer.Render(context, meeting, When));
+
+        refused.Message.ShouldContain("somebody-elses.json");
+        Turns(context, meeting).ShouldBe(had);
     }
 
     /// <summary>

@@ -6,7 +6,8 @@ using MeetingTranscriber.Processing.Deepgram;
 namespace MeetingTranscriber.Cli.Tests;
 
 /// <summary>
-/// <c>deepgram-live</c>, which is the one command that spends money — proved without spending any.
+/// <c>deepgram-live</c>, which is one of the two commands that spend money — proved without
+/// spending any.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -676,15 +677,16 @@ public sealed class LiveDeepgramTests : IDisposable
     }
 
     /// <summary>
-    /// The rule that keeps the one entry point that spends out of reach of every suite there is,
+    /// The rule that keeps the entry points that spend out of reach of every suite there is,
     /// asserted rather than written down.
     /// </summary>
     /// <remarks>
-    /// <c>DeepgramCommands.Live(Arguments, TextWriter)</c> binds this prompt's keyboard and this
-    /// machine's key, and it is <see langword="internal"/> — which keeps a suite out only for as
-    /// long as this repository has no <c>InternalsVisibleTo</c>. Seven places state that in prose
-    /// and nothing held it: one attribute in <c>Directory.Build.props</c> silently reopens it, and
-    /// the failure would show up as a test that suddenly compiles.
+    /// <c>DeepgramCommands.Live(Arguments, TextWriter)</c> and
+    /// <c>DeepgramCommands.TranscribeAgain(Arguments, TextWriter)</c> each bind this prompt's
+    /// keyboard and this machine's key, and each is <see langword="internal"/> — which keeps a
+    /// suite out only for as long as this repository has no <c>InternalsVisibleTo</c>. Several
+    /// places state that in prose and nothing held it: one attribute in <c>Directory.Build.props</c>
+    /// silently reopens it, and the failure would show up as a test that suddenly compiles.
     /// <para>
     /// The whole tree and not <c>src/</c> alone, because the attribute is assembly-level and can be
     /// written anywhere the assembly compiles — a project file, a props file, any <c>.cs</c>. Red

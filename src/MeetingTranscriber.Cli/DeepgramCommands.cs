@@ -1,8 +1,15 @@
 using System.Globalization;
 
 using MeetingTranscriber.Domain.Artifacts;
+using MeetingTranscriber.Domain.Jobs;
+using MeetingTranscriber.Domain.Meetings;
+using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Deepgram;
+using MeetingTranscriber.Processing.Intake;
+using MeetingTranscriber.Processing.Jobs;
+
+using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Cli;
 
@@ -48,20 +55,23 @@ public delegate int Sending(LiveCheck run, DirectoryInfo into, string language, 
 public delegate Task<long> Transcribing(LiveAudio sent, Stream wrote, CancellationToken stopping);
 
 /// <summary>
-/// The one command that spends money: known audio to the real Deepgram, under a ceiling somebody
-/// typed back, with what came back checked against the contract rather than against words.
+/// The two commands that spend money: known audio to the real Deepgram, under a ceiling somebody
+/// typed back, and a meeting sent again once its minutes are typed back — both checked against the
+/// contract rather than against words.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Every decision it makes lives in <see cref="LiveCheck"/> and <see cref="LiveInvariants"/>, which
-/// hold no client and can be driven whole by a suite. What is here is the client, the key, the
-/// files on disk and the report.
+/// Every decision <see cref="Live(Arguments, TextWriter, Func{string}, Sending)"/> makes lives in
+/// <see cref="LiveCheck"/> and <see cref="LiveInvariants"/>, and every decision
+/// <see cref="TranscribeAgain(Arguments, TextWriter, Func{string}, SendingToTheProvider)"/> makes
+/// lives in <see cref="MeetingWork"/>, <c>TranscribingAMeeting</c> and <see cref="TypedBack"/> —
+/// none of which hold a client, so a suite can drive either whole. What is here is the client, the
+/// key, the files on disk and the report.
 /// </para>
 /// <para>
-/// <b>Nothing sends until <see cref="LiveCheck.Confirmed"/> has said so, and the key is not read
-/// until then either.</b> A run somebody declines touches this machine's credential store not at
-/// all, which is what lets the suite drive the whole line without a developer's real key being
-/// read.
+/// <b>Nothing sends until somebody has typed the minutes back, and the key is not read until
+/// then either.</b> A run somebody declines touches this machine's credential store not at all,
+/// which is what lets the suite drive the whole line without a developer's real key being read.
 /// </para>
 /// </remarks>
 public static class DeepgramCommands
@@ -86,9 +96,10 @@ public static class DeepgramCommands
     /// one and answers nothing under a host that redirected it, so the card's promise would rest on
     /// which of those <c>dotnet test</c> happened to launch. The sending, because the keyboard on
     /// its own would then be a public seam a suite could type the right number at: with both handed
-    /// in, everything a test can reach decides, and the one thing that spends is private, bound
-    /// only by the command table, and reachable only through an <see langword="internal"/> overload
-    /// no suite in this repository can name.
+    /// in, everything a test can reach decides, and the thing that spends — here, and the same way
+    /// for <see cref="TranscribeAgain(Arguments, TextWriter)"/> below — is private, bound only by
+    /// the command table, and reachable only through an <see langword="internal"/> overload no
+    /// suite in this repository can name.
     /// </remarks>
     /// <param name="arguments">What was typed after the command name.</param>
     /// <param name="output">Where the report goes.</param>
@@ -171,6 +182,199 @@ public static class DeepgramCommands
         }
 
         return send(run, into, language, output);
+    }
+
+    /// <summary>The command as the table runs it: this prompt's keyboard, and this machine's key.</summary>
+    /// <remarks>
+    /// <see langword="internal"/> for the same reason <see cref="Live(Arguments, TextWriter)"/> is:
+    /// there is no <c>InternalsVisibleTo</c> anywhere, so no suite can reach
+    /// <see cref="OnThisMachinesKey"/> except through the command table.
+    /// </remarks>
+    internal static int TranscribeAgain(Arguments arguments, TextWriter output) =>
+        TranscribeAgain(arguments, output, FromAPersonAtThisPrompt, OnThisMachinesKey());
+
+    /// <summary>
+    /// Sends a meeting's audio to Deepgram again, once somebody has typed its minutes back.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every refusal that does not need a person answered first — a corpus another process is
+    /// running, an earlier run this process cannot settle, a meeting whose stage will not allow
+    /// this — comes before the report and before the prompt, so nobody is asked to agree to a
+    /// spend that was never going to happen. The corpus's own <see cref="RunnerLease"/> is taken
+    /// before anything queues, and held for the whole of the command: the send itself goes through
+    /// <see cref="JobRunner.SendAgainAsync"/> under that same lease, so nothing else may run this
+    /// corpus's queue while this command is talking to Deepgram.
+    /// </para>
+    /// <para>
+    /// No Ctrl+C handler. A kill mid-call is a process dying mid-call: <c>TranscribingAMeeting</c>
+    /// leaves the run row exactly where it was, still <see cref="JobState.Running"/>, and the next
+    /// holder of this corpus's lease hands the job to a person, the same as any other restart.
+    /// </para>
+    /// </remarks>
+    /// <param name="arguments">What was typed after the command name.</param>
+    /// <param name="output">Where the report goes.</param>
+    /// <param name="typed">What somebody at the prompt typed, or nothing when nobody is at it.</param>
+    /// <param name="send">What sending a confirmed call is.</param>
+    public static int TranscribeAgain(
+        Arguments arguments, TextWriter output, Func<string?> typed, SendingToTheProvider send)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(typed);
+        ArgumentNullException.ThrowIfNull(send);
+
+        var corpus = Corpus.At(arguments);
+        var meeting = Arguments.Meeting(arguments.Only("The meeting to transcribe again"));
+        arguments.EnsureNothingLeftOver();
+
+        // Before the lease and never after: `RunnerLease.TryTake` throws on a folder with no
+        // corpus in it, and a missing or stale corpus is refused in its own words first.
+        using var context = corpus.Write();
+
+        using var lease = RunnerLease.TryTake(corpus.Root)
+            ?? throw new CommandException(
+                $"Another process is running the queue of the corpus in '{corpus.Root.FullName}' — "
+                + "the application, or another command — and only one may send at a time. Close it "
+                + "and run this again. Nothing was sent.");
+
+        var settled = JobsARestartFound.Holding(lease);
+        foreach (var id in settled.Stopped)
+        {
+            Report.Line(output, "stopped", $"{id} — found running with nothing running it; it waits on a person now");
+        }
+
+        if (settled.Left.Count > 0)
+        {
+            throw new CommandException(
+                "What an earlier run left in this corpus could not be settled first, so nothing "
+                + $"was sent: {string.Join("; ", settled.Left)}");
+        }
+
+        var work = new MeetingWork(context, TimeProvider.System);
+        work.EnsureMayBeTranscribedAgain(meeting);
+
+        var row = context.Meetings.AsNoTracking().First(candidate => candidate.Id == meeting);
+        var duration = row.Duration
+            ?? throw new CommandException(
+                $"Meeting {meeting} has no length in this corpus, so there is no number of minutes "
+                + "to agree to. Nothing was sent.");
+
+        var responses = context.Artifacts
+            .AsNoTracking()
+            .Where(artifact => artifact.MeetingId == meeting && artifact.Kind == ArtifactKind.DeepgramResponse)
+            .ToList()
+            .OrderBy(artifact => ResponseVersions.VersionOf(artifact))
+            .ToList();
+
+        var namesBefore = NamesGivenByAPerson(context, meeting);
+
+        var minutes = TypedBack.MinutesOf(duration);
+
+        Report.Line(output, "meeting", $"{meeting}");
+        Report.Line(output, "audio", $"{Report.Offset(duration)} ({minutes} minute(s))");
+
+        foreach (var response in responses)
+        {
+            Report.Line(output, "response", response.RelativePath);
+        }
+
+        if (namesBefore > 0)
+        {
+            Report.Line(
+                output,
+                "names",
+                $"{namesBefore} voice(s) carry a name somebody gave them. A name on a voice the "
+                + "new response does not have comes off.");
+        }
+
+        Report.Line(output, "account", TypedBack.WhereTheSpendLands);
+
+        if (!TypedBack.Confirmed(minutes, output, typed))
+        {
+            Report.Line(output, "not sent", "nobody typed the number, so no audio left this machine.");
+            return Cli.Ok;
+        }
+
+        var approvedAt = Clock.Now();
+        var job = work.TranscribeAgain(meeting);
+
+        // Closed before the call and not held across it: `JobRunner.SendAgainAsync` opens its own
+        // connections onto this same file (`Take`, then the send, then `Settle`), and a write
+        // connection still open here would meet its own writer as a locked database rather than as
+        // itself.
+        context.Dispose();
+
+        var ran = JobRunner
+            .SendAgainAsync(lease, job.Id, approvedAt, TimeProvider.System, send)
+            .GetAwaiter()
+            .GetResult();
+
+        using var reopened = corpus.Read();
+        var finished = reopened.ProcessingJobs.AsNoTracking().First(candidate => candidate.Id == job.Id);
+
+        // Always at least one: `EnsureMayBeTranscribedAgain` already refused a meeting with none,
+        // and nothing on the send path ever removes a response.
+        var highest = reopened.Artifacts
+            .AsNoTracking()
+            .Where(artifact => artifact.MeetingId == meeting && artifact.Kind == ArtifactKind.DeepgramResponse)
+            .ToList()
+            .MaxBy(artifact => ResponseVersions.VersionOf(artifact))!;
+
+        Report.Line(output, "job", WireNames<JobState>.Of(finished.State));
+        Report.Line(output, "response", highest.RelativePath);
+        Report.Line(output, "version", $"{ResponseVersions.VersionOf(highest)}");
+
+        foreach (var said in ran.Left)
+        {
+            Report.Line(output, "said", said);
+        }
+
+        if (namesBefore > 0)
+        {
+            var namesAfter = NamesGivenByAPerson(reopened, meeting);
+
+            Report.Line(
+                output,
+                "names",
+                $"{namesAfter} of {namesBefore} name(s) are still on a voice; the rest came off "
+                + "with labels the new response does not have.");
+        }
+
+        return finished.State == JobState.Succeeded ? Cli.Ok : Cli.Refused;
+    }
+
+    /// <summary>
+    /// How many of this meeting's voices carry a name somebody gave them, read once before the
+    /// charge and once after off two different connections — Decides 14's count, and the one place
+    /// that decides what "a name somebody gave" means, so the two reads cannot drift apart.
+    /// </summary>
+    private static int NamesGivenByAPerson(CorpusDbContext context, Guid meeting) => context
+        .SpeakerAssignments
+        .AsNoTracking()
+        .Count(assignment => assignment.MeetingId == meeting
+            && assignment.AssignedBy == SpeakerAssignmentSource.Person);
+
+    /// <summary>What <see cref="TranscribeAgain(Arguments, TextWriter)"/> sends with.</summary>
+    /// <remarks>
+    /// The shape of <c>TranscribingOnThisMachinesKey.Sending</c>: the key is read fresh at every
+    /// call and held in no field. It lives here rather than in a file of its own because
+    /// <c>DeepgramKeyTests.Nothing_but_the_key_itself_reads_a_Deepgram_key</c> refuses a fifth file
+    /// naming <see cref="DeepgramKey"/>, and this file is already on that list for
+    /// <see cref="WithThisMachinesKey"/>.
+    /// </remarks>
+    private static SendingToTheProvider OnThisMachinesKey()
+    {
+        var http = new HttpClient { Timeout = DeepgramTranscription.LongEnoughForAWholeMeeting };
+
+        return async (audio, asked, response, stopping) =>
+        {
+            var key = DeepgramKey.OfThisInstall().Read();
+
+            return await new DeepgramTranscription(http)
+                .SendAsync(audio, asked, key, response, stopping)
+                .ConfigureAwait(false);
+        };
     }
 
     /// <summary>Sending it for real, on this machine's key.</summary>

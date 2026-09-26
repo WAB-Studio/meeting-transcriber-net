@@ -1,5 +1,6 @@
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Meetings;
@@ -62,29 +63,28 @@ public sealed record ReceivedMeeting(
 /// retrying a command that half worked is doing, and the shape the whole thing has to survive.
 /// </para>
 /// <para>
-/// Two doors and one type. <see cref="Receive"/> is the way in for a response that has no meeting
-/// yet — somebody has the file and the corpus has nothing about it — and it takes the identity off
-/// the bytes. <see cref="ReceiveInto"/> is the way in for a response belonging to a meeting this
-/// application recorded, and it takes the identity off the meeting it was named. What neither of
-/// them is is a call to a provider: nothing here spends anything, and a response arrives already
-/// paid for.
+/// Three doors and one type. <see cref="Receive"/> is the way in for a response that has no
+/// meeting yet — somebody has the file and the corpus has nothing about it — and it takes the
+/// identity off the bytes. <see cref="ReceiveInto"/> is the way in for a response belonging to a
+/// meeting this application recorded, and it takes the identity off the meeting it was named.
+/// <see cref="ReceiveAgainInto"/> files a later version onto a meeting that already has one, and it
+/// is the only one of the three that can make a meeting hold two paid responses. What none of them
+/// is is a call to a provider: nothing here spends anything, and a response arrives already paid
+/// for.
 /// </para>
 /// <para>
-/// Everything the two share is written once and called by both, and the list is worth reading
-/// before either method is changed: <c>Opened</c> is the handle, <c>AlreadyFiled</c> is what counts
+/// Everything they share is written once and called by all three, and the list is worth reading
+/// before any of them is changed: <c>Opened</c> is the handle, <c>AlreadyFiled</c> is what counts
 /// as these bytes already being here, <c>AlreadyHere</c> is what a second filing of the same bytes
 /// does, and <c>Derived</c> is the render and the answer. What is left written twice is what
 /// genuinely differs — where the identity comes from, where the profile comes from, what each door
 /// refuses before it files, and the verb the audit keeps. Two doors that had drifted on where the
-/// recovery card went is what card #94 existed to fix; these two are held together by call rather
-/// than by anybody remembering.
+/// recovery card went is what card #94 existed to fix; these are held together by call rather than
+/// by anybody remembering.
 /// </para>
 /// </remarks>
 public static class MeetingIntake
 {
-    /// <summary>The name a response is stored under, which docs/corpus.md fixes.</summary>
-    public const string ResponseFileName = "deepgram.json";
-
     public static ReceivedMeeting Receive(
         CorpusDbContext context,
         FileInfo response,
@@ -126,7 +126,7 @@ public static class MeetingIntake
                 details.Context),
             new ArrivedOn(
                 Kind: ArtifactKind.DeepgramResponse,
-                FileName: ResponseFileName,
+                FileName: ResponseVersions.First,
                 Contents: bytes.CopyTo,
                 Verb: "imported",
                 Detail: $"the response at '{response.FullName}'"),
@@ -192,7 +192,148 @@ public static class MeetingIntake
         CorpusDbContext context,
         Guid meetingId,
         FileInfo response,
-        UtcTimestamp now)
+        UtcTimestamp now) =>
+        ReceiveOnto(context, meetingId, response, now, (meeting, bytes) =>
+        {
+            // The other half of the guard `ReceiveOnto` already asked. `Receive` cannot reach this
+            // state: it picks the meeting *by* the hash, so bytes the corpus has never seen are
+            // always a meeting of their own. Here the meeting comes off the name and the response
+            // off the bytes, so "these bytes are new" and "this meeting has no response" are two
+            // questions, and only the first has been asked.
+            //
+            // `StagedArtifact` asks the second one too, about the file first and about the row once
+            // the file is gone — a never-replaceable kind whose existing row for this meeting and
+            // path records different bytes is refused there as of O-20260910-17. The block below is
+            // still not redundant and still fires first: it is keyed on the kind rather than the
+            // path, so it reaches a state the path check does not, and it says which meeting. A paid
+            // response is never written over, and a row is as much the corpus's record of it as the
+            // file is.
+            if (context.Artifacts.FirstOrDefault(artifact =>
+                    artifact.MeetingId == meetingId
+                    && artifact.Kind == ArtifactKind.DeepgramResponse) is { } filed)
+            {
+                throw new IntakeException(
+                    $"Meeting {meetingId} already has a response and these are not its bytes. A "
+                    + "response is paid for once and never written over — "
+                    + $"'{filed.RelativePath}' is recorded as {filed.Sha256}. Another response for "
+                    + "the same meeting is a new version beside that one, which is what "
+                    + "transcribing it again files; this door only ever files a meeting's first.");
+            }
+
+            // The meeting has changed — it has a source it did not have — and the instant that
+            // happened is this one. Tracked here and saved by the archive's own SaveChanges, in the
+            // transaction that files the response.
+            meeting.UpdatedAt = now;
+
+            var (stored, manifest) = MeetingArchive.Onto(
+                context,
+                meetingId,
+                new ArrivedOn(
+                    Kind: ArtifactKind.DeepgramResponse,
+                    FileName: ResponseVersions.First,
+                    Contents: bytes.CopyTo,
+
+                    // A third verb, because it is a third thing to find later: not a meeting made
+                    // out of a response and not one made out of a WAV, but a recording of this
+                    // machine's meeting a paid response arrived for.
+                    Verb: "response filed",
+                    Detail: $"the response at '{response.FullName}'"),
+                now);
+
+            return Derived(context, meetingId, new Filed(stored, manifest, [], WasAlreadyThere: false), now);
+        });
+
+    /// <summary>
+    /// A later paid response filed beside the one(s) a meeting already has, rather than refused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The other half of what re-transcribing a meeting files, and the only one of the three doors
+    /// that can leave a meeting holding two paid responses at once. Everything up to the point where
+    /// <see cref="ReceiveInto"/> refuses is shared with it: the meeting lookup, the audio guard, the
+    /// parse under the meeting's own profile, <c>AlreadyFiled</c> and <c>AlreadyHere</c>. Handing the
+    /// same bytes over again is still the same filing a second time here, and never a new version —
+    /// the version fork is asked only once that question has already been answered no.
+    /// </para>
+    /// <para>
+    /// The version is <see cref="ResponseVersions"/>'s alone. Every existing response row is read,
+    /// and a row whose name is not in the series stops this door cold: where the next version would
+    /// go cannot be settled around a name nobody wrote by this rule. Otherwise the next version is
+    /// one past the highest already filed, or the first when there are none — which is the shape a
+    /// meeting <see cref="ReceiveInto"/> never touched reaches through this door alone.
+    /// </para>
+    /// </remarks>
+    /// <param name="meetingId">The meeting this response is of. It has to be in this corpus.</param>
+    /// <exception cref="IntakeException">
+    /// There is no response at that path, this corpus has no such meeting, the meeting has no audio
+    /// for a response to be of, those bytes are already another meeting's response, or a response
+    /// row of this meeting whose name is not in the series. Every one of those is refused before the
+    /// first row is written.
+    /// </exception>
+    /// <exception cref="AudioContractException">
+    /// The response's channel count disagrees with what this meeting was recorded as. Nothing is
+    /// written: the refusal happens before the first row.
+    /// </exception>
+    public static ReceivedMeeting ReceiveAgainInto(
+        CorpusDbContext context,
+        Guid meetingId,
+        FileInfo response,
+        UtcTimestamp now) =>
+        ReceiveOnto(context, meetingId, response, now, (meeting, bytes) =>
+        {
+            var placed = new List<int>();
+            foreach (var row in context.Artifacts.Where(artifact =>
+                         artifact.MeetingId == meetingId
+                         && artifact.Kind == ArtifactKind.DeepgramResponse))
+            {
+                if (ResponseVersions.VersionOf(row) is not { } version)
+                {
+                    throw new IntakeException(
+                        $"Meeting {meetingId} names '{row.RelativePath}' as a response and that is "
+                        + "not a name in the series, so where another would go cannot be settled. "
+                        + $"A response is '{ResponseVersions.First}' or 'deepgram.v<n>.json' from 2 "
+                        + "up. Nothing was filed.");
+                }
+
+                placed.Add(version);
+            }
+
+            var next = placed.Count == 0 ? 1 : placed.Max() + 1;
+
+            meeting.UpdatedAt = now;
+
+            var (stored, manifest) = MeetingArchive.Onto(
+                context,
+                meetingId,
+                new ArrivedOn(
+                    Kind: ArtifactKind.DeepgramResponse,
+                    FileName: ResponseVersions.Named(next),
+                    Contents: bytes.CopyTo,
+                    Verb: next == 1 ? "response filed" : "response filed again",
+                    Detail: $"the response at '{response.FullName}', version {next}"),
+                now);
+
+            return Derived(context, meetingId, new Filed(stored, manifest, [], WasAlreadyThere: false), now);
+        });
+
+    /// <summary>
+    /// Everything <see cref="ReceiveInto"/> and <see cref="ReceiveAgainInto"/> share: the meeting
+    /// lookup, the audio guard, the parse under the meeting's own profile, <see cref="AlreadyFiled"/>
+    /// and <see cref="AlreadyHere"/>. What is left to <paramref name="whenNoRowMatches"/> is exactly
+    /// what the two doors decide differently — whether a response already on the meeting is a
+    /// refusal or the reason a next version exists, and which name and verb the filing carries.
+    /// </summary>
+    /// <remarks>
+    /// This is the private core Decides 4 asks for, so the two doors cannot drift the way card #94
+    /// found them drifted: a bug fixed here is fixed for both, and a message worded here is worded
+    /// once.
+    /// </remarks>
+    private static ReceivedMeeting ReceiveOnto(
+        CorpusDbContext context,
+        Guid meetingId,
+        FileInfo response,
+        UtcTimestamp now,
+        Func<Meeting, Stream, ReceivedMeeting> whenNoRowMatches)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(response);
@@ -242,52 +383,7 @@ public static class MeetingIntake
             return Derived(context, meetingId, AlreadyHere(context, already, bytes, meetingId, now), now);
         }
 
-        // The other half of the guard above, and the door that needs it is this one. `Receive`
-        // cannot reach this state: it picks the meeting *by* the hash, so bytes the corpus has
-        // never seen are always a meeting of their own. Here the meeting comes off the name and the
-        // response off the bytes, so "these bytes are new" and "this meeting has no response" are
-        // two questions, and only the first has been asked.
-        //
-        // `StagedArtifact` asks the second one too, about the file first and about the row once the
-        // file is gone — a never-replaceable kind whose existing row for this meeting and path
-        // records different bytes is refused there as of O-20260910-17. The block below is still
-        // not redundant and still fires first: it is keyed on the kind rather than the path, so it
-        // reaches a state the path check does not, and it says which meeting. A paid response is
-        // never written over, and a row is as much the corpus's record of it as the file is.
-        if (context.Artifacts.FirstOrDefault(artifact =>
-                artifact.MeetingId == meetingId
-                && artifact.Kind == ArtifactKind.DeepgramResponse) is { } filed)
-        {
-            throw new IntakeException(
-                $"Meeting {meetingId} already has a response and these are not its bytes. A "
-                + "response is paid for once and never written over, so filing another onto the "
-                + $"same meeting would destroy the only record of the first — '{filed.RelativePath}' "
-                + $"is recorded as {filed.Sha256}. A meeting is transcribed once; a second "
-                + "transcription of it is a meeting of its own, and re-transcribing this one is not "
-                + "something this command does.");
-        }
-
-        // The meeting has changed — it has a source it did not have — and the instant that happened
-        // is this one. Tracked here and saved by the archive's own SaveChanges, in the transaction
-        // that files the response.
-        meeting.UpdatedAt = now;
-
-        var (stored, manifest) = MeetingArchive.Onto(
-            context,
-            meetingId,
-            new ArrivedOn(
-                Kind: ArtifactKind.DeepgramResponse,
-                FileName: ResponseFileName,
-                Contents: bytes.CopyTo,
-
-                // A third verb, because it is a third thing to find later: not a meeting made out
-                // of a response and not one made out of a WAV, but a recording of this machine's
-                // meeting a paid response arrived for.
-                Verb: "response filed",
-                Detail: $"the response at '{response.FullName}'"),
-            now);
-
-        return Derived(context, meetingId, new Filed(stored, manifest, [], WasAlreadyThere: false), now);
+        return whenNoRowMatches(meeting, bytes);
     }
 
     /// <summary>What one filing produced, before the derivatives are made from it.</summary>

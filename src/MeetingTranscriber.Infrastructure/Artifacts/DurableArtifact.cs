@@ -688,11 +688,13 @@ public sealed class StagedArtifact : IDisposable
     /// </para>
     /// <para>
     /// <b>This is the rule, and two callers above it still carry their own.</b>
-    /// <c>MeetingIntake.ReceiveInto</c> refuses a second response for a meeting keyed on the kind
-    /// rather than the path, and gets there first with a sentence about a paid transcription that
-    /// this layer could not write; <c>MeetingRecordings.Filed</c> refuses a second recording and
-    /// answers the filed row when the bytes agree, which is a return value and not only a refusal.
-    /// Neither is redundant with this and neither is reached by every writer — which is why the
+    /// <c>MeetingIntake.ReceiveInto</c> refuses one response for a meeting keyed on the kind rather
+    /// than the path, and gets there first with a sentence about a paid transcription that this
+    /// layer could not write; <c>ReceiveAgainInto</c> files a later one under the next version's own
+    /// path instead, which never meets a row and so never reaches this refusal at all.
+    /// <c>MeetingRecordings.Filed</c> refuses a second recording and answers the filed row when the
+    /// bytes agree, which is a return value and not only a refusal. Neither is redundant with this
+    /// and neither is reached by every writer — which is why the
     /// invariant is stated here, where every artifact of this corpus is written. The comparison is
     /// <see cref="StringComparison.OrdinalIgnoreCase"/> for one reason: <c>Filed</c> asks the same
     /// question that way, and two spellings of "are these the same bytes" that could ever disagree

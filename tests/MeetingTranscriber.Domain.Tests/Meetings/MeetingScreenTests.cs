@@ -287,7 +287,7 @@ public class MeetingScreenTests
                 return;
             case JobState.FailedPermanent:
                 job.Start(Then);
-                job.FailPermanently("no", Then);
+                job.FailPermanently(JobFailure.KeyRefused, "no", Then);
                 return;
             case JobState.Cancelled:
                 job.Cancel(Then);

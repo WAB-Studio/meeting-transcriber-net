@@ -1,8 +1,10 @@
 using System.Diagnostics;
 
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Deepgram;
@@ -153,7 +155,7 @@ public sealed class JobRunnerTests
         lease.ShouldNotBeNull();
 
         SendingToTheProvider send = (_, _, _, _) => throw new DeepgramCallException(
-            "Deepgram would not accept this machine's key.", mayHaveBeenCharged: false);
+            "Deepgram would not accept this machine's key.", JobFailure.KeyRefused);
 
         var run = await JobRunner.RunWhatIsDueAsync(
             lease, TimeProvider.System, send, TestContext.Current.CancellationToken);
@@ -164,6 +166,7 @@ public sealed class JobRunnerTests
         var job2 = reopened.ProcessingJobs.Single(row => row.Id == jobId);
         job2.State.ShouldBe(JobState.FailedPermanent);
         job2.LastError.ShouldNotBeNull();
+        job2.Failure.ShouldBe(JobFailure.KeyRefused);
     }
 
     /// <summary>Goes red with <c>MayHaveBeenCharged</c> answered with <c>FailPermanently</c>.</summary>
@@ -185,7 +188,7 @@ public sealed class JobRunnerTests
         lease.ShouldNotBeNull();
 
         SendingToTheProvider send = (_, _, _, _) => throw new DeepgramCallException(
-            "Deepgram failed the request on its own side.", mayHaveBeenCharged: true);
+            "Deepgram failed the request on its own side.", whyNothingWasCharged: null);
 
         var run = await JobRunner.RunWhatIsDueAsync(
             lease, TimeProvider.System, send, TestContext.Current.CancellationToken);
@@ -575,6 +578,114 @@ public sealed class JobRunnerTests
         stamped1.FinishedAt.ShouldBe(When + Duration.FromSeconds(60));
         stamped2.StartedAt.ShouldBe(When + Duration.FromSeconds(60));
         stamped2.FinishedAt.ShouldBe(When + Duration.FromSeconds(120));
+    }
+
+    /// <summary>Goes red when <c>SendAgainAsync</c> runs a pass.</summary>
+    [Fact]
+    public async Task Sending_again_sends_the_job_it_was_handed_and_no_other_due_one()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid meetingA, jobA, meetingB, jobB;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meetingA = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+            jobA = new MeetingWork(context, When).Take(meetingA).Id;
+            context.SaveChanges();
+
+            meetingB = RecordedMeetings.Recorded(
+                context, SourceProfile.Multichannel, When + Duration.FromSeconds(1));
+            MeetingIntake.ReceiveInto(
+                context, meetingB, new FileInfo(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelShort)), When);
+            jobB = QueueDirectly(context, meetingB);
+        }
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        var run = await JobRunner.SendAgainAsync(
+            lease, jobB, When + Duration.FromSeconds(2), TimeProvider.System,
+            FixtureBody(DeepgramFixtures.TwoChannelOneVoiceMe), TestContext.Current.CancellationToken);
+
+        run.Ran.ShouldBe([jobB]);
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Single(row => row.Id == jobA).State.ShouldBe(JobState.Pending);
+        reopened.ProcessingJobs.Single(row => row.Id == jobB).State.ShouldBe(JobState.Succeeded);
+        reopened.Artifacts.Any(row =>
+                row.MeetingId == meetingB
+                && row.RelativePath == CorpusFiles.PathFor(meetingB, ResponseVersions.Named(2)))
+            .ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task A_job_sent_again_that_may_have_been_charged_stops_on_a_person()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid meeting, job;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meeting = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+            MeetingIntake.ReceiveInto(
+                context, meeting, new FileInfo(DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelShort)), When);
+            job = QueueDirectly(context, meeting);
+        }
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        SendingToTheProvider send = (_, _, _, _) =>
+            throw new InvalidOperationException("the socket vanished");
+
+        var run = await JobRunner.SendAgainAsync(
+            lease, job, When + Duration.FromSeconds(1), TimeProvider.System, send,
+            TestContext.Current.CancellationToken);
+
+        run.Ran.ShouldBe([job]);
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Single(row => row.Id == job).State.ShouldBe(JobState.AwaitingUser);
+    }
+
+    [Fact]
+    public async Task Sending_again_a_job_that_is_not_waiting_to_be_sent_sends_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid job;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            var meeting = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When);
+            job = QueueDirectly(context, meeting);
+            context.ProcessingJobs.Single(row => row.Id == job).Start(When);
+            context.SaveChanges();
+        }
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        var called = false;
+        SendingToTheProvider send = (_, _, _, _) =>
+        {
+            called = true;
+            return Task.FromResult(0L);
+        };
+
+        await Should.ThrowAsync<InvalidOperationException>(() => JobRunner.SendAgainAsync(
+            lease, job, When, TimeProvider.System, send, TestContext.Current.CancellationToken));
+
+        called.ShouldBeFalse();
+    }
+
+    /// <summary>A job queued directly, left <see cref="JobState.Pending"/> for the caller to start.</summary>
+    private static Guid QueueDirectly(CorpusDbContext context, Guid meeting)
+    {
+        var job = ProcessingJob.Queue(
+            Guid.NewGuid(), meeting, JobKind.Transcribe, $"{meeting}/{Guid.NewGuid():n}", When);
+        context.ProcessingJobs.Add(job);
+        context.SaveChanges();
+        return job.Id;
     }
 
     private static SendingToTheProvider FixtureBody(string fixture) =>

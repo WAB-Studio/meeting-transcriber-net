@@ -26,6 +26,15 @@ namespace MeetingTranscriber.Domain.Meetings;
 /// <param name="Standing">What is happening about the part it has not got to.</param>
 public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding Standing)
 {
+    /// <summary>
+    /// Why the newest job of the stage's own kind failed for good, or null when there is no such
+    /// job or it did not fail. An init property and not a fourth positional member:
+    /// <c>MeetingScreenTests</c> constructs <see cref="OwedWork"/> directly, and a rename of one
+    /// more positional member there is not worth this record growing a fourth one every time a
+    /// screen wants to know one more thing about a job.
+    /// </summary>
+    public JobFailure? Failed { get; init; }
+
     /// <summary>What the application would do to this meeting next, or nothing when it is done.</summary>
     /// <remarks>
     /// Worked out on every read rather than held from construction. A record is copyable, and a
@@ -115,12 +124,30 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
         // turned up, or a capture the restart stopped, would otherwise be invisible on the only
         // screen that shows one at all — and one of them would have an accent button beside it
         // offering to spend again.
+        var next = stage.Offers();
+        var ofNext = next is { } kind ? mine.Where(job => job.Kind == kind).ToArray() : [];
+
         var standing = mine.Any(Stopped)
             ? StageStanding.StoppedOnAPerson
-            : stage.Offers() is { } next
-                ? MeetingStages.StandingOf(mine.Where(job => job.Kind == next).Select(job => job.State))
+            : next is not null
+                ? MeetingStages.StandingOf(ofNext.Select(job => job.State))
                 : StageStanding.NothingToDo;
 
-        return new OwedWork(meetingId, stage, standing);
+        // The newest attempt of the stage's own kind, and only that kind: a failed Extract job is
+        // not what a Transcribe row is offered again over, and an answer that came after a failure
+        // is what this ordering is for. By CreatedAt alone: a CreatedAt-then-StartedAt tiebreak was
+        // tried and dropped, because on a tie it sorted an already-started (and possibly stale) job
+        // ahead of a fresh, not-yet-started one — StartedAt is null until Start() runs, and
+        // OrderByDescending puts null last — which is backwards for "the newest wins". Nothing in
+        // this application reaches that tie today: MeetingWork refuses a second job of a kind while
+        // an earlier one of it is not yet terminal, so two same-kind jobs on one meeting can only
+        // ever have distinct CreatedAt values. Getting a tiebreak right for a case nothing reaches
+        // is not worth the machinery.
+        var newest = ofNext.OrderByDescending(job => job.CreatedAt).FirstOrDefault();
+
+        return new OwedWork(meetingId, stage, standing)
+        {
+            Failed = newest is { State: JobState.FailedPermanent } failed ? failed.Failure : null,
+        };
     }
 }

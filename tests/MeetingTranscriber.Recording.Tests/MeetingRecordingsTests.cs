@@ -717,6 +717,54 @@ public sealed class MeetingRecordingsTests : IDisposable
     }
 
     /// <summary>
+    /// ISC-120.1. Two headsets sharing one name are still told apart, by the id that reopens the
+    /// device the recording ended on and not only by the name Windows gives both of them.
+    /// </summary>
+    /// <remarks>
+    /// Nothing this application writes produces the change line by itself: as
+    /// <see cref="One_channel_that_moved_twice_at_one_instant_is_what_it_ended_on"/> says, only
+    /// <c>CaptureSession.Move</c> writes it, and it is appended here in the shape that call would
+    /// leave.
+    /// </remarks>
+    [Fact]
+    public void Two_microphones_sharing_a_name_are_told_apart_in_the_folder_and_in_the_corpus()
+    {
+        using var context = corpus.OpenMigrated();
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 2);
+
+        var card = Fabricated.CardFor(prepared.MeetingId, now);
+        SpoolManifest.Write(prepared.Spool, card);
+        MeetingRecordings.Began(context, card);
+
+        var moved = now + Duration.FromSeconds(1);
+        SpoolChanges.Append(prepared.Spool, new SourceChanged(
+            moved, AudioChannel.Microphone, "Headset", "Headset", "{0.0.1.00000000}.{other-headset}"));
+
+        var onDisk = SpoolManifest.Find(prepared.Spool)!.On(AudioChannel.Microphone);
+        onDisk.Heard.ShouldBe("Headset");
+        onDisk.DeviceId.ShouldBe("{0.0.1.00000000}.{mic}");
+
+        var changed = SpoolChanges.Find(prepared.Spool).ShouldHaveSingleItem();
+        changed.At.ShouldBe(moved);
+        changed.Heard.ShouldBe("Headset");
+        changed.DeviceId.ShouldBe("{0.0.1.00000000}.{other-headset}");
+
+        onDisk.DeviceId.ShouldNotBe(changed.DeviceId);
+
+        MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(2));
+
+        using var reopened = corpus.Open();
+        reopened.CaptureRuns.Single(row => row.MeetingId == prepared.MeetingId).MeDeviceId
+            .ShouldBe("{0.0.1.00000000}.{mic}");
+
+        var change = reopened.CaptureSourceChanges.Single();
+        change.Heard.ShouldBe("Headset");
+        change.WasHearing.ShouldBe("Headset");
+        change.DeviceId.ShouldBe("{0.0.1.00000000}.{other-headset}");
+    }
+
+    /// <summary>
     /// Two channels that moved are two facts. Channel 1 following Windows to whatever replaced an
     /// unplugged headset carries the endpoint it reopens by; channel 0 has none to carry.
     /// </summary>

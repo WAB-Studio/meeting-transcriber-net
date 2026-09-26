@@ -459,7 +459,7 @@ public class MeetingReadingTests
             MeetingId = meeting,
             Kind = ArtifactKind.DeepgramResponse,
             Origin = ArtifactKind.DeepgramResponse.OriginOf(),
-            RelativePath = CorpusFiles.PathFor(meeting, "deepgram.2.json"),
+            RelativePath = CorpusFiles.PathFor(meeting, ResponseVersions.Named(2)),
             ByteSize = 4,
             Sha256 = new string('8', 64),
             ConfirmedAt = UtcTimestamp.From(Recorded.Value.AddHours(2)),

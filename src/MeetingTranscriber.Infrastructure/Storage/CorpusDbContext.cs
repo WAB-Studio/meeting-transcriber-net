@@ -24,6 +24,8 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
     private static readonly string AwaitingUser = WireNames<JobState>.Of(JobState.AwaitingUser);
 
+    private static readonly string FailedPermanent = WireNames<JobState>.Of(JobState.FailedPermanent);
+
     private static readonly string Organization = WireNames<NodeKind>.Of(NodeKind.Organization);
 
     /// <summary>The one column name the model treats as a promise. See <see cref="SealCreatedAt"/>.</summary>
@@ -445,6 +447,17 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
                 table.HasCheckConstraint(
                     "ck_processing_jobs_awaiting_reason",
                     $"(state = '{AwaitingUser}') = (awaiting_reason IS NOT NULL)");
+
+                // Every permanent failure carries what was observed, and nothing else does.
+                // FailPermanently is the only writer of both columns together, so the schema is
+                // only restating what the domain already requires — an Extract failure will need
+                // kinds of its own before anything of that kind fails one for good.
+                table.HasCheckConstraint(
+                    "ck_processing_jobs_failure",
+                    $"(state = '{FailedPermanent}') = (failure IS NOT NULL)");
+                table.HasCheckConstraint(
+                    "ck_processing_jobs_failure_name",
+                    $"failure IS NULL OR failure IN ({WireNames<JobFailure>.AsSqlList()})");
             });
 
             job.HasKey(entity => entity.Id);

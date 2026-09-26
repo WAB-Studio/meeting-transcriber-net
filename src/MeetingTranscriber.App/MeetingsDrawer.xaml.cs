@@ -1198,12 +1198,21 @@ public sealed partial class MeetingsDrawer : UserControl
             lines.Children.Add(new TextBlock
             {
                 Text = In(standing),
-                Style = Chrome(entry.Owed.Standing switch
+                Style = entry.Owed.Standing switch
                 {
-                    StageStanding.Running => "MeetingRunning",
-                    _ when entry.Owed.WaitsOnSomebody => "MeetingStoppedOnAPerson",
-                    _ => "MeetingLine",
-                }),
+                    StageStanding.Running => Chrome("MeetingRunning"),
+                    _ when entry.Owed.WaitsOnSomebody => Chrome("MeetingStoppedOnAPerson"),
+                    _ => Chrome("MeetingLine"),
+                },
+            });
+        }
+
+        if (entry.Owed.Failed is { } failed)
+        {
+            lines.Children.Add(new TextBlock
+            {
+                Text = In(MeetingWords.Failed(failed)),
+                Style = Chrome("MeetingFailed"),
             });
         }
 

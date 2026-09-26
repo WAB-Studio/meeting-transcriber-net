@@ -40,14 +40,9 @@ public sealed class MeetingArchiveTests : IDisposable
     /// <summary>
     /// A response door: a file that may never be written over, and its own verb.
     /// </summary>
-    /// <remarks>
-    /// The name is a literal because the constant for it — <c>MeetingIntake.ResponseFileName</c> —
-    /// is in <c>Processing</c>, which this suite cannot see. The audio one below uses
-    /// <see cref="RecordingFiles.Recording"/>, which it can.
-    /// </remarks>
     private static ArrivedOn AResponse() => new(
         Kind: ArtifactKind.DeepgramResponse,
-        FileName: "deepgram.json",
+        FileName: ResponseVersions.First,
         Contents: into => into.Write("{}"u8),
         Verb: "imported",
         Detail: "the response at 'C:\\elsewhere\\paid.json'");

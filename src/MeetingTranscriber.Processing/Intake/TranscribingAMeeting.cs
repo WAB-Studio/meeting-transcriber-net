@@ -47,7 +47,13 @@ public enum TranscriptionOutcome
 /// Never blank for the two failures. Null for <see cref="TranscriptionOutcome.AlreadyTranscribed"/>,
 /// and null for <see cref="TranscriptionOutcome.Filed"/> unless the render after the filing failed.
 /// </param>
-public sealed record TranscriptionEnded(TranscriptionOutcome Outcome, string? Said);
+/// <param name="Failure">
+/// What was observed, set exactly when <paramref name="Outcome"/> is
+/// <see cref="TranscriptionOutcome.NothingWasCharged"/>. No guard enforces that here: <c>Apply</c>'s
+/// own throw on a missing kind is loud enough, and every construction of this type is in the two
+/// files that own it.
+/// </param>
+public sealed record TranscriptionEnded(TranscriptionOutcome Outcome, string? Said, JobFailure? Failure = null);
 
 /// <summary>
 /// A meeting being transcribed: sending its audio, and turning what came back — or what stopped it —
@@ -76,10 +82,11 @@ public sealed record TranscriptionEnded(TranscriptionOutcome Outcome, string? Sa
 /// or a genuine cancellation ever leaves as an exception.
 /// </para>
 /// <para>
-/// <b>The run row goes first and <see cref="TranscriptionRun.ApprovedAt"/> stays empty.</b> It is
-/// written, with the temporary already open beside it, before the call is made — so a process that
-/// dies mid-call leaves a row saying an attempt was made rather than nothing at all. Nothing here
-/// asks anybody, so nothing here approves anything; that is ISC-85's, still to be built.
+/// <b>The run row goes first.</b> It is written, with the temporary already open beside it, before
+/// the call is made — so a process that dies mid-call leaves a row saying an attempt was made
+/// rather than nothing at all. <see cref="TranscriptionRun.ApprovedAt"/> is empty on a first
+/// transcription, whose press shows no price yet (ISC-85). It is the instant the minutes were
+/// typed back on a transcription asked for again.
 /// </para>
 /// <para>
 /// <b>Nothing after the send observes <paramref name="stopping"/>.</b> Once the provider has
@@ -111,12 +118,68 @@ public static class TranscribingAMeeting
     /// <paramref name="stopping"/> ended the send itself. The run is left exactly as it was: the
     /// next holder of this corpus's lease is what settles the job.
     /// </exception>
-    public static async Task<TranscriptionEnded> TranscribeAsync(
+    public static Task<TranscriptionEnded> TranscribeAsync(
         DirectoryInfo root,
         Guid jobId,
         SendingToTheProvider send,
         TimeProvider clock,
-        CancellationToken stopping = default)
+        CancellationToken stopping = default) =>
+        TranscribeCoreAsync(root, jobId, again: false, approvedAt: null, send, clock, stopping);
+
+    /// <summary>
+    /// Sends a meeting's audio to the provider again, once its minutes have been typed back, and
+    /// turns what happens into a <see cref="TranscriptionEnded"/> exactly as <see cref="TranscribeAsync"/>
+    /// does for a first transcription.
+    /// </summary>
+    /// <remarks>
+    /// The four places this differs from <see cref="TranscribeAsync"/> are named on the shared
+    /// private core both call: whether the meeting already having a response answers
+    /// <see cref="TranscriptionOutcome.AlreadyTranscribed"/>, where the temporary sits, whether the
+    /// run carries <paramref name="approvedAt"/>, and which door of <see cref="MeetingIntake"/>
+    /// files the response.
+    /// </remarks>
+    /// <param name="root">The corpus.</param>
+    /// <param name="jobId">The <see cref="JobKind.Transcribe"/> job this attempt is for.</param>
+    /// <param name="approvedAt">
+    /// When somebody agreed to this call, having typed the meeting's minutes back. Written onto the
+    /// run whatever this attempt comes to.
+    /// </param>
+    /// <param name="send">What actually reaches the provider.</param>
+    /// <param name="clock">Where every timestamp this writes comes from.</param>
+    /// <param name="stopping">
+    /// Cancels the send. Nothing after the send observes it — see the class remarks.
+    /// </param>
+    /// <exception cref="InvalidOperationException">
+    /// The job is missing, is not a transcription, or has not been started. Nothing is sent.
+    /// </exception>
+    /// <exception cref="OperationCanceledException">
+    /// <paramref name="stopping"/> ended the send itself. The run is left exactly as it was: the
+    /// next holder of this corpus's lease is what settles the job.
+    /// </exception>
+    public static Task<TranscriptionEnded> TranscribeAgainAsync(
+        DirectoryInfo root,
+        Guid jobId,
+        UtcTimestamp approvedAt,
+        SendingToTheProvider send,
+        TimeProvider clock,
+        CancellationToken stopping = default) =>
+        TranscribeCoreAsync(root, jobId, again: true, approvedAt, send, clock, stopping);
+
+    /// <summary>
+    /// What <see cref="TranscribeAsync"/> and <see cref="TranscribeAgainAsync"/> both are, told
+    /// apart by <paramref name="again"/> and never by whether <paramref name="approvedAt"/> carries
+    /// a value — the two happen to agree today, because nothing asks for an approval on a first
+    /// transcription (ISC-85), but that is a fact about what is built so far and not a rule this
+    /// core is entitled to lean on.
+    /// </summary>
+    private static async Task<TranscriptionEnded> TranscribeCoreAsync(
+        DirectoryInfo root,
+        Guid jobId,
+        bool again,
+        UtcTimestamp? approvedAt,
+        SendingToTheProvider send,
+        TimeProvider clock,
+        CancellationToken stopping)
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(send);
@@ -142,7 +205,10 @@ public static class TranscribingAMeeting
 
             meetingId = job.MeetingId;
 
-            if (context.Artifacts.Any(row =>
+            // Only a first transcription asks this: a re-transcription is sent precisely because
+            // the meeting already has a response, and MeetingWork.EnsureMayBeTranscribedAgain —
+            // not this method — is what refuses one asked for out of turn.
+            if (!again && context.Artifacts.Any(row =>
                     row.MeetingId == meetingId && row.Kind == ArtifactKind.DeepgramResponse))
             {
                 return new TranscriptionEnded(TranscriptionOutcome.AlreadyTranscribed, null);
@@ -156,7 +222,8 @@ public static class TranscribingAMeeting
                 return new TranscriptionEnded(
                     TranscriptionOutcome.NothingWasCharged,
                     $"Meeting {meetingId} has no audio in this corpus, so there was nothing to "
-                    + "send. Nothing was sent and nothing was charged.");
+                    + "send. Nothing was sent and nothing was charged.",
+                    JobFailure.AudioMissing);
             }
 
             audioFile = CorpusFiles.Locate(root, audio.RelativePath);
@@ -168,14 +235,22 @@ public static class TranscribingAMeeting
 
             if (!audioFile.Exists)
             {
-                return new TranscriptionEnded(TranscriptionOutcome.NothingWasCharged, audioMissingMessage);
+                return new TranscriptionEnded(
+                    TranscriptionOutcome.NothingWasCharged, audioMissingMessage, JobFailure.AudioMissing);
             }
 
             var meeting = context.Meetings.First(row => row.Id == meetingId);
             asked = new DeepgramRequest(meeting.SourceProfile, meeting.Language);
 
+            // The highest placeable version already filed, plus one — which is always 1 on a first
+            // transcription, because the AlreadyTranscribed check above already refused this path
+            // the moment the meeting had any response at all. A row this cannot place is not
+            // re-checked here: it is MeetingWork's refusal ahead of this call, and the filing door
+            // below refuses it loudly if one slips through anyway.
+            var next = NextPlaceableVersion(context, meetingId);
+
             temporary = CorpusFiles.UnfinishedBeside(
-                CorpusFiles.Locate(root, CorpusFiles.PathFor(meetingId, MeetingIntake.ResponseFileName)));
+                CorpusFiles.Locate(root, CorpusFiles.PathFor(meetingId, ResponseVersions.Named(next))));
 
             try
             {
@@ -187,7 +262,8 @@ public static class TranscribingAMeeting
                 return new TranscriptionEnded(
                     TranscriptionOutcome.NothingWasCharged,
                     $"The response could not be given somewhere to land: {failed.Message} "
-                    + "Nothing was sent and nothing was charged.");
+                    + "Nothing was sent and nothing was charged.",
+                    JobFailure.CorpusRefused);
             }
 
             run = new TranscriptionRun
@@ -201,6 +277,7 @@ public static class TranscribingAMeeting
                 Language = meeting.Language,
                 AudioSha256 = audio.Sha256,
                 BillableConfigHash = asked.BillableConfigHash,
+                ApprovedAt = approvedAt,
                 CreatedAt = UtcTimestamp.From(clock.GetUtcNow()),
             };
 
@@ -209,6 +286,10 @@ public static class TranscribingAMeeting
                 context.TranscriptionRuns.Add(run);
                 context.SaveChanges();
             }
+
+            // Every refusal but running out of memory is answered NothingWasCharged here, because
+            // nothing has been sent yet — the write below is what would have sent it, and it never
+            // ran.
             catch (Exception refused) when (refused is not OutOfMemoryException)
             {
                 // The write handle must close before the temporary can be removed: it was opened
@@ -221,7 +302,8 @@ public static class TranscribingAMeeting
                 return new TranscriptionEnded(
                     TranscriptionOutcome.NothingWasCharged,
                     "The transcription could not be written into the corpus before anything was "
-                    + $"sent: {refused.Message} Nothing was sent and nothing was charged.");
+                    + $"sent: {refused.Message} Nothing was sent and nothing was charged.",
+                    JobFailure.CorpusRefused);
             }
         }
 
@@ -241,20 +323,21 @@ public static class TranscribingAMeeting
                 throw;
             }
 
-            var (outcome, said) = Answered(thrown, audioFile, audioMissingMessage);
+            var (outcome, said, failure) = Answered(thrown, audioFile, audioMissingMessage);
             WriteLastError(root, run.Id, said);
-            return new TranscriptionEnded(outcome, said);
+            return new TranscriptionEnded(outcome, said, failure);
         }
 
         // The read handle is opened before the write handle closes (Decides), so the temporary is
         // never unheld between the two: a sweep run in that gap would read it as a dead write and
         // take a response that was just paid for. It is `using` as a safety net against the handle
-        // itself leaking on a throw this method does not otherwise guard against — most of all
-        // `filing.SaveChanges()` below, which can still fail after `ReceiveInto` has already filed
-        // the response; that leaves the run row unresolved and the temporary undeleted, and is an
-        // unguarded gap of its own, owed separately. Every explicit `Dispose()` below stays: the
-        // file has to be let go before it is deleted or moved, and a dispose the `using` runs after
-        // one of those is a no-op on a stream already closed.
+        // itself leaking on a throw this method does not otherwise guard against. `filing.SaveChanges()`
+        // below, which can still fail after `ReceiveInto` or `ReceiveAgainInto` has already filed
+        // the response, is guarded (O-20260925-13): the response is on disk and in the corpus by
+        // that point, so `Filed` is the true answer there whatever the run's own bookkeeping does.
+        // Every explicit `Dispose()` below stays: the file has to be let go before it is deleted or
+        // moved, and a dispose the `using` runs after one of those is a no-op on a stream already
+        // closed.
         using var reading = new FileStream(
             temporary.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         await writing.DisposeAsync().ConfigureAwait(false);
@@ -266,20 +349,47 @@ public static class TranscribingAMeeting
 
         try
         {
-            received = MeetingIntake.ReceiveInto(filing, meetingId, temporary, now);
+            received = again
+                ? MeetingIntake.ReceiveAgainInto(filing, meetingId, temporary, now)
+                : MeetingIntake.ReceiveInto(filing, meetingId, temporary, now);
         }
         catch (Exception unfiled) when (unfiled is not OutOfMemoryException)
         {
             // `filing` is let go and never saved again: whatever it touched before throwing is not
             // this corpus's to keep, and re-reading with a fresh context is the only way to ask
             // what is really there.
-            return AfterAFailedFiling(root, meetingId, run.Id, hash, temporary, reading, now, unfiled.Message);
+            return AfterAFailedFiling(
+                root, meetingId, run.Id, hash, temporary, reading, now, unfiled.Message, again);
         }
 
-        var tracked = filing.TranscriptionRuns.First(row => row.Id == run.Id);
-        tracked.FinishedAt = now;
-        tracked.ResponseArtifactId = received.Response.Id;
-        filing.SaveChanges();
+        // O-20260925-13: the response is already filed and safe on disk by this point, so a
+        // refusal here is answered Filed either way — what may still fail is only the record of
+        // which run bought it, and that is worth a second attempt in a fresh context before it is
+        // given up on.
+        try
+        {
+            var tracked = filing.TranscriptionRuns.First(row => row.Id == run.Id);
+            tracked.FinishedAt = now;
+            tracked.ResponseArtifactId = received.Response.Id;
+            filing.SaveChanges();
+        }
+        catch (Exception failed) when (failed is not OutOfMemoryException)
+        {
+            reading.Dispose();
+            TryDelete(temporary);
+
+            var said = WriteRunFinishedAgain(root, run.Id, received.Response.Id, now)
+                ? "The response was filed and read; the record of which call bought it needed a "
+                  + $"second attempt: {failed.Message}"
+                : "The response was filed and read, and the record of which call bought it could "
+                  + $"not be written: {failed.Message} Nothing was lost and nothing is sent again."
+                  + (again
+                      ? " Until that record is written, what this meeting says its turns were read "
+                        + "from still names the response before this one."
+                      : string.Empty);
+
+            return new TranscriptionEnded(TranscriptionOutcome.Filed, said);
+        }
 
         reading.Dispose();
         TryDelete(temporary);
@@ -287,32 +397,77 @@ public static class TranscribingAMeeting
         return new TranscriptionEnded(TranscriptionOutcome.Filed, null);
     }
 
+    /// <summary>The highest placeable response version this meeting already has, plus one.</summary>
+    private static int NextPlaceableVersion(CorpusDbContext context, Guid meetingId)
+    {
+        var highest = 0;
+
+        foreach (var response in context.Artifacts.Where(row =>
+                     row.MeetingId == meetingId && row.Kind == ArtifactKind.DeepgramResponse))
+        {
+            if (ResponseVersions.VersionOf(response) is { } version && version > highest)
+            {
+                highest = version;
+            }
+        }
+
+        return highest + 1;
+    }
+
+    /// <summary>
+    /// The run's own bookkeeping, written once more in a fresh context, after the first attempt
+    /// failed alongside a response that is already filed and safe.
+    /// </summary>
+    private static bool WriteRunFinishedAgain(
+        DirectoryInfo root, Guid runId, Guid responseId, UtcTimestamp now)
+    {
+        try
+        {
+            using var retry = CorpusDatabase.Open(root);
+            var run = retry.TranscriptionRuns.FirstOrDefault(row => row.Id == runId);
+
+            if (run is null)
+            {
+                return false;
+            }
+
+            run.FinishedAt = now;
+            run.ResponseArtifactId = responseId;
+            retry.SaveChanges();
+            return true;
+        }
+        catch (Exception failed) when (failed is not OutOfMemoryException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// What the send's own exception says about whether this meeting may have been charged for.
     /// </summary>
-    private static (TranscriptionOutcome Outcome, string Said) Answered(
+    private static (TranscriptionOutcome Outcome, string Said, JobFailure? Failure) Answered(
         Exception thrown, FileInfo audio, string audioMissingMessage) => thrown switch
         {
-            DeepgramKeyException keyless => (TranscriptionOutcome.NothingWasCharged, keyless.Message),
+            DeepgramKeyException keyless =>
+                (TranscriptionOutcome.NothingWasCharged, keyless.Message, JobFailure.NoKeyOnThisMachine),
 
             // SendAsync opens the audio before it sends anything, so a file that vanished after this
             // method already confirmed it is the one case a missing file can still mean "nothing left
             // the machine" this late.
             FileNotFoundException gone
                 when string.Equals(gone.FileName, audio.FullName, StringComparison.Ordinal) =>
-                (TranscriptionOutcome.NothingWasCharged, audioMissingMessage),
+                (TranscriptionOutcome.NothingWasCharged, audioMissingMessage, JobFailure.AudioMissing),
 
-            DeepgramCallException failed => (
-                failed.MayHaveBeenCharged
-                    ? TranscriptionOutcome.MayHaveBeenCharged
-                    : TranscriptionOutcome.NothingWasCharged,
-                failed.Message),
+            DeepgramCallException failed => failed.WhyNothingWasCharged is { } kind
+                ? (TranscriptionOutcome.NothingWasCharged, failed.Message, kind)
+                : (TranscriptionOutcome.MayHaveBeenCharged, failed.Message, null),
 
             _ => (
                 TranscriptionOutcome.MayHaveBeenCharged,
                 "The call to the provider failed in a way this end cannot read: "
                 + $"{thrown.Message} Whether it was charged is not something this end can tell, so "
-                + "nothing is sent again on its own."),
+                + "nothing is sent again on its own.",
+                null),
         };
 
     /// <summary>
@@ -327,7 +482,8 @@ public static class TranscribingAMeeting
         FileInfo temporary,
         FileStream reading,
         UtcTimestamp now,
-        string message)
+        string message,
+        bool again)
     {
         using var context = CorpusDatabase.Open(root);
 
@@ -349,10 +505,21 @@ public static class TranscribingAMeeting
             reading.Dispose();
             TryDelete(temporary);
 
-            return new TranscriptionEnded(
-                TranscriptionOutcome.Filed,
-                $"The response was filed and what is read out of it was not: {message} The next "
-                + "launch renders it again.");
+            // A render can fail on either side of the turns swap, and the swap commits on its own
+            // (Decides 11), so this branch is reached whether the failure was before or after it.
+            // The re-transcription path says which version was filed and that render alone is
+            // owed, rather than promising a launch will fix it or naming which version a reader
+            // is shown until then — that is TranscribedFrom's own remark (Decides 15). The
+            // first-transcription path keeps its words, because there is only ever the one version
+            // for a launch to render again.
+            var said = again
+                ? $"The response was filed as version {ResponseVersions.VersionOf(already)} and "
+                  + $"paid for, and what is read out of it was not all written: {message} "
+                  + $"'render {meetingId}' writes it again."
+                : $"The response was filed and what is read out of it was not: {message} The next "
+                  + "launch renders it again.";
+
+            return new TranscriptionEnded(TranscriptionOutcome.Filed, said);
         }
 
         reading.Dispose();

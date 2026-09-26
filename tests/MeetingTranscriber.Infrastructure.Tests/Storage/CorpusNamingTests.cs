@@ -67,6 +67,14 @@ public partial class CorpusNamingTests
         (AuditActor.User, "user"),
         (AuditActor.App, "app"),
         (AuditActor.Agent, "agent"),
+        (JobFailure.NoKeyOnThisMachine, "no_key_on_this_machine"),
+        (JobFailure.KeyRefused, "key_refused"),
+        (JobFailure.OutOfCredit, "out_of_credit"),
+        (JobFailure.OverItsRate, "over_its_rate"),
+        (JobFailure.RequestRefused, "request_refused"),
+        (JobFailure.ProviderNotReached, "provider_not_reached"),
+        (JobFailure.AudioMissing, "audio_missing"),
+        (JobFailure.CorpusRefused, "corpus_refused"),
 
         // The classification vocabulary, closed against the thirteen meetings arquitectura.md §5.3
         // lists. A rename changes what is on disk and the CHECK behind it at the same time, and
@@ -468,6 +476,7 @@ public partial class CorpusNamingTests
         SpeakerAssignmentSource source => WireNames<SpeakerAssignmentSource>.Of(source),
         TerminologyMatchMode mode => WireNames<TerminologyMatchMode>.Of(mode),
         AuditActor actor => WireNames<AuditActor>.Of(actor),
+        JobFailure failure => WireNames<JobFailure>.Of(failure),
         _ => throw new ArgumentOutOfRangeException(nameof(value), value, "Add the enum to this switch."),
     };
 }

@@ -1,7 +1,7 @@
 using System.Globalization;
 
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
-using MeetingTranscriber.Processing.Intake;
 
 namespace MeetingTranscriber.Cli.Tests;
 
@@ -235,7 +235,7 @@ public class CliWalkthroughTests
             // No "already here" suffix: these bytes are new, and the meeting is the one that has
             // the audio rather than one this filing minted.
             filed.Value("meeting").ShouldBe(meeting);
-            filed.Value("response").ShouldBe($"meetings/{meeting}/{MeetingIntake.ResponseFileName}");
+            filed.Value("response").ShouldBe($"meetings/{meeting}/{ResponseVersions.First}");
             filed.Value("transcript").ShouldStartWith($"meetings/{meeting}/");
             filed.Value("manifest").ShouldStartWith($"meetings/{meeting}/");
             var turns = int.Parse(filed.Value("turns"), CultureInfo.InvariantCulture);
