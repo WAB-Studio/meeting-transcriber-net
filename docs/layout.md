@@ -6,7 +6,7 @@ map you open when you need to know where something lives.
 ```text
 src/MeetingTranscriber.App/               WinUI 3, packaged as MSIX
 src/MeetingTranscriber.Audio/             WASAPI: the devices and streams, the spool, the timeline they meet on, the recording that comes off it, and playing one back
-src/MeetingTranscriber.Cli/               diagnosis, import, rebuild, recovery and capture from a prompt
+src/MeetingTranscriber.Cli/               diagnosis, import, rebuild, recovery, capture, and transcribing a meeting again from a prompt
 src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
 src/MeetingTranscriber.Mcp/               the corpus answered read-only over stdio, for an agent
@@ -63,16 +63,28 @@ package and `Package.appxmanifest` declares `meeting-transcriber` on the PATH be
 `meeting-transcriber-mcp`. What ISC-113 still waits on is a run: nobody has installed a build and
 started either name.
 
-**One exception, named, and it is a live run.** `LiveCheck` and `SendingMark` are rules and they are
-here: which files a run sends, how much audio that is, what the ceiling allows, what a person
-confirmed, and the claim over the folder the responses land in. The application spends now too,
-through `JobRunner`, on whatever a stop or a press queued — but that is a service call, the same
-shape every other rule in this document is about a call into, and these two are not: they are a
-prompt's own rules about a folder somebody named on its command line, with nothing behind them a
-service could be a call into. That is the whole of the exception and it does not grow —
-the prompt may hold what a live run decides and nothing else — which is why every other sentence in
-this document and in the tree saying the prompt holds no rule of its own is still true as written:
-each of them is about a rule that is not a live run's. What a provider *response* has to hold is not
+**One exception, named, and it is a spend a person agrees to at the prompt.** `LiveCheck`,
+`SendingMark` and `TypedBack` are rules and they are here:
+
+- which files a live run sends;
+- how much audio that is;
+- what the ceiling allows;
+- the claim over the folder the responses land in;
+- the minutes a person typed back before anything was sent, for a live run and for a meeting
+  transcribed again alike.
+
+Whether a meeting may be sent again, and the sending itself, is decided in `MeetingWork` and
+`JobRunner`; the one thing the prompt still decides for itself is how many named voices a new
+response would take a name off, which it counts before and after because it is the one number
+this command exists to report honestly and no screen prints it. The application spends now too,
+through `JobRunner`, on
+whatever a stop or a press queued — but that is a service call, the same shape every other rule in
+this document is about a call into, and these two are not: they are a prompt's own rules about a
+folder somebody named on its command line, or about a number somebody typed back, with nothing
+behind them a service could be a call into. That is the whole of the exception and it does not grow
+past a spend confirmed at a prompt — which is why every other sentence in this document and in the
+tree saying the prompt holds no rule of its own is still true as written: each of them is about a
+rule that is not a spend confirmed at a prompt's. What a provider *response* has to hold is not
 part of it and lives in `Processing` with `LiveInvariants`, for the reason that paragraph gives.
 
 `MeetingTranscriber.Mcp` is the corpus's other read-only face — eight tools an agent asks about

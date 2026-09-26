@@ -35,14 +35,17 @@ public sealed record MeetingAndWork(Meeting Meeting, OwedWork Owed)
 /// remembered: it is being worked out from rows and files that never went anywhere.
 /// </para>
 /// <para>
-/// The writing half is three methods and none of them are mirrors. Taking a stage queues its job.
+/// The writing half is four methods and none of them are mirrors. Taking a stage queues its job.
 /// Leaving it records that it was turned down — and cancels whatever was queued for it, because
 /// work nobody has run is work nobody has paid for, and the press that spends money should not be
 /// the one with no way back. Neither moves the meeting: a stage that was left is the same stage,
 /// still offering the same action, which is what makes ignoring safe to press. Trying again is the
 /// one answer a meeting stopped on a person has, and it goes through
 /// <see cref="ProcessingJob.Requeue"/> — the one move <c>arquitectura.md</c> §5.4 lets a person
-/// make on a job that already ran.
+/// make on a job that already ran. The fourth queues a transcription of a meeting that already has
+/// one, because somebody typed its minutes back at a prompt: it starts nothing, exactly as
+/// <see cref="Taken"/> does for the other three, and <c>JobRunner.SendAgainAsync</c> is what sends
+/// it.
 /// </para>
 /// <para>
 /// All three re-read the meeting before they write. A screen that has been open a while is a
@@ -380,6 +383,115 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
         var job = ProcessingJob.Queue(Guid.NewGuid(), meetingId, kind, NextKey(meetingId, kind), now);
         job.Cancel(now);
         context.ProcessingJobs.Add(job);
+        return job;
+    }
+
+    /// <summary>
+    /// Throws unless a meeting may be sent to the provider again. Read-only: it decides, and
+    /// <see cref="TranscribeAgain"/> is the one caller that acts on the answer.
+    /// </summary>
+    /// <remarks>
+    /// <c>TranscribingAMeeting</c> does not re-check the response-name rule below: a row that still
+    /// slips past this and reaches the filing door is refused loudly there instead, in its own
+    /// words.
+    /// <para>
+    /// The five below are checked in this order and stop on the first that holds. Whether the
+    /// meeting is sound comes first — on its way out, never transcribed, or a response row this
+    /// rule cannot place — because the sentences the last two throw presuppose a meeting worth
+    /// reasoning about: "settle that one first" and "already has a transcription queued" both name
+    /// a meeting whose stage is coherent, which the first three checks are what establish. A
+    /// meeting stopped on a person is checked ahead of one with a Transcribe job still moving,
+    /// because <see cref="OwedWork.WaitsOnSomebody"/> is meeting-wide — a charge that may already
+    /// have happened is the meeting's problem wherever it happened — while the last check is scoped
+    /// to this one stage's own queue.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="MeetingStageException">
+    /// There is no such meeting; it is not <see cref="LifecycleState.Active"/>; it has never been
+    /// transcribed; one of its responses is named outside <see cref="ResponseVersions"/>' series;
+    /// something on it is stopped waiting for a person; or it already has a <see cref="JobKind.Transcribe"/>
+    /// job that has not reached a terminal state.
+    /// </exception>
+    public void EnsureMayBeTranscribedAgain(Guid meetingId)
+    {
+        var owed = On(meetingId);
+        var meeting = context.Meetings.AsNoTracking().First(row => row.Id == meetingId);
+
+        if (meeting.LifecycleState is not LifecycleState.Active)
+        {
+            throw new MeetingStageException(
+                $"Meeting {meetingId} is on its way out, and nothing is bought for a meeting "
+                + "somebody asked to get rid of.");
+        }
+
+        var responses = context.Artifacts
+            .AsNoTracking()
+            .Where(artifact => artifact.MeetingId == meetingId && artifact.Kind == ArtifactKind.DeepgramResponse)
+            .ToList();
+
+        if (responses.Count == 0)
+        {
+            throw new MeetingStageException(
+                $"Meeting {meetingId} has not been transcribed yet, so there is nothing to "
+                + "transcribe again. Its first transcription is the press on its row.");
+        }
+
+        foreach (var response in responses)
+        {
+            if (ResponseVersions.VersionOf(response) is null)
+            {
+                throw new MeetingStageException(
+                    $"Meeting {meetingId} names '{response.RelativePath}' as a response and that "
+                    + "is not a name in the series, so where another would go cannot be settled.");
+            }
+        }
+
+        if (owed.WaitsOnSomebody)
+        {
+            throw new MeetingStageException(
+                $"Meeting {meetingId} has a charge nobody has settled — something on it is "
+                + "stopped waiting for a person — and another is not made on top of it. Settle "
+                + "that one first.");
+        }
+
+        // `IsTerminal` reads `JobState.Next()`, which nothing here can translate to SQL — narrowed
+        // to this meeting's own Transcribe jobs first, which are few, and checked in memory after.
+        var transcriptions = context.ProcessingJobs
+            .AsNoTracking()
+            .Where(job => job.MeetingId == meetingId && job.Kind == JobKind.Transcribe)
+            .ToList();
+
+        if (transcriptions.Any(job => !job.State.IsTerminal()))
+        {
+            throw new MeetingStageException(
+                $"Meeting {meetingId} already has a transcription queued or under way.");
+        }
+    }
+
+    /// <summary>
+    /// Somebody typed a meeting's minutes back at a prompt: queues another transcription of it and
+    /// hands back the job that will send it.
+    /// </summary>
+    /// <remarks>
+    /// The job is queued here and started by nothing here, exactly as <see cref="Taken"/> leaves
+    /// every other stage's job — <c>JobRunner.SendAgainAsync</c> is what sends it, on the corpus's
+    /// own runner lease, once the caller has already taken it.
+    /// </remarks>
+    /// <exception cref="MeetingStageException">See <see cref="EnsureMayBeTranscribedAgain"/>.</exception>
+    public ProcessingJob TranscribeAgain(Guid meetingId)
+    {
+        using var write = context.Database.CurrentTransaction is null
+            ? context.Database.BeginTransaction()
+            : null;
+
+        EnsureMayBeTranscribedAgain(meetingId);
+
+        var job = ProcessingJob.Queue(
+            Guid.NewGuid(), meetingId, JobKind.Transcribe, NextKey(meetingId, JobKind.Transcribe), Now);
+        context.ProcessingJobs.Add(job);
+        context.SaveChanges();
+        write?.Commit();
+
         return job;
     }
 

@@ -3,6 +3,7 @@ using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 
@@ -617,6 +618,180 @@ public class MeetingWorkTests
 
         work.On(mine).Standing.ShouldBe(StageStanding.Offered);
         work.On(theirs).Standing.ShouldBe(StageStanding.Declined);
+    }
+
+    [Fact]
+    public void Transcribing_again_queues_a_transcription_of_a_meeting_that_already_has_one()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Transcribed(context);
+        var work = new MeetingWork(context, Clock);
+
+        var job = work.TranscribeAgain(meeting);
+
+        job.MeetingId.ShouldBe(meeting);
+        job.Kind.ShouldBe(JobKind.Transcribe);
+        job.State.ShouldBe(JobState.Pending);
+        job.IdempotencyKey.ShouldBe($"{meeting}/2");
+
+        context.ProcessingJobs.Count(row => row.MeetingId == meeting && row.Kind == JobKind.Transcribe)
+            .ShouldBe(2);
+    }
+
+    [Fact]
+    public void Transcribing_again_a_meeting_never_transcribed_is_refused_and_writes_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+        var work = new MeetingWork(context, Clock);
+
+        Should.Throw<MeetingStageException>(() => work.TranscribeAgain(meeting));
+
+        context.ProcessingJobs.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Transcribing_again_a_meeting_on_its_way_out_is_refused_and_writes_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Transcribed(context);
+        var row = context.Meetings.Single(candidate => candidate.Id == meeting);
+        row.LifecycleState = LifecycleState.Deleting;
+        row.DeletedAt = Recorded;
+        context.SaveChanges();
+        var work = new MeetingWork(context, Clock);
+
+        Should.Throw<MeetingStageException>(() => work.TranscribeAgain(meeting));
+
+        context.ProcessingJobs.Count(row => row.MeetingId == meeting).ShouldBe(1);
+    }
+
+    [Fact]
+    public void Transcribing_again_a_meeting_stopped_on_a_person_is_refused_and_writes_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Transcribed(context);
+
+        var capture = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Capture, $"{meeting}/capture-1", Recorded);
+        capture.Start(Recorded);
+        capture.RecoverAfterRestart().ShouldBeTrue();
+        Add(context, capture);
+
+        var work = new MeetingWork(context, Clock);
+
+        Should.Throw<MeetingStageException>(() => work.TranscribeAgain(meeting));
+
+        context.ProcessingJobs.Count(row => row.MeetingId == meeting && row.Kind == JobKind.Transcribe)
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public void Transcribing_again_a_meeting_with_a_transcription_already_queued_is_refused_and_writes_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Guid.NewGuid();
+        Add(context, NewMeeting(meeting));
+        MeetingRows.Transcribed(context, meeting, Recorded, responseSha256: new string('a', 64));
+        var work = new MeetingWork(context, Clock);
+
+        Should.Throw<MeetingStageException>(() => work.TranscribeAgain(meeting));
+
+        context.ProcessingJobs.Count(row => row.MeetingId == meeting && row.Kind == JobKind.Transcribe)
+            .ShouldBe(1);
+    }
+
+    [Fact]
+    public void Transcribing_again_a_meeting_whose_response_name_is_outside_the_series_is_refused_and_writes_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+        Add(context, new Artifact
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            Kind = ArtifactKind.DeepgramResponse,
+            Origin = ArtifactKind.DeepgramResponse.OriginOf(),
+            RelativePath = CorpusFiles.PathFor(meeting, "somebody-elses.json"),
+            ByteSize = 4,
+            Sha256 = new string('a', 64),
+            ConfirmedAt = Recorded,
+        });
+        var work = new MeetingWork(context, Clock);
+
+        Should.Throw<MeetingStageException>(() => work.TranscribeAgain(meeting));
+
+        context.ProcessingJobs.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Two of the five refusals at once, to pin the order rather than trust that each was tested in
+    /// isolation: a meeting whose own rows are not sound is refused for that before anything asks
+    /// whether a person needs to settle something on it, because the "settle that one first"
+    /// sentence presupposes a meeting worth reasoning about.
+    /// </summary>
+    [Fact]
+    public void An_unsound_response_name_is_refused_ahead_of_a_meeting_stopped_on_a_person()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Record(context);
+
+        Add(context, new Artifact
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            Kind = ArtifactKind.DeepgramResponse,
+            Origin = ArtifactKind.DeepgramResponse.OriginOf(),
+            RelativePath = CorpusFiles.PathFor(meeting, "somebody-elses.json"),
+            ByteSize = 4,
+            Sha256 = new string('a', 64),
+            ConfirmedAt = Recorded,
+        });
+
+        var capture = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Capture, $"{meeting}/capture-1", Recorded);
+        capture.Start(Recorded);
+        capture.RecoverAfterRestart().ShouldBeTrue();
+        Add(context, capture);
+
+        var work = new MeetingWork(context, Clock);
+
+        Should.Throw<MeetingStageException>(() => work.TranscribeAgain(meeting))
+            .Message.ShouldContain("not a name in the series");
+    }
+
+    /// <summary>
+    /// A meeting recorded, transcribed once with its job <see cref="JobState.Succeeded"/>, and
+    /// ready to be sent again — unlike <see cref="MeetingRows.Transcribed"/>, whose job is left
+    /// <see cref="JobState.Pending"/>, which the "already queued" rule refuses.
+    /// </summary>
+    private static Guid Transcribed(CorpusDbContext context)
+    {
+        var meeting = Record(context);
+
+        Add(context, new Artifact
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            Kind = ArtifactKind.DeepgramResponse,
+            Origin = ArtifactKind.DeepgramResponse.OriginOf(),
+            RelativePath = CorpusFiles.PathFor(meeting, ResponseVersions.First),
+            ByteSize = 1024,
+            Sha256 = new string('a', 64),
+            ConfirmedAt = Recorded,
+        });
+
+        var job = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Transcribe, $"{meeting}/1", Recorded);
+        job.Start(Recorded);
+        job.Succeed(Recorded);
+        Add(context, job);
+
+        return meeting;
     }
 
     private static Guid Record(CorpusDbContext context)

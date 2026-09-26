@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 157/222
+progress: 158/222
 updated: 2026-09-25
 ---
 
@@ -239,7 +239,7 @@ once for exactly what they approved.
 Board: 4 · Deepgram BYOK
 - [x] ISC-84: The Deepgram key lives in Windows Credential Manager and is read from nowhere else.
 - [ ] ISC-85: Anti: no Deepgram call happens without an explicit approval carrying an estimate of what that call will cost, worked out from what is actually sent and never from how long the meeting was.
-- [ ] ISC-86: Transcribing again is a new version beside what was paid for, never a replacement.
+- [x] ISC-86: Transcribing again is a new version beside what was paid for, never a replacement.
 - [x] ISC-87: A job whose outcome is uncertain — a charge that may already have happened — stops on a person.
 - [ ] ISC-88: What the provider returns has the shape the fixtures describe.
 - [ ] ISC-154: Silence is left out of what is sent to the provider one channel at a time, so a channel that stayed quiet while the other was being spoken into is not paid for.
@@ -586,6 +586,7 @@ Board: 7 · Distribución y backup
   claim stays open however the walk comes out, and card #86, which owns the mark, owns both halves.
 
 ## Verification
+- ISC-86 — `TranscribingAMeetingTests.Transcribing_again_files_a_new_version_beside_the_first_and_leaves_it_untouched` and `MeetingRendererTests.The_transcript_is_rendered_from_the_newest_version` (`tests/MeetingTranscriber.Processing.Tests`), and `TranscribingAgainTests.Typing_the_minutes_back_files_a_second_version_beside_the_first` (`tests/MeetingTranscriber.Cli.Tests`), green 2026-09-25. Red with the render picking the response by `ConfirmedAt` or by the newest row instead of the highest version, and red with the second filing refused as an already-transcribed meeting; the CLI fact red with the command filed through a door that refuses a second response, and red with the job started before the prompt was confirmed. Not reached: a paid run (ISC-85, no price is shown yet) and a meeting carrying accepted claims, since extraction does not write any yet.
 - ISC-185 — `MeetingRecordingsTests.A_stopped_recording_leaves_nothing_in_the_spool` and `WaitingRecordingsTests.A_recovery_leaves_nothing_in_the_spool_either` (`tests/MeetingTranscriber.Recording.Tests`), plus `CorpusRecoveryCommandTests.Keeping_a_recording_leaves_a_meeting_with_its_audio_in_the_corpus` (`tests/MeetingTranscriber.Cli.Tests`), green 2026-09-18. Not reached: the press of stopping itself, which needs a window, and a recording longer than the two fabricated seconds these finish.
 - ISC-186 — `MeetingRecordingsTests.A_stop_that_could_not_write_its_job_row_leaves_no_meeting_recorded_and_un_queued`, `.A_finish_whose_corpus_copy_is_gone_leaves_the_recording_where_it_is`, `.A_folder_something_is_holding_is_left_and_said_so` and `.The_mark_is_let_go_however_the_finish_ends` (`tests/MeetingTranscriber.Recording.Tests`) green 2026-09-18; `RemovingARecordingTests.A_recording_something_is_holding_is_not_removed` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-09-18. Red 2026-09-25 with the removal gated on `filing.Commit()` alone, reddening the second; and with the saving mark held by a plain local a throw walks past, reddening the fourth; both reverted.
 - ISC-163 — `DeviceEnquiryTests` and `.Both_questions_this_application_asks_about_devices_go_through_the_deadline` (`tests/MeetingTranscriber.Audio.Tests`) green 2026-08-20. Red 2026-08-20 with the question run on the caller's thread instead: the six-test run was killed at 120 s with one of them still going at 1 m 57 s, where bounded they take 21 s. Red again with the memory ignored, where `AudioDevices.Microphones()` enumerated this machine's real endpoints and answered. That a third question added beside the two would be inside the ask, and why `AudioDevices.Open` and `AudioDevices.EngineFormat` are not, is read off `AudioDevices`

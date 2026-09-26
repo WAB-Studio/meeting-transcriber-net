@@ -712,13 +712,14 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
     /// person's words, which is the invariant this file is on the audit floor for.
     /// </para>
     /// <para>
-    /// <b>A stale row needs a meeting transcribed again into other labels, and nothing offers that
-    /// yet.</b> <see cref="Assign"/> has two callers — <see cref="SettleTheMicrophone"/>, which
-    /// writes the label the render just produced, and <c>MeetingVoices.Save</c>, which writes a
-    /// label a person named and refuses one no turn of the meeting carries — so every row this
-    /// writes hangs off a label the meeting's turns carry when it is written. What takes that away
-    /// is a second paid response with other labels, and this delete is here ahead of it because a
-    /// delete of the human layer is not something to invent under the pressure of a bug report.
+    /// <b>A stale row is what a meeting transcribed again into other labels leaves</b>, which
+    /// <c>transcribe-again</c> now does. <see cref="Assign"/> has two callers —
+    /// <see cref="SettleTheMicrophone"/>, which writes the label the render just produced, and
+    /// <c>MeetingVoices.Save</c>, which writes a label a person named and refuses one no turn of
+    /// the meeting carries — so every row this writes hangs off a label the meeting's turns carry
+    /// when it is written. What takes that away is a second paid response with other labels, and
+    /// this delete is what takes it: it is here ahead of it because a delete of the human layer is
+    /// not something to invent under the pressure of a bug report.
     /// </para>
     /// <para>
     /// <b>A delete and not a refusal</b>, which is the opposite of what
@@ -726,9 +727,9 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
     /// method — and the difference is what the row would mean afterwards. A claim citing a turn
     /// that is gone would point at nothing, so the corpus would lie about its own evidence and the
     /// render has to stop. A stale assignment is already wrong before this runs; taking it off is
-    /// restoring what the corpus says, not losing what somebody did. What is still owed is saying
-    /// so: the count comes back and no surface prints it, so a person whose row went learns
-    /// nothing.
+    /// restoring what the corpus says, not losing what somebody did. The count comes back and no
+    /// screen prints it: the prompt that transcribes again counts the names before and after and
+    /// says how many came off.
     /// </para>
     /// <para>
     /// The one method here that does not save, because it stages nothing: the delete goes straight

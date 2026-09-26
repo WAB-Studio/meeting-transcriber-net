@@ -27,20 +27,15 @@ namespace MeetingTranscriber.Cli;
 /// that a suite driving this with a keyboard of its own is not answering a question about the
 /// machine it happens to be running on.
 /// </para>
+/// <para>
+/// This type no longer holds <em>every</em> decision a run makes: what the minutes are and whether
+/// somebody typed them back is <see cref="TypedBack"/>'s, because a meeting transcribed again asks
+/// the same two questions and had no run of its own to hold them. What stays here is what is a
+/// live run's alone — which files to send, and the claim over the folder responses land in.
+/// </para>
 /// </remarks>
 public sealed class LiveCheck
 {
-    /// <summary>
-    /// What is said before the confirmation is asked for, every run, whether or not it goes ahead.
-    /// The card asks for a run to use a test account; this product deliberately keeps one answer to
-    /// <em>which key does this machine use</em>, so what it can do is say where the money lands
-    /// before anybody agrees to spend it.
-    /// </summary>
-    private const string WhereTheSpendLands =
-        "the spend lands on whatever Deepgram account this machine's key belongs to. Point that "
-        + "key at a test project first if that is not what you want charged: "
-        + "'meeting-transcriber key --set'.";
-
     /// <summary>What a response is called, as a name ends.</summary>
     private const string ResponseExtension = ".json";
 
@@ -88,7 +83,7 @@ public sealed class LiveCheck
     /// has to work out whether eight minutes and twenty-three seconds is eight minutes or nine. Up
     /// rather than to the nearest, because that is the direction that cannot understate a bill.
     /// </remarks>
-    public int Minutes => (int)Math.Ceiling(Total.Milliseconds / 60_000.0);
+    public int Minutes => TypedBack.MinutesOf(Total);
 
     /// <summary>How much audio one run of this command was given leave to send.</summary>
     public int CeilingMinutes { get; }
@@ -227,32 +222,21 @@ public sealed class LiveCheck
         Report.Line(output, "files", $"{Audio.Count}");
         Report.Line(output, "audio", $"{Report.Offset(Total)} ({Minutes} minute(s))");
         Report.Line(output, "ceiling", $"{CeilingMinutes} minute(s)");
-        Report.Line(output, "account", WhereTheSpendLands);
+        Report.Line(output, "account", TypedBack.WhereTheSpendLands);
     }
 
     /// <summary>
-    /// Asks once, and answers whether somebody agreed to this run.
+    /// Asks once, and answers whether somebody agreed to this run: <see cref="TypedBack.Confirmed"/>
+    /// with the number this run is about.
     /// </summary>
     /// <remarks>
-    /// The number typed back, and not <c>y</c>. What somebody is agreeing to is a quantity, so
-    /// agreeing to it means saying it — a stray keystroke on a prompt that was waiting for one
-    /// cannot then spend their money, and somebody who read the wrong line types the wrong number.
+    /// This overload stays rather than being deleted in favour of a call at each caller, because
+    /// <c>&lt;see cref&gt;</c>s in <c>DeepgramCommands.cs</c> and <c>LiveDeepgramTests.cs</c> name
+    /// it by this name.
     /// </remarks>
     /// <param name="output">Where the question goes.</param>
     /// <param name="typed">What somebody typed, or nothing at all when nobody is there.</param>
-    public bool Confirmed(TextWriter output, Func<string?> typed)
-    {
-        ArgumentNullException.ThrowIfNull(output);
-        ArgumentNullException.ThrowIfNull(typed);
-
-        Report.Line(
-            output,
-            "confirm",
-            $"type {Minutes} and press Enter to send {Minutes} minute(s) of audio to Deepgram. "
-            + "Anything else sends nothing.");
-
-        return typed()?.Trim() == Minutes.ToString(CultureInfo.InvariantCulture);
-    }
+    public bool Confirmed(TextWriter output, Func<string?> typed) => TypedBack.Confirmed(Minutes, output, typed);
 
     /// <summary>
     /// How a run stamps every response it writes, so that files straddling a second still sort and

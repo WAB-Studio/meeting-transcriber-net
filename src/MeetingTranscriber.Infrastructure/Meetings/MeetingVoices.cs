@@ -153,6 +153,10 @@ public sealed class MeetingVoices(CorpusDbContext context, TimeProvider clock)
 
             if (answer.PersonId is { } personId)
             {
+                // Repeating who already stands on the voice is not a change, unless the recording
+                // is what settled it — in which case writing it is what makes it a person's answer
+                // rather than the channel's, which `SettleTheMicrophone` will not overwrite at the
+                // next render.
                 if (voice.PersonId == personId && !voice.SettledByTheRecording)
                 {
                     continue;

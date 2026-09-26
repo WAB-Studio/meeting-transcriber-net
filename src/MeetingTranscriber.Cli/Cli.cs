@@ -161,6 +161,12 @@ public static class Cli
             + " what comes back against the contract rather than against words",
             DeepgramCommands.Live),
         new(
+            "transcribe-again",
+            $"transcribe-again <meeting-id> {Corpus.Option} <directory>",
+            "send a meeting's audio to Deepgram again once its minutes are typed back, and file"
+            + " what comes back beside what was already paid for",
+            DeepgramCommands.TranscribeAgain),
+        new(
             "key",
             "key [--set | --forget]",
             "whether this machine holds a Deepgram key, and putting one there or taking it away",
@@ -240,7 +246,8 @@ public static class Cli
     /// refuses, a machine with no microphone to give, a disk that will not give the file up, a
     /// recording that names a meeting this corpus does not have, a machine with no Deepgram key on
     /// it, a classification the corpus will not take — a name already used beside it, something
-    /// still pointing at what is being removed. Anything else is a bug and comes out as one.
+    /// still pointing at what is being removed, a meeting whose stage does not allow what was
+    /// asked. Anything else is a bug and comes out as one.
     /// </summary>
     /// <remarks>
     /// <see cref="DbUpdateException"/> is the same corpus failure as <see cref="SqliteException"/>
@@ -267,6 +274,11 @@ public static class Cli
         or ClassificationException
         or AudioCaptureException
         or CorpusIntegrityException
+
+        // The screens already answer a meeting whose stage refuses what was asked with a sentence
+        // of their own, and never let it reach `ScreenFailures` — which is why the two lists differ
+        // on this one name, and not a sign they have drifted.
+        or MeetingStageException
         or CorpusSearchException
         or IntakeException
         or RenderException
