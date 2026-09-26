@@ -41,9 +41,9 @@ public sealed class SpoolChangesTests : IDisposable
     /// <summary>
     /// A channel whose device was taken away comes to name two devices over one meeting.
     /// The card says the one it opened on and this says the one that fed the rest of it, by the id
-    /// that reopens it and not only by a name two identical headsets would share. No claim is
-    /// cited: what the folder promises for a channel that named two devices is the open question
-    /// on 86ak3ynkc.
+    /// that reopens it and not only by a name two identical headsets would share. ISC-120.1 is what
+    /// the folder promises for a channel that named two devices, and this is the fact that helps
+    /// close it.
     /// </summary>
     [Fact]
     public void A_channel_whose_device_changed_says_which_device_fed_the_rest_of_the_meeting()
@@ -59,7 +59,8 @@ public sealed class SpoolChangesTests : IDisposable
     }
 
     /// <summary>
-    /// Anti, on the same open question: neither way of obtaining channel 0 is an endpoint, so a
+    /// Anti, and not the same claim: ISC-120.1's words say nothing about channel 0, so this cites
+    /// none. It is #140's own decision that neither way of obtaining channel 0 is an endpoint, so a
     /// line saying it moved onto one describes a recording this application cannot have made. It
     /// is refused where it is written and where it is read, because a folder can be edited by hand
     /// between the two.
