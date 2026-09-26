@@ -61,11 +61,11 @@ public sealed record RebuildReport(
 /// </para>
 /// <para>
 /// Summaries, decisions, actions and open questions are left where they are rather than
-/// reprojected. They are derived from the accepted extractions and those files are kept, but
-/// nothing reads one back into rows yet — that arrives with extraction validation — so deleting
-/// them would be losing what this cannot put back. When it arrives, it is a step in here, and what
-/// makes it safe to add is that every one of those rows is named by its run and its position rather
-/// than by an id this would mint again.
+/// reprojected. They are derived from the accepted extractions and those files are kept: the
+/// filing that accepted each extraction wrote its rows once, and nothing reads a kept extraction
+/// back into rows, so deleting them would lose what this cannot put back. Reading one back is a
+/// step that would go here, and what makes that safe is unchanged: every one of those rows is
+/// named by its run and its position rather than by an id this would mint again.
 /// </para>
 /// <para>
 /// A meeting the rebuild cannot do is named and costs that meeting: absorbed, never rolled back.

@@ -222,8 +222,8 @@ public static class CorpusSearch
 
     /// <summary>
     /// Which extraction a meeting's summary, decisions, actions and open questions come from: the
-    /// last one a person accepted, ties broken out to the run's own id, and a run nobody accepted
-    /// not read at all.
+    /// last one accepted, ties broken out to the run's own id, and a run nobody accepted not read
+    /// at all.
     /// </summary>
     /// <param name="meeting">
     /// The SQL naming the meeting: <c>meeting.id</c> where this correlates with a query,
@@ -244,7 +244,7 @@ public static class CorpusSearch
     /// breaks and the tie the meeting's screen breaks cannot come apart — there is no other way to
     /// break it. The two places both could have asked instead are still refused: a view has to be
     /// mapped keyless to be readable, and a column on <c>meetings</c> naming the run is a second
-    /// copy of a fact the runs already hold, wrong from the moment somebody accepts a run and
+    /// copy of a fact the runs already hold, wrong from the moment a run is accepted and
     /// something forgets to update it. What
     /// <c>CorpusSearchTests.Search_and_the_meeting_screen_break_a_tie_between_two_accepted_runs_the_same_way</c>
     /// holds is no longer that two spellings agree but that the one spelling reaches both readers,
@@ -262,7 +262,7 @@ public static class CorpusSearch
     /// noise band, so it was refused on the measurement rather than never taken — and the answer
     /// does not move with the corpus, because what the subquery orders is one meeting's runs and ten
     /// times the meetings gives it no more of them. What would move it is a meeting with hundreds,
-    /// which is a person accepting hundreds of extractions of one conversation.
+    /// which is hundreds of extractions of one conversation being accepted.
     /// </para>
     /// <para>
     /// A method and not a constant with a hole in it. The hole would have to be filled by

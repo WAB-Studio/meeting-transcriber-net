@@ -25,7 +25,7 @@ public class CorpusStatementsTests
         UtcTimestamp.From(new DateTimeOffset(2026, 7, 2, 9, 0, 0, TimeSpan.Zero));
 
     /// <summary>
-    /// Only the extraction a person accepted last answers.
+    /// Only the extraction accepted last answers.
     /// </summary>
     /// <remarks>
     /// Red the moment <c>CorpusSearch.TheRunThatCounts</c> is dropped for a plain join, which does
@@ -119,8 +119,8 @@ public class CorpusStatementsTests
     }
 
     /// <summary>
-    /// A run nobody accepted is not read at all, because acceptance is what says a person looked at
-    /// what the model wrote and let it into the corpus.
+    /// A run nobody accepted is not read at all, because a run that was refused or never filed is
+    /// one whose sentences never held up against the meeting.
     /// </summary>
     [Fact]
     public void An_extraction_nobody_accepted_says_nothing()

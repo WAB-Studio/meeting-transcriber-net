@@ -56,6 +56,8 @@ the call was out — the bytes were still paid for, so they are renamed out of t
 sweep deletes and kept under the run that bought them. There is no row for it, so `check` names it
 as a file with no row until somebody moves it or deletes it; nothing files it on its own, because
 what to make of a response the corpus refused is a person's question.
+`import-response <file> --meeting <id> --as-next-version` is how a person files it: as the
+meeting's next version, finishing the run that bought it and sending nothing.
 
 **A meeting's response is a series, and the version is in the name and nowhere else.** The first
 is `deepgram.json`; each one after it is `deepgram.v<n>.json`, filed beside every version before
@@ -170,8 +172,8 @@ first and leave a meeting whose card was never written without one for good.
 
 ## In the database
 
-Derived tables — `utterances`, `summaries`, `decisions`, `action_items`, `open_questions`. They are
-projections of `deepgram.json` and the accepted extractions.
+Derived tables — `utterances`, `turn_sources`, `summaries`, `decisions`, `action_items`,
+`open_questions`. They are projections of `deepgram.json` and the accepted extractions.
 
 The eight FTS5 indexes are derived too, and they are derived whatever they index. Three of them —
 `meetings_fts`, `nodes_fts`, `people_fts` — sit over tables that are sources, and that does not make
@@ -214,8 +216,9 @@ reprojected inside one transaction with `PRAGMA defer_foreign_keys`, so the turn
 under the same positions while the claims stay where they are, and the check happens at the commit.
 That is not a way around the constraint — it is what makes it useful: a rebuild that renumbered a
 turn fails at the end instead of quietly rewriting what every stored claim points at. Summaries,
-decisions, actions and open questions are left alone rather than reprojected, because nothing reads
-an accepted extraction back into rows yet; when something does, it becomes a step in there.
+decisions, actions and open questions are left alone rather than reprojected: the filing that
+accepted each extraction wrote its rows once, and nothing reads a kept extraction back into rows;
+reading one back is a step that would go in there.
 
 The FTS5 indexes are external content keyed on rowid, and a `VACUUM` may renumber the rowids of the
 tables they index, after which search answers with the wrong rows and says nothing. So nothing
@@ -267,8 +270,9 @@ themselves: what committed agrees with itself. Nothing else anywhere takes a hum
 without somebody asking.
 
 Runs and jobs — `capture_runs`, `capture_source_changes`, `processing_jobs`, `transcription_runs`,
-`extraction_runs` — are sources too. They are the record of what was charged, what state a restart
-found, and what a channel was on at each instant of a recording. `capture_source_changes` holds a
+`extraction_runs`, `extraction_refusals` — are sources too. They are the record of what was
+charged, what state a restart found, and what a channel was on at each instant of a recording.
+`capture_source_changes` holds a
 fact nothing on the machine can produce again once the spool folder is gone, and a table whose
 whole point is holding an unrepeatable fact is the one that must not be left to a catch-all.
 

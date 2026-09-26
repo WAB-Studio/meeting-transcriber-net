@@ -173,7 +173,7 @@ public static class MeetingRenderer
         // pass on: the human layer is the single writer of these rows, which is the whole of why
         // the swap has to go through it at all.
         var human = new HumanLayer(context, now);
-        Replace(context, meeting.Id, turns, human);
+        Replace(context, meeting.Id, turns, human, response, now);
 
         // The profile is the meeting's own and not a caller's, which is what keeps the label this
         // writes and the label the turns carry the same one: both come off the row this render is
@@ -258,7 +258,9 @@ public static class MeetingRenderer
         CorpusDbContext context,
         Guid meeting,
         IReadOnlyList<Turn> turns,
-        HumanLayer human)
+        HumanLayer human,
+        Artifact response,
+        UtcTimestamp now)
     {
         RefuseStrandedClaims(context, meeting, turns);
 
@@ -303,6 +305,27 @@ public static class MeetingRenderer
             // off a meeting that still carries the turns they hang off: rows somebody made by
             // listening, gone for a render that did not happen.
             human.ForgetVoicesNoTurnHas(meeting);
+
+            // Which response these turns were swapped from, found and updated or added — the link
+            // MeetingReading.TranscribedFrom reads back. Written here and nowhere else: this swap
+            // is the one place a meeting's turns ever change.
+            var source = context.TurnSources.FirstOrDefault(row => row.MeetingId == meeting);
+            if (source is null)
+            {
+                context.TurnSources.Add(new TurnSource
+                {
+                    MeetingId = meeting,
+                    ResponseArtifactId = response.Id,
+                    ProjectedAt = now,
+                });
+            }
+            else
+            {
+                source.ResponseArtifactId = response.Id;
+                source.ProjectedAt = now;
+            }
+
+            context.SaveChanges();
 
             enclosing.ReleaseSavepoint(BeforeTheTurnsGo);
             own?.Commit();
@@ -356,9 +379,8 @@ public static class MeetingRenderer
     /// Before the delete is also what makes it cost nothing to undo: no row has gone, so no deferred
     /// count has been raised and the savepoint below has nothing to put back. The claims are read
     /// out of the database and not out of the tracker, and that is a precondition rather than a
-    /// fact about the code — nothing writes a claim anywhere in <c>src/</c> yet, and when accepting
-    /// an extraction does, a caller staging claims and rendering in one unit of work would walk
-    /// past this.
+    /// fact about the code — <c>ExtractionIntake</c> writes claims and renders nothing, so no
+    /// caller stages claims and renders in one unit of work, and one that did would walk past this.
     /// </para>
     /// </remarks>
     private static void RefuseStrandedClaims(
@@ -448,7 +470,8 @@ public static class MeetingRenderer
     }
 
     /// <summary>
-    /// Every turn of this meeting the context is holding an opinion about, dropped.
+    /// Every turn of this meeting the context is holding an opinion about, dropped — and its turn
+    /// source alongside them, for the same reason.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -487,6 +510,17 @@ public static class MeetingRenderer
     private static void Forget(CorpusDbContext context, Guid meeting)
     {
         foreach (var tracked in context.ChangeTracker.Entries<Utterance>()
+            .Where(entry => entry.Entity.MeetingId == meeting)
+            .ToArray())
+        {
+            tracked.State = EntityState.Detached;
+        }
+
+        // The turn source is written under the same savepoint the turns are, on the tracker: on the
+        // undo path the tracker still holds it as saved once SaveChanges above has run, while the
+        // database has rolled it back. Left tracked, the next save on this context would write that
+        // stale row again as if nothing had happened.
+        foreach (var tracked in context.ChangeTracker.Entries<TurnSource>()
             .Where(entry => entry.Entity.MeetingId == meeting)
             .ToArray())
         {

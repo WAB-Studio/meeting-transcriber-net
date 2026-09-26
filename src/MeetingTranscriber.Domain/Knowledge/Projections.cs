@@ -188,6 +188,27 @@ public class ActionItem : IExtractionPosition
     public UtcTimestamp CreatedAt { get; set; }
 }
 
+/// <summary>Which paid response a meeting's stored turns were projected from.</summary>
+/// <remarks>
+/// <para>One writer: the renderer's swap. Nothing else creates, updates or deletes this row.</para>
+/// <para>Derived, so a rebuild writes it again — it names nothing a rebuild cannot put back.</para>
+/// <para>
+/// One row per meeting, found and updated rather than kept as history — <see cref="Utterance"/>'s
+/// own convention, because both are the live projection and neither is a record of what was tried.
+/// That is the opposite choice from <c>TranscriptionRun</c> and <c>ExtractionRun</c>, which keep
+/// every attempt: those are the record of what was charged, and a corpus that let a re-transcription
+/// overwrite the one before it would be a corpus that could not say a second call happened at all.
+/// </para>
+/// </remarks>
+public class TurnSource
+{
+    public Guid MeetingId { get; set; }
+
+    public Guid ResponseArtifactId { get; set; }
+
+    public UtcTimestamp ProjectedAt { get; set; }
+}
+
 /// <summary>
 /// Something the meeting raised and did not settle, exactly as the extraction proposed it.
 /// </summary>

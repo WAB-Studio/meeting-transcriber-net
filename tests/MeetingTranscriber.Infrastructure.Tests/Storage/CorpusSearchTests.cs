@@ -539,7 +539,7 @@ public class CorpusSearchTests
     }
 
     /// <summary>
-    /// Only the extraction a person accepted answers, and only the last one they accepted. A second
+    /// Only the extraction accepted answers, and only the last one accepted. A second
     /// extraction otherwise puts the same decision in front of somebody twice, said slightly
     /// differently, with nothing on either to say which is current — and an unaccepted run would put
     /// sentences nobody has vouched for under the meeting's own name.
@@ -563,12 +563,12 @@ public class CorpusSearchTests
         // A word only the unaccepted run's own rows carry. Nothing answers it at all, which is the
         // other half of the rule and a different path through the SQL: with no accepted run the
         // subquery is NULL, and a comparison against NULL is not a row that fails the filter but a
-        // row the filter never sees. Every meeting sits in that state until somebody accepts one.
+        // row the filter never sees. Every meeting sits in that state until a run is accepted.
         CorpusSearch.Find(context, "aceptar").ShouldBeEmpty();
     }
 
     /// <summary>
-    /// The rule "the last extraction a person accepted" is one spelling —
+    /// The rule "the last extraction accepted" is one spelling —
     /// <c>CorpusSearch.TheRunThatCounts</c> — reaching two readers, and they reach it by two
     /// different paths to the database: search correlates it on <c>meeting.id</c> inside a nine-way
     /// union, the meeting screen fills it with a bound <c>@meeting</c> and runs it alone. Two runs
@@ -708,7 +708,7 @@ public class CorpusSearchTests
 /// A corpus with something to find in it: two meetings, turns worth ranking against each other, a
 /// summary so the summary index has an answer, a tree and four people so the human layer does — two
 /// the meetings name and two they only heard — and three extractions of one meeting so that "the one
-/// a person accepted" has something to choose.
+/// accepted" has something to choose.
 /// </summary>
 /// <remarks>
 /// Every word here is in exactly one place on purpose. Nine branches over one corpus means a word
@@ -851,7 +851,7 @@ internal sealed class Corpus
         Voice(context, DailyId, "ch0:speaker_1", InesId, "person");
         Voice(context, DailyId, "ch1:speaker_0", BrunoId, "channel");
 
-        // Three extractions of one meeting: the one a person accepted last, one accepted before it,
+        // Three extractions of one meeting: the one accepted last, one accepted before it,
         // and one nobody accepted. Only the first answers.
         Run(context, JobId, RunId, acceptedAt: When, createdAt: When);
         Run(context, OldJobId, OldRunId, acceptedAt: Earlier, createdAt: Earlier);
