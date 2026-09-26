@@ -93,8 +93,9 @@ public static class Cli
         new(
             "import-response",
             $"import-response <{ResponseVersions.First}> {Corpus.Option} <directory>"
-            + " (--meeting <id> | --started-at <instant> --profile <multichannel|diarize>"
-            + " [--title <text>] [--context <text>] [--language <code>])",
+            + " (--meeting <id> [--as-next-version] | --started-at <instant>"
+            + " --profile <multichannel|diarize> [--title <text>] [--context <text>]"
+            + " [--language <code>])",
             "file a paid response — onto the meeting it was recorded from, or as a meeting of its"
             + " own — and render everything derived from it",
             MeetingCommands.ImportResponse),
