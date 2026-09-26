@@ -33,10 +33,20 @@ public static class MeetingCommands
 
     /// <summary>Files a paid response, as a meeting of its own or onto one already here.</summary>
     /// <remarks>
+    /// <para>
     /// <b><c>--meeting</c> is what tells the two halves apart.</b> Without it this is a response
     /// nothing in the corpus knows about and the command has to be told when the meeting was and
     /// what it was recorded as. With it the response belongs to a meeting this machine recorded,
     /// every one of those facts is already on the row, and none of them may be given.
+    /// </para>
+    /// <para>
+    /// <b><c>--as-next-version</c> is a flag on the first half, not a third half.</b> It is for a
+    /// re-transcription whose filing the corpus refused: the paid response is kept beside the
+    /// meeting rather than lost, and this is the door back in — <see cref="MeetingIntake.ReceiveWhatWasRefused"/>,
+    /// with no charge and no call to the provider. It is refused without <c>--meeting</c>, by
+    /// <see cref="Told"/>'s own <c>EnsureNothingLeftOver</c>, as a line typed wrong: a response
+    /// nothing in the corpus knows about cannot be the one a run already paid for.
+    /// </para>
     /// </remarks>
     public static int ImportResponse(Arguments arguments, TextWriter output)
     {
@@ -49,21 +59,30 @@ public static class MeetingCommands
         // Which door this is, and every flag that door takes, is settled before the corpus is
         // opened. A line that will be refused for what was typed on it refuses for that, rather
         // than for a corpus that happens not to be at the path beside it.
-        Func<CorpusDbContext, ReceivedMeeting> filing;
+        Func<CorpusDbContext, int> filing;
         if (arguments.Optional("--meeting") is { } named)
         {
+            // Read before OnlyTheMeeting's own EnsureNothingLeftOver, so this half's own flag is
+            // never the one it goes on to refuse everything else by.
+            var asNextVersion = arguments.Flag("--as-next-version");
             var meeting = OnlyTheMeeting(arguments, named);
-            filing = opened => MeetingIntake.ReceiveInto(opened, meeting, response, Clock.Now());
+            filing = asNextVersion
+                ? opened => ImportedAsNextVersion(opened, meeting, response, output)
+                : opened => Imported(output, MeetingIntake.ReceiveInto(opened, meeting, response, Clock.Now()));
         }
         else
         {
             var details = Told(arguments);
-            filing = opened => MeetingIntake.Receive(opened, response, details, Clock.Now());
+            filing = opened => Imported(output, MeetingIntake.Receive(opened, response, details, Clock.Now()));
         }
 
         using var context = corpus.Write();
-        var received = filing(context);
+        return filing(context);
+    }
 
+    /// <summary>What every filing reports, whichever door it came through.</summary>
+    private static int Imported(TextWriter output, ReceivedMeeting received)
+    {
         Report.Line(
             output,
             "meeting",
@@ -74,6 +93,31 @@ public static class MeetingCommands
         Report.Line(output, "manifest", received.Manifest.RelativePath);
         PutBack(output, received.PutBack);
         Rendered(output, received.Turns, received.Transcript.RelativePath, received.Utterances.RelativePath);
+        return Cli.Ok;
+    }
+
+    /// <summary>What <c>--as-next-version</c> reports on top of every other filing.</summary>
+    private static int ImportedAsNextVersion(
+        CorpusDbContext context, Guid meeting, FileInfo response, TextWriter output)
+    {
+        var filed = MeetingIntake.ReceiveWhatWasRefused(context, meeting, response, Clock.Now());
+        Imported(output, filed.Received);
+
+        Report.Line(output, "run", $"{filed.RunId} (finished)");
+        Report.Line(
+            output,
+            "job",
+            filed.JobSettled
+                ? "settled: nothing is waiting on a person"
+                : "left as it was: it was no longer waiting on a person, so it is not this "
+                  + "command's to settle");
+
+        Report.Line(
+            output,
+            "refused copy",
+            $"{filed.KeptPath} — filed as {filed.Received.Response.RelativePath}; nothing reads it "
+            + "now and it can be deleted");
+
         return Cli.Ok;
     }
 

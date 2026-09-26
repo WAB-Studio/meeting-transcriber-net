@@ -64,9 +64,10 @@ public delegate Task<long> Transcribing(LiveAudio sent, Stream wrote, Cancellati
 /// Every decision <see cref="Live(Arguments, TextWriter, Func{string}, Sending)"/> makes lives in
 /// <see cref="LiveCheck"/> and <see cref="LiveInvariants"/>, and every decision
 /// <see cref="TranscribeAgain(Arguments, TextWriter, Func{string}, SendingToTheProvider)"/> makes
-/// lives in <see cref="MeetingWork"/>, <c>TranscribingAMeeting</c> and <see cref="TypedBack"/> —
-/// none of which hold a client, so a suite can drive either whole. What is here is the client, the
-/// key, the files on disk and the report.
+/// lives in <see cref="MeetingWork"/>, <c>TranscribingAMeeting</c> and <see cref="TypedBack"/>, but
+/// one: how many named voices a new response takes a name off, which it counts itself before and
+/// after, as <c>docs/layout.md</c> says — none of which hold a client, so a suite can drive either
+/// whole. What is here is the client, the key, the files on disk and the report.
 /// </para>
 /// <para>
 /// <b>Nothing sends until somebody has typed the minutes back, and the key is not read until
