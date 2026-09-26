@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 162/222
+progress: 162/250
 updated: 2026-09-26
 ---
 
@@ -196,6 +196,10 @@ Board: 3 · Grabador WinUI
 - [x] ISC-150.1: What that person is told does not change because this machine stopped answering: the last thing it said about what the meeting is playing through stands until it says otherwise.
 - [x] ISC-151: Anti: audio this application did not record is never taken as two channels of one meeting.
 - [x] ISC-159: Audio nothing in its folder vouches for enters as one track, whatever shape the file itself is in.
+- [ ] ISC-195: Audio brought in with the folder this application recorded it into keeps what that folder says about the recording, whatever somebody typed.
+- [ ] ISC-195.1: When it started, what it was spoken in and what it was called are taken from the folder, with nothing typed.
+- [ ] ISC-195.2: Anti: a typed start, language or name the folder contradicts is refused, saying what each of the two says, and nothing is filed.
+- [ ] ISC-195.3: Anti: a meeting brought in this way never takes its identity from the folder — it is given its own, as every meeting is.
 - [ ] ISC-160: A meeting whose audio had its channels averaged into one on the way in still says so once the command that brought it in is gone.
 - [x] ISC-152: Every text a person reads in the application is there in both Spanish and English.
 - [x] ISC-153: The application opens in the language Windows is set to, unless somebody chose another.
@@ -232,13 +236,17 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-180.1: The transcript at that moment opens under the thing that cited it, without leaving the screen it is read on.
 - [ ] ISC-187: What a meeting was about and who was in it is somebody's to settle, on the meeting itself.
 - [ ] ISC-188: Every speaker a recording left unnamed is somebody's to name, and that name is what every later reading of the meeting shows.
+- [ ] ISC-191: A speaker left unnamed can be named by hearing them, not only by reading what they said.
+- [ ] ISC-191.1: Every unnamed speaker of a meeting whose audio is stored is offered a stretch of it where they talk and nobody talks over them.
+- [ ] ISC-191.2: Anti: a speaker is never offered the first stretch they spoke alone in when the meeting holds a longer one.
+- [ ] ISC-191.3: Anti: a meeting whose audio is not stored never offers a stretch that cannot play — it says its audio is gone, and its speakers are named by reading as before.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly
 once for exactly what they approved.
 Board: 4 · Deepgram BYOK
 - [x] ISC-84: The Deepgram key lives in Windows Credential Manager and is read from nowhere else.
-- [ ] ISC-85: Anti: no Deepgram call happens without an explicit approval carrying an estimate of what that call will cost, worked out from what is actually sent and never from how long the meeting was.
+- [ ] ISC-85: Anti: no Deepgram call happens without an explicit approval of an estimate of what that call will cost — given for that call, or given beforehand as a ceiling the estimate falls under — worked out from what is actually sent and never from how long the meeting was.
 - [x] ISC-86: Transcribing again is a new version beside what was paid for, never a replacement.
 - [x] ISC-87: A job whose outcome is uncertain — a charge that may already have happened — stops on a person.
 - [ ] ISC-88: What the provider returns has the shape the fixtures describe.
@@ -246,6 +254,10 @@ Board: 4 · Deepgram BYOK
 - [ ] ISC-155: Anti: a turn lands where it was said in the meeting, however much of the meeting was left out of what was sent.
 - [ ] ISC-182: A meeting transcribed while it was being recorded has its transcript when it stops, and nothing transcribes it a second time on its own.
 - [ ] ISC-183: A live transcription the provider was lost in the middle of says which stretch of the meeting it is missing, rather than reading as the whole of it.
+- [ ] ISC-193: A meeting goes from stop to summary with nothing pressed only when the person said it may, and only under the cost they allowed.
+- [ ] ISC-193.1: With unattended advance on, a meeting whose transcription is estimated under the ceiling the person set — in the same money the estimate is shown in — goes through what they settled should follow a recording, its transcription and its summary when that was settled too, with nothing pressed.
+- [ ] ISC-193.2: Anti: with unattended advance on, a meeting whose transcription is estimated over that ceiling is not sent, and waits for somebody to approve its cost.
+- [ ] ISC-193.3: Anti: unattended advance is off until somebody turns it on.
 
 ### F6 · Summaries
 Why: a meeting becomes a summary whose every claim resolves to something said, using the user's
@@ -258,6 +270,13 @@ Board: 5 · Summaries
 - [ ] ISC-116: Anti: a statement nothing said supports can come back only without that statement — one that comes back pointing at something else for the same statement is refused.
 - [x] ISC-142: Anti: what an extraction produced without validating is never shown as the meeting's summary.
 - [x] ISC-143: A meeting left without a summary says which condition failed and on which statement.
+- [ ] ISC-189: Anti: a summary run is given one meeting and nothing else the machine holds.
+- [ ] ISC-189.1: Anti: what a summary run can read is this meeting's turns, the context somebody authorised for it, the instructions it runs under and the shape its answer must take — never another meeting's words and never the corpus itself.
+- [ ] ISC-189.2: Anti: a summary run reaches none of the machine's credentials, and one run on the person's Claude Code account never carries an API key it found in the environment.
+- [ ] ISC-189.3: Anti: a summary run never continues a conversation begun for another meeting.
+- [ ] ISC-190: A meeting's text leaves for a summary only on terms the person was told.
+- [ ] ISC-190.1: Automatic summaries cannot be turned on until the person has been shown which provider will receive the meeting's text and which way that provider was found to be charging.
+- [ ] ISC-190.2: Anti: when the provider reports no quota left, or a move to paid usage, the summary run stops rather than carrying on, and automatic summaries stop with it.
 
 ### F7 · Local knowledge
 Why: people and agents query the corpus with no server, no network and no cloud, and every
@@ -285,6 +304,11 @@ Board: 6 · Conocimiento local
 - [ ] ISC-109: Deciding what an arriving meeting changed reads a bounded part of the corpus, and what bounds it does not grow as meetings accumulate.
 - [x] ISC-144: Asking for a node brings back the statements of its meetings in the order they were said, each carrying the meeting and the date it came from.
 - [x] ISC-145: A node's answer includes the statements of everything hanging off its children.
+- [ ] ISC-192: A word the transcripts keep getting wrong is found from the corpus itself, so somebody can correct it.
+- [ ] ISC-192.1: A word somebody types comes back with every way the corpus has written something like it, closest first, each with how many times it was written that way.
+- [ ] ISC-192.2: With nothing typed, the corpus offers as candidates the words the provider was unsure of that come up often and resemble a word coming up far more often.
+- [ ] ISC-192.3: A correction belongs either to the whole corpus or to one node of the tree, and a meeting linked to no node is still corrected by those that belong to the whole corpus.
+- [ ] ISC-192.4: Anti: finding candidates, asked for or not, needs no model — nothing passes the corpus through one, and every candidate is found with none installed.
 
 ### F8 · Distribution and backup
 Why: the application installs, upgrades and comes back from a lost disk, because the corpus
@@ -294,6 +318,10 @@ Board: 7 · Distribución y backup
 - [x] ISC-110.1: Anti: no folder the application would open a corpus in is one the package takes with it when it is uninstalled — neither the one it falls back to nor one a person named.
 - [ ] ISC-110.2: A corpus an installed build wrote is still there, whole, after the package is uninstalled.
 - [ ] ISC-111: A snapshot restores to an alternate directory and comes back sound.
+- [ ] ISC-194: A person can take the corpus out of the application, choosing what goes with it.
+- [ ] ISC-194.1: An export into a folder the person chose carries, for every meeting, each kind they ticked — its audio, its transcripts, its summaries, what somebody corrected by hand — and not one byte of a kind they left unticked.
+- [ ] ISC-194.2: What an export holds, and which meeting each thing in it came from, is read by opening its folder, with this application not installed.
+- [ ] ISC-194.3: When the last export was made, and what it carried, is said without making another.
 - [ ] ISC-112: An upgrade over an installed build leaves the corpus intact.
 - [ ] ISC-113: The CLI and the MCP server are reachable by app execution alias.
 - [ ] ISC-114: The corpus location is configurable and validated at startup.
