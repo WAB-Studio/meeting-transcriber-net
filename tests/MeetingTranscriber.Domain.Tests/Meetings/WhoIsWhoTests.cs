@@ -132,6 +132,96 @@ public class WhoIsWhoTests
     }
 
     [Fact]
+    public void A_voice_is_offered_the_longest_stretch_it_spoke_alone_in()
+    {
+        var turns = new[]
+        {
+            Turn(0, AudioChannel.Loopback, 0, start: 0, length: 2_000),
+            Turn(1, AudioChannel.Loopback, 0, start: 10_000, length: 5_000),
+        };
+
+        var voice = WhoIsWho.Of(SourceProfile.Multichannel, turns, []).Voices.Single();
+
+        voice.Alone.ShouldNotBeNull();
+        voice.Alone!.From.ShouldBe(Duration.FromMilliseconds(10_000));
+        voice.Alone.To.ShouldBe(Duration.FromMilliseconds(15_000));
+    }
+
+    [Fact]
+    public void A_stretch_somebody_talked_over_is_cut_where_they_did()
+    {
+        var turns = new[]
+        {
+            Turn(0, AudioChannel.Loopback, 0, start: 0, length: 10_000),
+            Turn(1, AudioChannel.Loopback, 1, start: 6_000, length: 1_000),
+        };
+
+        var voice = WhoIsWho.Of(SourceProfile.Multichannel, turns, []).Voices
+            .Single(candidate => candidate.Label == SpeakerLabels.For(AudioChannel.Loopback, 0));
+
+        voice.Alone!.From.ShouldBe(Duration.FromMilliseconds(0));
+        voice.Alone.To.ShouldBe(Duration.FromMilliseconds(6_000));
+    }
+
+    [Fact]
+    public void Talking_over_from_the_other_channel_counts()
+    {
+        var turns = new[]
+        {
+            Turn(0, AudioChannel.Loopback, 0, start: 0, length: 10_000),
+            Turn(1, AudioChannel.Microphone, 0, start: 6_000, length: 1_000),
+        };
+
+        var voice = WhoIsWho.Of(SourceProfile.Multichannel, turns, []).Voices
+            .Single(candidate => candidate.Label == SpeakerLabels.For(AudioChannel.Loopback, 0));
+
+        voice.Alone!.To.ShouldBe(Duration.FromMilliseconds(6_000));
+    }
+
+    [Fact]
+    public void A_voice_that_never_spoke_alone_is_offered_nothing()
+    {
+        var turns = new[]
+        {
+            Turn(0, AudioChannel.Loopback, 0, start: 0, length: 5_000),
+            Turn(1, AudioChannel.Loopback, 1, start: 0, length: 5_000),
+        };
+
+        var voice = WhoIsWho.Of(SourceProfile.Multichannel, turns, []).Voices
+            .Single(candidate => candidate.Label == SpeakerLabels.For(AudioChannel.Loopback, 0));
+
+        voice.Alone.ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_long_stretch_is_offered_as_its_first_fifteen_seconds()
+    {
+        var turns = new[] { Turn(0, AudioChannel.Loopback, 0, start: 0, length: 20_000) };
+
+        var voice = WhoIsWho.Of(SourceProfile.Multichannel, turns, []).Voices.Single();
+
+        voice.Alone!.From.ShouldBe(Duration.FromMilliseconds(0));
+        voice.Alone.To.ShouldBe(WhoIsWho.LongestClip);
+    }
+
+    [Fact]
+    public void A_voice_is_quoted_by_the_turn_its_stretch_is_in()
+    {
+        var turns = new[]
+        {
+            Turn(0, AudioChannel.Loopback, 0, start: 0, length: 8_000),
+            Turn(1, AudioChannel.Loopback, 1, start: 1_000, length: 6_000),
+            Turn(2, AudioChannel.Loopback, 0, start: 20_000, length: 3_000),
+        };
+
+        var voice = WhoIsWho.Of(SourceProfile.Multichannel, turns, []).Voices
+            .Single(candidate => candidate.Label == SpeakerLabels.For(AudioChannel.Loopback, 0));
+
+        voice.Quoted.Ordinal.ShouldBe(2);
+        voice.Alone!.From.ShouldBe(Duration.FromMilliseconds(20_000));
+    }
+
+    [Fact]
     public void A_null_argument_throws()
     {
         Should.Throw<ArgumentNullException>(() => WhoIsWho.Of(SourceProfile.Multichannel, null!, []));

@@ -188,6 +188,38 @@ public class SayingWhoIsWhoTests
     }
 
     /// <summary>
+    /// A clip is offered only over a recording <c>RecordedAudio.Playable</c> already opened — the
+    /// one state <c>ClipRow</c> and <c>OpenTheClips</c> both leave the recording standing on.
+    /// </summary>
+    /// <remarks>
+    /// A meeting whose recording is not there, or is not where the corpus says it is, already
+    /// carries a sentence of its own — <c>OpenTheClips</c>'s <c>RecordedAudio.Playable</c> guard —
+    /// and a card that opened a player anyway over either would throw on a file that is not there.
+    /// </remarks>
+    [Fact]
+    public void A_clip_plays_only_off_a_recording_that_plays()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        Body(source, "private void OpenTheClips(VoicesAsHeard read)").ShouldContain(
+            "RecordedAudio.Playable",
+            customMessage: "OpenTheClips no longer checks RecordedAudio.Playable before opening a "
+            + "player, so a card could offer a clip over a recording the corpus cannot find.");
+
+        var clipRow = Body(source, "private UIElement? ClipRow(VoicesAsHeard read, Voice voice, int position)");
+
+        clipRow.ShouldContain(
+            "read.TheRecording is not RecordedAudio.Playable",
+            customMessage: "ClipRow no longer reads RecordedAudio.Playable off the meeting it was "
+            + "given, so it could draw a clip button over a recording that is not there.");
+
+        clipRow.ShouldContain(
+            "_playing is not { } playing",
+            customMessage: "ClipRow no longer reads whether a recording is open, so it could draw "
+            + "a clip button with no player behind it.");
+    }
+
+    /// <summary>
     /// The dialogue that adds somebody, and corrects somebody's name, is one component both
     /// screens share rather than two copies of a form.
     /// </summary>

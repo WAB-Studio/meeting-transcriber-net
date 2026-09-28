@@ -1,3 +1,4 @@
+using MeetingTranscriber.Audio;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
@@ -5,6 +6,7 @@ using MeetingTranscriber.Presentation;
 using MeetingTranscriber.Recording;
 
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 
 namespace MeetingTranscriber.App;
@@ -22,11 +24,19 @@ namespace MeetingTranscriber.App;
 /// keep for the same reason.
 /// </para>
 /// <para>
-/// It opens no corpus it does not let go of, for the reason <see cref="MeetingsDrawer"/> gives.
+/// It opens no corpus it does not let go of, for the reason <see cref="MeetingsDrawer"/> gives. The
+/// one exception is a clip: the file plays from is opened once, alongside the voices, and let go of
+/// on <see cref="Close"/>, on <em>Guardar</em> and on leaving — the same three moments
+/// <see cref="ReadingAMeeting"/> lets go of its own player.
 /// </para>
 /// </remarks>
 public sealed partial class SayingWhoIsWho : UserControl
 {
+    /// <summary>How often a clip playing is checked against where it has to stop.</summary>
+    private static readonly TimeSpan HowOftenAClipIsChecked = TimeSpan.FromMilliseconds(100);
+
+    private readonly DispatcherTimer _clipWatch = new() { Interval = HowOftenAClipIsChecked };
+
     private CorpusFolder? _corpus;
     private UiLanguage _language;
 
@@ -46,12 +56,36 @@ public sealed partial class SayingWhoIsWho : UserControl
     private readonly ScreenStatus _status = new();
 
     /// <summary>
+    /// What this screen says in place of every voice's clip, or nothing while there is one to
+    /// offer: a meeting whose recording will not play, said once for the whole screen rather than
+    /// on every card.
+    /// </summary>
+    private readonly ScreenStatus _noAudio = new();
+
+    /// <summary>
+    /// The one recording every clip on this screen plays from, opened once for as long as this
+    /// screen is showing the meeting it belongs to. Null while there is nothing to play, or while
+    /// the machine would not open it.
+    /// </summary>
+    private Playback? _playing;
+
+    /// <summary>Which voice's clip <see cref="_playing"/> is seeked to, or nothing.</summary>
+    private string? _playingLabel;
+
+    /// <summary>Where <see cref="_playing"/> has to stop, for the voice it is playing.</summary>
+    private HeardAlone? _playingClip;
+
+    /// <summary>
     /// True while this screen is building its own controls, so a picker being set to what it
     /// already says is not read as somebody having chosen something.
     /// </summary>
     private bool _drawing;
 
-    public SayingWhoIsWho() => InitializeComponent();
+    public SayingWhoIsWho()
+    {
+        InitializeComponent();
+        _clipWatch.Tick += OnClipWatch;
+    }
 
     /// <summary>The names were saved, and this screen is done with the meeting.</summary>
     public event EventHandler<Guid>? Named;
@@ -105,11 +139,15 @@ public sealed partial class SayingWhoIsWho : UserControl
         _read = null;
         _draft.Clear();
         _status.Nothing();
+        _noAudio.Nothing();
+        StopClip();
 
         TheVoices.Children.Clear();
         WhichMeetingText.Text = string.Empty;
         StatusText.Text = string.Empty;
         StatusText.Visibility = Visibility.Collapsed;
+        NoAudioText.Text = string.Empty;
+        NoAudioText.Visibility = Visibility.Collapsed;
     }
 
     /// <summary>
@@ -134,6 +172,8 @@ public sealed partial class SayingWhoIsWho : UserControl
         _read = null;
         _draft.Clear();
         _status.Nothing();
+        _noAudio.Nothing();
+        StopClip();
 
         if (_meeting is not { } meetingId)
         {
@@ -168,9 +208,41 @@ public sealed partial class SayingWhoIsWho : UserControl
             {
                 _draft[voice.Label] = voice.PersonId;
             }
+
+            OpenTheClips(read);
         }
 
         Render();
+    }
+
+    /// <summary>
+    /// Opens the recording every clip on this screen plays from, or says why there is none to
+    /// offer.
+    /// </summary>
+    /// <remarks>
+    /// A clip plays only off a recording that plays: the other two states of
+    /// <see cref="RecordedAudio"/> already carry a sentence of their own, said once for the whole
+    /// screen rather than repeated on every card that would otherwise offer nothing.
+    /// </remarks>
+    private void OpenTheClips(VoicesAsHeard read)
+    {
+        if (read.TheRecording is not RecordedAudio.Playable || read.Audio is not { } file)
+        {
+            _noAudio.Says(UiTexts.ThisMeetingHasNoAudioToListenTo);
+            return;
+        }
+
+        try
+        {
+            _playing = Playback.Of(file);
+        }
+        catch (Exception wont) when (ScreenFailures.Reportable(wont))
+        {
+            // The file is opened here rather than lazily on the first press, so a recording a
+            // backup has locked or that is not really a WAV says so the moment this screen draws
+            // rather than behind a button that looks like it would work.
+            _noAudio.Says(UiTexts.ThisMeetingWillNotPlay, wont.Message);
+        }
     }
 
     /// <summary>The draft moved: whatever went wrong last is no longer what is on screen.</summary>
@@ -189,6 +261,7 @@ public sealed partial class SayingWhoIsWho : UserControl
         {
             TheVoices.Children.Clear();
             ShowTheStatus();
+            ShowNoAudio();
 
             if (_read is not { } read)
             {
@@ -260,6 +333,11 @@ public sealed partial class SayingWhoIsWho : UserControl
         });
         left.Children.Add(new TextBlock { Text = voice.Quoted.Text, Style = Chrome("VoiceQuoted") });
 
+        if (ClipRow(read, voice, position) is { } clip)
+        {
+            left.Children.Add(clip);
+        }
+
         Grid.SetColumn(left, 0);
         layout.Children.Add(left);
 
@@ -269,6 +347,50 @@ public sealed partial class SayingWhoIsWho : UserControl
 
         card.Child = layout;
         return card;
+    }
+
+    /// <summary>
+    /// The one row that offers to hear a voice alone, or nothing when there is nothing to offer.
+    /// </summary>
+    /// <remarks>
+    /// A clip is drawn only on a voice that carries a picker — the recording already settled a
+    /// microphone that caught exactly one voice, and there is nothing to recognise somebody by
+    /// there — only when <paramref name="read"/>'s own recording is
+    /// <see cref="RecordedAudio.Playable"/>, the domain's own answer to whether there is anything to
+    /// play, and only once <see cref="_playing"/> is really open on it. A voice with no stretch it
+    /// spoke alone in is left with its longest turn to read and no clip to offer either.
+    /// </remarks>
+    private UIElement? ClipRow(VoicesAsHeard read, Voice voice, int position)
+    {
+        if (voice.SettledByTheRecording
+            || voice.Alone is not { } stretch
+            || read.TheRecording is not RecordedAudio.Playable
+            || _playing is not { } playing)
+        {
+            return null;
+        }
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var isPlayingThis = _playingLabel == voice.Label && playing.IsPlaying;
+
+        var button = new Button
+        {
+            Content = In(isPlayingThis ? UiTexts.Pause : UiTexts.Play),
+            Style = Chrome("ClipButton"),
+        };
+
+        AutomationProperties.SetAutomationId(button, $"clip-{position}");
+        button.Click += (_, _) => OnClipToggle(voice, stretch);
+
+        row.Children.Add(button);
+        row.Children.Add(new TextBlock
+        {
+            Text = ScreenNumbers.Between(stretch.From, stretch.To),
+            Style = Chrome("ClipRange"),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        return row;
     }
 
     /// <summary>The name shown and not chosen, on a voice the recording already settled.</summary>
@@ -343,6 +465,92 @@ public sealed partial class SayingWhoIsWho : UserControl
         StatusText.Visibility = _status.IsSaying ? Visibility.Visible : Visibility.Collapsed;
     }
 
+    // ── The clips ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Puts the sentence standing in for every voice's clip on the screen, or takes it off.</summary>
+    private void ShowNoAudio()
+    {
+        NoAudioText.Text = _noAudio.In(_language);
+        NoAudioText.Visibility = _noAudio.IsSaying ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// One card's press: starts its clip from the beginning of its stretch, or pauses it where it
+    /// is when it is already the one playing.
+    /// </summary>
+    /// <remarks>
+    /// Always the beginning, and never wherever a previous pause left it: this is a fifteen-second
+    /// clip played to recognise a voice by, not a recording somebody is partway through listening
+    /// to, and starting over is what makes a second press mean the same thing the first one did —
+    /// hear the whole of what there is. Redraws the whole screen rather than touching one button's
+    /// own <c>Content</c>, the same way every other change on this screen does
+    /// (<see cref="Changed"/>): a card's Play/Pause label is <see cref="_playingLabel"/> and
+    /// <see cref="Playback.IsPlaying"/> read back, not a second copy of the same fact kept in sync
+    /// by hand.
+    /// </remarks>
+    private void OnClipToggle(Voice voice, HeardAlone clip)
+    {
+        if (_playing is not { } playing)
+        {
+            return;
+        }
+
+        if (_playingLabel == voice.Label && playing.IsPlaying)
+        {
+            playing.Pause();
+            _clipWatch.Stop();
+            Render();
+            return;
+        }
+
+        _playingLabel = voice.Label;
+        _playingClip = clip;
+        playing.Seek(clip.From);
+        playing.Play();
+        _clipWatch.Start();
+        Render();
+    }
+
+    /// <summary>
+    /// Stops a clip where its stretch ends, and says so when the endpoint stopped it instead.
+    /// </summary>
+    private void OnClipWatch(object? sender, object e)
+    {
+        if (_playing is not { } playing || _playingClip is not { } clip)
+        {
+            _clipWatch.Stop();
+            return;
+        }
+
+        if (playing.WhatStoppedIt is { } broke)
+        {
+            // The endpoint pushes the audio on a thread of its own, for the same reason
+            // ReadingAMeeting's own watch catches it there: a device pulled out mid clip fails over
+            // there and nowhere this screen is standing.
+            StopClip();
+            _noAudio.Says(UiTexts.ThisMeetingWillNotPlay, broke.Message);
+            Render();
+            return;
+        }
+
+        if (!playing.IsPlaying || playing.At >= clip.To)
+        {
+            playing.Pause();
+            _clipWatch.Stop();
+            Render();
+        }
+    }
+
+    /// <summary>Lets go of the recording every clip plays from, without touching anything else.</summary>
+    private void StopClip()
+    {
+        _clipWatch.Stop();
+        _playing?.Dispose();
+        _playing = null;
+        _playingLabel = null;
+        _playingClip = null;
+    }
+
     /// <summary>
     /// Saves what was answered and renders the meeting again in the same transaction, so a name
     /// saved is a name the transcript already shows.
@@ -357,6 +565,11 @@ public sealed partial class SayingWhoIsWho : UserControl
     /// </remarks>
     private void OnSave(object sender, RoutedEventArgs e)
     {
+        // Before anything else, and whether or not the save goes through: the file and the
+        // endpoint a clip holds are not this press's to leak, and a save that refuses still leaves
+        // the screen without a running clip behind it.
+        StopClip();
+
         if (_meeting is not { } meeting || Corpus().Folder is not { } folder)
         {
             return;

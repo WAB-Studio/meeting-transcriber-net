@@ -86,6 +86,26 @@
                 <Setter Property="MinWidth" Value="180" />
                 <Setter Property="FontSize" Value="{StaticResource TranscriptSize}" />
             </Style>
+
+            <!-- The one sentence standing in for every card's clip, on a meeting with nothing to
+                 play — `ReadingAMeeting.xaml`'s own `FiledUnderNothing` rank: a real answer and not
+                 a gap, so it reads as a fact rather than as something gone wrong. -->
+            <Style x:Key="NoAudio" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+
+            <!-- The press that starts or pauses one voice's clip — `ReadingAMeeting.xaml`'s own
+                 `WhenItWasSaid`, minus the number face: this button's whole word is *Reproducir* or
+                 *Pausar*, not a number. -->
+            <Style x:Key="ClipButton" TargetType="Button" BasedOn="{StaticResource RowButtonOnCard}">
+                <Setter Property="Padding" Value="10,0,10,0" />
+                <Setter Property="MinWidth" Value="0" />
+            </Style>
+
+            <!-- Where a clip's stretch falls in the meeting: the data rank, the same one
+                 `ScreenNumbers` writes every other machine number in. -->
+            <Style x:Key="ClipRange" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
         </Grid.Resources>
 
         <Grid.RowDefinitions>
@@ -120,18 +140,28 @@
         <Border Grid.Row="1" Style="{StaticResource Card}" Padding="{StaticResource LargeCardPadding}">
             <Grid RowSpacing="12">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <ScrollViewer Grid.Row="0">
+                <!-- Stands in for every card's clip, on a meeting with nothing to play. Above the
+                     cards rather than on each one, because it is one fact about the meeting and not
+                     one about any voice in particular. -->
+                <TextBlock
+                    x:Name="NoAudioText"
+                    Grid.Row="0"
+                    Style="{StaticResource NoAudio}"
+                    Visibility="Collapsed" />
+
+                <ScrollViewer Grid.Row="1">
                     <StackPanel x:Name="TheVoices" Spacing="12" />
                 </ScrollViewer>
 
                 <TextBlock
                     x:Name="StatusText"
-                    Grid.Row="1"
+                    Grid.Row="2"
                     Style="{StaticResource BodyText}"
                     Foreground="{StaticResource PeakBrush}"
                     TextWrapping="Wrap"
@@ -139,7 +169,7 @@
 
                 <!-- The two answers, in the two places the grammar fixes: the neutral one on the
                      left empties nothing and writes nothing, the act on the right is what saves. -->
-                <Grid Grid.Row="2" ColumnSpacing="10">
+                <Grid Grid.Row="3" ColumnSpacing="10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />

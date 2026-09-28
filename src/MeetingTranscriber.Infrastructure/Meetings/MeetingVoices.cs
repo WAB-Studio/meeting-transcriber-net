@@ -9,13 +9,25 @@ namespace MeetingTranscriber.Infrastructure.Meetings;
 /// The corpus side of the screen that says who is who, read: the meeting's voices, everybody who
 /// could be put on one, and the organizations a new person can be added to.
 /// </summary>
+/// <param name="TheRecording">
+/// What this meeting has to play, if anything — the same three-state fact <see cref="MeetingScreen"/>
+/// reads for the meeting screen's own player, asked again here for the clip each unnamed voice may
+/// be offered.
+/// </param>
+/// <param name="Audio">The file a clip plays from, only when <paramref name="TheRecording"/> is
+/// <see cref="RecordedAudio.Playable"/>.</param>
 /// <param name="Everybody">Every person in the corpus, by display name and then by id.</param>
 /// <param name="Organizations">
 /// The nodes at the top of the tree, for the dialogue that adds a person: only an organization is a
 /// place somebody can belong to.
 /// </param>
 public sealed record VoicesAsHeard(
-    Meeting Meeting, WhoIsWho Voices, IReadOnlyList<Person> Everybody, IReadOnlyList<Node> Organizations);
+    Meeting Meeting,
+    WhoIsWho Voices,
+    RecordedAudio TheRecording,
+    FileInfo? Audio,
+    IReadOnlyList<Person> Everybody,
+    IReadOnlyList<Node> Organizations);
 
 /// <summary>One voice, and who somebody put on it, or nobody.</summary>
 public sealed record VoiceAnswer(string Label, Guid? PersonId);
@@ -36,8 +48,10 @@ public sealed class MeetingVoices(CorpusDbContext context, TimeProvider clock)
     /// <exception cref="MeetingStageException">There is no such meeting in this corpus.</exception>
     public VoicesAsHeard Of(Guid meetingId)
     {
-        var meeting = new MeetingReading(context, clock).Row(meetingId);
+        var reading = new MeetingReading(context, clock);
+        var meeting = reading.Row(meetingId);
         var voices = Heard(meetingId);
+        var audio = reading.Audio(meetingId, out var recorded);
 
         var everybody = context.People
             .AsNoTracking()
@@ -50,7 +64,7 @@ public sealed class MeetingVoices(CorpusDbContext context, TimeProvider clock)
             .OrderBy(node => node.Name)
             .ToArray();
 
-        return new VoicesAsHeard(meeting, voices, everybody, organizations);
+        return new VoicesAsHeard(meeting, voices, recorded, audio, everybody, organizations);
     }
 
     /// <summary>

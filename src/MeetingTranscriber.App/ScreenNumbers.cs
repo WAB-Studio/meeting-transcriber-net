@@ -124,6 +124,16 @@ internal static class ScreenNumbers
         length.ToTimeSpan().ToString(@"h\:mm\:ss", CultureInfo.InvariantCulture);
 
     /// <summary>
+    /// The stretch of a meeting a clip plays: where it starts and where it ends.
+    /// </summary>
+    /// <remarks>
+    /// A dash and not <see cref="Beside"/>'s separator, for the same reason <see cref="Inside"/>
+    /// has its own: this is one span and not two facts standing next to each other, and <em>05:00 ·
+    /// 05:15</em> would read as two different moments rather than the fifteen seconds between them.
+    /// </remarks>
+    public static string Between(Duration from, Duration to) => $"{Long(from)} – {Long(to)}";
+
+    /// <summary>
     /// Which meeting this is: its name and when it was. A meeting nobody has named is the moment on
     /// its own rather than the moment after a gap.
     /// </summary>
