@@ -37,6 +37,12 @@ internal static class ClaudeCodeWorkspace
             WriteText(folder, prompt, "schema.md", request.Schema.Document);
             WriteBytes(folder, prompt, "meeting.json", request.Input.Bytes());
 
+            if (request.Correction is { } correction)
+            {
+                WriteBytes(folder, prompt, "previous-output.json", correction.PreviousOutput);
+                WriteText(folder, prompt, "what-was-wrong.md", correction.WhatWasWrong);
+            }
+
             return new Written(folder, prompt.ToString());
         }
         catch

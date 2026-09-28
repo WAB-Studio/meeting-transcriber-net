@@ -262,6 +262,26 @@ public class ClaudeCodeSummariesTests : IDisposable
     }
 
     [Fact]
+    public async Task A_correction_holds_the_answer_before_and_what_was_wrong_beside_the_meeting()
+    {
+        var fake = FakeClaudeCode.In(Folder("fake"));
+        fake.AnswersVersion("fake 1").Answers(FakeClaudeCode.Envelope("{}"));
+        var provider = Provider(fake);
+        var correction = new SummaryCorrection(
+            Encoding.UTF8.GetBytes("""{"old":"answer"}"""), "fix the shape, please");
+        var request = Request(correction);
+
+        await provider.ExtractAsync(request, TestContext.Current.CancellationToken);
+
+        var call = fake.Calls.Single(one => one.Arguments.Contains("-p"));
+        call.Files.ShouldBe(
+            ["instructions.md", "meeting.json", "previous-output.json", "schema.md", "what-was-wrong.md"],
+            ignoreOrder: true);
+        call.Prompt.ShouldEndWith(
+            Block("previous-output.json", """{"old":"answer"}""") + Block("what-was-wrong.md", "fix the shape, please"));
+    }
+
+    [Fact]
     public async Task Asking_whether_it_is_there_answers_with_its_version()
     {
         var fake = FakeClaudeCode.In(Folder("fake"));
