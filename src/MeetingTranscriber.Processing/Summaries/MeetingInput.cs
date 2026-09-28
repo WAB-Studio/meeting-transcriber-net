@@ -14,14 +14,16 @@ namespace MeetingTranscriber.Processing.Summaries;
 /// </summary>
 /// <remarks>
 /// <para>
-/// These bytes are what a provider is handed and what #119's workspace holds. Preparing the same
+/// These bytes are what a provider is handed and what <see cref="ClaudeCode.ClaudeCodeWorkspace"/>
+/// writes to <c>meeting.json</c>, in the folder each run gets of its own. Preparing the same
 /// meeting twice, with nothing changed in between, writes the same bytes, because
 /// <see cref="ExtractionCheck"/> trusts <see cref="Hash"/> to say whether an extraction was made
 /// from what the meeting says now rather than from what it said when the call was sent.
 /// </para>
 /// <para>
-/// The authorised human context arquitectura.md §7.2 describes is left out of version 1 on purpose:
-/// #119 adds it, and adding it changes the bytes, and so the hash, of runs prepared afterwards only.
+/// No human context is added here. The authorised human context arquitectura.md §7.2 describes is
+/// left out on purpose: nothing in this build lets a person authorise one, and the day something
+/// does, adding it changes the bytes, and so the hash, of runs prepared from then on.
 /// </para>
 /// </remarks>
 public sealed record MeetingInput(Guid MeetingId, string TranscribedFrom, IReadOnlyList<Turn> Turns)
