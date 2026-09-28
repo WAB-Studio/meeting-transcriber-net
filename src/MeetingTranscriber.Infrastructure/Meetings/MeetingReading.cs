@@ -400,21 +400,32 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     }
 
     /// <summary>
-    /// The first reason the meeting's newest Extract job's own run was refused, or none.
+    /// The first reason the meeting's newest Extract job's correction was refused, or — when it
+    /// carries no correction — the first reason its one run was, or none.
     /// </summary>
     /// <remarks>
     /// Only called once <see cref="Of"/> has already read <c>owed.Failed</c> as
     /// <see cref="JobFailure.ExtractionRefused"/>, so the newest Extract job by
     /// <see cref="ProcessingJob.CreatedAt"/> — the same "newest" <c>OwedWork.Of</c> uses — is the
-    /// one whose run failed to hold up. It has exactly one refusal row at ordinal zero or more, and
-    /// the first is what a person reads.
+    /// one whose run failed to hold up. A job can carry a refused run and, once <c>ExtractionIntake</c>
+    /// has filed one correction of it, the correction as well — and it is the correction a person
+    /// reads, because that is the attempt made about what the first one got wrong.
+    /// <para>
+    /// Read off <c>CorrectsRunId</c> and never off <c>CreatedAt</c> or <c>Id</c>: two runs of one
+    /// job share a <c>CreatedAt</c> under every fixed test clock, and <c>Id</c> is a random
+    /// <c>Guid</c>, so neither orders them. <c>CorrectsRunId</c> is the one column that says which
+    /// run is the correction, and the run that names none is read only when it is the job's only one.
+    /// The corpus itself holds "at most one correction per job" to —
+    /// <c>ux_extraction_runs_one_correction_per_job</c> refuses a second — so at most one candidate
+    /// is ever found here; the first found is taken regardless, rather than trusting that.
+    /// </para>
     /// <para>
     /// A second query and not <c>OwedWork.Of</c>'s own answer, because that method only carries the
-    /// failure kind out of the meeting's jobs and never the job's own id. It orders by
-    /// <c>CreatedAt</c> with no tiebreak on that same trust: <c>OwedWork.Of</c>'s own remarks are
-    /// where that is safe to do, because <c>MeetingWork</c> refuses a second job of a kind while an
-    /// earlier one is not yet terminal, so two Extract jobs of one meeting never share a
-    /// <c>CreatedAt</c>. A change to that rule has to come here too.
+    /// failure kind out of the meeting's jobs and never the job's own id. The job itself is still
+    /// found by <c>CreatedAt</c> with no tiebreak, on the same trust <c>OwedWork.Of</c>'s own
+    /// remarks give: <c>MeetingWork</c> refuses a second job of a kind while an earlier one is not
+    /// yet terminal, so two Extract jobs of one meeting never share a <c>CreatedAt</c>. A change to
+    /// that rule has to come here too.
     /// </para>
     /// </remarks>
     private ExtractionRefusal? RefusalOfTheNewestExtraction(Guid meetingId)
@@ -431,14 +442,27 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
             return null;
         }
 
-        return context.ExtractionRuns
+        var runs = context.ExtractionRuns
             .AsNoTracking()
             .Where(run => run.JobId == id)
-            .Join(
-                context.ExtractionRefusals.AsNoTracking().Where(refusal => refusal.Ordinal == 0),
-                run => run.Id,
-                refusal => refusal.ExtractionRunId,
-                (run, refusal) => new ExtractionRefusal(refusal.Condition, refusal.Path, refusal.Statement))
+            .Select(run => new { run.Id, run.CorrectsRunId })
+            .ToList();
+
+        // FirstOrDefault and not Single: the corpus's own unique index is what makes "at most one"
+        // true, and a screen reading a row back is not where that gets re-proved. A read that
+        // trusted Single would crash the whole screen were that constraint ever bypassed; this one
+        // reads whichever correction it finds instead.
+        var run = runs.Find(candidate => candidate.CorrectsRunId is not null) ?? runs.FirstOrDefault();
+
+        if (run is null)
+        {
+            return null;
+        }
+
+        return context.ExtractionRefusals
+            .AsNoTracking()
+            .Where(refusal => refusal.ExtractionRunId == run.Id && refusal.Ordinal == 0)
+            .Select(refusal => new ExtractionRefusal(refusal.Condition, refusal.Path, refusal.Statement))
             .FirstOrDefault();
     }
 

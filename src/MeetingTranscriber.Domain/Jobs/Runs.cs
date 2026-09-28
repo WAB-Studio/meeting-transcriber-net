@@ -196,6 +196,12 @@ public class ExtractionRun
     /// </summary>
     public string? SessionId { get; set; }
 
+    /// <summary>
+    /// The refused run of the same job this one was asked to correct, or nothing. A job carries at
+    /// most one correction, and this is how the corpus says which run it is.
+    /// </summary>
+    public Guid? CorrectsRunId { get; set; }
+
     public Guid? OutputArtifactId { get; set; }
 
     /// <summary>

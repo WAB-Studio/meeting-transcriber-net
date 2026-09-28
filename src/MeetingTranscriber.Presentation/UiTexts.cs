@@ -845,6 +845,10 @@ public static class UiTexts
         "Cita palabras que ese turno no dice.",
         "It quotes words that turn does not say.");
 
+    public static UiText RefusedCitedAgainElsewhere { get; } = new(
+        "Volvió a traer un enunciado que se le pidió quitar, citando otra cosa.",
+        "It brought back a statement it was asked to remove, citing something else.");
+
     // The player. Hearing what a meeting recorded never costs anything and never waits on a
     // transcription, so none of these words says anything about either.
     public static UiText Play { get; } = new("Reproducir", "Play");

@@ -41,6 +41,24 @@ public static class ExtractionInstructions
         """;
 
     /// <summary>
+    /// What is asked for on a hand-back of a refused answer: <c>ExtractionCorrection.WhatWasWrong</c>
+    /// says what has to change, and this says how to use it.
+    /// </summary>
+    public static string ToCorrect { get; } = """
+        You are given one meeting's transcript as meeting.json, the shape your answer must take as schema.md,
+        the answer you gave before as previous-output.json, and what was wrong with it as what-was-wrong.md.
+        Read nothing else: you have no tools.
+
+        Answer with the corrected answer: one JSON object in exactly the shape schema.md describes, and
+        nothing before or after it.
+
+        - Where what-was-wrong.md says the shape is wrong, fix the shape and change nothing else.
+        - Where it says to remove a statement, remove that statement. Do not cite it again from another turn
+          and do not reword it: a statement the meeting does not support is left out.
+        - Keep every statement it does not mention exactly as it was, and add none.
+        """;
+
+    /// <summary>
     /// One extraction, whole, that reads through <see cref="ExtractionReader.Read"/> with no
     /// refusal — the example a provider is shown, and what <c>ExtractionInstructionsTests</c> pins
     /// the shape against.

@@ -514,6 +514,20 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             ConfigureRunJob(run);
             run.HasOne<Artifact>().WithMany().HasForeignKey(entity => entity.OutputArtifactId)
                 .OnDelete(DeleteBehavior.SetNull);
+
+            // The refused run this one corrects, cascading like every other child of this table:
+            // a run does not outlive the meeting it is about.
+            run.HasOne<ExtractionRun>().WithMany().HasForeignKey(entity => entity.CorrectsRunId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // "A job carries at most one correction" is a promise the door keeps and the corpus
+            // now holds it to: at most one row per job may name a run it corrects. Filtered rather
+            // than a plain unique index on JobId, because every job's first run also has this
+            // column, and two of those would be two ordinary runs of one job — not two corrections.
+            run.HasIndex(entity => entity.JobId)
+                .IsUnique()
+                .HasFilter("corrects_run_id IS NOT NULL")
+                .HasDatabaseName("ux_extraction_runs_one_correction_per_job");
         });
 
         modelBuilder.Entity<ExtractionRunRefusal>(refusal =>

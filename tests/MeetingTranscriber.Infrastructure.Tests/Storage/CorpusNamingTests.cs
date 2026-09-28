@@ -87,6 +87,7 @@ public partial class CorpusNamingTests
         (ExtractionCondition.NoSuchTurn, "no_such_turn"),
         (ExtractionCondition.NotTheTurnCited, "not_the_turn_cited"),
         (ExtractionCondition.QuoteNotInTheTurn, "quote_not_in_the_turn"),
+        (ExtractionCondition.CitedAgainElsewhere, "cited_again_elsewhere"),
 
         // The classification vocabulary, closed against the thirteen meetings arquitectura.md §5.3
         // lists. A rename changes what is on disk and the CHECK behind it at the same time, and

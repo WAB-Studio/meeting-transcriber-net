@@ -1,13 +1,14 @@
 namespace MeetingTranscriber.Domain.Knowledge;
 
 /// <summary>
-/// Everything an extraction can be refused for: eight things observed about it, closed.
+/// Everything an extraction can be refused for: nine things observed about it, closed.
 /// </summary>
 /// <remarks>
 /// The set is closed and stored under a CHECK, so renaming one is a migration. The order the
 /// members are declared in is the order <c>ExtractionCheck</c> asks them in: shape first, then the
 /// input, then the meeting, then each participant, then each statement's own citation, closest
-/// failure first.
+/// failure first. The ninth is not among them — it is asked by the correction's own judgement,
+/// after the check, and it exists only on a correction.
 /// </remarks>
 public enum ExtractionCondition
 {
@@ -34,4 +35,10 @@ public enum ExtractionCondition
 
     /// <summary>It quotes words that turn does not say.</summary>
     QuoteNotInTheTurn = 8,
+
+    /// <summary>
+    /// It was handed back to have a statement removed, and brought the same statement back citing
+    /// something else.
+    /// </summary>
+    CitedAgainElsewhere = 9,
 }

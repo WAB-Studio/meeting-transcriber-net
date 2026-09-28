@@ -442,6 +442,7 @@ public sealed partial class ReadingAMeeting : UserControl
         ExtractionCondition.NoSuchTurn => UiTexts.RefusedNoSuchTurn,
         ExtractionCondition.NotTheTurnCited => UiTexts.RefusedNotTheTurnCited,
         ExtractionCondition.QuoteNotInTheTurn => UiTexts.RefusedQuoteNotInTheTurn,
+        ExtractionCondition.CitedAgainElsewhere => UiTexts.RefusedCitedAgainElsewhere,
         _ => throw new InvalidOperationException($"No screen has text for extraction condition '{condition}'."),
     };
 
