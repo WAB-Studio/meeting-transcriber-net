@@ -1,7 +1,7 @@
 ﻿---
 phase: climbing
-progress: 162/250
-updated: 2026-09-26
+progress: 162/254
+updated: 2026-09-28
 ---
 
 # ISA — meeting-transcriber-net
@@ -277,6 +277,10 @@ Board: 5 · Summaries
 - [ ] ISC-190: A meeting's text leaves for a summary only on terms the person was told.
 - [ ] ISC-190.1: Automatic summaries cannot be turned on until the person has been shown which provider will receive the meeting's text and which way that provider was found to be charging.
 - [ ] ISC-190.2: Anti: when the provider reports no quota left, or a move to paid usage, the summary run stops rather than carrying on, and automatic summaries stop with it.
+- [ ] ISC-196: Every summary a meeting was ever given stays readable, and which one the meeting shows is somebody's to choose.
+- [ ] ISC-196.1: After a meeting accepts a second summary, the first can still be read from that meeting, whole and as it was accepted.
+- [ ] ISC-196.2: Somebody can put an earlier summary back as the one a meeting shows, and it is still the one shown after the application is closed and opened again.
+- [ ] ISC-196.3: Anti: putting an earlier summary back loses none of the others — every summary the meeting was given can still be read and chosen again.
 
 ### F7 · Local knowledge
 Why: people and agents query the corpus with no server, no network and no cloud, and every
