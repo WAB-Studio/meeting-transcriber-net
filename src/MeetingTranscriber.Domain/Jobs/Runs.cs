@@ -190,6 +190,12 @@ public class ExtractionRun
 
     public string? RawOutputHash { get; set; }
 
+    /// <summary>
+    /// The conversation the provider opened for this run, as it reported it. Nothing here ever
+    /// hands one to a provider.
+    /// </summary>
+    public string? SessionId { get; set; }
+
     public Guid? OutputArtifactId { get; set; }
 
     /// <summary>

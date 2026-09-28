@@ -93,6 +93,19 @@ public class ReadingAMeetingTests
     }
 
     /// <summary>
+    /// The stop press, drawn only over a summary that is running, calls the one method that stops
+    /// it — read out of source for the reason above: nothing here can draw the screen and press it.
+    /// </summary>
+    [Fact]
+    public void A_running_summary_is_stopped_through_the_one_call_that_stops_it()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        screen.ShouldContain("screen.TheSummaryMayBeStopped");
+        screen.ShouldContain(".StopTheSummary(meeting)");
+    }
+
+    /// <summary>
     /// The list's press and the screen it opens are wired to each other.
     /// </summary>
     /// <remarks>

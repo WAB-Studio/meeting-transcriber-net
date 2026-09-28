@@ -161,6 +161,31 @@ public class MeetingScreenTests
         screen.TheNameMayBeTyped.ShouldBeTrue();
     }
 
+    public static TheoryData<MeetingStage, StageStanding> EveryStageAgainstEveryStanding()
+    {
+        var cross = new TheoryData<MeetingStage, StageStanding>();
+
+        foreach (var stage in Enum.GetValues<MeetingStage>())
+        {
+            foreach (var standing in Enum.GetValues<StageStanding>())
+            {
+                cross.Add(stage, standing);
+            }
+        }
+
+        return cross;
+    }
+
+    [Theory]
+    [MemberData(nameof(EveryStageAgainstEveryStanding))]
+    public void Only_a_summary_that_is_running_may_be_stopped(MeetingStage stage, StageStanding standing)
+    {
+        var screen = Screen(new OwedWork(Meeting, stage, standing), RecordedAudio.Playable);
+
+        screen.TheSummaryMayBeStopped.ShouldBe(
+            stage is MeetingStage.Transcribed && standing is StageStanding.Running);
+    }
+
     [Fact]
     public void A_stage_stopped_on_a_person_is_never_offered_again_from_this_screen()
     {

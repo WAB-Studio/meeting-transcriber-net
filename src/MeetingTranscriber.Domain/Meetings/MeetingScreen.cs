@@ -74,9 +74,8 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAu
     /// <remarks>
     /// The same two answers the list carries and worked out the same way, because they are the
     /// same question asked from another screen. Pressing it queues the stage, and the runner sends
-    /// what is queued on this machine's key within one look at the queue. <c>docs/design.md</c>
-    /// puts a dialogue saying what that costs in front of the charge, and that dialogue is not
-    /// built yet (ISC-85).
+    /// what is queued within one look at the queue. <c>docs/design.md</c> puts a dialogue saying
+    /// what that costs in front of the charge, and that dialogue is not built yet (ISC-85).
     /// </remarks>
     public JobKind? TheActOffered => Owed.MayBeTaken ? Owed.Next : null;
 
@@ -116,12 +115,25 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAu
 
     /// <summary>
     /// The first reason the latest summary attempt was refused, or nothing. An init property and
-    /// not a fifth positional member, for the reason <see cref="OwedWork.Failed"/> gives. Set only
+    /// not a fourth positional member, for the reason <see cref="OwedWork.Failed"/> gives. Set only
     /// while the meeting has no summary: <c>MeetingReading</c> reads it off the newest Extract job's
-    /// own run, and a meeting that has since gained a summary has moved past that job's kind
+    /// last run, and a meeting that has since gained a summary has moved past that job's kind
     /// entirely.
     /// </summary>
     public ExtractionRefusal? WhyTheSummaryWasRefused { get; init; }
+
+    /// <summary>
+    /// Whether a running summary can be stopped from this screen.
+    /// </summary>
+    /// <remarks>
+    /// The one press offered over <see cref="StageStanding.Running"/>, which every other kind of
+    /// stage offers nothing over: a transcription in flight is not something a person can call off,
+    /// because there is no way to ask Deepgram whether it already landed. A summary is different —
+    /// <see cref="ProcessingJob.Cancel"/> is a move the job state table allows off
+    /// <see cref="JobState.Running"/>, and stopping the process behind it spends nothing more than
+    /// what already ran.
+    /// </remarks>
+    public bool TheSummaryMayBeStopped => Owed.Next is JobKind.Extract && Owed.Standing is StageStanding.Running;
 }
 
 /// <summary>

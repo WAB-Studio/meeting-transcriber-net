@@ -170,7 +170,7 @@ public static class UiTexts
     public static UiText TheMeetingIsBeingSaved { get; } = new("Guardando", "Saving");
 
     public static UiText ReadyToRecord { get; } = new(
-        "Elegí el micrófono, qué grabar de esta máquina y en qué idioma se va a hablar.",
+        "Elija el micrófono, qué grabar de esta máquina y en qué idioma se va a hablar.",
         "Choose the microphone, what to record from this machine, and what will be spoken.");
 
     public static UiText RecordingMeeting { get; } =
@@ -187,7 +187,7 @@ public static class UiTexts
         "Opening the microphone and channel 0.");
 
     public static UiText ThatProgramIsNoLongerRunning { get; } = new(
-        "Ese programa ya no está corriendo, así que no se empezó a grabar: elegí otra vez qué "
+        "Ese programa ya no está corriendo, así que no se empezó a grabar: elija otra vez qué "
         + "grabar de esta máquina. Su número de proceso puede ser de otra aplicación ahora.",
         "That program is no longer running, so nothing was started: choose again what to record "
         + "from this machine. Its process number may belong to another application by now.");
@@ -437,7 +437,7 @@ public static class UiTexts
     // that does it — on Configuración, beside the same refusal — so this sentence sends somebody
     // there now rather than pretending nothing can be done about it.
     public static UiText ChangeWhereTheCorpusIsFromSettings { get; } = new(
-        "El corpus no se pudo abrir. Para cambiar dónde se guarda, andá a Configuración.",
+        "El corpus no se pudo abrir. Para cambiar dónde se guarda, vaya a Configuración.",
         "The corpus could not be opened. To change where it is kept, go to Settings.");
 
     /// <summary>
@@ -709,6 +709,15 @@ public static class UiTexts
     public static UiText TheSummaryWasNotAccepted { get; } = new(
         "El resumen que llegó no se aceptó. Se puede pedir otro.",
         "The summary that came back was not accepted. Another can be asked for.");
+
+    public static UiText NotSentNoSummariserOnThisMachine { get; } = new(
+        "No se envió: Claude Code no está en esta máquina, o no respondió. No se gastó nada.",
+        "Not sent: Claude Code is not on this machine, or did not answer. Nothing was spent.");
+
+    public static UiText TheSummariserDidNotAnswer { get; } = new(
+        "Claude Code no devolvió un resumen, ni al intentarlo de nuevo. Se puede pedir otro.",
+        "Claude Code did not come back with a summary, not even when it was tried again. Another "
+        + "can be asked for.");
 
     // The two answers, and what comes back of them.
 
@@ -1131,6 +1140,36 @@ public static class UiTexts
     // the corpus, which is the recordings, the responses already paid for and everything read out
     // of them, and the sentence under it already says the word *reuniones*.
     public static UiText WhereItIsKept { get; } = new("Dónde se guarda", "Where it is kept");
+
+    // ── The settings screen, what it says about Claude Code ──────────────────────────────────────
+
+    public static UiText ClaudeCodeIsNotOnThisMachine { get; } = new(
+        "Claude Code no está en esta máquina, así que no se puede resumir.",
+        "Claude Code is not on this machine, so nothing can be summarised.");
+
+    public static UiText ClaudeCodeDidNotAnswer { get; } = new(
+        "Claude Code está, pero no respondió: {0}",
+        "Claude Code is there, and did not answer: {0}");
+
+    public static UiText TheFilePickerDidNotOpen { get; } = new(
+        "Windows no abrió el selector de archivos.", "Windows did not open the file picker.");
+
+    /// <summary>
+    /// The accessible name of the press that changes where the corpus is kept. It still *shows*
+    /// <see cref="ChangeWhereItIsKept"/> (<em>Cambiar</em>), which keeps its visible word on every
+    /// <em>Cambiar</em> press on the settings screen; this is what a screen reader announces for
+    /// this one, since two presses named <em>Cambiar</em> read the same to somebody who cannot see
+    /// which row they are beside.
+    /// </summary>
+    public static UiText ChangeWhereTheCorpusIsKept { get; } =
+        new("Cambiar dónde se guarda el corpus", "Change where the corpus is kept");
+
+    /// <summary>
+    /// The accessible name of the press that changes where Claude Code is.
+    /// See <see cref="ChangeWhereTheCorpusIsKept"/>.
+    /// </summary>
+    public static UiText ChangeWhereClaudeCodeIs { get; } =
+        new("Cambiar dónde está Claude Code", "Change where Claude Code is");
 
     // ── The packaging checks scaffold ──────────────────────────────────────────────────────────
 

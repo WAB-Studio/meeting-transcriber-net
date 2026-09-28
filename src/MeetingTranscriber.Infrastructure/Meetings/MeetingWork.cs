@@ -35,7 +35,7 @@ public sealed record MeetingAndWork(Meeting Meeting, OwedWork Owed)
 /// remembered: it is being worked out from rows and files that never went anywhere.
 /// </para>
 /// <para>
-/// The writing half is four methods and none of them are mirrors. Taking a stage queues its job.
+/// The writing half is five methods and none of them are mirrors. Taking a stage queues its job.
 /// Leaving it records that it was turned down — and cancels whatever was queued for it, because
 /// work nobody has run is work nobody has paid for, and the press that spends money should not be
 /// the one with no way back. Neither moves the meeting: a stage that was left is the same stage,
@@ -47,10 +47,12 @@ public sealed record MeetingAndWork(Meeting Meeting, OwedWork Owed)
 /// sending anything. The fourth queues a transcription of a meeting that already has one, because
 /// somebody typed its minutes back at a prompt: it starts nothing, exactly as
 /// <see cref="Taken"/> does for the other three, and <c>JobRunner.SendAgainAsync</c> is what sends
-/// it.
+/// it. The fifth stops a summary that is running, through <see cref="ProcessingJob.Cancel"/> — the
+/// one job kind whose <see cref="StageStanding.Running"/> a person may still answer, because what
+/// it already spent is not given back either way.
 /// </para>
 /// <para>
-/// All four re-read the meeting before they write. A screen that has been open a while is a
+/// All five re-read the meeting before they write. A screen that has been open a while is a
 /// screen showing what was true when it was drawn, and the press that matters most — the one that
 /// spends money — is exactly the one a stale screen would get wrong.
 /// </para>
@@ -172,8 +174,8 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// <remarks>
     /// The job is queued here and started by nothing here: being told is a row, not a provider
     /// call. What sends it is <c>JobRunner</c>, which reads exactly the state this leaves —
-    /// pending, due immediately — within one look at the queue, on this machine's key, with no
-    /// price shown until the dialogue ISC-85 asks for exists.
+    /// pending, due immediately — within one look at the queue, with no price shown until the
+    /// dialogue ISC-85 asks for exists.
     /// </remarks>
     /// <exception cref="MeetingStageException">
     /// This meeting's stage has no action, or its standing is one where taking it would do harm.
@@ -304,6 +306,64 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
         write?.Commit();
 
         return jobs;
+    }
+
+    /// <summary>
+    /// Somebody asked to stop a summary that is running. Cancels its job and hands it back.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="StageStanding.Running"/> refuses every other press — nothing else in flight can
+    /// be called off, because there is no way to ask a provider whether an attempt already landed.
+    /// A summary is the one exception: <see cref="ProcessingJob.Cancel"/> is a move
+    /// <c>JobStates</c> allows off <see cref="JobState.Running"/>, and what the run already spent is
+    /// not given back either way — the difference this press makes is only whether the machine goes
+    /// on asking for an answer nobody wants any more.
+    /// </para>
+    /// <para>
+    /// Because the move is written to the corpus, it also stops a run some other process started —
+    /// the runner reads the job's own state rather than trusting whichever process began it. That
+    /// is also the race this method itself runs, the other way round: the runner may be settling
+    /// the very same job at the instant this is called. Neither side takes it out on the other. The
+    /// corpus is in WAL mode and SQLite serialises writers the way <see cref="Answer"/>'s own remarks
+    /// describe, so whichever of the two commits first wins the row and the second either finds a
+    /// job that is no longer <see cref="JobState.Running"/> — read again here, inside this
+    /// transaction, so a stale read cannot cancel a job that has already moved — or meets the
+    /// snapshot conflict SQLite itself raises, which surfaces as the ordinary "that did not go
+    /// through" every other write refusal on this screen already shows.
+    /// </para>
+    /// <para>
+    /// It does not go through <see cref="Answer"/>, <see cref="Taken"/> or <see cref="NextKey"/>:
+    /// those all queue a new attempt at a stage, and this cancels an attempt already under way. A
+    /// cancel needs none of that machinery, so it is the one write here that does not share it.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="MeetingStageException">
+    /// There is no such meeting, or none of its <see cref="JobKind.Extract"/> jobs is running.
+    /// </exception>
+    public ProcessingJob StopTheSummary(Guid meetingId)
+    {
+        using var write = context.Database.CurrentTransaction is null
+            ? context.Database.BeginTransaction()
+            : null;
+
+        // Read first, for the meeting-does-not-exist refusal every other method here gives: the
+        // job query below would otherwise read the same "nothing to stop" sentence for a meeting
+        // that never existed as for one whose summary simply is not running.
+        On(meetingId);
+
+        var running = context.ProcessingJobs
+            .FirstOrDefault(job => job.MeetingId == meetingId
+                && job.Kind == JobKind.Extract
+                && job.State == JobState.Running)
+            ?? throw new MeetingStageException(
+                $"Meeting {meetingId} has no summary running, so there is nothing to stop.");
+
+        running.Cancel(Now);
+        context.SaveChanges();
+        write?.Commit();
+
+        return running;
     }
 
     /// <summary>

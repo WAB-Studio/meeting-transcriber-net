@@ -769,6 +769,18 @@ public sealed partial class ReadingAMeeting : UserControl
             take.Click += (_, _) => Answer(decline: false);
             Presses.Children.Add(take);
         }
+
+        if (screen.TheSummaryMayBeStopped)
+        {
+            var stop = new Button
+            {
+                Content = In(UiTexts.Stop),
+                Style = Chrome("TakeTheStage"),
+            };
+
+            stop.Click += (_, _) => StopTheSummary();
+            Presses.Children.Add(stop);
+        }
     }
 
     /// <summary>
@@ -806,6 +818,40 @@ public sealed partial class ReadingAMeeting : UserControl
             _status.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
         }
 
+        AfterWriting();
+    }
+
+    /// <summary>Somebody asked to stop a summary that is running. The one call that stops it.</summary>
+    private void StopTheSummary()
+    {
+        if (_meeting is not { } meeting || Corpus().Folder is not { } folder)
+        {
+            return;
+        }
+
+        try
+        {
+            using var context = CorpusDatabase.Open(folder);
+            new MeetingWork(context, TimeProvider.System).StopTheSummary(meeting);
+        }
+        catch (MeetingStageException stale)
+        {
+            _status.Says(UiTexts.ThatIsNoLongerHowItWas, stale.Message);
+        }
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
+        {
+            _status.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+        }
+
+        AfterWriting();
+    }
+
+    /// <summary>
+    /// What every press on this screen that writes and then redraws shares: the message a refusal
+    /// left is carried across the redraw, because <see cref="Draw"/> clears it on the way in.
+    /// </summary>
+    private void AfterWriting()
+    {
         var said = _status.Line;
         Draw(theRecordingToo: false);
         _status.KeepsWhatWasSaid(said);

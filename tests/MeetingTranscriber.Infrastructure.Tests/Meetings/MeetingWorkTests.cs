@@ -606,6 +606,54 @@ public class MeetingWorkTests
     }
 
     [Fact]
+    public void A_summary_under_way_is_stopped_and_offered_again()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Transcribed(context);
+        var work = new MeetingWork(context, Clock);
+
+        var job = work.Take(meeting);
+        job.Start(UtcTimestamp.From(Clock.GetUtcNow()));
+        context.SaveChanges();
+
+        var stopped = work.StopTheSummary(meeting);
+
+        stopped.Id.ShouldBe(job.Id);
+        stopped.State.ShouldBe(JobState.Cancelled);
+
+        var owed = work.On(meeting);
+        owed.Standing.ShouldBe(StageStanding.Declined);
+        owed.MayBeTaken.ShouldBeTrue();
+        owed.Next.ShouldBe(JobKind.Extract);
+    }
+
+    [Fact]
+    public void Stopping_refuses_a_meeting_whose_summary_is_not_running()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Transcribed(context);
+        var work = new MeetingWork(context, Clock);
+
+        Should.Throw<MeetingStageException>(() => work.StopTheSummary(meeting));
+
+        // Queued and not yet running refuses too: stopping is not the same press as ignoring.
+        work.Take(meeting);
+        Should.Throw<MeetingStageException>(() => work.StopTheSummary(meeting));
+    }
+
+    [Fact]
+    public void Stopping_a_meeting_this_corpus_does_not_hold_is_said_so_rather_than_answered_for()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Should.Throw<MeetingStageException>(() => new MeetingWork(context, Clock).StopTheSummary(Guid.NewGuid()))
+            .Message.ShouldContain("holds no meeting");
+    }
+
+    [Fact]
     public void One_meetings_answer_is_never_read_off_anothers()
     {
         using var corpus = new TemporaryCorpus();

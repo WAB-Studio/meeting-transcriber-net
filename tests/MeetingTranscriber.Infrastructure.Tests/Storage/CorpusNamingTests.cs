@@ -77,6 +77,8 @@ public partial class CorpusNamingTests
         (JobFailure.AudioMissing, "audio_missing"),
         (JobFailure.CorpusRefused, "corpus_refused"),
         (JobFailure.ExtractionRefused, "extraction_refused"),
+        (JobFailure.NoSummariserOnThisMachine, "no_summariser_on_this_machine"),
+        (JobFailure.SummariserFailed, "summariser_failed"),
         (ExtractionCondition.NotTheSchema, "not_the_schema"),
         (ExtractionCondition.InputNotAsPrepared, "input_not_as_prepared"),
         (ExtractionCondition.AnotherMeeting, "another_meeting"),

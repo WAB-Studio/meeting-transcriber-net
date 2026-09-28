@@ -70,7 +70,8 @@ public enum StageStanding
     /// <summary>
     /// A job for this stage has been started. What it sends may already have been charged, so it
     /// can neither be asked for again nor left, and the application is waiting on it rather than
-    /// on anybody.
+    /// on anybody. The one exception is a summary, which somebody can stop: what it already spent
+    /// is not given back, and the stage is offered again.
     /// </summary>
     Running = 6,
 }
