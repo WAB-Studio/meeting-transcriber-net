@@ -277,8 +277,12 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     /// no row never had a recording — it arrived as a paid response, or its own is still being
     /// written. A meeting with a row and no file had one and the disk has lost it, which is a
     /// source gone and the one of the three somebody has to do something about.
+    /// <para>
+    /// Public because <c>WhoIsWho</c>'s screen wants the file too, to draw a clip of a voice heard
+    /// alone: it calls this and reads no further into <see cref="Of"/> than the one field it needs.
+    /// </para>
     /// </remarks>
-    private FileInfo? Audio(Guid meetingId, out RecordedAudio recorded)
+    public FileInfo? Audio(Guid meetingId, out RecordedAudio recorded)
     {
         var filed = context.Artifacts
             .AsNoTracking()

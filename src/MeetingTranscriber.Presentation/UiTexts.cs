@@ -1061,6 +1061,13 @@ public static class UiTexts
     // nobody has named yet reads better as an invitation than as the answer that empties it.
     public static UiText ChooseSomebody { get; } = new("Elegir a alguien", "Choose somebody");
 
+    // Said over the whole screen, in place of every voice's clip, for a meeting with no audio to
+    // play a stretch of: a voice is still named by what it said, and this is the one sentence
+    // saying why no card on this screen offers to play anything.
+    public static UiText ThisMeetingHasNoAudioToListenTo { get; } = new(
+        "Esta reunión no tiene audio para escuchar: las voces se nombran por lo que dijeron.",
+        "This meeting has no audio to listen to: the voices are named by what they said.");
+
     // The label over who spoke, on the meeting screen's card. Mono at the data rank, like
     // *sobre qué fue* and *lo que se dijo de esto* beside it on their own screens.
     public static UiText WhoSpoke { get; } = new("quién habló", "who spoke");
