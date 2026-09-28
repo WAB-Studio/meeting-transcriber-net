@@ -53,21 +53,15 @@ public sealed record ReceivedMeeting(
     IReadOnlyList<string> PutBack);
 
 /// <summary>
-/// What <see cref="MeetingIntake.ReceiveWhatWasRefused"/> did: the filing itself, which run it
-/// finished, and whether that run's job was this call's to settle.
+/// What <see cref="MeetingIntake.ReceiveWhatWasRefused"/> did: the filing itself, and which run it
+/// finished.
 /// </summary>
-/// <param name="JobSettled">
-/// True when the run's job was <see cref="JobState.AwaitingUser"/> and this call moved it to
-/// <see cref="JobState.Succeeded"/>. False when somebody had already requeued it, in which case it
-/// is left exactly where it was: a job somebody put back in the queue is the runner's to send, not
-/// this door's to declare finished under it.
-/// </param>
 /// <param name="KeptPath">
 /// The stored path of the file this run's own refusal kept — this method's caller already needs it
 /// named, so it is handed over rather than left for a report to reconstruct from a run id and a
 /// naming convention that belongs to <c>TranscribingAMeeting</c>.
 /// </param>
-public sealed record RefusedResponseFiled(ReceivedMeeting Received, Guid RunId, bool JobSettled, string KeptPath);
+public sealed record RefusedResponseFiled(ReceivedMeeting Received, Guid RunId, string KeptPath);
 
 /// <summary>
 /// A paid Deepgram response on disk becoming a meeting of this corpus: the response filed as the
@@ -427,17 +421,12 @@ public static class MeetingIntake
         run.ResponseArtifactId = received.Response.Id;
 
         var job = context.ProcessingJobs.First(row => row.Id == run.JobId);
-        var settled = false;
-        if (job.State == JobState.AwaitingUser)
-        {
-            job.Succeed(now);
-            settled = true;
-        }
+        job.Succeed(now);
 
         context.SaveChanges();
 
         var keptPath = CorpusFiles.PathFor(meetingId, TranscribingAMeeting.RefusedResponseFileName(run.Id));
-        return new RefusedResponseFiled(received, run.Id, settled, keptPath);
+        return new RefusedResponseFiled(received, run.Id, keptPath);
     }
 
     /// <summary>Whether this job is still the one thing a stuck meeting is waiting on a person for.</summary>

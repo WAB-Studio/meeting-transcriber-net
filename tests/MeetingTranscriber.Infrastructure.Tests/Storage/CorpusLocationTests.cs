@@ -374,6 +374,37 @@ public class CorpusLocationTests
     }
 
     /// <summary>
+    /// A folder named directly — <c>--corpus</c>, and never a setting file this location has none
+    /// of — is held to the exact rules a picked one already is: a refusal, and which one, agrees
+    /// with <see cref="CorpusLocation.Inspect"/> every time, and so does a folder that holds one.
+    /// </summary>
+    [Fact]
+    public void A_named_folder_is_held_to_what_a_picked_one_is()
+    {
+        using var elsewhere = new CorpusOutsideApplicationData("corpus-location");
+        using var empty = new CorpusOutsideApplicationData("corpus-location");
+        using var whole = new CorpusOutsideApplicationData("corpus-location");
+
+        var gone = new DirectoryInfo(
+            Path.Combine(elsewhere.Root.FullName, "on-a-disk-nobody-plugged-in"));
+        var noCorpus = new DirectoryInfo(empty.Root.FullName);
+        var underAppData = new DirectoryInfo(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "AppData", "Local", CorpusLocation.ApplicationFolderName));
+        var hasACorpus = Corpus(whole);
+
+        foreach (var folder in new[] { gone, noCorpus, underAppData, hasACorpus })
+        {
+            var picked = CorpusLocation.Inspect(folder);
+            var named = CorpusLocation.At(folder).Resolve();
+
+            named.Refusal.ShouldBe(picked.Refusal);
+            named.Path.ShouldBe(picked.Path);
+            named.HoldsACorpus.ShouldBe(picked.HoldsACorpus);
+        }
+    }
+
+    /// <summary>
     /// A <c>corpus.db</c> of no bytes is what a create cut off part way leaves, and it is neither
     /// a corpus nor nothing: SQLite will not put it into WAL, so the migration that would make it
     /// a corpus is refused as a write to a read-only database.
@@ -560,6 +591,22 @@ public class CorpusLocationTests
         location.Setting.Directory!.EnumerateFiles()
             .Select(file => file.Name)
             .ShouldBe([CorpusLocation.SettingName]);
+    }
+
+    /// <summary>
+    /// A location <c>At</c> built never reads or writes a setting file, and <c>Choose</c> refuses
+    /// rather than silently writing one into the named folder itself, where nothing would ever read
+    /// it back.
+    /// </summary>
+    [Fact]
+    public void A_named_location_refuses_to_have_a_choice_recorded_on_it()
+    {
+        using var whole = new CorpusOutsideApplicationData("corpus-location");
+        Corpus(whole);
+
+        var location = CorpusLocation.At(whole.Root);
+
+        Should.Throw<InvalidOperationException>(() => location.Choose(whole.Root));
     }
 
     /// <summary>

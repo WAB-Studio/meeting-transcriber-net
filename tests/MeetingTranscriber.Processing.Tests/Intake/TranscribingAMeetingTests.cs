@@ -268,6 +268,8 @@ public sealed class TranscribingAMeetingTests
         ended.Said.ShouldNotBeNull();
         ended.Said.ShouldContain("paid for");
         ended.Said.ShouldContain("check names it");
+        ended.Said.ShouldContain($"--corpus \"{corpus.Root.FullName}\"");
+        ended.Said.ShouldContain("--as-next-version");
         ended.Failure.ShouldBeNull();
 
         var folder = MeetingFolder(corpus, meeting);

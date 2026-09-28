@@ -39,6 +39,7 @@ public sealed class FilingARefusedResponseTests
             "--as-next-version");
 
         run.Code.ShouldBe(Cli.Ok, run.Error);
+        run.Output.ShouldContain("settled: nothing is waiting on a person");
 
         using var reopened = corpus.Open();
 

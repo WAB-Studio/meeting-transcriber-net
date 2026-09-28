@@ -24,11 +24,11 @@ public static class RenderingAgain
     /// transaction when one is open and opening one of its own otherwise.
     /// </summary>
     /// <remarks>
-    /// Both of today's callers — <c>NamingTheVoices</c> and <c>RenamingSomebody</c> — already open a
-    /// transaction before reaching here, so the branch that opens one of its own has no production
-    /// caller today. It stays anyway: without a transaction the pragma is a silent no-op, SQLite
-    /// resets it at every commit, and a caller added later with none of its own would otherwise
-    /// render a summarised meeting straight into <see cref="MeetingRenderer"/>'s ordinary refusal.
+    /// <c>NamingTheVoices</c> already opens a transaction before reaching here, so it joins it.
+    /// <c>RenamingSomebody</c> renders each meeting it touches on a connection of its own, with no
+    /// transaction open yet, so for it this is the branch that opens one — a caller with none of its
+    /// own would otherwise render a summarised meeting straight into <see cref="MeetingRenderer"/>'s
+    /// ordinary refusal.
     /// </remarks>
     public static RenderedMeeting OneMeeting(CorpusDbContext context, Guid meetingId, UtcTimestamp now)
     {
