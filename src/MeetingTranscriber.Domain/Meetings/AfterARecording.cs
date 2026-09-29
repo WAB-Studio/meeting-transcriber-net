@@ -42,8 +42,10 @@ public enum AfterARecording
     /// <b>Today this causes exactly what <see cref="Transcribe"/> causes</b>, and saying so is the
     /// point of this paragraph. A meeting that has just stopped cannot be offered a stage whose
     /// input does not exist, so the summarising half is read again by whatever finishes the
-    /// transcription — and the runner that finishes one, <c>JobRunner</c>, queues no summary,
-    /// because nothing in this product summarises yet.
+    /// transcription — and the runner that finishes one, <c>JobRunner</c>, queues no summary on its
+    /// own: an automatic summary is what ISC-190.1 gates on a person having been shown which
+    /// provider receives the meeting's text and how it charges, which #125's dialogue is what
+    /// settles. Until then <em>Resumir</em> stays a press on the meeting's own row.
     /// <para>
     /// That is not the defect the missing fourth answer would have been, and the difference is what
     /// a person is promised. <em>Ask me every time</em> would have put a question on screen that no

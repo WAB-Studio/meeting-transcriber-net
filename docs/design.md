@@ -185,10 +185,11 @@ Five ranks, and a screen has at most one of the first.
 meeting's row — *Transcribir*, *Resumir*, and *Reintentar* on a transcription stopped over a
 charge — opens the dialogue where the charge is actually agreed to, so it takes the **normal**
 rank, and pico appears only on the act inside that dialogue. Until that dialogue exists
-(`ISA.md` ISC-85), *Transcribir* and *Reintentar* spend at once on this machine's key and keep
-the normal rank anyway: it is the rank the row goes back to the day the dialogue lands. A list
-of twelve meetings with twelve orange buttons spends the colour that is supposed to mean *this
-one costs money*, and once it is spent nothing on the screen can say it any more.
+(`ISA.md` ISC-85), *Transcribir*, *Resumir* and *Reintentar* spend at once, on this machine's
+Deepgram key or on the Claude account Claude Code is signed in to, and keep the normal rank
+anyway: it is the rank the row goes back to the day the dialogue lands. A list of twelve meetings
+with twelve orange buttons spends the colour that is supposed to mean *this one costs money*, and
+once it is spent nothing on the screen can say it any more.
 
 The normal rank has two fills for the same reason the surfaces alternate: a tarjeta button on a
 tarjeta row is invisible. On papel it is tarjeta with no rule; on tarjeta it is papel with a 1px
@@ -234,6 +235,8 @@ already named.
 | Try the same thing again | *Reintentar* |
 | Point a channel somewhere else | *Cambiar* |
 | Change where the corpus is kept | *Cambiar* |
+| Say where Claude Code is | *Cambiar* |
+| Stop a summary that is running | *Detener* |
 | Take the whole machine instead | *Grabar toda la máquina* |
 | Buy a transcription or a summary | *Transcribir* · *Resumir* |
 | Put names on the voices | *Decir quién es quién* |

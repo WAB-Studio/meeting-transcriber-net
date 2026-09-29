@@ -2,6 +2,7 @@ using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
+using MeetingTranscriber.Processing.Summaries;
 using MeetingTranscriber.Recording;
 
 using Microsoft.UI;
@@ -13,7 +14,7 @@ namespace MeetingTranscriber.App;
 
 /// <summary>
 /// The settings screen: what should happen when a recording ends, what runs it, who is using this
-/// install and in which language, and where the corpus is.
+/// install and in which language, where the corpus is, and where Claude Code is.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -28,6 +29,15 @@ namespace MeetingTranscriber.App;
 /// so does keeping who is using the application — is exactly the case a remembered answer gets
 /// wrong. So every read happens inside the method that needs it, and <see cref="Show"/> re-reads
 /// the lot.
+/// </para>
+/// <para>
+/// <b>The fifth block asks a process, not the corpus.</b> Whether Claude Code answers is asked off
+/// the UI thread on every <see cref="Show"/>, the same way starting one is kept off it everywhere
+/// else in this application — <see cref="ShowWhereClaudeCodeIs"/> draws what was chosen at once, and
+/// <see cref="CheckClaudeCodeAsync"/> fills in whether it answered once that call returns. A screen
+/// left showing neither state while the ask is still in flight would be wrong about nothing; it
+/// would just be quiet about the one thing this block is for a moment longer than the four beside
+/// it.
 /// </para>
 /// <para>
 /// <b>The options go dead unless the answer on disk was really read.</b> Not merely when there is
@@ -77,6 +87,27 @@ public sealed partial class Configuracion : UserControl
     /// is still running.
     /// </summary>
     private bool _choosingAFolder;
+
+    /// <summary>The same shape as <see cref="_choosingAFolder"/>, for the file picker beside it.</summary>
+    private bool _choosingClaudeCode;
+
+    /// <summary>
+    /// Whether Claude Code answered the last time this screen asked, and what it said about
+    /// itself. <c>null</c> until the first ask on this <see cref="Show"/> returns, which is what
+    /// keeps <see cref="ShowWhereClaudeCodeIs"/> from drawing a sentence about a question nobody
+    /// has answered yet.
+    /// </summary>
+    private SummaryAvailability? _claudeCode;
+
+    /// <summary>
+    /// Which ask of <see cref="CheckClaudeCodeAsync"/> is the current one. <see cref="Show"/> and
+    /// <see cref="OnChangeWhereClaudeCodeIs"/> can each start one, a check takes as long as
+    /// starting a process takes, and nothing stops a person from closing and reopening this screen,
+    /// or pressing <em>Cambiar</em> again, before an earlier ask has come back. Bumped by whichever
+    /// starts a check and carried into it, so a check that returns after a later one has already
+    /// started sees its own number no longer matches and writes nothing over the fresher answer.
+    /// </summary>
+    private int _claudeCodeAsk;
 
     /// <summary>
     /// What the row about who is using the application knows that the field itself does not: what
@@ -187,10 +218,11 @@ public sealed partial class Configuracion : UserControl
     /// the money question says what is wrong by going dead with nothing ticked.
     /// </para>
     /// </remarks>
-    public void Show()
+    public async void Show()
     {
         _open = true;
         _status.Nothing();
+        _claudeCode = null;
 
         ReadWhatHappensWhenARecordingEnds();
         ReadWhoIsUsingThis();
@@ -199,7 +231,10 @@ public sealed partial class Configuracion : UserControl
         ShowWhatHappensWhenARecordingEnds();
         ShowWhoIsUsingThis();
         SayWhereTheCorpusIs();
+        ShowWhereClaudeCodeIs();
         Render();
+
+        await CheckClaudeCodeAsync(++_claudeCodeAsk);
     }
 
     /// <summary>Takes this screen off the window.</summary>
@@ -436,6 +471,66 @@ public sealed partial class Configuracion : UserControl
             : Visibility.Visible;
     }
 
+    /// <summary>
+    /// Puts what was chosen, and what it answered when this screen last asked, on screen. Nothing
+    /// here decides anything — it is <see cref="ShowWhatHappensWhenARecordingEnds"/>'s own rule
+    /// applied to a process instead of a row.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="_claudeCode"/> being <c>null</c> — nobody has asked yet on this <see cref="Show"/>,
+    /// or the answer has not come back — draws the path alone and no sentence under it: a screen
+    /// that guessed at an answer it does not have yet would be wrong more often than the second it
+    /// takes to actually ask. Answering <see cref="Availability.Answers"/> draws no sentence either,
+    /// the same way an opened corpus draws none of the four refusal ones above it — silence is what
+    /// "it is there" gets on this screen.
+    /// </remarks>
+    private void ShowWhereClaudeCodeIs()
+    {
+        ClaudeCodeText.Text = SummarisingOnThisMachine.WhereClaudeCodeIs()?.FullName ?? string.Empty;
+
+        var sentence = _claudeCode switch
+        {
+            null => null,
+            { Is: Availability.Answers } => null,
+            { Is: Availability.NotOnThisMachine } => UiTexts.ClaudeCodeIsNotOnThisMachine,
+            { Is: Availability.DoesNotAnswer } => UiTexts.ClaudeCodeDidNotAnswer,
+            _ => throw new InvalidOperationException(
+                $"This screen has no text for Claude Code availability '{_claudeCode.Is}'."),
+        };
+
+        ClaudeCodeStatusText.Text = sentence is null ? string.Empty : sentence.In(_language, _claudeCode?.Said);
+        ClaudeCodeStatusText.Visibility = sentence is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Asks whether Claude Code answers, off the UI thread — starting a process, even one asked only
+    /// for its version, has no business running on the thread the window draws on. Fills
+    /// <see cref="_claudeCode"/> in and draws it once the answer is back, unless the screen has since
+    /// closed, or a later ask — another <see cref="Show"/>, or another press of
+    /// <em>Cambiar</em> — has started before this one returned.
+    /// </summary>
+    /// <param name="ask">
+    /// This call's own number, from <see cref="_claudeCodeAsk"/> at the moment it started. Compared
+    /// against the field again once the answer is back, so an ask that takes longer than a later one
+    /// never overwrites what that later one already wrote — <see cref="_claudeCodeAsk"/>'s own
+    /// remark says why one is not enough on its own.
+    /// </param>
+    private async Task CheckClaudeCodeAsync(int ask)
+    {
+        var availability = await Task.Run(
+                () => SummarisingOnThisMachine.Provider().IsAvailableAsync(CancellationToken.None))
+            .ConfigureAwait(true);
+
+        if (_closed || !_open || ask != _claudeCodeAsk)
+        {
+            return;
+        }
+
+        _claudeCode = availability;
+        ShowWhereClaudeCodeIs();
+        Render();
+    }
+
     private void OnBack(object sender, RoutedEventArgs e) => Left?.Invoke(this, EventArgs.Empty);
 
     /// <summary>
@@ -554,6 +649,97 @@ public sealed partial class Configuracion : UserControl
             if (!_closed)
             {
                 ChangeWhereItIsKept.IsEnabled = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Somebody asked to change which executable Claude Code runs from.
+    /// </summary>
+    /// <remarks>
+    /// The same two guards <see cref="OnChangeWhereItIsKept"/> carries, for the same two reasons:
+    /// the picker itself is a call into Windows, caught bare because there is nothing narrower to
+    /// name it by and because this is an <c>async void</c> handler nothing may escape; writing the
+    /// chosen file into the setting is this application's own write and takes
+    /// <see cref="ScreenFailures.Reportable"/> unwidened, the same as every other write on this
+    /// screen. Unlike the corpus folder, nothing here is refused for what it names — any file the
+    /// picker hands back is recorded, and whether it is really Claude Code is what the next ask of
+    /// <see cref="CheckClaudeCodeAsync"/> finds out, the same way a chosen corpus folder is trusted
+    /// to <see cref="CorpusLocation.Choose"/>'s own re-inspection rather than a second check here.
+    /// </remarks>
+    private async void OnChangeWhereClaudeCodeIs(object sender, RoutedEventArgs e)
+    {
+        if (_choosingClaudeCode)
+        {
+            return;
+        }
+
+        _choosingClaudeCode = true;
+        ChangeWhereClaudeCodeIs.IsEnabled = false;
+
+        try
+        {
+            FileInfo executable;
+
+            try
+            {
+                var picker = new FileOpenPicker(_window);
+                picker.FileTypeFilter.Add(".exe");
+                picker.FileTypeFilter.Add(".cmd");
+
+                var picked = await picker.PickSingleFileAsync();
+
+                if (picked is null)
+                {
+                    // Nothing chosen is nothing said and nothing done.
+                    return;
+                }
+
+                executable = new FileInfo(picked.Path);
+            }
+            catch (Exception failedToOpen) when (failedToOpen is not OutOfMemoryException)
+            {
+                if (!_closed)
+                {
+                    Say(UiTexts.TheFilePickerDidNotOpen);
+                }
+
+                return;
+            }
+
+            try
+            {
+                await Task.Run(() => ClaudeCodeLocation.OfThisUser().Choose(executable));
+            }
+            catch (Exception refused) when (ScreenFailures.Reportable(refused))
+            {
+                if (!_closed)
+                {
+                    Say(UiTexts.ThatDidNotGoThrough, refused.Message);
+                }
+
+                return;
+            }
+
+            if (_closed)
+            {
+                return;
+            }
+
+            _status.Nothing();
+            _claudeCode = null;
+            ShowWhereClaudeCodeIs();
+            Render();
+
+            await CheckClaudeCodeAsync(++_claudeCodeAsk);
+        }
+        finally
+        {
+            _choosingClaudeCode = false;
+
+            if (!_closed)
+            {
+                ChangeWhereClaudeCodeIs.IsEnabled = true;
             }
         }
     }

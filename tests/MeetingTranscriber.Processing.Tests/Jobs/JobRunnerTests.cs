@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Text;
+using System.Text.Json.Nodes;
 
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
@@ -10,6 +12,8 @@ using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Deepgram;
 using MeetingTranscriber.Processing.Intake;
 using MeetingTranscriber.Processing.Jobs;
+using MeetingTranscriber.Processing.Summaries;
+using MeetingTranscriber.Processing.Tests.Summaries;
 
 namespace MeetingTranscriber.Processing.Tests.Jobs;
 
@@ -676,6 +680,356 @@ public sealed class JobRunnerTests
             lease, job, When, TimeProvider.System, send, TestContext.Current.CancellationToken));
 
         called.ShouldBeFalse();
+    }
+
+    /// <summary>Goes red with <c>Filed</c> not special-cased: the door already moved the job.</summary>
+    [Fact]
+    public async Task A_queued_summary_comes_back_summarised_with_nothing_pressed()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = ArrangeSummarisable(corpus, When);
+        var provider = new FakeSummaries().Answering(new SummaryProviderAnswer.Extracted(
+            Utf8(Accepted(meeting)), "1.0", "opus", null));
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        var run = await JobRunner.RunWhatIsDueAsync(
+            lease, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+
+        run.Ran.ShouldBe([jobId]);
+        run.Left.ShouldBeEmpty();
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Single(row => row.Id == jobId).State.ShouldBe(JobState.Succeeded);
+    }
+
+    /// <summary>Goes red with the two kinds ordered by <c>CreatedAt</c> alone.</summary>
+    [Fact]
+    public async Task A_pass_sends_the_transcriptions_before_the_summaries()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid transcribeJob;
+        Guid extractJob;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            // The summary's own job is queued first, so an order taken from CreatedAt alone would
+            // run it ahead of the transcription.
+            var (_, extract) = ArrangeSummarisable(corpus, When);
+            extractJob = extract;
+
+            var transcribing = RecordedMeetings.Recorded(
+                context, SourceProfile.Multichannel, When + Duration.FromSeconds(1));
+            transcribeJob = new MeetingWork(context, When + Duration.FromSeconds(1)).Take(transcribing).Id;
+            context.SaveChanges();
+        }
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        var provider = new FakeSummaries().Answering(new SummaryProviderAnswer.DidNotAnswer("busy"));
+
+        var run = await JobRunner.RunWhatIsDueAsync(
+            lease, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+
+        // The pass is one worker taking one job at a time (the class's own remarks), so `Ran`
+        // already reports call order — and the summary was asked exactly once, not ahead of the
+        // transcription and not skipped.
+        run.Ran.ShouldBe([transcribeJob, extractJob]);
+        provider.Requests.Count.ShouldBe(1);
+    }
+
+    /// <summary>Goes red with the retry bound misread — a fourth attempt, or none at all.</summary>
+    [Fact]
+    public async Task A_summariser_that_does_not_answer_is_tried_again_later_and_then_not_at_all()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (_, jobId) = ArrangeSummarisable(corpus, When);
+
+        var clock = new MovingClock(When.Value);
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        var provider = new FakeSummaries().Answering(
+            new SummaryProviderAnswer.DidNotAnswer("first"),
+            new SummaryProviderAnswer.DidNotAnswer("second"),
+            new SummaryProviderAnswer.DidNotAnswer("third"));
+
+        await JobRunner.RunWhatIsDueAsync(
+            lease, clock, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+
+        using (var reopened = corpus.Open())
+        {
+            var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
+            job.State.ShouldBe(JobState.FailedRetryable);
+            job.NextAttemptAt.ShouldBe(When + JobRunner.WaitBeforeTryingASummaryAgain(1));
+        }
+
+        clock.Advance(JobRunner.WaitBeforeTryingASummaryAgain(1).ToTimeSpan());
+        await JobRunner.RunWhatIsDueAsync(
+            lease, clock, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+
+        UtcTimestamp secondAttemptAt;
+        using (var reopened = corpus.Open())
+        {
+            var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
+            job.State.ShouldBe(JobState.FailedRetryable);
+            secondAttemptAt = job.NextAttemptAt!.Value;
+        }
+
+        clock.Advance((secondAttemptAt - UtcTimestamp.From(clock.GetUtcNow())).ToTimeSpan());
+        await JobRunner.RunWhatIsDueAsync(
+            lease, clock, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+
+        using (var reopened = corpus.Open())
+        {
+            var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
+            job.State.ShouldBe(JobState.FailedPermanent);
+            job.Failure.ShouldBe(JobFailure.SummariserFailed);
+        }
+    }
+
+    /// <summary>Goes red with a summariser that is not there retried instead of failed at once.</summary>
+    [Fact]
+    public async Task Without_a_summariser_on_this_machine_the_summary_fails_for_good_at_once()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (_, jobId) = ArrangeSummarisable(corpus, When);
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        var provider = new FakeSummaries().Answering(
+            new SummaryProviderAnswer.NotAvailable("Claude Code was not found on this machine."));
+
+        var run = await JobRunner.RunWhatIsDueAsync(
+            lease, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+
+        run.Left.Count.ShouldBe(1);
+
+        using var reopened = corpus.Open();
+        var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
+        job.State.ShouldBe(JobState.FailedPermanent);
+        job.Failure.ShouldBe(JobFailure.NoSummariserOnThisMachine);
+    }
+
+    /// <summary>Goes red with an Extract job taken even though no summariser was handed over.</summary>
+    [Fact]
+    public async Task A_pass_given_no_summariser_leaves_the_summaries_queued()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = ArrangeSummarisable(corpus, When);
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        var run = await JobRunner.RunWhatIsDueAsync(
+            lease, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken);
+
+        run.Ran.ShouldBeEmpty();
+
+        using (var reopened = corpus.Open())
+        {
+            reopened.ProcessingJobs.Single(row => row.Id == jobId).State.ShouldBe(JobState.Pending);
+        }
+
+        // Given a summariser on the next pass, the very same job it left alone is the one it takes —
+        // "queued", not quietly dropped.
+        var provider = new FakeSummaries().Answering(new SummaryProviderAnswer.Extracted(
+            Utf8(Accepted(meeting)), "1.0", "opus", null));
+
+        var later = await JobRunner.RunWhatIsDueAsync(
+            lease, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+
+        later.Ran.ShouldBe([jobId]);
+    }
+
+    /// <summary>Goes red with <c>Take</c> not told the kind — an Extract job sent as a transcription.</summary>
+    [Fact]
+    public async Task Sending_again_sends_only_a_transcription()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (_, extractJob) = ArrangeSummarisable(corpus, When);
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        var called = false;
+        SendingToTheProvider send = (_, _, _, _) =>
+        {
+            called = true;
+            return Task.FromResult(0L);
+        };
+
+        await Should.ThrowAsync<InvalidOperationException>(() => JobRunner.SendAgainAsync(
+            lease, extractJob, When, TimeProvider.System, send, TestContext.Current.CancellationToken));
+
+        called.ShouldBeFalse();
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Single(row => row.Id == extractJob).State.ShouldBe(JobState.Pending);
+    }
+
+    /// <summary>
+    /// Goes red with the watcher's token not handed on to the provider: a pass stopped from the
+    /// screen would then either hang on a provider that never answers, or write a second move over
+    /// the one <c>MeetingWork.StopTheSummary</c> already made.
+    /// </summary>
+    [Fact]
+    public async Task A_summary_somebody_stopped_is_let_go_within_a_look()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = ArrangeSummarisable(corpus, When);
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        var provider = new FakeSummaries().ThatNeverAnswers();
+
+        var pass = JobRunner.RunWhatIsDueAsync(
+            lease, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+
+        var waited = Stopwatch.StartNew();
+        while (waited.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            using var reading = corpus.Open();
+            if (reading.ProcessingJobs.Single(row => row.Id == jobId).State == JobState.Running)
+            {
+                break;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), TestContext.Current.CancellationToken);
+        }
+
+        using (var stopping = corpus.OpenMigrated())
+        {
+            new MeetingWork(stopping, When).StopTheSummary(meeting);
+            stopping.SaveChanges();
+        }
+
+        var run = await pass.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        run.Left.ShouldBeEmpty();
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Single(row => row.Id == jobId).State.ShouldBe(JobState.Cancelled);
+    }
+
+    /// <summary>
+    /// The pump's own cancellation, mid-summary, still rethrows — the same fact
+    /// <see cref="A_send_the_application_walked_out_of_leaves_the_job_where_a_restart_will_find_it"/>
+    /// proves for a transcription. Goes red with the linked-token catch clauses in
+    /// <c>RunSummaryAsync</c> reordered, or with a pump shutdown read as a screen stop and so
+    /// swallowed instead of let out.
+    /// </summary>
+    [Fact]
+    public async Task A_summary_the_application_walked_out_of_leaves_the_job_where_a_restart_will_find_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (_, jobId) = ArrangeSummarisable(corpus, When);
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        using var walkingOut = new CancellationTokenSource();
+        var provider = new LambdaProvider((_, stopping) =>
+        {
+            walkingOut.Cancel();
+            stopping.ThrowIfCancellationRequested();
+            return Task.FromResult<SummaryProviderAnswer>(new SummaryProviderAnswer.DidNotAnswer("unreachable"));
+        });
+
+        await Should.ThrowAsync<OperationCanceledException>(() => JobRunner.RunWhatIsDueAsync(
+            lease, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            walkingOut.Token, provider));
+
+        using var reopened = corpus.Open();
+        var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
+        job.State.ShouldBe(JobState.Running);
+        job.Attempt.ShouldBe(1);
+    }
+
+    /// <summary>A meeting with turns, and a queued <see cref="JobKind.Extract"/> job over it.</summary>
+    private static (Guid Meeting, Guid JobId) ArrangeSummarisable(TemporaryCorpus corpus, UtcTimestamp createdAt)
+    {
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(
+            context, createdAt,
+            ["Este es el primer turno de la reunion.", "Y este es el segundo."],
+            responseSha256: new string('a', 64));
+
+        // MeetingRows.Recorded's own transcription job is left Pending — fine for the door tests
+        // it was built for, which never run a pass, but a real RunWhatIsDueAsync would pick it up
+        // beside the Extract job this test is actually about. Settled here so the meeting reads
+        // exactly like one a pass already finished transcribing.
+        var transcribed = context.ProcessingJobs.Single(
+            row => row.MeetingId == meeting && row.Kind == JobKind.Transcribe);
+        transcribed.Start(createdAt);
+        transcribed.Succeed(createdAt);
+        context.SaveChanges();
+
+        var job = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Extract, $"{meeting}/extract", createdAt);
+        MeetingRows.Add(context, job);
+
+        return (meeting, job.Id);
+    }
+
+    private static JsonNode Accepted(Guid meetingId) => JsonNode.Parse($$"""
+        {
+          "schema_version": "1",
+          "meeting_id": "{{meetingId}}",
+          "abstract": "Se decidio la fecha de lanzamiento.",
+          "summary": "",
+          "participants": ["{{MeetingRows.SpeakerLabel}}"],
+          "decisions": [
+            {
+              "statement": "Lanzar el viernes.",
+              "evidence": {
+                "utterance_ordinal": 0,
+                "start_ms": 1000,
+                "end_ms": 1500,
+                "speaker_label": "{{MeetingRows.SpeakerLabel}}",
+                "quoted_text": "primer turno"
+              }
+            }
+          ],
+          "actions": [],
+          "open_questions": []
+        }
+        """)!;
+
+    private static byte[] Utf8(JsonNode node) => Encoding.UTF8.GetBytes(node.ToJsonString());
+
+    /// <summary>
+    /// Wraps a provider and runs <paramref name="onExtract"/> beside every call to
+    /// <see cref="ISummaryProvider.ExtractAsync"/>, so a test can record when the summary side of a
+    /// pass actually ran without needing its own fake.
+    /// </summary>
+    /// <summary>
+    /// A provider whose one call is whatever the test hands it, for the one fact
+    /// <see cref="FakeSummaries"/> has no shape for: reacting to the token it is given rather than
+    /// answering from a fixed queue.
+    /// </summary>
+    private sealed class LambdaProvider(
+        Func<ExtractionRequest, CancellationToken, Task<SummaryProviderAnswer>> extract) : ISummaryProvider
+    {
+        public string Name => "lambda";
+
+        public Task<SummaryAvailability> IsAvailableAsync(CancellationToken stopping) =>
+            Task.FromResult(new SummaryAvailability(Availability.Answers, "lambda 1", null));
+
+        public Task<SummaryProviderAnswer> ExtractAsync(ExtractionRequest request, CancellationToken stopping) =>
+            extract(request, stopping);
     }
 
     /// <summary>A job queued directly, left <see cref="JobState.Pending"/> for the caller to start.</summary>

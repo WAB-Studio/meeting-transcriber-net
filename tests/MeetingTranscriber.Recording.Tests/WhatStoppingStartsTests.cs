@@ -31,7 +31,8 @@ public class WhatStoppingStartsTests
     /// here would be a job whose input does not exist — the one thing <c>JobStates</c> cannot
     /// describe. What the second half of that answer means is read by nothing yet:
     /// <c>JobRunner</c>, which finishes a transcription, queues no summary when one lands, because
-    /// nothing in this product summarises yet.
+    /// ISC-190.1 gates an automatic summary on a person having been shown which provider receives
+    /// the meeting's text and how it charges, which is #125's dialogue and not yet built.
     /// </remarks>
     [Fact]
     public void Summarising_is_not_queued_at_the_stop_even_when_it_was_settled() =>

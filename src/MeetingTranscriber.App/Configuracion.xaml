@@ -251,6 +251,49 @@
                         Style="{StaticResource PillButton}"
                         Click="OnChangeWhereItIsKept"
                         Visibility="Collapsed"
+                        AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhereTheCorpusIsKept)}"
+                        Content="{x:Bind In(loc:UiTexts.ChangeWhereItIsKept)}" />
+                </Grid>
+
+                <!-- Where Claude Code is, the fifth block this screen carries. The data line names
+                     the executable somebody chose, or nothing when nobody has — the search of
+                     `PATH` that stands in for that has no line of its own, the way a corpus
+                     nobody has moved has none either. The sentence beneath it is drawn only when
+                     Claude Code is not on this machine or did not answer; silence is what "it is
+                     there" gets, the same rule the corpus block above already keeps for an opened
+                     corpus.
+
+                     *Cambiar* is always offered, unlike the corpus one: there is no refused state
+                     to wait for, since nothing here has to have been chosen before it can be
+                     changed. Both presses on this screen show the same word and are told apart for
+                     a screen reader by `AutomationProperties.Name` (D2). -->
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock
+                            x:Name="ClaudeCodeText"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{StaticResource SecondaryTextBrush}"
+                            TextWrapping="Wrap" />
+                        <TextBlock
+                            x:Name="ClaudeCodeStatusText"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{StaticResource SecondaryTextBrush}"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed" />
+                    </StackPanel>
+
+                    <Button
+                        x:Name="ChangeWhereClaudeCodeIs"
+                        Grid.Column="1"
+                        VerticalAlignment="Top"
+                        Style="{StaticResource PillButton}"
+                        Click="OnChangeWhereClaudeCodeIs"
+                        AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhereClaudeCodeIs)}"
                         Content="{x:Bind In(loc:UiTexts.ChangeWhereItIsKept)}" />
                 </Grid>
 

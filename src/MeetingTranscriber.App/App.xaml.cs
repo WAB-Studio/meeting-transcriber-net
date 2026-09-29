@@ -217,7 +217,8 @@ public partial class App : Application
                     TimeProvider.System,
                     TranscribingOnThisMachinesKey.Sending(),
                     JobRunner.HowOftenTheQueueIsLookedAt,
-                    work.Token).ConfigureAwait(false);
+                    work.Token,
+                    SummarisingOnThisMachine.Provider()).ConfigureAwait(false);
             });
         }
     }
