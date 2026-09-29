@@ -181,8 +181,9 @@ public class ExtractionIntakeTests
             var prepared = MeetingInput.Prepare(context, meeting);
             var attempt = AttemptFor(job.Id, prepared.Hash, Accepted(meeting));
 
-            // The attempt is a valid, accepted extraction, so the temporary is staged before this
-            // throws — proving the `using var staged` cleanup and not only the row-side refusal.
+            // The job is re-read, tracked, before Prepare or the stage ever run (Decides 10), so an
+            // invalid job refuses here with nothing prepared and nothing staged at all — not only
+            // a row-side refusal.
             Should.Throw<InvalidOperationException>(() => ExtractionIntake.Receive(context, attempt, Recorded));
             context.ExtractionRuns.Any().ShouldBeFalse();
             NoUnfinishedFileIsLeftBehind(corpus, meeting);
@@ -204,6 +205,36 @@ public class ExtractionIntakeTests
             context.ExtractionRuns.Any().ShouldBeFalse();
             NoUnfinishedFileIsLeftBehind(corpus, meeting);
         }
+    }
+
+    /// <summary>O-20260926-03.</summary>
+    [Fact]
+    public async Task A_meeting_rendered_again_while_the_door_waits_for_the_lock_is_checked_as_it_is_now()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var (meeting, jobId, prepared) = ArrangeStartedExtraction(
+            context, ["Este es el primer turno de la reunion."]);
+
+        var attempt = AttemptFor(jobId, prepared.Hash, Accepted(meeting));
+
+        // A second connection holds the write lock over a change to this meeting's turns — the
+        // shape a render takes — for 500 ms, well inside BusyTimeoutMilliseconds. The door's own
+        // BeginTransaction blocks on it, so Prepare below only ever runs once that lock is free.
+        using var holder = corpus.OpenMigrated();
+        using var held = holder.Database.BeginTransaction();
+        var turn = holder.Utterances.Single(row => row.MeetingId == meeting && row.Ordinal == 0);
+        turn.Text += " Renderizado de nuevo mientras la puerta esperaba.";
+        holder.SaveChanges();
+
+        var receiving = Task.Run(() => ExtractionIntake.Receive(context, attempt, Recorded));
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+        held.Commit();
+
+        var received = await receiving;
+
+        received.Accepted.ShouldBeFalse();
+        received.Refusals.ShouldBe([new ExtractionRefusal(ExtractionCondition.InputNotAsPrepared, "$", null)]);
     }
 
     [Fact]

@@ -26,9 +26,10 @@ namespace MeetingTranscriber.Processing.Summaries;
 /// retry this door — or anything else — runs on its own.
 /// </para>
 /// <para>
-/// <b>The run is written whole, with its outcome, in one transaction.</b> A run row written before
-/// this call — the way a transcription writes its own before the call it is for — is #119's to
-/// decide once there is a provider call in front of this door.
+/// <b>The run is written whole, with its outcome, in one transaction.</b> Unlike a transcription's
+/// own run, nothing is written before this call: <c>SummarisingAMeeting</c> holds no row open
+/// across a provider call, so the first byte this door ever writes about an attempt is the whole of
+/// it — accepted or refused.
 /// </para>
 /// <para>
 /// <b>An accepted output is kept byte for byte at <c>meetings/&lt;id&gt;/extractions/&lt;run id&gt;.json</c>,
@@ -37,14 +38,16 @@ namespace MeetingTranscriber.Processing.Summaries;
 /// again.
 /// </para>
 /// <para>
-/// This is the door #119's adapter hands an unwrapped extraction to, once there is a provider
-/// behind it. Nothing here reaches a transcription provider — a source guard over every file in
-/// this folder is what proves that, rather than a review having to notice a stray reference.
+/// This is the door <c>ClaudeCodeSummaries</c> — and any other <see cref="ISummaryProvider"/> —
+/// hands an unwrapped extraction to, through <c>SummarisingAMeeting</c>. Nothing here reaches a
+/// transcription provider — a source guard over every file in this folder is what proves that,
+/// rather than a review having to notice a stray reference.
 /// </para>
 /// </remarks>
 public static class ExtractionIntake
 {
     /// <summary>One attempt at summarising a meeting, exactly as it is handed to this door.</summary>
+    /// <param name="SessionId">The conversation the provider opened for this attempt, when it reported one.</param>
     public sealed record ExtractionAttempt(
         Guid JobId,
         string Provider,
@@ -52,7 +55,8 @@ public static class ExtractionIntake
         string? Model,
         string PromptVersion,
         string InputHash,
-        byte[] Output);
+        byte[] Output,
+        string? SessionId = null);
 
     /// <summary>What filing one attempt came to.</summary>
     public sealed record ExtractionReceived(Guid RunId, bool Accepted, IReadOnlyList<ExtractionRefusal> Refusals);
@@ -76,28 +80,33 @@ public static class ExtractionIntake
                 + "holds one. Nothing was filed.");
         }
 
-        // Read once, untracked, only to learn which meeting this is about — the throw below covers
-        // a job that does not exist at all, and the kind and state are asked again, tracked, once
-        // the write lock is held (Decides; the job read outside the transaction).
-        var meetingId = context.ProcessingJobs
-            .AsNoTracking()
-            .Where(job => job.Id == attempt.JobId)
-            .Select(job => (Guid?)job.MeetingId)
-            .FirstOrDefault()
-            ?? throw NotAStartedExtraction(attempt.JobId);
+        using var transaction = context.Database.BeginTransaction();
 
-        // Prepared and checked outside this door's own transaction, and never re-checked once it
-        // opens: a render landing in that gap would leave a citation's turn stale, and the citation
-        // foreign key — not deferred here — is what turns that into a loud transaction failure
-        // rather than a silent one, the same way `MeetingRenderer.RefuseStrandedClaims` leans on it.
+        // Re-read, tracked, inside the transaction: the write lock this opens with is what makes
+        // this check, everything Prepare and ExtractionCheck read below, and the move that follows
+        // one thing. Nothing has been added to the context yet when this refuses.
+        var job = context.ProcessingJobs.FirstOrDefault(row => row.Id == attempt.JobId);
+        if (job is null || job.Kind != JobKind.Extract || job.State != JobState.Running)
+        {
+            throw NotAStartedExtraction(attempt.JobId);
+        }
+
+        var meetingId = job.MeetingId;
+
+        // Prepared again, inside the transaction, under the write lock BeginTransaction above
+        // already took: a render landing between this attempt being sent and this door opening
+        // would leave attempt.InputHash stale against what the meeting says now, and
+        // ExtractionCheck.Of's own InputNotAsPrepared refusal below is what catches that — loudly,
+        // rather than filing citations against turns that have already moved (O-20260926-03).
         var prepared = MeetingInput.Prepare(context, meetingId);
         var verdict = ExtractionCheck.Of(attempt.Output, attempt.InputHash, prepared);
+
         var runId = Guid.NewGuid();
 
-        // Staged before the transaction opens, as MeetingArchive.Filed stages a source: the write
-        // lock is taken at BEGIN IMMEDIATE, so no other writer waits on this copy. The `using` is
-        // load-bearing — Dispose lets go of the `.partial` and deletes it, so a throw between here
-        // and the commit below leaves nothing behind.
+        // Staged inside the transaction, once the verdict is known: the write lock is already held
+        // by BeginTransaction above, so nothing else can land between this stage and the commit
+        // below. The `using` is load-bearing — Dispose lets go of the `.partial` and deletes it, so
+        // a throw between here and the commit leaves nothing behind.
         using var staged = verdict.IsAccepted
             ? StagedArtifact.Stage(
                 context,
@@ -106,16 +115,6 @@ public static class ExtractionIntake
                 CorpusFiles.PathFor(meetingId, $"extractions/{runId}.json"),
                 stream => stream.Write(attempt.Output))
             : null;
-
-        using var transaction = context.Database.BeginTransaction();
-
-        // Re-read, tracked, inside the transaction: the write lock is what makes this check and the
-        // move that follows one thing. Nothing has been added to the context yet when this refuses.
-        var job = context.ProcessingJobs.FirstOrDefault(row => row.Id == attempt.JobId);
-        if (job is null || job.Kind != JobKind.Extract || job.State != JobState.Running)
-        {
-            throw NotAStartedExtraction(attempt.JobId);
-        }
 
         var run = new ExtractionRun
         {
@@ -129,6 +128,7 @@ public static class ExtractionIntake
             SchemaVersion = ExtractionReader.SchemaVersion,
             InputHash = attempt.InputHash,
             RawOutputHash = CorpusFiles.Sha256Of(new MemoryStream(attempt.Output)),
+            SessionId = attempt.SessionId,
             CreatedAt = now,
         };
 
@@ -136,21 +136,21 @@ public static class ExtractionIntake
 
         if (verdict.IsAccepted)
         {
-            var document = verdict.Accepted!;
+            var accepted = verdict.Accepted!;
 
             context.Summaries.Add(new Summary
             {
                 Id = Guid.NewGuid(),
                 MeetingId = meetingId,
                 ExtractionRunId = run.Id,
-                Abstract = document.Abstract,
-                Body = document.Summary,
+                Abstract = accepted.Abstract,
+                Body = accepted.Summary,
                 CreatedAt = now,
             });
 
-            AddDecisions(context, meetingId, run.Id, document, prepared, now);
-            AddActions(context, meetingId, run.Id, document, prepared, now);
-            AddQuestions(context, meetingId, run.Id, document, prepared, now);
+            AddDecisions(context, meetingId, run.Id, accepted, prepared, now);
+            AddActions(context, meetingId, run.Id, accepted, prepared, now);
+            AddQuestions(context, meetingId, run.Id, accepted, prepared, now);
 
             job.Succeed(now);
 
