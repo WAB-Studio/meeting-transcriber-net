@@ -35,7 +35,8 @@ public sealed record SummaryEnded(SummaryOutcome Outcome, string? Said, JobFailu
 
 /// <summary>
 /// One <see cref="MeetingTranscriber.Domain.Jobs.JobKind.Extract"/> job the runner has already
-/// started: sending the meeting to a provider, and filing whatever comes of it.
+/// started: sending the meeting to a provider, handing a refusal back once when it can be, and
+/// filing whatever comes of it.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -52,6 +53,26 @@ public sealed record SummaryEnded(SummaryOutcome Outcome, string? Said, JobFailu
 /// that is not <paramref name="stopping"/> ending the call becomes <see cref="SummaryOutcome.DidNotAnswer"/>,
 /// carrying its message: a call that is money spent already reads as an answer worth acting on
 /// rather than an exception a caller has to know to catch.
+/// </para>
+/// <para>
+/// <b>A refusal is handed back once.</b> A first attempt the door could correct — every refusal one
+/// of the six <see cref="ExtractionCorrection.MayBeHandedBack"/> accepts — stays <c>Running</c>
+/// rather than failing, and this asks the same provider once more with
+/// <see cref="ExtractionInstructions.ToCorrect"/> and what <see cref="ExtractionCorrection.WhatWasWrong"/>
+/// says was wrong. Whatever that second call comes to is final: accepted, refused for good, or
+/// <see cref="SummaryOutcome.DidNotAnswer"/> for the runner to retry from the beginning next time —
+/// in English, never <see cref="SummaryOutcome.NotSent"/>: the first call already sent something,
+/// so a correction round that gets no answer is exactly <see cref="SummaryOutcome.DidNotAnswer"/>
+/// regardless of which of <see cref="ISummaryProvider.ExtractAsync"/>'s own two negative answers it
+/// was.
+/// </para>
+/// <para>
+/// <b>Once per job's whole life, not once per retried attempt.</b> The door
+/// (<see cref="ExtractionIntake.Receive"/>) is what holds this, because a job whose earlier
+/// hand-back round itself came back <see cref="SummaryOutcome.DidNotAnswer"/> is retried by the
+/// runner as a fresh call here — this method has no memory of its own between calls, and does not
+/// need one: the door reads whether the job already carries a correction before granting a new
+/// hand-back, the same way it reads the job's own state.
 /// </para>
 /// <para>
 /// <b>Two calls in flight on one job at once are not this method's to prevent.</b> Nothing here
@@ -72,7 +93,7 @@ public static class SummarisingAMeeting
     /// <param name="jobId">The <see cref="JobKind.Extract"/> job this attempt is for.</param>
     /// <param name="provider">What actually reaches the summariser.</param>
     /// <param name="clock">Where every timestamp this writes comes from.</param>
-    /// <param name="stopping">Cancels the call.</param>
+    /// <param name="stopping">Cancels the call, and the hand-back if it is still running.</param>
     /// <exception cref="InvalidOperationException">
     /// The job is missing, is not a summary, or has not been started. Nothing is sent.
     /// </exception>
@@ -117,7 +138,7 @@ public static class SummarisingAMeeting
             var answer = await provider.ExtractAsync(request, stopping).ConfigureAwait(false);
 
             return answer is SummaryProviderAnswer.Extracted extracted
-                ? FileAsync(root, jobId, provider, extracted, prepared.Hash, clock)
+                ? await FileAsync(root, jobId, prepared, extracted, provider, clock, stopping).ConfigureAwait(false)
                 : NotExtracted(answer);
         }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested)
@@ -130,12 +151,64 @@ public static class SummarisingAMeeting
         }
     }
 
-    private static SummaryEnded FileAsync(
+    /// <summary>
+    /// Files the first attempt, and — on a hand-back — asks once more for a correction and files
+    /// that instead.
+    /// </summary>
+    private static async Task<SummaryEnded> FileAsync(
+        DirectoryInfo root,
+        Guid jobId,
+        MeetingInput prepared,
+        SummaryProviderAnswer.Extracted extracted,
+        ISummaryProvider provider,
+        TimeProvider clock,
+        CancellationToken stopping)
+    {
+        // corrects: null is what tells the door this is a first attempt, and mayBeHandedBack:
+        // true is the only way a refusal ever gets handed back at all — the two agree by
+        // construction at both call sites in this method, so neither is threaded through as its
+        // own parameter.
+        var received = Receive(root, jobId, provider, extracted, prepared.Hash, corrects: null, clock);
+        if (!received.HandedBack)
+        {
+            return new SummaryEnded(SummaryOutcome.Filed, null, RunId: received.RunId);
+        }
+
+        var correctionRequest = new ExtractionRequest(
+            prepared,
+            ExtractionInstructions.ToCorrect,
+            ExtractionInstructions.Schema,
+            new SummaryCorrection(extracted.Output, ExtractionCorrection.WhatWasWrong(received.Refusals)));
+
+        var correctionAnswer = await provider.ExtractAsync(correctionRequest, stopping).ConfigureAwait(false);
+
+        if (correctionAnswer is not SummaryProviderAnswer.Extracted corrected)
+        {
+            // Never NotSent here (Decides 12): the first call already sent something, so whatever
+            // the provider says about itself on the second one — it did not answer, or it is now
+            // unavailable — reads as the same DidNotAnswer the runner already knows how to retry.
+            var said = correctionAnswer switch
+            {
+                SummaryProviderAnswer.DidNotAnswer didNotAnswer => didNotAnswer.Said,
+                SummaryProviderAnswer.NotAvailable notAvailable => notAvailable.Said,
+                _ => throw new ArgumentOutOfRangeException(
+                    nameof(correctionAnswer), correctionAnswer, "Extracted is filed above, not mapped here."),
+            };
+
+            return new SummaryEnded(SummaryOutcome.DidNotAnswer, said);
+        }
+
+        var filed = Receive(root, jobId, provider, corrected, prepared.Hash, corrects: received.RunId, clock);
+        return new SummaryEnded(SummaryOutcome.Filed, null, RunId: filed.RunId);
+    }
+
+    private static ExtractionIntake.ExtractionReceived Receive(
         DirectoryInfo root,
         Guid jobId,
         ISummaryProvider provider,
         SummaryProviderAnswer.Extracted extracted,
         string inputHash,
+        Guid? corrects,
         TimeProvider clock)
     {
         using var context = CorpusDatabase.Open(root);
@@ -147,13 +220,15 @@ public static class SummarisingAMeeting
             ExtractionInstructions.Version,
             inputHash,
             extracted.Output,
-            extracted.SessionId);
+            extracted.SessionId,
+            corrects);
 
-        var received = ExtractionIntake.Receive(context, attempt, UtcTimestamp.From(clock.GetUtcNow()));
-        return new SummaryEnded(SummaryOutcome.Filed, null, RunId: received.RunId);
+        return ExtractionIntake.Receive(
+            context, attempt, UtcTimestamp.From(clock.GetUtcNow()), mayBeHandedBack: corrects is null);
     }
 
-    /// <summary>What a <see cref="SummaryProviderAnswer"/> that is not <c>Extracted</c> becomes.</summary>
+    /// <summary>What a <see cref="SummaryProviderAnswer"/> that is not <c>Extracted</c> becomes, on
+    /// the first call only — see <see cref="FileAsync"/> for the second.</summary>
     private static SummaryEnded NotExtracted(SummaryProviderAnswer answer) => answer switch
     {
         SummaryProviderAnswer.DidNotAnswer didNotAnswer => new SummaryEnded(SummaryOutcome.DidNotAnswer, didNotAnswer.Said),

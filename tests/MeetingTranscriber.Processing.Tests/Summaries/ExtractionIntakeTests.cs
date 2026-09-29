@@ -237,6 +237,115 @@ public class ExtractionIntakeTests
         received.Refusals.ShouldBe([new ExtractionRefusal(ExtractionCondition.InputNotAsPrepared, "$", null)]);
     }
 
+    /// <summary>Decides 12.</summary>
+    [Fact]
+    public void A_first_refusal_that_can_be_corrected_is_kept_and_leaves_the_job_running()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var (meeting, jobId, prepared) = ArrangeStartedExtraction(
+            context, ["Este es el primer turno de la reunion."]);
+
+        var broken = Accepted(meeting);
+        Remove(broken, "abstract");
+
+        var received = ExtractionIntake.Receive(
+            context, AttemptFor(jobId, prepared.Hash, broken), Recorded, mayBeHandedBack: true);
+
+        received.Accepted.ShouldBeFalse();
+        received.HandedBack.ShouldBeTrue();
+        received.Refusals.ShouldBe([new ExtractionRefusal(ExtractionCondition.NotTheSchema, "abstract", null)]);
+
+        var job = context.ProcessingJobs.Single(row => row.Id == jobId);
+        job.State.ShouldBe(JobState.Running);
+        job.Failure.ShouldBeNull();
+
+        context.ExtractionRefusals.Count(row => row.ExtractionRunId == received.RunId).ShouldBe(1);
+    }
+
+    /// <summary>Decides 9 and Decides 12.</summary>
+    [Fact]
+    public void A_correction_is_filed_only_against_the_refused_run_it_corrects()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var (meeting, jobId, prepared) = ArrangeStartedExtraction(
+            context, ["Este es el primer turno de la reunion."]);
+
+        var broken = Accepted(meeting);
+        Remove(broken, "abstract");
+        var first = ExtractionIntake.Receive(
+            context, AttemptFor(jobId, prepared.Hash, broken), Recorded, mayBeHandedBack: true);
+        first.HandedBack.ShouldBeTrue();
+
+        // A second job's run, also refused and handed-back-eligible, is not this job's to
+        // correct: the precondition asks the job named by the attempt, never the run alone.
+        var otherJob = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Extract, $"{meeting}/extract-2", Recorded);
+        otherJob.Start(Recorded);
+        MeetingRows.Add(context, otherJob);
+        var otherFirst = ExtractionIntake.Receive(
+            context, AttemptFor(otherJob.Id, prepared.Hash, broken), Recorded, mayBeHandedBack: true);
+        otherFirst.HandedBack.ShouldBeTrue();
+
+        var crossJobAttempt = new ExtractionIntake.ExtractionAttempt(
+            jobId, "claude-code", "1.0", "opus", "1", prepared.Hash, Utf8(Accepted(meeting)), Corrects: otherFirst.RunId);
+        Should.Throw<InvalidOperationException>(() => ExtractionIntake.Receive(context, crossJobAttempt, Recorded));
+        context.ExtractionRuns.Count(row => row.JobId == jobId).ShouldBe(1);
+
+        // Filed against the run it names: refused again here, and the row still carries
+        // CorrectsRunId — the corpus records which run a correction is without ordering by time.
+        var correctionAttempt = new ExtractionIntake.ExtractionAttempt(
+            jobId, "claude-code", "1.0", "opus", "1", prepared.Hash, Utf8(broken), Corrects: first.RunId);
+        var second = ExtractionIntake.Receive(context, correctionAttempt, Recorded);
+
+        second.Accepted.ShouldBeFalse();
+        context.ExtractionRuns.Single(row => row.Id == second.RunId).CorrectsRunId.ShouldBe(first.RunId);
+        context.ProcessingJobs.Single(row => row.Id == jobId).State.ShouldBe(JobState.FailedPermanent);
+
+        // jobId now carries two runs and is terminal: a further correction against it throws
+        // before anything is written, rather than filing a third run under a job that is done.
+        var thirdAttempt = new ExtractionIntake.ExtractionAttempt(
+            jobId, "claude-code", "1.0", "opus", "1", prepared.Hash, Utf8(Accepted(meeting)), Corrects: second.RunId);
+        Should.Throw<InvalidOperationException>(() => ExtractionIntake.Receive(context, thirdAttempt, Recorded));
+        context.ExtractionRuns.Count(row => row.JobId == jobId).ShouldBe(2);
+    }
+
+    /// <summary>
+    /// An adversarial review flagged the earlier reading of the precondition — "the job's only
+    /// run" — as breaking a job the runner retries after a hand-back whose own correction round
+    /// never answers: nothing is filed for it, so the run sits on the job uncorrected, and the
+    /// next attempt's own hand-back is still this job's one to spend.
+    /// </summary>
+    [Fact]
+    public void A_correction_is_filed_even_when_an_earlier_uncorrected_attempt_is_still_on_the_job()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var (meeting, jobId, prepared) = ArrangeStartedExtraction(
+            context, ["Este es el primer turno de la reunion."]);
+
+        var broken = Accepted(meeting);
+        Remove(broken, "abstract");
+
+        // Stands in for the run an earlier, retried attempt left behind: handed back, and never
+        // corrected, because that attempt's correction round itself came back DidNotAnswer.
+        var earlier = ExtractionIntake.Receive(
+            context, AttemptFor(jobId, prepared.Hash, broken), Recorded, mayBeHandedBack: true);
+        earlier.HandedBack.ShouldBeTrue();
+
+        var current = ExtractionIntake.Receive(
+            context, AttemptFor(jobId, prepared.Hash, broken), Recorded, mayBeHandedBack: true);
+        current.HandedBack.ShouldBeTrue();
+
+        var correctionAttempt = new ExtractionIntake.ExtractionAttempt(
+            jobId, "claude-code", "1.0", "opus", "1", prepared.Hash, Utf8(Accepted(meeting)), Corrects: current.RunId);
+        var corrected = ExtractionIntake.Receive(context, correctionAttempt, Recorded);
+
+        corrected.Accepted.ShouldBeTrue();
+        context.ExtractionRuns.Single(row => row.Id == corrected.RunId).CorrectsRunId.ShouldBe(current.RunId);
+        context.ExtractionRuns.Count(row => row.JobId == jobId).ShouldBe(3);
+    }
+
     [Fact]
     public void An_extraction_is_refused_in_a_transaction_of_its_own()
     {

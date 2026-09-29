@@ -1,6 +1,7 @@
 using System.Text.Json.Nodes;
 
 using MeetingTranscriber.Domain.Jobs;
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Summaries;
@@ -13,7 +14,7 @@ namespace MeetingTranscriber.Processing.Tests.Summaries;
 
 /// <summary>
 /// <see cref="SummarisingAMeeting.SummariseAsync"/>: one call to a provider, turned into a
-/// <see cref="SummaryEnded"/>.
+/// <see cref="SummaryEnded"/>, and — on a correctable refusal — the one hand-back it is owed.
 /// </summary>
 public class SummarisingAMeetingTests
 {
@@ -184,11 +185,171 @@ public class SummarisingAMeetingTests
         }
     }
 
+    /// <summary>ISC-115.</summary>
+    [Fact]
+    public async Task A_summary_refused_for_its_shape_is_handed_back_once_and_accepted_corrected()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = Arrange(corpus);
+        var broken = Accepted(meeting);
+        Remove(broken, "abstract");
+
+        var provider = new FakeSummaries().Answering(Extracted(broken), Extracted(Accepted(meeting)));
+
+        var ended = await SummariseAsync(corpus, jobId, provider);
+
+        ended.Outcome.ShouldBe(SummaryOutcome.Filed);
+        provider.Requests.Count.ShouldBe(2);
+
+        var correction = provider.Requests[1];
+        correction.Instructions.ShouldBe(ExtractionInstructions.ToCorrect);
+        correction.Correction.ShouldNotBeNull();
+        correction.Correction!.PreviousOutput.ShouldBe(Utf8(broken));
+        correction.Correction.WhatWasWrong.ShouldBe("- At abstract: this is not in the shape schema.md describes. Fix it.");
+
+        using var reopened = corpus.OpenMigrated();
+        reopened.ProcessingJobs.Single(row => row.Id == jobId).State.ShouldBe(JobState.Succeeded);
+        reopened.ExtractionRuns.Count(row => row.JobId == jobId).ShouldBe(2);
+
+        var second = reopened.ExtractionRuns.Single(row => row.Id == ended.RunId);
+        var first = reopened.ExtractionRuns.Single(row => row.JobId == jobId && row.Id != second.Id);
+        second.AcceptedAt.ShouldNotBeNull();
+        second.CorrectsRunId.ShouldBe(first.Id);
+        first.AcceptedAt.ShouldBeNull();
+    }
+
+    /// <summary>ISC-116.</summary>
+    [Fact]
+    public async Task A_statement_nothing_supports_comes_back_accepted_only_without_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = Arrange(corpus);
+        var broken = Accepted(meeting);
+        Remove(broken, "decisions[0].evidence");
+
+        var corrected = Accepted(meeting);
+        corrected["decisions"] = new JsonArray();
+
+        var provider = new FakeSummaries().Answering(Extracted(broken), Extracted(corrected));
+
+        var ended = await SummariseAsync(corpus, jobId, provider);
+
+        ended.Outcome.ShouldBe(SummaryOutcome.Filed);
+
+        using var reopened = corpus.OpenMigrated();
+        reopened.ProcessingJobs.Single(row => row.Id == jobId).State.ShouldBe(JobState.Succeeded);
+        reopened.ExtractionRuns.Single(row => row.Id == ended.RunId).AcceptedAt.ShouldNotBeNull();
+        reopened.Decisions.Any(row => row.ExtractionRunId == ended.RunId).ShouldBeFalse();
+    }
+
+    /// <summary>ISC-116, anti.</summary>
+    [Fact]
+    public async Task A_statement_handed_back_that_comes_back_citing_something_else_is_refused()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = Arrange(corpus);
+        var broken = Accepted(meeting);
+        Remove(broken, "decisions[0].evidence");
+
+        var corrected = BroughtBackAsAnAction(meeting);
+
+        var provider = new FakeSummaries().Answering(Extracted(broken), Extracted(corrected));
+
+        var ended = await SummariseAsync(corpus, jobId, provider);
+
+        ended.Outcome.ShouldBe(SummaryOutcome.Filed);
+        provider.Requests.Count.ShouldBe(2);
+
+        using var reopened = corpus.OpenMigrated();
+        var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
+        job.State.ShouldBe(JobState.FailedPermanent);
+        job.Failure.ShouldBe(JobFailure.ExtractionRefused);
+
+        reopened.ExtractionRefusals
+            .Where(row => row.ExtractionRunId == ended.RunId)
+            .Select(row => new { row.Condition, row.Path, row.Statement })
+            .ShouldContain(row => row.Condition == ExtractionCondition.CitedAgainElsewhere
+                && row.Path == "actions[0]" && row.Statement == "Lanzar el viernes.");
+    }
+
+    [Fact]
+    public async Task An_input_that_was_not_the_one_prepared_is_not_handed_back()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = Arrange(corpus);
+        var provider = new ProviderThatRendersMidCall(corpus.Root, meeting, Utf8(Accepted(meeting)));
+
+        var ended = await SummariseAsync(corpus, jobId, provider);
+
+        ended.Outcome.ShouldBe(SummaryOutcome.Filed);
+
+        using var reopened = corpus.OpenMigrated();
+        var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
+        job.State.ShouldBe(JobState.FailedPermanent);
+        job.Failure.ShouldBe(JobFailure.ExtractionRefused);
+
+        reopened.ExtractionRefusals
+            .Where(row => row.ExtractionRunId == ended.RunId)
+            .Select(row => row.Condition)
+            .ShouldContain(ExtractionCondition.InputNotAsPrepared);
+    }
+
+    [Fact]
+    public async Task A_correction_that_is_refused_again_fails_the_job_and_nothing_is_asked_a_third_time()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = Arrange(corpus);
+        var broken = Accepted(meeting);
+        Remove(broken, "abstract");
+        var stillBroken = Accepted(meeting);
+        Remove(stillBroken, "abstract");
+
+        var provider = new FakeSummaries().Answering(Extracted(broken), Extracted(stillBroken));
+
+        var ended = await SummariseAsync(corpus, jobId, provider);
+
+        ended.Outcome.ShouldBe(SummaryOutcome.Filed);
+        provider.Requests.Count.ShouldBe(2);
+
+        using var reopened = corpus.OpenMigrated();
+        var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
+        job.State.ShouldBe(JobState.FailedPermanent);
+        job.Failure.ShouldBe(JobFailure.ExtractionRefused);
+        reopened.ExtractionRuns.Count(row => row.JobId == jobId).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task A_summary_the_meeting_does_not_support_fails_its_job_for_good()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = Arrange(corpus);
+        var aboutAnotherMeeting = Accepted(meeting);
+        Set(aboutAnotherMeeting, "meeting_id", Guid.NewGuid().ToString());
+
+        var provider = new FakeSummaries().Answering(Extracted(aboutAnotherMeeting));
+
+        var ended = await SummariseAsync(corpus, jobId, provider);
+
+        ended.Outcome.ShouldBe(SummaryOutcome.Filed);
+        provider.Requests.Count.ShouldBe(1);
+
+        using var reopened = corpus.OpenMigrated();
+        var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
+        job.State.ShouldBe(JobState.FailedPermanent);
+        job.Failure.ShouldBe(JobFailure.ExtractionRefused);
+
+        reopened.ExtractionRefusals
+            .Where(row => row.ExtractionRunId == ended.RunId)
+            .Select(row => row.Condition)
+            .ShouldContain(ExtractionCondition.AnotherMeeting);
+    }
+
     /// <summary>
     /// An adversarial review noted that the broad catch turning "anything else" into
     /// <c>DidNotAnswer</c> was untested against the door's own refusal — as opposed to the
     /// provider's — so nothing distinguished a real answering failure from an internal one before
-    /// this.
+    /// this. Both still read the same to the runner (Decides 8), but the message differs and is
+    /// worth telling apart when diagnosing one.
     /// </summary>
     [Fact]
     public async Task An_internal_refusal_the_door_raises_reads_as_the_provider_not_answering()
@@ -279,6 +440,57 @@ public class SummarisingAMeetingTests
           "open_questions": []
         }
         """)!;
+
+    private static JsonNode BroughtBackAsAnAction(Guid meetingId) => JsonNode.Parse($$"""
+        {
+          "schema_version": "1",
+          "meeting_id": "{{meetingId}}",
+          "abstract": "Se decidio la fecha de lanzamiento.",
+          "summary": "",
+          "participants": ["{{MeetingRows.SpeakerLabel}}"],
+          "decisions": [],
+          "actions": [
+            {
+              "statement": "Lanzar el viernes.",
+              "due_date": null,
+              "evidence": {
+                "utterance_ordinal": 1,
+                "start_ms": 2000,
+                "end_ms": 2500,
+                "speaker_label": "{{MeetingRows.SpeakerLabel}}",
+                "quoted_text": "segundo"
+              }
+            }
+          ],
+          "open_questions": []
+        }
+        """)!;
+
+    /// <summary>
+    /// A provider whose one call renders the meeting again mid-flight, so what
+    /// <c>SummarisingAMeeting</c> already prepared and hashed no longer matches what the door reads
+    /// when it re-prepares inside its own transaction.
+    /// </summary>
+    private sealed class ProviderThatRendersMidCall(DirectoryInfo root, Guid meetingId, byte[] output)
+        : ISummaryProvider
+    {
+        public string Name => "mid-call-render";
+
+        public Task<SummaryAvailability> IsAvailableAsync(CancellationToken stopping) =>
+            Task.FromResult(new SummaryAvailability(Availability.Answers, "1", null));
+
+        public Task<SummaryProviderAnswer> ExtractAsync(ExtractionRequest request, CancellationToken stopping)
+        {
+            using (var context = CorpusDatabase.Open(root))
+            {
+                var turn = context.Utterances.Single(row => row.MeetingId == meetingId && row.Ordinal == 0);
+                turn.Text += " Ahora renderizado de nuevo.";
+                context.SaveChanges();
+            }
+
+            return Task.FromResult<SummaryProviderAnswer>(new SummaryProviderAnswer.Extracted(output, "1.0", "opus", null));
+        }
+    }
 
     /// <summary>
     /// A provider whose one call cancels the job it was sent for before answering, so the door's

@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 163/254
+progress: 165/254
 updated: 2026-09-28
 ---
 
@@ -266,8 +266,8 @@ Board: 5 · Summaries
 - [x] ISC-89: Anti: recording, transcription, rendering, search and recovery all work with Claude Code absent.
 - [x] ISC-90: A summary that fails validation is stored as a failed run, not as a summary.
 - [x] ISC-91: A second extraction leaves the first one's state alone and starts its own blank.
-- [ ] ISC-115: A rejected summary is handed back once, saying what was wrong with it.
-- [ ] ISC-116: Anti: a statement nothing said supports can come back only without that statement — one that comes back pointing at something else for the same statement is refused.
+- [x] ISC-115: A rejected summary is handed back once, saying what was wrong with it.
+- [x] ISC-116: Anti: a statement nothing said supports can come back only without that statement — one that comes back pointing at something else for the same statement is refused.
 - [x] ISC-142: Anti: what an extraction produced without validating is never shown as the meeting's summary.
 - [x] ISC-143: A meeting left without a summary says which condition failed and on which statement.
 - [ ] ISC-189: Anti: a summary run is given one meeting and nothing else the machine holds.
@@ -782,3 +782,5 @@ Board: 7 · Distribución y backup
 - ISC-142 — `ExtractionIntakeTests.A_refused_extraction_leaves_the_one_already_accepted_as_the_summary` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-26. An accepted run followed by a refused one on the same meeting: `MeetingReading.Of`'s screen still shows the first run's abstract and things. Red with `AcceptedAt` set on a refused run.
 - ISC-143 — `MeetingReadingTests.A_meeting_left_without_a_summary_says_which_condition_failed_and_on_which_statement` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `ExtractionIntakeTests.A_refusal_the_door_stores_is_what_the_meeting_says` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-26. `MeetingRows.RefusedExtraction` with a `NoEvidence` refusal at `decisions[0]` carrying its statement; `MeetingReading.Of`'s `screen.WhyTheSummaryWasRefused` equals it, and `.A_meeting_that_has_a_summary_says_nothing_about_an_attempt_that_was_refused` (same suite) shows an accepted run afterwards clears it. The second fact files a decision missing its evidence through `ExtractionIntake.Receive` itself and reads the same field back, proving the door's own write and not only a row a test helper built by hand. Red with `MeetingReading.Of` no longer reading the refusal off the newest Extract job's own run, and with `ExtractionIntake.Receive` storing the wrong `Condition` or a `Statement` of `null`. Not reached: the line drawn on a running window, which no build agent can open.
 - ISC-189.3 — `ClaudeCodeSummariesTests.No_run_continues_a_conversation_and_no_two_runs_share_a_folder` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-25 (adapter share), replayed green 2026-09-28. Two real runs over the fake CLI: neither's arguments ever carry `--resume`, `-r`, `--continue`, `-c` or `--session-id`, both carry `--no-session-persistence`, and the two workspaces are different folders. Red with a reused workspace. Not reached: a run of the real CLI, which is what would show whether it can be made to continue a conversation some other way.
+- ISC-115 — `SummarisingAMeetingTests.A_summary_refused_for_its_shape_is_handed_back_once_and_accepted_corrected` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-28: a shape refusal is filed as a refused run leaving the job `Running`, the second call carries `ExtractionInstructions.ToCorrect` and `ExtractionCorrection.WhatWasWrong`, and the corrected answer files a second run whose `CorrectsRunId` names the first. `ExtractionIntakeTests.A_first_refusal_that_can_be_corrected_is_kept_and_leaves_the_job_running` and `.A_correction_is_filed_only_against_the_refused_run_it_corrects` (same project) hold the door's own precondition. Red with `mayBeHandedBack` not passed, and with the precondition read as ordering by time. Not reached: the retry bound, proven once `running` drives the runner.
+- ISC-116 — `SummarisingAMeetingTests.A_statement_nothing_supports_comes_back_accepted_only_without_it` and `.A_statement_handed_back_that_comes_back_citing_something_else_is_refused` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-28, over `ExtractionCorrection.Judge`: a statement refused for `NoEvidence` and left out of the correction is accepted; the same statement brought back as an action citing a different turn gains `CitedAgainElsewhere` at `actions[0]` and fails the job. Texts are compared with whitespace evened and case ignored, in all three sections, per `ExtractionCorrectionTests` (vocabulary, 2026-09-28). Red with `Judge` not called, and with the search kept to one section. Not reached: a reworded statement brought back.
