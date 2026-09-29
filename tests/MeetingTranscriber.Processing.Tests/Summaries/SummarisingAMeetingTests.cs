@@ -151,7 +151,8 @@ public class SummarisingAMeetingTests
             var fake = FakeClaudeCode.In(fakeCliRoot);
             fake.AnswersVersion("fake 1").Answers(FakeClaudeCode.Envelope(accepted.ToJsonString()));
             var workspaces = new DirectoryInfo(Path.Combine(fakeCliRoot.FullName, "workspaces"));
-            provider = new ClaudeCodeSummaries(() => fake.Executable, FakeCliEnvironment(), workspaces, TimeSpan.FromSeconds(30));
+            provider = new ClaudeCodeSummaries(
+                () => fake.Executable, FakeClaudeCode.MinimalEnvironment(), workspaces, TimeSpan.FromSeconds(30));
         }
         else
         {
@@ -398,17 +399,6 @@ public class SummarisingAMeetingTests
 
         return (meeting, job.Id);
     }
-
-    private static IReadOnlyDictionary<string, string> FakeCliEnvironment() => new Dictionary<string, string>
-    {
-        ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? string.Empty,
-        ["PATHEXT"] = Environment.GetEnvironmentVariable("PATHEXT") ?? string.Empty,
-        ["SystemRoot"] = Environment.GetEnvironmentVariable("SystemRoot") ?? string.Empty,
-        ["SystemDrive"] = Environment.GetEnvironmentVariable("SystemDrive") ?? string.Empty,
-        ["ComSpec"] = Environment.GetEnvironmentVariable("ComSpec") ?? string.Empty,
-        ["TEMP"] = Environment.GetEnvironmentVariable("TEMP") ?? string.Empty,
-        ["USERPROFILE"] = Environment.GetEnvironmentVariable("USERPROFILE") ?? string.Empty,
-    };
 
     private static Task<SummaryEnded> SummariseAsync(TemporaryCorpus corpus, Guid jobId, ISummaryProvider provider) =>
         SummarisingAMeeting.SummariseAsync(

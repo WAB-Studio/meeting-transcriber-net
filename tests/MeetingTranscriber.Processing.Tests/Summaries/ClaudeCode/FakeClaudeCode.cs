@@ -22,9 +22,10 @@ namespace MeetingTranscriber.Processing.Tests.Summaries.ClaudeCode;
 /// Generated using only <c>cmd.exe</c>'s own script format and
 /// <c>%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe</c>, named by that literal path
 /// rather than found on <c>PATH</c>, because a test's own environment may not carry one. The batch
-/// file is one line forwarding <c>%*</c> into a PowerShell script that does the actual work: every
-/// piece of real behaviour here is PowerShell, never batch, because batch's delayed-expansion traps
-/// inside a conditional are not worth the one line saved.
+/// file fills in what <see cref="GeneratedCommand"/> says PowerShell's host wants and is missing,
+/// then forwards <c>%*</c> into a PowerShell script that does the actual work: every piece of real
+/// behaviour here is PowerShell, never batch, because batch's delayed-expansion traps inside a
+/// conditional are not worth what a plain fallback assignment already does in one line.
 /// </para>
 /// <para>
 /// Configuration and results cross the process boundary as JSON files under this fake's own folder:
@@ -56,10 +57,7 @@ internal sealed class FakeClaudeCode
         _queue.Create();
 
         Executable = new FileInfo(Path.Combine(_root.FullName, "claude.cmd"));
-        File.WriteAllText(
-            Executable.FullName,
-            $"@echo off\r\n\"{PowerShell}\" -NoProfile -NonInteractive -ExecutionPolicy Bypass "
-            + $"-File \"{Path.Combine(_root.FullName, "run.ps1")}\" %*\r\nexit /b %ERRORLEVEL%\r\n");
+        File.WriteAllText(Executable.FullName, GeneratedCommand(Path.Combine(_root.FullName, "run.ps1")));
         File.WriteAllText(Path.Combine(_root.FullName, "run.ps1"), Script);
     }
 
@@ -73,6 +71,22 @@ internal sealed class FakeClaudeCode
         .Select(file => JsonSerializer.Deserialize<Call>(File.ReadAllText(file.FullName), JsonOptions)!)];
 
     public static FakeClaudeCode In(DirectoryInfo folder) => new(folder);
+
+    /// <summary>
+    /// The environment <c>ClaudeCodeSummaries</c> is handed in a test: the handful of names a
+    /// Windows process needs to resolve <c>claude.cmd</c> and run it, kept to one copy so both
+    /// suites that build a real fake CLI ask for it the same way rather than hand-rolling it twice.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> MinimalEnvironment() => new Dictionary<string, string>
+    {
+        ["PATH"] = System.Environment.GetEnvironmentVariable("PATH") ?? string.Empty,
+        ["PATHEXT"] = System.Environment.GetEnvironmentVariable("PATHEXT") ?? string.Empty,
+        ["SystemRoot"] = System.Environment.GetEnvironmentVariable("SystemRoot") ?? string.Empty,
+        ["SystemDrive"] = System.Environment.GetEnvironmentVariable("SystemDrive") ?? string.Empty,
+        ["ComSpec"] = System.Environment.GetEnvironmentVariable("ComSpec") ?? string.Empty,
+        ["TEMP"] = System.Environment.GetEnvironmentVariable("TEMP") ?? string.Empty,
+        ["USERPROFILE"] = System.Environment.GetEnvironmentVariable("USERPROFILE") ?? string.Empty,
+    };
 
     /// <summary>Every <c>--version</c> asked from here on answers this, until told otherwise.</summary>
     public FakeClaudeCode AnswersVersion(string version)
@@ -152,6 +166,24 @@ internal sealed class FakeClaudeCode
 
         return Encoding.UTF8.GetString(stream.ToArray());
     }
+
+    /// <summary>
+    /// <c>claude.cmd</c> itself, filling in the handful of names <c>powershell.exe</c>'s classic host
+    /// wants to start rather than trusting them to already be in whatever environment this fake was
+    /// launched with. <c>ClaudeCodeSummaries</c> starts every real run from a curated allowlist
+    /// (deliberately narrow — that is what proves a secret cannot leak into a run) and a test may
+    /// narrow it further still, so the fake cannot assume PowerShell was handed a workstation's usual
+    /// environment; it makes its own. Each is a fallback and never an override, so a value the caller
+    /// did carry is left exactly as given.
+    /// </summary>
+    private static string GeneratedCommand(string scriptPath) =>
+        "@echo off\r\n"
+        + "if not defined PSModulePath set \"PSModulePath=%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\Modules\"\r\n"
+        + "if not defined TMP set \"TMP=%TEMP%\"\r\n"
+        + "if not defined APPDATA set \"APPDATA=%TEMP%\"\r\n"
+        + "if not defined LOCALAPPDATA set \"LOCALAPPDATA=%TEMP%\"\r\n"
+        + $"\"{PowerShell}\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{scriptPath}\" %*\r\n"
+        + "exit /b %ERRORLEVEL%\r\n";
 
     private void Enqueue(QueuedBehaviour behaviour)
     {

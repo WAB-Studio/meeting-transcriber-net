@@ -253,7 +253,8 @@ public class ClaudeCodeSummariesTests : IDisposable
     [Fact]
     public async Task With_Claude_Code_nowhere_nothing_is_started_and_it_says_it_is_not_there()
     {
-        var provider = new ClaudeCodeSummaries(() => null, Env(), _workspaces, TimeSpan.FromSeconds(30));
+        var provider = new ClaudeCodeSummaries(
+            () => null, FakeClaudeCode.MinimalEnvironment(), _workspaces, TimeSpan.FromSeconds(30));
 
         var answer = await provider.ExtractAsync(Request(), TestContext.Current.CancellationToken);
 
@@ -307,18 +308,7 @@ public class ClaudeCodeSummariesTests : IDisposable
         correction);
 
     private ClaudeCodeSummaries Provider(FakeClaudeCode fake, TimeSpan? longestRun = null) => new(
-        () => fake.Executable, Env(), _workspaces, longestRun ?? TimeSpan.FromSeconds(30));
-
-    private static IReadOnlyDictionary<string, string> Env() => new Dictionary<string, string>
-    {
-        ["PATH"] = Environment.GetEnvironmentVariable("PATH") ?? string.Empty,
-        ["PATHEXT"] = Environment.GetEnvironmentVariable("PATHEXT") ?? string.Empty,
-        ["SystemRoot"] = Environment.GetEnvironmentVariable("SystemRoot") ?? string.Empty,
-        ["SystemDrive"] = Environment.GetEnvironmentVariable("SystemDrive") ?? string.Empty,
-        ["ComSpec"] = Environment.GetEnvironmentVariable("ComSpec") ?? string.Empty,
-        ["TEMP"] = Environment.GetEnvironmentVariable("TEMP") ?? string.Empty,
-        ["USERPROFILE"] = Environment.GetEnvironmentVariable("USERPROFILE") ?? string.Empty,
-    };
+        () => fake.Executable, FakeClaudeCode.MinimalEnvironment(), _workspaces, longestRun ?? TimeSpan.FromSeconds(30));
 
     private DirectoryInfo Folder(string name)
     {
