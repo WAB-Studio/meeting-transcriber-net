@@ -109,7 +109,8 @@ public static class ExtractionIntake
 
         // Re-read, tracked, inside the transaction: the write lock this opens with is what makes
         // this check, everything Prepare and ExtractionCheck read below, and the move that follows
-        // one thing. Nothing has been added to the context yet when this refuses.
+        // one thing. Nothing has been added to the context yet when this refuses — once the write
+        // lock is held, the same way MeetingWork's writers re-read inside their transaction.
         var job = context.ProcessingJobs.FirstOrDefault(row => row.Id == attempt.JobId);
         if (job is null || job.Kind != JobKind.Extract || job.State != JobState.Running)
         {
