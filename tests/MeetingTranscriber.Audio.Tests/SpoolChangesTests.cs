@@ -4,8 +4,9 @@ using MeetingTranscriber.Domain.Time;
 namespace MeetingTranscriber.Audio.Tests;
 
 /// <summary>
-/// What a folder says about the one thing that can change while it is being recorded: the channel
-/// somebody moved off the program it was following and onto the whole machine's audio.
+/// What a folder says about what can change while it is being recorded: channel 0 moved off the
+/// program it was following, onto the whole machine's audio or another program, and channel 1
+/// moved onto another microphone.
 /// </summary>
 /// <remarks>
 /// No device. The card is written once and never rewritten, so this is where a change made an hour
@@ -36,6 +37,70 @@ public sealed class SpoolChangesTests : IDisposable
         read.Channel.ShouldBe(AudioChannel.Loopback);
         read.Heard.ShouldBe("everything this machine plays");
         read.WasHearing.ShouldBe("teams (pid 8124)");
+    }
+
+    /// <summary>
+    /// A channel 0 move says what it moved to as well as what that is called. The name is for a
+    /// person to read; the mode is what a later reader is not left to guess from two names.
+    /// </summary>
+    [Fact]
+    public void A_channel_zero_move_says_what_it_moved_to_as_well_as_its_name()
+    {
+        SpoolChanges.Append(folder, Moving());
+        SpoolChanges.Append(folder, Moving() with
+        {
+            At = Moved + Duration.FromSeconds(90),
+            Heard = "msedge (pid 1000)",
+            WasHearing = "everything this machine plays",
+            Mode = CaptureMode.OneProgram,
+        });
+
+        var read = SpoolChanges.Find(folder);
+        read[0].Mode.ShouldBe(CaptureMode.WholeMachine);
+        read[1].Mode.ShouldBe(CaptureMode.OneProgram);
+    }
+
+    /// <summary>
+    /// A channel 0 move that does not say what it moved to describes nothing worth storing: it moves
+    /// to the whole machine and to another program alike. Refused where it is written and where it
+    /// is read, because a folder can be edited by hand between the two.
+    /// </summary>
+    [Fact]
+    public void A_channel_zero_line_with_no_mode_is_refused()
+    {
+        Should.Throw<AudioCaptureException>(
+                () => SpoolChanges.Append(folder, Moving() with { Mode = null }))
+            .Message.ShouldContain("not what it is obtained as");
+
+        SpoolChanges.In(folder).Exists.ShouldBeFalse("nothing moved, so nothing is written down");
+
+        File.WriteAllText(
+            SpoolChanges.In(folder).FullName,
+            "{\"at\":\"2026-08-15T10:14:00.000Z\",\"channel\":0,\"heard\":\"everything this "
+            + "machine plays\",\"was_hearing\":\"teams (pid 8124)\"}" + Environment.NewLine);
+
+        Should.Throw<AudioCaptureException>(() => SpoolChanges.Find(folder))
+            .Message.ShouldContain("not what it is obtained as");
+    }
+
+    /// <summary>
+    /// A microphone is neither way of obtaining channel 0, so a mode on channel 1 describes a
+    /// recording this application cannot have made.
+    /// </summary>
+    [Fact]
+    public void A_microphone_line_with_a_mode_is_refused()
+    {
+        Should.Throw<AudioCaptureException>(
+                () => SpoolChanges.Append(folder, Replaced() with { Mode = CaptureMode.OneProgram }))
+            .Message.ShouldContain("a microphone is neither");
+
+        File.WriteAllText(
+            SpoolChanges.In(folder).FullName,
+            "{\"at\":\"2026-08-15T10:14:00.000Z\",\"channel\":1,\"heard\":\"Desk\","
+            + "\"was_hearing\":\"Laptop\",\"mode\":\"whole_machine\"}" + Environment.NewLine);
+
+        Should.Throw<AudioCaptureException>(() => SpoolChanges.Find(folder))
+            .Message.ShouldContain("a microphone is neither");
     }
 
     /// <summary>
@@ -413,7 +478,8 @@ public sealed class SpoolChangesTests : IDisposable
         Moved,
         AudioChannel.Loopback,
         "everything this machine plays",
-        "teams (pid 8124)");
+        "teams (pid 8124)",
+        Mode: CaptureMode.WholeMachine);
 
     private static SourceChanged Replaced() => new(
         Moved,

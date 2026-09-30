@@ -80,6 +80,14 @@ public static class AudioCommands
     /// Windows takes away is followed without anybody asking, and that one no argument stands in
     /// for because there is no choice in it.
     /// </para>
+    /// <para>
+    /// Channel 0 moves onto another program at <c>--then-process-at</c>, for the reason
+    /// <c>--then-microphone-at</c> exists: what that move costs is only measurable against two
+    /// programs really playing, and nobody switches one at a stopwatch. It is somebody choosing —
+    /// <see cref="CaptureSession.FollowAnotherProgram"/> — and it waits on no offer, so unlike
+    /// <c>--whole-machine-at</c> it takes no <c>--process</c>: from the whole machine it narrows
+    /// channel 0 to one program, and from a program it moves it to another.
+    /// </para>
     /// </remarks>
     public static int Capture(Arguments arguments, TextWriter output)
     {
@@ -93,6 +101,8 @@ public static class AudioCommands
         var wholeMachineAt = arguments.Number("--whole-machine-at", 0);
         var thenMicrophone = arguments.Optional("--then-microphone");
         var thenMicrophoneAt = arguments.Number("--then-microphone-at", 0);
+        var thenProcess = arguments.Optional("--then-process");
+        var thenProcessAt = arguments.Number("--then-process-at", 0);
         var meeting = arguments.Optional("--meeting") is { } typed
             ? Arguments.Meeting(typed)
             : Guid.NewGuid();
@@ -147,6 +157,27 @@ public static class AudioCommands
                 + "seconds, so the move it asks for would never happen.");
         }
 
+        if ((thenProcess is null) != (thenProcessAt == 0))
+        {
+            throw new UsageException(
+                "--then-process and --then-process-at go together: one names the program channel 0 "
+                + "moves onto and the other the second it moves, and neither means anything alone.");
+        }
+
+        if (thenProcessAt >= seconds)
+        {
+            throw new UsageException(
+                $"--then-process-at {thenProcessAt} falls outside a recording of {seconds} "
+                + "seconds, so the move it asks for would never happen.");
+        }
+
+        if (thenProcessAt > 0 && thenProcessAt == wholeMachineAt)
+        {
+            throw new UsageException(
+                $"--whole-machine-at and --then-process-at both move channel 0 at second {thenProcessAt}, "
+                + "and a run cannot say which of the two it made first.");
+        }
+
         var microphones = AudioDevices.Microphones();
         var microphone = AudioDevices.Choose(microphones, wanted);
 
@@ -154,7 +185,21 @@ public static class AudioCommands
         // answers to is a refusal now rather than a meeting recorded and then a move that could not
         // be made.
         var moveTo = thenMicrophone is null ? null : AudioDevices.Choose(microphones, thenMicrophone);
-        var follow = program is null ? null : AudioProcesses.Choose(AudioProcesses.Running(), program);
+        IReadOnlyList<AudioProcess> running = program is null && thenProcess is null
+            ? []
+            : AudioProcesses.Running();
+        var follow = program is null ? null : AudioProcesses.Choose(running, program);
+        var thenFollow = thenProcess is null ? null : AudioProcesses.Choose(running, thenProcess);
+
+        // Known before anything opens, like the endpoints above: the same program twice is a move
+        // that would be refused at its second, after the meeting had been recording for that long
+        // and with the run's report skipped.
+        if (thenFollow is not null && thenFollow.Id == follow?.Id)
+        {
+            throw new UsageException(
+                $"--process and --then-process both name '{thenFollow}', so the move would be onto "
+                + "the program channel 0 is already following.");
+        }
 
         // The session is let go of before anything reads its spools back, and the scope is what
         // says so: a recording still being written is a file this build refuses to read, which is
@@ -173,7 +218,13 @@ public static class AudioCommands
                 Report.Line(output, $"{Name(source.Channel)} opened", source.StartedAt.ToString());
             }
 
-            Meter(session, seconds, wholeMachineAt, (thenMicrophoneAt, moveTo), output);
+            Meter(
+                session,
+                seconds,
+                wholeMachineAt,
+                (thenMicrophoneAt, moveTo),
+                (thenProcessAt, thenFollow),
+                output);
             session.Stop();
 
             foreach (var source in session.Sources)
@@ -457,7 +508,8 @@ public static class AudioCommands
             Report.Line(
                 output,
                 $"{Name(change.Channel)} moved",
-                $"at {change.At.ToStorage()}, from '{change.WasHearing}' to '{change.Heard}'");
+                $"at {change.At.ToStorage()}, from '{change.WasHearing}' to '{change.Heard}'"
+                + (change.Mode is { } mode ? $" ({mode.ToWireName()})" : string.Empty));
         }
 
         foreach (var source in recording.Sources)
@@ -559,6 +611,7 @@ public static class AudioCommands
         int seconds,
         int wholeMachineAt,
         (int At, AudioDevice? Device) microphone,
+        (int At, AudioProcess? Process) program,
         TextWriter output)
     {
         using var interrupted = new ManualResetEventSlim(initialState: false);
@@ -610,6 +663,11 @@ public static class AudioCommands
                     session.RecordFrom(moveTo);
                 }
 
+                if (second == program.At && program.Process is { } thenOnto)
+                {
+                    session.FollowAnotherProgram(thenOnto);
+                }
+
                 // Every move and every death, whoever made it. A microphone Windows takes away is
                 // followed by the recording itself, so a run that only reported the moves it was
                 // asked to make would say nothing at all about the one thing this command is the
@@ -622,7 +680,9 @@ public static class AudioCommands
                 // microphone that ended has not finished happening — the recording is already
                 // looking for whatever replaced it, and the move it finds is the thing this whole
                 // command exists to make observable, so stopping here would throw away the only
-                // measurement worth taking.
+                // measurement worth taking. A move asked for with `--then-process-at` is not made
+                // when channel 0 ended before its second: the run stops there, and what it reports
+                // is that the program it was on went away first.
                 if (session.On(AudioChannel.Loopback).HasEnded)
                 {
                     return;

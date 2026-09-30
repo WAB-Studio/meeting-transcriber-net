@@ -51,8 +51,8 @@ public class CaptureRun
 
 /// <summary>
 /// A channel that stopped following what it opened on, and the instant it stopped. Channel 0
-/// moved to the whole machine is the one this exists for: the run says what the recording opened
-/// on and goes on saying it, so what the file holds from an instant onward is a fact of its own.
+/// moving is what it exists for: the run says what the recording opened on and goes on saying it,
+/// so what the file holds from an instant onward is a fact of its own.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -64,11 +64,11 @@ public class CaptureRun
 /// </para>
 /// <para>
 /// The words are the recording's own, as a person would read them: what a channel moved to has no
-/// id when it is the whole machine, so a name is all there is. A row on channel 0 is by
-/// construction a move to the whole machine, because <c>CaptureSession.RecordTheWholeMachine</c> is
-/// the only move that channel has and it refuses a second one. The day a channel 0 can move back to
-/// a program, the mode belongs on the line in <c>changes.jsonl</c> first and on this row second —
-/// deriving it here from the two names would be this file guessing at what the recording did.
+/// id when it is the whole machine, so a name is all there is. Which way channel 0 is obtained is
+/// not left to the name. It moves to the whole machine and to another program alike, so the mode is
+/// on the line in <c>changes.jsonl</c> first and on this row second, the way
+/// <see cref="CaptureRun.OthersCaptureMode"/> carries it for what the recording opened on.
+/// Deriving it here from the two names would be this file guessing at what the recording did.
 /// </para>
 /// <para>
 /// It lives here beside <see cref="CaptureRun"/> because it is the same subject read at a different
@@ -97,6 +97,12 @@ public class CaptureSourceChange
     /// this column says so where the row lands.
     /// </summary>
     public string? DeviceId { get; set; }
+
+    /// <summary>
+    /// How channel 0 is obtained from this instant on, as the line beside the blocks said; nothing
+    /// on channel 1. The CHECK behind it holds the two together.
+    /// </summary>
+    public CaptureMode? Mode { get; set; }
 }
 
 /// <summary>One call to a transcription provider, and what it was allowed to cost.</summary>

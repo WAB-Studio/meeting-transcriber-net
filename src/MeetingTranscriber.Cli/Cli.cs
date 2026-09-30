@@ -124,7 +124,8 @@ public static class Cli
             "capture",
             "capture --out <directory> --seconds <n> [--meeting <id>] [--microphone <name-or-id>]"
             + " [--process <name-or-pid>] [--whole-machine-at <n>]"
-            + " [--then-microphone <name-or-id> --then-microphone-at <n>]",
+            + " [--then-microphone <name-or-id> --then-microphone-at <n>]"
+            + " [--then-process <name-or-pid> --then-process-at <n>]",
             "record what the machine plays, or one program, and what the microphone hears at once",
             AudioCommands.Capture),
         new(

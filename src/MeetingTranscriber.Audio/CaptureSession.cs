@@ -105,7 +105,8 @@ public sealed class CaptureSession : IDisposable
     /// <summary>
     /// How channel 0 is being obtained now, read off what it is actually listening to. The card
     /// says how it was obtained when the devices opened, and the two differ from the moment
-    /// somebody moves it — see <see cref="RecordTheWholeMachine"/>.
+    /// somebody moves it — see <see cref="RecordTheWholeMachine"/> and
+    /// <see cref="FollowAnotherProgram"/>.
     /// </summary>
     public CaptureMode Mode => ObtainedAs(On(AudioChannel.Loopback).Listening);
 
@@ -384,7 +385,8 @@ public sealed class CaptureSession : IDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The only way channel 0 ever moves. Nothing here reads a level and decides for itself: what
+    /// One of the two ways channel 0 moves, and <see cref="FollowAnotherProgram"/> is the other.
+    /// Nothing here reads a level and decides for itself: what
     /// this costs is every notification and every other application landing in a file somebody will
     /// send to a transcription service, and a recording is not allowed to take that on quietly
     /// because a meter looked wrong for ten seconds.
@@ -422,6 +424,50 @@ public sealed class CaptureSession : IDisposable
     }
 
     /// <summary>
+    /// Somebody pointing channel 0 at another program while the meeting is running — the wrong one
+    /// of three processes with the same name, or a call that moved to another application. The
+    /// recording goes on being one recording.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// From a program or from the whole machine: both are the same activation and neither numbers
+    /// its frames, so the channel goes on being laid out by the instants it already had, and the
+    /// seam is what the handover took, recorded as lost rather than closed up. The move is written
+    /// beside the card the way every move is, with the mode it moved to, before the new program's
+    /// audio lands.
+    /// </para>
+    /// <para>
+    /// Refused only onto the program it is already following while that stream is still recording,
+    /// the way <see cref="RecordFrom"/> refuses a microphone.
+    /// </para>
+    /// <para>
+    /// <b>Not on a thread somebody is looking at</b>, for the reason
+    /// <see cref="RecordTheWholeMachine"/> is not.
+    /// </para>
+    /// </remarks>
+    /// <param name="program">The program channel 0 follows from here on, and everything it started.</param>
+    public void FollowAnotherProgram(AudioProcess program)
+    {
+        ArgumentNullException.ThrowIfNull(program);
+
+        lock (gate)
+        {
+            EnsureRunning(AudioChannel.Loopback);
+
+            var others = On(AudioChannel.Loopback);
+            if (!others.HasEnded
+                && others.Listening is CaptureTarget.Program on
+                && on.Process.Id == program.Id)
+            {
+                throw new AudioCaptureException(
+                    $"The {AudioChannel.Loopback} channel is already following '{program}'.");
+            }
+
+            Move(AudioChannel.Loopback, new CaptureTarget.Program(program), deviceId: null);
+        }
+    }
+
+    /// <summary>
     /// Puts channel 1 back on the microphone it is already on, after that stream ended by itself.
     /// Does nothing at all when the channel is recording.
     /// </summary>
@@ -435,15 +481,10 @@ public sealed class CaptureSession : IDisposable
     /// </para>
     /// <para>
     /// <b>The microphone and not a channel handed in</b>, and that is the shape rather than a
-    /// narrowing. Both ways of obtaining channel 0 open through a loopback that always carries a
-    /// sequence on, and <c>ReopenedSource</c> — which is the one place that decides this — refuses
-    /// a sequence on a program. So a channel 0 following a program cannot be opened again at all,
-    /// and a method that took the channel would be one whose commonest argument throws a sentence
-    /// about a decision nobody made. Naming the one channel this works on makes that unreachable
-    /// instead of guarded. A microphone has no such problem and that is why this works: its stream
-    /// numbers its own frames, so there is no sequence to carry and nothing to refuse. What answers
-    /// a channel 0 that stopped is <see cref="RecordTheWholeMachine"/>, which opens a different way
-    /// in.
+    /// narrowing. A channel 0 that stopped is answered by pointing it somewhere —
+    /// <see cref="RecordTheWholeMachine"/> or <see cref="FollowAnotherProgram"/>, each a way in of
+    /// its own — rather than by this. A microphone's stream numbers its own frames, so there is no
+    /// sequence to carry and nothing for <c>ReopenedSource</c> to refuse.
     /// </para>
     /// <para>
     /// <b>Nothing rather than a refusal</b> for a channel that is already recording. A microphone
@@ -515,7 +556,8 @@ public sealed class CaptureSession : IDisposable
                 channel,
                 destination.Name,
                 was,
-                deviceId)));
+                deviceId,
+                destination.Mode)));
     }
 
     /// <summary>Refuses a move onto a recording that has already been stopped.</summary>

@@ -844,9 +844,9 @@ public static class MeetingRecordings
     /// A file that says one channel moved twice at one instant is answered with the later line and
     /// not the earlier one, because the lines are in the order they happened and what a channel
     /// ended that millisecond on is what it was on afterwards. Nothing this application writes
-    /// produces that file — <c>CaptureSession.Move</c> is the only writer and channel 0 refuses a
-    /// second move outright — so this is not a case being handled but a rule the collapse has to
-    /// have: taking whichever line came first would store the source the recording had already left,
+    /// produces that file, because a move is one call under the session's gate and two of one
+    /// channel inside one millisecond would take two calls finishing inside it — so this is not a
+    /// case being handled but a rule the collapse has to have: taking whichever line came first would store the source the recording had already left,
     /// and refusing the file outright would cost an hour of unrepeatable audio over a note about
     /// which program a channel followed.
     /// </para>
@@ -887,6 +887,7 @@ public static class MeetingRecordings
                 Heard = change.Heard,
                 WasHearing = change.WasHearing,
                 DeviceId = change.DeviceId,
+                Mode = change.Mode,
             });
         }
     }

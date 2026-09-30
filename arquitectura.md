@@ -556,10 +556,11 @@ bloque sería exactamente la escritura torcida que el spool existe para evitar. 
 lista los archivos que tiene al lado ni sus formatos: están nombrados por la
 fuente que llevan y cada uno declara el suyo.
 
-Lo único que alguien puede cambiar con la reunión en curso —mover el canal 0 al
-loopback completo— va en `changes.jsonl`, al lado de la ficha: una línea por
-cambio, escrita entera de una vez y nunca reescrita, diciendo cuándo fue, qué
-escucha desde ahí y qué escuchaba antes. La ficha dice con qué abrió cada canal y
+Lo que cambia con la reunión en curso —el canal 0 movido a toda la máquina o a otro
+programa, con el modo al que pasó, un micrófono elegido o seguido cuando Windows lo
+quitó— va en `changes.jsonl`, al lado de la ficha: una línea por cambio, escrita
+entera de una vez y nunca reescrita, diciendo cuándo fue, qué escucha desde ahí y
+qué escuchaba antes. La ficha dice con qué abrió cada canal y
 esto dice con qué terminó, de modo que una carpeta recuperada tras un cierre
 abrupto no afirma que las notificaciones de la máquina quedaron fuera del archivo
 cuando entraron a mitad de la reunión. Lo único que un cambio puede borrar es la

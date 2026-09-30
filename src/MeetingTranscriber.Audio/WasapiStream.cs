@@ -211,16 +211,20 @@ internal sealed class WasapiStream : IDisposable
     /// channel 0.
     /// </summary>
     /// <remarks>
-    /// It takes no positions to carry on from, and that is the shape of what can happen: a
-    /// recording is moved onto the whole machine and never onto a program, so a program's stream is
-    /// always a channel's first.
+    /// The same activation as <see cref="TheWholeMachine"/> under the other mode, so it carries a
+    /// channel on the same way: a channel moved onto a program goes on being laid out by the
+    /// instants it was already being laid out by.
     /// </remarks>
     /// <param name="process">The program to follow.</param>
-    internal static WasapiStream Following(AudioProcess process)
+    /// <param name="placedBy">
+    /// The positions this stream carries on from, when it is taking over a channel that is already
+    /// being recorded, or nothing when it is the channel's first stream.
+    /// </param>
+    internal static WasapiStream Following(AudioProcess process, FramePositions? placedBy = null)
     {
         ArgumentNullException.ThrowIfNull(process);
 
-        return Loopback("program", () => ProcessLoopback.Following(process), placedBy: null);
+        return Loopback("program", () => ProcessLoopback.Following(process), placedBy);
     }
 
     /// <summary>
@@ -232,8 +236,8 @@ internal sealed class WasapiStream : IDisposable
     /// else: the same format, the same absent frame numbering, the same file.
     /// </remarks>
     /// <param name="placedBy">
-    /// The positions this stream carries on from, when it is taking a program's place on a channel
-    /// that is already being recorded, or nothing when it is the channel's first stream.
+    /// The positions this stream carries on from, when it is taking over a channel that is already
+    /// being recorded, or nothing when it is the channel's first stream.
     /// </param>
     internal static WasapiStream TheWholeMachine(FramePositions? placedBy = null) =>
         Loopback("machine", ProcessLoopback.EverythingThisMachinePlays, placedBy);

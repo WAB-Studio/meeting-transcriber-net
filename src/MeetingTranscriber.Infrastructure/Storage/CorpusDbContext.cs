@@ -428,6 +428,13 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
                 table.HasCheckConstraint(
                     "ck_capture_source_changes_device",
                     "channel <> 0 OR device_id IS NULL");
+
+                // How channel 0 is obtained from then on, and nothing on the microphone.
+                // `SpoolChanges.Sound`'s rule one layer down, for a row written by anything else.
+                table.HasCheckConstraint(
+                    "ck_capture_source_changes_mode",
+                    "(channel = 0) = (mode IS NOT NULL) AND "
+                    + $"(mode IS NULL OR mode IN ({WireNames<CaptureMode>.AsSqlList()}))");
             });
 
             // The natural key, so a finish run twice over one folder writes one row per move.

@@ -602,7 +602,8 @@ public sealed class MeetingRecordingsTests : IDisposable
             moved,
             AudioChannel.Loopback,
             "everything this machine plays",
-            "teams (pid 8124)"));
+            "teams (pid 8124)",
+            Mode: CaptureMode.WholeMachine));
 
         MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(3));
 
@@ -620,12 +621,54 @@ public sealed class MeetingRecordingsTests : IDisposable
         change.WasHearing.ShouldBe("teams (pid 8124)");
         change.Heard.ShouldBe("everything this machine plays");
         change.DeviceId.ShouldBeNull();
+        change.Mode.ShouldBe(CaptureMode.WholeMachine);
 
         // And the run still says what the recording opened on, which is the other half of the
         // decision: one column never comes to mean two things depending on when it is read.
         var run = reopened.CaptureRuns.Single();
         run.OthersCaptureMode.ShouldBe(CaptureMode.OneProgram);
         run.OthersProcess.ShouldBe("teams (pid 8124)");
+    }
+
+    /// <summary>
+    /// A channel 0 moved from one program onto another says it moved to a program, which its two
+    /// names cannot: the corpus is not left to guess the mode from what a channel was called.
+    /// </summary>
+    [Fact]
+    public void A_channel_zero_moved_onto_another_program_is_stored_as_one_program()
+    {
+        using var context = corpus.OpenMigrated();
+        using var prepared = MeetingRecordings.Open(context, "es", now);
+        Fabricated.Spools(prepared.Spool, seconds: 3);
+
+        var card = new SpoolCard(
+            prepared.MeetingId,
+            Guid.NewGuid(),
+            now,
+            CapturedAudio.Profile,
+            CaptureMode.OneProgram,
+            [
+                new SpooledSource(AudioChannel.Loopback, "teams (pid 8124)", null),
+                new SpooledSource(AudioChannel.Microphone, "Headset", "{0.0.1.00000000}.{mic}"),
+            ]);
+
+        SpoolManifest.Write(prepared.Spool, card);
+        MeetingRecordings.Began(context, card);
+
+        SpoolChanges.Append(prepared.Spool, new SourceChanged(
+            now + Duration.FromSeconds(1),
+            AudioChannel.Loopback,
+            "teams (pid 9902)",
+            "teams (pid 8124)",
+            Mode: CaptureMode.OneProgram));
+
+        MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(3));
+
+        using var reopened = corpus.Open();
+        var change = reopened.CaptureSourceChanges.Single();
+
+        change.Heard.ShouldBe("teams (pid 9902)");
+        change.Mode.ShouldBe(CaptureMode.OneProgram);
     }
 
     /// <summary>
@@ -668,7 +711,7 @@ public sealed class MeetingRecordingsTests : IDisposable
 
         var moved = now + Duration.FromSeconds(1);
         SpoolChanges.Append(prepared.Spool, new SourceChanged(
-            moved, AudioChannel.Loopback, "everything this machine plays", "teams (pid 8124)"));
+            moved, AudioChannel.Loopback, "everything this machine plays", "teams (pid 8124)", Mode: CaptureMode.WholeMachine));
 
         MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(2));
         MeetingRecordings.Finish(context, prepared.MeetingId, now + Duration.FromSeconds(2));
@@ -786,7 +829,8 @@ public sealed class MeetingRecordingsTests : IDisposable
             loopbackMoved,
             AudioChannel.Loopback,
             "everything this machine plays",
-            "teams (pid 8124)"));
+            "teams (pid 8124)",
+            Mode: CaptureMode.WholeMachine));
         SpoolChanges.Append(prepared.Spool, new SourceChanged(
             microphoneMoved,
             AudioChannel.Microphone,
@@ -837,7 +881,8 @@ public sealed class MeetingRecordingsTests : IDisposable
             now + Duration.FromSeconds(1),
             AudioChannel.Loopback,
             "everything this machine plays",
-            "teams (pid 8124)"));
+            "teams (pid 8124)",
+            Mode: CaptureMode.WholeMachine));
 
         File.AppendAllText(
             SpoolChanges.In(prepared.Spool).FullName, "{\"at\": " + Environment.NewLine);

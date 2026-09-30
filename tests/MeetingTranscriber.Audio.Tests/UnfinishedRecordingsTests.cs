@@ -80,7 +80,8 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
             UtcTimestamp.Parse("2026-08-15T09:41:31.500Z"),
             AudioChannel.Loopback,
             "everything this machine plays",
-            "teams (pid 8124)"));
+            "teams (pid 8124)",
+            Mode: CaptureMode.WholeMachine));
 
         var moved = UnfinishedRecordings.In(root).ShouldHaveSingleItem();
 
@@ -159,7 +160,8 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
             UtcTimestamp.Parse("2026-08-15T09:41:31.500Z"),
             AudioChannel.Loopback,
             "everything this machine plays",
-            "teams (pid 8124)"));
+            "teams (pid 8124)",
+            Mode: CaptureMode.WholeMachine));
 
         // Held exactly as the append that is moving a channel holds it.
         using var moving = new FileStream(
@@ -505,7 +507,8 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
             UtcTimestamp.Parse("2026-08-15T10:11:00.000Z"),
             AudioChannel.Loopback,
             "everything this machine plays",
-            "teams (pid 8124)"));
+            "teams (pid 8124)",
+            Mode: CaptureMode.WholeMachine));
 
         using var reading = Reading(AudioChannel.Microphone);
 

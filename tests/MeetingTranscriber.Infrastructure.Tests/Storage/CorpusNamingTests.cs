@@ -181,7 +181,7 @@ public partial class CorpusNamingTests
         using var context = corpus.OpenMigrated();
 
         Sql.Strings(context, "SELECT name FROM pragma_table_info('capture_source_changes');").ShouldBe(
-            ["meeting_id", "at", "channel", "heard", "was_hearing", "device_id"],
+            ["meeting_id", "at", "channel", "heard", "was_hearing", "device_id", "mode"],
             ignoreOrder: true);
     }
 

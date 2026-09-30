@@ -245,7 +245,7 @@ public sealed class CaptureSource : IDisposable
     /// <b>There are two handovers and one thing decides which.</b> A source whose device numbers no
     /// frames of its own is being placed by the machine's clock, and so is the stream taking over:
     /// that one carries on from the same sequence at the same format, and there is no seam to
-    /// reconcile — which is exactly a channel 0 moved onto the whole machine. A source whose device
+    /// reconcile — which is a channel 0 moved onto the whole machine or onto another program. A source whose device
     /// numbers its own frames is placed by that counter, and the counter of whatever replaces it
     /// starts again at its own zero — which is a microphone — so what it opens is a stretch of its
     /// own: its own format, its own anchor, and everything between the two devices counted as the
