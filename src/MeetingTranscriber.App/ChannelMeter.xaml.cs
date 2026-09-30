@@ -67,6 +67,13 @@ public sealed partial class ChannelMeter : UserControl
     /// </summary>
     private bool _died;
 
+    /// <summary>
+    /// Whether the recording has said nothing ever arrived from the program behind this bar. Kept
+    /// for the same reason <see cref="_died"/> is: what it changes — the peak and the level's ink —
+    /// is read by more than the call that set it.
+    /// </summary>
+    private bool _noSignal;
+
     public ChannelMeter()
     {
         InitializeComponent();
@@ -107,15 +114,17 @@ public sealed partial class ChannelMeter : UserControl
     /// neither has to know what the other is for.
     /// </summary>
     /// <remarks>
-    /// Nothing while the source is dead, and that is one rule rather than two. The mark on the bar
+    /// Nothing while the source is dead or the recording has said no signal ever arrived, and that
+    /// is one rule rather than two. The mark on the bar
     /// and the words beside it are the same peak said two ways — <c>docs/design.md</c> §The three
     /// states takes both off a source that died — so the answer that draws the mark is the answer
     /// the window words, and they cannot come apart into a bar with no mark under a line reading
     /// <c>pico −6.1</c>. What it is not is forgotten: the meeting's loudest moment is still there
     /// and comes back with the channel, because it is the peak of <em>this</em> meeting and the
-    /// meeting did not stop.
+    /// meeting did not stop. The same goes for <em>sin señal</em>: the memory is kept, because a
+    /// channel moved onto a program that does play is still in the same meeting.
     /// </remarks>
-    public float? LoudestSoFar => _died ? null : _loudestSoFar;
+    public float? LoudestSoFar => _died || _noSignal ? null : _loudestSoFar;
 
     /// <summary>What the window wrote about <see cref="LoudestSoFar"/>, or nothing.</summary>
     public string LoudestSoFarSaid
@@ -146,7 +155,7 @@ public sealed partial class ChannelMeter : UserControl
     public void ForgetTheLoudestMoment()
     {
         _loudestSoFar = null;
-        Show(null);
+        Show(null, noSignal: false);
     }
 
 
@@ -172,8 +181,15 @@ public sealed partial class ChannelMeter : UserControl
     /// the colour goes with it.
     /// </para>
     /// </remarks>
-    public void Show(ChannelReading? reading)
+    /// <param name="reading">What the channel read, or nothing.</param>
+    /// <param name="noSignal">
+    /// Whether the recording has said nothing ever arrived from this channel's program. The level
+    /// then reads <em>sin señal</em> in pico, which the window words, and the peak is not drawn.
+    /// </param>
+    public void Show(ChannelReading? reading, bool noSignal)
     {
+        _noSignal = noSignal;
+
         if (reading is { IsSilent: false })
         {
             _loudestSoFar = _loudestSoFar is { } loudest
@@ -196,7 +212,7 @@ public sealed partial class ChannelMeter : UserControl
         // attention. `docs/design.md` §The three states puts it in pico for exactly that reason,
         // and this is one rank in two inks rather than the artboard's second size — the same
         // correction the peak beside it already stands as.
-        Level.Foreground = Painted(died ? "PeakBrush" : "InkBrush");
+        Level.Foreground = Painted(died || noSignal ? "PeakBrush" : "InkBrush");
 
         // Only where the answer moved. The scale is a canvas of text laid out by hand, so building
         // it again every second for as long as a dead device stays dead would be a screen doing

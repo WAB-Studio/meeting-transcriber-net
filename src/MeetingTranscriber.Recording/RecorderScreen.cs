@@ -8,7 +8,7 @@ namespace MeetingTranscriber.Recording;
 /// <remarks>
 /// A type rather than the nullable process the engine takes, because a screen has three answers
 /// where the engine has two. <c>null</c> means the whole machine to <c>MeetingRecording.Start</c>,
-/// and it means nobody has said yet to a screen â€” and a screen that spelled both of them the same
+/// and it means nobody has said yet to a screen — and a screen that spelled both of them the same
 /// way would start a recording of every notification on the machine for somebody who had not
 /// answered the question at all.
 /// </remarks>
@@ -59,7 +59,7 @@ public sealed record RecorderChoices
 
     /// <summary>
     /// What the meeting is expected to be spoken in, as the tag it is stored under. Never the
-    /// language the application is being read in â€” see the remarks on this type.
+    /// language the application is being read in — see the remarks on this type.
     /// </summary>
     public string? Spoken { get; init; }
 
@@ -84,8 +84,8 @@ public sealed record RecorderChoices
     /// <para>
     /// Here it is the id and nothing else, and the answer is the new description rather than what
     /// was chosen. What Windows says about an endpoint changes under a screen without the endpoint
-    /// going anywhere â€” the default moves the moment a headset is plugged in, and the name beside
-    /// it moves with it â€” so the device that is still there is taken again as the machine now
+    /// going anywhere — the default moves the moment a headset is plugged in, and the name beside
+    /// it moves with it — so the device that is still there is taken again as the machine now
     /// describes it. Keeping the old one would leave a picker offering a list where one entry says
     /// something the machine has stopped saying.
     /// </para>
@@ -164,24 +164,77 @@ public sealed record RecorderScreen
     public required RecorderChoices Chosen { get; init; }
 
     /// <summary>
-    /// Whether the recording has offered the whole machine's audio â€” which it does when channel 0
-    /// has heard nothing at all from the program it is following, for long enough that the program
-    /// is the wrong one.
+    /// Whether the recording has reported that nothing came from the program channel 0 follows —
+    /// which it does when channel 0 has heard nothing at all from it, for long enough that the
+    /// program is the wrong one.
     /// </summary>
     /// <remarks>
-    /// The offer is the recording's to make and this only carries it. Nothing on a screen decides
+    /// The report is the recording's to make and this only carries it. Nothing on a screen decides
     /// that a program has been silent long enough, because that is a measurement and not a layout.
+    /// What it gates is the notice and its two ways out: the whole machine, and another program.
     /// </remarks>
-    public bool WholeMachineOffered { get; init; }
+    public bool NothingCameFromTheProgram { get; init; }
 
     /// <summary>Whether it has already been taken, which happens at most once in a meeting.</summary>
     public bool WholeMachineTaken { get; init; }
 
     /// <summary>
+    /// Whether <em>Cambiar</em> was pressed on the notice and nothing has been chosen yet, so
+    /// channel 0's picker is live and offering programs.
+    /// </summary>
+    /// <remarks>Carried and never worked out, like <see cref="WholeMachineTaken"/>.</remarks>
+    public bool AnotherProgramIsBeingChosen { get; init; }
+
+    /// <summary>
+    /// Whether a move of channel 0 onto a program is in flight. The screen takes one move at a time
+    /// because the session records each move under a gate and a second press would only queue
+    /// behind it, reporting a move onto a program the first had already left.
+    /// </summary>
+    public bool AnotherProgramIsBeingOpened { get; init; }
+
+    /// <summary>
+    /// Whether the notice is on screen, and channel 0's meter reads <em>sin señal</em>: the
+    /// recording reported that nothing came, the whole machine has not been taken, no move is in
+    /// flight, and a meeting is under way. The one answer both the notice and the meter read.
+    /// </summary>
+    /// <remarks>
+    /// Not while a move is in flight: the recording already names the new program by then, and the
+    /// notice would say nothing has come from a program that has not yet been judged. It returns,
+    /// naming the program channel 0 is on, if the move is refused.
+    /// </remarks>
+    public bool NothingCameIsOnScreen =>
+        NothingCameFromTheProgram
+        && !WholeMachineTaken
+        && !AnotherProgramIsBeingOpened
+        && State.IsRecording();
+
+    /// <summary>
+    /// The programs channel 0 may be moved onto: those running, less the one it follows now, in the
+    /// order the source picker lists them. Never the whole machine, which is the act beside
+    /// <em>Cambiar</em>, so nothing reaches it through a picker.
+    /// </summary>
+    /// <param name="running">What the machine says is running.</param>
+    /// <param name="followingNow">The program channel 0 follows, or nothing.</param>
+    public static IReadOnlyList<AudioProcess> ProgramsChannelZeroMayMoveTo(
+        IReadOnlyList<AudioProcess> running,
+        AudioProcess? followingNow)
+    {
+        ArgumentNullException.ThrowIfNull(running);
+
+        return
+        [
+            .. running
+                .Where(program => program.Id != followingNow?.Id)
+                .OrderBy(program => program.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(program => program.Id),
+        ];
+    }
+
+    /// <summary>
     /// Whether the microphone's device stopped responding, as the meters last read it.
     /// </summary>
     /// <remarks>
-    /// Carried and not worked out here, exactly like <see cref="WholeMachineOffered"/>: what says a
+    /// Carried and not worked out here, exactly like <see cref="NothingCameFromTheProgram"/>: what says a
     /// source died is its stream having ended, which is a device's answer and not a layout. False
     /// is the ordinary case and the one this record opens in, so a screen nobody has metered offers
     /// nothing rather than everything.
@@ -293,9 +346,30 @@ public sealed record RecorderScreen
         // moved. Offered first and by itself, because it is the whole of the consent: what is not
         // in Available is not on screen, so there is nothing to press before the offer exists.
         RecorderPress.RecordTheWholeMachine =>
-            WholeMachineOffered
+            NothingCameFromTheProgram
             && !WholeMachineTaken
+            && !AnotherProgramIsBeingOpened
             && Chosen.Source?.IsTheWholeMachine == false,
+
+        // The same report, and the same consent: pointing channel 0 somewhere else is a way out of
+        // the same silence. Only while the recorder half is on screen, because a picker that is not
+        // there cannot be pressed and choosing without the meter in view defeats the point. And
+        // not once the picker is open or a move is under way, which is what keeps it one press.
+        RecorderPress.ChooseAnotherProgram =>
+            NothingCameFromTheProgram
+            && !WholeMachineTaken
+            && !AnotherProgramIsBeingChosen
+            && !AnotherProgramIsBeingOpened
+            && TheRecorderIsOnScreen
+            && Chosen.Source?.IsTheWholeMachine == false,
+
+        // A pick in the picker Cambiar opened, and never a pick in the one that chose the meeting's
+        // source. Not once the whole machine has been taken: the list it was offering is stale.
+        RecorderPress.FollowAnotherProgram =>
+            AnotherProgramIsBeingChosen
+            && !AnotherProgramIsBeingOpened
+            && !WholeMachineTaken
+            && TheRecorderIsOnScreen,
 
         // The microphone has to have died, and nothing must already be opening it. The second half
         // is what the whole machine's `Taken` is: an offer stays on screen while the press it

@@ -844,11 +844,14 @@ public static class MeetingRecordings
     /// A file that says one channel moved twice at one instant is answered with the later line and
     /// not the earlier one, because the lines are in the order they happened and what a channel
     /// ended that millisecond on is what it was on afterwards. Nothing this application writes
-    /// produces that file, because a move is one call under the session's gate and two of one
-    /// channel inside one millisecond would take two calls finishing inside it — so this is not a
-    /// case being handled but a rule the collapse has to have: taking whichever line came first would store the source the recording had already left,
-    /// and refusing the file outright would cost an hour of unrepeatable audio over a note about
-    /// which program a channel followed.
+    /// produces that file. A move is one call under the session's gate, so two moves inside one
+    /// millisecond would take two calls; <c>capture</c> refuses two moves of channel 0 in one
+    /// second (<c>--whole-machine-at</c> equal to <c>--then-process-at</c>); and the screen takes
+    /// one move of channel 0 at a time, because <c>RecorderScreen</c> refuses a second while
+    /// <c>AnotherProgramIsBeingOpened</c>. So this is not a case being handled but a rule the
+    /// collapse has to have: taking whichever line came first would store the source the recording
+    /// had already left, and refusing the file outright would cost an hour of unrepeatable audio
+    /// over a note about which program a channel followed.
     /// </para>
     /// </remarks>
     private static void Moved(

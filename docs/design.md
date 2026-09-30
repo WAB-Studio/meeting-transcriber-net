@@ -559,6 +559,11 @@ máquina*, because it is the one press that makes audio arrive; *Cambiar* is the
 left, since it opens a picker rather than answering the notice — a button that opens the question is
 not the button that answers it. Neither is pico: taking the whole machine costs nothing and loses
 nothing. Channel 1 goes on reading normally underneath, which is what says the recording is fine.
+In the window the meter says *sin señal* where its level was, and the sentence and its two presses
+stand in the row under the card with the fault lines, so they are on screen and in the automation
+tree whichever way the window is arranged. *Sin señal* is the recording's verdict that nothing ever
+arrived from the program; *nada* is the last second's reading, which a meeting between sentences
+says all the time, and both stay.
 
 **`Fallo`** · A source died. Its act is *Reintentar* and *Cambiar* is the neutral one on the left,
 which is the mirror of `NadaLlego` and the whole reason both exist: a source that is alive and silent

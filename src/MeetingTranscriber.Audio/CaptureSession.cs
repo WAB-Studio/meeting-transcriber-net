@@ -363,8 +363,8 @@ public sealed class CaptureSession : IDisposable
     }
 
     /// <summary>
-    /// Whether channel 0 has heard nothing at all since it opened, for long enough that following
-    /// that program is what is wrong rather than nobody having spoken yet.
+    /// Whether channel 0 has heard nothing at all since it began listening to that program, for long
+    /// enough that following that program is what is wrong rather than nobody having spoken yet.
     /// </summary>
     /// <remarks>
     /// Asked rather than announced, and it goes on being true until somebody does something about
@@ -376,7 +376,7 @@ public sealed class CaptureSession : IDisposable
     public bool HeardNothingFromTheProgram()
     {
         var others = On(AudioChannel.Loopback);
-        return SilentProgram.HeardNothing(others.Listening, others.Delivered, others.OpenFor);
+        return SilentProgram.HeardNothing(others.Listening, others.Delivered, others.ListeningFor);
     }
 
     /// <summary>
@@ -400,9 +400,11 @@ public sealed class CaptureSession : IDisposable
     /// <para>
     /// What the folder then says is on the card until the move and beside it afterwards: the card
     /// is what was true when the devices opened and is never rewritten, and the change is one line
-    /// appended to <see cref="SpoolChanges"/>. That line lands before the new device's audio does,
-    /// so a machine dying in the middle of this leaves a folder that overstates what is in the file
-    /// rather than one that hides it.
+    /// appended to <see cref="SpoolChanges"/>. The new stream is started first and its blocks are
+    /// dropped; the line is appended once it is running, and only then does the channel hand over.
+    /// So the line lands before any of the new device's audio reaches the file, and a machine dying
+    /// in the middle of this leaves a folder that overstates what is in the file rather than one
+    /// that hides it.
     /// </para>
     /// </remarks>
     public void RecordTheWholeMachine()
@@ -433,8 +435,9 @@ public sealed class CaptureSession : IDisposable
     /// From a program or from the whole machine: both are the same activation and neither numbers
     /// its frames, so the channel goes on being laid out by the instants it already had, and the
     /// seam is what the handover took, recorded as lost rather than closed up. The move is written
-    /// beside the card the way every move is, with the mode it moved to, before the new program's
-    /// audio lands.
+    /// beside the card the way every move is, with the mode it moved to: the new stream is started
+    /// first and its blocks are dropped, the line is appended once it is running, and only then does
+    /// the channel hand over, so the line lands before any of the new program's audio does.
     /// </para>
     /// <para>
     /// Refused only onto the program it is already following while that stream is still recording,

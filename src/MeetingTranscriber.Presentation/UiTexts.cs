@@ -139,13 +139,33 @@ public static class UiTexts
     public static UiText RecordTheWholeMachine { get; } =
         new("Grabar toda la máquina", "Record the whole machine");
 
+    // One sentence naming the program, read as a live region, so it is the same every second it
+    // stands: a count running in it would be read out every second. Taking the whole machine costs
+    // nothing it does not say on its own press, and the meeting keeps running either way.
     public static UiText NothingCameFromThatProgram { get; } = new(
-        "No llegó nada de ese programa. Grabar toda la máquina en su lugar mete las "
-        + "notificaciones y todas las demás aplicaciones en la grabación. La reunión sigue "
-        + "corriendo de cualquier manera.",
-        "Nothing at all has come from that program. Recording the whole machine instead puts "
-        + "notifications and every other application in the recording. The meeting keeps running "
-        + "either way.");
+        "No llegó nada de {0}.", "Nothing has come from {0}.");
+
+    // What channel 0's level reads while the notice stands: the recording's verdict that nothing
+    // ever arrived from this program, and not *nada*, which is the last second's reading and is
+    // true of a meeting between sentences. docs/design.md §NadaLlego.
+    public static UiText NoSignal { get; } = new("sin señal", "no signal");
+
+    // The accessible name of the notice's Cambiar, which shows the one word every press that
+    // points something elsewhere shows (Change). Two presses named Cambiar read the same to
+    // somebody who cannot see which one they are beside.
+    public static UiText ChangeWhatChannel0Follows { get; } = new(
+        "Cambiar qué programa sigue el canal 0", "Change which program channel 0 follows");
+
+    public static UiText NowFollowingAnotherProgram { get; } =
+        new("Canal 0: {0}.", "Channel 0: {0}.");
+
+    public static UiText AnotherProgramCouldNotBeFollowed { get; } = new(
+        "El canal 0 no se pudo pasar a {0}; sigue donde estaba.",
+        "Channel 0 could not be moved onto {0}; it is still where it was.");
+
+    public static UiText ThatProgramStoppedBeforeChannel0Moved { get; } = new(
+        "{0} ya no está corriendo, así que el canal 0 sigue donde estaba.",
+        "{0} is no longer running, so channel 0 is still where it was.");
 
     public static UiText NowRecordingTheWholeMachine { get; } = new(
         "Canal 0: todo lo que suena en esta máquina.",
@@ -441,13 +461,14 @@ public static class UiTexts
         "The corpus could not be opened. To change where it is kept, go to Settings.");
 
     /// <summary>
-    /// The press beside the line saying where the corpus is. The word is the artboard's —
-    /// <c>docs/design/Configuracion.dc.html</c> draws <em>Cambiar</em> on this row — and not a
-    /// sentence of its own, because the line above it has already said what the row is about. It
-    /// is on the screen only when the corpus was refused: a corpus that opened is moved by moving
-    /// the files and then saying so, and no screen offers the first half.
+    /// The one verb for pointing something somewhere else (<c>docs/design.md</c> §One verb per
+    /// act), named for no press in particular. The word is the artboard's —
+    /// <c>docs/design/Configuracion.dc.html</c> draws <em>Cambiar</em> on the corpus row — and not
+    /// a sentence of its own, because the line beside it has already said what the row is about.
+    /// Each press carries its own automation name, since two presses named <em>Cambiar</em> read
+    /// the same to somebody who cannot see which row they are beside.
     /// </summary>
-    public static UiText ChangeWhereItIsKept { get; } = new("Cambiar", "Change");
+    public static UiText Change { get; } = new("Cambiar", "Change");
 
     /// <summary>
     /// What a picker refusing to open says. The Windows App SDK picker used here does not throw
@@ -1167,7 +1188,7 @@ public static class UiTexts
 
     /// <summary>
     /// The accessible name of the press that changes where the corpus is kept. It still *shows*
-    /// <see cref="ChangeWhereItIsKept"/> (<em>Cambiar</em>), which keeps its visible word on every
+    /// <see cref="Change"/> (<em>Cambiar</em>), which keeps its visible word on every
     /// <em>Cambiar</em> press on the settings screen; this is what a screen reader announces for
     /// this one, since two presses named <em>Cambiar</em> read the same to somebody who cannot see
     /// which row they are beside.

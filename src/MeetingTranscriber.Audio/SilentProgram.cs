@@ -33,29 +33,32 @@ public static class SilentProgram
     public static readonly Duration Waits = Duration.FromSeconds(10);
 
     /// <summary>
-    /// Whether a source that has been open for <paramref name="open"/> has said, by hearing
-    /// nothing at all in that time, that it is following the wrong program.
+    /// Whether a source that has been listening to its program for <paramref name="listeningFor"/>
+    /// has said, by hearing nothing at all in that time, that it is following the wrong program.
     /// </summary>
     /// <param name="listening">What the source is listening to.</param>
     /// <param name="delivered">
-    /// The loudest the device has handed over since it opened — what it played, and not what the
-    /// recording kept of it. A meeting paused over its first seconds has that stretch replaced with
-    /// silence on the way to the file, and reading that back would tell somebody who paused that
-    /// they had picked the wrong program.
+    /// The loudest the device has handed over since channel 0 began listening to that program —
+    /// what it played, and not what the recording kept of it. A meeting paused over its first
+    /// seconds has that stretch replaced with silence on the way to the file, and reading that back
+    /// would tell somebody who paused that they had picked the wrong program.
     /// </param>
-    /// <param name="open">How long it has been open.</param>
+    /// <param name="listeningFor">How long channel 0 has been listening to that program.</param>
     /// <remarks>
-    /// Since it opened, and not the last second: a program that played one sentence and went quiet
-    /// is being followed correctly, and a meter emptied every time somebody looked at it would call
-    /// that meeting the wrong program too.
+    /// Since channel 0 began listening to that program, and not the last second: a program that
+    /// played one sentence and went quiet is being followed correctly, and a meter emptied every
+    /// time somebody looked at it would call that meeting the wrong program too.
     /// </remarks>
-    public static bool HeardNothing(CaptureTarget listening, LevelReading delivered, Duration open)
+    public static bool HeardNothing(
+        CaptureTarget listening,
+        LevelReading delivered,
+        Duration listeningFor)
     {
         ArgumentNullException.ThrowIfNull(listening);
 
         // Only ever about a program. A channel listening to the whole machine is silent because
         // nothing is playing, which is the recording somebody asked for and not a wrong choice —
         // there is nothing else to offer them.
-        return listening is CaptureTarget.Program && delivered.IsSilent && open >= Waits;
+        return listening is CaptureTarget.Program && delivered.IsSilent && listeningFor >= Waits;
     }
 }

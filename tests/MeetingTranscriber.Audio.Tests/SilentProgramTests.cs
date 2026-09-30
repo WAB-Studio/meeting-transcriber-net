@@ -1,4 +1,7 @@
+using System.Text.RegularExpressions;
+
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Testing;
 
 namespace MeetingTranscriber.Audio.Tests;
 
@@ -12,7 +15,7 @@ namespace MeetingTranscriber.Audio.Tests;
 /// whole point of it living in a type of its own is that the decision is provable without a
 /// meeting, a program or a machine that has either.
 /// </remarks>
-public sealed class SilentProgramTests
+public sealed partial class SilentProgramTests
 {
     private static readonly CaptureTarget Program =
         new CaptureTarget.Program(new AudioProcess(8124, "teams", StartedBy: 1084));
@@ -67,4 +70,44 @@ public sealed class SilentProgramTests
     {
         SilentProgram.HeardNothing(WholeMachine, Nothing, Duration.FromSeconds(3600)).ShouldBeFalse();
     }
+
+    /// <summary>
+    /// A channel moved onto a second program is judged on that program's own silence. Both what the
+    /// last program delivered and when this one began are restarted at the handover, before the
+    /// line the channel moves on: a silent program moved onto after a loud one is otherwise never
+    /// reported, and one moved onto late is reported the instant it opens.
+    /// </summary>
+    /// <remarks>
+    /// A source guard in <c>StoppingASourceTests</c>' shape, and for its reason: nothing here can
+    /// construct a <c>CaptureSource</c>, so this reads the file and checks the shape. It catches
+    /// the reset somebody deletes or moves below the handover, not the rewrite somebody argues for;
+    /// the real-device proof is the walk of #102, which moves onto a second silent program and
+    /// waits for the notice to come back.
+    /// </remarks>
+    [Fact]
+    public void A_move_starts_the_silence_over()
+    {
+        var body = TheBodyOfListenTo().Match(SourceText.WithoutProse(TheSource()));
+
+        body.Success.ShouldBeTrue(
+            "CaptureSource.ListenTo is not where this reads for any more, and a guard that cannot "
+            + "find the method passes over anything.");
+
+        var handover = body.Value.IndexOf("Volatile.Write(ref stream, next)", StringComparison.Ordinal);
+        var meter = body.Value.IndexOf("Volatile.Write(ref delivered, new SourceMeter())", StringComparison.Ordinal);
+        var clock = body.Value.IndexOf("Volatile.Write(ref listeningSince,", StringComparison.Ordinal);
+
+        handover.ShouldBeGreaterThan(-1, "the line the channel moves on has gone from ListenTo");
+        meter.ShouldBeGreaterThan(-1, "a move no longer empties what the device delivered");
+        clock.ShouldBeGreaterThan(-1, "a move no longer restarts the ten seconds");
+        meter.ShouldBeLessThan(handover, "the delivered meter is emptied after the handover");
+        clock.ShouldBeLessThan(handover, "the clock is restarted after the handover");
+    }
+
+    [GeneratedRegex(
+        @"internal void ListenTo\([\s\S]*?(?=\n\s*(?:\[|(?:public|internal|private|protected)\s))")]
+    private static partial Regex TheBodyOfListenTo();
+
+    private static FileInfo TheSource() =>
+        RepositoryTree.At("src/MeetingTranscriber.Audio/CaptureSource.cs");
 }

@@ -130,7 +130,7 @@ public class ConfiguracionTests
 
         markup.ShouldContain("x:Name=\"ChangeWhereItIsKept\"");
         markup.ShouldContain("Click=\"OnChangeWhereItIsKept\"");
-        markup.ShouldContain("In(loc:UiTexts.ChangeWhereItIsKept)");
+        markup.ShouldContain("In(loc:UiTexts.Change)");
     }
 
     /// <summary>
