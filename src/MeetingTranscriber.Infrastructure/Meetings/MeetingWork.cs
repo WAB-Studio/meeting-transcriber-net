@@ -498,14 +498,11 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
                 + "transcribe again. Its first transcription is the press on its row.");
         }
 
-        foreach (var response in responses)
+        if (ResponseVersions.Highest(responses).Unplaced is { } unplaced)
         {
-            if (ResponseVersions.VersionOf(response) is null)
-            {
-                throw new MeetingStageException(
-                    $"Meeting {meetingId} names '{response.RelativePath}' as a response and that "
-                    + "is not a name in the series, so where another would go cannot be settled.");
-            }
+            throw new MeetingStageException(
+                $"Meeting {meetingId} names '{unplaced.RelativePath}' as a response and that "
+                + "is not a name in the series, so where another would go cannot be settled.");
         }
 
         if (owed.WaitsOnSomebody)

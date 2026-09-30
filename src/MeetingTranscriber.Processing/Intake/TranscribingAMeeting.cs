@@ -242,12 +242,14 @@ public static class TranscribingAMeeting
             var meeting = context.Meetings.First(row => row.Id == meetingId);
             asked = new DeepgramRequest(meeting.SourceProfile, meeting.Language);
 
-            // The highest placeable version already filed, plus one — which is always 1 on a first
+            // The highest placed version already filed, plus one — which is always 1 on a first
             // transcription, because the AlreadyTranscribed check above already refused this path
             // the moment the meeting had any response at all. A row this cannot place is not
             // re-checked here: it is MeetingWork's refusal ahead of this call, and the filing door
             // below refuses it loudly if one slips through anyway.
-            var next = NextPlaceableVersion(context, meetingId);
+            var next = ResponseVersions.Highest(context.Artifacts
+                .Where(row => row.MeetingId == meetingId && row.Kind == ArtifactKind.DeepgramResponse)
+                .ToList()).Next;
 
             temporary = CorpusFiles.UnfinishedBeside(
                 CorpusFiles.Locate(root, CorpusFiles.PathFor(meetingId, ResponseVersions.Named(next))));
@@ -393,23 +395,6 @@ public static class TranscribingAMeeting
         return new TranscriptionEnded(TranscriptionOutcome.Filed, null);
     }
 
-    /// <summary>The highest placeable response version this meeting already has, plus one.</summary>
-    private static int NextPlaceableVersion(CorpusDbContext context, Guid meetingId)
-    {
-        var highest = 0;
-
-        foreach (var response in context.Artifacts.Where(row =>
-                     row.MeetingId == meetingId && row.Kind == ArtifactKind.DeepgramResponse))
-        {
-            if (ResponseVersions.VersionOf(response) is { } version && version > highest)
-            {
-                highest = version;
-            }
-        }
-
-        return highest + 1;
-    }
-
     /// <summary>
     /// The run's own bookkeeping, written once more in a fresh context, after the first attempt
     /// failed alongside a response that is already filed and safe.
@@ -522,6 +507,7 @@ public static class TranscribingAMeeting
 
         var kept = CorpusFiles.Locate(root, CorpusFiles.PathFor(meetingId, RefusedResponseFileName(runId)));
         var keptWhere = kept.FullName;
+        var setAside = true;
 
         try
         {
@@ -530,6 +516,7 @@ public static class TranscribingAMeeting
         catch (Exception stuck) when (stuck is IOException or UnauthorizedAccessException)
         {
             keptWhere = temporary.FullName;
+            setAside = false;
         }
 
         var unsettled = context.TranscriptionRuns.FirstOrDefault(row => row.Id == runId);
@@ -539,13 +526,20 @@ public static class TranscribingAMeeting
             context.SaveChanges();
         }
 
+        var saying = $"{message} What the provider sent back was paid for and is kept at '{keptWhere}', "
+            + "where nothing files it on its own and check names it until somebody moves or "
+            + "deletes it.";
+
+        // `ReceiveWhatWasRefused` finds the run by the bytes at the kept name, so a file left at
+        // its `.partial` name is not one that door can file, and naming the door would send the
+        // user to a refusal.
         return new TranscriptionEnded(
             TranscriptionOutcome.MayHaveBeenCharged,
-            $"{message} What the provider sent back was paid for and is kept at '{keptWhere}', "
-            + "where nothing files it on its own and check names it until somebody moves or "
-            + $"deletes it. `import-response \"{keptWhere}\" --corpus \"{root.FullName}\" "
-            + $"--meeting {meetingId} --as-next-version` files it as the next version without "
-            + "sending anything.");
+            setAside
+                ? $"{saying} `import-response \"{keptWhere}\" --corpus \"{root.FullName}\" "
+                  + $"--meeting {meetingId} --as-next-version` files it as the next version without "
+                  + "sending anything."
+                : saying);
     }
 
     private static void WriteLastError(DirectoryInfo root, Guid runId, string message)

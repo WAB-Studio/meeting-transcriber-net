@@ -280,6 +280,38 @@ public sealed class TranscribingAMeetingTests
         reopened.TranscriptionRuns.Single(row => row.JobId == job).LastError.ShouldNotBeNull();
     }
 
+    /// <summary>Goes red with the door-back sentence unconditional.</summary>
+    [Fact]
+    public async Task A_response_that_could_not_be_set_aside_is_not_offered_to_the_door_back()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, job) = Queue(corpus);
+
+        SendingToTheProvider send = async (_, _, response, stopping) =>
+        {
+            using var checking = corpus.Open();
+            var runId = checking.TranscriptionRuns.Single(row => row.JobId == job).Id;
+
+            // A directory where the refused response is to be kept, so the move is refused.
+            Directory.CreateDirectory(CorpusFiles.Locate(
+                corpus.Root,
+                CorpusFiles.PathFor(meeting, TranscribingAMeeting.RefusedResponseFileName(runId))).FullName);
+
+            var bytes = "not json at all"u8.ToArray();
+            await response.WriteAsync(bytes, stopping);
+            return bytes.Length;
+        };
+
+        var ended = await TranscribingAMeeting.TranscribeAsync(
+            corpus.Root, job, send, TimeProvider.System, TestContext.Current.CancellationToken);
+
+        ended.Outcome.ShouldBe(TranscriptionOutcome.MayHaveBeenCharged);
+        ended.Said.ShouldNotBeNull();
+        ended.Said.ShouldContain(CorpusFiles.UnfinishedSuffix);
+        ended.Said.ShouldContain("check names it");
+        ended.Said.ShouldNotContain("--as-next-version");
+    }
+
     /// <summary>Goes red when the outcome is decided by the throw alone.</summary>
     [Fact]
     public async Task A_response_filed_before_its_render_failed_is_filed_and_kept_once()

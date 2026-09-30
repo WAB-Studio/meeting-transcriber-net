@@ -295,24 +295,21 @@ public static class MeetingIntake
         UtcTimestamp now) =>
         ReceiveOnto(context, meetingId, response, now, (meeting, bytes) =>
         {
-            var placed = new List<int>();
-            foreach (var row in context.Artifacts.Where(artifact =>
-                         artifact.MeetingId == meetingId
-                         && artifact.Kind == ArtifactKind.DeepgramResponse))
-            {
-                if (ResponseVersions.VersionOf(row) is not { } version)
-                {
-                    throw new IntakeException(
-                        $"Meeting {meetingId} names '{row.RelativePath}' as a response and that is "
-                        + "not a name in the series, so where another would go cannot be settled. "
-                        + $"A response is '{ResponseVersions.First}' or 'deepgram.v<n>.json' from 2 "
-                        + "up. Nothing was filed.");
-                }
+            var series = ResponseVersions.Highest(context.Artifacts
+                .Where(artifact => artifact.MeetingId == meetingId
+                    && artifact.Kind == ArtifactKind.DeepgramResponse)
+                .ToList());
 
-                placed.Add(version);
+            if (series.Unplaced is { } unplaced)
+            {
+                throw new IntakeException(
+                    $"Meeting {meetingId} names '{unplaced.RelativePath}' as a response and that is "
+                    + "not a name in the series, so where another would go cannot be settled. "
+                    + $"A response is '{ResponseVersions.First}' or 'deepgram.v<n>.json' from 2 "
+                    + "up. Nothing was filed.");
             }
 
-            var next = placed.Count == 0 ? 1 : placed.Max() + 1;
+            var next = series.Next;
 
             meeting.UpdatedAt = now;
 
