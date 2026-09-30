@@ -205,8 +205,8 @@ public sealed class AudioIntakeTests : IDisposable
         reopened.Meetings.Single().SourceProfile.ShouldBe(SourceProfile.Multichannel);
 
         // A new meeting of this corpus, and never the id the card carries. The card is read for
-        // what the audio is and for nothing else, so a folder handed over twice cannot land on top
-        // of a meeting already here.
+        // what the audio is and what the meeting started, was spoken in and was called, and never for
+        // its identity, so a folder handed over twice cannot land on top of a meeting already here.
         brought.MeetingId.ShouldNotBe(MeetingManifest.Read(
             new FileInfo(Path.Combine(folder.FullName, MeetingManifest.FileName))).MeetingId);
     }
@@ -249,11 +249,11 @@ public sealed class AudioIntakeTests : IDisposable
     /// an untitled one would file rather than refuse.
     /// </remarks>
     [Theory]
-    [InlineData("2026-05-04T14:00:00.000Z", null, null, "2026-08-20T11:00:00.000Z")]
-    [InlineData(null, "en", null, "es")]
-    [InlineData(null, null, "Otra reunion", "Kickoff con el cliente")]
+    [InlineData("2026-05-04T14:00:00.000Z", null, null, "It says the meeting started at 2026-08-20T11:00:00.000Z and 2026-05-04T14:00:00.000Z was given.")]
+    [InlineData(null, "en", null, "It says it was spoken in 'es' and 'en' was given.")]
+    [InlineData(null, null, "Otra reunion", "It says it was called 'Kickoff con el cliente' and 'Otra reunion' was given.")]
     public void What_somebody_typed_that_the_folder_contradicts_is_refused_and_nothing_is_filed(
-        string? started, string? language, string? title, string cardSays)
+        string? started, string? language, string? title, string sentence)
     {
         var folder = Recorded(title: "Kickoff con el cliente");
         var typed = new BroughtDetails(
@@ -263,12 +263,9 @@ public sealed class AudioIntakeTests : IDisposable
         var refused = Should.Throw<RecordingException>(
             () => AudioIntake.Bring(context, MeetingAudio.In(folder), typed, now));
 
-        foreach (var value in new[] { started, language, title }.OfType<string>())
-        {
-            refused.Message.ShouldContain(value);
-        }
-
-        refused.Message.ShouldContain(cardSays);
+        // The whole sentence the refusal builds for that field, so the card's value and the typed
+        // one are each found where they are meant to be and not in the fixed words around them.
+        refused.Message.ShouldContain(sentence);
         refused.Message.ShouldContain("Nothing was filed.");
         NothingWasFiled();
     }
