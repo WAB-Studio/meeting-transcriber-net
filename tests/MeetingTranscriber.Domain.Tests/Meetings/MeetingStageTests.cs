@@ -47,6 +47,30 @@ public class MeetingStageTests
         Should.Throw<ArgumentOutOfRangeException>(() => ((StageStanding)99).MayBeLeft());
     }
 
+    public static TheoryData<MeetingStage, StageStanding> EveryStageAtEveryStanding()
+    {
+        var all = new TheoryData<MeetingStage, StageStanding>();
+
+        foreach (var stage in Enum.GetValues<MeetingStage>())
+        {
+            foreach (var standing in Enum.GetValues<StageStanding>())
+            {
+                all.Add(stage, standing);
+            }
+        }
+
+        return all;
+    }
+
+    [Theory]
+    [MemberData(nameof(EveryStageAtEveryStanding))]
+    public void Only_a_running_summary_may_be_stopped(MeetingStage stage, StageStanding standing)
+    {
+        var owed = new OwedWork(TheMeeting, stage, standing);
+
+        owed.MayBeStopped.ShouldBe(stage.Offers() is JobKind.Extract && standing is StageStanding.Running);
+    }
+
     [Fact]
     public void Nothing_the_application_offers_is_work_it_could_do_for_nothing()
     {

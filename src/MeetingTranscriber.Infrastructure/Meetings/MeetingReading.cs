@@ -415,11 +415,12 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     /// has filed one correction of it, the correction as well — and it is the correction a person
     /// reads, because that is the attempt made about what the first one got wrong.
     /// <para>
-    /// Read off <c>CorrectsRunId</c> and never off <c>CreatedAt</c> or <c>Id</c>: two runs of one
-    /// job share a <c>CreatedAt</c> under every fixed test clock, and <c>Id</c> is a random
-    /// <c>Guid</c>, so neither orders them. <c>CorrectsRunId</c> is the one column that says which
-    /// run is the correction, and the run that names none is read only when it is the job's only one.
-    /// The corpus itself holds "at most one correction per job" to —
+    /// The correction is found by <c>CorrectsRunId</c>, the one column that says which run is the
+    /// correction: two runs of one job share a <c>CreatedAt</c> under every fixed test clock, and
+    /// <c>Id</c> is a random <c>Guid</c>, so neither orders them. Where the job has no correction,
+    /// the newest uncorrected run by <c>CreatedAt</c> is read, because the runner's retries leave one
+    /// uncorrected run per attempt and the newest is the one that failed the job. The corpus itself
+    /// holds "at most one correction per job" to —
     /// <c>ux_extraction_runs_one_correction_per_job</c> refuses a second — so at most one candidate
     /// is ever found here; the first found is taken regardless, rather than trusting that.
     /// </para>
@@ -449,14 +450,15 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
         var runs = context.ExtractionRuns
             .AsNoTracking()
             .Where(run => run.JobId == id)
-            .Select(run => new { run.Id, run.CorrectsRunId })
+            .Select(run => new { run.Id, run.CorrectsRunId, run.CreatedAt })
             .ToList();
 
         // FirstOrDefault and not Single: the corpus's own unique index is what makes "at most one"
         // true, and a screen reading a row back is not where that gets re-proved. A read that
         // trusted Single would crash the whole screen were that constraint ever bypassed; this one
         // reads whichever correction it finds instead.
-        var run = runs.Find(candidate => candidate.CorrectsRunId is not null) ?? runs.FirstOrDefault();
+        var run = runs.Find(candidate => candidate.CorrectsRunId is not null)
+            ?? runs.OrderByDescending(candidate => candidate.CreatedAt).FirstOrDefault();
 
         if (run is null)
         {

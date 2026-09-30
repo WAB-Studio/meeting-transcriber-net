@@ -168,6 +168,6 @@ public static class ExtractionCheck
     }
 
     /// <summary>Collapses every run of whitespace to one space and trims both ends.</summary>
-    private static string EvenOut(string text) =>
+    internal static string EvenOut(string text) =>
         string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 }

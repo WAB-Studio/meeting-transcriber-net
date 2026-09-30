@@ -959,6 +959,124 @@ public sealed class JobRunnerTests
         job.Attempt.ShouldBe(1);
     }
 
+    /// <summary>
+    /// A transcription queued while a summary is in flight is sent before that summary answers.
+    /// Goes red with the summary lane awaited inline by the look, which is one serial pump again.
+    /// </summary>
+    [Fact]
+    public async Task A_transcription_queued_while_a_summary_runs_is_sent_before_the_summary_answers()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, summaryJob) = ArrangeSummarisable(corpus, When);
+        var (provider, release) = ASummaryThatWaits(meeting);
+
+        using var stopping = new CancellationTokenSource();
+        var pump = JobRunner.PumpAsync(
+            corpus.Root, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TimeSpan.FromMilliseconds(50), stopping.Token, provider);
+
+        try
+        {
+            (await StateBecomesAsync(corpus, summaryJob, JobState.Running)).ShouldBeTrue();
+
+            Guid transcription;
+            using (var context = corpus.OpenMigrated())
+            {
+                var second = RecordedMeetings.Recorded(
+                    context, SourceProfile.Multichannel, When + Duration.FromSeconds(1));
+                transcription = new MeetingWork(context, When).Take(second).Id;
+                context.SaveChanges();
+            }
+
+            (await StateBecomesAsync(corpus, transcription, JobState.Succeeded)).ShouldBeTrue(
+                "A transcription sat behind a summary that had not answered.");
+
+            using (var reading = corpus.Open())
+            {
+                reading.ProcessingJobs.Single(row => row.Id == summaryJob).State.ShouldBe(JobState.Running);
+            }
+
+            release.SetResult();
+            (await StateBecomesAsync(corpus, summaryJob, JobState.Succeeded)).ShouldBeTrue();
+        }
+        finally
+        {
+            release.TrySetResult();
+            await stopping.CancelAsync();
+            await pump;
+        }
+    }
+
+    /// <summary>
+    /// The restart sweep each look makes leaves alone the one summary this pump is running.
+    /// Goes red with the pump naming no job in flight, which stops it on a person a look later.
+    /// </summary>
+    [Fact]
+    public async Task A_look_while_a_summary_runs_does_not_stop_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, summaryJob) = ArrangeSummarisable(corpus, When);
+        var (provider, release) = ASummaryThatWaits(meeting);
+
+        using var stopping = new CancellationTokenSource();
+        var pump = JobRunner.PumpAsync(
+            corpus.Root, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TimeSpan.FromMilliseconds(50), stopping.Token, provider);
+
+        try
+        {
+            (await StateBecomesAsync(corpus, summaryJob, JobState.Running)).ShouldBeTrue();
+
+            var looked = Stopwatch.StartNew();
+            while (looked.Elapsed < TimeSpan.FromSeconds(1))
+            {
+                using var reading = corpus.Open();
+                reading.ProcessingJobs.Single(row => row.Id == summaryJob).State.ShouldBe(JobState.Running);
+
+                await Task.Delay(TimeSpan.FromMilliseconds(25), TestContext.Current.CancellationToken);
+            }
+
+            release.SetResult();
+            (await StateBecomesAsync(corpus, summaryJob, JobState.Succeeded)).ShouldBeTrue();
+        }
+        finally
+        {
+            release.TrySetResult();
+            await stopping.CancelAsync();
+            await pump;
+        }
+    }
+
+    /// <summary>A provider that answers the meeting's accepted summary only once the test lets it.</summary>
+    private static (LambdaProvider Provider, TaskCompletionSource Release) ASummaryThatWaits(Guid meeting)
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var provider = new LambdaProvider(async (_, stopping) =>
+        {
+            await release.Task.WaitAsync(stopping);
+            return new SummaryProviderAnswer.Extracted(Utf8(Accepted(meeting)), "1.0", "opus", "session-1");
+        });
+
+        return (provider, release);
+    }
+
+    private static async Task<bool> StateBecomesAsync(TemporaryCorpus corpus, Guid jobId, JobState state)
+    {
+        var waited = Stopwatch.StartNew();
+        while (waited.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            using var reading = corpus.Open();
+            if (reading.ProcessingJobs.Single(row => row.Id == jobId).State == state)
+            {
+                return true;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), TestContext.Current.CancellationToken);
+        }
+
+        return false;
+    }
+
     /// <summary>A meeting with turns, and a queued <see cref="JobKind.Extract"/> job over it.</summary>
     private static (Guid Meeting, Guid JobId) ArrangeSummarisable(TemporaryCorpus corpus, UtcTimestamp createdAt)
     {

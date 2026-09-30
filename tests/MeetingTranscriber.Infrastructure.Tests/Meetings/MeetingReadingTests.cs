@@ -342,6 +342,61 @@ public class MeetingReadingTests
     }
 
     /// <summary>
+    /// The runner's retries leave one uncorrected run per attempt, and the newest is the one that
+    /// failed the job. The earlier is inserted first: unordered, SQLite would return it.
+    /// </summary>
+    [Fact]
+    public void A_meeting_refused_on_a_later_attempt_says_what_that_attempt_was_refused_for()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0"], responseSha256: new string('a', 64), root: corpus.Root);
+
+        var job = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Extract, $"{meeting}/1", Recorded);
+        job.Start(Recorded);
+        MeetingRows.Add(context, job);
+
+        var later = UtcTimestamp.From(Recorded.Value.AddMinutes(1));
+
+        foreach (var (at, condition) in new[]
+        {
+            (Recorded, ExtractionCondition.NoEvidence),
+            (later, ExtractionCondition.CitedAgainElsewhere),
+        })
+        {
+            var run = new ExtractionRun
+            {
+                Id = Guid.NewGuid(),
+                MeetingId = meeting,
+                JobId = job.Id,
+                Provider = "claude-code",
+                PromptVersion = "1",
+                SchemaVersion = "1",
+                InputHash = new string('d', 64),
+                CreatedAt = at,
+            };
+            MeetingRows.Add(context, run);
+            MeetingRows.Add(context, new ExtractionRunRefusal
+            {
+                ExtractionRunId = run.Id,
+                Ordinal = 0,
+                Condition = condition,
+                Path = "decisions[0]",
+                Statement = "Lanzar el viernes.",
+            });
+        }
+
+        job.FailPermanently(JobFailure.ExtractionRefused, "refused", later);
+        context.SaveChanges();
+
+        var screen = new MeetingReading(context, Clock).Of(meeting).Screen;
+
+        screen.WhyTheSummaryWasRefused.ShouldBe(
+            new ExtractionRefusal(ExtractionCondition.CitedAgainElsewhere, "decisions[0]", "Lanzar el viernes."));
+    }
+
+    /// <summary>
     /// The self-referencing <c>corrects_run_id</c> foreign key cascades cleanly on top of the
     /// table's own <c>meeting_id</c> cascade, rather than the two conflicting the way
     /// <c>docs/migrations.md</c> warns a self-referencing foreign key can.

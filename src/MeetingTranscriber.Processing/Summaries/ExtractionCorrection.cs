@@ -172,11 +172,7 @@ public static class ExtractionCorrection
     }
 
     private static bool SameStatement(string one, string other) =>
-        string.Equals(EvenOut(one), EvenOut(other), StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>Collapses every run of whitespace to one space and trims both ends.</summary>
-    private static string EvenOut(string text) =>
-        string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        string.Equals(ExtractionCheck.EvenOut(one), ExtractionCheck.EvenOut(other), StringComparison.OrdinalIgnoreCase);
 
     private static string Line(ExtractionRefusal refusal)
     {

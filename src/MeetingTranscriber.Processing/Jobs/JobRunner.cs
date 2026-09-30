@@ -45,14 +45,13 @@ public sealed record JobsRun(IReadOnlyList<Guid> Ran, IReadOnlyList<string> Left
 /// where they were, queued rather than skipped, for the next pass that is given one to find.
 /// </para>
 /// <para>
-/// <b>One worker, still.</b> The ordering above only reaches the jobs one look of the queue already
-/// found; it says nothing about a summary a look before it is still waiting on. A pass processes its
-/// own snapshot of <c>due</c> strictly one job at a time, so a transcription that becomes due while
-/// an unrelated summary from an earlier pass is still running waits behind it — for as long as that
-/// summary takes, up to the adapter's own bound, not merely until the next look. That is the same
-/// trade every look of this queue has always made for a slow transcription; a summary can simply be
-/// slower. Splitting the two kinds across two workers is a larger change than this card asked for,
-/// and is not one this file makes on its own.
+/// <b>Two lanes, and one job in each.</b> <see cref="RunWhatIsDueAsync"/> is the whole queue in one
+/// serial pass, and every caller that wants a pass gets exactly that. <see cref="PumpAsync"/> is not
+/// such a caller: a summary can run for ten minutes, and somebody who stops a recording expects it to
+/// start transcribing, so at every look the pump sends the due transcriptions itself and runs at most
+/// one lane of summaries beside them, started at a look and not awaited by it. Neither lane ever has
+/// two calls in flight, so a meeting's own row is still never raced by two calls of one kind. The one
+/// summary job a lane is running is named to the restart sweep, which leaves it alone.
 /// </para>
 /// <para>
 /// <b>Nothing here retries a transcription.</b> <see cref="TranscribingAMeeting.TranscribeAsync"/>
@@ -146,7 +145,7 @@ public static class JobRunner
     /// What reaches the summary provider, or <c>null</c> to leave every due <see cref="JobKind.Extract"/>
     /// job queued.
     /// </param>
-    public static async Task<JobsRun> RunWhatIsDueAsync(
+    public static Task<JobsRun> RunWhatIsDueAsync(
         RunnerLease lease,
         TimeProvider clock,
         SendingToTheProvider send,
@@ -157,6 +156,28 @@ public static class JobRunner
         ArgumentNullException.ThrowIfNull(clock);
         ArgumentNullException.ThrowIfNull(send);
 
+        return RunAsync(lease, clock, send, stopping, summarise, transcriptions: true, inFlight: null);
+    }
+
+    /// <summary>
+    /// What <see cref="RunWhatIsDueAsync"/> and the pump's two lanes share: every due job of the
+    /// kinds asked for, one at a time and each kind ordered by when it was queued.
+    /// </summary>
+    /// <remarks>
+    /// Summaries are read only when <paramref name="summarise"/> is given. <paramref name="inFlight"/>,
+    /// when given, is told which summary job is about to be taken, before it is taken, and is cleared
+    /// once that job is settled — the order <see cref="JobsARestartFound.Holding(RunnerLease, Func{Guid?})"/>
+    /// depends on.
+    /// </remarks>
+    private static async Task<JobsRun> RunAsync(
+        RunnerLease lease,
+        TimeProvider clock,
+        SendingToTheProvider send,
+        CancellationToken stopping,
+        ISummaryProvider? summarise,
+        bool transcriptions,
+        SummaryInFlight? inFlight)
+    {
         var root = lease.Root;
         var ran = new List<Guid>();
         var left = new List<string>();
@@ -168,7 +189,7 @@ public static class JobRunner
             List<ProcessingJob> due;
             using (var reading = CorpusDatabase.Open(root))
             {
-                due = DueOfKind(reading, JobKind.Transcribe, now);
+                due = transcriptions ? DueOfKind(reading, JobKind.Transcribe, now) : [];
 
                 if (summarise is not null)
                 {
@@ -184,10 +205,29 @@ public static class JobRunner
                 }
 
                 var startedAt = UtcTimestamp.From(clock.GetUtcNow());
-                var taken = Take(root, candidate.Id, startedAt, candidate.Kind);
+
+                if (candidate.Kind == JobKind.Extract)
+                {
+                    inFlight?.Name(candidate.Id);
+                }
+
+                TakenJob? taken;
+
+                try
+                {
+                    taken = Take(root, candidate.Id, startedAt, candidate.Kind);
+                }
+                catch
+                {
+                    // A name that outlived a take that never happened would keep the sweep from
+                    // ever looking at this job again.
+                    inFlight?.Name(null);
+                    throw;
+                }
 
                 if (taken is not { } job)
                 {
+                    inFlight?.Name(null);
                     // Taken, moved or gone between the read above and here — another pass over this
                     // same corpus cannot happen while this one holds the lease, so what did this is
                     // a person, or a test standing in for one. Either way it is not this pass's to
@@ -209,9 +249,16 @@ public static class JobRunner
                 }
                 else
                 {
-                    left.AddRange(await RunSummaryAsync(
-                            root, candidate.Id, job.Attempt, summarise!, clock, stopping)
-                        .ConfigureAwait(false));
+                    try
+                    {
+                        left.AddRange(await RunSummaryAsync(
+                                root, candidate.Id, job.Attempt, summarise!, clock, stopping)
+                            .ConfigureAwait(false));
+                    }
+                    finally
+                    {
+                        inFlight?.Name(null);
+                    }
                 }
             }
         }
@@ -281,6 +328,32 @@ public static class JobRunner
             root, jobId, taken.MeetingId, taken.Attempt, ended, UtcTimestamp.From(clock.GetUtcNow()));
 
         return new JobsRun([jobId], left);
+    }
+
+    /// <summary>The one summary job a pump's lane is running, for the restart sweep to leave alone.</summary>
+    private sealed class SummaryInFlight
+    {
+        private readonly Lock _gate = new();
+        private Guid? _job;
+
+        public Guid? Job
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _job;
+                }
+            }
+        }
+
+        public void Name(Guid? job)
+        {
+            lock (_gate)
+            {
+                _job = job;
+            }
+        }
     }
 
     /// <summary>What one job taken to be sent was, before the call it is taken for.</summary>
@@ -612,14 +685,20 @@ public static class JobRunner
     /// <para>
     /// <b>The restart's jobs come first at every look, not only the first.</b> A pass runs on a look
     /// only when that same look's own recovery came back with nothing left to say — never once and
-    /// then never again. That is deliberate and not a missed optimisation: this pump's own passes
-    /// finish one job before starting the next, so the only way a look can ever find a
-    /// <c>Running</c> row under a lease it already holds is a write this same runner made and could
-    /// not save — the job is exactly as stuck as one a dead process left, and the next look's
-    /// recovery is what moves it to a person rather than leaving it to outlive the pump that
-    /// orphaned it. A recovery that fails on its own — a busy lock, a corpus mid-write from
-    /// somewhere else — costs one skipped pass and is retried at the next look rather than skipped
-    /// for good.
+    /// then never again. That is deliberate and not a missed optimisation: a <c>Running</c> row under
+    /// a lease this pump already holds is, apart from the one summary its lane is sending, a write
+    /// this same runner made and could not save — the job is exactly as stuck as one a dead process
+    /// left, and the next look's recovery is what moves it to a person rather than leaving it to
+    /// outlive the pump that orphaned it. The summary in flight is named to the sweep and left
+    /// alone. A recovery that fails on its own — a busy lock, a corpus mid-write from somewhere
+    /// else — costs one skipped pass and is retried at the next look rather than skipped for good.
+    /// </para>
+    /// <para>
+    /// <b>A transcription never waits behind a summary.</b> Each look sends the due transcriptions
+    /// and awaits them, and then, when <paramref name="summarise"/> is given and no summary lane is
+    /// running, starts one lane over the due summaries and does not await it. A lane works through
+    /// its summaries one at a time and ends when none is due; the next look starts another. Stopping
+    /// the pump waits for the lane's call to end or be cancelled, and then lets the lease go.
     /// </para>
     /// <para>
     /// <b>Every look absorbs everything but running out of memory and a cancellation of
@@ -656,6 +735,8 @@ public static class JobRunner
         ArgumentNullException.ThrowIfNull(send);
 
         RunnerLease? lease = null;
+        var inFlight = new SummaryInFlight();
+        Task? lane = null;
 
         try
         {
@@ -667,9 +748,18 @@ public static class JobRunner
                     {
                         lease ??= RunnerLease.TryTake(root);
 
-                        if (lease is not null && JobsARestartFound.Holding(lease).Left.Count == 0)
+                        if (lease is not null && JobsARestartFound.Holding(lease, () => inFlight.Job).Left.Count == 0)
                         {
-                            _ = await RunWhatIsDueAsync(lease, clock, send, stopping, summarise).ConfigureAwait(false);
+                            _ = await RunAsync(lease, clock, send, stopping, null, transcriptions: true, inFlight: null)
+                                .ConfigureAwait(false);
+
+                            if (summarise is not null && lane is not { IsCompleted: false })
+                            {
+                                var held = lease;
+                                lane = Task.Run(
+                                    () => RunAsync(held, clock, send, stopping, summarise, transcriptions: false, inFlight),
+                                    CancellationToken.None);
+                            }
                         }
                     }
                 }
@@ -696,6 +786,20 @@ public static class JobRunner
         }
         finally
         {
+            if (lane is not null)
+            {
+                try
+                {
+                    await lane.ConfigureAwait(false);
+                }
+                catch (Exception thrown) when (thrown is not OutOfMemoryException)
+                {
+                    // A lane cancelled by the stop, or one that failed on its own, has nothing left
+                    // to report: its job is where its call left it, for the next lease holder.
+                    _ = thrown;
+                }
+            }
+
             lease?.Dispose();
         }
     }

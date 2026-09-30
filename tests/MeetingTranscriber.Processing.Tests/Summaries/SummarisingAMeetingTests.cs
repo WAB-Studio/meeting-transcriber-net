@@ -138,90 +138,53 @@ public class SummarisingAMeetingTests
     public async Task The_fake_and_Claude_Code_file_the_same_summary(bool throughClaudeCode)
     {
         using var corpus = new TemporaryCorpus();
+        using var temporary = new TemporaryFolder();
         var (meeting, jobId) = Arrange(corpus);
-        var accepted = Accepted(meeting);
+        var wired = Providing(throughClaudeCode, temporary, Accepted(meeting));
 
-        ISummaryProvider provider;
-        DirectoryInfo? fakeCliRoot = null;
-        FakeClaudeCode? fake = null;
-        var clock = System.Diagnostics.Stopwatch.StartNew();
-        if (throughClaudeCode)
-        {
-            fakeCliRoot = new DirectoryInfo(
-                Path.Combine(Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
-            fakeCliRoot.Create();
-            fake = FakeClaudeCode.In(fakeCliRoot);
-            fake.AnswersVersion("fake 1").Answers(FakeClaudeCode.Envelope(accepted.ToJsonString()));
-            var workspaces = new DirectoryInfo(Path.Combine(fakeCliRoot.FullName, "workspaces"));
-            provider = new ClaudeCodeSummaries(
-                () => fake.Executable, FakeClaudeCode.MinimalEnvironment(), workspaces, TimeSpan.FromSeconds(30));
-        }
-        else
-        {
-            provider = new FakeSummaries().Answering(Extracted(accepted));
-        }
+        var ended = await SummariseAsync(corpus, jobId, wired);
 
-        try
-        {
-            var ended = await SummariseAsync(corpus, jobId, provider);
+        ended.Outcome.ShouldBe(SummaryOutcome.Filed);
 
-            ended.Outcome.ShouldBe(SummaryOutcome.Filed);
+        using var reopened = corpus.OpenMigrated();
+        var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
+        job.State.ShouldBe(JobState.Succeeded);
 
-            using var reopened = corpus.OpenMigrated();
-            var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
-            job.State.ShouldBe(JobState.Succeeded);
-
-            reopened.Decisions.Single(row => row.MeetingId == meeting).Statement.ShouldBe("Lanzar el viernes.");
-        }
-        catch (Exception exception) when (fake is not null && exception is not OperationCanceledException)
-        {
-            // Without this a red run on a machine nobody can sit at says only that the summary was
-            // not filed, and not whether the fake CLI ever ran.
-            throw new Xunit.Sdk.XunitException(
-                string.Join(
-                    Environment.NewLine,
-                    exception.Message,
-                    string.Empty,
-                    $"After {clock.Elapsed.TotalSeconds:F1}s.",
-                    fake.Diagnosis()),
-                exception);
-        }
-        finally
-        {
-            if (fakeCliRoot is not null)
-            {
-                try
-                {
-                    Directory.Delete(fakeCliRoot.FullName, recursive: true);
-                }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                {
-                }
-            }
-        }
+        reopened.Decisions.Single(row => row.MeetingId == meeting).Statement.ShouldBe("Lanzar el viernes.");
     }
 
     /// <summary>ISC-115.</summary>
-    [Fact]
-    public async Task A_summary_refused_for_its_shape_is_handed_back_once_and_accepted_corrected()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_summary_refused_for_its_shape_is_handed_back_once_and_accepted_corrected(bool throughClaudeCode)
     {
         using var corpus = new TemporaryCorpus();
+        using var temporary = new TemporaryFolder();
         var (meeting, jobId) = Arrange(corpus);
         var broken = Accepted(meeting);
         Remove(broken, "abstract");
 
-        var provider = new FakeSummaries().Answering(Extracted(broken), Extracted(Accepted(meeting)));
+        var wired = Providing(throughClaudeCode, temporary, broken, Accepted(meeting));
 
-        var ended = await SummariseAsync(corpus, jobId, provider);
+        var ended = await SummariseAsync(corpus, jobId, wired);
 
         ended.Outcome.ShouldBe(SummaryOutcome.Filed);
-        provider.Requests.Count.ShouldBe(2);
 
-        var correction = provider.Requests[1];
-        correction.Instructions.ShouldBe(ExtractionInstructions.ToCorrect);
-        correction.Correction.ShouldNotBeNull();
-        correction.Correction!.PreviousOutput.ShouldBe(Utf8(broken));
-        correction.Correction.WhatWasWrong.ShouldBe("- At abstract: this is not in the shape schema.md describes. Fix it.");
+        if (wired.Fake is { } fake)
+        {
+            fake.Requests.Count.ShouldBe(2);
+
+            var correction = fake.Requests[1];
+            correction.Instructions.ShouldBe(ExtractionInstructions.ToCorrect);
+            correction.Correction.ShouldNotBeNull();
+            correction.Correction!.PreviousOutput.ShouldBe(Utf8(broken));
+            correction.Correction.WhatWasWrong.ShouldBe("- At abstract: this is not in the shape schema.md describes. Fix it.");
+        }
+        else
+        {
+            AskedTwiceWithTheFirstAnswerHandedBack(wired);
+        }
 
         using var reopened = corpus.OpenMigrated();
         reopened.ProcessingJobs.Single(row => row.Id == jobId).State.ShouldBe(JobState.Succeeded);
@@ -259,22 +222,33 @@ public class SummarisingAMeetingTests
     }
 
     /// <summary>ISC-116, anti.</summary>
-    [Fact]
-    public async Task A_statement_handed_back_that_comes_back_citing_something_else_is_refused()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_statement_handed_back_that_comes_back_citing_something_else_is_refused(bool throughClaudeCode)
     {
         using var corpus = new TemporaryCorpus();
+        using var temporary = new TemporaryFolder();
         var (meeting, jobId) = Arrange(corpus);
         var broken = Accepted(meeting);
         Remove(broken, "decisions[0].evidence");
 
         var corrected = BroughtBackAsAnAction(meeting);
 
-        var provider = new FakeSummaries().Answering(Extracted(broken), Extracted(corrected));
+        var wired = Providing(throughClaudeCode, temporary, broken, corrected);
 
-        var ended = await SummariseAsync(corpus, jobId, provider);
+        var ended = await SummariseAsync(corpus, jobId, wired);
 
         ended.Outcome.ShouldBe(SummaryOutcome.Filed);
-        provider.Requests.Count.ShouldBe(2);
+
+        if (wired.Fake is { } fake)
+        {
+            fake.Requests.Count.ShouldBe(2);
+        }
+        else
+        {
+            AskedTwiceWithTheFirstAnswerHandedBack(wired);
+        }
 
         using var reopened = corpus.OpenMigrated();
         var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
@@ -400,6 +374,42 @@ public class SummarisingAMeetingTests
         reopened.ProcessingJobs.Single(row => row.Id == jobId).State.ShouldBe(JobState.Running);
     }
 
+    /// <summary>
+    /// A provider answering <paramref name="outputs"/> in order: the in-process fake, or the real
+    /// <see cref="ClaudeCodeSummaries"/> over a generated <c>claude.cmd</c> that answers the same.
+    /// </summary>
+    private static Wired Providing(bool throughClaudeCode, TemporaryFolder temporary, params JsonNode[] outputs)
+    {
+        if (!throughClaudeCode)
+        {
+            var fake = new FakeSummaries().Answering([.. outputs.Select(Extracted)]);
+            return new Wired(fake, fake, null);
+        }
+
+        var cli = FakeClaudeCode.In(new DirectoryInfo(Path.Combine(temporary.Folder.FullName, "cli")));
+        cli.AnswersVersion("fake 1")
+            .Answers([.. outputs.Select(output => FakeClaudeCode.Envelope(output.ToJsonString()))]);
+
+        var workspaces = new DirectoryInfo(Path.Combine(temporary.Folder.FullName, "workspaces"));
+        var provider = new ClaudeCodeSummaries(
+            () => cli.Executable, FakeClaudeCode.MinimalEnvironment(), workspaces, TimeSpan.FromSeconds(30));
+
+        return new Wired(provider, null, cli);
+    }
+
+    /// <summary>
+    /// The second call that carried a prompt was the hand-back, with the refused answer and what
+    /// was wrong with it to read, and there was no third.
+    /// </summary>
+    private static void AskedTwiceWithTheFirstAnswerHandedBack(Wired wired)
+    {
+        var asked = wired.Cli!.Calls.Where(call => call.Arguments.Contains("-p")).ToList();
+
+        asked.Count.ShouldBe(2);
+        asked[1].Files.ShouldContain("previous-output.json");
+        asked[1].Files.ShouldContain("what-was-wrong.md");
+    }
+
     private static (Guid Meeting, Guid JobId) Arrange(TemporaryCorpus corpus)
     {
         using var context = corpus.OpenMigrated();
@@ -414,6 +424,33 @@ public class SummarisingAMeetingTests
 
         return (meeting, job.Id);
     }
+
+    /// <summary>
+    /// A red run through the real adapter says, besides what failed, whether the fake CLI ever ran:
+    /// without it a machine nobody can sit at reports only that the summary was not filed.
+    /// </summary>
+    private static async Task<SummaryEnded> SummariseAsync(TemporaryCorpus corpus, Guid jobId, Wired wired)
+    {
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        try
+        {
+            return await SummariseAsync(corpus, jobId, wired.Provider);
+        }
+        catch (Exception exception) when (wired.Cli is not null && exception is not OperationCanceledException)
+        {
+            throw new Xunit.Sdk.XunitException(
+                string.Join(
+                    Environment.NewLine,
+                    exception.Message,
+                    string.Empty,
+                    $"After {clock.Elapsed.TotalSeconds:F1}s.",
+                    wired.Cli.Diagnosis()),
+                exception);
+        }
+    }
+
+    private sealed record Wired(ISummaryProvider Provider, FakeSummaries? Fake, FakeClaudeCode? Cli);
 
     private static Task<SummaryEnded> SummariseAsync(TemporaryCorpus corpus, Guid jobId, ISummaryProvider provider) =>
         SummarisingAMeeting.SummariseAsync(

@@ -22,6 +22,11 @@ public sealed record RestartSettled(IReadOnlyList<Guid> Stopped, IReadOnlyList<s
 /// running this corpus's queue" answerable at all — without it, two windows of this application, or
 /// a second launch over the same corpus, would each read the other's in-flight call as abandoned.
 /// </para>
+/// <para>
+/// The same holds inside one process: <see cref="JobRunner.PumpAsync"/> sends a summary beside its
+/// transcriptions, so at a look the sweep makes, that one summary is <c>Running</c> under a lease
+/// this very pump holds. The pump says which job that is, and the sweep leaves it alone.
+/// </para>
 /// </remarks>
 public static class JobsARestartFound
 {
@@ -38,9 +43,22 @@ public static class JobsARestartFound
     /// caller reads off <see cref="RestartSettled.Left"/>.
     /// </remarks>
     /// <param name="lease">The lease over the corpus to settle. Its <see cref="RunnerLease.Root"/> is the corpus.</param>
-    public static RestartSettled Holding(RunnerLease lease)
+    public static RestartSettled Holding(RunnerLease lease) => Holding(lease, static () => null);
+
+    /// <summary>
+    /// As <see cref="Holding(RunnerLease)"/>, leaving alone the one job <paramref name="runningHere"/>
+    /// answers: a summary the pump holding <paramref name="lease"/> is itself sending.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="runningHere"/> is read after this sweep's transaction has begun. Both this and
+    /// the pump's own take begin <c>IMMEDIATE</c>, so either the take committed before this began —
+    /// and the pump named the job before it took it — or the job was still <c>Pending</c> and is not
+    /// this sweep's to touch.
+    /// </remarks>
+    internal static RestartSettled Holding(RunnerLease lease, Func<Guid?> runningHere)
     {
         ArgumentNullException.ThrowIfNull(lease);
+        ArgumentNullException.ThrowIfNull(runningHere);
 
         try
         {
@@ -48,10 +66,11 @@ public static class JobsARestartFound
             using var recovering = context.Database.BeginTransaction();
 
             var stopped = new List<Guid>();
+            var ours = runningHere();
 
             foreach (var job in context.ProcessingJobs.Where(job => job.State == JobState.Running))
             {
-                if (job.RecoverAfterRestart())
+                if (job.Id != ours && job.RecoverAfterRestart())
                 {
                     stopped.Add(job.Id);
                 }

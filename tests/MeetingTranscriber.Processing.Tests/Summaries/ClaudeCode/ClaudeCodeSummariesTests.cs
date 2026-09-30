@@ -17,29 +17,14 @@ public class ClaudeCodeSummariesTests : IDisposable
 {
     private static readonly Guid MeetingId = Guid.Parse("11111111-1111-1111-1111-111111111111");
 
-    private readonly DirectoryInfo _root = new(
-        Path.Combine(Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
-
+    private readonly TemporaryFolder _temporary = new();
     private readonly DirectoryInfo _workspaces;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private FakeClaudeCode? _fake;
 
-    public ClaudeCodeSummariesTests()
-    {
-        _root.Create();
-        _workspaces = Folder("workspaces");
-    }
+    public ClaudeCodeSummariesTests() => _workspaces = Folder("workspaces");
 
-    public void Dispose()
-    {
-        try
-        {
-            Directory.Delete(_root.FullName, recursive: true);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-        }
-    }
+    public void Dispose() => _temporary.Dispose();
 
     [Fact]
     public Task A_run_reads_the_meeting_the_instructions_and_the_shape_and_nothing_else() => Proving(async () =>
@@ -347,7 +332,7 @@ public class ClaudeCodeSummariesTests : IDisposable
 
     private DirectoryInfo Folder(string name)
     {
-        var folder = new DirectoryInfo(Path.Combine(_root.FullName, name));
+        var folder = new DirectoryInfo(Path.Combine(_temporary.Folder.FullName, name));
         folder.Create();
         return folder;
     }
