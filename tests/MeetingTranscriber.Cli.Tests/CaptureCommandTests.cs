@@ -81,6 +81,44 @@ public class CaptureCommandTests
         run.Error.ShouldContain("--process");
     }
 
+    /// <summary>
+    /// The program channel 0 moves onto and the second it moves go together: one without the other
+    /// names a move that cannot be made.
+    /// </summary>
+    [Fact]
+    public void Moving_channel_zero_onto_another_program_names_both_the_program_and_the_second()
+    {
+        var run = CommandLine.Of("capture", "--out", "spike", "--seconds", "30", "--then-process", "teams");
+
+        run.Code.ShouldBe(Cli.Misused);
+        run.Error.ShouldContain("--then-process-at");
+    }
+
+    [Fact]
+    public void Moving_to_another_program_after_the_recording_has_ended_is_a_misuse()
+    {
+        var run = CommandLine.Of(
+            "capture", "--out", "spike", "--seconds", "30", "--then-process", "teams", "--then-process-at", "30");
+
+        run.Code.ShouldBe(Cli.Misused);
+        run.Error.ShouldContain("--then-process-at 30");
+    }
+
+    /// <summary>
+    /// Two moves of channel 0 in one second cannot be told apart in the run that reports them, so
+    /// the line that asks for both is refused before anything opens.
+    /// </summary>
+    [Fact]
+    public void Two_moves_of_channel_zero_in_one_second_is_a_misuse()
+    {
+        var run = CommandLine.Of(
+            "capture", "--out", "spike", "--seconds", "30", "--process", "explorer",
+            "--whole-machine-at", "12", "--then-process", "teams", "--then-process-at", "12");
+
+        run.Code.ShouldBe(Cli.Misused);
+        run.Error.ShouldContain("second 12");
+    }
+
     [Fact]
     public void Listing_devices_takes_nothing_of_its_own()
     {

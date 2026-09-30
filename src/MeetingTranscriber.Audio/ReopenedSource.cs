@@ -11,9 +11,10 @@ namespace MeetingTranscriber.Audio;
 /// know what it could offer.
 /// </para>
 /// <para>
-/// What decides is the shape of the source and never the channel number. Both ways of obtaining
-/// channel 0 feed the same channel and answer differently, so a rule written over
-/// <see cref="Domain.Audio.AudioChannel"/> would have been right about one of them by accident.
+/// What decides is the shape of the source and never the channel number. Today the two agree —
+/// both ways of obtaining channel 0 carry the sequence on and the microphone does not — and that is
+/// three shapes happening to line up rather than the rule: a fourth way in is answered here, by its
+/// shape, or the arm below refuses to build it.
 /// </para>
 /// <para>
 /// <b>This is not the question "may a screen offer to re-open this source".</b> A microphone is
@@ -25,10 +26,11 @@ namespace MeetingTranscriber.Audio;
 /// two would refuse the microphone retry that ships.
 /// </para>
 /// <para>
-/// The two refusals keep their own words. They say no for different reasons — a microphone numbers
-/// its own frames, and nothing moves a recording onto a program — and one sentence covering both
-/// would send whoever met it looking in the wrong place. What moved here is where they are written,
-/// not what they say.
+/// The one refusal left keeps its own words: a microphone numbers its own frames. A running channel
+/// 0 used to be refused a program as well, on the argument that which program a recording follows
+/// is what the recording is. #164 decided otherwise: a program's audio numbers no frames either, and
+/// somebody who picked the wrong one of three processes called Teams had no way out but recording
+/// the whole machine.
 /// </para>
 /// </remarks>
 public static class ReopenedSource
@@ -38,10 +40,9 @@ public static class ReopenedSource
     /// being laid out by, on this source.
     /// </summary>
     /// <remarks>
-    /// The whole machine's audio and nothing else. It comes off a virtual device that numbers no
-    /// frames, so the channel keeps the instants it already had and there is no seam to reconcile.
-    /// A microphone numbers its own frames and opens a stretch of its own; a program is not
-    /// something a running recording is pointed at.
+    /// Both ways of obtaining channel 0. Each comes off a virtual device that numbers no frames, so
+    /// the channel keeps the instants it already had and there is no seam to reconcile, whichever of
+    /// the two it is moved onto. A microphone numbers its own frames and opens a stretch of its own.
     /// </remarks>
     /// <exception cref="NotSupportedException">
     /// A way of opening a channel that has not been answered in this file. It is not asked and
@@ -99,16 +100,13 @@ public static class ReopenedSource
     {
         CaptureTarget.TheWholeMachine => null,
 
+        CaptureTarget.Program => null,
+
         CaptureTarget.Endpoint endpoint =>
             $"'{endpoint.Name}' numbers its own frames, so it cannot carry on placing a channel by "
             + "instants the way the device before it was placed: what says where its audio "
             + "belongs is its own counter, and that counter starts again at its own zero. "
             + "What it opens is a stretch of its own.",
-
-        CaptureTarget.Program program =>
-            $"A channel already being recorded is not moved onto '{program.Name}'. Which program a "
-            + "recording follows is what the recording is, so it is chosen when one starts "
-            + "rather than while it runs.",
 
         _ => throw new NotSupportedException(
             $"'{destination.Name}' is a way of opening a channel that has not said whether a "

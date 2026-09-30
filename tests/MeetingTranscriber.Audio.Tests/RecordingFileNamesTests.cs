@@ -139,5 +139,6 @@ public sealed class RecordingFileNamesTests : IDisposable
         UtcTimestamp.From(new DateTimeOffset(2026, 9, 7, 14, 2, 0, TimeSpan.Zero)),
         AudioChannel.Loopback,
         "everything this machine plays",
-        "teams (pid 8124)");
+        "teams (pid 8124)",
+        Mode: CaptureMode.WholeMachine);
 }

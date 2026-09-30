@@ -176,6 +176,15 @@ public static class MeetingCommands
     /// <see cref="ImportResponse"/> one line above, which takes a response somebody has already paid for
     /// and is told what it was recorded as, because by then it is a fact about a request that was
     /// made rather than a guess about a file.
+    /// <para>
+    /// <b><c>--started-at</c>, <c>--language</c> and <c>--title</c> are for a folder that does not
+    /// say.</b> A folder this application wrote carries a card, and <see cref="AudioIntake"/> takes
+    /// all three off it. A flag that disagrees with the card is refused there, saying what each of
+    /// the two says, because a typed date silently replacing the one the recording carries is a date
+    /// nothing afterwards can account for. The default language is handed over rather than applied
+    /// here for the same reason: applied first, it would disagree with every card that is not in
+    /// Spanish.
+    /// </para>
     /// </remarks>
     public static int ImportAudio(Arguments arguments, TextWriter output)
     {
@@ -185,10 +194,11 @@ public static class MeetingCommands
         var corpus = Corpus.At(arguments);
         var audio = new FileInfo(arguments.Only("The audio file to bring in"));
         var details = new BroughtDetails(
-            arguments.Instant("--started-at"),
-            arguments.Language("--language", DefaultLanguage),
+            arguments.OptionalInstant("--started-at"),
+            arguments.OptionalLanguage("--language"),
             arguments.Optional("--title"),
-            arguments.Optional("--context"));
+            arguments.Optional("--context"),
+            LanguageWhenNothingSays: DefaultLanguage);
         arguments.EnsureNothingLeftOver();
 
         using var context = corpus.Write();

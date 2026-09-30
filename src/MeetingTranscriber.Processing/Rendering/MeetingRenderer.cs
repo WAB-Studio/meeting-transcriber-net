@@ -99,8 +99,9 @@ public static class MeetingRenderer
     /// <remarks>
     /// <c>ConfirmedAt</c> moves on every put-back and the name does not, so ranking by it would let
     /// a response somebody's disk had lost and this corpus restored outrank one filed properly and
-    /// long ago. Every derivative of a meeting comes from one response, and this is the one rule
-    /// that says which.
+    /// long ago. Every derivative of a meeting comes from one response; <see
+    /// cref="ResponseVersions.Highest"/> is the rule that says which, and this is where a render
+    /// refuses a meeting it cannot answer for.
     /// </remarks>
     private static Artifact Response(CorpusDbContext context, Meeting meeting)
     {
@@ -108,34 +109,20 @@ public static class MeetingRenderer
             .Where(artifact => artifact.MeetingId == meeting.Id && artifact.Kind == ArtifactKind.DeepgramResponse)
             .ToArray();
 
-        if (responses.Length == 0)
+        var series = ResponseVersions.Highest(responses);
+
+        if (series.Unplaced is { } unplaced)
         {
             throw new RenderException(
+                $"Meeting {meeting.Id} names '{unplaced.RelativePath}' as a response and that is "
+                + "not a name in the series, so which response the meeting is read from cannot "
+                + $"be settled. A response is '{ResponseVersions.First}' or 'deepgram.v<n>.json' "
+                + "from 2 up.");
+        }
+
+        return series.Highest
+            ?? throw new RenderException(
                 $"Meeting {meeting.Id} has no response to render from; nothing derived can be produced without it.");
-        }
-
-        Artifact? highest = null;
-        var highestVersion = 0;
-
-        foreach (var response in responses)
-        {
-            if (ResponseVersions.VersionOf(response) is not { } version)
-            {
-                throw new RenderException(
-                    $"Meeting {meeting.Id} names '{response.RelativePath}' as a response and that is "
-                    + "not a name in the series, so which response the meeting is read from cannot "
-                    + $"be settled. A response is '{ResponseVersions.First}' or 'deepgram.v<n>.json' "
-                    + "from 2 up.");
-            }
-
-            if (version > highestVersion)
-            {
-                highest = response;
-                highestVersion = version;
-            }
-        }
-
-        return highest!;
     }
 
     /// <summary>

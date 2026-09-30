@@ -219,9 +219,20 @@ public sealed class Arguments
     /// back what the corpus stored: nobody types milliseconds, and a date with no zone at a prompt
     /// on this machine means the zone the machine is in.
     /// </summary>
-    public UtcTimestamp Instant(string name)
+    public UtcTimestamp Instant(string name) =>
+        OptionalInstant(name) ?? throw new UsageException($"{name} is needed, and it takes a value.");
+
+    /// <summary>
+    /// <see cref="Instant"/> for a flag that may be left off: nothing when absent, and the same
+    /// refusal for a value that does not read.
+    /// </summary>
+    public UtcTimestamp? OptionalInstant(string name)
     {
-        var text = Required(name);
+        if (Optional(name) is not { } text)
+        {
+            return null;
+        }
+
         return DateTimeOffset.TryParse(
                 text,
                 CultureInfo.InvariantCulture,
@@ -244,11 +255,17 @@ public sealed class Arguments
     /// reached the domain instead, and came back out at the prompt as an argument name and a stack
     /// trace.
     /// </remarks>
-    public string Language(string name, string fallback)
+    public string Language(string name, string fallback) => OptionalLanguage(name) ?? fallback;
+
+    /// <summary>
+    /// <see cref="Language"/> with no fallback: nothing when absent, and the same refusal for a
+    /// blank one.
+    /// </summary>
+    public string? OptionalLanguage(string name)
     {
         if (Optional(name) is not { } text)
         {
-            return fallback;
+            return null;
         }
 
         return string.IsNullOrWhiteSpace(text)

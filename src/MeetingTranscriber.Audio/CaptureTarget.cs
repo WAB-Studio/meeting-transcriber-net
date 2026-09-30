@@ -58,8 +58,8 @@ public abstract record CaptureTarget
     /// <para>
     /// <see cref="ReopenedSource"/> is what says whether a channel already being recorded may go on
     /// being laid out by the sequence it was being laid out by, and it carries the words each
-    /// refusal is made in. What that leaves is the whole machine's audio, which is the one thing a
-    /// channel already being recorded is ever carried on to.
+    /// refusal is made in. What that leaves is channel 0's two ways in — a program and the whole
+    /// machine — which are what a channel already being recorded is ever carried on to.
     /// </para>
     /// <para>
     /// <b>It is asked here and not in the ways in, so that none of them can forget.</b> This method
@@ -130,13 +130,13 @@ public abstract record CaptureTarget
         public override AudioChannel Channel => AudioChannel.Loopback;
 
         /// <remarks>
-        /// A program's audio numbers no frames either, so carrying a channel onto one would work —
-        /// what says no is that nothing moves a recording onto a program. Both the answer and the
-        /// sentence are <see cref="ReopenedSource"/>'s, so the day somebody decides a running
-        /// channel may be pointed at another program, that is the one file they open.
+        /// A program's audio numbers no frames, so a channel carried onto one goes on being laid out
+        /// by the instants it was already being laid out by — the whole machine's answer, because it
+        /// is the same activation under the other mode. <see cref="ReopenedSource"/> is what says it
+        /// may; handing <paramref name="carryingOn"/> on is what makes it so.
         /// </remarks>
         private protected override WasapiStream Opening(FramePositions? carryingOn) =>
-            WasapiStream.Following(Process);
+            WasapiStream.Following(Process, carryingOn);
     }
 
     /// <summary>
@@ -166,9 +166,9 @@ public abstract record CaptureTarget
         public override AudioChannel Channel => AudioChannel.Loopback;
 
         /// <remarks>
-        /// The one way in that takes a sequence to carry on from, which is
-        /// <see cref="ReopenedSource.CarriesTheSequenceOn"/>'s answer and not this method's: it
-        /// comes off a virtual device that numbers nothing, so the channel goes on being laid out
+        /// One of the two ways in that take a sequence to carry on from — a program is the other —
+        /// which is <see cref="ReopenedSource.CarriesTheSequenceOn"/>'s answer and not this method's:
+        /// it comes off a virtual device that numbers nothing, so the channel goes on being laid out
         /// by the instants it was already being laid out by and there is no seam to reconcile.
         /// </remarks>
         private protected override WasapiStream Opening(FramePositions? carryingOn) =>

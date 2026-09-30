@@ -20,25 +20,9 @@ public class ReopenedSourceTests
 
     [Theory]
     [MemberData(nameof(WhatCarriesTheSequenceOn))]
-    public void Only_the_whole_machines_audio_carries_the_sequence_on(CaptureTarget listening, bool carries)
+    public void Both_ways_of_obtaining_channel_zero_carry_the_sequence_on_and_a_microphone_does_not(CaptureTarget listening, bool carries)
     {
         ReopenedSource.CarriesTheSequenceOn(listening).ShouldBe(carries);
-    }
-
-    /// <summary>
-    /// The defect PR #280 nearly shipped, as a test. Both of these feed channel 0 and they answer
-    /// differently, so anything asking about a carried sequence has to ask about the source and
-    /// never about the channel number.
-    /// </summary>
-    [Fact]
-    public void Both_ways_of_obtaining_channel_zero_answer_differently()
-    {
-        var program = new CaptureTarget.Program(Teams);
-        var machine = new CaptureTarget.TheWholeMachine();
-
-        program.Channel.ShouldBe(machine.Channel);
-        ReopenedSource.CarriesTheSequenceOn(program).ShouldBeFalse();
-        ReopenedSource.CarriesTheSequenceOn(machine).ShouldBeTrue();
     }
 
     [Fact]
@@ -51,14 +35,16 @@ public class ReopenedSourceTests
         refused.Message.ShouldContain("numbers its own frames");
     }
 
+    /// <summary>
+    /// A program's audio numbers no frames either, so a running channel 0 may be carried onto one.
+    /// It used to be refused, on the argument that which program a recording follows is what the
+    /// recording is.
+    /// </summary>
     [Fact]
-    public void A_program_refuses_a_sequence_because_a_recording_is_not_moved_onto_one()
+    public void A_program_takes_a_sequence_without_objecting()
     {
-        var refused = Should.Throw<AudioCaptureException>(
+        Should.NotThrow(
             () => ReopenedSource.EnsureMayCarryOn(new CaptureTarget.Program(Teams), Carried()));
-
-        refused.Message.ShouldContain("teams (pid 8124)");
-        refused.Message.ShouldContain("is not moved onto");
     }
 
     [Fact]
@@ -84,7 +70,7 @@ public class ReopenedSourceTests
         new()
         {
             { new CaptureTarget.Endpoint(Jabra), false },
-            { new CaptureTarget.Program(Teams), false },
+            { new CaptureTarget.Program(Teams), true },
             { new CaptureTarget.TheWholeMachine(), true },
         };
 

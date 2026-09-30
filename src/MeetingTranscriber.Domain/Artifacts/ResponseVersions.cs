@@ -83,6 +83,43 @@ public static class ResponseVersions
     }
 
     /// <summary>
+    /// The highest placed version among <paramref name="responses"/>, and the first of them that
+    /// cannot be placed (the lowest by stored path). Throws nothing.
+    /// </summary>
+    /// <remarks>
+    /// One rule for which response is current. Five callers used to walk the rows themselves, and
+    /// one of them skipped a name the other four refused.
+    /// </remarks>
+    public static ResponseSeries Highest(IEnumerable<Artifact> responses)
+    {
+        Artifact? highest = null;
+        var highestVersion = 0;
+        Artifact? unplaced = null;
+
+        foreach (var response in responses)
+        {
+            if (VersionOf(response) is not { } version)
+            {
+                if (unplaced is null
+                    || string.CompareOrdinal(response.RelativePath, unplaced.RelativePath) < 0)
+                {
+                    unplaced = response;
+                }
+
+                continue;
+            }
+
+            if (version > highestVersion)
+            {
+                highest = response;
+                highestVersion = version;
+            }
+        }
+
+        return new ResponseSeries(highest, highestVersion, unplaced);
+    }
+
+    /// <summary>
     /// Which version <paramref name="response"/> names, off the last <c>/</c>-separated segment of
     /// its <see cref="Artifact.RelativePath"/> and nothing else — the file name, wherever the
     /// response's folder put it.
@@ -95,4 +132,20 @@ public static class ResponseVersions
         var slash = path.LastIndexOf('/');
         return VersionOf(slash < 0 ? path : path[(slash + 1)..]);
     }
+}
+
+/// <summary>
+/// Which of a meeting's responses it is read from, and the first of them this rule cannot place.
+/// </summary>
+/// <param name="Highest">The placed response with the highest version, or nothing when none is placed.</param>
+/// <param name="HighestVersion">Its version, or 0 when there is none, so that <see cref="Next"/> is 1 on a meeting with no response.</param>
+/// <param name="Unplaced">
+/// A response whose name is outside the series — the lowest by stored path, compared ordinally,
+/// when there are several — or nothing. Answered rather than thrown, because each caller refuses it
+/// in its own words.
+/// </param>
+public sealed record ResponseSeries(Artifact? Highest, int HighestVersion, Artifact? Unplaced)
+{
+    /// <summary>The version the next response is filed as.</summary>
+    public int Next => HighestVersion + 1;
 }

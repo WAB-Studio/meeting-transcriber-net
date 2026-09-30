@@ -316,15 +316,15 @@ public static class DeepgramCommands
 
         // Always at least one: `EnsureMayBeTranscribedAgain` already refused a meeting with none,
         // and nothing on the send path ever removes a response.
-        var highest = reopened.Artifacts
+        var series = ResponseVersions.Highest(reopened.Artifacts
             .AsNoTracking()
             .Where(artifact => artifact.MeetingId == meeting && artifact.Kind == ArtifactKind.DeepgramResponse)
-            .ToList()
-            .MaxBy(artifact => ResponseVersions.VersionOf(artifact))!;
+            .ToList());
+        var highest = series.Highest!;
 
         Report.Line(output, "job", WireNames<JobState>.Of(finished.State));
         Report.Line(output, "response", highest.RelativePath);
-        Report.Line(output, "version", $"{ResponseVersions.VersionOf(highest)}");
+        Report.Line(output, "version", $"{series.HighestVersion}");
 
         foreach (var said in ran.Left)
         {

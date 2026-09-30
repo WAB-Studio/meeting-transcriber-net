@@ -47,4 +47,29 @@ public class ResponseVersionsTests
     {
         Should.Throw<ArgumentOutOfRangeException>(() => ResponseVersions.Named(version));
     }
+
+    [Theory]
+    [InlineData("", null, 0, 1, null)]
+    [InlineData("deepgram.json", "deepgram.json", 1, 2, null)]
+    [InlineData("deepgram.v3.json,deepgram.json,deepgram.v2.json", "deepgram.v3.json", 3, 4, null)]
+    [InlineData("deepgram.json,deepgram.v02.json,deepgram.v2.json", "deepgram.v2.json", 2, 3, "deepgram.v02.json")]
+    [InlineData("deepgram.v02.json,deepgram.v0.json", null, 0, 1, "deepgram.v0.json")]
+    public void The_highest_placed_version_is_current_and_an_unplaced_name_is_named(
+        string names, string? highest, int highestVersion, int next, string? unplaced)
+    {
+        var rows = names.Length == 0
+            ? []
+            : names.Split(',').Select(name => new Artifact
+            {
+                RelativePath = $"meetings/{Guid.Empty}/{name}",
+                Sha256 = new string('a', 64),
+            }).ToList();
+
+        var series = ResponseVersions.Highest(rows);
+
+        Path.GetFileName(series.Highest?.RelativePath).ShouldBe(highest);
+        series.HighestVersion.ShouldBe(highestVersion);
+        series.Next.ShouldBe(next);
+        Path.GetFileName(series.Unplaced?.RelativePath).ShouldBe(unplaced);
+    }
 }

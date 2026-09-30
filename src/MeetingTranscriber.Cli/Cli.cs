@@ -101,7 +101,7 @@ public static class Cli
             MeetingCommands.ImportResponse),
         new(
             "import-audio",
-            $"import-audio <file.wav> {Corpus.Option} <directory> --started-at <instant>"
+            $"import-audio <file.wav> {Corpus.Option} <directory> [--started-at <instant>]"
             + " [--language <code>] [--title <text>] [--context <text>]",
             "bring audio in as a meeting, as whatever the file and its folder say it is",
             MeetingCommands.ImportAudio),
@@ -124,7 +124,8 @@ public static class Cli
             "capture",
             "capture --out <directory> --seconds <n> [--meeting <id>] [--microphone <name-or-id>]"
             + " [--process <name-or-pid>] [--whole-machine-at <n>]"
-            + " [--then-microphone <name-or-id> --then-microphone-at <n>]",
+            + " [--then-microphone <name-or-id> --then-microphone-at <n>]"
+            + " [--then-process <name-or-pid> --then-process-at <n>]",
             "record what the machine plays, or one program, and what the microphone hears at once",
             AudioCommands.Capture),
         new(

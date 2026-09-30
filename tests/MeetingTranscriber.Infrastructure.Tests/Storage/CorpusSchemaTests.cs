@@ -359,10 +359,32 @@ public class CorpusSchemaTests
         InsertMeeting(context);
 
         Should.Throw<SqliteException>(() => InsertSourceChange(
-            context, channel: 0, deviceId: Endpoint));
+            context, channel: 0, deviceId: Endpoint, mode: "whole_machine"));
 
         Should.NotThrow(() => InsertSourceChange(
-            context, channel: 1, deviceId: Endpoint));
+            context, channel: 1, deviceId: Endpoint, mode: null));
+    }
+
+    /// <summary>
+    /// How channel 0 is obtained from a move on is stored with the move, and only channel 0 has one:
+    /// `SpoolChanges.Sound`'s rule one layer down, for a row written by anything else.
+    /// </summary>
+    [Fact]
+    public void A_change_on_channel_0_says_its_mode_and_a_change_on_channel_1_says_none()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        InsertMeeting(context);
+
+        Should.NotThrow(() => InsertSourceChange(
+            context, channel: 0, deviceId: null, mode: "one_program"));
+
+        Should.Throw<SqliteException>(() => InsertSourceChange(
+            context, channel: 0, deviceId: null, mode: null, at: "2026-08-05T14:01:00.000Z"));
+        Should.Throw<SqliteException>(() => InsertSourceChange(
+            context, channel: 1, deviceId: null, mode: "whole_machine", at: "2026-08-05T14:02:00.000Z"));
+        Should.Throw<SqliteException>(() => InsertSourceChange(
+            context, channel: 0, deviceId: null, mode: "everything", at: "2026-08-05T14:03:00.000Z"));
     }
 
     /// <summary>
@@ -376,11 +398,13 @@ public class CorpusSchemaTests
         using var context = corpus.OpenMigrated();
         InsertMeeting(context);
 
-        Should.NotThrow(() => InsertSourceChange(context, channel: 0, deviceId: null));
         Should.NotThrow(() => InsertSourceChange(
-            context, channel: 1, deviceId: null, at: "2026-08-05T14:01:00.000Z"));
+            context, channel: 0, deviceId: null, mode: "whole_machine"));
+        Should.NotThrow(() => InsertSourceChange(
+            context, channel: 1, deviceId: null, mode: null, at: "2026-08-05T14:01:00.000Z"));
 
-        Should.Throw<SqliteException>(() => InsertSourceChange(context, channel: 2, deviceId: null));
+        Should.Throw<SqliteException>(() => InsertSourceChange(
+            context, channel: 2, deviceId: null, mode: null));
     }
 
     [Fact]
@@ -660,11 +684,11 @@ public class CorpusSchemaTests
 
     /// <summary>A channel that stopped following what it opened on, written straight at the table.</summary>
     private static void InsertSourceChange(
-        CorpusDbContext context, int channel, string? deviceId, string at = When) =>
+        CorpusDbContext context, int channel, string? deviceId, string? mode, string at = When) =>
         Sql.Execute(context, $"""
-            INSERT INTO capture_source_changes (meeting_id, at, channel, heard, was_hearing, device_id)
+            INSERT INTO capture_source_changes (meeting_id, at, channel, heard, was_hearing, device_id, mode)
             VALUES ('{MeetingId}', '{at}', {channel}, 'what it hears now', 'what it heard before',
-                    {(deviceId is null ? "NULL" : $"'{deviceId}'")});
+                    {(deviceId is null ? "NULL" : $"'{deviceId}'")}, {(mode is null ? "NULL" : $"'{mode}'")});
             """);
 
     private static void InsertTranscriptionRun(CorpusDbContext context, string id, string job) =>

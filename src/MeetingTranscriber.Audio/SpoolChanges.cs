@@ -19,6 +19,11 @@ namespace MeetingTranscriber.Audio;
 /// <param name="DeviceId">
 /// The endpoint it reopens by from here on, or nothing when what it moved to is no device.
 /// </param>
+/// <param name="Mode">
+/// How channel 0 is obtained from here on — one program or everything the machine plays — and
+/// nothing on channel 1, which is always a microphone. Carried on the line rather than worked out
+/// from <paramref name="Heard"/>, which is a name for a person to read.
+/// </param>
 /// <remarks>
 /// The device is the same field the card carries for what a channel opened on, and it is under the
 /// same rule: a microphone is an endpoint and has one, and neither way of obtaining channel 0 is a
@@ -26,7 +31,12 @@ namespace MeetingTranscriber.Audio;
 /// channel moved to is always said in words as well, because words are all a channel 0 has.
 /// </remarks>
 public sealed record SourceChanged(
-    UtcTimestamp At, AudioChannel Channel, string Heard, string WasHearing, string? DeviceId = null);
+    UtcTimestamp At,
+    AudioChannel Channel,
+    string Heard,
+    string WasHearing,
+    string? DeviceId = null,
+    CaptureMode? Mode = null);
 
 /// <summary>
 /// What somebody changed about a recording while it was being recorded, beside the card that says
@@ -36,12 +46,14 @@ public sealed record SourceChanged(
 /// <para>
 /// The card is written once and never touched again, so that what a folder says about itself is
 /// what was true when the devices opened and cannot be half rewritten by a process that died. That
-/// leaves nowhere for a change made an hour in — and there are two. Channel 0 moves from the program
-/// it was following to the whole machine when somebody chooses it: a recording whose folder still
-/// named the program would tell whoever found it that their notifications are not in the file. And
-/// a channel whose device was unplugged follows Windows to whatever replaced it, so the channel
-/// comes to name two devices over one meeting — what the card says is the one it opened on, and
-/// what says which device fed the rest of the meeting is here.
+/// leaves nowhere for a change made an hour in, and there are several. Channel 0 moves when
+/// somebody chooses it — from the program it was following to the whole machine, or to another
+/// program — and a recording whose folder still named the first program would tell whoever found
+/// it that what came after is not in the file; the line says which of the two it moved to as well
+/// as what it is called. And channel 1 comes to name two devices over one meeting when somebody
+/// picks another microphone, or when its device was unplugged and the recording followed Windows to
+/// whatever replaced it: what the card says is the one it opened on, and what says which device fed
+/// the rest of the meeting is here.
 /// </para>
 /// <para>
 /// So it is a file of its own, appended to and never rewritten: one line per change, each line
@@ -346,7 +358,8 @@ public static class SpoolChanges
                         change.Channel ?? throw new AudioContractException("A change names no channel.")),
                     Required(file, "heard", change.Heard),
                     Required(file, "was_hearing", change.WasHearing),
-                    change.DeviceId));
+                    change.DeviceId,
+                    change.Mode is null ? null : CaptureModes.FromWireName(change.Mode)));
         }
         catch (Exception rejected)
             when (rejected is AudioContractException or ArgumentException or FormatException)
@@ -357,12 +370,22 @@ public static class SpoolChanges
     }
 
     /// <summary>
-    /// The change, unless it says a channel 0 was moved onto a device. The card refuses the same
-    /// thing about what a channel opened on, and for the same reason: neither way of obtaining
-    /// channel 0 is an endpoint, so a line saying otherwise describes a recording this application
-    /// cannot have made — and read anyway it would put an endpoint's id on a channel whose audio came
-    /// from somewhere else entirely.
+    /// The change, unless it says something this application cannot have written.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A channel 0 moved onto a device: the card refuses the same thing about what a channel opened
+    /// on, and for the same reason. Neither way of obtaining channel 0 is an endpoint, so a line
+    /// saying otherwise describes a recording this application cannot have made — and read anyway it
+    /// would put an endpoint's id on a channel whose audio came from somewhere else entirely.
+    /// </para>
+    /// <para>
+    /// A channel 0 move that does not say what it moved to, and a microphone move that does. The
+    /// mode is the one thing a move of channel 0 has to say, because it moves to the whole machine
+    /// and to another program alike and the two names cannot be told apart by reading them; and a
+    /// microphone is neither, so a mode on channel 1 describes a recording nothing here made.
+    /// </para>
+    /// </remarks>
     private static SourceChanged Sound(FileInfo file, SourceChanged change)
     {
         if (change.Channel == AudioChannel.Loopback && change.DeviceId is not null)
@@ -371,6 +394,21 @@ public static class SpoolChanges
                 $"'{file.FullName}' says the {AudioChannel.Loopback} channel moved onto device "
                 + $"'{change.DeviceId}', and no device ever feeds it: what it holds is one "
                 + "program's audio or everything the machine plays, and neither is an endpoint.");
+        }
+
+        if (change.Channel == AudioChannel.Loopback && change.Mode is null)
+        {
+            throw new AudioCaptureException(
+                $"'{file.FullName}' says the {AudioChannel.Loopback} channel moved and not what it is "
+                + "obtained as from then on — one program, or everything the machine plays — which is "
+                + "the one thing a move of that channel has to say.");
+        }
+
+        if (change.Channel == AudioChannel.Microphone && change.Mode is { } mode)
+        {
+            throw new AudioCaptureException(
+                $"'{file.FullName}' gives the {AudioChannel.Microphone} channel '{mode.ToWireName()}', "
+                + "which is a way of obtaining channel 0, and a microphone is neither.");
         }
 
         return change;
@@ -387,7 +425,8 @@ public static class SpoolChanges
         CapturedAudio.IndexOf(change.Channel),
         change.Heard,
         change.WasHearing,
-        change.DeviceId);
+        change.DeviceId,
+        change.Mode?.ToWireName());
 
     /// <summary>
     /// A change as it is on disk, separate from <see cref="SourceChanged"/> for the reason the
@@ -399,5 +438,6 @@ public static class SpoolChanges
         [property: JsonPropertyName("channel")] int? Channel,
         [property: JsonPropertyName("heard")] string? Heard,
         [property: JsonPropertyName("was_hearing")] string? WasHearing,
-        [property: JsonPropertyName("device")] string? DeviceId);
+        [property: JsonPropertyName("device")] string? DeviceId,
+        [property: JsonPropertyName("mode")] string? Mode);
 }

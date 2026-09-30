@@ -1,4 +1,5 @@
 using MeetingTranscriber.Audio;
+using MeetingTranscriber.Domain.Time;
 
 namespace MeetingTranscriber.Cli.Tests;
 
@@ -186,6 +187,74 @@ public sealed class ImportAudioCommandTests : IDisposable
     }
 
     /// <summary>
+    /// ISC-195.1, from a prompt. A folder this application wrote is brought in with nothing typed,
+    /// and the meeting is the one the card describes.
+    /// </summary>
+    [Fact]
+    public void A_folder_this_application_wrote_is_brought_in_with_nothing_typed()
+    {
+        using var first = new TemporaryCorpus();
+        using var second = new TemporaryCorpus();
+        var folder = WroteAFolder(first, "--started-at", StartedAt, "--language", "en", "--title", "Kickoff");
+
+        CommandLine.Of("migrate", "--corpus", second.Root.FullName).Code.ShouldBe(Cli.Ok);
+
+        var run = CommandLine.Of(
+            "import-audio", MeetingAudio.In(folder).FullName, "--corpus", second.Root.FullName);
+
+        run.Code.ShouldBe(Cli.Ok, run.Error);
+
+        using var context = second.Open();
+        var meeting = context.Meetings.Single();
+        meeting.StartedAt.ShouldBe(UtcTimestamp.Parse("2026-05-04T14:00:00.000Z"));
+        meeting.Language.ShouldBe("en");
+        meeting.Title.ShouldBe("Kickoff");
+    }
+
+    /// <summary>
+    /// ISC-195.2, from a prompt. A start the folder contradicts is a refusal naming both instants,
+    /// and the corpus is left with no meeting.
+    /// </summary>
+    [Fact]
+    public void A_start_the_folder_contradicts_is_refused_rather_than_stored()
+    {
+        using var first = new TemporaryCorpus();
+        using var second = new TemporaryCorpus();
+        var folder = WroteAFolder(first, "--started-at", StartedAt, "--language", "en");
+
+        CommandLine.Of("migrate", "--corpus", second.Root.FullName).Code.ShouldBe(Cli.Ok);
+
+        var run = CommandLine.Of(
+            "import-audio", MeetingAudio.In(folder).FullName,
+            "--corpus", second.Root.FullName,
+            "--started-at", "2026-06-01T09:00:00Z");
+
+        run.Code.ShouldBe(Cli.Refused);
+        run.Error.ShouldContain("2026-05-04T14:00:00.000Z");
+        run.Error.ShouldContain("2026-06-01T09:00:00.000Z");
+        CommandLine.Of("status", "--corpus", second.Root.FullName).Value("meetings").ShouldBe("none");
+    }
+
+    /// <summary>
+    /// Audio nothing vouches for and no start typed is a refusal, not a misuse: it is known only
+    /// after the folder has been read.
+    /// </summary>
+    [Fact]
+    public void Audio_nothing_vouches_for_without_a_start_is_refused()
+    {
+        using var corpus = new TemporaryCorpus();
+        var root = corpus.Root.FullName;
+
+        CommandLine.Of("migrate", "--corpus", root).Code.ShouldBe(Cli.Ok);
+
+        var run = CommandLine.Of("import-audio", Wav("call.wav", channels: 2).FullName, "--corpus", root);
+
+        run.Code.ShouldBe(Cli.Refused);
+        run.Error.ShouldContain("says when the meeting started");
+        CommandLine.Of("status", "--corpus", root).Value("meetings").ShouldBe("none");
+    }
+
+    /// <summary>
     /// Audio this build cannot open is an answer rather than a crash, and it comes back under the
     /// exit code a script can act on.
     /// </summary>
@@ -205,6 +274,30 @@ public sealed class ImportAudioCommandTests : IDisposable
 
         run.Code.ShouldBe(Cli.Refused);
         run.Error.ShouldContain("meeting.m4a");
+    }
+
+    /// <summary>
+    /// A meeting folder this application wrote: a mono file brought into <paramref name="from"/>
+    /// with <paramref name="flags"/>, its folder copied out beside no database.
+    /// </summary>
+    private DirectoryInfo WroteAFolder(TemporaryCorpus from, params string[] flags)
+    {
+        var root = from.Root.FullName;
+        CommandLine.Of("migrate", "--corpus", root).Code.ShouldBe(Cli.Ok);
+
+        var made = CommandLine.Of(
+            ["import-audio", Wav("phone.wav", channels: 1).FullName, "--corpus", root, .. flags]);
+        made.Code.ShouldBe(Cli.Ok, made.Error);
+
+        var filed = new DirectoryInfo(Path.Combine(root, "meetings", made.Value("meeting")));
+        var copied = new DirectoryInfo(Path.Combine(elsewhere.FullName, "restored"));
+        copied.Create();
+        foreach (var file in filed.GetFiles())
+        {
+            file.CopyTo(Path.Combine(copied.FullName, file.Name), overwrite: true);
+        }
+
+        return copied;
     }
 
     public void Dispose()
