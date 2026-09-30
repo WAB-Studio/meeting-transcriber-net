@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -19,13 +20,11 @@ namespace MeetingTranscriber.Processing.Tests.Summaries.ClaudeCode;
 /// substituting the interface.
 /// </para>
 /// <para>
-/// Generated using only <c>cmd.exe</c>'s own script format and
-/// <c>%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe</c>, named by that literal path
-/// rather than found on <c>PATH</c>, because a test's own environment may not carry one. The batch
-/// file fills in what <see cref="GeneratedCommand"/> says PowerShell's host wants and is missing,
-/// then forwards <c>%*</c> into a PowerShell script that does the actual work: every piece of real
-/// behaviour here is PowerShell, never batch, because batch's delayed-expansion traps inside a
-/// conditional are not worth what a plain fallback assignment already does in one line.
+/// The <c>.cmd</c> starts no PowerShell and does no work of its own: it stamps <c>trace.log</c> and
+/// hands <c>%*</c> to <c>MeetingTranscriber.FakeClaudeCode.dll</c>, a compiled program this suite
+/// references, run by the <c>dotnet.exe</c> this very process runs on, named by absolute path. An
+/// earlier version was a PowerShell script and never answered on the CI runner at all, for a reason
+/// nobody could read off a green laptop; nothing here depends on what another shell does there.
 /// </para>
 /// <para>
 /// Configuration and results cross the process boundary as JSON files under this fake's own folder:
@@ -37,11 +36,6 @@ namespace MeetingTranscriber.Processing.Tests.Summaries.ClaudeCode;
 /// </remarks>
 internal sealed class FakeClaudeCode
 {
-    private static readonly string PowerShell =
-        Path.Combine(
-            Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows",
-            "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-
     private readonly DirectoryInfo _root;
     private readonly DirectoryInfo _calls;
     private readonly DirectoryInfo _queue;
@@ -57,8 +51,7 @@ internal sealed class FakeClaudeCode
         _queue.Create();
 
         Executable = new FileInfo(Path.Combine(_root.FullName, "claude.cmd"));
-        File.WriteAllText(Executable.FullName, GeneratedCommand(Path.Combine(_root.FullName, "run.ps1")));
-        File.WriteAllText(Path.Combine(_root.FullName, "run.ps1"), Script);
+        File.WriteAllText(Executable.FullName, GeneratedCommand());
     }
 
     /// <summary>The generated <c>claude.cmd</c>, ready to be handed to <c>ClaudeCodeSummaries</c>.</summary>
@@ -168,22 +161,70 @@ internal sealed class FakeClaudeCode
     }
 
     /// <summary>
-    /// <c>claude.cmd</c> itself, filling in the handful of names <c>powershell.exe</c>'s classic host
-    /// wants to start rather than trusting them to already be in whatever environment this fake was
-    /// launched with. <c>ClaudeCodeSummaries</c> starts every real run from a curated allowlist
-    /// (deliberately narrow — that is what proves a secret cannot leak into a run) and a test may
-    /// narrow it further still, so the fake cannot assume PowerShell was handed a workstation's usual
-    /// environment; it makes its own. Each is a fallback and never an override, so a value the caller
-    /// did carry is left exactly as given.
+    /// <c>claude.cmd</c> itself. <c>trace.log</c> gets a line before and after the program runs, so
+    /// a run that never reached the program (the host missing, the environment too narrow) reads
+    /// differently from one the program answered and <see cref="Diagnosis"/> can say which.
     /// </summary>
-    private static string GeneratedCommand(string scriptPath) =>
-        "@echo off\r\n"
-        + "if not defined PSModulePath set \"PSModulePath=%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\Modules\"\r\n"
-        + "if not defined TMP set \"TMP=%TEMP%\"\r\n"
-        + "if not defined APPDATA set \"APPDATA=%TEMP%\"\r\n"
-        + "if not defined LOCALAPPDATA set \"LOCALAPPDATA=%TEMP%\"\r\n"
-        + $"\"{PowerShell}\" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{scriptPath}\" %*\r\n"
-        + "exit /b %ERRORLEVEL%\r\n";
+    private string GeneratedCommand()
+    {
+        var folder = _root.FullName;
+        var output = AppContext.BaseDirectory;
+        var runtimeConfig = Path.Combine(output, "MeetingTranscriber.FakeClaudeCode.runtimeconfig.json");
+        var depsFile = Path.Combine(output, "MeetingTranscriber.FakeClaudeCode.deps.json");
+        var program = Path.Combine(output, "MeetingTranscriber.FakeClaudeCode.dll");
+        foreach (var needed in new[] { runtimeConfig, depsFile, program })
+        {
+            if (!File.Exists(needed))
+            {
+                throw new FileNotFoundException($"The fake Claude Code program is missing beside the suite: '{needed}'.");
+            }
+        }
+
+        var trace = Path.Combine(folder, "trace.log");
+
+        return "@echo off\r\n"
+            + $"echo %TIME% claude.cmd started >> \"{trace}\"\r\n"
+            + $"\"{DotNetHost()}\" exec --runtimeconfig \"{runtimeConfig}\" --depsfile \"{depsFile}\" \"{program}\" \"{folder}\" %*\r\n"
+            + "set \"FAKE_EXIT=%ERRORLEVEL%\"\r\n"
+            + $"echo %TIME% claude.cmd finished, dotnet exited with %FAKE_EXIT% >> \"{trace}\"\r\n"
+            + "exit /b %FAKE_EXIT%\r\n";
+    }
+
+    /// <summary>
+    /// What happened in this fake, for a failure message: how many calls it recorded, its trace, and
+    /// the behaviours it was never asked for. Whoever reads a red run on a machine they cannot sit at
+    /// needs this to tell "the program never started" from "it started and answered the wrong thing".
+    /// </summary>
+    public string Diagnosis()
+    {
+        var trace = Path.Combine(_root.FullName, "trace.log");
+        return $"The fake at {_root.FullName}: {_calls.GetFiles("*.json").Length} call(s) recorded, "
+            + $"{_queue.GetFiles("*.json").Length} behaviour(s) never consumed.\n"
+            + "trace.log:\n" + (File.Exists(trace) ? File.ReadAllText(trace) : "(none: claude.cmd was never started)");
+    }
+
+    /// <summary>
+    /// The <c>dotnet.exe</c> this process runs on, measured off the runtime it loaded rather than
+    /// found on <c>PATH</c>, which a test may narrow: <c>DOTNET_HOST_PATH</c> first, otherwise three
+    /// folders above the shared runtime (<c>…\dotnet\shared\Microsoft.NETCore.App\&lt;version&gt;\</c>).
+    /// </summary>
+    private static string DotNetHost()
+    {
+        var named = System.Environment.GetEnvironmentVariable("DOTNET_HOST_PATH");
+        if (!string.IsNullOrWhiteSpace(named) && File.Exists(named))
+        {
+            return named;
+        }
+
+        var runtime = new DirectoryInfo(RuntimeEnvironment.GetRuntimeDirectory());
+        var installation = runtime.Parent?.Parent?.Parent
+            ?? throw new InvalidOperationException(
+                $"'{runtime.FullName}' is not three folders under a dotnet installation. Set DOTNET_HOST_PATH.");
+        var host = Path.Combine(installation.FullName, "dotnet.exe");
+        return File.Exists(host)
+            ? host
+            : throw new FileNotFoundException($"There is no dotnet host at '{host}'. Set DOTNET_HOST_PATH.");
+    }
 
     private void Enqueue(QueuedBehaviour behaviour)
     {
@@ -214,80 +255,4 @@ internal sealed class FakeClaudeCode
         string Prompt);
 
     private sealed record QueuedBehaviour(string Kind, string? Stdout, int? Code, string? StandardError);
-
-    /// <summary>
-    /// What every invocation runs. Standard input is copied through
-    /// <c>[Console]::OpenStandardInput().CopyTo(...)</c>, and only for a real run — a
-    /// <c>--version</c> ask is never given a redirected stream to read, so asking would block on
-    /// whatever this process itself inherited.
-    /// </summary>
-    private const string Script = """
-        $ErrorActionPreference = 'Stop'
-        $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-        $callsDir = Join-Path $root 'calls'
-        $isVersion = $args.Count -gt 0 -and $args[0] -eq '--version'
-
-        $prompt = ''
-        if (-not $isVersion) {
-            $stdin = New-Object System.IO.MemoryStream
-            [Console]::OpenStandardInput().CopyTo($stdin)
-            $prompt = [System.Text.Encoding]::UTF8.GetString($stdin.ToArray())
-        }
-
-        $envDump = @{}
-        foreach ($entry in [System.Environment]::GetEnvironmentVariables().GetEnumerator()) {
-            $envDump[[string]$entry.Key] = [string]$entry.Value
-        }
-
-        $files = @(Get-ChildItem -File -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)
-
-        $existing = @(Get-ChildItem $callsDir -Filter '*.json' -ErrorAction SilentlyContinue)
-        $callNumber = $existing.Count
-        $call = @{
-            arguments = @($args)
-            environment = $envDump
-            workspace = (Get-Location).Path
-            files = $files
-            prompt = $prompt
-        }
-        $call | ConvertTo-Json -Depth 6 -Compress |
-            Set-Content -Path (Join-Path $callsDir ('{0:D6}.json' -f $callNumber)) -Encoding UTF8 -NoNewline
-
-        if ($isVersion) {
-            $refused = Join-Path $root 'version-refused'
-            if (Test-Path $refused) {
-                [Console]::Error.Write('fake claude: refuses to say its version')
-                exit 1
-            }
-
-            [Console]::Out.Write((Get-Content (Join-Path $root 'version.txt') -Raw))
-            exit 0
-        }
-
-        $queueDir = Join-Path $root 'queue'
-        $next = Get-ChildItem $queueDir -Filter '*.json' -ErrorAction SilentlyContinue |
-            Sort-Object Name | Select-Object -First 1
-        if ($null -eq $next) {
-            [Console]::Error.Write('fake claude: no behaviour was queued for this call')
-            exit 1
-        }
-
-        $behaviour = Get-Content $next.FullName -Raw | ConvertFrom-Json
-        Remove-Item $next.FullName -Force
-
-        switch ($behaviour.kind) {
-            'answer' {
-                [Console]::Out.Write($behaviour.stdout)
-                exit 0
-            }
-            'exit' {
-                [Console]::Error.Write($behaviour.standardError)
-                exit $behaviour.code
-            }
-            'forever' {
-                Start-Sleep -Seconds 300
-                exit 1
-            }
-        }
-        """;
 }

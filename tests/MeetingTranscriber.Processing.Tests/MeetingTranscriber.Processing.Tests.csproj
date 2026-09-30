@@ -10,6 +10,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\MeetingTranscriber.Processing\MeetingTranscriber.Processing.csproj" />
     <ProjectReference Include="..\MeetingTranscriber.Testing\MeetingTranscriber.Testing.csproj" />
+    <!-- The program behind the fake Claude Code CLI: it lands beside this suite's own assembly,
+         where FakeClaudeCode's claude.cmd runs it with the dotnet host. No PowerShell involved. -->
+    <ProjectReference Include="..\MeetingTranscriber.FakeClaudeCode\MeetingTranscriber.FakeClaudeCode.csproj" />
   </ItemGroup>
 
   <ItemGroup>

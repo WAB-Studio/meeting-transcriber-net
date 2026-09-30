@@ -21,6 +21,8 @@ public class ClaudeCodeSummariesTests : IDisposable
         Path.Combine(Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
 
     private readonly DirectoryInfo _workspaces;
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private FakeClaudeCode? _fake;
 
     public ClaudeCodeSummariesTests()
     {
@@ -40,9 +42,9 @@ public class ClaudeCodeSummariesTests : IDisposable
     }
 
     [Fact]
-    public async Task A_run_reads_the_meeting_the_instructions_and_the_shape_and_nothing_else()
+    public Task A_run_reads_the_meeting_the_instructions_and_the_shape_and_nothing_else() => Proving(async () =>
     {
-        var fake = FakeClaudeCode.In(Folder("fake"));
+        var fake = AFake();
         fake.AnswersVersion("fake 1").Answers(FakeClaudeCode.Envelope("{}"));
         var provider = Provider(fake);
         var request = Request();
@@ -56,12 +58,12 @@ public class ClaudeCodeSummariesTests : IDisposable
             Block("instructions.md", request.Instructions)
             + Block("schema.md", request.Schema.Document)
             + Block("meeting.json", Encoding.UTF8.GetString(request.Input.Bytes())));
-    }
+    });
 
     [Fact]
-    public async Task A_run_is_given_no_tool_none_of_the_person_s_servers_and_none_of_their_settings()
+    public Task A_run_is_given_no_tool_none_of_the_person_s_servers_and_none_of_their_settings() => Proving(async () =>
     {
-        var fake = FakeClaudeCode.In(Folder("fake"));
+        var fake = AFake();
         fake.AnswersVersion("fake 1").Answers(FakeClaudeCode.Envelope("{}"));
         var provider = Provider(fake);
 
@@ -72,12 +74,12 @@ public class ClaudeCodeSummariesTests : IDisposable
         arguments.ShouldContain("--strict-mcp-config");
         After(arguments, "--setting-sources").ShouldBe("project");
         arguments.ShouldNotContain("--mcp-config");
-    }
+    });
 
     [Fact]
-    public async Task A_run_carries_no_key_it_found_in_the_environment()
+    public Task A_run_carries_no_key_it_found_in_the_environment() => Proving(async () =>
     {
-        var fake = FakeClaudeCode.In(Folder("fake"));
+        var fake = AFake();
         fake.AnswersVersion("fake 1").Answers(FakeClaudeCode.Envelope("{}"));
 
         const string ApiKey = "ANTHROPIC_API_KEY";
@@ -119,12 +121,12 @@ public class ClaudeCodeSummariesTests : IDisposable
         environment.ShouldNotContainKey(Canary);
         environment.ShouldContainKey("PATH");
         environment.ShouldContainKey("USERPROFILE");
-    }
+    });
 
     [Fact]
-    public async Task No_run_continues_a_conversation_and_no_two_runs_share_a_folder()
+    public Task No_run_continues_a_conversation_and_no_two_runs_share_a_folder() => Proving(async () =>
     {
-        var fake = FakeClaudeCode.In(Folder("fake"));
+        var fake = AFake();
         fake.AnswersVersion("fake 1").Answers(FakeClaudeCode.Envelope("{}"), FakeClaudeCode.Envelope("{}"));
         var provider = Provider(fake);
 
@@ -145,12 +147,12 @@ public class ClaudeCodeSummariesTests : IDisposable
         }
 
         runs[0].Workspace.ShouldNotBe(runs[1].Workspace);
-    }
+    });
 
     [Fact]
-    public async Task A_run_starts_in_a_folder_of_its_own_outside_the_corpus_that_is_gone_when_it_ends()
+    public Task A_run_starts_in_a_folder_of_its_own_outside_the_corpus_that_is_gone_when_it_ends() => Proving(async () =>
     {
-        var fake = FakeClaudeCode.In(Folder("fake"));
+        var fake = AFake();
         fake.AnswersVersion("fake 1").Answers(FakeClaudeCode.Envelope("{}"));
         var provider = Provider(fake);
 
@@ -159,12 +161,12 @@ public class ClaudeCodeSummariesTests : IDisposable
         var call = fake.Calls.Single(one => one.Arguments.Contains("-p"));
         call.Workspace.ShouldStartWith(_workspaces.FullName);
         Directory.Exists(call.Workspace).ShouldBeFalse();
-    }
+    });
 
     [Fact]
-    public async Task What_the_run_answered_is_handed_over_unwrapped_with_its_version_model_and_session()
+    public Task What_the_run_answered_is_handed_over_unwrapped_with_its_version_model_and_session() => Proving(async () =>
     {
-        var fake = FakeClaudeCode.In(Folder("fake"));
+        var fake = AFake();
         fake.AnswersVersion("fake 3.2.1")
             .Answers(FakeClaudeCode.Envelope(
                 """{"schema_version":"1"}""", sessionId: "session-77", model: ClaudeCodeSummaries.Model));
@@ -177,12 +179,12 @@ public class ClaudeCodeSummariesTests : IDisposable
         extracted.ProviderVersion.ShouldBe("fake 3.2.1");
         extracted.Model.ShouldBe(ClaudeCodeSummaries.Model);
         extracted.SessionId.ShouldBe("session-77");
-    }
+    });
 
     [Fact]
-    public async Task A_run_that_exits_with_an_error_did_not_answer_and_says_how()
+    public Task A_run_that_exits_with_an_error_did_not_answer_and_says_how() => Proving(async () =>
     {
-        var fake = FakeClaudeCode.In(Folder("fake"));
+        var fake = AFake();
         fake.AnswersVersion("fake 1").ExitsWith(7, "boom, it broke\nsecond line never quoted");
         var provider = Provider(fake);
 
@@ -192,15 +194,15 @@ public class ClaudeCodeSummariesTests : IDisposable
         didNotAnswer.Said.ShouldContain("7");
         didNotAnswer.Said.ShouldContain("boom, it broke");
         didNotAnswer.Said.ShouldNotContain("second line never quoted");
-    }
+    });
 
     [Fact]
-    public async Task A_run_that_takes_too_long_is_stopped_and_did_not_answer()
+    public Task A_run_that_takes_too_long_is_stopped_and_did_not_answer() => Proving(async () =>
     {
-        var fake = FakeClaudeCode.In(Folder("fake"));
+        var fake = AFake();
         fake.AnswersVersion("fake 1").TakesForever();
 
-        // Five seconds and not two: cmd.exe spawning a cold powershell.exe is itself sometimes
+        // Five seconds and not two: cmd.exe spawning a cold dotnet host is itself sometimes
         // most of a second on a machine that has not run one yet this session, and the fact this
         // proves is the kill, not how tight a margin it survives on.
         var provider = Provider(fake, longestRun: TimeSpan.FromSeconds(5));
@@ -214,12 +216,12 @@ public class ClaudeCodeSummariesTests : IDisposable
 
         var call = fake.Calls.Single(one => one.Arguments.Contains("-p"));
         await WaitUntilGoneAsync(call.Workspace);
-    }
+    });
 
     [Fact]
-    public async Task A_run_cancelled_from_outside_is_stopped_where_it_stands()
+    public Task A_run_cancelled_from_outside_is_stopped_where_it_stands() => Proving(async () =>
     {
-        var fake = FakeClaudeCode.In(Folder("fake"));
+        var fake = AFake();
         fake.AnswersVersion("fake 1").TakesForever();
         var provider = Provider(fake, longestRun: TimeSpan.FromMinutes(10));
         using var cancel = new CancellationTokenSource();
@@ -232,12 +234,12 @@ public class ClaudeCodeSummariesTests : IDisposable
 
         var call = fake.Calls.Single(one => one.Arguments.Contains("-p"));
         await WaitUntilGoneAsync(call.Workspace);
-    }
+    });
 
     [Fact]
-    public async Task A_CLI_that_refuses_to_say_its_version_does_not_answer()
+    public Task A_CLI_that_refuses_to_say_its_version_does_not_answer() => Proving(async () =>
     {
-        var fake = FakeClaudeCode.In(Folder("fake"));
+        var fake = AFake();
         fake.RefusesVersion();
         var provider = Provider(fake);
 
@@ -248,10 +250,10 @@ public class ClaudeCodeSummariesTests : IDisposable
 
         var call = fake.Calls.Single();
         call.Arguments.ShouldBe(["--version"]);
-    }
+    });
 
     [Fact]
-    public async Task With_Claude_Code_nowhere_nothing_is_started_and_it_says_it_is_not_there()
+    public Task With_Claude_Code_nowhere_nothing_is_started_and_it_says_it_is_not_there() => Proving(async () =>
     {
         var provider = new ClaudeCodeSummaries(
             () => null, FakeClaudeCode.MinimalEnvironment(), _workspaces, TimeSpan.FromSeconds(30));
@@ -260,12 +262,12 @@ public class ClaudeCodeSummariesTests : IDisposable
 
         var notAvailable = answer.ShouldBeOfType<SummaryProviderAnswer.NotAvailable>();
         notAvailable.Said.ShouldNotBeNullOrWhiteSpace();
-    }
+    });
 
     [Fact]
-    public async Task A_correction_holds_the_answer_before_and_what_was_wrong_beside_the_meeting()
+    public Task A_correction_holds_the_answer_before_and_what_was_wrong_beside_the_meeting() => Proving(async () =>
     {
-        var fake = FakeClaudeCode.In(Folder("fake"));
+        var fake = AFake();
         fake.AnswersVersion("fake 1").Answers(FakeClaudeCode.Envelope("{}"));
         var provider = Provider(fake);
         var correction = new SummaryCorrection(
@@ -280,12 +282,12 @@ public class ClaudeCodeSummariesTests : IDisposable
             ignoreOrder: true);
         call.Prompt.ShouldEndWith(
             Block("previous-output.json", """{"old":"answer"}""") + Block("what-was-wrong.md", "fix the shape, please"));
-    }
+    });
 
     [Fact]
-    public async Task Asking_whether_it_is_there_answers_with_its_version()
+    public Task Asking_whether_it_is_there_answers_with_its_version() => Proving(async () =>
     {
-        var fake = FakeClaudeCode.In(Folder("fake"));
+        var fake = AFake();
         fake.AnswersVersion("fake 9.9.9 (Claude Code)");
         var provider = Provider(fake);
 
@@ -296,6 +298,32 @@ public class ClaudeCodeSummariesTests : IDisposable
 
         var call = fake.Calls.Single();
         call.Arguments.ShouldBe(["--version"]);
+    });
+
+    private FakeClaudeCode AFake() => _fake = FakeClaudeCode.In(Folder("fake"));
+
+    /// <summary>
+    /// Runs a fact's body and, when anything in it fails, adds what a reader of a red CI run needs:
+    /// how long the fact had been running and everything the fake recorded about itself. Without it
+    /// every failure here reads "NotAvailable" after thirty seconds and says nothing about why.
+    /// </summary>
+    private async Task Proving(Func<Task> fact)
+    {
+        try
+        {
+            await fact();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            throw new Xunit.Sdk.XunitException(
+                string.Join(
+                    Environment.NewLine,
+                    exception.Message,
+                    string.Empty,
+                    $"After {_clock.Elapsed.TotalSeconds:F1}s.",
+                    _fake?.Diagnosis() ?? "No fake had been made yet."),
+                exception);
+        }
     }
 
     private static ExtractionRequest Request(SummaryCorrection? correction = null) => new(
