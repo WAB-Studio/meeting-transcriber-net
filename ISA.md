@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 171/259
+progress: 171/263
 updated: 2026-09-30
 ---
 
@@ -242,6 +242,10 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-191.1: Every unnamed speaker of a meeting whose audio is stored is offered a stretch of it where they talk and nobody talks over them.
 - [ ] ISC-191.2: Anti: a speaker is never offered the first stretch they spoke alone in when the meeting holds a longer one.
 - [ ] ISC-191.3: Anti: a meeting whose audio is not stored never offers a stretch that cannot play — it says its audio is gone, and its speakers are named by reading as before.
+- [ ] ISC-202: A classification somebody filled by hand can be kept under a name of their own and used again.
+- [ ] ISC-202.1: A classification filled by hand and kept under a name is offered beside the thirteen after the application is closed and opened again.
+- [ ] ISC-202.2: Choosing a kept classification fills a meeting the way the classification it was kept from was filled.
+- [ ] ISC-202.3: Anti: changing or deleting a kept classification changes nothing about a meeting already filed with it.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly
