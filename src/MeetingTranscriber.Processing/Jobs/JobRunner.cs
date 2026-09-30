@@ -2,6 +2,9 @@ using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Intake;
+using MeetingTranscriber.Processing.Summaries;
+
+using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Processing.Jobs;
 
@@ -9,12 +12,20 @@ namespace MeetingTranscriber.Processing.Jobs;
 /// What one pass came to: the jobs it took an attempt on — whether or not that attempt reached the
 /// provider — and one line per thing it has to say about it.
 /// </summary>
+/// <remarks>
+/// <see cref="Left"/> names the meeting a transcription line is about and the job a summary line is
+/// about — <c>Settle</c>'s lines start <c>"{meetingId}: ..."</c>, <c>SettleSummary</c>'s
+/// <c>"{jobId}: ..."</c>. Nothing reads this list today (see the class remarks), so the two have
+/// never had to agree; a future reader parsing it by position rather than by eye needs to know
+/// which prefix means which before it does.
+/// </remarks>
 public sealed record JobsRun(IReadOnlyList<Guid> Ran, IReadOnlyList<string> Left);
 
 /// <summary>
-/// Sends every <see cref="JobKind.Transcribe"/> job that is due, one corpus at a time, under the
-/// corpus's own <see cref="RunnerLease"/> — and the one a person asked to be sent again, through
-/// <see cref="SendAgainAsync"/>.
+/// Sends every due <see cref="JobKind.Transcribe"/> job, and then every due
+/// <see cref="JobKind.Extract"/> one when a summariser was handed over, one corpus at a time,
+/// under the corpus's own <see cref="RunnerLease"/> — and the one transcription a person asked to
+/// be sent again, through <see cref="SendAgainAsync"/>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -26,12 +37,32 @@ public sealed record JobsRun(IReadOnlyList<Guid> Ran, IReadOnlyList<string> Left
 /// otherwise read as "nobody is running this corpus's queue" while this one still is.
 /// </para>
 /// <para>
-/// <b>Nothing here retries.</b> <see cref="TranscribingAMeeting.TranscribeAsync"/> already decides
-/// what a call came to; this only turns that answer into a job move, guarded on the attempt that
-/// started the call, so a pass that is still writing an outcome does not overwrite what a later
-/// attempt — this pump's own, on its next look, or another launch's restart sweep — has since done
-/// to the same row. <see cref="JobState.CanMoveTo"/> alone would let a stale write land after a
-/// fresher one, which is what the re-read before the write is for.
+/// <b>Transcriptions before summaries, and each ordered by when it was created.</b> A summary's own
+/// input is the transcription that precedes it, so a pass that reached a due <c>Extract</c> job
+/// ahead of a due <c>Transcribe</c> one would be sending a request whose answer could have changed
+/// the corpus underneath it moments later. <paramref name="summarise"/> being <c>null</c> is what a
+/// launch with nothing to summarise with hands over — its due <c>Extract</c> jobs are left exactly
+/// where they were, queued rather than skipped, for the next pass that is given one to find.
+/// </para>
+/// <para>
+/// <b>One worker, still.</b> The ordering above only reaches the jobs one look of the queue already
+/// found; it says nothing about a summary a look before it is still waiting on. A pass processes its
+/// own snapshot of <c>due</c> strictly one job at a time, so a transcription that becomes due while
+/// an unrelated summary from an earlier pass is still running waits behind it — for as long as that
+/// summary takes, up to the adapter's own bound, not merely until the next look. That is the same
+/// trade every look of this queue has always made for a slow transcription; a summary can simply be
+/// slower. Splitting the two kinds across two workers is a larger change than this card asked for,
+/// and is not one this file makes on its own.
+/// </para>
+/// <para>
+/// <b>Nothing here retries a transcription.</b> <see cref="TranscribingAMeeting.TranscribeAsync"/>
+/// already decides what a call came to; this only turns that answer into a job move, guarded on the
+/// attempt that started the call, so a pass that is still writing an outcome does not overwrite what
+/// a later attempt — this pump's own, on its next look, or another launch's restart sweep — has
+/// since done to the same row. <see cref="JobState.CanMoveTo"/> alone would let a stale write land
+/// after a fresher one, which is what the re-read before the write is for. A summary is retried, up
+/// to <see cref="TimesASummaryIsTried"/> times, because a provider that ran and gave back nothing
+/// usable is not the same fault as a transcription's own — see <see cref="RunSummaryAsync"/>.
 /// </para>
 /// <para>
 /// <b>The guard is a convention <see cref="RunWhatIsDueAsync"/> and <see cref="SendAgainAsync"/> both
@@ -64,8 +95,40 @@ public static class JobRunner
     public static readonly TimeSpan HowOftenTheQueueIsLookedAt = TimeSpan.FromSeconds(5);
 
     /// <summary>
-    /// Sends every <see cref="JobKind.Transcribe"/> job that is due in <paramref name="lease"/>'s
-    /// corpus, one at a time.
+    /// How many attempts a summary job is given before it fails for good. A first attempt that gets
+    /// no answer waits <see cref="WaitBeforeTryingASummaryAgain"/> and is tried again; a third that
+    /// still gets no answer fails the job permanently rather than waiting a third time.
+    /// </summary>
+    public const int TimesASummaryIsTried = 3;
+
+    /// <summary>
+    /// How often, while a summary is running, the runner reads its job again to find out whether
+    /// somebody stopped it from the screen. A summary takes minutes and a stop is a person's act, so
+    /// a second is close enough that nobody presses <em>Detener</em> and wonders why nothing moved.
+    /// </summary>
+    public static readonly TimeSpan HowOftenARunningSummaryIsWatched = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// How long to wait before trying a summary again, after <paramref name="attempt"/> got no
+    /// answer. One minute after the first attempt, five after the second — the bound is what stops
+    /// one error spending quota over and over, not a schedule with a reason of its own.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="attempt"/> is not the first or the second — the third is what
+    /// <see cref="TimesASummaryIsTried"/> ends, and nothing here waits to try a fourth.
+    /// </exception>
+    public static Duration WaitBeforeTryingASummaryAgain(int attempt) => attempt switch
+    {
+        1 => Duration.FromTimeSpan(TimeSpan.FromMinutes(1)),
+        2 => Duration.FromTimeSpan(TimeSpan.FromMinutes(5)),
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(attempt), attempt, "A summary job only waits to be tried again after its first or second attempt."),
+    };
+
+    /// <summary>
+    /// Sends every due <see cref="JobKind.Transcribe"/> job in <paramref name="lease"/>'s corpus,
+    /// and then every due <see cref="JobKind.Extract"/> one when <paramref name="summarise"/> is
+    /// given, each kind ordered by when it was queued.
     /// </summary>
     /// <remarks>
     /// Holding <paramref name="lease"/> is the whole of what lets a pass run at all — nothing here
@@ -74,14 +137,21 @@ public static class JobRunner
     /// </remarks>
     /// <param name="lease">The corpus's runner lease, already held.</param>
     /// <param name="clock">Where every timestamp this writes comes from.</param>
-    /// <param name="send">What actually reaches the provider, for each job this pass takes.</param>
+    /// <param name="send">What actually reaches the transcription provider, for each job this pass takes.</param>
     /// <param name="stopping">
-    /// Cancels the call in flight. A pass a caller cancelled leaves that one job exactly where
-    /// <see cref="TranscribingAMeeting.TranscribeAsync"/> left it — the next holder of this corpus's
-    /// lease is what settles it.
+    /// Cancels the call in flight. A pass a caller cancelled leaves that one job exactly where the
+    /// call left it — the next holder of this corpus's lease is what settles it.
+    /// </param>
+    /// <param name="summarise">
+    /// What reaches the summary provider, or <c>null</c> to leave every due <see cref="JobKind.Extract"/>
+    /// job queued.
     /// </param>
     public static async Task<JobsRun> RunWhatIsDueAsync(
-        RunnerLease lease, TimeProvider clock, SendingToTheProvider send, CancellationToken stopping = default)
+        RunnerLease lease,
+        TimeProvider clock,
+        SendingToTheProvider send,
+        CancellationToken stopping = default,
+        ISummaryProvider? summarise = null)
     {
         ArgumentNullException.ThrowIfNull(lease);
         ArgumentNullException.ThrowIfNull(clock);
@@ -98,18 +168,12 @@ public static class JobRunner
             List<ProcessingJob> due;
             using (var reading = CorpusDatabase.Open(root))
             {
-                // The kind and the two states IsDue(now).IsQueued() would otherwise accept are both
-                // narrowed here, in SQL — everything IsQueued() means, translated by hand because
-                // the extension method itself is not. What is not translatable is the NextAttemptAt
-                // comparison IsDue also makes, so that half still runs over the narrowed rows in
-                // memory: without the states narrowed here too, this would pull every Transcribe job
-                // this corpus has ever finished into memory on every single look, forever.
-                due = [.. reading.ProcessingJobs
-                    .Where(job => job.Kind == JobKind.Transcribe
-                        && (job.State == JobState.Pending || job.State == JobState.FailedRetryable))
-                    .OrderBy(job => job.CreatedAt)
-                    .ToList()
-                    .Where(job => job.IsDue(now))];
+                due = DueOfKind(reading, JobKind.Transcribe, now);
+
+                if (summarise is not null)
+                {
+                    due.AddRange(DueOfKind(reading, JobKind.Extract, now));
+                }
             }
 
             foreach (var candidate in due)
@@ -120,7 +184,7 @@ public static class JobRunner
                 }
 
                 var startedAt = UtcTimestamp.From(clock.GetUtcNow());
-                var taken = Take(root, candidate.Id, startedAt);
+                var taken = Take(root, candidate.Id, startedAt, candidate.Kind);
 
                 if (taken is not { } job)
                 {
@@ -133,13 +197,22 @@ public static class JobRunner
 
                 ran.Add(candidate.Id);
 
-                var ended = await Called(
-                        () => TranscribingAMeeting.TranscribeAsync(root, candidate.Id, send, clock, stopping),
-                        stopping)
-                    .ConfigureAwait(false);
+                if (candidate.Kind == JobKind.Transcribe)
+                {
+                    var ended = await Called(
+                            () => TranscribingAMeeting.TranscribeAsync(root, candidate.Id, send, clock, stopping),
+                            stopping)
+                        .ConfigureAwait(false);
 
-                left.AddRange(Settle(
-                    root, candidate.Id, job.MeetingId, job.Attempt, ended, UtcTimestamp.From(clock.GetUtcNow())));
+                    left.AddRange(Settle(
+                        root, candidate.Id, job.MeetingId, job.Attempt, ended, UtcTimestamp.From(clock.GetUtcNow())));
+                }
+                else
+                {
+                    left.AddRange(await RunSummaryAsync(
+                            root, candidate.Id, job.Attempt, summarise!, clock, stopping)
+                        .ConfigureAwait(false));
+                }
             }
         }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested)
@@ -160,7 +233,9 @@ public static class JobRunner
 
     /// <summary>
     /// Sends <paramref name="jobId"/> again, once a person has agreed to it at a prompt, under
-    /// <paramref name="lease"/>'s corpus.
+    /// <paramref name="lease"/>'s corpus. Only ever a transcription: it is the one job a person asks
+    /// to be tried again from a prompt over a charge, and a pass over the rest of the queue is not
+    /// what answering that prompt asks for.
     /// </summary>
     /// <remarks>
     /// The take, the call and the guarded settle are the same three steps <see cref="RunWhatIsDueAsync"/>
@@ -193,7 +268,7 @@ public static class JobRunner
         var root = lease.Root;
         var startedAt = UtcTimestamp.From(clock.GetUtcNow());
 
-        var taken = Take(root, jobId, startedAt)
+        var taken = Take(root, jobId, startedAt, JobKind.Transcribe)
             ?? throw new InvalidOperationException(
                 $"Job {jobId} is not a transcription waiting to be sent, so nothing is sent for it.");
 
@@ -212,17 +287,33 @@ public static class JobRunner
     private readonly record struct TakenJob(Guid MeetingId, int Attempt);
 
     /// <summary>
-    /// Moves <paramref name="jobId"/> to <see cref="JobState.Running"/> in its own transaction, or
-    /// answers nothing when it is not a <see cref="JobKind.Transcribe"/> job due at
-    /// <paramref name="startedAt"/>.
+    /// Every due job of <paramref name="kind"/>, ordered by <c>CreatedAt</c>. The kind and the two
+    /// states <see cref="ProcessingJob.IsDue"/> would otherwise accept are both narrowed here, in
+    /// SQL — everything <c>IsQueued()</c> means, translated by hand because the extension method
+    /// itself is not. What is not translatable is the <c>NextAttemptAt</c> comparison
+    /// <c>IsDue</c> also makes, so that half still runs over the narrowed rows in memory: without
+    /// the states narrowed here too, this would pull every job of this kind this corpus has ever
+    /// finished into memory on every single look, forever.
     /// </summary>
-    private static TakenJob? Take(DirectoryInfo root, Guid jobId, UtcTimestamp startedAt)
+    private static List<ProcessingJob> DueOfKind(CorpusDbContext reading, JobKind kind, UtcTimestamp now) =>
+        [.. reading.ProcessingJobs
+            .Where(job => job.Kind == kind
+                && (job.State == JobState.Pending || job.State == JobState.FailedRetryable))
+            .OrderBy(job => job.CreatedAt)
+            .ToList()
+            .Where(job => job.IsDue(now))];
+
+    /// <summary>
+    /// Moves <paramref name="jobId"/> to <see cref="JobState.Running"/> in its own transaction, or
+    /// answers nothing when it is not a <paramref name="kind"/> job due at <paramref name="startedAt"/>.
+    /// </summary>
+    private static TakenJob? Take(DirectoryInfo root, Guid jobId, UtcTimestamp startedAt, JobKind kind)
     {
         using var taking = CorpusDatabase.Open(root);
         using var transaction = taking.Database.BeginTransaction();
 
         var job = taking.ProcessingJobs.FirstOrDefault(row => row.Id == jobId);
-        if (job is null || job.Kind != JobKind.Transcribe || !job.IsDue(startedAt))
+        if (job is null || job.Kind != kind || !job.IsDue(startedAt))
         {
             return null;
         }
@@ -310,6 +401,206 @@ public static class JobRunner
     }
 
     /// <summary>
+    /// Runs one <see cref="JobKind.Extract"/> job's attempt, watching it for a stop from the screen
+    /// while it is in flight, and turns what it came to into the job's own move.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The watch, and the token it may cancel.</b> <paramref name="stopping"/> — the pump's own
+    /// token — is linked into a second one, and that second one is what <see cref="SummarisingAMeeting.SummariseAsync"/>
+    /// is actually given. A background loop reads <paramref name="jobId"/>'s row every
+    /// <see cref="HowOftenARunningSummaryIsWatched"/>; the moment it is no longer <c>Running</c> at
+    /// <paramref name="attempt"/> — <see cref="MeetingTranscriber.Infrastructure.Meetings.MeetingWork.StopTheSummary"/>
+    /// already moved it, from this process or another — the loop cancels the linked token, which is
+    /// what makes the adapter kill the process tree. The same token ends the watch, once the call
+    /// itself is over: the <c>finally</c> below cancels it either way, and the watcher's own loop
+    /// stops on exactly that cancellation, so one token is what both the call and the watch answer
+    /// to.
+    /// </para>
+    /// <para>
+    /// <b>Why watch at all, rather than re-read once the call returns.</b> A transcription's own
+    /// call is seconds long, so <see cref="Settle"/> only ever has to ask "did somebody move this
+    /// job while the call was out" once the call is already over — the gap a stop could land in is
+    /// too short to matter. A summary can run for minutes, and <em>Detener</em> is a press somebody
+    /// expects to act on promptly, not once the very call it is stopping happens to finish on its
+    /// own. Watching while the call is in flight is what buys that: the alternative would leave a
+    /// press with nothing to interrupt until the run it was asked to stop had already ended.
+    /// </para>
+    /// <para>
+    /// <b>Which cancellation is which.</b> A call that ends because <paramref name="stopping"/>
+    /// itself was cancelled is the one thing a pass lets out — rethrown, exactly as a transcription's
+    /// own <see cref="Called"/> rethrows it. A call that ends because only the linked token was
+    /// cancelled is a stop somebody already wrote to the corpus: <see cref="SettleSummary"/> is never
+    /// reached, because there is nothing left for this pass to move or to say.
+    /// </para>
+    /// </remarks>
+    private static async Task<IReadOnlyList<string>> RunSummaryAsync(
+        DirectoryInfo root,
+        Guid jobId,
+        int attempt,
+        ISummaryProvider summarise,
+        TimeProvider clock,
+        CancellationToken stopping)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(stopping);
+        var watcher = WatchTheRunningSummary(root, jobId, attempt, clock, linked);
+
+        try
+        {
+            SummaryEnded ended;
+
+            try
+            {
+                ended = await SummarisingAMeeting.SummariseAsync(root, jobId, summarise, clock, linked.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested)
+            {
+                return [];
+            }
+
+            return SettleSummary(root, jobId, attempt, ended, UtcTimestamp.From(clock.GetUtcNow()));
+        }
+        finally
+        {
+            // Ends the watch whether the call above answered, was refused, or is what the watch
+            // itself just cancelled — a no-op in that last case. The watcher never throws anything
+            // but its own housekeeping already swallows (see its own remarks), so nothing here
+            // needs a second guard around awaiting it.
+            await linked.CancelAsync().ConfigureAwait(false);
+            await watcher.ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Reads <paramref name="jobId"/>'s row every <see cref="HowOftenARunningSummaryIsWatched"/>,
+    /// on a context of its own, and cancels <paramref name="linked"/> the moment it is no longer
+    /// <c>Running</c> at <paramref name="attempt"/>.
+    /// </summary>
+    private static async Task WatchTheRunningSummary(
+        DirectoryInfo root,
+        Guid jobId,
+        int attempt,
+        TimeProvider clock,
+        CancellationTokenSource linked)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(HowOftenARunningSummaryIsWatched, clock, linked.Token).ConfigureAwait(false);
+
+                using var reading = CorpusDatabase.Open(root);
+                var job = reading.ProcessingJobs.AsNoTracking().FirstOrDefault(row => row.Id == jobId);
+
+                if (job is null || job.State != JobState.Running || job.Attempt != attempt)
+                {
+                    await linked.CancelAsync().ConfigureAwait(false);
+                    return;
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The call this was watching ended on its own before the next look, or
+            // RunSummaryAsync's own finally cancelled the token once the call was over — either way
+            // there is nothing left to watch.
+        }
+        catch (Exception thrown) when (thrown is not OutOfMemoryException)
+        {
+            // A poll's own housekeeping failing — a locked database, a transient SQLite busy
+            // timeout over a call that can run for minutes — is never let out. RunSummaryAsync
+            // already has the real outcome once SummariseAsync itself returns or throws; a stray
+            // failure in the loop watching it must never replace that with a line about the watch
+            // instead of the summary.
+            _ = thrown;
+        }
+    }
+
+    /// <summary>
+    /// Turns what a summary call came to into the job's own move, guarded on the attempt that made
+    /// the call the same way <see cref="Settle"/> guards a transcription's.
+    /// </summary>
+    private static IReadOnlyList<string> SettleSummary(
+        DirectoryInfo root, Guid jobId, int attempt, SummaryEnded ended, UtcTimestamp now)
+    {
+        if (ended.Outcome == SummaryOutcome.Filed)
+        {
+            // The door already moved the job — accepted, or refused for good — and left nothing
+            // here to move or to say.
+            return [];
+        }
+
+        using var writing = CorpusDatabase.Open(root);
+        var fresh = writing.ProcessingJobs.FirstOrDefault(row => row.Id == jobId);
+
+        if (fresh is null || fresh.State != JobState.Running || fresh.Attempt != attempt)
+        {
+            return
+            [
+                $"{jobId}: the job was {fresh?.State} at attempt {fresh?.Attempt} by the time its "
+                + $"call ended, so it was left as it stood: {ended.Said}",
+            ];
+        }
+
+        ApplySummary(fresh, ended, attempt, now);
+        var left = new List<string>();
+
+        try
+        {
+            writing.SaveChanges();
+        }
+        catch (Exception refused) when (refused is not OutOfMemoryException)
+        {
+            left.Add($"{jobId}: the job's own move could not be written: {refused.Message}");
+        }
+
+        if (ended.Said is not null)
+        {
+            left.Add($"{jobId}: {ended.Said}");
+        }
+
+        return left;
+    }
+
+    /// <summary>
+    /// Turns what a summary call came to into the one move it decides for <paramref name="job"/>,
+    /// which is still <see cref="JobState.Running"/> at the attempt that made the call.
+    /// </summary>
+    private static void ApplySummary(ProcessingJob job, SummaryEnded ended, int attempt, UtcTimestamp now)
+    {
+        switch (ended.Outcome)
+        {
+            case SummaryOutcome.DidNotAnswer when attempt < TimesASummaryIsTried:
+                job.FailRetryable(
+                    ended.Said ?? "The summariser did not answer.",
+                    now + WaitBeforeTryingASummaryAgain(attempt));
+                break;
+
+            case SummaryOutcome.DidNotAnswer:
+                job.FailPermanently(
+                    JobFailure.SummariserFailed,
+                    ended.Said ?? "The summariser did not answer, even after being tried again.",
+                    now);
+                break;
+
+            case SummaryOutcome.NotSent:
+                // ended.Failure!.Value throws InvalidOperationException on a missing kind rather
+                // than guessing one — a defect one level up, in whichever site answered NotSent
+                // with no failure attached.
+                job.FailPermanently(ended.Failure!.Value, ended.Said!, now);
+                break;
+
+            default:
+                throw new InvalidOperationException($"Unknown summary outcome '{ended.Outcome}'.");
+        }
+    }
+
+    /// <summary>
     /// Looks at <paramref name="root"/>'s queue every <paramref name="howOften"/>, sending what is
     /// due for as long as <paramref name="stopping"/> allows.
     /// </summary>
@@ -345,15 +636,20 @@ public static class JobRunner
     /// </remarks>
     /// <param name="root">The corpus to run.</param>
     /// <param name="clock">Where every timestamp this writes comes from, and what the wait is measured against.</param>
-    /// <param name="send">What actually reaches the provider.</param>
+    /// <param name="send">What actually reaches the transcription provider.</param>
     /// <param name="howOften">How long a look waits before the next one.</param>
     /// <param name="stopping">Ends the pump. Nothing about a call already in flight is rushed by it.</param>
+    /// <param name="summarise">
+    /// What reaches the summary provider, or <c>null</c> to leave every due
+    /// <see cref="JobKind.Extract"/> job queued.
+    /// </param>
     public static async Task PumpAsync(
         DirectoryInfo root,
         TimeProvider clock,
         SendingToTheProvider send,
         TimeSpan howOften,
-        CancellationToken stopping)
+        CancellationToken stopping,
+        ISummaryProvider? summarise = null)
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(clock);
@@ -373,7 +669,7 @@ public static class JobRunner
 
                         if (lease is not null && JobsARestartFound.Holding(lease).Left.Count == 0)
                         {
-                            _ = await RunWhatIsDueAsync(lease, clock, send, stopping).ConfigureAwait(false);
+                            _ = await RunWhatIsDueAsync(lease, clock, send, stopping, summarise).ConfigureAwait(false);
                         }
                     }
                 }
@@ -395,8 +691,8 @@ public static class JobRunner
         catch (OperationCanceledException) when (stopping.IsCancellationRequested)
         {
             // The one way out: somebody asked this to stop. Nothing to report, and nothing left to
-            // send — a call already in flight is TranscribingAMeeting's own to have left in a state
-            // the next lease holder can settle.
+            // send — a call already in flight is TranscribingAMeeting's or SummarisingAMeeting's own
+            // to have left in a state the next lease holder can settle.
         }
         finally
         {

@@ -30,6 +30,9 @@
     <!-- Holds no test: the corpus on disk, the SQL helpers and the fixture inventory the suites
          share, so a third project that needs one references it rather than copying it. -->
     <Project Path="tests/MeetingTranscriber.Testing/MeetingTranscriber.Testing.csproj" />
+    <!-- Holds no test either: the compiled program behind the fake Claude Code CLI, which only
+         Processing.Tests references. A script there never answered on the CI runner. -->
+    <Project Path="tests/MeetingTranscriber.FakeClaudeCode/MeetingTranscriber.FakeClaudeCode.csproj" />
     <!-- Reads the screens as source. It cannot reference the application and does not: loading
          the app's assembly outside a packaged host throws before the first assertion. -->
     <Project Path="tests/MeetingTranscriber.App.Tests/MeetingTranscriber.App.Tests.csproj" />

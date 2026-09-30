@@ -1,7 +1,9 @@
+using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
 using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Artifacts;
 using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Infrastructure.Tests.Storage;
@@ -31,6 +33,71 @@ public class MeetingVoicesTests
 
         read.Voices.Voices.Select(voice => voice.Label).ShouldBe(["ch1:speaker_0", "ch0:speaker_0"]);
         read.Everybody.Select(person => person.Id).ShouldContain(somebody.Id);
+    }
+
+    [Fact]
+    public void A_meeting_whose_audio_is_there_is_offered_its_file()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Meeting(context, (AudioChannel.Loopback, 0, "buenas"));
+        MeetingRows.Add(context, new Artifact
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            Kind = ArtifactKind.Audio,
+            Origin = ArtifactKind.Audio.OriginOf(),
+            RelativePath = CorpusFiles.PathFor(meeting, "audio.wav"),
+            ByteSize = 4,
+            Sha256 = new string('a', 64),
+            ConfirmedAt = When,
+        });
+        var audio = CorpusFiles.Locate(corpus.Root, CorpusFiles.PathFor(meeting, "audio.wav"));
+        audio.Directory!.Create();
+        File.WriteAllBytes(audio.FullName, [0x52, 0x49, 0x46, 0x46]);
+
+        var read = new MeetingVoices(context, TimeProvider.System).Of(meeting);
+
+        read.TheRecording.ShouldBe(RecordedAudio.Playable);
+        read.Audio.ShouldNotBeNull();
+        read.Audio!.Exists.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void A_meeting_that_came_in_as_a_paid_response_has_nothing_to_play()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Meeting(context, (AudioChannel.Loopback, 0, "buenas"));
+
+        var read = new MeetingVoices(context, TimeProvider.System).Of(meeting);
+
+        read.TheRecording.ShouldBe(RecordedAudio.NoneYet);
+        read.Audio.ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_meeting_whose_recording_is_gone_says_so()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Meeting(context, (AudioChannel.Loopback, 0, "buenas"));
+        MeetingRows.Add(context, new Artifact
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            Kind = ArtifactKind.Audio,
+            Origin = ArtifactKind.Audio.OriginOf(),
+            RelativePath = CorpusFiles.PathFor(meeting, "audio.wav"),
+            ByteSize = 4,
+            Sha256 = new string('a', 64),
+            ConfirmedAt = When,
+        });
+
+        var read = new MeetingVoices(context, TimeProvider.System).Of(meeting);
+
+        read.TheRecording.ShouldBe(RecordedAudio.NotWhereTheCorpusSaysItIs);
+        read.Audio.ShouldBeNull();
     }
 
     [Fact]

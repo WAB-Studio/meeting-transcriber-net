@@ -111,6 +111,11 @@ public partial class NothingUnderTestReachesTheNetworkTests
             "git, over this clone, for objects it already holds. GIT_NO_LAZY_FETCH is set on every "
             + "call so a missing object is an error rather than a download, which is the whole of "
             + "what keeps this one local."),
+        new(
+            "tests/MeetingTranscriber.Mcp.Tests/ChildProcessTests.cs",
+            "the dotnet host, running meeting-transcriber-mcp.dll from this suite's own output "
+            + "folder over redirected stdio, pointed at a corpus this test made with --corpus. "
+            + "Local, and nothing it does reaches a network."),
     ];
 
     /// <summary>

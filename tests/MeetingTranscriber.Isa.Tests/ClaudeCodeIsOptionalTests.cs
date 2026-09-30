@@ -3,8 +3,8 @@ namespace MeetingTranscriber.Isa.Tests;
 /// <summary>
 /// ISC-89 as a rule rather than as a sentence in the goal: a program nobody starts cannot be
 /// missing, so nothing that records, transcribes, renders, searches or recovers may depend on
-/// Claude Code being installed — only a future summary, which does not exist yet, may ever start
-/// one.
+/// Claude Code being installed — only a summary may start one, through the one file this inventory
+/// names for it.
 /// </summary>
 /// <remarks>
 /// The two regexes and the build-output skip are
@@ -41,6 +41,13 @@ public class ClaudeCodeIsOptionalTests
             + "is handed. It is the temporary packaging scaffold reached from a corner of the "
             + "recording screen, and nothing that records, transcribes, renders, searches or "
             + "recovers goes through it."),
+        new(
+            "src/MeetingTranscriber.Processing/Summaries/ClaudeCode/ClaudeCodeSummaries.cs",
+            "the Claude Code CLI: once to ask its version, and once for each summary somebody asked "
+            + "for, in a folder of its own with no key from the environment and none of the "
+            + "person's settings. Nothing that records, transcribes, renders, searches or recovers "
+            + "goes through it, and with Claude Code absent it starts nothing and answers that it "
+            + "is not there."),
     ];
 
     /// <summary>
@@ -85,9 +92,8 @@ public class ClaudeCodeIsOptionalTests
                 StartsAProcess.Select(allowed => $"  {allowed.File} — {allowed.Starts}"))
             + Environment.NewLine
             + "If a file is missing from that list, add it there with the one sentence saying what "
-            + "it launches and why every other flow still works without it — the summary adapter "
-            + "is the one caller expected to join it. If one is on it and no longer starts "
-            + "anything, take it off.");
+            + "it launches and why every other flow still works without it. If one is on it and no "
+            + "longer starts anything, take it off.");
     }
 
     /// <summary>One file that may start a process, and the one sentence saying what it starts and why.</summary>

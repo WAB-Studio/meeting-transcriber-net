@@ -272,9 +272,9 @@ without somebody asking.
 Runs and jobs — `capture_runs`, `capture_source_changes`, `processing_jobs`, `transcription_runs`,
 `extraction_runs`, `extraction_refusals` — are sources too. They are the record of what was
 charged, what state a restart found, and what a channel was on at each instant of a recording.
-`capture_source_changes` holds a
-fact nothing on the machine can produce again once the spool folder is gone, and a table whose
-whole point is holding an unrepeatable fact is the one that must not be left to a catch-all.
+`capture_source_changes` holds a fact nothing on the machine can produce again once the spool folder
+is gone, and a table whose whole point is holding an unrepeatable fact is the one that must not be
+left to a catch-all.
 
 ## Where the rule is enforced
 

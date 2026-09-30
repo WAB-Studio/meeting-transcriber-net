@@ -156,6 +156,12 @@ public sealed class CorpusLocation
     /// </summary>
     private const int LinksFollowed = 16;
 
+    /// <summary>
+    /// Set only by <see cref="At"/>: a folder named directly rather than found through a setting
+    /// file, and the one thing that makes <see cref="Resolve"/> skip both.
+    /// </summary>
+    private readonly DirectoryInfo? _named;
+
     public CorpusLocation(FileInfo setting, DirectoryInfo fallback)
     {
         ArgumentNullException.ThrowIfNull(setting);
@@ -163,6 +169,13 @@ public sealed class CorpusLocation
 
         Setting = setting;
         Fallback = fallback;
+    }
+
+    private CorpusLocation(DirectoryInfo named)
+    {
+        _named = named;
+        Setting = new FileInfo(Path.Combine(named.FullName, SettingName));
+        Fallback = named;
     }
 
     /// <summary>The file that says where the corpus is, whether or not it is there.</summary>
@@ -275,6 +288,24 @@ public sealed class CorpusLocation
     }
 
     /// <summary>
+    /// A location that always answers <see cref="Inspect"/> of <paramref name="folder"/>, and never
+    /// reads or writes a setting file: what a second process names on its own command line — the
+    /// MCP server's <c>--corpus</c> — rather than what this user's application has chosen.
+    /// </summary>
+    /// <remarks>
+    /// The folder is asked about fresh on every <see cref="Resolve"/>, the same as
+    /// <see cref="OfThisUser"/>'s own answer is, so a corpus made in it after this location was
+    /// built is still found. Held to the exact rules <see cref="Inspect"/> already gives a picked
+    /// folder, and not a second opinion of its own — a folder under application data is refused
+    /// here exactly as it would be from a picker or a setting file.
+    /// </remarks>
+    public static CorpusLocation At(DirectoryInfo folder)
+    {
+        ArgumentNullException.ThrowIfNull(folder);
+        return new CorpusLocation(folder);
+    }
+
+    /// <summary>
     /// What a folder somebody named would be as a corpus location. What a picker asks before
     /// offering a folder, and what <see cref="Choose"/> holds a caller to, so the rules are
     /// written once and every way of arriving at a folder meets the same ones.
@@ -319,18 +350,32 @@ public sealed class CorpusLocation
     }
 
     /// <summary>
-    /// Which folder the corpus is in this time the application starts. What the setting says when
-    /// there is one, and where the first corpus goes when there is not.
+    /// Which folder the corpus is in this time the application starts. <see cref="Inspect"/> of
+    /// the folder <see cref="At"/> named, when this location is one of those; otherwise what the
+    /// setting says when there is one, and where the first corpus goes when there is not.
     /// </summary>
-    public CorpusFolder Resolve() => WhatTheSettingSays() ?? WhereTheFirstCorpusGoes();
+    public CorpusFolder Resolve() =>
+        _named is { } named ? Inspect(named) : WhatTheSettingSays() ?? WhereTheFirstCorpusGoes();
 
     /// <summary>
     /// Records that the corpus is in this folder from now on. Throws unless a corpus could be
     /// opened there, because a location written down and then refused at every start is a corpus
     /// somebody cannot reach and cannot correct.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// This location is one <see cref="At"/> built. It never reads or writes a setting file, so
+    /// there is nowhere for a choice to be recorded — writing one into the named folder itself
+    /// would be a pointer nothing ever reads back, sitting inside a corpus that did not ask for it.
+    /// </exception>
     public void Choose(DirectoryInfo folder)
     {
+        if (_named is not null)
+        {
+            throw new InvalidOperationException(
+                "This location was built by At(folder) for one named folder and never reads or "
+                + "writes a setting file, so there is nothing here for a choice to be recorded in.");
+        }
+
         var inspected = Inspect(folder);
         if (inspected.Refusal is { } refusal)
         {

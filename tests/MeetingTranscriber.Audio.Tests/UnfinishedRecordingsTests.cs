@@ -1162,13 +1162,18 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Two entries, and the list is per file <em>and</em> per way: a file is allowed the ways it is
+    /// Four entries, and the list is per file <em>and</em> per way: a file is allowed the ways it is
     /// named with and no others. <c>UnfinishedRecordings.cs</c> holds <c>Directory.Delete</c> and
     /// <c>Directory.Move</c> — <c>Discard</c> takes away a recording because somebody said to, and
     /// <c>EraseWhereNothingWasRecorded</c> takes away a folder that never held one and refuses on
     /// anything saying otherwise. <c>AudioIntake.cs</c> holds <c>Directory.Delete</c> alone, and
     /// what it takes back is a corpus meeting folder made moments earlier and still empty, never a
-    /// folder under <c>spool/</c>.
+    /// folder under <c>spool/</c>. <c>ClaudeCodeSummaries.cs</c> and <c>ClaudeCodeWorkspace.cs</c>
+    /// each hold <c>Directory.Delete</c> alone too: one cleans up a run's own scratch workspace once
+    /// the process that used it has exited, the other cleans up the same folder for itself when
+    /// building it fails partway through. Both live under
+    /// <c>%TEMP%\meeting-transcriber-summaries\</c>, never a folder under <c>spool/</c> or anywhere
+    /// a recording lives.
     /// </para>
     /// <para>
     /// A third entry, or a second way on an entry already here, is a folder removal somebody has to
@@ -1201,6 +1206,17 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
             // instant earlier, and only while it holds nothing at all. Never a folder under
             // `spool/`, so never a recording somebody is still owed a decision about.
             (Path.Combine("MeetingTranscriber.Recording", "AudioIntake.cs"),
+                [DirectoryDelete]),
+
+            // A Claude Code run's own scratch workspace, deleted once the process that used it has
+            // exited, killed or not. It lives under `%TEMP%\meeting-transcriber-summaries\`, never
+            // under `spool/`, and holds nothing but the one run's own prompt files.
+            (Path.Combine("MeetingTranscriber.Processing", "Summaries", "ClaudeCode", "ClaudeCodeSummaries.cs"),
+                [DirectoryDelete]),
+
+            // The same scratch workspace, cleaned up by the class that builds it when building it
+            // fails partway through — a run that never started leaves nothing behind either.
+            (Path.Combine("MeetingTranscriber.Processing", "Summaries", "ClaudeCode", "ClaudeCodeWorkspace.cs"),
                 [DirectoryDelete]),
         ];
 

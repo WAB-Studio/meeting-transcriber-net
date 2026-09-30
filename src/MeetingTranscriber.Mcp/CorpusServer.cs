@@ -22,18 +22,17 @@ namespace MeetingTranscriber.Mcp;
 /// <b>ISC-98 says this server answers read-only over stdio and never writes, and it is open.</b>
 /// What is proved by a build agent is the read-only half and the whole of the tool surface, over
 /// <c>StreamServerTransport</c> — a real client, a real session and real answers, over two pipes
-/// rather than over stdio. What is still owed is a client that starts
-/// <c>meeting-transcriber-mcp.exe</c> as a child process and talks to it over that process's own
-/// standard input and output.
+/// rather than over stdio — and now also a real child process, started and spoken to over its own
+/// standard input and output, in <c>ChildProcessTests</c>. Ticking the claim itself is left for
+/// whoever next holds <c>ISA.md</c>.
 /// </para>
 /// <para>
-/// <b>The barrier is not packaging and not an alias</b>, which is worth one sentence here so
-/// whoever takes ISC-98 does not go looking in the wrong place: a child process with redirected
-/// streams <em>is</em> stdio, and this executable is already in a referencing suite's own output.
-/// What is missing is a way to point a second process at a corpus —
+/// <b>The barrier was not packaging and not an alias.</b> A child process with redirected streams
+/// <em>is</em> stdio, and this executable was already in a referencing suite's own output. What
+/// was missing was a way to point a second process at a corpus that is not this user's —
 /// <see cref="CorpusLocation.OfThisUser"/> anchors on the Windows profile and nothing under
-/// <c>src/</c> overrides it. So what closes ISC-98 is an override this product has its own reason
-/// to have, or a person's run.
+/// <c>src/</c> overrode it. <c>--corpus &lt;folder&gt;</c> is that override now, resolved through
+/// <see cref="CorpusLocation.At"/> rather than through a setting file.
 /// </para>
 /// <para>
 /// Every tool opens a corpus and lets it go again; nothing here holds one. That is
@@ -92,12 +91,20 @@ public sealed class CorpusServer(CorpusLocation where)
         session: ask again once the thing they name has been dealt with.
         """;
 
+    /// <summary>Refused rather than parsed further: what a line this server cannot read is told.</summary>
+    private const string Usage = "Usage: meeting-transcriber-mcp [--corpus <folder>]";
+
     /// <summary>
-    /// The server as the executable runs it: this user's corpus, over stdio.
+    /// The server as the executable runs it: this user's corpus over stdio, or — named through
+    /// <c>--corpus &lt;folder&gt;</c> — somebody else's, the way a second process or a test points
+    /// this server at a corpus that is not this user's own.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <see cref="Console.SetOut(TextWriter)"/> runs first and before anything that could print.
+    /// <paramref name="arguments"/> is read before anything that could print, and the usage line
+    /// goes to stderr rather than stdout for the same reason nothing else may reach it: a session
+    /// that never starts still must not cost an agent a parse error over the wrong stream.
+    /// <see cref="Console.SetOut(TextWriter)"/> then runs before anything else that could print.
     /// Stdout is the protocol and nothing else may reach it — redirected rather than merely
     /// avoided, because the core prints, the runtime prints, and one stray line makes an agent's
     /// session fail as a parse error a long way from whatever wrote it.
@@ -106,14 +113,34 @@ public sealed class CorpusServer(CorpusLocation where)
     /// Nothing touches the corpus here, and that is the other half of the ordering. An MCP client
     /// starts this server in every session of every checkout, most of which never call a tool, and
     /// a start-up that resolved a corpus would hold somebody's SQLite file open for hours for a
-    /// call nobody made.
+    /// call nobody made. That holds for <c>--corpus</c> exactly as it does for the fallback —
+    /// <see cref="CorpusLocation.At"/> only ever names the folder, and the corpus in it is not
+    /// opened until the first tool call asks for it.
     /// </para>
     /// </remarks>
-    internal static async Task<int> RunAsync()
+    internal static async Task<int> RunAsync(IReadOnlyList<string> arguments)
     {
+        CorpusLocation where;
+        switch (arguments)
+        {
+            case []:
+                where = CorpusLocation.OfThisUser();
+                break;
+
+            case [var flag, var folder]
+                when string.Equals(flag, "--corpus", StringComparison.Ordinal)
+                    && !string.IsNullOrWhiteSpace(folder):
+                where = CorpusLocation.At(new DirectoryInfo(folder));
+                break;
+
+            default:
+                Console.Error.WriteLine(Usage);
+                return 2;
+        }
+
         Console.SetOut(Console.Error);
 
-        var options = new CorpusServer(CorpusLocation.OfThisUser()).Options();
+        var options = new CorpusServer(where).Options();
 
         await using var server = McpServer.Create(new StdioServerTransport(options), options);
         await server.RunAsync();

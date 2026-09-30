@@ -273,6 +273,128 @@ public class MeetingReadingTests
         screen.WhyTheSummaryWasRefused.ShouldBe(refusal);
     }
 
+    /// <summary>
+    /// #121. Both runs share one <c>CreatedAt</c>, which every fixed test clock leaves them with —
+    /// so what says which one a person reads is <c>CorrectsRunId</c> and neither time nor id.
+    /// </summary>
+    [Fact]
+    public void A_meeting_whose_correction_was_refused_says_what_the_correction_was_refused_for()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0"], responseSha256: new string('a', 64), root: corpus.Root);
+
+        var job = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Extract, $"{meeting}/1", Recorded);
+        job.Start(Recorded);
+        MeetingRows.Add(context, job);
+
+        var first = new ExtractionRun
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            JobId = job.Id,
+            Provider = "claude-code",
+            PromptVersion = "1",
+            SchemaVersion = "1",
+            InputHash = new string('d', 64),
+            CreatedAt = Recorded,
+        };
+        MeetingRows.Add(context, first);
+        MeetingRows.Add(context, new ExtractionRunRefusal
+        {
+            ExtractionRunId = first.Id,
+            Ordinal = 0,
+            Condition = ExtractionCondition.NoEvidence,
+            Path = "decisions[0]",
+            Statement = "Lanzar el viernes.",
+        });
+
+        var correction = new ExtractionRun
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            JobId = job.Id,
+            CorrectsRunId = first.Id,
+            Provider = "claude-code",
+            PromptVersion = "1",
+            SchemaVersion = "1",
+            InputHash = new string('d', 64),
+            CreatedAt = Recorded,
+        };
+        MeetingRows.Add(context, correction);
+        MeetingRows.Add(context, new ExtractionRunRefusal
+        {
+            ExtractionRunId = correction.Id,
+            Ordinal = 0,
+            Condition = ExtractionCondition.CitedAgainElsewhere,
+            Path = "actions[0]",
+            Statement = "Lanzar el viernes.",
+        });
+
+        job.FailPermanently(JobFailure.ExtractionRefused, "refused again", Recorded);
+        context.SaveChanges();
+
+        var screen = new MeetingReading(context, Clock).Of(meeting).Screen;
+
+        screen.WhyTheSummaryWasRefused.ShouldBe(
+            new ExtractionRefusal(ExtractionCondition.CitedAgainElsewhere, "actions[0]", "Lanzar el viernes."));
+    }
+
+    /// <summary>
+    /// The self-referencing <c>corrects_run_id</c> foreign key cascades cleanly on top of the
+    /// table's own <c>meeting_id</c> cascade, rather than the two conflicting the way
+    /// <c>docs/migrations.md</c> warns a self-referencing foreign key can.
+    /// </summary>
+    [Fact]
+    public void Deleting_a_meeting_takes_a_refused_run_and_its_correction_together()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0"], responseSha256: new string('a', 64), root: corpus.Root);
+
+        var job = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Extract, $"{meeting}/1", Recorded);
+        job.Start(Recorded);
+        MeetingRows.Add(context, job);
+
+        var first = new ExtractionRun
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            JobId = job.Id,
+            Provider = "claude-code",
+            PromptVersion = "1",
+            SchemaVersion = "1",
+            InputHash = new string('d', 64),
+            CreatedAt = Recorded,
+        };
+        MeetingRows.Add(context, first);
+
+        var correction = new ExtractionRun
+        {
+            Id = Guid.NewGuid(),
+            MeetingId = meeting,
+            JobId = job.Id,
+            CorrectsRunId = first.Id,
+            Provider = "claude-code",
+            PromptVersion = "1",
+            SchemaVersion = "1",
+            InputHash = new string('d', 64),
+            CreatedAt = Recorded,
+        };
+        MeetingRows.Add(context, correction);
+
+        // Raw SQL and not a tracked Remove: this suite's meeting also carries a transcription
+        // whose own job EF's client-side cascade would try to sever at the same time, over a
+        // relationship that is NO ACTION rather than cascading — a confusion the database itself
+        // does not have. The literal is upper-cased because that is the case SQLite actually
+        // stores a GUID column under; a lower-case literal here would silently match no row.
+        Sql.Execute(context, $"DELETE FROM meetings WHERE id = '{meeting.ToString().ToUpperInvariant()}';");
+
+        Sql.Scalar(context, "SELECT count(*) FROM extraction_runs;").ShouldBe(0L);
+    }
+
     [Fact]
     public void A_meeting_that_has_a_summary_says_nothing_about_an_attempt_that_was_refused()
     {

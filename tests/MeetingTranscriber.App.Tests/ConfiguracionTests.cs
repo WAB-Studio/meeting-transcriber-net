@@ -185,6 +185,57 @@ public class ConfiguracionTests
     }
 
     /// <summary>
+    /// Where Claude Code is is on the settings screen, with the press that changes it and the two
+    /// data points that read it back.
+    /// </summary>
+    [Fact]
+    public void Where_Claude_Code_is_is_on_the_settings_screen_with_the_press_that_changes_it()
+    {
+        var markup = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        markup.ShouldContain("x:Name=\"ClaudeCodeText\"");
+        markup.ShouldContain("x:Name=\"ClaudeCodeStatusText\"");
+        markup.ShouldContain("x:Name=\"ChangeWhereClaudeCodeIs\"");
+        markup.ShouldContain("Click=\"OnChangeWhereClaudeCodeIs\"");
+
+        screen.ShouldContain("SummarisingOnThisMachine.WhereClaudeCodeIs()");
+        screen.ShouldContain("SummarisingOnThisMachine.Provider().IsAvailableAsync(");
+    }
+
+    /// <summary>
+    /// Nothing escapes the press that opens a file picker, for the same reason and the same shape
+    /// <see cref="Nothing_escapes_the_press_that_opens_a_folder_picker"/> already holds the folder
+    /// one to.
+    /// </summary>
+    [Fact]
+    public void Nothing_escapes_the_press_that_opens_a_file_picker()
+    {
+        var handler = Handler("private async void OnChangeWhereClaudeCodeIs(");
+
+        handler.ShouldContain(
+            "catch (Exception failedToOpen) when (failedToOpen is not OutOfMemoryException)");
+    }
+
+    /// <summary>
+    /// Each press that says <em>Cambiar</em> is named for what it changes, for a screen reader —
+    /// D2. Two presses on this screen show the same word, and telling them apart is
+    /// <c>AutomationProperties.Name</c>'s alone to do.
+    /// </summary>
+    [Fact]
+    public void Each_press_that_says_Cambiar_is_named_for_what_it_changes()
+    {
+        var markup = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
+
+        markup.ShouldContain(
+            "AutomationProperties.Name=\"{x:Bind In(loc:UiTexts.ChangeWhereTheCorpusIsKept)}\"");
+        markup.ShouldContain(
+            "AutomationProperties.Name=\"{x:Bind In(loc:UiTexts.ChangeWhereClaudeCodeIs)}\"");
+    }
+
+    /// <summary>
     /// The handler's own body, from its signature to the closing brace that balances it, so a
     /// negative assertion over it says nothing about the rest of the screen.
     /// </summary>

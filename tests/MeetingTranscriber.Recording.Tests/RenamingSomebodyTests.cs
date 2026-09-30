@@ -9,8 +9,9 @@ using MeetingTranscriber.Processing.Rendering;
 namespace MeetingTranscriber.Recording.Tests;
 
 /// <summary>
-/// Correcting a person's name and rendering again every meeting whose voices name them, in the same
-/// transaction, so the transcripts say what the screens say.
+/// Correcting a person's name, committed on its own, and rendering again every meeting whose voices
+/// name them, one meeting and one transaction at a time, so the transcripts say what the screens
+/// say.
 /// </summary>
 public class RenamingSomebodyTests
 {
@@ -82,11 +83,12 @@ public class RenamingSomebodyTests
     }
 
     /// <summary>
-    /// A render that cannot happen takes the rename back with it: the person still reads by the old
-    /// name once one of their meetings could not be rendered again.
+    /// A render that cannot happen does not take the rename back with it: the rename already
+    /// committed on its own before any render was attempted, and stands, and the exception names
+    /// the meeting that is still showing the old name.
     /// </summary>
     [Fact]
-    public void A_render_that_is_refused_takes_the_rename_back_with_it()
+    public void A_render_that_is_refused_leaves_the_rename_standing_and_names_the_meeting()
     {
         using var corpus = new TemporaryCorpus();
         var meeting = ARenderedVoiceMeeting.RenderedIn(corpus, When, out var label);
@@ -108,11 +110,59 @@ public class RenamingSomebodyTests
             person = context.People.Single(row => row.Id == somebody);
         }
 
-        Should.Throw<RenderException>(
+        var thrown = Should.Throw<RenderException>(
             () => RenamingSomebody.Rename(corpus.Root, person, "Renata Corregida", TimeProvider.System));
+        thrown.Message.ShouldContain(meeting.ToString());
 
         using var reading = corpus.OpenMigrated();
-        reading.People.Single(row => row.Id == somebody).DisplayName.ShouldBe("Renata");
+        reading.People.Single(row => row.Id == somebody).DisplayName.ShouldBe("Renata Corregida");
+    }
+
+    /// <summary>
+    /// Two meetings named on by the same person, the older one refusing its render: the younger one
+    /// is still rendered with the new name, and only the older is named in the exception. Proof by
+    /// outcome and not by measuring the lock directly — a design that shared one context or one
+    /// transaction across both renders would corrupt the younger meeting's save with the older
+    /// one's failed change tracker and fail it too, exactly the failure this asserts does not
+    /// happen. That corruption is what a lock held across both renders would also make possible, so
+    /// a fact independent of that corruption is the fact reachable without a second connection
+    /// blocking mid-loop.
+    /// </summary>
+    [Fact]
+    public void Correcting_a_name_lets_go_of_the_lock_between_one_meeting_and_the_next()
+    {
+        using var corpus = new TemporaryCorpus();
+        var failing = ARenderedVoiceMeeting.RenderedIn(corpus, When, out var failingLabel);
+        var succeeding = ARenderedVoiceMeeting.RenderedIn(
+            corpus, When + Duration.FromSeconds(60), out var succeedingLabel);
+        Guid somebody;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            var human = new HumanLayer(context, When);
+            somebody = human.Add("Renata").Id;
+            human.Assign(failing, failingLabel, context.People.Single(row => row.Id == somebody));
+            human.Assign(succeeding, succeedingLabel, context.People.Single(row => row.Id == somebody));
+
+            var response = context.Artifacts.Single(
+                artifact => artifact.MeetingId == failing && artifact.Kind == ArtifactKind.DeepgramResponse);
+            File.Delete(CorpusFiles.Locate(corpus.Root, response.RelativePath).FullName);
+        }
+
+        Person person;
+        using (var context = corpus.OpenMigrated())
+        {
+            person = context.People.Single(row => row.Id == somebody);
+        }
+
+        var thrown = Should.Throw<RenderException>(
+            () => RenamingSomebody.Rename(corpus.Root, person, "Renata Corregida", TimeProvider.System));
+        thrown.Message.ShouldContain(failing.ToString());
+        thrown.Message.ShouldNotContain(succeeding.ToString());
+
+        using var reading = corpus.OpenMigrated();
+        reading.People.Single(row => row.Id == somebody).DisplayName.ShouldBe("Renata Corregida");
+        Transcript(reading, corpus.Root, succeeding).ShouldContain("## Renata Corregida");
     }
 
     /// <summary>A person this corpus no longer holds is answered with nothing, and renders nothing.</summary>

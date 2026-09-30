@@ -190,6 +190,18 @@ public class ExtractionRun
 
     public string? RawOutputHash { get; set; }
 
+    /// <summary>
+    /// The conversation the provider opened for this run, as it reported it. Nothing here ever
+    /// hands one to a provider.
+    /// </summary>
+    public string? SessionId { get; set; }
+
+    /// <summary>
+    /// The refused run of the same job this one was asked to correct, or nothing. A job carries at
+    /// most one correction, and this is how the corpus says which run it is.
+    /// </summary>
+    public Guid? CorrectsRunId { get; set; }
+
     public Guid? OutputArtifactId { get; set; }
 
     /// <summary>

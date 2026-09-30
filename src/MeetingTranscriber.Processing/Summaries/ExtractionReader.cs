@@ -32,6 +32,12 @@ namespace MeetingTranscriber.Processing.Summaries;
 /// decisions, actions, then open questions, each before its own children — and a key the shape does
 /// not name is reported last, in the order the document itself carries it.
 /// </para>
+/// <para>
+/// <see cref="Summaries.ExtractionInstructions.Schema"/> is this shape read out loud: its document
+/// holds the same rules in prose, followed by an example this reader has to accept with no refusal —
+/// so the words a provider is shown and what this reader checks against cannot drift the way a
+/// document a person maintains and a validator that reads bytes eventually do.
+/// </para>
 /// </remarks>
 public static class ExtractionReader
 {

@@ -19,6 +19,7 @@ tools/MeetingTranscriber.UiProbe/         starts the application, reads its wind
                                           at a time. It drives a corpus of its own and records real
                                           meetings into that
 tests/MeetingTranscriber.Testing/         what a test opens: corpus, SQL, fixture inventory, the repository's own tree
+tests/MeetingTranscriber.FakeClaudeCode/  the program behind the fake Claude Code CLI; holds no test, and only Processing.Tests references it
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```
 
@@ -26,7 +27,7 @@ Every project under `src/` has its tests under `tests/<project>.Tests/`, and `Is
 suite with no project behind it: it reads `ISA.md` and this tree. `UiProbe.Tests` is the one whose
 project is under `tools/` rather than `src/`, and the paragraph about `tools/` below says what that
 suite may and may not do. `Testing` is the other directory under `tests/` with nothing behind it and
-is no suite at all — it is what a suite opens. What
+is no suite at all — it is what a suite opens, and `FakeClaudeCode` is a program one suite runs. What
 `Audio.Tests` can hold is bounded by there being no device on a build agent: the rules — which
 endpoint a typed name means, what a block of bytes is worth on a meter — are tested there, and that
 two streams really open at once is a probe somebody runs with `capture`, recorded in the ISA like a
@@ -223,11 +224,14 @@ application has no probe a build agent could run, and the opposite edge would pu
 `Processing`. The rule for which meetings are owed a render still lives on the `Processing` side,
 where a build agent runs it; what the application holds is the call and the thread it goes on. The
 edge is narrow on purpose — it is there for `WhatALaunchOwes`, and for the two acts that change a
-name a transcript shows — `NamingTheVoices`, which saves the names on a meeting's voices, and
-`RenamingSomebody`, which corrects a person's name — each of which renders the meetings it touches
-again in the same transaction, so a name saved is a name the transcript already shows — and the
-reason it can be is the direction: `Processing` knows nothing about a window, so nothing came back
-the other way.
+name a transcript shows — `NamingTheVoices`, which saves the names on a meeting's voices and
+renders that one meeting again in the same transaction, so a name it saved is a name that one
+transcript already shows, and `RenamingSomebody`, which corrects a person's name and then renders
+every meeting it touches, each in a transaction of its own, so the rename does not hold the
+corpus's write lock across them — a name it saved is a name every render that landed already
+shows, and what did not is named on the way out for `render <meeting id>` to catch up — and the
+reason either can be is the direction: `Processing` knows nothing about a window, so nothing came
+back the other way.
 
 `MeetingTranscriber.Presentation` holds every word a person reads and nothing else — the
 catalogue, the rule that picks a language, and the choice on disk. It references nothing and

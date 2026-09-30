@@ -4,6 +4,7 @@ using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
+using MeetingTranscriber.Processing.Rendering;
 using MeetingTranscriber.Recording;
 
 using Microsoft.UI.Xaml;
@@ -28,13 +29,18 @@ namespace MeetingTranscriber.App;
 /// and <see cref="HumanLayer.Join(Person, Node, UtcTimestamp?)"/>, each of which saves, and a
 /// refusal on the second would leave the first on disk with nothing pointing at it — so the two are
 /// wrapped in one transaction here, the only opening of the corpus this file makes. Correcting a
-/// name goes through <see cref="RenamingSomebody.Rename"/> instead, which opens its own transaction
-/// around a rename and every render it forces, and a refusal there takes the rename back with it;
-/// this dialogue owns none of that ladder and only reports what it answers.
+/// name goes through <see cref="RenamingSomebody.Rename"/> instead, which commits the rename on its
+/// own and then renders each meeting it touches in a transaction of its own — this dialogue owns
+/// none of that ladder and only reports what it answers.
 /// </para>
 /// <para>
-/// The dialogue stays open on a refusal either way, because the alternative is losing what somebody
-/// typed to a corpus that was locked for a second.
+/// A <see cref="RenderException"/> out of a correction is not the same answer as every other
+/// refusal: the rename already landed by the time it can be thrown, so <c>OnSomebodyNamed</c> closes
+/// on it exactly as it would a correction with nothing still owed, rather than cancelling — a
+/// cancelled dialogue is what <c>ClassifyingAMeeting</c> and <c>SayingWhoIsWho</c> both read as
+/// nothing having been written, which would no longer be true. Every other refusal keeps the
+/// dialogue open, because the alternative is losing what somebody typed to a corpus that was locked
+/// for a second.
 /// </para>
 /// </remarks>
 public sealed partial class AddingSomebody : ContentDialog
@@ -143,16 +149,33 @@ public sealed partial class AddingSomebody : ContentDialog
         {
             if (_correcting is { } correcting)
             {
-                var renamed = RenamingSomebody.Rename(folder, correcting, name, TimeProvider.System);
+                Guid? made;
+                try
+                {
+                    made = RenamingSomebody.Rename(folder, correcting, name, TimeProvider.System)?.Id;
+                }
+                catch (RenderException)
+                {
+                    // RenamingSomebody.Rename's own contract: the rename itself always lands before
+                    // this can be thrown, and only some of the meetings it touches are still owed a
+                    // render — each caught up later by the `render <meeting id>` the exception
+                    // already named and this dialogue lets go of here. That is not this dialogue's
+                    // failure to report: the corpus already reads the new name, so `made` closes the
+                    // same way a rename with nothing still owed does. Falling to the catch below
+                    // instead would tell whoever asked that nothing was written, while
+                    // ClassifyingAMeeting and SayingWhoIsWho both redraw a `null` answer as though
+                    // the dialogue never wrote anything — which is no longer true.
+                    made = correcting.Id;
+                }
 
-                if (renamed is null)
+                if (made is null)
                 {
                     args.Cancel = true;
                     Say(TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, correcting.DisplayName));
                     return;
                 }
 
-                _made = correcting.Id;
+                _made = made;
                 return;
             }
 

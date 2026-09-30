@@ -77,6 +77,8 @@ public partial class CorpusNamingTests
         (JobFailure.AudioMissing, "audio_missing"),
         (JobFailure.CorpusRefused, "corpus_refused"),
         (JobFailure.ExtractionRefused, "extraction_refused"),
+        (JobFailure.NoSummariserOnThisMachine, "no_summariser_on_this_machine"),
+        (JobFailure.SummariserFailed, "summariser_failed"),
         (ExtractionCondition.NotTheSchema, "not_the_schema"),
         (ExtractionCondition.InputNotAsPrepared, "input_not_as_prepared"),
         (ExtractionCondition.AnotherMeeting, "another_meeting"),
@@ -85,6 +87,7 @@ public partial class CorpusNamingTests
         (ExtractionCondition.NoSuchTurn, "no_such_turn"),
         (ExtractionCondition.NotTheTurnCited, "not_the_turn_cited"),
         (ExtractionCondition.QuoteNotInTheTurn, "quote_not_in_the_turn"),
+        (ExtractionCondition.CitedAgainElsewhere, "cited_again_elsewhere"),
 
         // The classification vocabulary, closed against the thirteen meetings arquitectura.md §5.3
         // lists. A rename changes what is on disk and the CHECK behind it at the same time, and

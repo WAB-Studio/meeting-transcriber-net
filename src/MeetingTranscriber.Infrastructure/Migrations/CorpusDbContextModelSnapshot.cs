@@ -205,6 +205,10 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("accepted_at");
 
+                    b.Property<Guid?>("CorrectsRunId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("corrects_run_id");
+
                     b.Property<string>("CreatedAt")
                         .IsRequired()
                         .HasColumnType("TEXT")
@@ -258,11 +262,20 @@ namespace MeetingTranscriber.Infrastructure.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("schema_version");
 
+                    b.Property<string>("SessionId")
+                        .HasColumnType("TEXT")
+                        .HasColumnName("session_id");
+
                     b.HasKey("Id")
                         .HasName("pk_extraction_runs");
 
+                    b.HasIndex("CorrectsRunId")
+                        .HasDatabaseName("ix_extraction_runs_corrects_run_id");
+
                     b.HasIndex("JobId")
-                        .HasDatabaseName("ix_extraction_runs_job_id");
+                        .IsUnique()
+                        .HasDatabaseName("ux_extraction_runs_one_correction_per_job")
+                        .HasFilter("corrects_run_id IS NOT NULL");
 
                     b.HasIndex("OutputArtifactId")
                         .HasDatabaseName("ix_extraction_runs_output_artifact_id");
@@ -307,7 +320,7 @@ namespace MeetingTranscriber.Infrastructure.Migrations
 
                     b.ToTable("extraction_refusals", null, t =>
                         {
-                            t.HasCheckConstraint("ck_extraction_refusals_condition", "condition IN ('another_meeting', 'input_not_as_prepared', 'no_evidence', 'no_such_turn', 'not_the_schema', 'not_the_turn_cited', 'quote_not_in_the_turn', 'speaker_not_in_the_meeting')");
+                            t.HasCheckConstraint("ck_extraction_refusals_condition", "condition IN ('another_meeting', 'cited_again_elsewhere', 'input_not_as_prepared', 'no_evidence', 'no_such_turn', 'not_the_schema', 'not_the_turn_cited', 'quote_not_in_the_turn', 'speaker_not_in_the_meeting')");
 
                             t.HasCheckConstraint("ck_extraction_refusals_ordinal", "ordinal >= 0");
                         });
@@ -393,7 +406,7 @@ namespace MeetingTranscriber.Infrastructure.Migrations
 
                             t.HasCheckConstraint("ck_processing_jobs_failure", "(state = 'failed_permanent') = (failure IS NOT NULL)");
 
-                            t.HasCheckConstraint("ck_processing_jobs_failure_name", "failure IS NULL OR failure IN ('audio_missing', 'corpus_refused', 'extraction_refused', 'key_refused', 'no_key_on_this_machine', 'out_of_credit', 'over_its_rate', 'provider_not_reached', 'request_refused')");
+                            t.HasCheckConstraint("ck_processing_jobs_failure_name", "failure IS NULL OR failure IN ('audio_missing', 'corpus_refused', 'extraction_refused', 'key_refused', 'no_key_on_this_machine', 'no_summariser_on_this_machine', 'out_of_credit', 'over_its_rate', 'provider_not_reached', 'request_refused', 'summariser_failed')");
 
                             t.HasCheckConstraint("ck_processing_jobs_kind", "kind IN ('backup', 'capture', 'extract', 'finalize', 'render', 'transcribe')");
 
@@ -1345,6 +1358,12 @@ namespace MeetingTranscriber.Infrastructure.Migrations
 
             modelBuilder.Entity("MeetingTranscriber.Domain.Jobs.ExtractionRun", b =>
                 {
+                    b.HasOne("MeetingTranscriber.Domain.Jobs.ExtractionRun", null)
+                        .WithMany()
+                        .HasForeignKey("CorrectsRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_extraction_runs_extraction_runs_corrects_run_id");
+
                     b.HasOne("MeetingTranscriber.Domain.Jobs.ProcessingJob", null)
                         .WithMany()
                         .HasForeignKey("JobId")

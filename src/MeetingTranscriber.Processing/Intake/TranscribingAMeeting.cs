@@ -543,7 +543,9 @@ public static class TranscribingAMeeting
             TranscriptionOutcome.MayHaveBeenCharged,
             $"{message} What the provider sent back was paid for and is kept at '{keptWhere}', "
             + "where nothing files it on its own and check names it until somebody moves or "
-            + "deletes it.");
+            + $"deletes it. `import-response \"{keptWhere}\" --corpus \"{root.FullName}\" "
+            + $"--meeting {meetingId} --as-next-version` files it as the next version without "
+            + "sending anything.");
     }
 
     private static void WriteLastError(DirectoryInfo root, Guid runId, string message)

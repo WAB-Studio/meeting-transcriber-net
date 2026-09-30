@@ -11,12 +11,13 @@ namespace MeetingTranscriber.Mcp;
 /// whatever the person running it already trusted, reading the files that person can already read.
 /// </para>
 /// <para>
-/// It takes no arguments, and that is a decision rather than an omission: an MCP client config
-/// names an executable and nothing else, so there is no <c>--corpus</c> anybody could have typed.
-/// <see cref="TheCorpusHere"/> asks what the window asks.
+/// It takes one optional pair, <c>--corpus &lt;folder&gt;</c>, which an MCP client config passes
+/// through its own <c>args</c> — the way a second process, or a test, points this server at a
+/// corpus that is not this user's. Without it <see cref="TheCorpusHere"/> asks what the window
+/// asks.
 /// </para>
 /// </remarks>
 internal static class Program
 {
-    private static Task<int> Main() => CorpusServer.RunAsync();
+    private static Task<int> Main(string[] args) => CorpusServer.RunAsync(args);
 }

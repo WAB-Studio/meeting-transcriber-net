@@ -21,14 +21,18 @@ namespace MeetingTranscriber.Processing.Summaries;
 /// </para>
 /// <para>
 /// <b>A refusal fails the job for good, with <see cref="JobFailure.ExtractionRefused"/>, and the
-/// stage stays offered.</b> <c>OwedWork.Of</c> already reads a stage back as owed once its newest
-/// job of that kind failed permanently, which is what makes <em>Resumir</em> a new job and never a
-/// retry this door — or anything else — runs on its own.
+/// stage stays offered — with one exception.</b> A first attempt whose every refusal
+/// <see cref="ExtractionCorrection.MayBeHandedBack"/> accepts is handed back instead: the job stays
+/// <c>Running</c>, <see cref="ExtractionReceived.HandedBack"/> says so, and <c>SummarisingAMeeting</c>
+/// is what asks the one correction this earns. Everywhere else, <c>OwedWork.Of</c> already reads a
+/// stage back as owed once its newest job of that kind failed permanently, which is what makes
+/// <em>Resumir</em> a new job and never a retry this door — or anything else — runs on its own.
 /// </para>
 /// <para>
-/// <b>The run is written whole, with its outcome, in one transaction.</b> A run row written before
-/// this call — the way a transcription writes its own before the call it is for — is #119's to
-/// decide once there is a provider call in front of this door.
+/// <b>The run is written whole, with its outcome, in one transaction.</b> Unlike a transcription's
+/// own run, nothing is written before this call: <c>SummarisingAMeeting</c> holds no row open
+/// across a provider call, so the first byte this door ever writes about an attempt is the whole of
+/// it — accepted, refused, or handed back for one correction.
 /// </para>
 /// <para>
 /// <b>An accepted output is kept byte for byte at <c>meetings/&lt;id&gt;/extractions/&lt;run id&gt;.json</c>,
@@ -37,14 +41,21 @@ namespace MeetingTranscriber.Processing.Summaries;
 /// again.
 /// </para>
 /// <para>
-/// This is the door #119's adapter hands an unwrapped extraction to, once there is a provider
-/// behind it. Nothing here reaches a transcription provider — a source guard over every file in
-/// this folder is what proves that, rather than a review having to notice a stray reference.
+/// This is the door <c>ClaudeCodeSummaries</c> — and any other <see cref="ISummaryProvider"/> —
+/// hands an unwrapped extraction to, through <c>SummarisingAMeeting</c>. Nothing here reaches a
+/// transcription provider — a source guard over every file in this folder is what proves that,
+/// rather than a review having to notice a stray reference.
 /// </para>
 /// </remarks>
 public static class ExtractionIntake
 {
     /// <summary>One attempt at summarising a meeting, exactly as it is handed to this door.</summary>
+    /// <param name="SessionId">The conversation the provider opened for this attempt, when it reported one.</param>
+    /// <param name="Corrects">
+    /// The refused run this attempt corrects, or nothing on a first attempt. When set, the run must
+    /// belong to this job and carry no correction of its own yet — anything else throws before
+    /// anything is written.
+    /// </param>
     public sealed record ExtractionAttempt(
         Guid JobId,
         string Provider,
@@ -52,19 +63,37 @@ public static class ExtractionIntake
         string? Model,
         string PromptVersion,
         string InputHash,
-        byte[] Output);
+        byte[] Output,
+        string? SessionId = null,
+        Guid? Corrects = null);
 
     /// <summary>What filing one attempt came to.</summary>
-    public sealed record ExtractionReceived(Guid RunId, bool Accepted, IReadOnlyList<ExtractionRefusal> Refusals);
+    /// <param name="HandedBack">
+    /// True when this run was refused, the caller's own <c>mayBeHandedBack</c> was true, every
+    /// refusal is one <see cref="ExtractionCorrection.MayBeHandedBack"/> accepts, and the job was
+    /// left <c>Running</c> for one more attempt rather than failed. Never true for a correction's
+    /// own run, which this door never hands back a second time.
+    /// </param>
+    public sealed record ExtractionReceived(
+        Guid RunId, bool Accepted, bool HandedBack, IReadOnlyList<ExtractionRefusal> Refusals);
 
     /// <summary>
     /// Checks one attempt against the meeting it claims to be about, and writes what it found.
     /// </summary>
+    /// <param name="mayBeHandedBack">
+    /// Whether a refusal this door could correct should be handed back rather than failed. True for
+    /// a first attempt and always false for a correction — <paramref name="attempt"/>'s own
+    /// <see cref="ExtractionAttempt.Corrects"/> is what tells the two apart, so this door never
+    /// hands one back twice whatever this is called with.
+    /// </param>
     /// <exception cref="InvalidOperationException">
-    /// <paramref name="context"/> already holds a transaction, or <paramref name="attempt"/> does
-    /// not name a <see cref="JobKind.Extract"/> job that has been started. Nothing is written.
+    /// <paramref name="context"/> already holds a transaction; <paramref name="attempt"/> does not
+    /// name a <see cref="JobKind.Extract"/> job that has been started; or
+    /// <see cref="ExtractionAttempt.Corrects"/> is set and does not name a run of this job that is
+    /// not already corrected. Nothing is written.
     /// </exception>
-    public static ExtractionReceived Receive(CorpusDbContext context, ExtractionAttempt attempt, UtcTimestamp now)
+    public static ExtractionReceived Receive(
+        CorpusDbContext context, ExtractionAttempt attempt, UtcTimestamp now, bool mayBeHandedBack = false)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(attempt);
@@ -76,29 +105,47 @@ public static class ExtractionIntake
                 + "holds one. Nothing was filed.");
         }
 
-        // Read once, untracked, only to learn which meeting this is about — the throw below covers
-        // a job that does not exist at all, and the kind and state are asked again, tracked, once
-        // the write lock is held (Decides; the job read outside the transaction).
-        var meetingId = context.ProcessingJobs
-            .AsNoTracking()
-            .Where(job => job.Id == attempt.JobId)
-            .Select(job => (Guid?)job.MeetingId)
-            .FirstOrDefault()
-            ?? throw NotAStartedExtraction(attempt.JobId);
+        using var transaction = context.Database.BeginTransaction();
 
-        // Prepared and checked outside this door's own transaction, and never re-checked once it
-        // opens: a render landing in that gap would leave a citation's turn stale, and the citation
-        // foreign key — not deferred here — is what turns that into a loud transaction failure
-        // rather than a silent one, the same way `MeetingRenderer.RefuseStrandedClaims` leans on it.
+        // Re-read, tracked, inside the transaction: the write lock this opens with is what makes
+        // this check, everything Prepare and ExtractionCheck read below, and the move that follows
+        // one thing. Nothing has been added to the context yet when this refuses — once the write
+        // lock is held, the same way MeetingWork's writers re-read inside their transaction.
+        var job = context.ProcessingJobs.FirstOrDefault(row => row.Id == attempt.JobId);
+        if (job is null || job.Kind != JobKind.Extract || job.State != JobState.Running)
+        {
+            throw NotAStartedExtraction(attempt.JobId);
+        }
+
+        var meetingId = job.MeetingId;
+
+        var handedBackRefusals = attempt.Corrects is { } correctsRunId
+            ? RefusalsBeingCorrected(context, job.Id, correctsRunId)
+            : [];
+
+        // Prepared again, inside the transaction, under the write lock BeginTransaction above
+        // already took: a render landing between this attempt being sent and this door opening
+        // would leave attempt.InputHash stale against what the meeting says now, and
+        // ExtractionCheck.Of's own InputNotAsPrepared refusal below is what catches that — loudly,
+        // rather than filing citations against turns that have already moved (O-20260926-03).
         var prepared = MeetingInput.Prepare(context, meetingId);
         var verdict = ExtractionCheck.Of(attempt.Output, attempt.InputHash, prepared);
+
+        // A correction's document is judged a second time, against what the first attempt was
+        // asked to fix: a document ExtractionCheck.Of itself found nothing wrong with can still
+        // bring back a statement it was told to remove, citing something else (Decides 12).
+        var refusals = attempt.Corrects is null
+            ? verdict.Refusals
+            : ExtractionCorrection.Judge(handedBackRefusals, verdict.Accepted, verdict.Refusals);
+        var accepted = refusals.Count == 0 ? verdict.Accepted : null;
+
         var runId = Guid.NewGuid();
 
-        // Staged before the transaction opens, as MeetingArchive.Filed stages a source: the write
-        // lock is taken at BEGIN IMMEDIATE, so no other writer waits on this copy. The `using` is
-        // load-bearing — Dispose lets go of the `.partial` and deletes it, so a throw between here
-        // and the commit below leaves nothing behind.
-        using var staged = verdict.IsAccepted
+        // Staged inside the transaction, once the verdict is known: the write lock is already held
+        // by BeginTransaction above, so nothing else can land between this stage and the commit
+        // below. The `using` is load-bearing — Dispose lets go of the `.partial` and deletes it, so
+        // a throw between here and the commit leaves nothing behind.
+        using var staged = accepted is not null
             ? StagedArtifact.Stage(
                 context,
                 meetingId,
@@ -106,16 +153,6 @@ public static class ExtractionIntake
                 CorpusFiles.PathFor(meetingId, $"extractions/{runId}.json"),
                 stream => stream.Write(attempt.Output))
             : null;
-
-        using var transaction = context.Database.BeginTransaction();
-
-        // Re-read, tracked, inside the transaction: the write lock is what makes this check and the
-        // move that follows one thing. Nothing has been added to the context yet when this refuses.
-        var job = context.ProcessingJobs.FirstOrDefault(row => row.Id == attempt.JobId);
-        if (job is null || job.Kind != JobKind.Extract || job.State != JobState.Running)
-        {
-            throw NotAStartedExtraction(attempt.JobId);
-        }
 
         var run = new ExtractionRun
         {
@@ -129,28 +166,30 @@ public static class ExtractionIntake
             SchemaVersion = ExtractionReader.SchemaVersion,
             InputHash = attempt.InputHash,
             RawOutputHash = CorpusFiles.Sha256Of(new MemoryStream(attempt.Output)),
+            SessionId = attempt.SessionId,
+            CorrectsRunId = attempt.Corrects,
             CreatedAt = now,
         };
 
         context.ExtractionRuns.Add(run);
 
-        if (verdict.IsAccepted)
-        {
-            var document = verdict.Accepted!;
+        var handedBack = false;
 
+        if (accepted is not null)
+        {
             context.Summaries.Add(new Summary
             {
                 Id = Guid.NewGuid(),
                 MeetingId = meetingId,
                 ExtractionRunId = run.Id,
-                Abstract = document.Abstract,
-                Body = document.Summary,
+                Abstract = accepted.Abstract,
+                Body = accepted.Summary,
                 CreatedAt = now,
             });
 
-            AddDecisions(context, meetingId, run.Id, document, prepared, now);
-            AddActions(context, meetingId, run.Id, document, prepared, now);
-            AddQuestions(context, meetingId, run.Id, document, prepared, now);
+            AddDecisions(context, meetingId, run.Id, accepted, prepared, now);
+            AddActions(context, meetingId, run.Id, accepted, prepared, now);
+            AddQuestions(context, meetingId, run.Id, accepted, prepared, now);
 
             job.Succeed(now);
 
@@ -163,9 +202,9 @@ public static class ExtractionIntake
         }
         else
         {
-            for (var ordinal = 0; ordinal < verdict.Refusals.Count; ordinal++)
+            for (var ordinal = 0; ordinal < refusals.Count; ordinal++)
             {
-                var refusal = verdict.Refusals[ordinal];
+                var refusal = refusals[ordinal];
                 context.ExtractionRefusals.Add(new ExtractionRunRefusal
                 {
                     ExtractionRunId = run.Id,
@@ -176,9 +215,29 @@ public static class ExtractionIntake
                 });
             }
 
-            var message = RefusedMessage(verdict.Refusals);
+            var message = RefusedMessage(refusals);
             run.LastError = message;
-            job.FailPermanently(JobFailure.ExtractionRefused, message, now);
+
+            // Handed back only on a first attempt (attempt.Corrects is null) of a job that has
+            // never been corrected before. Filing a correction always ends the job — accepted or
+            // refused for good, either moves it out of Running — so today nothing reaches this
+            // door with an existing correction to find here; the check is the job's one lifetime
+            // correction (Runs.cs's own doc on CorrectsRunId, held structurally by
+            // ux_extraction_runs_one_correction_per_job) stated where a caller could otherwise
+            // depend on the door alone, in case a later job state ever lets a corrected job run
+            // again.
+            var alreadyCorrectedOnce = context.ExtractionRuns
+                .Any(row => row.JobId == job.Id && row.CorrectsRunId != null);
+
+            if (mayBeHandedBack && attempt.Corrects is null && !alreadyCorrectedOnce
+                && ExtractionCorrection.MayBeHandedBack(refusals))
+            {
+                handedBack = true;
+            }
+            else
+            {
+                job.FailPermanently(JobFailure.ExtractionRefused, message, now);
+            }
         }
 
         // The two fields set after the commit above, OutputArtifactId and AcceptedAt, land here —
@@ -186,7 +245,7 @@ public static class ExtractionIntake
         context.SaveChanges();
         transaction.Commit();
 
-        return new ExtractionReceived(run.Id, verdict.IsAccepted, verdict.Refusals);
+        return new ExtractionReceived(run.Id, accepted is not null, handedBack, refusals);
     }
 
     private static void AddDecisions(
@@ -281,6 +340,48 @@ public static class ExtractionIntake
             QuotedText = evidence.QuotedText,
             SourceArtifactSha256 = prepared.TranscribedFrom,
         };
+    }
+
+    /// <summary>
+    /// The one refused run <paramref name="correctsRunId"/> names, with its own refusals read back
+    /// — what <see cref="ExtractionCorrection.Judge"/> judges a correction's document against.
+    /// </summary>
+    /// <remarks>
+    /// Asks whether <paramref name="correctsRunId"/> belongs to <paramref name="jobId"/> and is not
+    /// already corrected — never whether it is the job's only run. A job the runner retried after an
+    /// earlier hand-back's own correction round did not answer carries an orphaned, never-corrected
+    /// run from that earlier attempt; this attempt's own hand-back is still this job's one to spend,
+    /// and a stricter "exactly one run" reading would refuse it over a run it has nothing to do with.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="jobId"/> has no run <paramref name="correctsRunId"/>, or a run of
+    /// <paramref name="jobId"/> already carries a correction. Nothing is written.
+    /// </exception>
+    private static IReadOnlyList<ExtractionRefusal> RefusalsBeingCorrected(
+        CorpusDbContext context, Guid jobId, Guid correctsRunId)
+    {
+        var runs = context.ExtractionRuns
+            .Where(row => row.JobId == jobId)
+            .Select(row => new { row.Id, row.CorrectsRunId })
+            .ToList();
+
+        if (!runs.Any(run => run.Id == correctsRunId))
+        {
+            throw new InvalidOperationException(
+                $"Job {jobId} has no run {correctsRunId} for this attempt to correct. Nothing was filed.");
+        }
+
+        if (runs.Any(run => run.CorrectsRunId is not null))
+        {
+            throw new InvalidOperationException(
+                $"Job {jobId} already carries a correction. A job is corrected at most once. Nothing was filed.");
+        }
+
+        return context.ExtractionRefusals
+            .Where(row => row.ExtractionRunId == correctsRunId)
+            .OrderBy(row => row.Ordinal)
+            .Select(row => new ExtractionRefusal(row.Condition, row.Path, row.Statement))
+            .ToList();
     }
 
     private static InvalidOperationException NotAStartedExtraction(Guid jobId) =>

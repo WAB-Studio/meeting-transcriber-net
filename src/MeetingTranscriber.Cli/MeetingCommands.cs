@@ -104,13 +104,7 @@ public static class MeetingCommands
         Imported(output, filed.Received);
 
         Report.Line(output, "run", $"{filed.RunId} (finished)");
-        Report.Line(
-            output,
-            "job",
-            filed.JobSettled
-                ? "settled: nothing is waiting on a person"
-                : "left as it was: it was no longer waiting on a person, so it is not this "
-                  + "command's to settle");
+        Report.Line(output, "job", "settled: nothing is waiting on a person");
 
         Report.Line(
             output,

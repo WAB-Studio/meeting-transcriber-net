@@ -106,6 +106,23 @@ public sealed class LaunchWorkTests
     }
 
     /// <summary>
+    /// The pump is given this machine's own summariser, the same call the runner's own tests fake.
+    /// </summary>
+    /// <remarks>
+    /// Goes red with the pump started over no summariser at all: a launch that never hands one over
+    /// is a launch where <em>Resumir</em> is a press nothing ever answers, quietly, because
+    /// <c>JobRunner.RunWhatIsDueAsync</c> reads a <c>null</c> summariser as "leave the summaries
+    /// queued" rather than as a fault — the one wrong way for that to go unnoticed.
+    /// </remarks>
+    [Fact]
+    public void The_pump_is_given_the_summariser_this_machine_has()
+    {
+        Occurrences("SummarisingOnThisMachine.Provider()").ShouldNotBeEmpty(
+            "App.xaml.cs starts the pump without SummarisingOnThisMachine.Provider(), so a due "
+            + "summary is left queued for ever on a machine that could have answered it.");
+    }
+
+    /// <summary>
     /// The one thing a launch starts is the ordered list, and never a piece of the work directly.
     /// </summary>
     /// <remarks>
