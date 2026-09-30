@@ -34,7 +34,7 @@ int Run()
         prompt = noBom.GetString(stdin.ToArray());
     }
 
-    var environment = new SortedDictionary<string, string>(StringComparer.Ordinal);
+    var environment = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
     {
         environment[(string)entry.Key] = (string?)entry.Value ?? string.Empty;

@@ -61,7 +61,21 @@ internal sealed class FakeClaudeCode
     public IReadOnlyList<Call> Calls => [.. _calls
         .EnumerateFiles("*.json")
         .OrderBy(file => file.Name, StringComparer.Ordinal)
-        .Select(file => JsonSerializer.Deserialize<Call>(File.ReadAllText(file.FullName), JsonOptions)!)];
+        .Select(file => Read(File.ReadAllText(file.FullName)))];
+
+    /// <summary>
+    /// A call read back with its environment compared the way Windows compares names: a runner that
+    /// spells the variable <c>Path</c> has a <c>PATH</c> all the same, and a plain dictionary would
+    /// say it has not.
+    /// </summary>
+    private static Call Read(string json)
+    {
+        var call = JsonSerializer.Deserialize<Call>(json, JsonOptions)!;
+        return call with
+        {
+            Environment = new Dictionary<string, string>(call.Environment, StringComparer.OrdinalIgnoreCase),
+        };
+    }
 
     public static FakeClaudeCode In(DirectoryInfo folder) => new(folder);
 

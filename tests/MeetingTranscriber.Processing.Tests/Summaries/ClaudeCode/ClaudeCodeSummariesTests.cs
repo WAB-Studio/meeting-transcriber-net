@@ -86,6 +86,11 @@ public class ClaudeCodeSummariesTests : IDisposable
         const string AuthToken = "ANTHROPIC_AUTH_TOKEN";
         const string GitHubToken = "GITHUB_TOKEN";
         const string Canary = "MT_CANARY_SECRET";
+        // The parent spells PATH "Path", as a GitHub runner does: Windows treats them as one name,
+        // and what the run recorded must too.
+        var path = Environment.GetEnvironmentVariable("PATH");
+        Environment.SetEnvironmentVariable("PATH", null);
+        Environment.SetEnvironmentVariable("Path", path);
         string?[] before =
         [
             Environment.GetEnvironmentVariable(ApiKey),
@@ -112,6 +117,8 @@ public class ClaudeCodeSummariesTests : IDisposable
             Environment.SetEnvironmentVariable(AuthToken, before[1]);
             Environment.SetEnvironmentVariable(GitHubToken, before[2]);
             Environment.SetEnvironmentVariable(Canary, before[3]);
+            Environment.SetEnvironmentVariable("Path", null);
+            Environment.SetEnvironmentVariable("PATH", path);
         }
 
         var environment = fake.Calls.Single(one => one.Arguments.Contains("-p")).Environment;
