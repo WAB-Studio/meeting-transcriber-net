@@ -135,10 +135,19 @@ public sealed class MeetingRecording : IDisposable
     }
 
     /// <summary>
-    /// Whether channel 0 has heard nothing at all since it opened, for long enough that the program
-    /// it is following is the wrong one. Nothing is done about it until somebody does.
+    /// Whether channel 0 has heard nothing at all since it began following that program, for long
+    /// enough that the program it is following is the wrong one. Nothing is done about it until
+    /// somebody does.
     /// </summary>
     public bool HeardNothingFromTheProgram() => session.HeardNothingFromTheProgram();
+
+    /// <summary>
+    /// The program channel 0 is listening to now, or nothing when it is on the whole machine. Asked
+    /// rather than remembered by the screen, because a move changes it and the screen is not the
+    /// only thing that can have moved it.
+    /// </summary>
+    public AudioProcess? FollowingNow =>
+        (session.On(AudioChannel.Loopback).Listening as CaptureTarget.Program)?.Process;
 
     /// <summary>
     /// Somebody choosing the whole machine's audio in place of the program channel 0 is following.
@@ -150,6 +159,18 @@ public sealed class MeetingRecording : IDisposable
     /// <see cref="Stop"/>, the meeting is still being recorded the whole time it runs.
     /// </remarks>
     public void RecordTheWholeMachine() => session.RecordTheWholeMachine();
+
+    /// <summary>
+    /// Somebody pointing channel 0 at another program: the wrong one of three with the same name, or
+    /// a call that moved to another application. The meeting goes on, and what the last program
+    /// played is not evidence about this one.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="RecordTheWholeMachine"/>, not on a thread somebody is looking at, and the
+    /// meeting is recorded throughout.
+    /// </remarks>
+    /// <param name="program">The program channel 0 follows from here on.</param>
+    public void FollowAnotherProgram(AudioProcess program) => session.FollowAnotherProgram(program);
 
     /// <summary>
     /// Somebody asking for the microphone to be opened again, after its stream ended by itself. The

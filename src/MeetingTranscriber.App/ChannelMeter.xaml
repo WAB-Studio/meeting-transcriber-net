@@ -34,7 +34,8 @@
          the level does, and the window writes it, like every other sentence on this control.
 
          The three states themselves are still not here. Being heard and clipping are what the four
-         layers already draw, and *sin señal* is #102's. -->
+         layers already draw, and *sin señal* stands where the level does, in pico, like *se cortó
+         a las 08:12*: the window writes it, and this control only inks it. -->
 
     <Grid RowSpacing="10">
         <Grid.RowDefinitions>

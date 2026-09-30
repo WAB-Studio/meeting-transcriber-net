@@ -167,8 +167,31 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private bool _closed;
 
-    private bool _offered;
+    /// <summary>
+    /// Whether the recording has reported that nothing came from the program channel 0 follows.
+    /// Cleared when channel 0 moves, because the silence is counted again from the move.
+    /// </summary>
+    private bool _nothingCame;
+
     private bool _taken;
+
+    /// <summary>
+    /// Whether <em>Cambiar</em> was pressed on the notice and nothing has been chosen yet, so channel
+    /// 0's picker offers <see cref="_programsToMoveTo"/> and a pick in it moves the channel.
+    /// </summary>
+    private bool _choosingAnotherProgram;
+
+    /// <summary>
+    /// Whether a move of channel 0 onto a program is in flight. The same thing
+    /// <see cref="_taken"/> is and for the same reason.
+    /// </summary>
+    private bool _openingAnotherProgram;
+
+    /// <summary>
+    /// What channel 0's picker offers while <see cref="_choosingAnotherProgram"/>: the programs
+    /// running when <em>Cambiar</em> was pressed, less the one it follows. Never the whole machine.
+    /// </summary>
+    private AudioProcess[] _programsToMoveTo = [];
 
     /// <summary>
     /// Whether opening the microphone again has been asked for and has not come back. The same
@@ -355,8 +378,10 @@ public sealed partial class MainWindow : Window
         {
             State = state,
             Chosen = _chosen,
-            WholeMachineOffered = _offered,
+            NothingCameFromTheProgram = _nothingCame,
             WholeMachineTaken = _taken,
+            AnotherProgramIsBeingChosen = _choosingAnotherProgram,
+            AnotherProgramIsBeingOpened = _openingAnotherProgram,
 
             // Read off the last reading rather than kept beside it, for the reason the arrangement
             // below is: what says a source died is its stream having ended. Through the meters and
@@ -416,10 +441,16 @@ public sealed partial class MainWindow : Window
         StopButton.IsEnabled = screen.Allows(RecorderPress.Stop);
 
         // Visibility and not merely disabled: an offer that has not been made is not a button
-        // waiting to become live, it is a thing there is no reason to have heard of yet.
-        WholeMachineOffer.Visibility = screen.Allows(RecorderPress.RecordTheWholeMachine)
+        // waiting to become live, it is a thing there is no reason to have heard of yet. The row
+        // is up while either way out is; each press is up only while it is itself allowed, so a
+        // move in flight leaves neither on screen to be pressed twice.
+        var wholeMachine = screen.Allows(RecorderPress.RecordTheWholeMachine);
+        var anotherProgram = screen.Allows(RecorderPress.ChooseAnotherProgram);
+        WaysOutOfTheSilence.Visibility = wholeMachine || anotherProgram
             ? Visibility.Visible
             : Visibility.Collapsed;
+        ChangeTheProgramButton.Visibility = anotherProgram ? Visibility.Visible : Visibility.Collapsed;
+        WholeMachineButton.Visibility = wholeMachine ? Visibility.Visible : Visibility.Collapsed;
 
         // The recorder half and the save are the same room, one at a time. Visibility and not
         // merely disabled, for the reason the offer above is: a picker nothing can be chosen in,
@@ -435,9 +466,13 @@ public sealed partial class MainWindow : Window
         // opens. A microphone that died is answered by the press beside its line rather than by
         // this picker — what pointing channel 1 somewhere else would need is a list of what this
         // machine has *now*, and that question is not asked while a meeting runs.
+        //
+        // The one exception is channel 0's picker, which *Cambiar* on the notice brings back to
+        // life with the programs running now: pick, look at the meter, pick the next. It moves
+        // channel 0 through the recording, which keeps the meeting one recording.
         var choosing = screen.State == RecorderState.Choosing;
         Mine.PickerIsLive = choosing;
-        TheOthers.PickerIsLive = choosing;
+        TheOthers.PickerIsLive = choosing || screen.Allows(RecorderPress.FollowAnotherProgram);
         SpokenPicker.IsEnabled = choosing;
         RefreshTheMachineButton.IsEnabled = choosing;
 
@@ -663,8 +698,18 @@ public sealed partial class MainWindow : Window
         var others = meters.On(AudioChannel.Loopback);
         var mine = meters.On(AudioChannel.Microphone);
 
-        Show(others, TheOthers);
-        Show(mine, Mine);
+        // *Sin señal* is channel 0's alone: channel 1 is a microphone, and a quiet one is nada.
+        Show(others, TheOthers, screen.NothingCameIsOnScreen);
+        Show(mine, Mine, noSignal: false);
+
+        // The notice. Told from here, which runs every tick, so it appears on the tick the report
+        // does; the sentence and its two presses are in the row under the card, in the tree
+        // whichever way the window is arranged. `Tell` returns early when the text is unchanged.
+        Tell(
+            OthersSentNothing,
+            screen.NothingCameIsOnScreen,
+            UiTexts.NothingCameFromThatProgram,
+            Capturing(_recording?.FollowingNow?.Name));
 
         // Each of the three named where its words are, rather than reached through the row above.
         // A live region that nothing hands a sentence to renders blank and announces nothing, which
@@ -760,7 +805,7 @@ public sealed partial class MainWindow : Window
     /// every meter said it loudest where nothing had happened.
     /// </para>
     /// </remarks>
-    private void Show(ChannelReading? reading, ChannelStrip strip)
+    private void Show(ChannelReading? reading, ChannelStrip strip, bool noSignal)
     {
         // Cleared and not left standing. The reading belongs to a meeting that is over — but the
         // next meeting's first frame is drawn from these controls, and the last one's level is not
@@ -769,7 +814,7 @@ public sealed partial class MainWindow : Window
         {
             strip.LoudnessSaid = string.Empty;
             strip.LoudestSoFarSaid = string.Empty;
-            strip.Show(null);
+            strip.Show(null, noSignal: false);
             return;
         }
 
@@ -786,7 +831,19 @@ public sealed partial class MainWindow : Window
             // standing on a bar that is no longer measuring is the one thing a dead channel must
             // not look like it still has — the bar drops it in the same breath.
             strip.LoudestSoFarSaid = string.Empty;
-            strip.Show(reading);
+            strip.Show(reading, noSignal: false);
+            return;
+        }
+
+        // The verdict and not the reading. *Nada* is what the last second said, and a meeting
+        // between sentences says it all the time; *sin señal* is the recording saying nothing ever
+        // arrived from this program, and it stands where the level does (`docs/design.md`
+        // §NadaLlego). No peak under it: the meter keeps its memory, but there is nothing to mark.
+        if (noSignal)
+        {
+            strip.LoudnessSaid = In(UiTexts.NoSignal);
+            strip.LoudestSoFarSaid = string.Empty;
+            strip.Show(reading, noSignal: true);
             return;
         }
 
@@ -803,7 +860,7 @@ public sealed partial class MainWindow : Window
         // beside the level directly above it, and that one comes off LevelReading already written
         // — so following the language here would put `pico -9,4` under `-16.2 dBFS`, two numbers
         // whose whole purpose is being compared to each other, punctuated two ways.
-        strip.LoudestSoFarSaid = strip.Show(reading) is { } loudest
+        strip.LoudestSoFarSaid = strip.Show(reading, noSignal: false) is { } loudest
             ? UiTexts.TheLoudestSoFar.In(_language, loudest.ToString("0.0", CultureInfo.InvariantCulture))
             : string.Empty;
     }
@@ -1153,9 +1210,22 @@ public sealed partial class MainWindow : Window
                 : Array.FindIndex(_microphones, device =>
                     device.Id.Equals(_chosen.Microphone.Id, StringComparison.OrdinalIgnoreCase)));
 
-        TheOthers.Offer(
-            [.. _sources.Select(NameOf)],
-            _chosen.Source is null ? -1 : Array.IndexOf(_sources, _chosen.Source));
+        // Channel 0's picker offers one of two lists. The programs it may be moved onto while
+        // *Cambiar* has it open, with nothing chosen: the one it follows is not among them, so
+        // there is nothing to show as selected. Otherwise the sources the next meeting may record.
+        // Either way a language change offers the same list again.
+        if (_choosingAnotherProgram)
+        {
+            TheOthers.Offer(
+                [.. _programsToMoveTo.Select(program => NameOf(RecorderSource.Following(program)))],
+                -1);
+        }
+        else
+        {
+            TheOthers.Offer(
+                [.. _sources.Select(NameOf)],
+                _chosen.Source is null ? -1 : Array.IndexOf(_sources, _chosen.Source));
+        }
 
         _filling = true;
         try
@@ -1241,10 +1311,27 @@ public sealed partial class MainWindow : Window
         Refresh();
     }
 
-    /// <remarks>Guarded the way the microphone's is, for the reason written there.</remarks>
+    /// <remarks>
+    /// Guarded the way the microphone's is, for the reason written there. The picker answers two
+    /// questions and the positions of one are meaningless to the other: a pick in the list
+    /// <em>Cambiar</em> opened is a position into <see cref="_programsToMoveTo"/> and moves
+    /// channel 0, and a pick before a meeting is a position into <see cref="_sources"/> and is what
+    /// the next one records. Any other pick mid-meeting is ignored, so a position from the first
+    /// can never be written as the second.
+    /// </remarks>
     private void OnSourceChosen(object? sender, int chosen)
     {
-        if (chosen < 0 || chosen >= _sources.Length)
+        if (Screen().Allows(RecorderPress.FollowAnotherProgram))
+        {
+            if (chosen >= 0 && chosen < _programsToMoveTo.Length)
+            {
+                MoveChannelZeroTo(_programsToMoveTo[chosen]);
+            }
+
+            return;
+        }
+
+        if (Screen().State != RecorderState.Choosing || chosen < 0 || chosen >= _sources.Length)
         {
             return;
         }
@@ -1680,8 +1767,11 @@ public sealed partial class MainWindow : Window
         var chosen = _chosen;
 
         _report.Clear();
-        _offered = false;
+        _nothingCame = false;
         _taken = false;
+        _choosingAnotherProgram = false;
+        _openingAnotherProgram = false;
+        _programsToMoveTo = [];
 
         // The last meeting's, and this one has not read anything yet. Left standing, they would be
         // the previous meeting's devices and levels under the new one for as long as the first tick
@@ -1885,6 +1975,7 @@ public sealed partial class MainWindow : Window
             // answer about the next one — `MeetingRecordings.Open` asks rather than guessing for
             // exactly that reason. The microphone is a device and stays chosen.
             _chosen = _chosen with { Source = null, Spoken = null };
+            _choosingAnotherProgram = false;
             _sources = SourcesNow();
 
             if (!_closed)
@@ -1923,6 +2014,12 @@ public sealed partial class MainWindow : Window
         }
 
         _taken = true;
+
+        // The picker *Cambiar* opened is put away before the first redraw: the list it was offering
+        // is programs to move onto, and left standing under a channel that now records everything
+        // it would be a choice that does nothing.
+        _choosingAnotherProgram = false;
+        FillThePickers();
         Refresh();
 
         try
@@ -1930,7 +2027,11 @@ public sealed partial class MainWindow : Window
             // Off this thread like the other two: it opens one device, stops another and lets a
             // third go. Unlike the other two, the meeting is being recorded the whole time.
             await Task.Run(recording.RecordTheWholeMachine);
-            Say(UiTexts.NowRecordingTheWholeMachine);
+
+            if (!_closed)
+            {
+                Say(UiTexts.NowRecordingTheWholeMachine);
+            }
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
@@ -1950,6 +2051,118 @@ public sealed partial class MainWindow : Window
             // while three devices were being dealt with.
             if (!_closed)
             {
+                Refresh();
+            }
+        }
+    }
+
+    /// <summary>
+    /// <em>Cambiar</em> on the notice: channel 0's own picker comes back to life, offering the
+    /// programs running now. Nothing gets here without the notice having been on screen, because
+    /// until then there is no button.
+    /// </summary>
+    /// <remarks>
+    /// Nothing moves here; the move is a pick in the picker, which is what lets the meter be in
+    /// view for the choice. Nothing says "no other program is playing" either, because
+    /// <see cref="AudioProcesses.Running"/> is every process the session can see and not what is
+    /// playing, so it is never empty on a running Windows. A refusal to say is <c>null</c>, which
+    /// <see cref="Ask"/> has already reported and which is never read as an empty list.
+    /// </remarks>
+    private void OnChooseAnotherProgram(object sender, RoutedEventArgs e)
+    {
+        if (_recording is not { } recording || !Screen().Allows(RecorderPress.ChooseAnotherProgram))
+        {
+            return;
+        }
+
+        if (Ask(AudioProcesses.Running, UiTexts.WindowsDidNotSayWhatIsPlaying) is not { } running)
+        {
+            return;
+        }
+
+        _programsToMoveTo = [.. RecorderScreen.ProgramsChannelZeroMayMoveTo(running, recording.FollowingNow)];
+        _choosingAnotherProgram = true;
+        FillThePickers();
+        Refresh();
+    }
+
+    /// <summary>
+    /// Points channel 0 at <paramref name="program"/>, chosen in the picker <em>Cambiar</em> opened.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>async void</c> like every press on this window, so a defect is loud and not swallowed by
+    /// a discarded <see cref="Task"/>, with the whole of the body inside the <c>try</c>.
+    /// </para>
+    /// <para>
+    /// The machine is asked again before the move, for the reason <see cref="OnRecord"/> asks it
+    /// again: a process id outlives its program, and the list was read when <em>Cambiar</em> was
+    /// pressed. A program that is gone says so and leaves channel 0 where it was, rather than
+    /// following whatever Windows handed the number to.
+    /// </para>
+    /// <para>
+    /// Marked in flight before the move, like <see cref="OnRecordTheWholeMachine"/>; the silence is
+    /// counted again from the handover, so the notice comes back on its own if nothing arrives from
+    /// this program either.
+    /// </para>
+    /// </remarks>
+    private async void MoveChannelZeroTo(AudioProcess program)
+    {
+        if (_recording is not { } recording)
+        {
+            return;
+        }
+
+        try
+        {
+            var running = Ask(AudioProcesses.Running, UiTexts.WindowsDidNotSayWhatIsPlaying);
+
+            if (running is null)
+            {
+                // `Ask` has said it and put the machine's words in the report; there is nothing of
+                // this method's own to add, and choosing is over.
+                _choosingAnotherProgram = false;
+                return;
+            }
+
+            if (!running.Contains(program))
+            {
+                // The program stopped between the list and the pick.
+                _choosingAnotherProgram = false;
+                Say(UiTexts.ThatProgramStoppedBeforeChannel0Moved, program.Name);
+                return;
+            }
+
+            _openingAnotherProgram = true;
+            _choosingAnotherProgram = false;
+            Refresh();
+
+            await Task.Run(() => recording.FollowAnotherProgram(program));
+
+            _nothingCame = false;
+
+            if (!_closed)
+            {
+                Say(UiTexts.NowFollowingAnotherProgram, program.Name);
+            }
+        }
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
+        {
+            // Reported and not thrown: the channel is where it was and the meeting is being
+            // recorded either way. `_nothingCame` stays set, so both ways out stay on screen.
+            if (!_closed)
+            {
+                Say(UiTexts.AnotherProgramCouldNotBeFollowed, program.Name);
+                Dump(refused.Message);
+            }
+        }
+        finally
+        {
+            _openingAnotherProgram = false;
+
+            if (!_closed)
+            {
+                FillThePickers();
                 Refresh();
             }
         }
@@ -2034,7 +2247,8 @@ public sealed partial class MainWindow : Window
     /// <remarks>
     /// The offer is never asked for while the meeting is paused. A paused recording hears nothing
     /// from anything, so the rule it rests on would be true of a program that is playing perfectly
-    /// well — and an offer, once made, stays made. The meters are read either way: what a paused
+    /// well — and an offer, once made, stays made until channel 0 moves. Nor while a move is in
+    /// flight, which is about to count the silence again. The meters are read either way: what a paused
     /// meeting is recording is silence, and showing that is how somebody sees the pause took.
     /// </remarks>
     private void OnWatch(object? sender, object e)
@@ -2052,9 +2266,12 @@ public sealed partial class MainWindow : Window
         // — the buttons, the pickers and the status line all answer to a press — so redrawing them
         // once a second would be a second's worth of work to say what it already said, and it
         // would take a selection out of the report every time it ran.
-        if (!_offered && !recording.IsPaused && recording.HeardNothingFromTheProgram())
+        if (!_nothingCame
+            && !_openingAnotherProgram
+            && !recording.IsPaused
+            && recording.HeardNothingFromTheProgram())
         {
-            _offered = true;
+            _nothingCame = true;
             Refresh();
             return;
         }

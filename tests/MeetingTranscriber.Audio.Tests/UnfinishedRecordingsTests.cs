@@ -1179,7 +1179,7 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
     /// a recording lives.
     /// </para>
     /// <para>
-    /// A third entry, or a second way on an entry already here, is a folder removal somebody has to
+    /// A fifth entry, or a second way on an entry already here, is a folder removal somebody has to
     /// argue for. So is an entry that outlives its reason: a file allowed a way it no longer holds
     /// is named as an offender of its own, because an allow list can otherwise only ever go too
     /// wide silently. That rule reaches exactly as far as the sweep does, and the sweep reads

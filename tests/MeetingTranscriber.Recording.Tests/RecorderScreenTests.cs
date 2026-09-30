@@ -73,7 +73,7 @@ public class RecorderScreenTests
     [Fact]
     public void The_whole_machine_is_not_takeable_before_a_meeting_is_running()
     {
-        var screen = Screen(RecorderState.Choosing, Everything) with { WholeMachineOffered = true };
+        var screen = Screen(RecorderState.Choosing, Everything) with { NothingCameFromTheProgram = true };
 
         screen.Allows(RecorderPress.RecordTheWholeMachine).ShouldBeFalse();
     }
@@ -132,14 +132,14 @@ public class RecorderScreenTests
     {
         var screen = Screen(RecorderState.Recording, Everything);
 
-        screen.WholeMachineOffered.ShouldBeFalse();
+        screen.NothingCameFromTheProgram.ShouldBeFalse();
         screen.Allows(RecorderPress.RecordTheWholeMachine).ShouldBeFalse();
     }
 
     [Fact]
     public void The_whole_machine_is_takeable_once_the_recording_has_offered_it()
     {
-        var screen = Screen(RecorderState.Recording, Everything) with { WholeMachineOffered = true };
+        var screen = Screen(RecorderState.Recording, Everything) with { NothingCameFromTheProgram = true };
 
         screen.Allows(RecorderPress.RecordTheWholeMachine).ShouldBeTrue();
     }
@@ -149,7 +149,7 @@ public class RecorderScreenTests
     {
         var screen = Screen(RecorderState.Recording, Everything) with
         {
-            WholeMachineOffered = true,
+            NothingCameFromTheProgram = true,
             WholeMachineTaken = true,
         };
 
@@ -166,7 +166,7 @@ public class RecorderScreenTests
         var screen = Screen(
             RecorderState.Recording,
             Everything with { Source = RecorderSource.TheWholeMachine }) with
-        { WholeMachineOffered = true };
+        { NothingCameFromTheProgram = true };
 
         screen.Allows(RecorderPress.RecordTheWholeMachine).ShouldBeFalse();
     }
@@ -178,7 +178,7 @@ public class RecorderScreenTests
     [Fact]
     public void The_whole_machine_is_never_taken_while_the_meeting_is_paused()
     {
-        var screen = Screen(RecorderState.Paused, Everything) with { WholeMachineOffered = true };
+        var screen = Screen(RecorderState.Paused, Everything) with { NothingCameFromTheProgram = true };
 
         screen.Allows(RecorderPress.RecordTheWholeMachine).ShouldBeFalse();
     }
@@ -428,6 +428,133 @@ public class RecorderScreenTests
     [InlineData(RecorderState.WithoutACorpus)]
     public void The_microphone_is_never_opened_again_outside_a_running_meeting(RecorderState state) =>
         Died(state).Allows(RecorderPress.TryTheMicrophoneAgain).ShouldBeFalse();
+
+    /// <summary>
+    /// The notice is the whole of the consent to move channel 0 somewhere else, exactly as it is
+    /// for the whole machine: before the recording has reported that nothing came, there is no
+    /// press.
+    /// </summary>
+    [Fact]
+    public void Another_program_is_not_offered_before_the_recording_has_said_nothing_came() =>
+        Screen(RecorderState.Recording, Everything)
+            .Allows(RecorderPress.ChooseAnotherProgram).ShouldBeFalse();
+
+    [Fact]
+    public void Another_program_is_offered_once_nothing_came_from_the_one_being_followed() =>
+        Silent(RecorderState.Recording).Allows(RecorderPress.ChooseAnotherProgram).ShouldBeTrue();
+
+    /// <summary>
+    /// A picker that is not on screen cannot be pressed, and choosing without the meter in view
+    /// defeats the point of choosing.
+    /// </summary>
+    [Fact]
+    public void Another_program_is_not_offered_while_the_room_below_has_the_window() =>
+        (Silent(RecorderState.Recording) with { TheRoomBelowHasTheWindow = true })
+            .Allows(RecorderPress.ChooseAnotherProgram).ShouldBeFalse();
+
+    /// <summary>
+    /// A paused meeting hears nothing by definition, for the reason the whole machine is refused
+    /// there: the state table, not the screen, is what says so for both new presses.
+    /// </summary>
+    [Fact]
+    public void Another_program_is_never_offered_while_the_meeting_is_paused()
+    {
+        var paused = Silent(RecorderState.Paused) with { AnotherProgramIsBeingChosen = true };
+
+        paused.Allows(RecorderPress.ChooseAnotherProgram).ShouldBeFalse();
+        paused.Allows(RecorderPress.FollowAnotherProgram).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Channel_0_is_moved_only_onto_a_program_somebody_is_choosing()
+    {
+        var recording = Silent(RecorderState.Recording);
+
+        recording.Allows(RecorderPress.FollowAnotherProgram).ShouldBeFalse();
+        (recording with { AnotherProgramIsBeingChosen = true })
+            .Allows(RecorderPress.FollowAnotherProgram).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// One move of channel 0 at a time, whichever press would start a second one.
+    /// </summary>
+    [Fact]
+    public void Nothing_moves_channel_0_while_a_program_is_being_opened()
+    {
+        var opening = Silent(RecorderState.Recording) with
+        {
+            AnotherProgramIsBeingChosen = true,
+            AnotherProgramIsBeingOpened = true,
+        };
+
+        opening.Allows(RecorderPress.RecordTheWholeMachine).ShouldBeFalse();
+        opening.Allows(RecorderPress.ChooseAnotherProgram).ShouldBeFalse();
+        opening.Allows(RecorderPress.FollowAnotherProgram).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void The_whole_machine_taken_ends_the_offer_of_another_program() =>
+        (Silent(RecorderState.Recording) with { WholeMachineTaken = true })
+            .Allows(RecorderPress.ChooseAnotherProgram).ShouldBeFalse();
+
+    /// <summary>
+    /// The list the picker was offering is stale once the whole machine is taken, so a pick left in
+    /// it moves nothing even while it is still open.
+    /// </summary>
+    [Fact]
+    public void No_program_is_followed_once_the_whole_machine_is_taken() =>
+        (Silent(RecorderState.Recording) with
+        {
+            AnotherProgramIsBeingChosen = true,
+            WholeMachineTaken = true,
+        }).Allows(RecorderPress.FollowAnotherProgram).ShouldBeFalse();
+
+    [Theory]
+    [InlineData(RecorderState.Choosing, false)]
+    [InlineData(RecorderState.Starting, false)]
+    [InlineData(RecorderState.Recording, true)]
+    [InlineData(RecorderState.Paused, true)]
+    [InlineData(RecorderState.Finishing, false)]
+    [InlineData(RecorderState.WithoutACorpus, false)]
+    public void Nothing_came_is_said_only_while_a_meeting_records_and_the_whole_machine_was_not_taken(
+        RecorderState state, bool said)
+    {
+        Silent(state).NothingCameIsOnScreen.ShouldBe(said);
+        (Silent(state) with { WholeMachineTaken = true }).NothingCameIsOnScreen.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The recording already names the new program once a move is under way, so the notice would
+    /// say nothing has come from one that has not been judged yet.
+    /// </summary>
+    [Fact]
+    public void Nothing_came_is_not_said_about_a_program_channel_0_is_being_moved_onto() =>
+        (Silent(RecorderState.Recording) with { AnotherProgramIsBeingOpened = true })
+            .NothingCameIsOnScreen.ShouldBeFalse();
+
+    [Fact]
+    public void The_programs_offered_to_move_to_leave_out_the_one_being_followed()
+    {
+        var following = new AudioProcess(1, "a", StartedBy: 1);
+        var other = new AudioProcess(2, "b", StartedBy: 1);
+
+        RecorderScreen.ProgramsChannelZeroMayMoveTo([other, following], following).ShouldBe([other]);
+    }
+
+    [Fact]
+    public void The_programs_offered_to_move_to_are_in_the_order_the_source_picker_lists_them()
+    {
+        var bravo = new AudioProcess(9, "Bravo", StartedBy: 1);
+        var alpha = new AudioProcess(8, "alpha", StartedBy: 1);
+        var alphaToo = new AudioProcess(3, "alpha", StartedBy: 1);
+
+        RecorderScreen.ProgramsChannelZeroMayMoveTo([bravo, alpha, alphaToo], null)
+            .ShouldBe([alphaToo, alpha, bravo]);
+    }
+
+    /// <summary>A meeting whose recording has reported that nothing came from the program.</summary>
+    private static RecorderScreen Silent(RecorderState state) =>
+        Screen(state, Everything) with { NothingCameFromTheProgram = true };
 
     private static RecorderScreen Screen(RecorderState state, RecorderChoices chosen) =>
         new() { State = state, Chosen = chosen };

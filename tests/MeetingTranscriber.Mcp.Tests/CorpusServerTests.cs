@@ -17,8 +17,8 @@ namespace MeetingTranscriber.Mcp.Tests;
 /// <remarks>
 /// <para>
 /// No process and no socket. The transport is a pair of pipes, which is the one thing here that is
-/// not what the executable runs — <c>CorpusServer</c>'s own remarks say what that leaves owed on
-/// ISC-98 and why nothing under <c>tests/</c> closes it today.
+/// not what the executable runs — <c>ChildProcessTests</c> is the fact that runs the executable over
+/// its own standard streams.
 /// </para>
 /// <para>
 /// The corpus is pointed at through <see cref="CorpusLocation"/> and never handed over as a folder,

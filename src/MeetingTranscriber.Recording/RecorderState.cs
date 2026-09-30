@@ -82,6 +82,19 @@ public enum RecorderPress
     RecordTheWholeMachine,
 
     /// <summary>
+    /// Open channel 0's picker again, so another program can be chosen. The <em>Cambiar</em> on the
+    /// notice, offered by the recording's report that nothing came from the program, never by the
+    /// screen.
+    /// </summary>
+    ChooseAnotherProgram,
+
+    /// <summary>
+    /// Point channel 0 at the program chosen in that picker. The meeting goes on, and so does the
+    /// question of whether anything arrives from the new program.
+    /// </summary>
+    FollowAnotherProgram,
+
+    /// <summary>
     /// Open the microphone again, after its stream stopped responding. Offered by the meters and
     /// never by the screen, the same way the press above is: what says a source died is its stream
     /// having ended, which is a reading and not a layout.
@@ -89,7 +102,8 @@ public enum RecorderPress
     /// <remarks>
     /// Channel 1 and not either channel, because opening a source again is only something channel 1
     /// can do — <c>CaptureSession.OpenTheMicrophoneAgain</c> says why, and a channel 0 that stopped
-    /// is answered by <see cref="RecordTheWholeMachine"/> instead.
+    /// is answered by pointing it somewhere — <see cref="RecordTheWholeMachine"/> or
+    /// <see cref="FollowAnotherProgram"/>.
     /// </remarks>
     TryTheMicrophoneAgain,
 }
@@ -114,10 +128,10 @@ public static class RecorderStates
             // whether it is live yet.
             [RecorderState.Choosing] = Set(RecorderPress.Start),
 
-            // Being recorded. The whole machine's audio is takeable only here: the offer comes
-            // from channel 0 having heard nothing, and a paused meeting hears nothing by
-            // definition, so a paused recording is exactly where that rule would say the wrong
-            // thing.
+            // Being recorded. The whole machine's audio is takeable only here, and so is another
+            // program: the offer comes from channel 0 having heard nothing, and a paused meeting
+            // hears nothing by definition, so a paused recording is exactly where that rule would
+            // say the wrong thing.
             //
             // Opening the microphone again is here and on Paused both, which is the opposite of
             // the rule above and is the same rule read properly: what makes the whole machine wrong
@@ -129,6 +143,8 @@ public static class RecorderStates
                 RecorderPress.Pause,
                 RecorderPress.Stop,
                 RecorderPress.RecordTheWholeMachine,
+                RecorderPress.ChooseAnotherProgram,
+                RecorderPress.FollowAnotherProgram,
                 RecorderPress.TryTheMicrophoneAgain),
 
             // Paused. Stopping from here is allowed and finishes the meeting with the pause in it

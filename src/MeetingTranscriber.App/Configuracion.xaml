@@ -252,7 +252,7 @@
                         Click="OnChangeWhereItIsKept"
                         Visibility="Collapsed"
                         AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhereTheCorpusIsKept)}"
-                        Content="{x:Bind In(loc:UiTexts.ChangeWhereItIsKept)}" />
+                        Content="{x:Bind In(loc:UiTexts.Change)}" />
                 </Grid>
 
                 <!-- Where Claude Code is, the fifth block this screen carries. The data line names
@@ -294,7 +294,7 @@
                         Style="{StaticResource PillButton}"
                         Click="OnChangeWhereClaudeCodeIs"
                         AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhereClaudeCodeIs)}"
-                        Content="{x:Bind In(loc:UiTexts.ChangeWhereItIsKept)}" />
+                        Content="{x:Bind In(loc:UiTexts.Change)}" />
                 </Grid>
 
                 <TextBlock

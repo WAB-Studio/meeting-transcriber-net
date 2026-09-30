@@ -5,21 +5,9 @@ namespace MeetingTranscriber.Processing.Tests.Summaries.ClaudeCode;
 /// <summary>Where Claude Code is, when somebody chose and when nobody did.</summary>
 public class ClaudeCodeExecutableTests : IDisposable
 {
-    private readonly DirectoryInfo _root = new(
-        Path.Combine(Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
+    private readonly TemporaryFolder _temporary = new();
 
-    public ClaudeCodeExecutableTests() => _root.Create();
-
-    public void Dispose()
-    {
-        try
-        {
-            Directory.Delete(_root.FullName, recursive: true);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-        }
-    }
+    public void Dispose() => _temporary.Dispose();
 
     [Fact]
     public void The_one_somebody_chose_wins_over_the_path()
@@ -35,7 +23,7 @@ public class ClaudeCodeExecutableTests : IDisposable
     [Fact]
     public void The_chosen_one_wins_even_when_it_is_gone()
     {
-        var chosen = new FileInfo(Path.Combine(_root.FullName, "gone", "claude.exe"));
+        var chosen = new FileInfo(Path.Combine(_temporary.Folder.FullName, "gone", "claude.exe"));
 
         var found = ClaudeCodeExecutable.Find(chosen, null);
 
@@ -91,7 +79,7 @@ public class ClaudeCodeExecutableTests : IDisposable
 
     private DirectoryInfo Folder(string name)
     {
-        var folder = new DirectoryInfo(Path.Combine(_root.FullName, name));
+        var folder = new DirectoryInfo(Path.Combine(_temporary.Folder.FullName, name));
         folder.Create();
         return folder;
     }

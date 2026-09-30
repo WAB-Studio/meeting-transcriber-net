@@ -19,12 +19,12 @@ namespace MeetingTranscriber.Mcp;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>ISC-98 says this server answers read-only over stdio and never writes, and it is open.</b>
-/// What is proved by a build agent is the read-only half and the whole of the tool surface, over
-/// <c>StreamServerTransport</c> — a real client, a real session and real answers, over two pipes
-/// rather than over stdio — and now also a real child process, started and spoken to over its own
-/// standard input and output, in <c>ChildProcessTests</c>. Ticking the claim itself is left for
-/// whoever next holds <c>ISA.md</c>.
+/// <b>ISC-98 says this server answers read-only over stdio and never writes.</b> That it answers
+/// over stdio is <c>ChildProcessTests.The_server_answers_a_child_process_over_its_own_standard_streams</c>,
+/// a real child process started and spoken to over its own standard input and output; that it never
+/// writes is the three source sweeps in <c>ReadOnlyTests</c>, which are sweeps of the source and not
+/// a run. The whole tool surface is held over <c>StreamServerTransport</c> — a real client, a real
+/// session and real answers, over two pipes.
 /// </para>
 /// <para>
 /// <b>The barrier was not packaging and not an alias.</b> A child process with redirected streams

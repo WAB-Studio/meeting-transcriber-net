@@ -34,11 +34,10 @@
          loudest where nothing had happened.
 
          The artboard puts a fourth thing on this row — *se escucha*, right-aligned in olivo — and
-         it is not here: what is left of it is #102's, and the room it takes is why the pill stops
-         short of the column's edge instead of running to it. The other half of that word arrived
-         with #101 and went under the bar rather than on this row — a source that died says *se
-         cortó a las 08:12* where its level was, because that is the place on the component the
-         level vacated. -->
+         it is not drawn: the design allows the level in mono instead, so the word is not needed to
+         say the channel is alive. *Sin señal* stands where the level does, under the bar, like *se
+         cortó a las 08:12* — a source that died says that where its level was, because that is the
+         place on the component the level vacated. The pill still stops at its own content. -->
 
     <Grid RowSpacing="10">
         <Grid.RowDefinitions>
@@ -75,8 +74,9 @@
                  34 — what it chooses is the two texts to its left. A screen reader has no label to
                  read off those, so the window gives it one by name. -->
             <!-- Left and not stretched, with a floor and no ceiling. The artboard runs the pill
-                 from the role to just short of the status word; that word is #102's, so what holds
-                 its room open until then is the pill stopping at its own content. No ceiling
+                 from the role to just short of a status word; there is none on this row (*sin
+                 señal* is under the bar, where the level is), so the pill stops at its own
+                 content. No ceiling
                  because a `ContentPresenter` cannot trim: a maximum width is a device name cut
                  flat at the pill's edge, reading as a name that is still going. -->
             <ComboBox

@@ -354,11 +354,9 @@ public sealed record RecordingMeters
     /// <remarks>
     /// <para>
     /// One channel and not both, and it is the engine that decides that rather than the screen.
-    /// Both ways of obtaining channel 0 open through a loopback that carries a sequence on, and a
-    /// program refuses to be opened under one — <c>CaptureTarget.Program.Open</c> says so in its own
-    /// words — so a channel 0 that stopped cannot be opened again where it is. What it is offered
-    /// instead is the whole machine, which is a press of its own. A dead channel 0 still says it
-    /// died and still dims: what it has no answer to is *try that again*.
+    /// Channel 0 that stopped is answered by pointing it somewhere else, not by trying it again:
+    /// <c>CaptureSession.OpenTheMicrophoneAgain</c> says why. A dead channel 0 still says it died
+    /// and still dims: what it has no answer to is *try that again*.
     /// </para>
     /// <para>
     /// False for a screen with no meeting on it, because <see cref="Channels"/> is empty there —

@@ -23,6 +23,7 @@
             x:Name="TheirNameBox"
             Style="{StaticResource TypedField}"
             TextChanged="OnTheirNameTyped"
+            KeyDown="OnTheirNameKey"
             Header="{x:Bind In(loc:UiTexts.NameOfAPerson)}" />
 
         <!-- The organization is said beside the picker and never as a header on it: a pill has no

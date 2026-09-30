@@ -350,7 +350,9 @@ public sealed partial class SayingWhoIsWho : UserControl
     }
 
     /// <summary>
-    /// The one row that offers to hear a voice alone, or nothing when there is nothing to offer.
+    /// The rows that offer to hear a voice alone, or nothing when there is nothing to offer: the
+    /// main clip, and under it — only for a voice that spoke little — the further stretches it
+    /// carries, each a clip of its own.
     /// </summary>
     /// <remarks>
     /// A clip is drawn only on a voice that carries a picker — the recording already settled a
@@ -358,7 +360,9 @@ public sealed partial class SayingWhoIsWho : UserControl
     /// there — only when <paramref name="read"/>'s own recording is
     /// <see cref="RecordedAudio.Playable"/>, the domain's own answer to whether there is anything to
     /// play, and only once <see cref="_playing"/> is really open on it. A voice with no stretch it
-    /// spoke alone in is left with its longest turn to read and no clip to offer either.
+    /// spoke alone in is left with its longest turn to read and no clip to offer either. The main
+    /// clip is <c>clip-{position}</c> and the further ones <c>clip-{position}-{n}</c>, n from 1,
+    /// under <see cref="UiTexts.OtherStretches"/>.
     /// </remarks>
     private UIElement? ClipRow(VoicesAsHeard read, Voice voice, int position)
     {
@@ -370,8 +374,30 @@ public sealed partial class SayingWhoIsWho : UserControl
             return null;
         }
 
+        var main = ClipLine(voice, stretch, $"clip-{position}", playing);
+
+        if (voice.OtherStretches.Count == 0)
+        {
+            return main;
+        }
+
+        var rows = new StackPanel { Spacing = 4 };
+        rows.Children.Add(main);
+        rows.Children.Add(new TextBlock { Text = In(UiTexts.OtherStretches), Style = Chrome("OtherStretchesSay") });
+
+        for (var n = 0; n < voice.OtherStretches.Count; n++)
+        {
+            rows.Children.Add(ClipLine(voice, voice.OtherStretches[n], $"clip-{position}-{n + 1}", playing));
+        }
+
+        return rows;
+    }
+
+    /// <summary>One clip: its Play/Pause press and where its stretch falls in the meeting.</summary>
+    private StackPanel ClipLine(Voice voice, HeardAlone clip, string automationId, Playback playing)
+    {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        var isPlayingThis = _playingLabel == voice.Label && playing.IsPlaying;
+        var isPlayingThis = _playingLabel == voice.Label && _playingClip == clip && playing.IsPlaying;
 
         var button = new Button
         {
@@ -379,19 +405,20 @@ public sealed partial class SayingWhoIsWho : UserControl
             Style = Chrome("ClipButton"),
         };
 
-        AutomationProperties.SetAutomationId(button, $"clip-{position}");
-        button.Click += (_, _) => OnClipToggle(voice, stretch);
+        AutomationProperties.SetAutomationId(button, automationId);
+        button.Click += (_, _) => OnClipToggle(voice, clip);
 
         row.Children.Add(button);
         row.Children.Add(new TextBlock
         {
-            Text = ScreenNumbers.Between(stretch.From, stretch.To),
+            Text = ScreenNumbers.Between(clip.From, clip.To),
             Style = Chrome("ClipRange"),
             VerticalAlignment = VerticalAlignment.Center,
         });
 
         return row;
     }
+
 
     /// <summary>The name shown and not chosen, on a voice the recording already settled.</summary>
     private FrameworkElement SettledName(Voice voice) => new Border
@@ -495,7 +522,7 @@ public sealed partial class SayingWhoIsWho : UserControl
             return;
         }
 
-        if (_playingLabel == voice.Label && playing.IsPlaying)
+        if (_playingLabel == voice.Label && _playingClip == clip && playing.IsPlaying)
         {
             playing.Pause();
             _clipWatch.Stop();

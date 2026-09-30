@@ -24,7 +24,8 @@ public static class RenderingAgain
     /// transaction when one is open and opening one of its own otherwise.
     /// </summary>
     /// <remarks>
-    /// <c>NamingTheVoices</c> already opens a transaction before reaching here, so it joins it.
+    /// <c>NamingTheVoices</c> already opens a transaction before reaching here, so it joins it. <c>OwedRenders</c>
+    /// opens one too, for a meeting a rename left on an older name.
     /// <c>RenamingSomebody</c> renders each meeting it touches on a connection of its own, with no
     /// transaction open yet, so for it this is the branch that opens one — a caller with none of its
     /// own would otherwise render a summarised meeting straight into <see cref="MeetingRenderer"/>'s

@@ -22,12 +22,15 @@ public sealed class CaptureSource : IDisposable
     private readonly ManualResetEventSlim ended = new(initialState: false);
 
     /// <summary>
-    /// What the device handed over, before the pause has had its say. The meter beside it is what
-    /// the recording got, which is the right answer for a level somebody is watching and the wrong
-    /// one for whether a program has ever played anything: a meeting paused over its first seconds
-    /// would erase the program's audio and then be told the program was the wrong one.
+    /// What the device handed over since it began listening to what it listens to now, before the
+    /// pause has had its say. The meter beside it is what the recording got, which is the right
+    /// answer for a level somebody is watching and the wrong one for whether a program has ever
+    /// played anything: a meeting paused over its first seconds would erase the program's audio and
+    /// then be told the program was the wrong one. Replaced by <see cref="ListenTo"/> at the
+    /// handover, because a program moved onto after a loud one is judged on its own silence and
+    /// not on the one before it; read through <see cref="Volatile"/> by the capture callback.
     /// </summary>
-    private readonly SourceMeter delivered = new();
+    private SourceMeter delivered = new();
 
     /// <summary>
     /// The streams this source used to be on, kept so that one given up on is asked again when this
@@ -54,11 +57,12 @@ public sealed class CaptureSource : IDisposable
     private WasapiStream stream;
 
     /// <summary>
-    /// When it started, on the clock that does not move when the system's does. What the ten
-    /// seconds a silent program is given are counted against — a wall clock corrected mid meeting
-    /// would offer the whole machine at once or never.
+    /// When it began listening to what it listens to now, on the clock that does not move when the
+    /// system's does: when it started, and again at every handover in <see cref="ListenTo"/>. What
+    /// the ten seconds a silent program is given are counted against — a wall clock corrected mid
+    /// meeting would offer the whole machine at once or never.
     /// </summary>
-    private long openedAt;
+    private long listeningSince;
 
     /// <summary>
     /// The move this source is on, or nothing before it has ever been moved. Read on the draining
@@ -167,13 +171,19 @@ public sealed class CaptureSource : IDisposable
     public LevelReading Loudest => meter.Loudest;
 
     /// <summary>
-    /// The loudest the device has handed over since it opened, whether or not the recording was
-    /// paused for it. What says whether a program has ever played anything.
+    /// The loudest the device has handed over since it began listening to what it listens to now,
+    /// whether or not the recording was paused for it. What says whether that program has played
+    /// anything.
     /// </summary>
-    public LevelReading Delivered => delivered.Loudest;
+    public LevelReading Delivered => Volatile.Read(ref delivered).Loudest;
 
-    /// <summary>How long it has been open, measured on a clock nothing can correct.</summary>
-    public Duration OpenFor => Duration.FromTimeSpan(TimeProvider.System.GetElapsedTime(openedAt));
+    /// <summary>
+    /// How long it has been listening to what it listens to now, measured on a clock nothing can
+    /// correct. Not how long it has been open: a move starts it over, because the silence that
+    /// matters is the current program's own.
+    /// </summary>
+    public Duration ListeningFor =>
+        Duration.FromTimeSpan(TimeProvider.System.GetElapsedTime(Volatile.Read(ref listeningSince)));
 
     /// <summary>
     /// Whether the stream is over. True before <see cref="Stop"/> means it ended on its own, and
@@ -206,7 +216,7 @@ public sealed class CaptureSource : IDisposable
     /// going.
     /// </para>
     /// <para>
-    /// A wall clock and not the monotonic one <see cref="OpenFor"/> is measured on, which is the
+    /// A wall clock and not the monotonic one <see cref="ListeningFor"/> is measured on, which is the
     /// opposite choice to the one made ten lines up and for the opposite reason. That one is a
     /// length compared against a deadline, so a clock corrected mid meeting must not move it; this
     /// is a time of day somebody reads off a screen, and the correction is exactly what they want
@@ -370,6 +380,17 @@ public sealed class CaptureSource : IDisposable
         Volatile.Write(ref endedAt, 0);
         ended.Reset();
         Listening = destination;
+
+        // The silence starts over at the handover, for the reason `delivered` says: what the last
+        // program played is not evidence about this one. Both are written before the line below, so
+        // the new stream's first block lands on a fresh meter and cannot be erased by the reset. The
+        // old stream is still accepted until that line, so a block of it may land on the fresh meter
+        // too, and that errs toward "it played something", which is the side that offers nothing.
+        // The clock first: a reader between the two lines then sees a fresh clock over the old
+        // meter, which is too young to report, where the other order shows a fresh meter over a
+        // clock that has already run its ten seconds.
+        Volatile.Write(ref listeningSince, TimeProvider.System.GetTimestamp());
+        Volatile.Write(ref delivered, new SourceMeter());
 
         // The one line the move happens on. Every block the new device has handed over so far was
         // dropped, and from here they are the recording — the old one's are dropped by the same
@@ -652,7 +673,7 @@ public sealed class CaptureSource : IDisposable
         // threw before here rather than on a capture loop nobody is watching.
         Underway(stream);
         StartedAt = UtcTimestamp.From(TimeProvider.System.GetUtcNow());
-        openedAt = TimeProvider.System.GetTimestamp();
+        Volatile.Write(ref listeningSince, TimeProvider.System.GetTimestamp());
         running = true;
     }
 
@@ -762,7 +783,7 @@ public sealed class CaptureSource : IDisposable
         // The block as the device handed it over, which is the same block unless the meeting is
         // paused — and the pause is the only thing that ever substitutes one, so the reading is
         // taken twice only for the stretch where the two really are different.
-        delivered.Add(ReferenceEquals(heard, packet) ? level : Levels.Peak(packet.Samples.Span, arriving));
+        Volatile.Read(ref delivered).Add(ReferenceEquals(heard, packet) ? level : Levels.Peak(packet.Samples.Span, arriving));
 
         spool.Write(heard);
     }

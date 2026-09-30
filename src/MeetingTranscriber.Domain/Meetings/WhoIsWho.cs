@@ -18,9 +18,13 @@ public sealed record HeardAlone(Duration From, Duration To);
 
 /// <summary>
 /// One voice of one meeting: the label its turns carry, what it is called until somebody names it,
-/// how much it said, the turn it is quoted by, the stretch it may be heard alone in, and who it is
-/// once somebody has said.
+/// how much it said, the turn it is quoted by, the stretch it may be heard alone in, the further
+/// stretches a voice that spoke little is offered, and who it is once somebody has said.
 /// </summary>
+/// <param name="OtherStretches">
+/// The further stretches a voice that spoke little is offered, in meeting order; empty for every
+/// other voice.
+/// </param>
 public sealed record Voice(
     string Label,
     bool IsTheMicrophonesOwn,
@@ -28,6 +32,7 @@ public sealed record Voice(
     int TurnsSaid,
     Turn Quoted,
     HeardAlone? Alone,
+    IReadOnlyList<HeardAlone> OtherStretches,
     Guid? PersonId,
     string? PersonName,
     bool SettledByTheRecording);
@@ -51,6 +56,12 @@ public sealed record WhoIsWho(IReadOnlyList<Voice> Voices)
     /// by, and short enough that listening to every voice on a meeting is not an errand.
     /// </summary>
     public static Duration LongestClip { get; } = Duration.FromMilliseconds(15_000);
+
+    /// <summary>
+    /// The most clips one voice is offered: the stretch it is heard alone in for longest, and two
+    /// more when that one is shorter than <see cref="LongestClip"/> — three rather than one.
+    /// </summary>
+    public static int MostClipsOfOneVoice { get; } = 3;
 
     /// <summary>
     /// Builds the voices of one meeting out of its turns and whatever a person or the recording has
@@ -77,6 +88,15 @@ public sealed record WhoIsWho(IReadOnlyList<Voice> Voices)
     /// is heard alone in, rather than a turn a third of which was somebody else's "mm-hmm", is the
     /// better sentence to read whether or not there ends up being anything to press play on. A voice
     /// with no solo stretch at all keeps its longest turn, exactly as before.
+    /// </para>
+    /// <para>
+    /// A voice whose longest solo stretch is shorter than <see cref="LongestClip"/> spoke too little
+    /// for one clip to recognise it by, so it also carries <see cref="Voice.OtherStretches"/>: up to
+    /// <see cref="MostClipsOfOneVoice"/> minus one more, each from a turn of its own and in meeting
+    /// order. Never the voice's first solo stretch, whatever its length — the main clip is the
+    /// longest, and offering the first besides would break ISC-191.2 (a speaker is never offered the
+    /// first stretch they spoke alone in when the meeting holds a longer one) on every meeting. No
+    /// floor on how short a further stretch may be: nothing supplies a number for one yet.
     /// </para>
     /// </remarks>
     public static WhoIsWho Of(
@@ -123,12 +143,16 @@ public sealed record WhoIsWho(IReadOnlyList<Voice> Voices)
             var others = turns
                 .Where(turn => !string.Equals(turn.SpeakerLabel, label, StringComparison.Ordinal))
                 .ToArray();
-            var stretch = LongestSoloStretch(said, others);
+            var pieces = SoloPieces(said, others);
+            var stretch = Longest(pieces);
 
             var quoted = stretch?.Turn ?? longestTurn;
             var alone = stretch is { } found
                 ? new HeardAlone(found.Start, Offered(found.Start, found.End))
                 : null;
+            IReadOnlyList<HeardAlone> further = alone is { } main && main.To - main.From < LongestClip
+                ? OtherStretchesOf(pieces, stretch!.Value)
+                : [];
 
             var isMine = string.Equals(label, mine, StringComparison.Ordinal);
             byLabel.TryGetValue(label, out var settled);
@@ -140,6 +164,7 @@ public sealed record WhoIsWho(IReadOnlyList<Voice> Voices)
                 said.Length,
                 quoted,
                 alone,
+                further,
                 settled?.PersonId,
                 settled?.PersonName,
                 settled?.By is SpeakerAssignmentSource.Channel));
@@ -156,30 +181,73 @@ public sealed record WhoIsWho(IReadOnlyList<Voice> Voices)
     public string? NameOf(string label) => ForLabel(label)?.PersonName;
 
     /// <summary>
-    /// The longest stretch one voice's own turns hold with nobody else talking over it, and the
-    /// turn it is inside — the earliest such stretch when two are exactly as long.
+    /// Every stretch one voice's own turns hold with nobody else talking over it, in meeting order,
+    /// each with the turn it is inside.
     /// </summary>
-    private static (Turn Turn, Duration Start, Duration End)? LongestSoloStretch(
+    private static List<(Turn Turn, Duration Start, Duration End)> SoloPieces(
         IReadOnlyList<Turn> mine, IReadOnlyList<Turn> others)
     {
-        (Turn Turn, Duration Start, Duration End)? longest = null;
+        var pieces = new List<(Turn Turn, Duration Start, Duration End)>();
 
         foreach (var turn in mine)
         {
             foreach (var (start, end) in Alone(turn.Start, turn.End, others))
             {
-                var length = end - start;
+                pieces.Add((turn, start, end));
+            }
+        }
 
-                if (longest is not { } current
-                    || length > current.End - current.Start
-                    || (length == current.End - current.Start && start < current.Start))
-                {
-                    longest = (turn, start, end);
-                }
+        return pieces;
+    }
+
+    /// <summary>
+    /// The longest of these stretches, and the turn it is inside — the earliest when two are
+    /// exactly as long.
+    /// </summary>
+    private static (Turn Turn, Duration Start, Duration End)? Longest(
+        IReadOnlyList<(Turn Turn, Duration Start, Duration End)> pieces)
+    {
+        (Turn Turn, Duration Start, Duration End)? longest = null;
+
+        foreach (var (turn, start, end) in pieces)
+        {
+            var length = end - start;
+
+            if (longest is not { } current
+                || length > current.End - current.Start
+                || (length == current.End - current.Start && start < current.Start))
+            {
+                longest = (turn, start, end);
             }
         }
 
         return longest;
+    }
+
+    /// <summary>
+    /// The further stretches: the longest piece of each turn other than the main clip's, leaving out
+    /// the voice's earliest piece, the longest <see cref="MostClipsOfOneVoice"/> minus one of them
+    /// (the earliest when two are as long), drawn in meeting order.
+    /// </summary>
+    private static HeardAlone[] OtherStretchesOf(
+        IReadOnlyList<(Turn Turn, Duration Start, Duration End)> pieces,
+        (Turn Turn, Duration Start, Duration End) main)
+    {
+        var earliest = pieces.MinBy(piece => piece.Start.Milliseconds);
+
+        return pieces
+            .Where(piece => piece.Turn.Ordinal != main.Turn.Ordinal && piece.Start != earliest.Start)
+            .GroupBy(piece => piece.Turn.Ordinal)
+            .Select(group => group
+                .OrderByDescending(piece => (piece.End - piece.Start).Milliseconds)
+                .ThenBy(piece => piece.Start.Milliseconds)
+                .First())
+            .OrderByDescending(piece => (piece.End - piece.Start).Milliseconds)
+            .ThenBy(piece => piece.Start.Milliseconds)
+            .Take(MostClipsOfOneVoice - 1)
+            .OrderBy(piece => piece.Start.Milliseconds)
+            .Select(piece => new HeardAlone(piece.Start, Offered(piece.Start, piece.End)))
+            .ToArray();
     }
 
     /// <summary>

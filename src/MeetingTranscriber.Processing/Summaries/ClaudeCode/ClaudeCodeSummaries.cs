@@ -99,12 +99,13 @@ public sealed class ClaudeCodeSummaries : ISummaryProvider
     /// <summary>
     /// One built for this machine: the real environment, filtered through
     /// <see cref="AllowedEnvironmentNames"/>, and <c>%TEMP%\meeting-transcriber-summaries</c> as the
-    /// folder every run's own workspace is made under.
+    /// folder every run's own workspace is made under, or <paramref name="workspaces"/> when one is
+    /// given — what <c>claude-live</c> uses, so the folders above a run are ones it planted.
     /// </summary>
-    public static ClaudeCodeSummaries OnThisMachine(Func<FileInfo?> whereItIs) => new(
+    public static ClaudeCodeSummaries OnThisMachine(Func<FileInfo?> whereItIs, DirectoryInfo? workspaces = null) => new(
         whereItIs,
         OnlyAllowed(Environment.GetEnvironmentVariables()),
-        new DirectoryInfo(Path.Combine(Path.GetTempPath(), "meeting-transcriber-summaries")),
+        workspaces ?? new DirectoryInfo(Path.Combine(Path.GetTempPath(), "meeting-transcriber-summaries")),
         LongestARunMayTake);
 
     public string Name => ProviderName;

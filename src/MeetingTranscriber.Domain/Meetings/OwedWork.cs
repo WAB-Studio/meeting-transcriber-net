@@ -52,6 +52,17 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
     /// </summary>
     public bool MayBeLeft => Standing.MayBeLeft();
 
+    /// <summary>Whether a running summary can be stopped from this screen.</summary>
+    /// <remarks>
+    /// The one press offered over <see cref="StageStanding.Running"/>, which every other kind of
+    /// stage offers nothing over: a transcription in flight is not something a person can call off,
+    /// because there is no way to ask Deepgram whether it already landed. A summary is different —
+    /// <see cref="ProcessingJob.Cancel"/> is a move the job state table allows off
+    /// <see cref="JobState.Running"/>, and stopping the process behind it spends nothing more than
+    /// what already ran.
+    /// </remarks>
+    public bool MayBeStopped => Next is JobKind.Extract && Standing is StageStanding.Running;
+
     /// <summary>
     /// The one job row that stops a meeting on a person, said once as an expression because the
     /// same question gets asked in two places that cannot share a call: <see cref="Of"/> asks it

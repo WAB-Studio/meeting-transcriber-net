@@ -222,7 +222,9 @@
                      The channels are two and they are fixed: channel 0 is the others, channel 1 is
                      you. This is never a list. Everything in it is dead the moment a recording
                      starts — changing the microphone half way through is not a thing the engine can
-                     do, so it is not a thing this screen offers. -->
+                     do, so it is not a thing this screen offers. The one exception is channel 0's
+                     picker, which comes back to life when *Cambiar* is pressed on the notice that
+                     nothing arrived from its program: pick, look at the meter, pick the next. -->
                 <Grid ColumnSpacing="20">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -479,10 +481,11 @@
             <!-- A device dying is an event and not something to find by looking.
 
                  Channel 0 gets the line and no press, and that is the engine's answer rather than
-                 a gap: both ways of obtaining channel 0 carry a sequence on, and a program refuses
-                 to be opened under one, so there is no *Reintentar* to make for it.
-                 `CaptureSession.OpenTheMicrophoneAgain` says it in full. What channel 0 has is
-                 *Grabar toda la máquina*, which is the offer further down this row. -->
+                 a gap: a channel 0 that stopped is answered by pointing it somewhere else, not by
+                 trying it again, so there is no *Reintentar* to make for it.
+                 `CaptureSession.OpenTheMicrophoneAgain` says it in full. The two ways out further
+                 down this row, *Cambiar* and *Grabar toda la máquina*, answer a program that
+                 brought nothing; a program that played and then died is not offered them. -->
             <TextBlock
                 x:Name="OthersStopped"
                 Style="{StaticResource BodyText}"
@@ -548,33 +551,52 @@
                 TextWrapping="Wrap"
                 Visibility="Collapsed" />
 
-            <!-- The offer, and it is not on screen until the recording has made it. That is the
+            <!-- The notice, and it is not on screen until the recording has made it. That is the
                  whole of the consent here: there is nothing to press early, so nothing pressed
                  early can be spent on it.
 
-                 Here rather than on the card for the reason the five lines above are, and it is
-                 the one of the six that is a press: it appears while a meeting is running, which
-                 is exactly when the card may have travelled out of the way, and an offer nobody
-                 can see or reach is the recording of an hour of silence the application did
-                 notice. It is not on the strip either — the strip is the one thing that stands in
-                 for the card, and a notice with an act on it is not a line on a strip.
+                 Here rather than on the card for the reason the lines above are, and the two ways
+                 out are presses: it appears while a meeting is running, which is exactly when the
+                 card may have travelled out of the way, and an offer nobody can see or reach is the
+                 recording of an hour of silence the application did notice. It is not on the strip
+                 either — the strip is the one thing that stands in for the card, and a notice with
+                 an act on it is not a line on a strip. Channel 0's meter says *sin señal* beside the
+                 picker, which is the evidence; the sentence and its presses are here.
 
-                 Not pico, and `docs/design.md`'s `NadaLlego` says why in as many words: taking
-                 the whole machine costs nothing and loses nothing. It is the act on a
-                 notice, and an act on a notice takes the normal rank. A notice's act sits on
-                 the right of it, which is the grammar every row on every screen keeps. -->
-            <Grid x:Name="WholeMachineOffer" ColumnSpacing="16" Visibility="Collapsed">
+                 The sentence is a sibling of the grid holding the presses and not a child of it,
+                 for the reason the fault lines are: a collapsed element is not in the automation
+                 tree, so a live region under a container the code-behind collapses is told its
+                 words into nothing, and LiveRegionTests fails if anything stands between it and
+                 the row. Told, not bound, like the lines above. Polite, because nothing broke.
+                 Never the running count of seconds the artboard draws: a live region whose text
+                 changes every second is read out every second. -->
+            <TextBlock
+                x:Name="OthersSentNothing"
+                Style="{StaticResource BodyText}"
+                AutomationProperties.LiveSetting="Polite"
+                TextWrapping="Wrap"
+                Visibility="Collapsed" />
+
+            <!-- Two ways out, neither of which stops the meeting. Not pico, and `docs/design.md`'s
+                 `NadaLlego` says why in as many words: taking the whole machine costs nothing and
+                 loses nothing. *Cambiar* is the neutral press on the left, since it opens a picker
+                 rather than answering the notice; the act that makes audio arrive sits on the
+                 right of it, which is the grammar every row on every screen keeps. -->
+            <Grid x:Name="WaysOutOfTheSilence" ColumnSpacing="16" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <TextBlock
+                <Button
+                    x:Name="ChangeTheProgramButton"
                     Grid.Column="0"
+                    HorizontalAlignment="Left"
                     VerticalAlignment="Center"
-                    Text="{x:Bind In(loc:UiTexts.NothingCameFromThatProgram)}"
-                    Style="{StaticResource BodyText}"
-                    TextWrapping="Wrap" />
+                    Style="{StaticResource ButtonAtTheMargin}"
+                    Click="OnChooseAnotherProgram"
+                    AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhatChannel0Follows)}"
+                    Content="{x:Bind In(loc:UiTexts.Change)}" />
                 <Button
                     x:Name="WholeMachineButton"
                     Grid.Column="1"

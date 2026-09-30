@@ -10,7 +10,8 @@
     mc:Ignorable="d">
 
     <!-- Who is who, on one meeting. One card per voice its turns carry: what it is called until
-         somebody names it, how much it said, and its longest turn as a quotation. A voice the
+         somebody names it, how much it said, its longest turn as a quotation, a clip of it speaking
+         and, for a voice that spoke little, two more. A voice the
          recording already settled — the microphone's own, when it caught exactly one speaker —
          shows the name in a pill and no picker; every other voice offers everybody the corpus
          holds, naming somebody new, and correcting whoever already stands there.
@@ -106,6 +107,9 @@
             <!-- Where a clip's stretch falls in the meeting: the data rank, the same one
                  `ScreenNumbers` writes every other machine number in. -->
             <Style x:Key="ClipRange" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
+
+            <!-- The words over the further clips of a voice that spoke little. -->
+            <Style x:Key="OtherStretchesSay" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
         </Grid.Resources>
 
         <Grid.RowDefinitions>

@@ -122,18 +122,8 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAu
     /// </summary>
     public ExtractionRefusal? WhyTheSummaryWasRefused { get; init; }
 
-    /// <summary>
-    /// Whether a running summary can be stopped from this screen.
-    /// </summary>
-    /// <remarks>
-    /// The one press offered over <see cref="StageStanding.Running"/>, which every other kind of
-    /// stage offers nothing over: a transcription in flight is not something a person can call off,
-    /// because there is no way to ask Deepgram whether it already landed. A summary is different —
-    /// <see cref="ProcessingJob.Cancel"/> is a move the job state table allows off
-    /// <see cref="JobState.Running"/>, and stopping the process behind it spends nothing more than
-    /// what already ran.
-    /// </remarks>
-    public bool TheSummaryMayBeStopped => Owed.Next is JobKind.Extract && Owed.Standing is StageStanding.Running;
+    /// <summary>Whether a running summary can be stopped from this screen: <see cref="OwedWork.MayBeStopped"/>.</summary>
+    public bool TheSummaryMayBeStopped => Owed.MayBeStopped;
 }
 
 /// <summary>

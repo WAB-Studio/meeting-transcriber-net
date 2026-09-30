@@ -149,9 +149,9 @@ public sealed partial class ChannelStrip : UserControl
     /// for the same row read faintly.
     /// </para>
     /// </remarks>
-    public float? Show(ChannelReading? reading)
+    public float? Show(ChannelReading? reading, bool noSignal)
     {
-        Meter.Show(reading);
+        Meter.Show(reading, noSignal);
         Opacity = reading is { Stopped: true } ? WhenItsSourceDied : 1;
         return Meter.LoudestSoFar;
     }

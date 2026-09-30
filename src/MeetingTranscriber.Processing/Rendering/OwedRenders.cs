@@ -27,6 +27,13 @@ public sealed record RendersCaughtUp(
 /// behind for the next one, so nothing is remembered between runs and nothing has to be.
 /// </para>
 /// <para>
+/// It is also owed while its transcript was written before a person named on one of its voices was
+/// last changed — a rename is the case it exists for, and any other edit of the person costs one
+/// render more, after which the transcript is newer again. A rename renders each meeting it
+/// touches itself and names the ones it could not; this is what finds those, and any the
+/// application closed before reaching, on the next launch.
+/// </para>
+/// <para>
 /// A render that fails is tried again next time and nobody is told. The files cost nothing and can
 /// be produced again from what has already been paid for, so failing to produce them is not a
 /// decision a person has to make — the same reason they are never a button on the meetings list.
@@ -124,19 +131,21 @@ public static class OwedRenders
     /// One meeting's turns and its two files, together or not at all, on a connection of its own.
     /// </summary>
     /// <remarks>
-    /// The transaction is opened here rather than left to <see cref="MeetingRenderer"/>, which
-    /// opens none of its own at all: it writes its two files as one act and their rows in one save,
+    /// The transaction is opened here, and the render goes through <see cref="RenderingAgain"/>, because
+    /// a meeting owed a render again may be a summarised one. <see cref="MeetingRenderer"/> opens none
+    /// of its own at all: it writes its two files as one act and their rows in one save,
     /// and the turns it projects are saved before either of those. So without this a meeting whose
     /// files could not be written keeps the turns of a render that did not happen. Foreign keys are
-    /// not deferred the way a rebuild defers them, because a meeting owed its first render has no
-    /// turns yet and so nothing cites one.
+    /// deferred to the commit, the way a rename defers them, so a summarised meeting's claims are
+    /// checked against the turns made and not the turns deleted; a meeting owed its first render has
+    /// no turns yet and the deferral costs it nothing.
     /// </remarks>
     private static void Produce(DirectoryInfo root, Guid meeting, UtcTimestamp now)
     {
         using var context = CorpusDatabase.Open(root);
         using var write = context.Database.BeginTransaction();
 
-        MeetingRenderer.Render(context, meeting, now);
+        RenderingAgain.OneMeeting(context, meeting, now);
         write.Commit();
     }
 
@@ -201,14 +210,53 @@ public static class OwedRenders
         var responded = Filed(context, ArtifactKind.DeepgramResponse);
         var readable = Filed(context, ArtifactKind.Transcript);
         var lined = Filed(context, ArtifactKind.Utterances);
+        var named = StillOnAnOlderName(context);
 
         return context.Meetings
             .AsNoTracking()
             .Where(meeting => meeting.LifecycleState == LifecycleState.Active
                 && responded.Contains(meeting.Id)
-                && !(readable.Contains(meeting.Id) && lined.Contains(meeting.Id)))
+                && (!(readable.Contains(meeting.Id) && lined.Contains(meeting.Id))
+                    || named.Contains(meeting.Id)))
             .OrderBy(meeting => meeting.StartedAt)
             .Select(meeting => meeting.Id)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// The meetings whose transcript was written before somebody named on one of its voices was last
+    /// changed — the name it shows may be an older one. A render always moves the transcript's
+    /// <c>ConfirmedAt</c>, so one catch-up settles it and the next finds nothing.
+    /// </summary>
+    /// <remarks>
+    /// Compared in memory over rows already narrowed to the assignments and the transcripts:
+    /// <see cref="UtcTimestamp"/> is stored as text, and ordering text is not what the comparison
+    /// means. Both timestamps are read with <c>Max</c> so a meeting holding more than one of either
+    /// is judged by the latest of each. Nothing is queued: a rename that committed and was never
+    /// followed by its renders, because the application closed or a render failed, leaves this
+    /// answer behind for the next launch.
+    /// </remarks>
+    private static Guid[] StillOnAnOlderName(CorpusDbContext context)
+    {
+        var namedAt = context.SpeakerAssignments
+            .AsNoTracking()
+            .Join(context.People, row => row.PersonId, person => person.Id,
+                (row, person) => new { row.MeetingId, person.UpdatedAt })
+            .ToArray()
+            .GroupBy(row => row.MeetingId)
+            .ToDictionary(group => group.Key, group => group.Max(row => row.UpdatedAt));
+
+        var writtenAt = context.Artifacts
+            .AsNoTracking()
+            .Where(artifact => artifact.Kind == ArtifactKind.Transcript)
+            .Select(artifact => new { artifact.MeetingId, artifact.ConfirmedAt })
+            .ToArray()
+            .GroupBy(row => row.MeetingId)
+            .ToDictionary(group => group.Key, group => group.Max(row => row.ConfirmedAt));
+
+        return namedAt
+            .Where(named => writtenAt.TryGetValue(named.Key, out var written) && named.Value > written)
+            .Select(named => named.Key)
             .ToArray();
     }
 

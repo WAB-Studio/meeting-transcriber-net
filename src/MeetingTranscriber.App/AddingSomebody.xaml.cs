@@ -9,6 +9,9 @@ using MeetingTranscriber.Recording;
 
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+
+using Windows.System;
 
 namespace MeetingTranscriber.App;
 
@@ -135,14 +138,45 @@ public sealed partial class AddingSomebody : ContentDialog
     private void OnSomebodyNamed(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
         ArgumentNullException.ThrowIfNull(args);
+        args.Cancel = !Commit();
+    }
 
+    /// <summary>
+    /// Enter in the name box commits the dialogue the way the primary button does — the node pill
+    /// on <c>ClassifyingAMeeting</c> commits on Enter too, and two pills on one screen should not
+    /// commit differently. A dead primary button stays dead: an empty name is not committed.
+    /// </summary>
+    private void OnTheirNameKey(object sender, KeyRoutedEventArgs e)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+
+        if (e.Key is not VirtualKey.Enter)
+        {
+            return;
+        }
+
+        e.Handled = true;
+
+        if (IsPrimaryButtonEnabled && Commit())
+        {
+            // Dead before it closes, so a second Enter before the dialogue is gone commits nothing.
+            IsPrimaryButtonEnabled = false;
+            Hide();
+        }
+    }
+
+    /// <summary>
+    /// Writes what the dialogue was asked for. True when the dialogue may close, false when it stays
+    /// open having said why.
+    /// </summary>
+    private bool Commit()
+    {
         var name = (TheirNameBox.Text ?? string.Empty).Trim();
 
         // The act is dead until there is a name, so an empty one is not something a person did.
         if (name.Length == 0 || _corpus?.Folder is not { } folder)
         {
-            args.Cancel = true;
-            return;
+            return false;
         }
 
         try
@@ -158,8 +192,8 @@ public sealed partial class AddingSomebody : ContentDialog
                 {
                     // RenamingSomebody.Rename's own contract: the rename itself always lands before
                     // this can be thrown, and only some of the meetings it touches are still owed a
-                    // render — each caught up later by the `render <meeting id>` the exception
-                    // already named and this dialogue lets go of here. That is not this dialogue's
+                    // render — caught up by the next launch, which the exception says and
+                    // this dialogue lets go of here. That is not this dialogue's
                     // failure to report: the corpus already reads the new name, so `made` closes the
                     // same way a rename with nothing still owed does. Falling to the catch below
                     // instead would tell whoever asked that nothing was written, while
@@ -170,13 +204,12 @@ public sealed partial class AddingSomebody : ContentDialog
 
                 if (made is null)
                 {
-                    args.Cancel = true;
                     Say(TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, correcting.DisplayName));
-                    return;
+                    return false;
                 }
 
                 _made = made;
-                return;
+                return true;
             }
 
             using var context = CorpusDatabase.Open(folder);
@@ -197,11 +230,12 @@ public sealed partial class AddingSomebody : ContentDialog
 
             writing.Commit();
             _made = person.Id;
+            return true;
         }
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
-            args.Cancel = true;
             Say(TextLine.Says(UiTexts.ThatDidNotGoThrough, refused.Message));
+            return false;
         }
     }
 
