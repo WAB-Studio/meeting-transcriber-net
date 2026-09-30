@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 
@@ -6,8 +9,15 @@ using Microsoft.EntityFrameworkCore;
 namespace MeetingTranscriber.Infrastructure.Storage;
 
 /// <summary>
+/// The last time the corpus was exported: when, which kinds went, how many meetings, and the
+/// folder the finished export was left in.
+/// </summary>
+public sealed record LastExport(UtcTimestamp At, IReadOnlyList<ExportKind> Kinds, int Meetings, string Folder);
+
+/// <summary>
 /// The preferences a corpus carries: what the person using it settled once, read back the same way
-/// after the application was closed and reopened.
+/// after the application was closed and reopened. It also remembers when the corpus was last
+/// exported and what went.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -101,4 +111,92 @@ public sealed class CorpusSettings(CorpusDbContext context)
 
         context.SaveChanges();
     }
+
+    /// <summary>
+    /// The key the last export is stored under: a JSON object holding the kinds by their wire
+    /// names, the count of meetings and the finished folder, with the export's instant as
+    /// <c>UpdatedAt</c>.
+    /// </summary>
+    public const string LastExportKey = "last-export";
+
+    /// <summary>
+    /// The last export this corpus made, or nothing when there is no row and when the row is not
+    /// something this build can read.
+    /// </summary>
+    /// <remarks>
+    /// Nothing throws over what was read, as <see cref="WhenARecordingEnds()"/> does not: on the
+    /// screen an export nobody can describe is the same as no line, and a stale line would claim
+    /// more than the corpus knows.
+    /// </remarks>
+    public LastExport? LastExportMade()
+    {
+        var stored = context.Settings
+            .AsNoTracking()
+            .FirstOrDefault(setting => setting.Key == LastExportKey);
+
+        if (stored is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var row = JsonSerializer.Deserialize<StoredExport>(stored.Value);
+            if (row?.Kinds is null
+                || row.Folder is null
+                || row.Meetings is not { } meetings
+                || row.Kinds.Any(kind => !WireNames<ExportKind>.FromWire.ContainsKey(kind)))
+            {
+                return null;
+            }
+
+            return new LastExport(
+                stored.UpdatedAt,
+                [.. row.Kinds.Select(WireNames<ExportKind>.Parse)],
+                meetings,
+                row.Folder);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Remembers an export that finished, as of <see cref="LastExport.At"/>.
+    /// </summary>
+    /// <remarks>One row, rewritten rather than added to, for the reason the preference above is.</remarks>
+    public void Exported(LastExport export)
+    {
+        ArgumentNullException.ThrowIfNull(export);
+
+        var value = JsonSerializer.Serialize(new StoredExport(
+            [.. export.Kinds.Select(WireNames<ExportKind>.Of)],
+            export.Meetings,
+            export.Folder));
+
+        var stored = context.Settings.FirstOrDefault(setting => setting.Key == LastExportKey);
+
+        if (stored is null)
+        {
+            context.Settings.Add(new Setting
+            {
+                Key = LastExportKey,
+                Value = value,
+                UpdatedAt = export.At,
+            });
+        }
+        else
+        {
+            stored.Value = value;
+            stored.UpdatedAt = export.At;
+        }
+
+        context.SaveChanges();
+    }
+
+    private sealed record StoredExport(
+        [property: JsonPropertyName("kinds")] IReadOnlyList<string>? Kinds,
+        [property: JsonPropertyName("meetings")] int? Meetings,
+        [property: JsonPropertyName("folder")] string? Folder);
 }

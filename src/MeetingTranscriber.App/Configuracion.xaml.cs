@@ -2,6 +2,7 @@ using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
+using MeetingTranscriber.Processing.Export;
 using MeetingTranscriber.Processing.Summaries;
 using MeetingTranscriber.Recording;
 
@@ -14,7 +15,8 @@ namespace MeetingTranscriber.App;
 
 /// <summary>
 /// The settings screen: what should happen when a recording ends, what runs it, who is using this
-/// install and in which language, where the corpus is, and where Claude Code is.
+/// install and in which language, where the corpus is, what an export takes out of it, and where
+/// Claude Code is.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -90,6 +92,19 @@ public sealed partial class Configuracion : UserControl
 
     /// <summary>The same shape as <see cref="_choosingAFolder"/>, for the file picker beside it.</summary>
     private bool _choosingClaudeCode;
+
+    /// <summary>
+    /// Whether an export is running, which is the state the press and the four ticks would not
+    /// otherwise have: the press is dead while it runs, and so are the ticks, so what was chosen is
+    /// what was exported.
+    /// </summary>
+    private bool _exporting;
+
+    /// <summary>
+    /// The last export this corpus made, as of the last read or the last export this screen made,
+    /// or nothing. Nothing when the corpus would not say, and nothing is also what draws no line.
+    /// </summary>
+    private LastExport? _lastExport;
 
     /// <summary>
     /// Whether Claude Code answered the last time this screen asked, and what it said about
@@ -203,6 +218,7 @@ public sealed partial class Configuracion : UserControl
         ShowWhatHappensWhenARecordingEnds();
         ShowWhoIsUsingThis();
         SayWhereTheCorpusIs();
+        ShowTheExport();
         Render();
     }
 
@@ -226,11 +242,13 @@ public sealed partial class Configuracion : UserControl
 
         ReadWhatHappensWhenARecordingEnds();
         ReadWhoIsUsingThis();
+        ReadTheLastExport();
 
         FillTheLanguagePicker();
         ShowWhatHappensWhenARecordingEnds();
         ShowWhoIsUsingThis();
         SayWhereTheCorpusIs();
+        ShowTheExport();
         ShowWhereClaudeCodeIs();
         Render();
 
@@ -342,6 +360,34 @@ public sealed partial class Configuracion : UserControl
     }
 
     /// <summary>
+    /// Reads when the corpus was last exported and what went.
+    /// </summary>
+    /// <remarks>
+    /// A corpus that will not open says nothing here. The two reads before this one already speak
+    /// for it, and <see cref="Show"/>'s remark about which read speaks last stays true; a line
+    /// about an export nobody can describe is the same as no line.
+    /// </remarks>
+    private void ReadTheLastExport()
+    {
+        _lastExport = null;
+
+        if (Corpus().Folder is not { } folder || !ThereIsACorpus())
+        {
+            return;
+        }
+
+        try
+        {
+            using var context = CorpusDatabase.Open(folder);
+            _lastExport = new CorpusSettings(context).LastExportMade();
+        }
+        catch (Exception wouldNotRead) when (ScreenFailures.Reportable(wouldNotRead))
+        {
+            _lastExport = null;
+        }
+    }
+
+    /// <summary>
     /// Whether there is a corpus in that folder as of now, rather than as of when this screen was
     /// given one.
     /// </summary>
@@ -408,6 +454,80 @@ public sealed partial class Configuracion : UserControl
         AfterARecordingOptions.IsEnabled =
             Corpus().Folder is not null && _settledIsKnown && !_writingTheAnswer;
     }
+
+    /// <summary>
+    /// Says when the last export was and what it took, and whether the press may be used. Nothing
+    /// here decides anything.
+    /// </summary>
+    /// <remarks>
+    /// The press is live only with a corpus that opened and holds something, at least one tick, and
+    /// no export already running. The press's words are set here and not left to the binding,
+    /// because <c>Bindings.Update</c> runs on a change of language and would otherwise put
+    /// <em>Exportar</em> back over an export that is still going.
+    /// </remarks>
+    private void ShowTheExport()
+    {
+        if (_lastExport is { } last)
+        {
+            var meetings = last.Meetings == 1
+                ? UiTexts.OneMeeting.In(_language)
+                : UiTexts.MeetingsCounted.In(_language, last.Meetings);
+
+            LastExportText.Text = UiTexts.LastExport.In(
+                _language,
+                ScreenNumbers.Beside([ScreenNumbers.At(last.At), meetings, .. last.Kinds.Select(kind => Called(kind).In(_language))]),
+                last.Folder);
+            LastExportText.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            LastExportText.Text = string.Empty;
+            LastExportText.Visibility = Visibility.Collapsed;
+        }
+
+        foreach (var kind in Enum.GetValues<ExportKind>())
+        {
+            Ticks(kind).IsEnabled = !_exporting;
+        }
+
+        ExportButton.Content = In(_exporting ? UiTexts.Exporting : UiTexts.Export);
+        ExportButton.IsEnabled =
+            Corpus().Refusal is null && ThereIsACorpus() && Ticked().Count > 0 && !_exporting;
+    }
+
+    /// <summary>Which kinds are ticked right now.</summary>
+    private HashSet<ExportKind> Ticked() =>
+        [.. Enum.GetValues<ExportKind>().Where(kind => Ticks(kind).IsChecked == true)];
+
+    /// <summary>Which tick offers <paramref name="kind"/>.</summary>
+    /// <remarks>
+    /// One table, read both ways like <see cref="Offers"/>: what is drawn and what is exported come
+    /// through here, so the tick a kind means and the kind a tick means cannot come apart. The last
+    /// arm stops rather than substituting, so a kind added with no tick is a build that fails a
+    /// test and never a package quietly missing something somebody chose to take.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">This screen has no tick for that kind.</exception>
+    private CheckBox Ticks(ExportKind kind) => kind switch
+    {
+        ExportKind.Audio => ExportAudio,
+        ExportKind.Transcripts => ExportTranscripts,
+        ExportKind.Summaries => ExportSummaries,
+        ExportKind.HandCorrections => ExportHandCorrections,
+        _ => throw new InvalidOperationException(
+            $"This screen has no tick for what an export takes: '{kind}'."),
+    };
+
+    /// <summary>What a kind is called in the line about the last export.</summary>
+    /// <exception cref="InvalidOperationException">This screen has no words for that kind.</exception>
+    private static UiText Called(ExportKind exported) => exported switch
+    {
+        ExportKind.Audio => UiTexts.ExportsAudio,
+        ExportKind.Transcripts => UiTexts.ExportsTranscripts,
+        ExportKind.Summaries => UiTexts.ExportsSummaries,
+        ExportKind.HandCorrections => UiTexts.ExportsHandCorrections,
+        _ => throw new InvalidOperationException(
+            $"This screen has no words for what an export takes: '{exported}'."),
+    };
 
     /// <summary>Puts the languages in the picker without any of it reading as somebody choosing.</summary>
     private void FillTheLanguagePicker()
@@ -766,6 +886,149 @@ public sealed partial class Configuracion : UserControl
         _ => throw new InvalidOperationException(
             $"This screen has no text for corpus refusal '{refusal}' from a picked folder."),
     };
+
+    /// <summary>A tick changed, which is only ever a reason to redraw the block it is in.</summary>
+    /// <remarks>
+    /// Before the corpus is handed over there is nothing to draw against, and the ticks are set
+    /// ticked while the markup is still being built.
+    /// </remarks>
+    private void OnExportTicked(object sender, RoutedEventArgs e)
+    {
+        if (_corpus is null)
+        {
+            return;
+        }
+
+        ShowTheExport();
+    }
+
+    /// <summary>
+    /// Somebody asked to take the corpus out, into a folder they choose.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same two guards <see cref="OnChangeWhereItIsKept"/> carries and for the same two reasons:
+    /// the picker is a call into Windows and is caught bare, because nothing narrower names it and
+    /// an <c>async void</c> handler lets nothing escape; the export is this application's own work
+    /// and takes <see cref="ScreenFailures.Reportable"/> unwidened, because a full disk is not the
+    /// picker failing to open.
+    /// </para>
+    /// <para>
+    /// Off this thread: it reads every meeting and copies every file, which for hours of audio is
+    /// the longest thing this screen does. It opens its own context, migrated, because the export
+    /// writes the row that says it was made.
+    /// </para>
+    /// </remarks>
+    private async void OnExport(object sender, RoutedEventArgs e)
+    {
+        // Asked again inside the handler, because a press already in flight arrives after the
+        // press was drawn dead.
+        var kinds = Ticked();
+        if (_exporting
+            || _choosingAFolder
+            || kinds.Count == 0
+            || Corpus().Refusal is not null
+            || Corpus().Folder is not { } folder
+            || !ThereIsACorpus())
+        {
+            return;
+        }
+
+        DirectoryInfo chosen;
+        _choosingAFolder = true;
+
+        try
+        {
+            var picker = new FolderPicker(_window);
+            var picked = await picker.PickSingleFolderAsync();
+
+            if (picked is null)
+            {
+                // Nothing chosen is nothing said and nothing done.
+                return;
+            }
+
+            chosen = new DirectoryInfo(picked.Path);
+        }
+        catch (Exception failedToOpen) when (failedToOpen is not OutOfMemoryException)
+        {
+            if (!_closed)
+            {
+                Say(UiTexts.TheFolderPickerDidNotOpen);
+            }
+
+            return;
+        }
+        finally
+        {
+            _choosingAFolder = false;
+        }
+
+        if (_closed)
+        {
+            return;
+        }
+
+        var at = Now();
+        _exporting = true;
+        ShowTheExport();
+
+        CorpusExported exported;
+
+        try
+        {
+            exported = await Task.Run(() =>
+            {
+                using var context = CorpusDatabase.OpenMigrated(folder);
+                return CorpusExport.Into(context, chosen.FullName, kinds, TimeZoneInfo.Local, at);
+            });
+        }
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
+        {
+            if (!_closed)
+            {
+                Say(UiTexts.ThatDidNotGoThrough, refused.Message);
+            }
+
+            return;
+        }
+        finally
+        {
+            _exporting = false;
+
+            if (!_closed)
+            {
+                ShowTheExport();
+            }
+        }
+
+        if (_closed)
+        {
+            return;
+        }
+
+        // What the export said, rather than the corpus asked again: it either threw or wrote the
+        // row this describes.
+        _lastExport = new LastExport(at, [.. kinds.Order()], exported.Meetings, exported.Folder.FullName);
+        _status.Nothing();
+        ShowTheExport();
+
+        if (exported.LeftOut.Count == 0)
+        {
+            Render();
+            return;
+        }
+
+        var index = Path.Combine(exported.Folder.FullName, CorpusExport.IndexName);
+        if (exported.LeftOut.Count == 1)
+        {
+            Say(UiTexts.OneFileWasNotThere, index);
+        }
+        else
+        {
+            Say(UiTexts.SomeFilesWereNotThere, exported.LeftOut.Count, index);
+        }
+    }
 
     /// <summary>
     /// Somebody chose what should happen when a recording ends.

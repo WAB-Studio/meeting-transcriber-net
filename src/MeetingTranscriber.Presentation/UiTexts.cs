@@ -1207,6 +1207,56 @@ public static class UiTexts
     public static UiText ChangeWhereClaudeCodeIs { get; } =
         new("Cambiar dónde está Claude Code", "Change where Claude Code is");
 
+    // ── The settings screen, taking the corpus out ────────────────────────────────────────────────
+
+    // Over the four ticks. *Qué se lleva* and not *Qué exportar*: the person is choosing what goes
+    // with them, which is the sentence the card's own decision is written in.
+    public static UiText WhatAnExportTakes { get; } =
+        new("Qué se lleva una exportación", "What an export takes");
+
+    // The four ticks. Each is a kind of thing and not a file: a person choosing *Transcripciones*
+    // means both the paid response and the text somebody can read.
+    public static UiText ExportsAudio { get; } = new("Audio", "Audio");
+
+    public static UiText ExportsTranscripts { get; } = new("Transcripciones", "Transcripts");
+
+    public static UiText ExportsSummaries { get; } = new("Resúmenes", "Summaries");
+
+    public static UiText ExportsHandCorrections { get; } =
+        new("Correcciones a mano", "Corrections by hand");
+
+    // The press, at the normal rank: taking the corpus out is not the act the screen is for.
+    public static UiText Export { get; } = new("Exportar", "Export");
+
+    /// <summary>
+    /// The accessible name of the press that exports. It shows <see cref="Export"/>; this is what a
+    /// screen reader announces, so the press says what is exported and where it goes.
+    /// </summary>
+    public static UiText ExportTheCorpusToAFolder { get; } =
+        new("Exportar el corpus a una carpeta", "Export the corpus to a folder");
+
+    // On the press while an export runs, and nowhere else: there is no success sentence, because
+    // the line below it changing is what says it worked.
+    public static UiText Exporting { get; } = new("Exportando…", "Exporting…");
+
+    // {0} is one line of data — when, how many meetings, and which kinds — and {1} is the folder.
+    public static UiText LastExport { get; } =
+        new("Última exportación: {0}, en {1}", "Last export: {0}, into {1}");
+
+    public static UiText OneMeeting { get; } = new("1 reunión", "1 meeting");
+
+    public static UiText MeetingsCounted { get; } = new("{0} reuniones", "{0} meetings");
+
+    // Said after an export that finished without everything the corpus records. The file it names
+    // is the export's own index, which lists each one.
+    public static UiText OneFileWasNotThere { get; } = new(
+        "1 archivo que el corpus registra no estaba en el disco y quedó fuera; está nombrado en {0}.",
+        "1 file the corpus records was not on the disk and was left out; it is named in {0}.");
+
+    public static UiText SomeFilesWereNotThere { get; } = new(
+        "{0} archivos que el corpus registra no estaban en el disco y quedaron fuera; están nombrados en {1}.",
+        "{0} files the corpus records were not on the disk and were left out; they are named in {1}.");
+
     // ── The packaging checks scaffold ──────────────────────────────────────────────────────────
 
     public static UiText PackagingChecks { get; } =

@@ -236,6 +236,79 @@ public class ConfiguracionTests
     }
 
     /// <summary>
+    /// Every kind an export can carry has a tick on this screen, which is what makes it a thing a
+    /// person can choose to take or leave.
+    /// </summary>
+    /// <remarks>
+    /// The table is <c>Ticks</c>, which the screen reads both ways: what is drawn and what is
+    /// exported come through it. A kind with no tick is one nobody can untick, so it would go in
+    /// every export — and the one this is about is audio.
+    /// </remarks>
+    [Fact]
+    public void Every_kind_an_export_can_carry_has_a_tick_on_this_screen() =>
+        EnumTable.Read(
+                Screen,
+                "kind",
+                "ExportKind",
+                Path.Combine("MeetingTranscriber.Infrastructure", "Storage", "ExportKind.cs"))
+            .ShouldNameItsWholeEnum("ExportKind");
+
+    /// <summary>
+    /// Every kind an export can carry is named in the line about the last one, so the line cannot
+    /// say an export took less than it did.
+    /// </summary>
+    [Fact]
+    public void Every_kind_an_export_can_carry_is_named_in_the_last_export_line() =>
+        EnumTable.Read(
+                Screen,
+                "exported",
+                "ExportKind",
+                Path.Combine("MeetingTranscriber.Infrastructure", "Storage", "ExportKind.cs"))
+            .ShouldNameItsWholeEnum("ExportKind");
+
+    /// <summary>
+    /// The export block is on the settings screen and says what the catalogue says, and the press
+    /// reaches the export.
+    /// </summary>
+    /// <remarks>
+    /// A source fact and not a walk: the press opens the Windows folder picker, a system dialog
+    /// the probe has not been shown to drive, so what is held here is that the block is wired and
+    /// not that a person has seen it work.
+    /// </remarks>
+    [Fact]
+    public void The_export_block_is_on_the_settings_screen_and_says_what_the_catalogue_says()
+    {
+        var markup = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        foreach (var tick in new[] { "ExportAudio", "ExportTranscripts", "ExportSummaries", "ExportHandCorrections" })
+        {
+            markup.ShouldContain($"x:Name=\"{tick}\"");
+        }
+
+        markup.ShouldContain("Style=\"{StaticResource Tick}\"");
+        markup.ShouldContain("Click=\"OnExport\"");
+        markup.ShouldContain("In(loc:UiTexts.Export)");
+        markup.ShouldContain("AutomationProperties.Name=\"{x:Bind In(loc:UiTexts.ExportTheCorpusToAFolder)}\"");
+
+        screen.ShouldContain("CorpusExport.Into(");
+    }
+
+    /// <summary>
+    /// Nothing escapes the press that exports: the folder picker is a call into Windows and is
+    /// caught bare, as the two pickers above are.
+    /// </summary>
+    [Fact]
+    public void Nothing_escapes_the_press_that_exports()
+    {
+        var handler = Handler("private async void OnExport(");
+
+        handler.ShouldContain(
+            "catch (Exception failedToOpen) when (failedToOpen is not OutOfMemoryException)");
+    }
+
+    /// <summary>
     /// The handler's own body, from its signature to the closing brace that balances it, so a
     /// negative assertion over it says nothing about the rest of the screen.
     /// </summary>

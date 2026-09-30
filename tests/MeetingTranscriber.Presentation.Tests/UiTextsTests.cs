@@ -81,6 +81,8 @@ public class UiTextsTests
         // both, and the word came into Spanish from the ceremony rather than being translated out
         // of it.
         //
+        // The export's tick for the recording is `Audio` in both: the word is the same one.
+        //
         // The settings screen added three. `TheEngineThatSummarises` is the maker's answer a fifth
         // time — Anthropic called that model Claude. The two costs are not words at all:
         // `docs/design.md` §The artboards says an amount goes as `[costo]` until a run produces a
@@ -91,6 +93,7 @@ public class UiTextsTests
             nameof(UiTexts.Channel0),
             nameof(UiTexts.Channel1),
             nameof(UiTexts.EnglishName),
+            nameof(UiTexts.ExportsAudio),
             nameof(UiTexts.No),
             nameof(UiTexts.SpanishName),
             nameof(UiTexts.TheApplicationsName),

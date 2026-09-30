@@ -10,9 +10,11 @@
     mc:Ignorable="d">
 
     <!-- The one screen that lives apart, and everything on it is an answer about this install
-         rather than about the next meeting. Four blocks, in the artboard's own order: what should
-         happen when a recording ends, what runs it, who is using the application and in which
-         language, and where the corpus is.
+         rather than about the next meeting. Six blocks: what should happen when a recording ends,
+         what runs it (two engines, each on its own card), who is using the application and in
+         which language, where the corpus is, what an export takes out of it, and where Claude Code
+         is. The first four are the artboard's own order; the export block sits under where the
+         corpus is because it is about the same folder, and Claude Code stays last.
 
          The first block is the whole reason this screen exists. Choosing between transcribing and
          summarising stopped being a question per meeting and became a preference set once, so it
@@ -255,7 +257,77 @@
                         Content="{x:Bind In(loc:UiTexts.Change)}" />
                 </Grid>
 
-                <!-- Where Claude Code is, the fifth block this screen carries. The data line names
+                <!-- Taking the corpus out: four ticks for what goes, and the press. Every tick starts
+                     ticked, because the whole package is what somebody asking to take their data
+                     out expects, and nothing ticked leaves the press dead. The press is at the
+                     normal rank and is not this screen's principal act; there is no sentence when
+                     it worked, because the line beside it changing is what says so. The line names
+                     when the last one was made, what it took and where it went, and is drawn only
+                     once there has been one. The press is dead exactly where the corpus is, since
+                     there is nothing to take out of a corpus that will not open. -->
+                <StackPanel Spacing="8">
+                    <TextBlock
+                        Text="{x:Bind In(loc:UiTexts.WhatAnExportTakes)}"
+                        Style="{StaticResource BodyText}"
+                        Foreground="{StaticResource SecondaryTextBrush}" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <CheckBox
+                            x:Name="ExportAudio"
+                            Style="{StaticResource Tick}"
+                            IsChecked="True"
+                            Checked="OnExportTicked"
+                            Unchecked="OnExportTicked"
+                            Content="{x:Bind In(loc:UiTexts.ExportsAudio)}" />
+                        <CheckBox
+                            x:Name="ExportTranscripts"
+                            Style="{StaticResource Tick}"
+                            IsChecked="True"
+                            Checked="OnExportTicked"
+                            Unchecked="OnExportTicked"
+                            Content="{x:Bind In(loc:UiTexts.ExportsTranscripts)}" />
+                        <CheckBox
+                            x:Name="ExportSummaries"
+                            Style="{StaticResource Tick}"
+                            IsChecked="True"
+                            Checked="OnExportTicked"
+                            Unchecked="OnExportTicked"
+                            Content="{x:Bind In(loc:UiTexts.ExportsSummaries)}" />
+                        <CheckBox
+                            x:Name="ExportHandCorrections"
+                            Style="{StaticResource Tick}"
+                            IsChecked="True"
+                            Checked="OnExportTicked"
+                            Unchecked="OnExportTicked"
+                            Content="{x:Bind In(loc:UiTexts.ExportsHandCorrections)}" />
+                    </StackPanel>
+
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock
+                            x:Name="LastExportText"
+                            Grid.Column="0"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{StaticResource SecondaryTextBrush}"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed" />
+
+                        <Button
+                            x:Name="ExportButton"
+                            Grid.Column="1"
+                            VerticalAlignment="Top"
+                            Style="{StaticResource NormalButtonOnPaper}"
+                            Click="OnExport"
+                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.ExportTheCorpusToAFolder)}"
+                            Content="{x:Bind In(loc:UiTexts.Export)}" />
+                    </Grid>
+                </StackPanel>
+
+                <!-- Where Claude Code is, the last block this screen carries. The data line names
                      the executable somebody chose, or nothing when nobody has — the search of
                      `PATH` that stands in for that has no line of its own, the way a corpus
                      nobody has moved has none either. The sentence beneath it is drawn only when
