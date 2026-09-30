@@ -169,6 +169,12 @@ public static class Cli
             + " what comes back beside what was already paid for",
             DeepgramCommands.TranscribeAgain),
         new(
+            "claude-live",
+            "claude-live --out <directory>",
+            "run the real Claude Code once over a made-up meeting, with sentinels planted around it,"
+            + " and say which of them reached the run — spends one run of this machine's Claude plan",
+            ClaudeCodeCommands.Live),
+        new(
             "key",
             "key [--set | --forget]",
             "whether this machine holds a Deepgram key, and putting one there or taking it away",
