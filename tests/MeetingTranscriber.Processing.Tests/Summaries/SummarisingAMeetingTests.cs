@@ -143,12 +143,14 @@ public class SummarisingAMeetingTests
 
         ISummaryProvider provider;
         DirectoryInfo? fakeCliRoot = null;
+        FakeClaudeCode? fake = null;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         if (throughClaudeCode)
         {
             fakeCliRoot = new DirectoryInfo(
                 Path.Combine(Path.GetTempPath(), "meeting-transcriber-tests", Guid.NewGuid().ToString("n")));
             fakeCliRoot.Create();
-            var fake = FakeClaudeCode.In(fakeCliRoot);
+            fake = FakeClaudeCode.In(fakeCliRoot);
             fake.AnswersVersion("fake 1").Answers(FakeClaudeCode.Envelope(accepted.ToJsonString()));
             var workspaces = new DirectoryInfo(Path.Combine(fakeCliRoot.FullName, "workspaces"));
             provider = new ClaudeCodeSummaries(
@@ -170,6 +172,19 @@ public class SummarisingAMeetingTests
             job.State.ShouldBe(JobState.Succeeded);
 
             reopened.Decisions.Single(row => row.MeetingId == meeting).Statement.ShouldBe("Lanzar el viernes.");
+        }
+        catch (Exception exception) when (fake is not null && exception is not OperationCanceledException)
+        {
+            // Without this a red run on a machine nobody can sit at says only that the summary was
+            // not filed, and not whether the fake CLI ever ran.
+            throw new Xunit.Sdk.XunitException(
+                string.Join(
+                    Environment.NewLine,
+                    exception.Message,
+                    string.Empty,
+                    $"After {clock.Elapsed.TotalSeconds:F1}s.",
+                    fake.Diagnosis()),
+                exception);
         }
         finally
         {

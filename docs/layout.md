@@ -19,6 +19,7 @@ tools/MeetingTranscriber.UiProbe/         starts the application, reads its wind
                                           at a time. It drives a corpus of its own and records real
                                           meetings into that
 tests/MeetingTranscriber.Testing/         what a test opens: corpus, SQL, fixture inventory, the repository's own tree
+tests/MeetingTranscriber.FakeClaudeCode/  the program behind the fake Claude Code CLI; holds no test, and only Processing.Tests references it
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```
 
@@ -26,7 +27,7 @@ Every project under `src/` has its tests under `tests/<project>.Tests/`, and `Is
 suite with no project behind it: it reads `ISA.md` and this tree. `UiProbe.Tests` is the one whose
 project is under `tools/` rather than `src/`, and the paragraph about `tools/` below says what that
 suite may and may not do. `Testing` is the other directory under `tests/` with nothing behind it and
-is no suite at all — it is what a suite opens. What
+is no suite at all — it is what a suite opens, and `FakeClaudeCode` is a program one suite runs. What
 `Audio.Tests` can hold is bounded by there being no device on a build agent: the rules — which
 endpoint a typed name means, what a block of bytes is worth on a meter — are tested there, and that
 two streams really open at once is a probe somebody runs with `capture`, recorded in the ISA like a
