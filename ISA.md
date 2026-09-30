@@ -1,7 +1,7 @@
 ﻿---
 phase: climbing
-progress: 165/254
-updated: 2026-09-28
+progress: 169/254
+updated: 2026-09-30
 ---
 
 # ISA — meeting-transcriber-net
@@ -196,10 +196,10 @@ Board: 3 · Grabador WinUI
 - [x] ISC-150.1: What that person is told does not change because this machine stopped answering: the last thing it said about what the meeting is playing through stands until it says otherwise.
 - [x] ISC-151: Anti: audio this application did not record is never taken as two channels of one meeting.
 - [x] ISC-159: Audio nothing in its folder vouches for enters as one track, whatever shape the file itself is in.
-- [ ] ISC-195: Audio brought in with the folder this application recorded it into keeps what that folder says about the recording, whatever somebody typed.
-- [ ] ISC-195.1: When it started, what it was spoken in and what it was called are taken from the folder, with nothing typed.
-- [ ] ISC-195.2: Anti: a typed start, language or name the folder contradicts is refused, saying what each of the two says, and nothing is filed.
-- [ ] ISC-195.3: Anti: a meeting brought in this way never takes its identity from the folder — it is given its own, as every meeting is.
+- [x] ISC-195: Audio brought in with the folder this application recorded it into keeps what that folder says about the recording, whatever somebody typed.
+- [x] ISC-195.1: When it started, what it was spoken in and what it was called are taken from the folder, with nothing typed.
+- [x] ISC-195.2: Anti: a typed start, language or name the folder contradicts is refused, saying what each of the two says, and nothing is filed.
+- [x] ISC-195.3: Anti: a meeting brought in this way never takes its identity from the folder — it is given its own, as every meeting is.
 - [ ] ISC-160: A meeting whose audio had its channels averaged into one on the way in still says so once the command that brought it in is gone.
 - [x] ISC-152: Every text a person reads in the application is there in both Spanish and English.
 - [x] ISC-153: The application opens in the language Windows is set to, unless somebody chose another.
@@ -784,3 +784,7 @@ Board: 7 · Distribución y backup
 - ISC-189.3 — `ClaudeCodeSummariesTests.No_run_continues_a_conversation_and_no_two_runs_share_a_folder` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-25 (adapter share), replayed green 2026-09-28. Two real runs over the fake CLI: neither's arguments ever carry `--resume`, `-r`, `--continue`, `-c` or `--session-id`, both carry `--no-session-persistence`, and the two workspaces are different folders. Red with a reused workspace. Not reached: a run of the real CLI, which is what would show whether it can be made to continue a conversation some other way.
 - ISC-115 — `SummarisingAMeetingTests.A_summary_refused_for_its_shape_is_handed_back_once_and_accepted_corrected` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-28: a shape refusal is filed as a refused run leaving the job `Running`, the second call carries `ExtractionInstructions.ToCorrect` and `ExtractionCorrection.WhatWasWrong`, and the corrected answer files a second run whose `CorrectsRunId` names the first. `ExtractionIntakeTests.A_first_refusal_that_can_be_corrected_is_kept_and_leaves_the_job_running` and `.A_correction_is_filed_only_against_the_refused_run_it_corrects` (same project) hold the door's own precondition. Red with `mayBeHandedBack` not passed, and with the precondition read as ordering by time. Not reached: the retry bound, proven once `running` drives the runner.
 - ISC-116 — `SummarisingAMeetingTests.A_statement_nothing_supports_comes_back_accepted_only_without_it` and `.A_statement_handed_back_that_comes_back_citing_something_else_is_refused` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-28, over `ExtractionCorrection.Judge`: a statement refused for `NoEvidence` and left out of the correction is accepted; the same statement brought back as an action citing a different turn gains `CitedAgainElsewhere` at `actions[0]` and fails the job. Texts are compared with whitespace evened and case ignored, in all three sections, per `ExtractionCorrectionTests` (vocabulary, 2026-09-28). Red with `Judge` not called, and with the search kept to one section. Not reached: a reworded statement brought back.
+- ISC-195 — held by its three leaves, `ISC-195.1`, `ISC-195.2` and `ISC-195.3`, green 2026-09-30.
+- ISC-195.1 — `AudioIntakeTests.A_folder_this_application_recorded_says_when_it_started_what_it_was_in_and_what_it_was_called` and `.A_single_track_this_application_filed_vouches_for_itself_too` (`tests/MeetingTranscriber.Recording.Tests`), plus `ImportAudioCommandTests.A_folder_this_application_wrote_is_brought_in_with_nothing_typed` (`tests/MeetingTranscriber.Cli.Tests`), green 2026-09-30, the caller's default language handed over and not applied ahead of the card. Not reached: nothing binds a card to its file's bytes, so another recording of the same shape under the card's name takes what the card says.
+- ISC-195.2 — `AudioIntakeTests.What_somebody_typed_that_the_folder_contradicts_is_refused_and_nothing_is_filed` (a theory over start, language and name, each over a titled folder) and `.What_somebody_typed_that_the_folder_agrees_with_is_filed`, plus `ImportAudioCommandTests.A_start_the_folder_contradicts_is_refused_rather_than_stored` (`tests/MeetingTranscriber.Recording.Tests` and `tests/MeetingTranscriber.Cli.Tests`), green 2026-09-30.
+- ISC-195.3 — `AudioIntakeTests.This_applications_own_recording_arrives_as_its_two_sources` (`tests/MeetingTranscriber.Recording.Tests`), green 2026-09-30: the brought-in meeting's id is not the card's.

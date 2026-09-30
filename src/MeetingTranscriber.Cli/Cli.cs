@@ -101,7 +101,7 @@ public static class Cli
             MeetingCommands.ImportResponse),
         new(
             "import-audio",
-            $"import-audio <file.wav> {Corpus.Option} <directory> --started-at <instant>"
+            $"import-audio <file.wav> {Corpus.Option} <directory> [--started-at <instant>]"
             + " [--language <code>] [--title <text>] [--context <text>]",
             "bring audio in as a meeting, as whatever the file and its folder say it is",
             MeetingCommands.ImportAudio),

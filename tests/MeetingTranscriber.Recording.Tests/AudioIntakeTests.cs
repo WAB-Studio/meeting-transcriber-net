@@ -63,7 +63,7 @@ public sealed class AudioIntakeTests : IDisposable
         var meeting = reopened.Meetings.Single();
 
         meeting.Id.ShouldBe(brought.MeetingId);
-        meeting.StartedAt.ShouldBe(details.StartedAt);
+        meeting.StartedAt.ShouldBe(details.StartedAt!.Value);
         meeting.Title.ShouldBe("Kickoff con el cliente");
         meeting.Language.ShouldBe("es");
         meeting.SourceProfile.ShouldBe(SourceProfile.Diarize);
@@ -194,7 +194,7 @@ public sealed class AudioIntakeTests : IDisposable
         var arrived = CorpusFiles.Sha256Of(audio);
 
         using var context = corpus.OpenMigrated();
-        var brought = AudioIntake.Bring(context, audio, details, now);
+        var brought = AudioIntake.Bring(context, audio, new BroughtDetails(null, null), now);
 
         brought.Profile.ShouldBe(SourceProfile.Multichannel);
         brought.MixedDown.ShouldBeFalse();
@@ -209,6 +209,167 @@ public sealed class AudioIntakeTests : IDisposable
         // of a meeting already here.
         brought.MeetingId.ShouldNotBe(MeetingManifest.Read(
             new FileInfo(Path.Combine(folder.FullName, MeetingManifest.FileName))).MeetingId);
+    }
+
+    /// <summary>
+    /// ISC-195.1. A folder this application recorded says when the meeting started, what it was
+    /// spoken in and what it was called, and nothing needs to be typed.
+    /// </summary>
+    /// <remarks>
+    /// The caller's default language is handed over and is still not applied: the card says
+    /// <c>en</c>, and a fallback applied ahead of it would have said <c>es</c> about a meeting that
+    /// was not in Spanish.
+    /// </remarks>
+    [Fact]
+    public void A_folder_this_application_recorded_says_when_it_started_what_it_was_in_and_what_it_was_called()
+    {
+        var folder = Recorded(language: "en", title: "Kickoff con el cliente");
+        var card = MeetingManifest.Read(new FileInfo(Path.Combine(folder.FullName, MeetingManifest.FileName)));
+
+        using var context = corpus.OpenMigrated();
+        AudioIntake.Bring(
+            context, MeetingAudio.In(folder), new BroughtDetails(null, null, LanguageWhenNothingSays: "es"), now);
+
+        using var reopened = corpus.Open();
+        var meeting = reopened.Meetings.Single();
+
+        meeting.StartedAt.ShouldBe(card.StartedAt);
+        meeting.Language.ShouldBe(card.Language);
+        meeting.Language.ShouldBe("en");
+        meeting.Title.ShouldBe(card.Title);
+        meeting.Title.ShouldBe("Kickoff con el cliente");
+    }
+
+    /// <summary>
+    /// ISC-195.2. A typed start, language or name the folder contradicts is refused, saying what
+    /// each of the two says, and nothing is filed.
+    /// </summary>
+    /// <remarks>
+    /// Every row uses a titled folder: a card with no name contradicts no name, so a title row over
+    /// an untitled one would file rather than refuse.
+    /// </remarks>
+    [Theory]
+    [InlineData("2026-05-04T14:00:00.000Z", null, null, "2026-08-20T11:00:00.000Z")]
+    [InlineData(null, "en", null, "es")]
+    [InlineData(null, null, "Otra reunion", "Kickoff con el cliente")]
+    public void What_somebody_typed_that_the_folder_contradicts_is_refused_and_nothing_is_filed(
+        string? started, string? language, string? title, string cardSays)
+    {
+        var folder = Recorded(title: "Kickoff con el cliente");
+        var typed = new BroughtDetails(
+            started is null ? null : UtcTimestamp.Parse(started), language, title);
+
+        using var context = corpus.OpenMigrated();
+        var refused = Should.Throw<RecordingException>(
+            () => AudioIntake.Bring(context, MeetingAudio.In(folder), typed, now));
+
+        foreach (var value in new[] { started, language, title }.OfType<string>())
+        {
+            refused.Message.ShouldContain(value);
+        }
+
+        refused.Message.ShouldContain(cardSays);
+        refused.Message.ShouldContain("Nothing was filed.");
+        NothingWasFiled();
+    }
+
+    /// <summary>
+    /// A typed value the folder agrees with is not a contradiction: the language is compared
+    /// ignoring case and the name exactly, and the file goes in.
+    /// </summary>
+    [Fact]
+    public void What_somebody_typed_that_the_folder_agrees_with_is_filed()
+    {
+        var folder = Recorded(title: "Kickoff con el cliente");
+
+        using var context = corpus.OpenMigrated();
+        var brought = AudioIntake.Bring(
+            context,
+            MeetingAudio.In(folder),
+            new BroughtDetails(now, " ES ", " Kickoff con el cliente "),
+            now);
+
+        brought.Profile.ShouldBe(SourceProfile.Multichannel);
+
+        using var reopened = corpus.Open();
+        reopened.Meetings.Single().Title.ShouldBe("Kickoff con el cliente");
+    }
+
+    /// <summary>
+    /// A card with no name takes the one typed. It types no start and no language, which the
+    /// shared <c>details</c> does, and which the card would contradict before the title was ever
+    /// compared.
+    /// </summary>
+    [Fact]
+    public void A_folder_with_no_name_takes_the_one_typed()
+    {
+        var folder = Recorded();
+
+        using var context = corpus.OpenMigrated();
+        AudioIntake.Bring(
+            context, MeetingAudio.In(folder), new BroughtDetails(null, null, Title: "Semanal"), now);
+
+        using var reopened = corpus.Open();
+        reopened.Meetings.Single().Title.ShouldBe("Semanal");
+    }
+
+    /// <summary>
+    /// ISC-195.1, for the other shape a card can vouch for. The folder of a meeting this application
+    /// filed as one track carries a card written about that file, and it settles the meeting too.
+    /// </summary>
+    [Fact]
+    public void A_single_track_this_application_filed_vouches_for_itself_too()
+    {
+        var folder = ImportedAsOneTrack(
+            UtcTimestamp.Parse("2026-05-04T14:00:00.000Z"), "en", "Llamada con proveedor");
+
+        using var context = corpus.OpenMigrated();
+        var brought = AudioIntake.Bring(
+            context, MeetingAudio.In(folder), new BroughtDetails(null, null), now);
+
+        brought.Profile.ShouldBe(SourceProfile.Diarize);
+        brought.MixedDown.ShouldBeFalse();
+
+        using var reopened = corpus.Open();
+        var meeting = reopened.Meetings.Single();
+        meeting.StartedAt.ShouldBe(UtcTimestamp.Parse("2026-05-04T14:00:00.000Z"));
+        meeting.Language.ShouldBe("en");
+        meeting.Title.ShouldBe("Llamada con proveedor");
+    }
+
+    /// <summary>Audio nothing vouches for has to be told when it started.</summary>
+    [Fact]
+    public void Audio_nothing_vouches_for_has_to_be_told_when_it_started()
+    {
+        using var context = corpus.OpenMigrated();
+
+        Should.Throw<RecordingException>(
+                () => AudioIntake.Bring(
+                    context, Foreign("call.wav", 44_100, 0.5f, 0.25f), new BroughtDetails(null, "es"), now))
+            .Message.ShouldContain("says when the meeting started");
+
+        NothingWasFiled();
+    }
+
+    /// <summary>
+    /// Audio nothing vouches for is filed in the language the caller falls back to, and has to be
+    /// told one when the caller has none.
+    /// </summary>
+    [Fact]
+    public void Audio_nothing_vouches_for_is_filed_in_the_language_the_caller_falls_back_to()
+    {
+        using var context = corpus.OpenMigrated();
+        var file = Foreign("call.wav", 44_100, 0.5f, 0.25f);
+        var started = UtcTimestamp.Parse("2026-05-04T14:00:00.000Z");
+
+        Should.Throw<RecordingException>(
+                () => AudioIntake.Bring(context, file, new BroughtDetails(started, null), now))
+            .Message.ShouldContain("says what the meeting was spoken in");
+
+        AudioIntake.Bring(context, file, new BroughtDetails(started, null, LanguageWhenNothingSays: "es"), now);
+
+        using var reopened = corpus.Open();
+        reopened.Meetings.Single().Language.ShouldBe("es");
     }
 
     /// <summary>
@@ -622,21 +783,54 @@ public sealed class AudioIntakeTests : IDisposable
     /// A meeting folder this product really wrote: recorded into a corpus of its own, finished, and
     /// left with its audio and the card beside it — which is what a backup holds.
     /// </summary>
-    private DirectoryInfo Recorded()
+    private DirectoryInfo Recorded(string language = "es", string? title = null)
     {
         using var other = new TemporaryCorpus();
         using var context = other.OpenMigrated();
 
-        using var prepared = MeetingRecordings.Open(context, "es", now);
+        using var prepared = MeetingRecordings.Open(context, language, now);
         Fabricated.Spools(prepared.Spool, seconds: 1);
+
+        // Named before it is finished, because finishing is what writes the card from the row.
+        if (title is not null)
+        {
+            context.Meetings.Single(meeting => meeting.Id == prepared.MeetingId).Title = title;
+            context.SaveChanges();
+        }
+
         MeetingRecordings.Finish(context, prepared.MeetingId, now);
 
-        var filed = new DirectoryInfo(Path.Combine(
-            other.Root.FullName, CorpusFiles.Meetings, prepared.MeetingId.ToString()));
+        return CopiedOut(other, prepared.MeetingId, "restored");
+    }
 
-        // Copied out before the corpus it was made in goes away, because that is what somebody
-        // holding a restored folder actually has: the files, and no database behind them.
-        var restored = new DirectoryInfo(Path.Combine(elsewhere.FullName, "restored"));
+    /// <summary>
+    /// A meeting folder this application wrote for a file it brought in as one track, with a card
+    /// that says what was typed then.
+    /// </summary>
+    private DirectoryInfo ImportedAsOneTrack(UtcTimestamp startedAt, string language, string title)
+    {
+        using var other = new TemporaryCorpus();
+        using var context = other.OpenMigrated();
+
+        var brought = AudioIntake.Bring(
+            context,
+            Foreign("phone.wav", 44_100, 0.5f),
+            new BroughtDetails(startedAt, language, title),
+            now);
+
+        return CopiedOut(other, brought.MeetingId, "restored-one-track");
+    }
+
+    /// <summary>
+    /// Copied out before the corpus it was made in goes away, because that is what somebody holding
+    /// a restored folder actually has: the files, and no database behind them.
+    /// </summary>
+    private DirectoryInfo CopiedOut(TemporaryCorpus from, Guid meetingId, string name)
+    {
+        var filed = new DirectoryInfo(Path.Combine(
+            from.Root.FullName, CorpusFiles.Meetings, meetingId.ToString()));
+
+        var restored = new DirectoryInfo(Path.Combine(elsewhere.FullName, name));
         restored.Create();
         foreach (var file in filed.GetFiles())
         {

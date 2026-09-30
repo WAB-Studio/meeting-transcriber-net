@@ -21,16 +21,32 @@ namespace MeetingTranscriber.Recording;
 /// device that never recorded it.
 /// </remarks>
 /// <param name="StartedAt">
-/// When the meeting was, which no audio file says. It is asked for rather than taken from the
-/// file's timestamp: when a file was written is when somebody copied it, and a meeting filed under
-/// the day it was moved between disks is one nothing later can put back.
+/// When the meeting was, as somebody typed it, or nothing. The card of a folder this application
+/// wrote says it instead, and a typed value that card contradicts is refused. With no such card it
+/// has to be given, and it is still asked for rather than taken from the file's timestamp: when a
+/// file was written is when somebody copied it, and a meeting filed under the day it was moved
+/// between disks is one nothing later can put back.
 /// </param>
-/// <param name="Language">What was spoken, which nothing here can know either.</param>
+/// <param name="Language">
+/// What was spoken, as somebody typed it, or nothing — under the same rule as
+/// <paramref name="StartedAt"/>.
+/// </param>
+/// <param name="Title">
+/// What the meeting is called, as somebody typed it. A card with a name rules over it; a card with
+/// none takes it.
+/// </param>
+/// <param name="Context">What somebody said the meeting was about. Always taken.</param>
+/// <param name="LanguageWhenNothingSays">
+/// What the meeting is taken to be spoken in when neither the folder nor <paramref name="Language"/>
+/// says: the caller's default, applied only once the card has been read, so that it never stands in
+/// for a card that says otherwise.
+/// </param>
 public sealed record BroughtDetails(
-    UtcTimestamp StartedAt,
-    string Language,
+    UtcTimestamp? StartedAt,
+    string? Language,
     string? Title = null,
-    string? Context = null);
+    string? Context = null,
+    string? LanguageWhenNothingSays = null);
 
 /// <summary>What one file brought in became.</summary>
 /// <param name="MeetingId">The meeting it is now, minted here and never read off the file.</param>
@@ -116,7 +132,9 @@ public static class AudioIntake
     /// The file is read and what it is is settled before a row exists, and the order is the point.
     /// A file this build cannot open, or one that is already a file of this corpus, is refused with
     /// the corpus untouched; refused a step later it would leave a meeting with no audio under it
-    /// and a folder somebody has to work out how to clean up.
+    /// and a folder somebody has to work out how to clean up. So is what the folder's card says
+    /// about when, in what and under what name, and a typed value it contradicts is refused at the
+    /// same point, before a row or a byte.
     /// </remarks>
     public static BroughtMeeting Bring(
         CorpusDbContext corpus,
@@ -127,12 +145,24 @@ public static class AudioIntake
         ArgumentNullException.ThrowIfNull(corpus);
         ArgumentNullException.ThrowIfNull(audio);
         ArgumentNullException.ThrowIfNull(details);
-        ArgumentException.ThrowIfNullOrWhiteSpace(details.Language);
+
+        if (details.Language is { } typed && string.IsNullOrWhiteSpace(typed))
+        {
+            throw new ArgumentException("A language that is given cannot be blank.", nameof(details));
+        }
+
+        if (details.LanguageWhenNothingSays is { } fallback && string.IsNullOrWhiteSpace(fallback))
+        {
+            throw new ArgumentException(
+                "A language to fall back to that is given cannot be blank.", nameof(details));
+        }
 
         EnsureItCameFromOutside(corpus, audio);
 
         var format = AudioFiles.FormatOf(audio);
-        var profile = ProfileOf(audio, format);
+        var card = Vouching(audio, format);
+        var profile = card?.Profile ?? SourceProfile.Diarize;
+        var settled = Settle(card, details, audio);
 
         var meetingId = Guid.NewGuid();
         var destination = CorpusFiles.Locate(
@@ -211,7 +241,7 @@ public static class AudioIntake
                 corpus,
                 new NewMeeting(
                     meetingId,
-                    details.StartedAt,
+                    settled.StartedAt,
 
                     // Counted off the audio that is going in, and never off the file that arrived: a
                     // mixed down copy is the meeting from here, and a length taken from the other
@@ -219,9 +249,9 @@ public static class AudioIntake
                     // the corpus does not hold.
                     stored.Length,
                     profile,
-                    details.Language,
-                    details.Title,
-                    details.Context),
+                    settled.Language,
+                    settled.Title,
+                    settled.Context),
                 new ArrivedOn(
                     Kind: ArtifactKind.Audio,
                     FileName: MeetingAudio.FileName,
@@ -283,22 +313,28 @@ public static class AudioIntake
     }
 
     /// <summary>
-    /// What the audio is, decided from the audio first and from the folder it came in second.
+    /// The card this file is the audio of, when it is held to that file by shape; nothing otherwise.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The audio decides first because it is the half that cannot be typed. A file that is not the
-    /// exact shape this application's recordings come out as was not made by it, whatever JSON
-    /// happens to be sitting beside it — which is also what keeps an unrelated
-    /// <c>manifest.json</c> from being read at all, and keeps a hand-written one from turning
-    /// somebody's 24-bit stereo export into a meeting whose second channel is asserted to be the
-    /// user's own microphone.
+    /// The audio decides first because it is the half that cannot be typed. A card is held to the
+    /// file beside it by shape: <c>multichannel</c> vouches only for a file that is exactly the
+    /// shape this application's recordings come out as, and <c>diarize</c> only for a single track.
+    /// So a hand-written card cannot turn somebody's 24-bit stereo export into a meeting whose
+    /// second channel is asserted to be the user's own microphone. What the shape cannot tell apart
+    /// is another recording of that same shape: nothing on a card binds it to one file's bytes, so a
+    /// different recording saved in a copied folder under the card's own name takes what the card
+    /// says. That was already true of the profile at the interchange shape; it is accepted rather
+    /// than closed because the card is five keys a person may read and carry, and giving it a hash
+    /// would make it a second copy of the corpus's own record.
     /// </para>
     /// <para>
-    /// A file that <em>is</em> that shape is this application's own recording or a coincidence, and
-    /// the card is what tells the two apart. A meeting's folder holds one <c>audio.wav</c> and one
-    /// <c>manifest.json</c> describing it, so a card is evidence about that file and about nothing
-    /// else somebody happened to drop in the folder.
+    /// A file that <em>is</em> one of those shapes is this application's own recording or a
+    /// coincidence, and the card is what tells the two apart. A meeting's folder holds one
+    /// <c>audio.wav</c> and one <c>manifest.json</c> describing it, so a card is evidence about that
+    /// file and about nothing else somebody happened to drop in the folder. The same card is what
+    /// settles when the meeting started, what it was spoken in and what it was called, and it is
+    /// held to the same test for that.
     /// </para>
     /// <para>
     /// <b>Vouched or not vouched, and nothing in between.</b> A card that is not there, and a card
@@ -311,14 +347,78 @@ public static class AudioIntake
     /// refused over a file its owner never thought about.
     /// </para>
     /// </remarks>
-    private static SourceProfile ProfileOf(FileInfo audio, StreamFormat format)
+    private static MeetingCard? Vouching(FileInfo audio, StreamFormat format)
     {
-        if (!AudioFiles.IsWhatThisApplicationRecords(format))
+        var card = CardAbout(audio);
+
+        return card?.Profile switch
         {
-            return SourceProfile.Diarize;
+            SourceProfile.Multichannel when AudioFiles.IsWhatThisApplicationRecords(format) => card,
+            SourceProfile.Diarize when AudioFiles.IsOneTrack(format) => card,
+            _ => null,
+        };
+    }
+
+    private sealed record Settled(UtcTimestamp StartedAt, string Language, string? Title, string? Context);
+
+    /// <summary>
+    /// What the meeting's start, language and name are: the vouching card's when there is one, and
+    /// what was typed otherwise.
+    /// </summary>
+    /// <remarks>
+    /// A typed value a card contradicts is refused, all of them in one message, because a date
+    /// silently replacing the one the recording carries is one nothing afterwards can account for.
+    /// The start is compared to the millisecond, the language ignoring case and the name exactly,
+    /// both after trimming what was typed; a card with no name contradicts none.
+    /// </remarks>
+    private static Settled Settle(MeetingCard? card, BroughtDetails details, FileInfo audio)
+    {
+        if (card is null)
+        {
+            var started = details.StartedAt
+                ?? throw new RecordingException(
+                    $"Nothing beside '{audio.FullName}' says when the meeting started, so it has to be given. Nothing was filed.");
+            var language = details.Language ?? details.LanguageWhenNothingSays
+                ?? throw new RecordingException(
+                    $"Nothing beside '{audio.FullName}' says what the meeting was spoken in, so it has to be given. Nothing was filed.");
+
+            return new Settled(started, language, details.Title, details.Context);
         }
 
-        return CardAbout(audio)?.Profile ?? SourceProfile.Diarize;
+        var contradictions = new List<string>();
+
+        if (details.StartedAt is { } typedStart && typedStart != card.StartedAt)
+        {
+            contradictions.Add(
+                $"It says the meeting started at {card.StartedAt.ToStorage()} and {typedStart.ToStorage()} was given.");
+        }
+
+        if (details.Language?.Trim() is { } typedLanguage
+            && !string.Equals(typedLanguage, card.Language, StringComparison.OrdinalIgnoreCase))
+        {
+            contradictions.Add(
+                $"It says it was spoken in '{card.Language}' and '{typedLanguage}' was given.");
+        }
+
+        if (card.Title is not null
+            && details.Title?.Trim() is { } typedTitle
+            && !string.Equals(typedTitle, card.Title, StringComparison.Ordinal))
+        {
+            contradictions.Add(
+                $"It says it was called '{card.Title}' and '{typedTitle}' was given.");
+        }
+
+        if (contradictions.Count > 0)
+        {
+            var cardPath = Path.Combine(audio.Directory!.FullName, MeetingManifest.FileName);
+
+            throw new RecordingException(
+                $"'{cardPath}' is the card this application wrote beside '{audio.FullName}', and a typed value does not replace what it says about the recording. "
+                + string.Join(' ', contradictions)
+                + " If this file is not the one the card is about, move it out of this folder. Nothing was filed.");
+        }
+
+        return new Settled(card.StartedAt, card.Language, card.Title ?? details.Title, details.Context);
     }
 
     /// <summary>
