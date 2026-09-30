@@ -222,6 +222,77 @@ public class WhoIsWhoTests
     }
 
     [Fact]
+    public void A_voice_whose_longest_stretch_is_short_brings_two_more()
+    {
+        var turns = new[]
+        {
+            Turn(0, AudioChannel.Loopback, 0, start: 0, length: 2_000),
+            Turn(1, AudioChannel.Loopback, 0, start: 10_000, length: 5_000),
+            Turn(2, AudioChannel.Loopback, 0, start: 20_000, length: 1_000),
+            Turn(3, AudioChannel.Loopback, 0, start: 30_000, length: 3_000),
+            Turn(4, AudioChannel.Loopback, 0, start: 40_000, length: 4_000),
+        };
+
+        var voice = WhoIsWho.Of(SourceProfile.Multichannel, turns, []).Voices.Single();
+
+        voice.Alone!.From.ShouldBe(Duration.FromMilliseconds(10_000));
+        voice.OtherStretches.Select(stretch => (stretch.From.Milliseconds, stretch.To.Milliseconds))
+            .ShouldBe([(30_000L, 33_000L), (40_000L, 44_000L)]);
+        (voice.OtherStretches.Count + 1).ShouldBeLessThanOrEqualTo(WhoIsWho.MostClipsOfOneVoice);
+    }
+
+    [Fact]
+    public void A_voice_heard_alone_for_a_whole_clip_brings_no_more()
+    {
+        var turns = new[]
+        {
+            Turn(0, AudioChannel.Loopback, 0, start: 0, length: 20_000),
+            Turn(1, AudioChannel.Loopback, 0, start: 30_000, length: 3_000),
+            Turn(2, AudioChannel.Loopback, 0, start: 40_000, length: 4_000),
+        };
+
+        var voice = WhoIsWho.Of(SourceProfile.Multichannel, turns, []).Voices.Single();
+
+        voice.OtherStretches.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void The_other_stretches_never_include_the_first_one_the_voice_spoke_alone_in()
+    {
+        var turns = new[]
+        {
+            Turn(0, AudioChannel.Loopback, 0, start: 0, length: 2_000),
+            Turn(1, AudioChannel.Loopback, 0, start: 10_000, length: 5_000),
+            Turn(2, AudioChannel.Loopback, 0, start: 20_000, length: 3_000),
+        };
+
+        var voice = WhoIsWho.Of(SourceProfile.Multichannel, turns, []).Voices.Single();
+
+        voice.OtherStretches.Select(stretch => stretch.From.Milliseconds).ShouldBe([20_000L]);
+    }
+
+    [Fact]
+    public void The_other_stretches_come_from_turns_of_their_own_in_meeting_order()
+    {
+        var turns = new[]
+        {
+            Turn(0, AudioChannel.Loopback, 0, start: 0, length: 10_000),
+            Turn(1, AudioChannel.Loopback, 1, start: 2_000, length: 1_000),
+            Turn(2, AudioChannel.Loopback, 0, start: 20_000, length: 6_000),
+            Turn(3, AudioChannel.Loopback, 1, start: 22_000, length: 1_000),
+            Turn(4, AudioChannel.Loopback, 0, start: 30_000, length: 1_000),
+            Turn(5, AudioChannel.Loopback, 0, start: 40_000, length: 2_000),
+        };
+
+        var voice = WhoIsWho.Of(SourceProfile.Multichannel, turns, []).Voices
+            .Single(candidate => candidate.Label == SpeakerLabels.For(AudioChannel.Loopback, 0));
+
+        voice.Alone!.From.ShouldBe(Duration.FromMilliseconds(3_000));
+        voice.OtherStretches.Select(stretch => (stretch.From.Milliseconds, stretch.To.Milliseconds))
+            .ShouldBe([(23_000L, 26_000L), (40_000L, 42_000L)]);
+    }
+
+    [Fact]
     public void A_null_argument_throws()
     {
         Should.Throw<ArgumentNullException>(() => WhoIsWho.Of(SourceProfile.Multichannel, null!, []));

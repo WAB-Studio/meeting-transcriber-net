@@ -255,6 +255,60 @@ public class OwedRendersTests
     }
 
     /// <summary>
+    /// A rename that committed and was never followed by its renders — the application closed, or a
+    /// render failed and the dismissed message was the only record — leaves the transcript showing
+    /// the older name; the next launch finds that off the corpus and writes the new one.
+    /// </summary>
+    [Fact]
+    public void A_meeting_still_showing_a_name_somebody_corrected_is_rendered_again()
+    {
+        var start = new DateTimeOffset(2026, 3, 4, 14, 0, 0, TimeSpan.Zero);
+        using var corpus = new TemporaryCorpus();
+        var meeting = Transcribed(corpus);
+
+        string label;
+        Person renata;
+        using (var context = corpus.Open())
+        {
+            MeetingRenderer.Render(context, meeting, UtcTimestamp.From(start));
+            label = context.Utterances
+                .Where(turn => turn.MeetingId == meeting)
+                .OrderBy(turn => turn.Ordinal)
+                .First()
+                .SpeakerLabel;
+        }
+
+        using (var context = corpus.Open())
+        {
+            var human = new HumanLayer(context, UtcTimestamp.From(start.AddMinutes(30)));
+            renata = human.Add("Renata");
+            human.Assign(meeting, label, renata);
+        }
+
+        OwedRenders.CatchUpOn(corpus.Root, new AClock(start.AddHours(1))).Rendered.ShouldBe([meeting]);
+        Rendered(corpus, meeting).ShouldContain(text => text.Contains("Renata", StringComparison.Ordinal));
+
+        using (var context = corpus.Open())
+        {
+            new HumanLayer(context, UtcTimestamp.From(start.AddHours(2))).Rename(renata, "Renata Corregida");
+        }
+
+        var caught = OwedRenders.CatchUpOn(corpus.Root, new AClock(start.AddHours(3)));
+        caught.Rendered.ShouldBe([meeting]);
+        caught.CouldNotRender.ShouldBeEmpty();
+        Rendered(corpus, meeting).ShouldContain(text => text.Contains("Renata Corregida", StringComparison.Ordinal));
+
+        var again = OwedRenders.CatchUpOn(corpus.Root, new AClock(start.AddHours(4)));
+        again.Rendered.ShouldBeEmpty();
+        again.CouldNotRender.ShouldBeEmpty();
+    }
+
+    private sealed class AClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    /// <summary>
     /// A folder holding no corpus is read and left as it was found. Making one here would put an
     /// empty corpus where somebody's is supposed to be, which is the failure that looks like
     /// nothing being wrong.

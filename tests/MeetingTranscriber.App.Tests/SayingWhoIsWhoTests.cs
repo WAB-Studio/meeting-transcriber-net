@@ -287,6 +287,43 @@ public class SayingWhoIsWhoTests
     }
 
     /// <summary>
+    /// A voice that spoke little is offered its further stretches under the catalogue's words for
+    /// them, each a clip of its own with an automation id a walk can press.
+    /// </summary>
+    [Fact]
+    public void A_voice_that_spoke_little_offers_its_other_stretches()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        screen.ShouldContain("voice.OtherStretches");
+        screen.ShouldContain("UiTexts.OtherStretches");
+        screen.ShouldContain("$\"clip-{position}-{n + 1}\"");
+
+        // Which clip is playing is the voice and the stretch, not the voice alone: a press on
+        // another clip of the same voice starts that one rather than pausing this one.
+        Body(screen, "private void OnClipToggle(").ShouldContain("_playingClip == clip");
+    }
+
+    /// <summary>
+    /// Enter in the name box of the add-somebody dialogue commits it the way Guardar does, as the
+    /// node pill on the classifying screen does.
+    /// </summary>
+    [Fact]
+    public void Enter_in_the_name_box_commits_the_dialogue_the_way_Guardar_does()
+    {
+        var markup = File.ReadAllText(AppSources.At(Path.Combine("MeetingTranscriber.App", "AddingSomebody.xaml")).FullName);
+        var dialogue = File.ReadAllText(AppSources.At(Dialogue).FullName);
+
+        markup.ShouldContain("KeyDown=\"OnTheirNameKey\"");
+
+        var handler = Body(dialogue, "private void OnTheirNameKey(");
+        handler.ShouldContain("VirtualKey.Enter");
+        handler.ShouldContain("Commit()");
+
+        Body(dialogue, "private void OnSomebodyNamed(").ShouldContain("Commit()");
+    }
+
+    /// <summary>
     /// One method's body, anchored on the closing brace at its own indentation.
     /// <c>ClassifyingAMeetingTests</c>' own helper, for the reason given there.
     /// </summary>

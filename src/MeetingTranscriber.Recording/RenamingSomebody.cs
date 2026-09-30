@@ -47,7 +47,7 @@ public static class RenamingSomebody
     /// <exception cref="RenderException">
     /// The rename itself always lands. One or more of their meetings could not be rendered again;
     /// the exception names every one of them and leaves the rest — and the rename — exactly as they
-    /// landed. <c>render &lt;meeting id&gt;</c> is how each named meeting is caught up afterwards.
+    /// landed. The next launch renders each named meeting again: <c>OwedRenders</c> finds them off the corpus.
     /// </exception>
     public static Person? Rename(DirectoryInfo root, Person person, string displayName, TimeProvider clock)
     {
@@ -104,7 +104,7 @@ public static class RenamingSomebody
             throw new RenderException(
                 $"{person.Id} was renamed to \"{displayName}\", but could not be rendered again for "
                 + $"{stillTheOldName.Count} meeting(s): {string.Join(", ", stillTheOldName)}. "
-                + "'render <meeting id>' writes each one again.");
+                + "The next launch renders each one again.");
         }
 
         return renamed;

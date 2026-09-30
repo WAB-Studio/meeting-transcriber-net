@@ -229,7 +229,7 @@ renders that one meeting again in the same transaction, so a name it saved is a 
 transcript already shows, and `RenamingSomebody`, which corrects a person's name and then renders
 every meeting it touches, each in a transaction of its own, so the rename does not hold the
 corpus's write lock across them — a name it saved is a name every render that landed already
-shows, and what did not is named on the way out for `render <meeting id>` to catch up — and the
+shows, and what did not is named on the way out and caught up by the next launch, which `OwedRenders` finds off the corpus — and the
 reason either can be is the direction: `Processing` knows nothing about a window, so nothing came
 back the other way.
 
