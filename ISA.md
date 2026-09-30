@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 171/254
+progress: 171/259
 updated: 2026-09-30
 ---
 
@@ -178,6 +178,8 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-169: A meeting following one program goes on following another without the recording stopping.
 - [x] ISC-185: The folder a meeting was recorded into is gone once the corpus holds that meeting's audio.
 - [x] ISC-186: Anti: a recording's folder is never gone while the corpus does not hold, verified, what that folder was the only copy of.
+- [ ] ISC-200: A source that dies while a meeting is being recorded is named by its device, together with the moment it was cut.
+- [ ] ISC-201: A microphone that died can be opened again while the meeting is still being recorded.
 
 ### F4 · WinUI recorder
 Why: the application replaces OBS. Recording, pausing, stopping and recovering happen in one
@@ -313,6 +315,9 @@ Board: 6 · Conocimiento local
 - [ ] ISC-192.2: With nothing typed, the corpus offers as candidates the words the provider was unsure of that come up often and resemble a word coming up far more often.
 - [ ] ISC-192.3: A correction belongs either to the whole corpus or to one node of the tree, and a meeting linked to no node is still corrected by those that belong to the whole corpus.
 - [ ] ISC-192.4: Anti: finding candidates, asked for or not, needs no model — nothing passes the corpus through one, and every candidate is found with none installed.
+- [ ] ISC-197: A person being added whom the corpus already holds under a name spelled a little differently is offered as the one already there, closest first, before a new person is made.
+- [ ] ISC-198: Anti: offering who a person being added already is needs no model — every candidate is found with none installed.
+- [ ] ISC-199: A term searched for also finds the meetings where it came out the way a correction elsewhere says it gets written wrong, though nobody corrected those meetings.
 
 ### F8 · Distribution and backup
 Why: the application installs, upgrades and comes back from a lost disk, because the corpus
