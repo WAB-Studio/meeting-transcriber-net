@@ -33,6 +33,9 @@ public static class CorpusNodes
             .AsNoTracking()
             .OrderBy(node => node.Depth)
             .ThenBy(node => node.Name)
+            // A page of this list is stable only with a unique last key, and two nodes under
+            // different parents can share a name and a depth.
+            .ThenBy(node => node.Id)
             .ToArray();
     }
 }

@@ -1,3 +1,5 @@
+using System.Text;
+
 using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
@@ -39,13 +41,31 @@ internal static class Answers
     /// The most rows any one answer carries.
     /// </summary>
     /// <remarks>
-    /// Bounded by rows and not by bytes, and ISC-99 is the claim about the other kind of bound: a
-    /// budget in characters would go here, and nothing here claims one. A limit above this is
-    /// clamped rather than refused — an agent that asked for a thousand wants as many as it can
-    /// have, and a refusal would cost it the call. What it is told instead is that there was more,
-    /// which is the thing it can act on.
+    /// Rows are what paging is expressed in and what an agent asks in; <see cref="MostBytesInOneAnswer"/>
+    /// is the other bound, and it is what stops one enormous row being the leak that rows were meant
+    /// to close. A limit above this is clamped rather than refused — an agent that asked for a
+    /// thousand wants as many as it can have, and a refusal would cost it the call. What it is told
+    /// instead is that there was more and where to read on from, which is the thing it can act on.
     /// </remarks>
     internal const int MostRowsInOneAnswer = 200;
+
+    /// <summary>
+    /// The most UTF-8 bytes of text any one answer carries, header and count line included.
+    /// </summary>
+    /// <remarks>
+    /// Bytes and not tokens: a token count is a property of whoever reads the answer, and this
+    /// server would have to carry somebody else's tokenizer to guess at it. A page stops at the last
+    /// row that fits, and a row that alone does not fit is refused by position rather than cut, so
+    /// an answer never holds half of anything somebody said.
+    /// </remarks>
+    internal const int MostBytesInOneAnswer = 65_536;
+
+    /// <summary>
+    /// The most rows an agent may ask to skip. A page is read by asking the corpus for everything
+    /// up to the end of it, so the cost of a page grows with how far in it is, and this is where
+    /// that stops being a thing to pay for: past it, the question is to be narrowed.
+    /// </summary>
+    internal const int MostRowsSkipped = 100_000;
 
     /// <summary>
     /// What stands where there is nothing: a meeting nobody has named, and a meeting whose turns
@@ -144,26 +164,102 @@ internal static class Answers
         inside: {node.ParentId?.ToString() ?? Nothing}
         """;
 
+    /// <summary>One answer: its text, how many rows it holds, and whether there was more.</summary>
+    internal sealed record Page(string Text, int Rows, bool More);
+
     /// <summary>
-    /// A whole answer: what it holds, then the blocks, then whether the limit cut it short.
+    /// The rows an agent asked to skip, or the refusal that says why that cannot be.
+    /// </summary>
+    internal static int Skipped(int saltar) => saltar switch
+    {
+        < 0 => throw new McpRefused(
+            $"saltar is {saltar}. It counts rows already read, so it is never negative."),
+        > MostRowsSkipped => throw new McpRefused(
+            $"saltar is {saltar}, past the {MostRowsSkipped} rows any answer here can be paged "
+            + "through. Narrow the question instead."),
+        _ => saltar,
+    };
+
+    /// <summary>
+    /// A whole answer: what it is about, what it holds, then the rows — as many as were asked for
+    /// and as fit in <see cref="MostBytesInOneAnswer"/>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The count comes first because an agent deciding whether to narrow its question should not
     /// have to read to the bottom to find out it was cut. What it says about the cut is that there
-    /// was more and not how much more: the limit is applied in SQL and the caller asks for one row
-    /// past it, so what is known is the overflow and never the total. Telling it a total nothing
-    /// counted would be the kind of promise a format keeps by inventing a number.
+    /// was more and where to read on from, never how much more: the limit is applied in SQL and the
+    /// caller asks for one row past it, so what is known is the overflow and never the total.
+    /// </para>
+    /// <para>
+    /// <paramref name="rows"/> is what the reader returned past the ones skipped. A page stops at
+    /// the last row that fits, and <c>saltar</c> in the count line is the row it stopped at. A first
+    /// row that alone would not fit is refused naming its position, because an agent told only that
+    /// there was more would ask again at the same place for ever. <paramref name="skipped"/> is
+    /// <c>null</c> for an answer that has no <c>saltar</c> to read on with, which is whole or refused.
+    /// </para>
     /// </remarks>
-    internal static string All(string what, IReadOnlyList<string> blocks, bool more)
+    internal static Page Paged(
+        string? header, string what, IReadOnlyList<string> rows, int? skipped, int wanted)
     {
-        var said = more
-            ? $"{blocks.Count} {what}, and there are more — narrow the question or raise the limit."
-            : $"{blocks.Count} {what}.";
+        var headerBytes = header is null ? 0 : Encoding.UTF8.GetByteCount(header) + Break.Length;
+        var offered = Math.Min(rows.Count, wanted);
 
-        return blocks.Count == 0
-            ? said
-            : said + Break + string.Join(Break, blocks);
+        // The count line is budgeted at its longest, which is the cut one at the last row offered:
+        // what is written below can only be shorter, so a page never outgrows the bound by its own
+        // count line.
+        var budget = MostBytesInOneAnswer - headerBytes
+            - Encoding.UTF8.GetByteCount(Counted(offered, what, more: true, skipped) + Break);
+
+        if (budget <= 0)
+        {
+            throw new McpRefused(
+                $"What this meeting is about takes {headerBytes} of the {MostBytesInOneAnswer} bytes "
+                + "one answer may be, leaving no room for a row, so it is not sent.");
+        }
+
+        var taken = 0;
+        var used = 0;
+        while (taken < offered)
+        {
+            var next = Encoding.UTF8.GetByteCount(rows[taken]) + (taken == 0 ? 0 : Break.Length);
+
+            if (used + next > budget)
+            {
+                break;
+            }
+
+            used += next;
+            taken++;
+        }
+
+        if (skipped is null && taken < offered)
+        {
+            // An answer with no `saltar` is whole or it is refused: a citation that dropped the turn
+            // it was asked about, because the turns before it were large, would answer nothing.
+            throw new McpRefused(
+                $"The {what} around this one do not fit in one answer ({MostBytesInOneAnswer} bytes). "
+                + "Open them with leer_turnos, which pages.");
+        }
+
+        if (taken == 0 && offered > 0)
+        {
+            throw new McpRefused(
+                $"The {what} row at position {skipped} is {Encoding.UTF8.GetByteCount(rows[0])} bytes, "
+                + $"more than the {budget} one answer has room for after what it says first, so it is "
+                + $"not sent. Ask again with saltar: {skipped + 1} to read past it.");
+        }
+
+        var more = rows.Count > taken;
+        var said = Counted(taken, what, more, skipped);
+        var body = taken == 0 ? said : said + Break + string.Join(Break, rows.Take(taken));
+
+        return new Page(header is null ? body : header + Break + body, taken, more);
     }
+
+    private static string Counted(int taken, string what, bool more, int? skipped) => more
+        ? $"{taken} {what}, and there are more — ask again with saltar: {skipped + taken}, or narrow the question."
+        : $"{taken} {what}.";
 
     /// <summary>
     /// The fields every anchored thing carries, in one shape, so that a decision read out of one

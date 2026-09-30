@@ -1,4 +1,7 @@
 using System.IO.Pipelines;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
@@ -200,8 +203,8 @@ public class CorpusServerTests
     /// </summary>
     /// <remarks>
     /// An agent that asked for one row and got one row cannot otherwise tell a corpus of one from a
-    /// corpus of a thousand, and it has no cursor to ask with — what it can act on is being told to
-    /// narrow. Red against a tool that applies its limit in SQL and then reports the rows it has as
+    /// corpus of a thousand — what it can act on is being told there was more, and where to read on
+    /// from. Red against a tool that applies its limit in SQL and then reports the rows it has as
     /// though they were all there were, which every one of these would do without asking for one
     /// row past the bound.
     /// </remarks>
@@ -223,6 +226,7 @@ public class CorpusServerTests
         var cut = await talking.Call("listar_decisiones", new() { ["limite"] = 1 });
         cut.ShouldNotBeError();
         cut.Said().ShouldContain("1 decisions, and there are more");
+        cut.Said().ShouldContain("saltar: 1");
 
         var whole = await talking.Call("listar_decisiones", new() { ["limite"] = 20 });
         whole.ShouldNotBeError();
@@ -259,15 +263,17 @@ public class CorpusServerTests
             "obtener_cita",
         ]);
 
-        // The six §8.2 spells, and the three this repository filled `filtros` in with.
-        Parameters(tools, "buscar_reuniones").ShouldBe(["limite", "query"]);
-        Parameters(tools, "leer_resumen").ShouldBe(["meeting_id"]);
-        Parameters(tools, "leer_turnos").ShouldBe(["desde_ms", "hasta_ms", "meeting_id"]);
+        // The names §8.2 spells, the three filters that fill `filtros` (`limite`, `desde`, `hasta`),
+        // and `saltar`, the paging §8.2 asks for as "respeta paginación". `obtener_cita` has none:
+        // it is five turns at most, and what reads past them is `leer_turnos`.
+        Parameters(tools, "buscar_reuniones").ShouldBe(["limite", "query", "saltar"]);
+        Parameters(tools, "leer_resumen").ShouldBe(["meeting_id", "saltar"]);
+        Parameters(tools, "leer_turnos").ShouldBe(["desde_ms", "hasta_ms", "meeting_id", "saltar"]);
         Parameters(tools, "obtener_cita").ShouldBe(["meeting_id", "utterance_ordinal"]);
-        Parameters(tools, "listar_decisiones").ShouldBe(["desde", "hasta", "limite"]);
-        Parameters(tools, "listar_acciones").ShouldBe(["desde", "hasta", "limite"]);
-        Parameters(tools, "leer_nodo").ShouldBe(["limite", "nodo_id"]);
-        Parameters(tools, "listar_nodos").ShouldBe(["limite"]);
+        Parameters(tools, "listar_decisiones").ShouldBe(["desde", "hasta", "limite", "saltar"]);
+        Parameters(tools, "listar_acciones").ShouldBe(["desde", "hasta", "limite", "saltar"]);
+        Parameters(tools, "leer_nodo").ShouldBe(["limite", "nodo_id", "saltar"]);
+        Parameters(tools, "listar_nodos").ShouldBe(["limite", "saltar"]);
     }
 
     /// <summary>
@@ -595,6 +601,273 @@ public class CorpusServerTests
         refused.Said().ShouldContain(missing.ToString());
     }
 
+    /// <summary>
+    /// A meeting of three hundred turns cannot be had in one call, and two calls cover it exactly.
+    /// </summary>
+    /// <remarks>Red when <c>saltar</c> is ignored: the second page would be the first again.</remarks>
+    [Fact]
+    public async Task A_long_meeting_cannot_come_back_whole_in_one_call()
+    {
+        using var corpus = new CorpusOutsideApplicationData("mcp");
+        Guid meeting;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meeting = MeetingRows.Recorded(
+                context, AMeeting.StartedAt, [.. Enumerable.Range(0, 300).Select(n => $"turno {n}")]);
+        }
+
+        await using var talking = await Conversation.Over(corpus);
+
+        async Task<CallToolResult> Read(int saltar) => await talking.Call("leer_turnos", new()
+        {
+            ["meeting_id"] = meeting.ToString(),
+            ["desde_ms"] = 0,
+            ["hasta_ms"] = 10_000_000,
+            ["saltar"] = saltar,
+        });
+
+        var first = await Read(0);
+        first.ShouldNotBeError();
+        first.Said().ShouldContain("200 turns, and there are more");
+        first.Said().ShouldContain("saltar: 200");
+
+        var second = await Read(200);
+        second.ShouldNotBeError();
+        second.Said().ShouldContain("100 turns.");
+        second.Said().ShouldNotContain("there are more");
+
+        var before = Ordinals(first.Said());
+        var after = Ordinals(second.Said());
+
+        before.Intersect(after).ShouldBeEmpty();
+        before.Concat(after).Order().ShouldBe(Enumerable.Range(0, 300));
+    }
+
+    /// <summary>
+    /// An answer is cut at its size whatever its row count, and says where it stopped.
+    /// </summary>
+    /// <remarks>
+    /// Sixty turns of two thousand characters are well under the row bound and well over the byte
+    /// one. Red with the byte bound removed: the answer would be all sixty.
+    /// </remarks>
+    [Fact]
+    public async Task An_answer_is_cut_at_its_size_whatever_its_row_count()
+    {
+        using var corpus = new CorpusOutsideApplicationData("mcp");
+        Guid meeting;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meeting = MeetingRows.Recorded(
+                context,
+                AMeeting.StartedAt,
+                [.. Enumerable.Range(0, 60).Select(n => $"{n:D3}" + new string('a', 1_997))]);
+        }
+
+        await using var talking = await Conversation.Over(corpus);
+
+        var answer = await talking.Call("leer_turnos", new()
+        {
+            ["meeting_id"] = meeting.ToString(),
+            ["desde_ms"] = 0,
+            ["hasta_ms"] = 10_000_000,
+        });
+
+        answer.ShouldNotBeError();
+        Encoding.UTF8.GetByteCount(answer.Said()).ShouldBeLessThanOrEqualTo(65_536);
+
+        var held = Ordinals(answer.Said()).Count;
+        held.ShouldBeInRange(1, 59);
+        answer.Said().ShouldContain("there are more");
+        answer.Said().ShouldContain($"saltar: {held}");
+    }
+
+    /// <summary>
+    /// One row larger than an answer may be is refused, naming the <c>saltar</c> that reads past it,
+    /// and is never truncated and never sent whole.
+    /// </summary>
+    [Fact]
+    public async Task One_row_larger_than_an_answer_may_be_is_refused_naming_where_to_read_past_it()
+    {
+        using var corpus = new CorpusOutsideApplicationData("mcp");
+        Guid meeting;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meeting = MeetingRows.Recorded(context, AMeeting.StartedAt, [new string('a', 70_000)]);
+        }
+
+        await using var talking = await Conversation.Over(corpus);
+
+        var refused = await talking.Call("leer_turnos", new()
+        {
+            ["meeting_id"] = meeting.ToString(),
+            ["desde_ms"] = 0,
+            ["hasta_ms"] = 10_000_000,
+        });
+
+        refused.IsError.ShouldBe(true);
+        refused.Said().ShouldContain("saltar: 1");
+        refused.Said().ShouldNotContain(new string('a', 100));
+
+        var cited = await talking.Call("obtener_cita", new()
+        {
+            ["meeting_id"] = meeting.ToString(),
+            ["utterance_ordinal"] = 0,
+        });
+
+        cited.IsError.ShouldBe(true);
+        cited.Said().ShouldContain("leer_turnos");
+    }
+
+    /// <summary>A <c>saltar</c> that cannot mean anything is refused in words.</summary>
+    [Fact]
+    public async Task A_saltar_that_cannot_be_meant_is_refused_in_words()
+    {
+        using var corpus = new CorpusOutsideApplicationData("mcp");
+
+        using (var context = corpus.OpenMigrated())
+        {
+            AMeeting.RecordedIn(context);
+        }
+
+        await using var talking = await Conversation.Over(corpus);
+
+        var negative = await talking.Call("listar_nodos", new() { ["saltar"] = -1 });
+        negative.IsError.ShouldBe(true);
+        negative.Said().ShouldContain("never negative");
+
+        var beyond = await talking.Call("listar_nodos", new() { ["saltar"] = 100_001 });
+        beyond.IsError.ShouldBe(true);
+        beyond.Said().ShouldContain("Narrow the question");
+    }
+
+    /// <summary>
+    /// Every request is written down with what was asked and how much came back, answered or not.
+    /// </summary>
+    /// <remarks>Red with the record call removed: there would be no lines.</remarks>
+    [Fact]
+    public async Task Every_request_is_recorded_with_what_was_asked_and_how_much_came_back()
+    {
+        using var corpus = new CorpusOutsideApplicationData("mcp");
+
+        using (var context = corpus.OpenMigrated())
+        {
+            AMeeting.RecordedIn(context);
+        }
+
+        await using var talking = await Conversation.Over(corpus);
+
+        var found = await talking.Call("buscar_reuniones", new() { ["query"] = "presupuesto" });
+        found.ShouldNotBeError();
+
+        var refused = await talking.Call("leer_resumen", new() { ["meeting_id"] = "la reunión" });
+        refused.IsError.ShouldBe(true);
+
+        var lines = talking.Recorded();
+        lines.Count.ShouldBe(2);
+
+        lines[0].GetProperty("tool").GetString().ShouldBe("buscar_reuniones");
+        lines[0].GetProperty("asked").GetProperty("query").GetString().ShouldBe("presupuesto");
+        lines[0].GetProperty("asked").GetProperty("saltar").GetInt32().ShouldBe(0);
+        lines[0].GetProperty("answered").GetBoolean().ShouldBeTrue();
+        lines[0].GetProperty("rows").GetInt32().ShouldBeGreaterThan(0);
+        lines[0].GetProperty("bytes").GetInt32().ShouldBe(Encoding.UTF8.GetByteCount(found.Said()));
+        lines[0].GetProperty("more").GetBoolean().ShouldBeFalse();
+        lines[0].GetProperty("corpus").GetString().ShouldBe(corpus.Root.FullName, StringCompareShould.IgnoreCase);
+        lines[0].TryGetProperty("at", out _).ShouldBeTrue();
+
+        lines[1].GetProperty("tool").GetString().ShouldBe("leer_resumen");
+        lines[1].GetProperty("asked").GetProperty("meeting_id").GetString().ShouldBe("la reunión");
+        lines[1].GetProperty("answered").GetBoolean().ShouldBeFalse();
+        lines[1].GetProperty("rows").GetInt32().ShouldBe(0);
+        lines[1].GetProperty("bytes").GetInt32().ShouldBe(Encoding.UTF8.GetByteCount(refused.Said()));
+        lines[1].GetProperty("refusal").GetString()!.ShouldContain("is not a meeting id");
+    }
+
+    /// <summary>
+    /// A call over a folder with no corpus in it is part of what an agent did, so it is recorded
+    /// too, naming the folder it looked in.
+    /// </summary>
+    /// <remarks>Red when the record is written only once a corpus has opened.</remarks>
+    [Fact]
+    public async Task A_call_over_a_folder_with_no_corpus_is_recorded_too()
+    {
+        using var corpus = new CorpusOutsideApplicationData("mcp");
+        await using var talking = await Conversation.Over(corpus);
+
+        var refused = await talking.Call("buscar_reuniones", new() { ["query"] = "presupuesto" });
+        refused.IsError.ShouldBe(true);
+
+        var line = talking.Recorded().ShouldHaveSingleItem();
+
+        line.GetProperty("answered").GetBoolean().ShouldBeFalse();
+        line.GetProperty("corpus").GetString().ShouldBe(corpus.Root.FullName, StringCompareShould.IgnoreCase);
+        line.GetProperty("refusal").GetString()!.ShouldContain("Record a meeting");
+    }
+
+    /// <summary>
+    /// A request that cannot be written down is not answered: a record with holes would be read as
+    /// complete.
+    /// </summary>
+    /// <remarks>Red when a failure to record is swallowed and the answer goes out anyway.</remarks>
+    [Fact]
+    public async Task A_request_that_cannot_be_recorded_is_not_answered()
+    {
+        using var corpus = new CorpusOutsideApplicationData("mcp");
+
+        using (var context = corpus.OpenMigrated())
+        {
+            AMeeting.RecordedIn(context);
+        }
+
+        // The record's path is a folder, which no line can be appended to.
+        await using var talking = await Conversation.Over(
+            corpus, folder => new FileInfo(Directory.CreateDirectory(Path.Combine(folder.Folder.FullName, "record")).FullName));
+
+        var answer = await talking.Call("buscar_reuniones", new() { ["query"] = "presupuesto" });
+
+        answer.IsError.ShouldBe(true);
+        answer.Said().ShouldContain("could not be recorded");
+        answer.Said().ShouldNotContain("found_in");
+    }
+
+    /// <summary>
+    /// A session leaves nothing in the corpus folder but the database and SQLite's own files.
+    /// </summary>
+    /// <remarks>Red when the record is pointed into the corpus.</remarks>
+    [Fact]
+    public async Task A_session_leaves_nothing_in_the_corpus_folder_but_the_database()
+    {
+        using var corpus = new CorpusOutsideApplicationData("mcp");
+
+        using (var context = corpus.OpenMigrated())
+        {
+            AMeeting.RecordedIn(context);
+        }
+
+        await using var talking = await Conversation.Over(corpus);
+
+        (await talking.Call("buscar_reuniones", new() { ["query"] = "presupuesto" })).ShouldNotBeError();
+        (await talking.Call("listar_nodos", new())).ShouldNotBeError();
+        (await talking.Call("listar_decisiones", new())).ShouldNotBeError();
+
+        CorpusDatabase.ClearPoolsFor(corpus.Root);
+
+        talking.Recorded().Count.ShouldBe(3);
+
+        // SQLite's own two files come and go with the last connection, so they are allowed and not
+        // required; anything else in the folder is something this server put there.
+        var held = corpus.Root.EnumerateFileSystemInfos().Select(one => one.Name).ToArray();
+        held.ShouldContain(CorpusDatabase.DatabaseName);
+        held.ShouldBeSubsetOf(
+            [CorpusDatabase.DatabaseName, $"{CorpusDatabase.DatabaseName}-shm", $"{CorpusDatabase.DatabaseName}-wal"]);
+    }
+
+    private static List<int> Ordinals(string said) => [.. Regex.Matches(said, @"utterance_ordinal: (\d+)")
+        .Select(match => int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture))];
+
     private static IReadOnlyList<string> Parameters(IEnumerable<McpClientTool> tools, string named)
     {
         var schema = tools.Single(tool => tool.Name == named).ProtocolTool.InputSchema;
@@ -613,17 +886,43 @@ public class CorpusServerTests
         private readonly McpServer server;
         private readonly Task serving;
 
-        private Conversation(McpServer server, Task serving, McpClient client)
+        private readonly TemporaryFolder recordFolder;
+
+        private Conversation(
+            McpServer server, Task serving, McpClient client, TemporaryFolder recordFolder, FileInfo record)
         {
             this.server = server;
             this.serving = serving;
+            this.recordFolder = recordFolder;
             Client = client;
+            Record = record;
         }
 
         internal McpClient Client { get; }
 
-        internal static async Task<Conversation> Over(CorpusOutsideApplicationData corpus)
+        /// <summary>Where the session wrote down what it was asked: never this user's own.</summary>
+        internal FileInfo Record { get; }
+
+        /// <summary>The record's lines, each one a parsed JSON object.</summary>
+        internal IReadOnlyList<JsonElement> Recorded() =>
+            Record.Exists
+                ? [.. File.ReadAllLines(Record.FullName)
+                    .Where(line => line.Length > 0)
+                    .Select(line => JsonDocument.Parse(line).RootElement.Clone())]
+                : [];
+
+        /// <param name="corpus">The corpus the session reads.</param>
+        /// <param name="record">
+        /// Where it records, or nothing for a file of its own in a folder of its own, which is what
+        /// keeps every fact here out of the real record.
+        /// </param>
+        internal static async Task<Conversation> Over(
+            CorpusOutsideApplicationData corpus, Func<TemporaryFolder, FileInfo>? record = null)
         {
+            var recordFolder = new TemporaryFolder();
+            var recordFile = record?.Invoke(recordFolder)
+                ?? new FileInfo(Path.Combine(recordFolder.Folder.FullName, "agent-requests.jsonl"));
+
             // Nothing of this suite's holding the corpus when the session opens. Every fact here
             // builds its rows through a writable context first, and a pooled writer left behind
             // would have the write-ahead log and its shared-memory segment already attached —
@@ -634,7 +933,7 @@ public class CorpusServerTests
             var toServer = new Pipe();
             var toClient = new Pipe();
 
-            var options = new CorpusServer(corpus.Location).Options();
+            var options = new CorpusServer(corpus.Location, recordFile).Options();
 
             var server = McpServer.Create(
                 new StreamServerTransport(
@@ -650,7 +949,7 @@ public class CorpusServerTests
                 new StreamClientTransport(toServer.Writer.AsStream(), toClient.Reader.AsStream(), null),
                 cancellationToken: TestContext.Current.CancellationToken);
 
-            return new Conversation(server, serving, client);
+            return new Conversation(server, serving, client, recordFolder, recordFile);
         }
 
         internal ValueTask<CallToolResult> Call(string tool, Dictionary<string, object?> with) =>
@@ -670,6 +969,8 @@ public class CorpusServerTests
                 // Ending the session is how this server stops, so the cancellation its own run
                 // ends on is the ordinary path and not a failure.
             }
+
+            recordFolder.Dispose();
         }
     }
 }

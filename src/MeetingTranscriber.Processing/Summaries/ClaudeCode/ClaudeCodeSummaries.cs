@@ -24,6 +24,10 @@ namespace MeetingTranscriber.Processing.Summaries.ClaudeCode;
 /// answer <c>ClaudeCodeLocation</c> already owns keeping current.
 /// </para>
 /// <para>
+/// A run refuses to start under a Claude Code memory file, and does not count the person's own
+/// user memory as one: <see cref="MemoryAbove"/> says why.
+/// </para>
+/// <para>
 /// One call at a time. The pump that drives a summary (Decides 8) stays serial the way it stays
 /// serial for a transcription, so nothing here is proven, or needs to be, against two
 /// <see cref="ExtractAsync"/> calls in flight on the same instance at once.
@@ -130,6 +134,14 @@ public sealed class ClaudeCodeSummaries : ISummaryProvider
         // or throwing over one that changed, are both worse than trusting the one already proven.
         var executable = checkedOnce.Executable!;
 
+        if (MemoryAbove(_workspaces, _environment) is { } memory)
+        {
+            return new SummaryProviderAnswer.DidNotAnswer(
+                $"A Claude Code memory file sits above where this run would work, at '{memory.FullName}', "
+                + "and Claude Code would have read it into the summary. Nothing was sent. "
+                + "Move or delete that file and summarise again.");
+        }
+
         var workspace = ClaudeCodeWorkspace.Build(_workspaces, request);
         try
         {
@@ -165,6 +177,61 @@ public sealed class ClaudeCodeSummaries : ISummaryProvider
         {
             TryDelete(workspace.Folder);
         }
+    }
+
+    /// <summary>
+    /// The nearest Claude Code memory file in <paramref name="workspaces"/> or any folder above it,
+    /// or <c>null</c> when none is there.
+    /// </summary>
+    /// <remarks>
+    /// <c>--setting-sources project</c> does not keep Claude Code from reading a <c>CLAUDE.md</c>
+    /// out of an ancestor of its working directory: <c>claude-live</c> on 2.1.285 showed one planted
+    /// above the workspace reaching the answer. A run under a folder that has one would put
+    /// somebody's stray file into what a meeting's summary says, so it is refused before anything
+    /// is started, naming the file. The places looked at are the three Claude Code reads a project
+    /// memory from: <c>CLAUDE.md</c>, <c>CLAUDE.local.md</c> and <c>.claude\CLAUDE.md</c>.
+    /// <para>
+    /// The one file not counted is <c>CLAUDE.md</c> in the person's own Claude Code configuration
+    /// folder — <c>CLAUDE_CONFIG_DIR</c> when the run's environment carries it,
+    /// <c>%USERPROFILE%\.claude</c> otherwise. That is user-level memory, a setting source the
+    /// argument already leaves out, and refusing on it would stop every summary for anybody who
+    /// keeps a personal memory. <b>Whether the CLI really leaves it out is not measured:</b>
+    /// <c>claude-live</c> does not write under the person's profile.
+    /// </para>
+    /// </remarks>
+    private static FileInfo? MemoryAbove(
+        DirectoryInfo workspaces, IReadOnlyDictionary<string, string> environment)
+    {
+        string? Named(string name) => environment
+            .FirstOrDefault(one => string.Equals(one.Key, name, StringComparison.OrdinalIgnoreCase)).Value;
+
+        var configuration = Named("CLAUDE_CONFIG_DIR") is { Length: > 0 } configured
+            ? configured
+            : Named("USERPROFILE") is { Length: > 0 } profile
+                ? Path.Combine(profile, ".claude")
+                : null;
+
+        var own = configuration is null
+            ? null
+            : Path.GetFullPath(Path.Combine(configuration, "CLAUDE.md"));
+
+        string[] places = ["CLAUDE.md", "CLAUDE.local.md", Path.Combine(".claude", "CLAUDE.md")];
+
+        for (var folder = workspaces; folder is not null; folder = folder.Parent)
+        {
+            foreach (var place in places)
+            {
+                var file = new FileInfo(Path.Combine(folder.FullName, place));
+
+                if (file.Exists
+                    && !string.Equals(file.FullName, own, StringComparison.OrdinalIgnoreCase))
+                {
+                    return file;
+                }
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

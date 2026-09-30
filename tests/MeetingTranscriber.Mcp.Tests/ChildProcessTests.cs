@@ -54,7 +54,10 @@ public class ChildProcessTests
             meeting = AMeeting.RecordedIn(context);
         }
 
-        using var process = Started("--corpus", corpus.Root.FullName);
+        using var recordFolder = new TemporaryFolder();
+        var record = Path.Combine(recordFolder.Folder.FullName, "requests.jsonl");
+
+        using var process = Started("--corpus", corpus.Root.FullName, "--record", record);
         var draining = DrainStandardError(process);
 
         try
@@ -76,6 +79,9 @@ public class ChildProcessTests
             var said = string.Join(
                 Environment.NewLine, found.Content.OfType<TextContentBlock>().Select(block => block.Text));
             said.ShouldContain($"meeting_id: {meeting}");
+
+            // Written before the answer left, so it is there by the time the client has it.
+            File.ReadAllText(record).ShouldContain("\"tool\":\"buscar_reuniones\"");
         }
         finally
         {
@@ -85,14 +91,41 @@ public class ChildProcessTests
     }
 
     /// <summary>
-    /// A command line this server cannot read — anything but no arguments at all, or exactly
-    /// <c>--corpus &lt;folder&gt;</c> — exits <c>2</c> and names its usage on stderr, without ever
+    /// A command line this server cannot read — anything but <c>--corpus &lt;folder&gt;</c> and
+    /// <c>--record &lt;file&gt;</c>, each once and in either order — exits <c>2</c> and names its usage on stderr, without ever
     /// touching stdio as the protocol.
     /// </summary>
     [Fact]
     public async Task A_line_the_server_cannot_read_is_refused_with_its_usage()
     {
         using var process = Started("--corpus");
+
+        try
+        {
+            using var bounded = Bounded();
+
+            process.StandardInput.Close();
+
+            var error = await process.StandardError.ReadToEndAsync(bounded.Token);
+            await process.WaitForExitAsync(bounded.Token);
+
+            process.ExitCode.ShouldBe(2);
+            error.ShouldContain("Usage");
+        }
+        finally
+        {
+            Stop(process);
+        }
+    }
+
+    /// <summary>
+    /// <c>--record</c> with nothing after it is refused like any other line this server cannot read,
+    /// and is not taken as a flag with an empty file: red when <c>--record</c> alone is accepted.
+    /// </summary>
+    [Fact]
+    public async Task A_record_flag_with_no_file_is_refused_with_its_usage()
+    {
+        using var process = Started("--record");
 
         try
         {

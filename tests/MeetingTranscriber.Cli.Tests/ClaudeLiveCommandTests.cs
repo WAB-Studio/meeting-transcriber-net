@@ -6,10 +6,9 @@ namespace MeetingTranscriber.Cli.Tests;
 /// </summary>
 public class ClaudeLiveCommandTests : IDisposable
 {
-    private readonly DirectoryInfo scratch =
-        Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "claude-live-" + Guid.NewGuid().ToString("N")));
+    private readonly TemporaryFolder temporary = new();
 
-    public void Dispose() => scratch.Delete(recursive: true);
+    public void Dispose() => temporary.Dispose();
 
     [Fact]
     public void Without_an_out_folder_the_command_is_misused()
@@ -23,13 +22,13 @@ public class ClaudeLiveCommandTests : IDisposable
     [Fact]
     public void An_out_folder_that_already_holds_something_is_refused_before_anything_runs()
     {
-        var mine = Path.Combine(scratch.FullName, "mine.txt");
+        var mine = Path.Combine(temporary.Folder.FullName, "mine.txt");
         File.WriteAllText(mine, "keep");
 
-        var run = CommandLine.Of("claude-live", "--out", scratch.FullName);
+        var run = CommandLine.Of("claude-live", "--out", temporary.Folder.FullName);
 
         run.Code.ShouldBe(Cli.Refused);
         run.Output.ShouldBeEmpty();
-        Directory.EnumerateFileSystemEntries(scratch.FullName).ShouldBe([mine]);
+        Directory.EnumerateFileSystemEntries(temporary.Folder.FullName).ShouldBe([mine]);
     }
 }
