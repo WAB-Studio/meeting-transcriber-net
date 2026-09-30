@@ -1078,6 +1078,10 @@ public static class UiTexts
     // needs the install to know its user — not on this tag.
     public static UiText OnlyOneVoice { get; } = new("una sola voz", "only one voice");
 
+    // The label over the further clips of a voice that said little (docs/design.md §QuienEsQuien).
+    // Read by SayingWhoIsWho.
+    public static UiText OtherStretches { get; } = new("otros fragmentos", "other stretches");
+
     // The placeholder on a voice's picker, over Everybody rather than over Ninguno: a voice
     // nobody has named yet reads better as an invitation than as the answer that empties it.
     public static UiText ChooseSomebody { get; } = new("Elegir a alguien", "Choose somebody");
