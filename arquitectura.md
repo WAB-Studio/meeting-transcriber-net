@@ -330,7 +330,6 @@ Campos principales:
 id UUID/TEXT PRIMARY KEY
 title TEXT NULL
 context TEXT NULL
-template_id TEXT NULL
 started_at TEXT
 duration_ms INTEGER NULL
 source_profile TEXT

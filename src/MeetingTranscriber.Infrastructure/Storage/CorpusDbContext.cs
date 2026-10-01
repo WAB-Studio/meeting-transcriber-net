@@ -394,8 +394,6 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             // sorting the union itself. Half the index, and the rows still narrowed in the
             // database rather than in the window.
             meeting.HasIndex(entity => new { entity.LifecycleState, entity.StartedAt });
-            meeting.HasOne<MeetingTemplate>().WithMany().HasForeignKey(entity => entity.TemplateId)
-                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Artifact>(artifact =>

@@ -233,7 +233,7 @@ public class KeptClassificationTests
                 .Where(row => row.Id == a || row.Id == b)
                 .ToArray()
                 .OrderBy(row => row.Title, StringComparer.Ordinal)
-                .Select(row => $"meeting {row.Title} template={row.TemplateId} updated={row.UpdatedAt}"),
+                .Select(row => $"meeting {row.Title} updated={row.UpdatedAt}"),
             .. Links(context, a).Concat(Links(context, b)).Select(link => $"link {link}"),
             .. Namings(context, a).Concat(Namings(context, b)).Select(naming => $"naming {naming}"),
         ];

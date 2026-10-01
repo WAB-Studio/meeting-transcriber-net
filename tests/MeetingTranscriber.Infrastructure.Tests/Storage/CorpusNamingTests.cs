@@ -162,7 +162,6 @@ public partial class CorpusNamingTests
                 "id",
                 "title",
                 "context",
-                "template_id",
                 "started_at",
                 "duration_ms",
                 "source_profile",

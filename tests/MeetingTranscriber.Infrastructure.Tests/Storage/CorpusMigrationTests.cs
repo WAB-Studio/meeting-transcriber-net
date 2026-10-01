@@ -11,7 +11,11 @@ public class CorpusMigrationTests
     /// <summary>The last migration before the six indexes this suite migrates across.</summary>
     private const string BeforeTheIndexes = "20260816220840_OpenQuestionsAndDecisionPositions";
 
+    /// <summary>The last migration before <c>meetings.template_id</c> came out.</summary>
+    private const string BeforeTheColumnCameOut = "20261001113503_ASummaryPutBack";
+
     private const string MeetingId = "11111111-1111-1111-1111-111111111111";
+    private const string OtherMeetingId = "99999999-9999-9999-9999-999999999999";
     private const string NodeId = "22222222-2222-2222-2222-222222222222";
     private const string PersonId = "33333333-3333-3333-3333-333333333333";
     private const string JobId = "44444444-4444-4444-4444-444444444444";
@@ -232,6 +236,33 @@ public class CorpusMigrationTests
         CorpusDatabase.BringUpToThisBuild(corpus.Root);
 
         File.Exists(corpus.DatabasePath).ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Taking a column off <c>meetings</c> rebuilds the table, and the rebuild gives every row a new
+    /// rowid while <c>meetings_fts</c> is keyed on the old ones. The meeting that stood at rowid 2
+    /// is the one that moves, so it is the one search has to still find.
+    /// </summary>
+    [Fact]
+    public void A_meeting_already_in_the_corpus_is_found_after_its_table_is_rebuilt()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.Open();
+
+        context.GetService<IMigrator>().Migrate(BeforeTheColumnCameOut);
+        Sql.Execute(context, $"""
+            INSERT INTO meetings (id, title, started_at, source_profile, language, lifecycle_state, created_at, updated_at)
+            VALUES ('{MeetingId}', 'el almendro', '{When}', 'multichannel', 'es', 'active', '{When}', '{When}'),
+                   ('{OtherMeetingId}', 'el limonero', '{When}', 'multichannel', 'es', 'active', '{When}', '{When}');
+
+            DELETE FROM meetings WHERE id = '{MeetingId}';
+            """);
+
+        context.Database.Migrate();
+
+        CorpusSearch.Find(context, "limonero").ShouldHaveSingleItem().Source.ShouldBe(SearchSource.Meeting);
+        CorpusSearch.Find(context, "almendro").ShouldBeEmpty();
+        CorpusIntegrity.Check(context).ShouldBeEmpty();
     }
 
     /// <summary>
