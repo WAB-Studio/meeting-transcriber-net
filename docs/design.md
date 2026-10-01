@@ -241,6 +241,8 @@ already named.
 | Take the whole machine instead | *Grabar toda la máquina* |
 | Buy a transcription or a summary | *Transcribir* · *Resumir* |
 | Put names on the voices | *Decir quién es quién* |
+| Correct the words that come out wrong | *Corregir palabras* |
+| Answer a word that turned up by itself | *Sí, es esa* · *No* |
 | File it under what it was about | *Clasificar* |
 | Keep or throw away an unfinished recording | *Conservar* · *Descartar* |
 | Commit a form | *Guardar* |
@@ -658,7 +660,9 @@ was finding one** — nobody reads a corpus looking for what went wrong. So: the
 as it should be, and the corpus answers with how it actually got written, ranked, with the close
 ones pre-ticked. Below, on the attention tint, the ones that **turned up by themselves**: they
 sounded uncertain and they resemble something said often. The right column shows one applied in
-context and what has already been fixed. **Neither list needs a model to have read the meetings.**
+context and what has already been fixed. **Neither list needs a model to have read the meetings.** It opens from the meeting's own screen,
+on that meeting's doubtful words, and every correction says whether it holds everywhere or only in
+one place the meeting is filed under or above.
 
 **`Configuracion`** · Settings, the one screen that lives apart. **Choosing between transcribing and
 summarising stopped being a screen per meeting and became a preference set once.** The two engines

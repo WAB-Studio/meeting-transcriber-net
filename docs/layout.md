@@ -209,13 +209,14 @@ edge would make SQLite depend on how a Deepgram response is parsed.
 
 `Recording` references `Processing`, and rendering reaches the application only through it: the
 application names two projects, `Presentation` for the words and `Recording` for everything else,
-and it is the second of those the whole corpus stack arrives on. Its exceptions are five files, each naming `Processing` for one thing a window cannot do without:
+and it is the second of those the whole corpus stack arrives on. Its exceptions are six files, each naming `Processing` for one thing a window cannot do without:
 `App.xaml.cs` starts `JobRunner`'s pump; `TranscribingOnThisMachinesKey` binds the key a
 transcription sends with; `SummarisingOnThisMachine` composes the provider a summary is sent with,
 and tells the list of meetings which memory file stopped one; `Configuracion` exports the corpus
 through `Processing.Export` and asks Claude Code whether it answers through
 `Processing.Summaries`; and `AddingSomebody` catches the `RenderException` a corrected name can
-end on, from `Processing.Rendering`. All five reach it through the reference `App.csproj`'s own
+end on, from `Processing.Rendering`; and `WordsThatComeOutWrong` reads `Processing.Corrections`
+and catches the `RenderException` a correction can end on. All six reach it through the reference `App.csproj`'s own
 comment already says brings `Processing` along — the same closure `App.xaml.cs` already reaches
 `Infrastructure` through — so a second, explicit `ProjectReference` would only restate what that
 comment already commits to. The rule still lives
@@ -230,14 +231,16 @@ can see both the sweep and the renders — `Cli` sees both and holds no rule of 
 application has no probe a build agent could run, and the opposite edge would push WASAPI under
 `Processing`. The rule for which meetings are owed a render still lives on the `Processing` side,
 where a build agent runs it; what the application holds is the call and the thread it goes on. The
-edge is narrow on purpose — it is there for `WhatALaunchOwes`, and for the two acts that change a
-name a transcript shows — `NamingTheVoices`, which saves the names on a meeting's voices and
+edge is narrow on purpose — it is there for `WhatALaunchOwes`, and for the three acts that change a
+name or a word a transcript shows — `NamingTheVoices`, which saves the names on a meeting's voices and
 renders that one meeting again in the same transaction, so a name it saved is a name that one
 transcript already shows, and `RenamingSomebody`, which corrects a person's name and then renders
 every meeting it touches, each in a transaction of its own, so the rename does not hold the
 corpus's write lock across them — a name it saved is a name every render that landed already
-shows, and what did not is named on the way out and caught up by the next launch, which `OwedRenders` finds off the corpus — and the
-reason either can be is the direction: `Processing` knows nothing about a window, so nothing came
+shows, and what did not is named on the way out and caught up by the next launch, which `OwedRenders` finds off the corpus — and
+`CorrectingWords`, which saves a correction and renders every meeting it touches, each in a
+transaction of its own, the same way; what it did not reach is caught up by the next launch,
+through `OwedRenders` — and the reason any of the three can be is the direction: `Processing` knows nothing about a window, so nothing came
 back the other way.
 
 `MeetingTranscriber.Presentation` holds every word a person reads and nothing else — the
