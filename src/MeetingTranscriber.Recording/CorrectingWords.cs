@@ -56,7 +56,7 @@ public static class CorrectingWords
     /// </exception>
     /// <exception cref="RenderException">
     /// The corrections always land. One or more meetings could not be rendered again; the exception
-    /// names every one of them and the next launch renders each again, through <c>OwedRenders</c>.
+    /// names every one of them (on <see cref="RenderException.Meetings"/>) and the next launch renders each again, through <c>OwedRenders</c>.
     /// </exception>
     public static CorrectedWords Correct(
         DirectoryInfo root, string right, IReadOnlyCollection<string> wrong, Guid? under, TimeProvider clock)
@@ -117,38 +117,19 @@ public static class CorrectingWords
         }
 
         var now = UtcTimestamp.From(clock.GetUtcNow());
-        var rendered = new List<Guid>();
-        var notRendered = new List<Guid>();
+        var again = RenderingAgain.Each(root, touched, now);
 
-        foreach (var meeting in touched)
+        if (again.NotRendered.Count > 0)
         {
-            try
-            {
-                using var context = CorpusDatabase.Open(root);
-                RenderingAgain.OneMeeting(context, meeting, now);
-                rendered.Add(meeting);
-            }
-            catch (Exception unrendered) when (Absorbable(unrendered))
-            {
-                notRendered.Add(meeting);
-            }
-        }
+            var notRendered = again.NotRendered.Select(refused => refused.Meeting).ToArray();
 
-        if (notRendered.Count > 0)
-        {
             throw new RenderException(
                 $"{saved.Count} correction(s) of \"{right.Trim()}\" were saved, but could not be rendered for "
-                + $"{notRendered.Count} meeting(s): {string.Join(", ", notRendered)}. "
-                + "The next launch renders each one again.");
+                + $"{notRendered.Length} meeting(s): {string.Join(", ", notRendered)}. "
+                + "The next launch renders each one again.",
+                notRendered);
         }
 
-        return new CorrectedWords(saved, rendered);
+        return new CorrectedWords(saved, again.Rendered);
     }
-
-    /// <summary>
-    /// What one meeting's failed render turns into an entry on the list instead of aborting every
-    /// meeting behind it: everything except out of memory, <see cref="RenamingSomebody"/>'s rule and
-    /// <c>OwedRenders.Absorbable</c>'s, for the same reason.
-    /// </summary>
-    private static bool Absorbable(Exception thrown) => thrown is not OutOfMemoryException;
 }

@@ -103,4 +103,31 @@ public class WordsThatComeOutWrongTests
         SourceLines.Occurrences(source, "TerminologyCorrections.Add").ShouldBeEmpty(
             "this screen adds a correction itself, which promises a transcript nothing rendered.");
     }
+
+    /// <summary>
+    /// What was not shown is read off the exception's list of meetings, never matched out of its
+    /// message: rewording the message would otherwise make the screen say no meetings.
+    /// </summary>
+    [Fact]
+    public void What_was_not_shown_is_read_off_the_answer_and_never_off_a_message()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        source.ShouldNotContain("Regex");
+        source.ShouldContain(".Meetings.Count");
+    }
+
+    /// <summary>
+    /// The places are read off the meeting's filing and the corrections' paths off the one tree
+    /// walk, and the screen walks no parent itself.
+    /// </summary>
+    [Fact]
+    public void The_places_are_read_off_the_filing_and_never_walked_by_hand()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        source.ShouldNotContain("ParentId");
+        source.ShouldContain(".Filing(");
+        source.ShouldContain(".PathTo(");
+    }
 }

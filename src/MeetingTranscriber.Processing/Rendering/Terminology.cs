@@ -30,6 +30,13 @@ public static class Terminology
     /// Applies every correction that reaches this text. Order is fixed rather than the order the
     /// rows came back in, so the same corpus renders the same way whatever the query planner did.
     /// </summary>
+    /// <remarks>
+    /// Longest wrong text first, then the narrower place: the first correction to replace a word
+    /// leaves nothing for a later one of the same form, so a correction made under one organization
+    /// would lose to an everywhere-correction if both were left to the order of the rows. Place comes
+    /// before the text so that two forms differing only in case cannot put the everywhere-correction
+    /// first. Two node corrections at different depths still fall to the id: this is not given the tree.
+    /// </remarks>
     public static string Apply(string text, IEnumerable<TerminologyCorrection> corrections)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -38,7 +45,9 @@ public static class Terminology
         var ordered = corrections
             .Where(correction => !string.IsNullOrEmpty(correction.WrongText))
             .OrderByDescending(correction => correction.WrongText.Length)
-            .ThenBy(correction => correction.WrongText, StringComparer.Ordinal);
+            .ThenBy(Place)
+            .ThenBy(correction => correction.WrongText, StringComparer.Ordinal)
+            .ThenBy(correction => correction.Id);
 
         foreach (var correction in ordered)
         {
@@ -47,6 +56,10 @@ public static class Terminology
 
         return text;
     }
+
+    /// <summary>A meeting's own correction is narrowest, a node's is next, and everywhere is widest.</summary>
+    private static int Place(TerminologyCorrection correction) =>
+        correction.MeetingId is not null ? 0 : correction.NodeId is not null ? 1 : 2;
 
     /// <summary>
     /// Whether <see cref="Apply"/> would replace anything in <paramref name="text"/> with this

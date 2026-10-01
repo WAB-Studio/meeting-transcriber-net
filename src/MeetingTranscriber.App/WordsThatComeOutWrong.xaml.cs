@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
 
 using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
@@ -251,29 +250,25 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         using var context = CorpusDatabase.Open(folder);
 
         var meeting = new MeetingReading(context, TimeProvider.System).Row(meetingId);
-        var nodes = context.Nodes.AsNoTracking().ToDictionary(node => node.Id);
 
-        var paths = new Dictionary<Guid, string[]>();
-        foreach (var node in nodes.Values)
-        {
-            var names = new List<string>();
-            for (Guid? at = node.Id; at is { } id; at = nodes[id].ParentId)
-            {
-                names.Insert(0, nodes[id].Name);
-            }
-
-            paths[node.Id] = [.. names];
-        }
+        var classifying = new MeetingClassifying(context, TimeProvider.System);
 
         // Every node on every path the meeting is filed under, root first and each once: filed
         // under WAB Studio › Proyecto X it can be corrected in Proyecto X or in all of WAB Studio,
         // which is the scope the renderer's upward walk reads.
-        var seen = new HashSet<Guid>();
+        var paths = new Dictionary<Guid, string[]>();
         var places = new List<Place>();
-        foreach (var (_, path) in new MeetingClassifying(context, TimeProvider.System).Filing(meetingId))
+        foreach (var (_, path) in classifying.Filing(meetingId))
         {
-            foreach (var node in path.Nodes.Where(node => seen.Add(node.Id)))
+            for (var at = 0; at < path.Nodes.Count; at++)
             {
+                var node = path.Nodes[at];
+                if (paths.ContainsKey(node.Id))
+                {
+                    continue;
+                }
+
+                paths[node.Id] = [.. path.Nodes.Take(at + 1).Select(step => step.Name)];
                 places.Add(new Place(node.Id, paths[node.Id]));
             }
         }
@@ -284,6 +279,17 @@ public sealed partial class WordsThatComeOutWrong : UserControl
             .AsNoTracking()
             .Where(correction => correction.MeetingId == null)
             .ToList();
+
+        // Only for nodes the corpus still holds: PathTo refuses an absent one, and a correction
+        // outliving its node is listed without a place.
+        var existing = context.Nodes.AsNoTracking().Select(node => node.Id).ToHashSet();
+        foreach (var node in made.Select(correction => correction.NodeId).OfType<Guid>().Distinct())
+        {
+            if (!paths.ContainsKey(node) && existing.Contains(node))
+            {
+                paths[node] = [.. classifying.PathTo(node).Nodes.Select(step => step.Name)];
+            }
+        }
 
         return new Held(
             meeting, places, paths, FindingCorrections.UnpromptedIn(context, meetingId), WordsScreen.Corrected(made));
@@ -636,10 +642,7 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         {
             // The corrections landed; only the meetings named are not yet showing them, and the
             // next launch writes each of them again.
-            var unshown = Regex.Matches(late.Message, @"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
-                .Select(id => id.Value)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Count();
+            var unshown = late.Meetings.Count;
 
             _status.Says(
                 UiTexts.SavedButNotYetShownIn,

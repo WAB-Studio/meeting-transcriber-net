@@ -484,12 +484,41 @@ public sealed partial class SayingWhoIsWho : UserControl
         var made = await AskingWhoTheyAre.AskAsync(
             Corpus(), openedOver, _language, Root.XamlRoot, read.Organizations, correcting);
 
+        // The people are read again whether or not somebody was made: the picker draws from the
+        // read taken when the screen opened, which has neither the person just added nor a name
+        // just corrected. This is not Draw(), which would also drop the draft and the clip playing.
+        ReadThePeopleAgain(read.Meeting.Id);
+
         if (made is { } id)
         {
             _draft[voice.Label] = id;
         }
 
         Render();
+    }
+
+    /// <summary>
+    /// Reads the voices and the people again into <see cref="_read"/> and nothing else, keeping the
+    /// old read if the corpus will not give a new one.
+    /// </summary>
+    private void ReadThePeopleAgain(Guid meetingId)
+    {
+        // The screen may have been closed or shown another meeting while the dialogue was open.
+        if (_meeting != meetingId || Corpus().Folder is not { } folder)
+        {
+            return;
+        }
+
+        try
+        {
+            using var context = CorpusDatabase.Open(folder);
+            _read = new MeetingVoices(context, TimeProvider.System).Of(meetingId);
+        }
+        catch (Exception unreadable) when (unreadable is MeetingStageException
+            || ScreenFailures.Reportable(unreadable))
+        {
+            _status.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
+        }
     }
 
     /// <summary>Puts the line saying what went wrong on the screen, or takes it off.</summary>

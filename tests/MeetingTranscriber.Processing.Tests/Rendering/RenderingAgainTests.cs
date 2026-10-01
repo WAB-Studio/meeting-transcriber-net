@@ -82,6 +82,36 @@ public class RenderingAgainTests
         secondIds.ShouldNotBe(firstIds);
     }
 
+    /// <summary>
+    /// A meeting that cannot be rendered is named and the ones around it are rendered anyway, so
+    /// one that can never be written does not take every meeting behind it down.
+    /// </summary>
+    [Fact]
+    public void Each_renders_every_meeting_it_is_given_and_names_the_ones_it_could_not()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid refused;
+        Guid first;
+        Guid last;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            refused = Recorded(context, corpus.Root);
+            first = Recorded(context, corpus.Root);
+            last = Recorded(context, corpus.Root);
+
+            var response = context.Artifacts.Single(
+                artifact => artifact.MeetingId == refused && artifact.Kind == ArtifactKind.DeepgramResponse);
+            File.Delete(CorpusFiles.Locate(corpus.Root, response.RelativePath).FullName);
+        }
+
+        var again = RenderingAgain.Each(corpus.Root, [refused, first, last], When);
+
+        again.Rendered.ShouldBe([first, last]);
+        again.NotRendered.Select(not => not.Meeting).ShouldBe([refused]);
+        again.NotRendered.Single().Why.ShouldNotBeNullOrWhiteSpace();
+    }
+
     private static Guid Recorded(CorpusDbContext context, DirectoryInfo root)
     {
         var meeting = new Meeting

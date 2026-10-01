@@ -347,6 +347,28 @@ public class SayingWhoIsWhoTests
     }
 
     /// <summary>
+    /// A person added from a voice's picker is read back before the screen draws again: the picker
+    /// is drawn from the read taken when the screen opened, which does not have them.
+    /// </summary>
+    [Fact]
+    public void Naming_somebody_from_a_voice_reads_the_people_again_before_drawing()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+        var ask = Body(source, "private async Task AskWhoTheyAre(");
+        var reading = Body(source, "private void ReadThePeopleAgain(");
+
+        reading.ShouldContain("new MeetingVoices(");
+
+        var asked = ask.IndexOf("AskingWhoTheyAre.AskAsync(", StringComparison.Ordinal);
+        var read = ask.IndexOf("ReadThePeopleAgain(", StringComparison.Ordinal);
+        var drawn = ask.IndexOf("Render();", StringComparison.Ordinal);
+
+        asked.ShouldBeGreaterThan(-1);
+        read.ShouldBeGreaterThan(asked);
+        drawn.ShouldBeGreaterThan(read);
+    }
+
+    /// <summary>
     /// One method's body, anchored on the closing brace at its own indentation.
     /// <c>ClassifyingAMeetingTests</c>' own helper, for the reason given there.
     /// </summary>

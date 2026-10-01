@@ -216,7 +216,8 @@ and tells the list of meetings which memory file stopped one; `Configuracion` ex
 through `Processing.Export` and asks Claude Code whether it answers through
 `Processing.Summaries`; and `AddingSomebody` catches the `RenderException` a corrected name can
 end on, from `Processing.Rendering`; and `WordsThatComeOutWrong` reads `Processing.Corrections`
-and catches the `RenderException` a correction can end on. All six reach it through the reference `App.csproj`'s own
+and catches the `RenderException` a correction can end on, reading the meetings it could not render
+off `RenderException.Meetings`. All six reach it through the reference `App.csproj`'s own
 comment already says brings `Processing` along — the same closure `App.xaml.cs` already reaches
 `Infrastructure` through — so a second, explicit `ProjectReference` would only restate what that
 comment already commits to. The rule still lives
