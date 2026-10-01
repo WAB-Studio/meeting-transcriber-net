@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 
@@ -9,7 +10,8 @@ namespace MeetingTranscriber.Audio.Tests;
 /// </summary>
 /// <remarks>
 /// Shared because two marks are probed this way and the ninety lines below are not worth having
-/// twice. What differs between them is the share mode a claim takes, so that is the argument.
+/// twice. What differs between them is the share mode a claim takes, so that is the argument. It
+/// also ends what it started, because a test that starts one of these owes the machine its end.
 /// </remarks>
 internal static class AnotherProcess
 {
@@ -179,4 +181,24 @@ internal static class AnotherProcess
         [Console]::Out.WriteLine('{{TookIt}}')
         Start-Sleep -Seconds 300
         """;
+
+    /// <summary>Ends a process and its children, and returns once Windows says it has ended.</summary>
+    internal static void Kill(Process program)
+    {
+        try
+        {
+            if (!program.HasExited)
+            {
+                program.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception ending) when (
+            ending is InvalidOperationException or Win32Exception or AggregateException)
+        {
+            // It ended between the question and the kill, which is what the kill was for; and a
+            // refusal to kill is told by the wait below not returning rather than by this.
+        }
+
+        program.WaitForExit();
+    }
 }

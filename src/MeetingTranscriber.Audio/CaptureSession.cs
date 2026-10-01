@@ -68,11 +68,10 @@ public sealed class CaptureSession : IDisposable
     private readonly Dictionary<AudioChannel, (string Device, long Packets)> followed = [];
 
     /// <summary>
-    /// The handle held on the program channel 0 follows, or nothing while it is on the whole
-    /// machine. Replaced or cleared <i>before</i> the old one is disposed, and read without the
-    /// gate: see <see cref="TheProgramWentAway"/>.
+    /// What channel 0 is watched for, handed over in <see cref="Opening"/> and in
+    /// <see cref="Move"/> and nowhere else. Read without the gate: see <see cref="ProgramWatch"/>.
     /// </summary>
-    private volatile FollowedProgram? watched;
+    private readonly ProgramWatch channelZero = new();
 
     private Thread? following;
     private bool followingCameBack;
@@ -322,10 +321,7 @@ public sealed class CaptureSession : IDisposable
 
         // Taken last, once both devices are open and the card is written, so that no path that
         // throws before a session exists leaves a handle behind.
-        if (follow is not null)
-        {
-            session.watched = FollowedProgram.Watching(follow);
-        }
+        session.channelZero.Watch(session.On(AudioChannel.Loopback).Listening);
 
         session.Follow();
         return session;
@@ -401,10 +397,9 @@ public sealed class CaptureSession : IDisposable
     /// Asked rather than announced, like <see cref="HeardNothingFromTheProgram"/>: nothing is done
     /// about it until somebody does, and it goes on being true. It never takes the gate. A screen
     /// asks every second, and the thread that follows a device and every move hold the gate across
-    /// device deadlines of seconds — so the watch is a volatile field, cleared or replaced before
-    /// the old one is disposed, over a handle whose wait cannot race its own closing.
+    /// device deadlines of seconds — <see cref="ProgramWatch"/> says why that is safe.
     /// </remarks>
-    public bool TheProgramWentAway() => watched?.HasGone ?? false;
+    public bool TheProgramWentAway() => channelZero.HasGone;
 
     /// <summary>
     /// Somebody choosing the whole machine's audio in place of the program channel 0 is following,
@@ -449,10 +444,6 @@ public sealed class CaptureSession : IDisposable
             }
 
             Move(AudioChannel.Loopback, new CaptureTarget.TheWholeMachine(), deviceId: null);
-
-            // Cleared first and disposed after, so a look from the screen's thread finds the old
-            // watch or none, and never one being closed.
-            ReplaceTheWatch(with: null);
         }
     }
 
@@ -498,10 +489,6 @@ public sealed class CaptureSession : IDisposable
             }
 
             Move(AudioChannel.Loopback, new CaptureTarget.Program(program), deviceId: null);
-
-            // Only once the move held: a Move that throws leaves the channel, and so its watch,
-            // exactly where they were.
-            ReplaceTheWatch(with: FollowedProgram.Watching(program));
         }
     }
 
@@ -596,16 +583,13 @@ public sealed class CaptureSession : IDisposable
                 was,
                 deviceId,
                 destination.Mode)));
-    }
 
-    /// <summary>
-    /// Puts <paramref name="with"/> where the watch was, and only then lets the old one go.
-    /// </summary>
-    private void ReplaceTheWatch(FollowedProgram? with)
-    {
-        var old = watched;
-        watched = with;
-        old?.Dispose();
+        // Only once the move held: a ListenTo that throws leaves the channel, and so its watch,
+        // exactly where they were. Channel 0 is the only one with anything to watch.
+        if (channel == AudioChannel.Loopback)
+        {
+            channelZero.Watch(destination);
+        }
     }
 
     /// <summary>Refuses a move onto a recording that has already been stopped.</summary>
@@ -844,7 +828,7 @@ public sealed class CaptureSession : IDisposable
         {
             Stopped();
 
-            ReplaceTheWatch(with: null);
+            channelZero.Dispose();
 
             // Asked first, all of them, for the same reason Stop asks before it waits — and here it
             // matters more, because disposing is an exit path in its own right. A caller that never
