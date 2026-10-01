@@ -19,7 +19,7 @@
          vocabulary is optional. -->
 
     <Grid
-        Background="{StaticResource PaperBrush}"
+        Background="{ThemeResource PaperBrush}"
         Padding="{StaticResource ScreenPadding}"
         RowSpacing="18">
         <Grid.RowDefinitions>
@@ -34,7 +34,7 @@
             <TextBlock
                 Text="{x:Bind In(loc:UiTexts.PackagingChecksAreScaffolding)}"
                 Style="{StaticResource BodyText}"
-                Foreground="{StaticResource SecondaryTextBrush}" />
+                Foreground="{ThemeResource SecondaryTextBrush}" />
         </StackPanel>
 
         <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
@@ -51,7 +51,7 @@
                 VerticalAlignment="Center"
                 Text="{x:Bind In(loc:UiTexts.Language)}"
                 Style="{StaticResource BodyText}"
-                Foreground="{StaticResource SecondaryTextBrush}" />
+                Foreground="{ThemeResource SecondaryTextBrush}" />
             <ComboBox
                 x:Name="LanguagePicker"
                 Style="{StaticResource DropDown}"
@@ -63,7 +63,7 @@
             <TextBlock
                 x:Name="OutputText"
                 Style="{StaticResource DataText}"
-                Foreground="{StaticResource InkBrush}"
+                Foreground="{ThemeResource InkBrush}"
                 IsTextSelectionEnabled="True"
                 TextWrapping="NoWrap" />
         </ScrollViewer>
@@ -72,6 +72,6 @@
             Grid.Row="3"
             x:Name="StatusText"
             Style="{StaticResource BodyText}"
-            Foreground="{StaticResource SecondaryTextBrush}" />
+            Foreground="{ThemeResource SecondaryTextBrush}" />
     </Grid>
 </Window>

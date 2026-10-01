@@ -109,9 +109,10 @@ public partial class OlivoTests
     /// A value passes only when the whole of it names a key, which is <see cref="NamesAKey"/>, so
     /// every markup extension but the two <see cref="Named"/> reads is refused on a screen. That is
     /// deliberate. A binding hands the value to a code-behind property, where this check cannot
-    /// follow it, and the sanctioned way to reach one from code is <c>Painted(…)</c> or
-    /// <c>Sized(…)</c>, which <see cref="ChosenIn"/> polices — so a card that needs a state-driven
-    /// brush has a door, and it is not this attribute. <c>{TemplateBinding …}</c> stands only inside
+    /// follow it, and the sanctioned way to reach a colour from code is a style declared in the
+    /// screen's own markup, whose setters are <c>ThemeResource</c> — a size is <c>Sized(…)</c>,
+    /// which <see cref="ChosenIn"/> polices — so a card that needs a state-driven brush has a door,
+    /// and it is not this attribute. <c>{TemplateBinding …}</c> stands only inside
     /// a <c>ControlTemplate</c>, which lives in the dictionary <see cref="Screens"/> leaves out, so
     /// the day a screen writes one is the day a template moved out of Olivo.
     /// <para>
@@ -407,15 +408,15 @@ public partial class OlivoTests
         { @"b.Setters.Add(new Setter(Control.BackgroundProperty, ""#1C1B19""));", true },
         { @"b.Setters.Add(new Setter { Property = TextBlock.FontSizeProperty, Value = 14 });", true },
         { @"Glyph.FontSize = Sized(""DataSize"");", false },
-        { @"var brush = Painted(""OliveBrush"");", false },
+        { @"var style = Chrome(""TrackSegment"");", false },
         { @"b.Setters.Add(new Setter(TextBlock.FontSizeProperty, Sized(""DataSize"")));", false },
-        { @"b.Setters.Add(new Setter(Control.ForegroundProperty, Painted(""InkBrush"")));", false },
+        { @"b.Setters.Add(new Setter(Control.ForegroundProperty, Chrome(""LevelInInk"")));", false },
         {
             @"b.Setters.Add(new Setter(Control.ForegroundProperty, "
             + @"(Brush)Application.Current.Resources[""InkBrush""]));",
             false
         },
-        { @"b.Setters.Add(new Setter { Property = Control.ForegroundProperty, Value = Painted(""x"") });", false },
+        { @"b.Setters.Add(new Setter { Property = Control.ForegroundProperty, Value = Chrome(""x"") });", false },
         { @"x.Padding = new Thickness(15, 0, 15, 0);", false },
         { @"// Glyph.FontSize = 14;", false },
     };
@@ -450,7 +451,7 @@ public partial class OlivoTests
     [MemberData(nameof(CodeBehind))]
     public void Every_resource_the_code_behind_asks_for_by_name_exists(string path)
     {
-        // A screen built in code names its brushes and its ranks as strings, and a string that
+        // A screen built in code names its styles and its ranks as strings, and a string that
         // names nothing is not a build failure — it is an exception on the UI thread, thrown while
         // a meeting is being recorded, off a build that was green. Two of the meter's four layers
         // are reachable only this way.
@@ -566,20 +567,173 @@ public partial class OlivoTests
     public void The_dictionary_carries_every_colour_the_design_names_at_the_value_it_names()
     {
         var page = Palette();
-        page.Count.ShouldBe(13, "docs/design.md §Colour is the thirteen-row table this reads.");
+        page.Count.ShouldBe(
+            15,
+            "docs/design.md §Colour's thirteen rows and §Controls' two are the fifteen this reads.");
 
-        var brushes = Brushes();
+        var light = Brushes("Default");
+        var dark = Brushes("Dark");
 
-        foreach (var (key, value) in page)
+        foreach (var (key, (lightValue, darkValue)) in page)
         {
-            brushes.ShouldContainKey(
-                key, $"docs/design.md names {key} and Olivo.xaml does not define it.");
-            brushes[key].ShouldBe(
-                value,
-                $"{key} is {value} on docs/design.md and {brushes[key]} in Olivo.xaml. That page is "
-                + "the authority, so the dictionary is what is wrong.");
+            light.ShouldContainKey(
+                key, $"docs/design.md names {key} and Olivo.xaml does not define it in Default.");
+            dark.ShouldContainKey(
+                key, $"docs/design.md names {key} and Olivo.xaml does not define it in Dark.");
+            light[key].ShouldBe(
+                lightValue,
+                $"{key} is {lightValue} on docs/design.md and {light[key]} in Olivo.xaml's Default. "
+                + "That page is the authority, so the dictionary is what is wrong.");
+            dark[key].ShouldBe(
+                darkValue,
+                $"{key} is {darkValue} in the Dark column of docs/design.md and {dark[key]} in "
+                + "Olivo.xaml's Dark. That page is the authority, so the dictionary is what is wrong.");
         }
     }
+
+    [Fact]
+    public void Both_themes_carry_the_same_brushes_and_nothing_else_is_a_brush()
+    {
+        var light = Brushes("Default").Keys.Order(StringComparer.Ordinal).ToArray();
+        var dark = Brushes("Dark").Keys.Order(StringComparer.Ordinal).ToArray();
+
+        light.ShouldNotBeEmpty();
+        dark.ShouldBe(
+            light,
+            "Default and Dark must hold the same keys: a brush with no Dark value is a lookup that "
+            + "fails when Windows is dark, and one with no Default value fails in every other theme.");
+
+        var outside = Olivo()
+            .Descendants()
+            .Where(element => element.Name.LocalName == "SolidColorBrush")
+            .Where(brush => !brush.Ancestors().Any(
+                ancestor => ancestor.Name.LocalName == "ResourceDictionary.ThemeDictionaries"))
+            .Select(brush => (string?)brush.Attribute(XName.Get("Key", X)) ?? "(unkeyed)")
+            .ToArray();
+
+        outside.ShouldBeEmpty(
+            "These brushes stand outside ThemeDictionaries, so they have one value in both themes: "
+            + string.Join("; ", outside));
+    }
+
+    /// <summary>The keys of every brush the dictionary holds in either theme.</summary>
+    private static HashSet<string> ThemeKeys() =>
+        [.. Themes.SelectMany(theme => Brushes(theme).Keys)];
+
+    [Theory]
+    [MemberData(nameof(AllXaml))]
+    public void No_screen_names_a_brush_that_cannot_follow_the_theme(string path)
+    {
+        var staying = NamedToStay(XDocument.Load(path), ThemeKeys());
+
+        staying.ShouldBeEmpty(
+            $"{Path.GetFileName(path)} names these with StaticResource, which resolves once, when the "
+            + "window loads, and so stays in the theme it loaded in. A brush is a ThemeResource: "
+            + string.Join("; ", staying));
+    }
+
+    /// <summary>Every markup file, the dictionary included.</summary>
+    public static TheoryData<string> AllXaml() =>
+        [.. AppSources.With(".xaml").Select(file => file.FullName)];
+
+    /// <summary>
+    /// Every key of <paramref name="themed"/> that <paramref name="document"/> names as a
+    /// <c>StaticResource</c>, in an attribute or in the text of a property element.
+    /// </summary>
+    /// <remarks>
+    /// Styles, sizes, fonts, corners and thicknesses do not vary by theme and stay
+    /// <c>StaticResource</c>; the keys of <paramref name="themed"/> are the one set that does, which
+    /// is why this asks about those and about no other.
+    /// </remarks>
+    private static string[] NamedToStay(XDocument document, IReadOnlySet<string> themed) =>
+    [
+        .. document
+            .Descendants()
+            .SelectMany(element => element.Attributes().Select(attribute => attribute.Value)
+                .Concat(element.Nodes().OfType<XText>().Select(text => text.Value)))
+            .SelectMany(value => StaticallyNamed().Matches(value).Select(match => match.Groups["key"].Value))
+            .Where(themed.Contains)
+            .Distinct(),
+    ];
+
+    public static TheoryData<string, bool> StayingOrFollowing() => new()
+    {
+        { @"<Grid Background=""{StaticResource PaperBrush}"" />", true },
+        { @"<Grid Background=""{ThemeResource PaperBrush}"" />", false },
+        { @"<TextBlock Style=""{StaticResource BodyText}"" />", false },
+    };
+
+    [Theory]
+    [MemberData(nameof(StayingOrFollowing))]
+    public void A_brush_named_to_stay_is_told_from_one_named_to_follow(string screen, bool stays) =>
+        NamedToStay(Screen(screen), new HashSet<string>(StringComparer.Ordinal) { "PaperBrush" })
+            .Any()
+            .ShouldBe(stays, screen);
+
+    [Fact]
+    public void The_application_follows_Windows_and_each_window_it_opens_says_so_to_its_title_bar()
+    {
+        // Leaving RequestedTheme unset is the whole mechanism by which the window follows a switch
+        // of Windows' theme, so putting it back is the one edit that turns the feature off with
+        // every other check green. The title bar is the one part of a window the application's
+        // theme does not reach: each window the application makes is told to follow it.
+        File.ReadAllText(AppSources.At(Path.Combine("MeetingTranscriber.App", "App.xaml")).FullName)
+            .ShouldNotContain("RequestedTheme=");
+
+        var launch = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "App.xaml.cs")).FullName);
+
+        foreach (var window in new[] { "new MainWindow(", "new PackagingChecksWindow(" })
+        {
+            var made = launch.IndexOf(window, StringComparison.Ordinal);
+            made.ShouldBeGreaterThan(-1, $"App.xaml.cs no longer makes a {window}, so this check reads nothing.");
+
+            launch[made..]
+                .Split('\n')
+                .Take(8)
+                .Any(line => line.Contains("PreferredTheme = TitleBarTheme.UseDefaultAppMode", StringComparison.Ordinal))
+                .ShouldBeTrue($"the window made by {window} is not told to follow the application's theme.");
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(CodeBehind))]
+    public void No_code_behind_resolves_a_brush_by_name(string path)
+    {
+        var resolved = BrushesResolvedIn(File.ReadAllText(path));
+
+        resolved.ShouldBeEmpty(
+            $"{Path.GetFileName(path)} resolves a brush in code, and a brush resolved in code stays "
+            + "the theme it was resolved in. Take a style declared in the screen's own markup, whose "
+            + "setters are ThemeResource: " + string.Join("; ", resolved));
+    }
+
+    /// <summary>
+    /// Where <paramref name="source"/> looks a brush up by name: a <c>Painted(</c> call, or a
+    /// <c>(Brush)</c> cast of a resources lookup. Comments left out.
+    /// </summary>
+    private static string[] BrushesResolvedIn(string source) =>
+    [
+        .. BrushLookedUp()
+            .Matches(source)
+            .Where(match => !SourceLines.StandsInACommentedLine(source, match.Index))
+            .Select(match => $"line {SourceLines.LineOf(source, match.Index)}: {match.Value.Trim()}"),
+    ];
+
+    public static TheoryData<string, bool> LookedUpOrNot() => new()
+    {
+        { @"Level.Foreground = Painted(""InkBrush"");", true },
+        { @"var b = (Brush)Application.Current.Resources[""InkBrush""];", true },
+        { @"var b = (Brush)Resources[key];", true },
+        { @"var b = Application.Current.Resources[""InkBrush""] as Brush;", true },
+        { @"Level.Style = Chrome(""LevelInInk"");", false },
+        { @"// Level.Foreground = Painted(""InkBrush"");", false },
+    };
+
+    [Theory]
+    [MemberData(nameof(LookedUpOrNot))]
+    public void A_brush_looked_up_in_code_is_told_from_a_style_taken(string line, bool resolves) =>
+        BrushesResolvedIn(line).Any().ShouldBe(resolves, line);
 
     [Fact]
     public void The_page_sanctions_no_colour_a_screen_could_not_write()
@@ -685,11 +839,16 @@ public partial class OlivoTests
         // down itself, so they are settled by the page rather than by a screen.
         var settledByThePage = Palette().Keys;
 
+        // The two keys of ThemeDictionaries are the theme engine's own names, not resources a
+        // screen asks for.
+        var theThemes = Themes.ToHashSet(StringComparer.Ordinal);
+
         var reached = Reached();
 
         var orphans = Keys(Olivo())
             .Except(PlatformBases)
             .Except(settledByThePage)
+            .Except(theThemes)
             .Where(key => !reached.Contains(key))
             .Order(StringComparer.Ordinal)
             .ToArray();
@@ -1024,34 +1183,50 @@ public partial class OlivoTests
         AppSources.At(Path.Combine("..", "docs", "design.md")).FullName);
 
     /// <summary>
-    /// The colour table of <c>docs/design.md</c> §Colour, as the key each row settles and the value
-    /// it settles it at. Read from the page rather than written down here, because a copy of it
-    /// here would be a third thing to keep in step with the two this check exists to compare.
+    /// Every colour table of <c>docs/design.md</c> that carries a Dark column — §Colour's and
+    /// §Controls' — as the key each row settles and the two values it settles it at. Read from the
+    /// page rather than written down here, because a copy of it here would be a third thing to keep
+    /// in step with the two this check exists to compare.
     /// </summary>
-    private static Dictionary<string, string> Palette() => PaletteRow()
+    private static Dictionary<string, (string Light, string Dark)> Palette() => PaletteRow()
         .Matches(Page())
         .ToDictionary(
             row => row.Groups["key"].Value,
-            row => row.Groups["value"].Value,
+            row => (row.Groups["value"].Value, row.Groups["dark"].Value),
             StringComparer.Ordinal);
 
     /// <summary>Every colour value the page writes down, wherever on it they stand.</summary>
     private static HashSet<string> ColoursOnThePage() => Colours(Page());
 
+    /// <summary>The two themes <c>Olivo.xaml</c> holds a brush under.</summary>
+    private static readonly string[] Themes = ["Default", "Dark"];
+
     /// <summary>
-    /// Every colour <c>Olivo.xaml</c> carries. The brush's value and not the table's row: two of
-    /// the dictionary's keys — <c>ControlRuleBrush</c> and <c>EmptyControlRingBrush</c> — were
-    /// settled by a screen rather than by §Colour's table, so a check held to the table would call
-    /// their values unsanctioned and be wrong about both.
+    /// Every colour <c>Olivo.xaml</c> carries, in either theme. The brush's value and not the table's
+    /// row: a colour the dictionary carries is one the page may write, whichever table says so.
     /// </summary>
     private static HashSet<string> ColoursInTheDictionary() =>
     [
-        .. Brushes().Values.Select(value => value.ToUpperInvariant()),
+        .. Themes.SelectMany(theme => Brushes(theme).Values).Select(value => value.ToUpperInvariant()),
     ];
 
-    /// <summary>Every brush <c>Olivo.xaml</c> defines, as the key it is under and the value it is.</summary>
-    private static Dictionary<string, string> Brushes() => Olivo()
+    /// <summary>
+    /// The <c>ResourceDictionary</c> of <c>ThemeDictionaries</c> keyed <paramref name="theme"/>.
+    /// </summary>
+    private static XElement ThemeDictionary(string theme) => Olivo()
         .Descendants()
+        .Where(element => element.Name.LocalName == "ResourceDictionary"
+            && (string?)element.Attribute(XName.Get("Key", X)) == theme
+            && element.Parent?.Name.LocalName == "ResourceDictionary.ThemeDictionaries")
+        .SingleOrDefault()
+        ?? throw new InvalidOperationException($"Olivo.xaml has no ThemeDictionaries entry keyed \"{theme}\".");
+
+    /// <summary>
+    /// Every brush <c>Olivo.xaml</c> defines for <paramref name="theme"/>, as the key it is under and
+    /// the value it is.
+    /// </summary>
+    private static Dictionary<string, string> Brushes(string theme) => ThemeDictionary(theme)
+        .Elements()
         .Where(element => element.Name.LocalName == "SolidColorBrush")
         .ToDictionary(
             brush => (string?)brush.Attribute(XName.Get("Key", X)) ?? string.Empty,
@@ -1345,11 +1520,13 @@ public partial class OlivoTests
     private static partial Regex Named();
 
     /// <summary>
-    /// A row of the colour table: the role, the value, where it goes, and the key. The key is what
-    /// this reads and the value is what it checks, so both are captured and the two middle columns
-    /// are not.
+    /// A row of a colour table: the role, the light value, the dark value, where it goes, and the
+    /// key. The key is what this reads and the two values are what it checks, so all three are
+    /// captured and the role and the place are not. Both of the page's tables of this shape —
+    /// §Colour's thirteen rows and §Controls' two — are read by it.
     /// </summary>
-    [GeneratedRegex(@"^\|[^|]+\|\s*`(?<value>#[0-9A-Fa-f]{6})`\s*\|[^|]+\|\s*`(?<key>\w+Brush)`\s*\|",
+    [GeneratedRegex(
+        @"^\|[^|]+\|\s*`(?<value>#[0-9A-Fa-f]{6})`\s*\|\s*`(?<dark>#[0-9A-Fa-f]{6})`\s*\|[^|]+\|\s*`(?<key>\w+Brush)`\s*\|",
         RegexOptions.Multiline)]
     private static partial Regex PaletteRow();
 
@@ -1367,9 +1544,9 @@ public partial class OlivoTests
     /// <summary>
     /// A row of §Colour's *Decided, and not yet a key* table: the value, and the sentence saying
     /// what it is. Two columns and the value first, which is deliberately not
-    /// <see cref="PaletteRow"/>'s four-column shape — a row that matched both would be a colour
+    /// <see cref="PaletteRow"/>'s five-column shape — a row that matched both would be a colour
     /// claiming a key and waiting for one at the same time, and it would also push
-    /// <c>Palette()</c> past twelve. Where the row stands is <see cref="WaitingIn"/>'s to decide;
+    /// <c>Palette()</c> past fifteen. Where the row stands is <see cref="WaitingIn"/>'s to decide;
     /// this only says what one looks like.
     /// </summary>
     [GeneratedRegex(@"^\|\s*`(?<value>#[0-9A-Fa-f]{3,8})`\s*\|[^|]+\|\s*$")]
@@ -1421,11 +1598,10 @@ public partial class OlivoTests
     /// </summary>
     /// <remarks>
     /// A letter or an underscore opens a call or a member, which is <c>Sized("DataSize")</c>,
-    /// <c>Painted("InkBrush")</c> or a field holding one of those. <c>@</c> opens a verbatim
-    /// identifier, which is the same thing spelt round a keyword. <c>(</c> opens a cast, and
-    /// <c>(Brush)Application.Current.Resources[key]</c> is verbatim the body of this application's
-    /// own <c>Painted</c> — refusing it would put the guard in front of the route it sanctions,
-    /// which is how a guard stops being believed.
+    /// <c>Chrome("LevelInInk")</c> or a field holding one of those. <c>@</c> opens a verbatim
+    /// identifier, which is the same thing spelt round a keyword. <c>(</c> opens a cast, which this
+    /// pattern lets through and <see cref="No_code_behind_resolves_a_brush_by_name"/> does not: a
+    /// brush resolved by name is refused there, once, for every route into it.
     /// <para>
     /// So <c>14</c> and <c>"#1C1B19"</c> are what is left, and they are the failure. What this buys
     /// the miss with is one level of indirection: <c>var size = 14;</c> and then <c>size</c> passes,
@@ -1436,8 +1612,20 @@ public partial class OlivoTests
     /// </remarks>
     private const string ThroughOlivo = @"(?![A-Za-z_@(])";
 
+    /// <summary>A resource named in markup as a <c>StaticResource</c>, and the key it names.</summary>
+    [GeneratedRegex(@"\{StaticResource\s+(?<key>[A-Za-z0-9_]+)\s*\}")]
+    private static partial Regex StaticallyNamed();
+
+    /// <summary>
+    /// A brush looked up by name in code: a call of <c>Painted(</c>, or a <c>(Brush)</c> cast of
+    /// anything indexed out of a resource dictionary.
+    /// </summary>
+    [GeneratedRegex(
+        @"\bPainted\s*\(|\((?:Solid)?Brush\)\s*[\w.]*Resources\[|Resources\[[^\]]*\]\s*as\s+(?:Solid)?Brush")]
+    private static partial Regex BrushLookedUp();
+
     /// <summary>A resource asked for by name from code.</summary>
-    [GeneratedRegex(@"(?:Resources\[|Painted\(|Chrome\(|Sized\()""(?<key>\w+)""")]
+    [GeneratedRegex(@"(?:Resources\[|Chrome\(|Sized\()""(?<key>\w+)""")]
     private static partial Regex KeyInCode();
 
     /// <summary>Where the dictionary settles a key, as opposed to where anything uses one.</summary>

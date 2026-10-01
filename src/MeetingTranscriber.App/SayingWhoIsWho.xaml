@@ -42,7 +42,7 @@
                  it is a literal rather than a number `OlivoTests` watches, the same way
                  `ClassifyingAMeeting.xaml` writes literal thicknesses on its own glyphs. -->
             <Style x:Key="VoiceCardUnnamed" TargetType="Border" BasedOn="{StaticResource VoiceCard}">
-                <Setter Property="BorderBrush" Value="{StaticResource UnansweredBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource UnansweredBrush}" />
                 <Setter Property="BorderThickness" Value="1.5" />
             </Style>
 
@@ -64,13 +64,13 @@
                  the rank Olivo gives the selected option of a set — this one is settled and needs
                  no choosing. -->
             <Style x:Key="OnlyOneVoiceTag" TargetType="Border" BasedOn="{StaticResource Pill}">
-                <Setter Property="Background" Value="{StaticResource OliveBrush}" />
+                <Setter Property="Background" Value="{ThemeResource OliveBrush}" />
                 <Setter Property="Height" Value="Auto" />
                 <Setter Property="Padding" Value="9,3,9,3" />
             </Style>
 
             <Style x:Key="OnlyOneVoiceTagSays" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
-                <Setter Property="Foreground" Value="{StaticResource PaperBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource PaperBrush}" />
             </Style>
 
             <!-- The name shown and not chosen, on a voice the recording already settled. The pill
@@ -92,7 +92,7 @@
                  play — `ReadingAMeeting.xaml`'s own `FiledUnderNothing` rank: a real answer and not
                  a gap, so it reads as a fact rather than as something gone wrong. -->
             <Style x:Key="NoAudio" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
-                <Setter Property="Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource TertiaryTextBrush}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
 
@@ -167,7 +167,7 @@
                     x:Name="StatusText"
                     Grid.Row="2"
                     Style="{StaticResource BodyText}"
-                    Foreground="{StaticResource PeakBrush}"
+                    Foreground="{ThemeResource PeakBrush}"
                     TextWrapping="Wrap"
                     Visibility="Collapsed" />
 

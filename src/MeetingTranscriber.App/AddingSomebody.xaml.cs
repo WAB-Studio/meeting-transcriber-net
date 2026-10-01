@@ -100,6 +100,11 @@ public sealed partial class AddingSomebody : ContentDialog
 
         _corpus = corpus;
         _language = language;
+
+        // The markup's one-time labels were evaluated when the page was built, before any language
+        // was set, so they read Spanish under an English title. They are evaluated again now.
+        Bindings.Update();
+
         _organizations = organizations;
         _correcting = correcting;
         _made = null;

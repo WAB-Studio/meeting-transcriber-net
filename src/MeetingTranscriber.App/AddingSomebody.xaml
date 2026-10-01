@@ -59,7 +59,7 @@
         <TextBlock
             x:Name="DialogueStatusText"
             Style="{StaticResource BodyText}"
-            Foreground="{StaticResource PeakBrush}"
+            Foreground="{ThemeResource PeakBrush}"
             TextWrapping="Wrap"
             Visibility="Collapsed" />
     </StackPanel>

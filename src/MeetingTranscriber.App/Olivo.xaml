@@ -9,11 +9,14 @@
      its suggestion and the first screen to need one settles it — this is that screen, so these are
      the names, and every screen after this one uses them rather than proposing its own.
 
-     Nothing in here is a ThemeResource and there is no dark dictionary. Olivo is two colours and
-     three greys on paper, in that order, and a second set of values for a dark theme is a second
-     design — one nobody has drawn, and one the artboards do not contain. A screen naming
-     `{StaticResource PaperBrush}` gets papel; when somebody draws Olivo dark, this file grows a
-     ThemeDictionaries and no screen changes. -->
+     Brushes are the one thing in here that varies by theme. They live in `ThemeDictionaries` under
+     two keys, `Default` and `Dark`: `Default` holds the light values and is the key rather than
+     `Light` because a theme with no dictionary of its own falls back to `Default`, which covers
+     Light and High Contrast alike. `Dark` holds the re-tuned values `docs/design.md` §Colour gives
+     in its Dark column. Every brush is reached through `{ThemeResource}`, in this file and in every
+     other, and no code resolves one by name — the theme engine is the only thing that decides which
+     value a brush key holds. Styles, sizes, fonts, corners and thicknesses do not vary by theme and
+     stay `{StaticResource}`. -->
 
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -25,45 +28,58 @@
          what wants attention, and there is no third accent. Red does not exist in this application
          — recording is olivo, because recording is not an alarm. -->
 
-    <SolidColorBrush x:Key="PaperBrush" Color="#FCFCFB" />
-    <SolidColorBrush x:Key="CardBrush" Color="#F4F3EF" />
-    <SolidColorBrush x:Key="DecisionTintBrush" Color="#EEF2EF" />
-    <SolidColorBrush x:Key="AttentionTintBrush" Color="#F8EDE6" />
-    <SolidColorBrush x:Key="InkBrush" Color="#1C1B19" />
-    <SolidColorBrush x:Key="SecondaryTextBrush" Color="#6E6C66" />
-    <SolidColorBrush x:Key="TertiaryTextBrush" Color="#9B9891" />
-    <SolidColorBrush x:Key="LineBrush" Color="#E6E4DE" />
-    <SolidColorBrush x:Key="MeterTrackBrush" Color="#E1DED7" />
-    <SolidColorBrush x:Key="HotZoneBrush" Color="#EDD5C7" />
-    <SolidColorBrush x:Key="OliveBrush" Color="#4F7561" />
-    <SolidColorBrush x:Key="PeakBrush" Color="#C2683C" />
 
-    <!-- The same value as the meter's track and a different role, so a different key. A normal
-         button standing on tarjeta is papel with a 1px rule, and `docs/design.md` §Controls is
-         emphatic that the rule is `#E1DED7` and **not** `#E6E4DE` — the dividing rule against
-         tarjeta is four per cent of nothing, so the button would read as a stray outline rather
-         than a thing to press. Two roles under one key would mean the day somebody re-tunes the
-         meter's track, every button on every card silently moves with it. -->
-    <SolidColorBrush x:Key="ControlRuleBrush" Color="#E1DED7" />
+    <!-- The fifteen brushes, in the order `docs/design.md` §Colour and §Controls give them. Each
+         row of those two tables is a key here at both values, and `OlivoTests` holds it to the page.
 
-    <!-- The 1px inset ring on an empty or optional control — *Agregar*, the `+` at the end of a
-         path, a toggle that is off. `docs/design.md` §Colour has no row for it: the page writes
-         this value into §Controls, beside the control it describes, rather than deciding it as a
-         token, and the screen that files a meeting is the first that had to name it —
-         `OlivoTests.No_screen_chooses_a_colour_a_size_or_a_corner_of_its_own` leaves a screen no
-         other way to spell it. A colour the page *has* decided and no screen has drawn stands in
-         §Colour's *Decided, and not yet a key* table and joins the colour table when a screen
-         settles it. This one never stood there, which is why settling it added no row. -->
-    <SolidColorBrush x:Key="EmptyControlRingBrush" Color="#DEDBD4" />
+         `ControlRuleBrush` is the same value as the meter's track and a different role, so a
+         different key. A normal button on tarjeta is papel with a 1px rule, and the rule is not the
+         dividing line's colour: against tarjeta that one is four per cent of nothing, so the button
+         would read as a stray outline. Two roles under one key would mean the day somebody re-tunes
+         the meter's track, every button on every card silently moves with it.
 
-    <!-- Nothing has been said about this yet: a voice nobody has named, an unticked box, the ring
-         of a radio nobody has chosen. `docs/design.md` §Colour held it in *Decided, and not yet a
-         key* until the settings screen drew the third of those, and that page's own procedure is
-         that the screen which first draws one settles it in the change that draws it — so the row
-         moved into the colour table with this key in the same change, and `OlivoTests` pins that
-         table one row longer. It leaves whole, as that page says: one value, three roles, one key,
-         and they get two keys only on the day one of them has to diverge. -->
-    <SolidColorBrush x:Key="UnansweredBrush" Color="#C3BFB6" />
+         `EmptyControlRingBrush` is the 1px inset ring on an empty or optional control: *Agregar*,
+         the `+` at the end of a path, a toggle that is off.
+
+         `UnansweredBrush` is nothing said yet: a voice nobody has named, an unticked box, the ring
+         of a radio nobody has chosen. One value, three roles, one key; they get two keys only on the
+         day one of them has to diverge. -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="PaperBrush" Color="#FCFCFB" />
+            <SolidColorBrush x:Key="CardBrush" Color="#F4F3EF" />
+            <SolidColorBrush x:Key="DecisionTintBrush" Color="#EEF2EF" />
+            <SolidColorBrush x:Key="AttentionTintBrush" Color="#F8EDE6" />
+            <SolidColorBrush x:Key="InkBrush" Color="#1C1B19" />
+            <SolidColorBrush x:Key="SecondaryTextBrush" Color="#6E6C66" />
+            <SolidColorBrush x:Key="TertiaryTextBrush" Color="#9B9891" />
+            <SolidColorBrush x:Key="LineBrush" Color="#E6E4DE" />
+            <SolidColorBrush x:Key="MeterTrackBrush" Color="#E1DED7" />
+            <SolidColorBrush x:Key="HotZoneBrush" Color="#EDD5C7" />
+            <SolidColorBrush x:Key="OliveBrush" Color="#4F7561" />
+            <SolidColorBrush x:Key="PeakBrush" Color="#C2683C" />
+            <SolidColorBrush x:Key="UnansweredBrush" Color="#C3BFB6" />
+            <SolidColorBrush x:Key="ControlRuleBrush" Color="#E1DED7" />
+            <SolidColorBrush x:Key="EmptyControlRingBrush" Color="#DEDBD4" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="PaperBrush" Color="#1B1A18" />
+            <SolidColorBrush x:Key="CardBrush" Color="#22211F" />
+            <SolidColorBrush x:Key="DecisionTintBrush" Color="#1E2521" />
+            <SolidColorBrush x:Key="AttentionTintBrush" Color="#2A211C" />
+            <SolidColorBrush x:Key="InkBrush" Color="#ECEAE5" />
+            <SolidColorBrush x:Key="SecondaryTextBrush" Color="#8E8B85" />
+            <SolidColorBrush x:Key="TertiaryTextBrush" Color="#64615C" />
+            <SolidColorBrush x:Key="LineBrush" Color="#2D2C29" />
+            <SolidColorBrush x:Key="MeterTrackBrush" Color="#302F2C" />
+            <SolidColorBrush x:Key="HotZoneBrush" Color="#402D24" />
+            <SolidColorBrush x:Key="OliveBrush" Color="#6A947F" />
+            <SolidColorBrush x:Key="PeakBrush" Color="#B86038" />
+            <SolidColorBrush x:Key="UnansweredBrush" Color="#45423E" />
+            <SolidColorBrush x:Key="ControlRuleBrush" Color="#302F2C" />
+            <SolidColorBrush x:Key="EmptyControlRingBrush" Color="#32312E" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
 
     <!-- ── The two faces ────────────────────────────────────────────────────────────────────────
 
@@ -125,7 +141,7 @@
         <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
         <Setter Property="FontWeight" Value="Medium" />
         <Setter Property="CharacterSpacing" Value="-30" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
     </Style>
 
     <Style x:Key="ScreenTitleText" TargetType="TextBlock">
@@ -135,7 +151,7 @@
         <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="CharacterSpacing" Value="-20" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
     </Style>
 
     <!-- The rank a sub-screen's own title takes. `docs/design.md` §Type: a sub-screen is one
@@ -150,7 +166,7 @@
         <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="CharacterSpacing" Value="-20" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
     </Style>
 
     <Style x:Key="SectionText" TargetType="TextBlock">
@@ -160,7 +176,7 @@
         <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="CharacterSpacing" Value="-15" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
     </Style>
 
     <Style x:Key="TranscriptText" TargetType="TextBlock">
@@ -168,7 +184,7 @@
         <Setter Property="FontSize" Value="{StaticResource TranscriptSize}" />
         <Setter Property="LineHeight" Value="26" />
         <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
     </Style>
 
     <Style x:Key="BodyText" TargetType="TextBlock">
@@ -176,7 +192,7 @@
         <Setter Property="FontSize" Value="{StaticResource BodySize}" />
         <Setter Property="LineHeight" Value="20" />
         <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
     </Style>
 
     <Style x:Key="DataText" TargetType="TextBlock">
@@ -184,7 +200,7 @@
         <Setter Property="FontSize" Value="{StaticResource DataSize}" />
         <Setter Property="LineHeight" Value="18" />
         <Setter Property="LineStackingStrategy" Value="BlockLineHeight" />
-        <Setter Property="Foreground" Value="{StaticResource TertiaryTextBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource TertiaryTextBrush}" />
     </Style>
 
     <!-- There is no rank-in-another-ink here, and that is deliberate. `docs/design.md` §Type says a
@@ -276,8 +292,8 @@
 
     <!-- The one thing this screen is for: start recording, stop, save. -->
     <Style x:Key="PrincipalActButton" TargetType="Button" BasedOn="{StaticResource OlivoButtonBase}">
-        <Setter Property="Background" Value="{StaticResource InkBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource PaperBrush}" />
+        <Setter Property="Background" Value="{ThemeResource InkBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource PaperBrush}" />
         <Setter Property="Height" Value="{StaticResource PrincipalActHeight}" />
         <Setter Property="MinHeight" Value="{StaticResource PrincipalActHeight}" />
         <Setter Property="Padding" Value="24,0,24,0" />
@@ -286,23 +302,23 @@
     <!-- Everything else, and it has two fills for the same reason the surfaces alternate: a tarjeta
          button on a tarjeta row is invisible. On papel it is tarjeta with no rule. -->
     <Style x:Key="NormalButtonOnPaper" TargetType="Button" BasedOn="{StaticResource OlivoButtonBase}">
-        <Setter Property="Background" Value="{StaticResource CardBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Background" Value="{ThemeResource CardBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
     </Style>
 
     <!-- On tarjeta it is papel with a 1px rule. -->
     <Style x:Key="NormalButtonOnCard" TargetType="Button" BasedOn="{StaticResource OlivoButtonBase}">
-        <Setter Property="Background" Value="{StaticResource PaperBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Background" Value="{ThemeResource PaperBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="BorderBrush" Value="{StaticResource ControlRuleBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ControlRuleBrush}" />
     </Style>
 
     <!-- Dismiss, cancel, leave it as it was. Never filled, always secondary ink. It is the same
          button on every screen and only the word changes. -->
     <Style x:Key="ButtonAtTheMargin" TargetType="Button" BasedOn="{StaticResource OlivoButtonBase}">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource SecondaryTextBrush}" />
         <Setter Property="FontWeight" Value="Normal" />
         <Setter Property="Padding" Value="12,0,12,0" />
     </Style>
@@ -336,7 +352,7 @@
          of what ISC-173.1 is against. -->
     <Style x:Key="TheRowItself" TargetType="Button">
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -350,21 +366,21 @@
          card takes a 1px rule and never a tint of its own. -->
 
     <Style x:Key="Card" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource CardBrush}" />
+        <Setter Property="Background" Value="{ThemeResource CardBrush}" />
         <Setter Property="CornerRadius" Value="{StaticResource CardCorner}" />
         <Setter Property="Padding" Value="{StaticResource SmallCardPadding}" />
     </Style>
 
     <!-- Something waiting on the person, and the selected option of a set. -->
     <Style x:Key="WaitingOnADecisionCard" TargetType="Border" BasedOn="{StaticResource Card}">
-        <Setter Property="Background" Value="{StaticResource DecisionTintBrush}" />
+        <Setter Property="Background" Value="{ThemeResource DecisionTintBrush}" />
     </Style>
 
     <!-- Something lost or about to be. Its 18px warning triangle in pico is drawn on the row, not
          here: a Border style cannot add a child, and the triangle is part of what the notice says
          rather than part of what it is laid on. -->
     <Style x:Key="SomethingIsLostCard" TargetType="Border" BasedOn="{StaticResource Card}">
-        <Setter Property="Background" Value="{StaticResource AttentionTintBrush}" />
+        <Setter Property="Background" Value="{ThemeResource AttentionTintBrush}" />
     </Style>
 
     <!-- ── Controls that are not buttons ────────────────────────────────────────────────────────
@@ -387,8 +403,8 @@
          for whoever writes the next `Path`, so the chevron is written where it is drawn, once, and
          the shape a second one would take is this one copied. -->
     <Style x:Key="Pill" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource PaperBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Setter Property="Background" Value="{ThemeResource PaperBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource LineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
         <Setter Property="Height" Value="{StaticResource ControlHeight}" />
@@ -401,7 +417,7 @@
          node's history. The corner and the padding are `Pill`'s own values rather than numbers of its
          own — a press shaped like a pill has to be the same shape as one. -->
     <Style x:Key="PillButton" TargetType="Button" BasedOn="{StaticResource RowButtonOnCard}">
-        <Setter Property="Background" Value="{StaticResource PaperBrush}" />
+        <Setter Property="Background" Value="{ThemeResource PaperBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
         <Setter Property="Height" Value="{StaticResource ControlHeight}" />
@@ -426,7 +442,7 @@
     <Style x:Key="DropDownItem" TargetType="ComboBoxItem" BasedOn="{StaticResource DefaultComboBoxItemStyle}">
         <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
         <Setter Property="FontSize" Value="{StaticResource BodySize}" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
         <Setter Property="Padding" Value="12,0,12,0" />
@@ -448,42 +464,42 @@
                                 <VisualState x:Name="Normal" />
                                 <VisualState x:Name="PointerOver">
                                     <VisualState.Setters>
-                                        <Setter Target="LayoutRoot.Background" Value="{StaticResource CardBrush}" />
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource CardBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Pressed">
                                     <VisualState.Setters>
-                                        <Setter Target="LayoutRoot.Background" Value="{StaticResource CardBrush}" />
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource CardBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Selected">
                                     <VisualState.Setters>
-                                        <Setter Target="LayoutRoot.Background" Value="{StaticResource DecisionTintBrush}" />
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource DecisionTintBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="SelectedUnfocused">
                                     <VisualState.Setters>
-                                        <Setter Target="LayoutRoot.Background" Value="{StaticResource DecisionTintBrush}" />
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource DecisionTintBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="SelectedPointerOver">
                                     <VisualState.Setters>
-                                        <Setter Target="LayoutRoot.Background" Value="{StaticResource DecisionTintBrush}" />
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource DecisionTintBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="SelectedPressed">
                                     <VisualState.Setters>
-                                        <Setter Target="LayoutRoot.Background" Value="{StaticResource DecisionTintBrush}" />
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource DecisionTintBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="Disabled">
                                     <VisualState.Setters>
-                                        <Setter Target="ContentPresenter.Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource TertiaryTextBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                                 <VisualState x:Name="SelectedDisabled">
                                     <VisualState.Setters>
-                                        <Setter Target="ContentPresenter.Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource TertiaryTextBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>
@@ -531,9 +547,9 @@
     <Style x:Key="DropDown" TargetType="ComboBox" BasedOn="{StaticResource DefaultComboBoxStyle}">
         <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
         <Setter Property="FontSize" Value="{StaticResource BodySize}" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
-        <Setter Property="Background" Value="{StaticResource PaperBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
+        <Setter Property="Background" Value="{ThemeResource PaperBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource LineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
         <Setter Property="Height" Value="{StaticResource ControlHeight}" />
@@ -566,8 +582,8 @@
                                 <VisualState x:Name="Pressed" />
                                 <VisualState x:Name="Disabled">
                                     <VisualState.Setters>
-                                        <Setter Target="ContentPresenter.Foreground" Value="{StaticResource TertiaryTextBrush}" />
-                                        <Setter Target="Chevron.Stroke" Value="{StaticResource TertiaryTextBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource TertiaryTextBrush}" />
+                                        <Setter Target="Chevron.Stroke" Value="{ThemeResource TertiaryTextBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>
@@ -638,7 +654,7 @@
                             <TextBlock
                                 x:Name="PlaceholderTextBlock"
                                 Text="{TemplateBinding PlaceholderText}"
-                                Foreground="{StaticResource TertiaryTextBrush}"
+                                Foreground="{ThemeResource TertiaryTextBrush}"
                                 TextTrimming="CharacterEllipsis" />
                         </ContentPresenter>
 
@@ -654,7 +670,7 @@
                             Height="11"
                             Stretch="Uniform"
                             IsHitTestVisible="False"
-                            Stroke="{StaticResource SecondaryTextBrush}"
+                            Stroke="{ThemeResource SecondaryTextBrush}"
                             StrokeThickness="2.2"
                             StrokeStartLineCap="Round"
                             StrokeEndLineCap="Round"
@@ -664,8 +680,8 @@
                         <Popup x:Name="Popup">
                             <Border
                                 x:Name="PopupBorder"
-                                Background="{StaticResource PaperBrush}"
-                                BorderBrush="{StaticResource LineBrush}"
+                                Background="{ThemeResource PaperBrush}"
+                                BorderBrush="{ThemeResource LineBrush}"
                                 BorderThickness="1"
                                 BackgroundSizing="InnerBorderEdge"
                                 CornerRadius="{StaticResource PressedCorner}"
@@ -717,7 +733,7 @@
     <Style x:Key="Option" TargetType="RadioButton" BasedOn="{StaticResource DefaultRadioButtonStyle}">
         <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
         <Setter Property="FontSize" Value="{StaticResource BodySize}" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
         <Setter Property="Padding" Value="12,0,12,0" />
@@ -747,16 +763,16 @@
                                      still at full strength reads as half live. -->
                                 <VisualState x:Name="Disabled">
                                     <VisualState.Setters>
-                                        <Setter Target="TheWords.Foreground" Value="{StaticResource TertiaryTextBrush}" />
-                                        <Setter Target="Chosen.Fill" Value="{StaticResource TertiaryTextBrush}" />
-                                        <Setter Target="Ring.Stroke" Value="{StaticResource EmptyControlRingBrush}" />
+                                        <Setter Target="TheWords.Foreground" Value="{ThemeResource TertiaryTextBrush}" />
+                                        <Setter Target="Chosen.Fill" Value="{ThemeResource TertiaryTextBrush}" />
+                                        <Setter Target="Ring.Stroke" Value="{ThemeResource EmptyControlRingBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>
                             <VisualStateGroup x:Name="CheckStates">
                                 <VisualState x:Name="Checked">
                                     <VisualState.Setters>
-                                        <Setter Target="TheRow.Background" Value="{StaticResource DecisionTintBrush}" />
+                                        <Setter Target="TheRow.Background" Value="{ThemeResource DecisionTintBrush}" />
                                         <Setter Target="Ring.Visibility" Value="Collapsed" />
                                         <Setter Target="Chosen.Visibility" Value="Visible" />
                                         <Setter Target="Inset.Visibility" Value="Visible" />
@@ -782,19 +798,19 @@
                                     x:Name="Ring"
                                     Width="16"
                                     Height="16"
-                                    Stroke="{StaticResource UnansweredBrush}"
+                                    Stroke="{ThemeResource UnansweredBrush}"
                                     StrokeThickness="1.5" />
                                 <Ellipse
                                     x:Name="Chosen"
                                     Width="16"
                                     Height="16"
-                                    Fill="{StaticResource OliveBrush}"
+                                    Fill="{ThemeResource OliveBrush}"
                                     Visibility="Collapsed" />
                                 <Ellipse
                                     x:Name="Inset"
                                     Width="8"
                                     Height="8"
-                                    Fill="{StaticResource PaperBrush}"
+                                    Fill="{ThemeResource PaperBrush}"
                                     Visibility="Collapsed" />
                             </Grid>
 
@@ -830,7 +846,7 @@
     <Style x:Key="Tick" TargetType="CheckBox" BasedOn="{StaticResource DefaultCheckBoxStyle}">
         <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
         <Setter Property="FontSize" Value="{StaticResource BodySize}" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
         <Setter Property="Padding" Value="12,0,12,0" />
@@ -858,9 +874,9 @@
                                      strength reads as half live. -->
                                 <VisualState x:Name="Disabled">
                                     <VisualState.Setters>
-                                        <Setter Target="TheWords.Foreground" Value="{StaticResource TertiaryTextBrush}" />
-                                        <Setter Target="Ticked.Background" Value="{StaticResource TertiaryTextBrush}" />
-                                        <Setter Target="Ring.BorderBrush" Value="{StaticResource EmptyControlRingBrush}" />
+                                        <Setter Target="TheWords.Foreground" Value="{ThemeResource TertiaryTextBrush}" />
+                                        <Setter Target="Ticked.Background" Value="{ThemeResource TertiaryTextBrush}" />
+                                        <Setter Target="Ring.BorderBrush" Value="{ThemeResource EmptyControlRingBrush}" />
                                     </VisualState.Setters>
                                 </VisualState>
                             </VisualStateGroup>
@@ -890,20 +906,20 @@
                                     Width="18"
                                     Height="18"
                                     CornerRadius="{StaticResource PressedCorner}"
-                                    BorderBrush="{StaticResource UnansweredBrush}"
+                                    BorderBrush="{ThemeResource UnansweredBrush}"
                                     BorderThickness="1.5" />
                                 <Border
                                     x:Name="Ticked"
                                     Width="18"
                                     Height="18"
                                     CornerRadius="{StaticResource PressedCorner}"
-                                    Background="{StaticResource OliveBrush}"
+                                    Background="{ThemeResource OliveBrush}"
                                     Visibility="Collapsed" />
                                 <Viewbox x:Name="Check" Width="11" Height="11" Visibility="Collapsed">
                                     <Canvas Width="24" Height="24">
                                         <Path
                                             Data="M5,12.5 L10,17.5 L19,7.5"
-                                            Stroke="{StaticResource PaperBrush}"
+                                            Stroke="{ThemeResource PaperBrush}"
                                             StrokeThickness="3"
                                             StrokeStartLineCap="Round"
                                             StrokeEndLineCap="Round"
@@ -931,9 +947,9 @@
     <Style x:Key="TypedField" TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
         <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
         <Setter Property="FontSize" Value="{StaticResource BodySize}" />
-        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
-        <Setter Property="Background" Value="{StaticResource PaperBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
+        <Setter Property="Background" Value="{ThemeResource PaperBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource LineBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
     </Style>

@@ -37,6 +37,37 @@
          layers already draw, and *sin señal* stands where the level does, in pico, like *se cortó
          a las 08:12*: the window writes it, and this control only inks it. -->
 
+    <!-- The meter draws in code what it cannot declare — one rectangle per segment, one number per
+         mark of the scale — so each of those takes a style from here and never a brush of its own.
+         A style's setters are ThemeResource, which is what lets an element built in code follow a
+         switch of Windows' theme while the window is open: the brush is not resolved once, here, in
+         the constructor. -->
+    <UserControl.Resources>
+        <Style x:Key="TrackSegment" TargetType="Rectangle">
+            <Setter Property="Fill" Value="{ThemeResource MeterTrackBrush}" />
+        </Style>
+        <Style x:Key="HotZoneSegment" TargetType="Rectangle">
+            <Setter Property="Fill" Value="{ThemeResource HotZoneBrush}" />
+        </Style>
+        <Style x:Key="LevelSegment" TargetType="Rectangle">
+            <Setter Property="Fill" Value="{ThemeResource OliveBrush}" />
+        </Style>
+        <Style x:Key="ClippedSegment" TargetType="Rectangle">
+            <Setter Property="Fill" Value="{ThemeResource PeakBrush}" />
+        </Style>
+
+        <!-- The three inks a number is written in, for the level and for the scale alike. -->
+        <Style x:Key="InkText" TargetType="TextBlock" BasedOn="{StaticResource DataText}">
+            <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
+        </Style>
+        <Style x:Key="PeakText" TargetType="TextBlock" BasedOn="{StaticResource DataText}">
+            <Setter Property="Foreground" Value="{ThemeResource PeakBrush}" />
+        </Style>
+        <Style x:Key="TertiaryText" TargetType="TextBlock" BasedOn="{StaticResource DataText}">
+            <Setter Property="Foreground" Value="{ThemeResource TertiaryTextBrush}" />
+        </Style>
+    </UserControl.Resources>
+
     <Grid RowSpacing="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -73,7 +104,7 @@
                     Width="2"
                     Margin="0,-4,0,-4"
                     HorizontalAlignment="Left"
-                    Fill="{StaticResource PeakBrush}"
+                    Fill="{ThemeResource PeakBrush}"
                     Visibility="Collapsed" />
             </Grid>
 
@@ -103,14 +134,13 @@
             <TextBlock
                 x:Name="Level"
                 Grid.Column="0"
-                Style="{StaticResource DataText}"
-                Foreground="{StaticResource InkBrush}" />
+                Style="{StaticResource InkText}" />
 
             <TextBlock
                 x:Name="Peak"
                 Grid.Column="1"
                 Style="{StaticResource DataText}"
-                Foreground="{StaticResource PeakBrush}" />
+                Foreground="{ThemeResource PeakBrush}" />
         </Grid>
     </Grid>
 </UserControl>

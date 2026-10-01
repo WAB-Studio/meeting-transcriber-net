@@ -41,10 +41,10 @@ public sealed partial class ChannelMeter : UserControl
     private const double SegmentGap = 3;
 
     /// <summary>
-    /// The four layers, bottom to top, each with the brush it is drawn in — the order they paint
-    /// in, so the level goes over the hot zone and what is past −12 goes over the level.
+    /// The four layers, bottom to top, each with the style its segments are drawn in — the order
+    /// they paint in, so the level goes over the hot zone and what is past −12 goes over the level.
     /// </summary>
-    private readonly (Canvas Layer, Brush Paint)[] _layers;
+    private readonly (Canvas Layer, string Segment)[] _layers;
 
     /// <summary>
     /// The loudest this source has reached since the recording started, or nothing when it has
@@ -78,15 +78,16 @@ public sealed partial class ChannelMeter : UserControl
     {
         InitializeComponent();
 
-        // Resolved here and through the same call every other colour on this component goes
-        // through, so all four are names OlivoTests can see. Held as brushes rather than as keys
-        // because the segments are rebuilt on every resize and the lookup does not need repeating.
+        // Held as the names of styles declared in this component's own markup, and never as
+        // brushes: no brush is resolved in code, because the theme engine is the only thing that
+        // decides which value a brush key holds, and a brush resolved here once would stay the
+        // theme it was resolved in.
         _layers =
         [
-            (TrackLayer, Painted("MeterTrackBrush")),
-            (HotZoneLayer, Painted("HotZoneBrush")),
-            (LevelLayer, Painted("OliveBrush")),
-            (ClippedLayer, Painted("PeakBrush")),
+            (TrackLayer, "TrackSegment"),
+            (HotZoneLayer, "HotZoneSegment"),
+            (LevelLayer, "LevelSegment"),
+            (ClippedLayer, "ClippedSegment"),
         ];
     }
 
@@ -212,7 +213,12 @@ public sealed partial class ChannelMeter : UserControl
         // attention. `docs/design.md` §The three states puts it in pico for exactly that reason,
         // and this is one rank in two inks rather than the artboard's second size — the same
         // correction the peak beside it already stands as.
-        Level.Foreground = Painted(died || noSignal ? "PeakBrush" : "InkBrush");
+        var levelInk = Chrome(died || noSignal ? "PeakText" : "InkText");
+
+        if (!ReferenceEquals(Level.Style, levelInk))
+        {
+            Level.Style = levelInk;
+        }
 
         // Only where the answer moved. The scale is a canvas of text laid out by hand, so building
         // it again every second for as long as a dead device stays dead would be a screen doing
@@ -280,7 +286,7 @@ public sealed partial class ChannelMeter : UserControl
     /// </summary>
     private void OnBarResized(object sender, SizeChangedEventArgs e)
     {
-        foreach (var (layer, paint) in _layers)
+        foreach (var (layer, named) in _layers)
         {
             layer.Children.Clear();
 
@@ -290,7 +296,7 @@ public sealed partial class ChannelMeter : UserControl
                 {
                     Width = Math.Min(SegmentWidth, e.NewSize.Width - x),
                     Height = BarHeight,
-                    Fill = paint,
+                    Style = Chrome(named),
                 };
 
                 Canvas.SetLeft(segment, x);
@@ -332,8 +338,7 @@ public sealed partial class ChannelMeter : UserControl
             var number = new TextBlock
             {
                 Text = mark.ToString("0", CultureInfo.InvariantCulture),
-                Style = (Style)Application.Current.Resources["DataText"],
-                Foreground = Painted(InkOf(mark)),
+                Style = Chrome(InkOf(mark)),
             };
 
             Canvas.SetLeft(number, MeterScale.Along(mark) * width);
@@ -350,9 +355,9 @@ public sealed partial class ChannelMeter : UserControl
     }
 
     /// <summary>
-    /// Which of the three inks a mark is written in. The two that carry information are coloured
-    /// and the rest are data like any other — a scale where every number was coloured would be one
-    /// where none of them meant anything.
+    /// Which of the three inks a mark is written in, as the name of the style that carries it. The
+    /// two that carry information are coloured and the rest are data like any other — a scale where
+    /// every number was coloured would be one where none of them meant anything.
     /// </summary>
     /// <remarks>
     /// A dead source has neither of the two. What −12 and 0 say is where this bar's colours would
@@ -362,15 +367,15 @@ public sealed partial class ChannelMeter : UserControl
     /// </remarks>
     private string InkOf(float mark) => mark switch
     {
-        _ when _died => "TertiaryTextBrush",
-        MeterScale.HotFrom => "PeakBrush",
-        MeterScale.Loudest => "InkBrush",
-        _ => "TertiaryTextBrush",
+        _ when _died => "TertiaryText",
+        MeterScale.HotFrom => "PeakText",
+        MeterScale.Loudest => "InkText",
+        _ => "TertiaryText",
     };
 
     /// <summary>
-    /// One of Olivo's brushes, by the key it is settled under. Every colour on this component comes
-    /// through here, so there is nowhere on it a value could be chosen instead.
+    /// A style declared in this component's own markup. Every colour on what this component builds
+    /// in code comes through one, so there is nowhere on it a brush could be resolved instead.
     /// </summary>
-    private static Brush Painted(string key) => (Brush)Application.Current.Resources[key];
+    private Style Chrome(string named) => (Style)Resources[named];
 }

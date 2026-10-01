@@ -48,15 +48,15 @@
             <Style x:Key="BulletDecision" TargetType="Ellipse">
                 <Setter Property="Width" Value="6" />
                 <Setter Property="Height" Value="6" />
-                <Setter Property="Fill" Value="{StaticResource OliveBrush}" />
+                <Setter Property="Fill" Value="{ThemeResource OliveBrush}" />
             </Style>
 
             <Style x:Key="BulletQuestion" TargetType="Ellipse" BasedOn="{StaticResource BulletDecision}">
-                <Setter Property="Fill" Value="{StaticResource PeakBrush}" />
+                <Setter Property="Fill" Value="{ThemeResource PeakBrush}" />
             </Style>
 
             <Style x:Key="BulletAction" TargetType="Ellipse" BasedOn="{StaticResource BulletDecision}">
-                <Setter Property="Fill" Value="{StaticResource LineBrush}" />
+                <Setter Property="Fill" Value="{ThemeResource LineBrush}" />
             </Style>
 
             <!-- The path, as pills. Local keys naming Olivo's own, the way every other key on this
@@ -70,11 +70,11 @@
             <Style x:Key="PathPillSays" TargetType="TextBlock" BasedOn="{StaticResource BodyText}" />
 
             <Style x:Key="NothingSaidYet" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
-                <Setter Property="Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource TertiaryTextBrush}" />
             </Style>
 
             <Style x:Key="ThereIsMore" TargetType="TextBlock" BasedOn="{StaticResource DataText}">
-                <Setter Property="Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource TertiaryTextBrush}" />
             </Style>
         </Grid.Resources>
 
@@ -109,7 +109,7 @@
             <TextBlock
                 x:Name="StatusText"
                 Style="{StaticResource BodyText}"
-                Foreground="{StaticResource SecondaryTextBrush}"
+                Foreground="{ThemeResource SecondaryTextBrush}"
                 TextWrapping="Wrap" />
         </StackPanel>
 

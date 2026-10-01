@@ -117,7 +117,7 @@
                             <TextBlock
                                 Text="{x:Bind In(loc:UiTexts.TranscribeWith)}"
                                 Style="{StaticResource BodyText}"
-                                Foreground="{StaticResource SecondaryTextBrush}" />
+                                Foreground="{ThemeResource SecondaryTextBrush}" />
                             <StackPanel Spacing="2">
                                 <TextBlock
                                     Text="{x:Bind In(loc:UiTexts.TheEngineThatTranscribes)}"
@@ -129,7 +129,7 @@
                                 <TextBlock
                                     Text="{x:Bind In(loc:UiTexts.WhatAMinuteCosts)}"
                                     Style="{StaticResource DataText}"
-                                    Foreground="{StaticResource SecondaryTextBrush}" />
+                                    Foreground="{ThemeResource SecondaryTextBrush}" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -139,7 +139,7 @@
                             <TextBlock
                                 Text="{x:Bind In(loc:UiTexts.SummariseWith)}"
                                 Style="{StaticResource BodyText}"
-                                Foreground="{StaticResource SecondaryTextBrush}" />
+                                Foreground="{ThemeResource SecondaryTextBrush}" />
                             <StackPanel Spacing="2">
                                 <TextBlock
                                     Text="{x:Bind In(loc:UiTexts.TheEngineThatSummarises)}"
@@ -147,7 +147,7 @@
                                 <TextBlock
                                     Text="{x:Bind In(loc:UiTexts.WhatItCosts)}"
                                     Style="{StaticResource DataText}"
-                                    Foreground="{StaticResource SecondaryTextBrush}" />
+                                    Foreground="{ThemeResource SecondaryTextBrush}" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -190,7 +190,7 @@
                             Margin="0,0,0,7"
                             Text="{x:Bind In(loc:UiTexts.Language)}"
                             Style="{StaticResource BodyText}"
-                            Foreground="{StaticResource SecondaryTextBrush}" />
+                            Foreground="{ThemeResource SecondaryTextBrush}" />
                         <ComboBox
                             x:Name="LanguagePicker"
                             MinWidth="150"
@@ -208,7 +208,7 @@
                         HorizontalAlignment="Left"
                         Text="{x:Bind In(loc:UiTexts.NobodyHasSaidWhoIsUsingThis)}"
                         Style="{StaticResource BodyText}"
-                        Foreground="{StaticResource SecondaryTextBrush}"
+                        Foreground="{ThemeResource SecondaryTextBrush}"
                         TextWrapping="Wrap"
                         MaxWidth="640"
                         Visibility="Collapsed" />
@@ -238,11 +238,11 @@
                         <TextBlock
                             Text="{x:Bind In(loc:UiTexts.WhereItIsKept)}"
                             Style="{StaticResource BodyText}"
-                            Foreground="{StaticResource SecondaryTextBrush}" />
+                            Foreground="{ThemeResource SecondaryTextBrush}" />
                         <TextBlock
                             x:Name="CorpusText"
                             Style="{StaticResource BodyText}"
-                            Foreground="{StaticResource SecondaryTextBrush}"
+                            Foreground="{ThemeResource SecondaryTextBrush}"
                             TextWrapping="Wrap" />
                     </StackPanel>
 
@@ -269,7 +269,7 @@
                     <TextBlock
                         Text="{x:Bind In(loc:UiTexts.WhatAnExportTakes)}"
                         Style="{StaticResource BodyText}"
-                        Foreground="{StaticResource SecondaryTextBrush}" />
+                        Foreground="{ThemeResource SecondaryTextBrush}" />
 
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <CheckBox
@@ -312,7 +312,7 @@
                             x:Name="LastExportText"
                             Grid.Column="0"
                             Style="{StaticResource BodyText}"
-                            Foreground="{StaticResource SecondaryTextBrush}"
+                            Foreground="{ThemeResource SecondaryTextBrush}"
                             TextWrapping="Wrap"
                             Visibility="Collapsed" />
 
@@ -349,12 +349,12 @@
                         <TextBlock
                             x:Name="ClaudeCodeText"
                             Style="{StaticResource BodyText}"
-                            Foreground="{StaticResource SecondaryTextBrush}"
+                            Foreground="{ThemeResource SecondaryTextBrush}"
                             TextWrapping="Wrap" />
                         <TextBlock
                             x:Name="ClaudeCodeStatusText"
                             Style="{StaticResource BodyText}"
-                            Foreground="{StaticResource SecondaryTextBrush}"
+                            Foreground="{ThemeResource SecondaryTextBrush}"
                             TextWrapping="Wrap"
                             Visibility="Collapsed" />
                     </StackPanel>
@@ -372,7 +372,7 @@
                 <TextBlock
                     Text="{x:Bind In(loc:UiTexts.EachIsPaidForSeparately)}"
                     Style="{StaticResource BodyText}"
-                    Foreground="{StaticResource TertiaryTextBrush}"
+                    Foreground="{ThemeResource TertiaryTextBrush}"
                     TextWrapping="Wrap" />
             </StackPanel>
         </ScrollViewer>
@@ -385,7 +385,7 @@
             x:Name="StatusText"
             Grid.Row="2"
             Style="{StaticResource BodyText}"
-            Foreground="{StaticResource PeakBrush}"
+            Foreground="{ThemeResource PeakBrush}"
             TextWrapping="Wrap"
             Visibility="Collapsed" />
     </Grid>

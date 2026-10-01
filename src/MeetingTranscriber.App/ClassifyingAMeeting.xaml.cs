@@ -262,8 +262,6 @@ public sealed partial class ClassifyingAMeeting : UserControl
         _ => throw new InvalidOperationException($"This screen has no badge for the role '{named}'."),
     };
 
-    private static Brush Painted(string key) => (Brush)Application.Current.Resources[key];
-
     /// <summary>
     /// A stroked glyph, built where it is drawn.
     /// </summary>
@@ -272,7 +270,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// value of a <c>Data</c> setter is one <c>Geometry</c> object handed to every <c>Path</c> that
     /// takes the style, and only the first one draws.
     /// </remarks>
-    private static Path Glyph(string brush, params Point[][] strokes)
+    private Path Glyph(params Point[][] strokes)
     {
         var drawing = new PathGeometry();
 
@@ -291,7 +289,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
         return new Path
         {
             Data = drawing,
-            Stroke = Painted(brush),
+            Style = Chrome("AGlyph"),
             StrokeThickness = HowThickAGlyphIs,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
@@ -304,12 +302,11 @@ public sealed partial class ClassifyingAMeeting : UserControl
     }
 
     /// <summary>The mark between two pills of one path, which says one is inside the other.</summary>
-    private static Path Chevron() =>
-        Glyph("TertiaryTextBrush", [new Point(9, 5), new Point(16, 12), new Point(9, 19)]);
+    private Path Chevron() =>
+        Glyph([new Point(9, 5), new Point(16, 12), new Point(9, 19)]);
 
     /// <summary>The mark on a press that opens one more place to fill in.</summary>
-    private static Path Plus() => Glyph(
-        "TertiaryTextBrush",
+    private Path Plus() => Glyph(
         [new Point(12, 5), new Point(12, 19)],
         [new Point(5, 12), new Point(19, 12)]);
 

@@ -41,21 +41,33 @@ separates them, because a third tint at the same lightness as the paper is depth
 The value and the role are fixed here. The resource key is this document's suggestion and the
 first screen to need one settles it — but every screen after that uses the same key.
 
-| Role | Value | Where | Key |
-| --- | --- | --- | --- |
-| Papel — paper | `#FCFCFB` | the window's background | `PaperBrush` |
-| Tarjeta — card | `#F4F3EF` | a block laid on the paper | `CardBrush` |
-| Tinte de decisión — decision tint | `#EEF2EF` | something waiting on the person; the selected option of a set | `DecisionTintBrush` |
-| Tinte de atención — attention tint | `#F8EDE6` | something lost or about to be | `AttentionTintBrush` |
-| Tinta — ink | `#1C1B19` | text, and the fill of the principal act | `InkBrush` |
-| Secundario — secondary | `#6E6C66` | the second line of a pair; a control at the margin | `SecondaryTextBrush` |
-| Terciario — tertiary | `#9B9891` | data, counts, units, labels | `TertiaryTextBrush` |
-| Línea — rule | `#E6E4DE` | a 1px divider; the trough of a two-way pill | `LineBrush` |
-| Pista de medidor — meter track | `#E1DED7` | the meter's empty segments | `MeterTrackBrush` |
-| Zona caliente — hot zone | `#EDD5C7` | the meter's segments above −12 dB | `HotZoneBrush` |
-| Olivo — olive | `#4F7561` | alive and well; see above | `OliveBrush` |
-| Pico — peak | `#C2683C` | wants attention; see above | `PeakBrush` |
-| Sin responder — unanswered | `#C3BFB6` | a speaker nobody has named; an unticked box; the ring of an unchosen radio | `UnansweredBrush` |
+| Role | Value | Dark | Where | Key |
+| --- | --- | --- | --- | --- |
+| Papel — paper | `#FCFCFB` | `#1B1A18` | the window's background | `PaperBrush` |
+| Tarjeta — card | `#F4F3EF` | `#22211F` | a block laid on the paper | `CardBrush` |
+| Tinte de decisión — decision tint | `#EEF2EF` | `#1E2521` | something waiting on the person; the selected option of a set | `DecisionTintBrush` |
+| Tinte de atención — attention tint | `#F8EDE6` | `#2A211C` | something lost or about to be | `AttentionTintBrush` |
+| Tinta — ink | `#1C1B19` | `#ECEAE5` | text, and the fill of the principal act | `InkBrush` |
+| Secundario — secondary | `#6E6C66` | `#8E8B85` | the second line of a pair; a control at the margin | `SecondaryTextBrush` |
+| Terciario — tertiary | `#9B9891` | `#64615C` | data, counts, units, labels | `TertiaryTextBrush` |
+| Línea — rule | `#E6E4DE` | `#2D2C29` | a 1px divider; the trough of a two-way pill | `LineBrush` |
+| Pista de medidor — meter track | `#E1DED7` | `#302F2C` | the meter's empty segments | `MeterTrackBrush` |
+| Zona caliente — hot zone | `#EDD5C7` | `#402D24` | the meter's segments above −12 dB | `HotZoneBrush` |
+| Olivo — olive | `#4F7561` | `#6A947F` | alive and well; see above | `OliveBrush` |
+| Pico — peak | `#C2683C` | `#B86038` | wants attention; see above | `PeakBrush` |
+| Sin responder — unanswered | `#C3BFB6` | `#45423E` | a speaker nobody has named; an unticked box; the ring of an unchosen radio | `UnansweredBrush` |
+
+The application is drawn in the theme Windows is set to, and follows a switch made while it is
+open. **Every key has a dark value**, in the Dark column, and `Olivo.xaml` holds both under
+`ThemeDictionaries`; a screen names a key and never a value, so no screen changes with the theme.
+The dark values are re-tuned and not inverted: each text and accent value holds against dark papel
+the contrast its light value holds against light papel, to within about a tenth — except tinta,
+which is 14.5 to 1 in dark against 16.8 to 1 in light, because full-strength light type on a dark
+page glares. In dark, tarjeta is a step lighter
+than papel, because lighter is what lifts a card off a dark page. The text on an olivo, pico or
+tinta fill is papel in both themes. The sheet that shows the fifteen dark swatches is
+`Sistema.dc.html`; no other artboard has a dark twin, because the dark theme substitutes keyed
+values and changes no layout.
 
 Speakers get their own three, and only these three:
 
@@ -64,6 +76,10 @@ Speakers get their own three, and only these three:
 | First — the user's own microphone | `#4F7561` |
 | Second | `#A0567A` |
 | Anybody with no name yet | `#C3BFB6` |
+
+The first and the unnamed rows are `OliveBrush` and `UnansweredBrush`, and take their dark values
+with them. The second speaker has no key yet and so no dark value until the screen that keys it
+settles one.
 
 A fourth speaker has no colour yet and nobody has decided one. Until somebody does, a third named
 speaker takes the no-name grey rather than a colour invented on the spot.
@@ -193,8 +209,8 @@ once it is spent nothing on the screen can say it any more.
 
 The normal rank has two fills for the same reason the surfaces alternate: a tarjeta button on a
 tarjeta row is invisible. On papel it is tarjeta with no rule; on tarjeta it is papel with a 1px
-`#E1DED7` rule — **not `#E6E4DE`**, which is the dividing rule and against tarjeta is four per cent
-of nothing, so the button reads as a stray outline rather than a thing to press.
+`ControlRuleBrush` rule — **not `LineBrush`**, which is the dividing rule and against tarjeta is
+four per cent of nothing, so the button reads as a stray outline rather than a thing to press.
 
 ### Two places, and they mean the same thing everywhere
 
@@ -275,7 +291,12 @@ each would say nothing. The platform's own check box fills from the system accen
 things this application is not forbids, so the control is `Tick` in `Olivo.xaml`.
 
 An optional or empty control — *add somebody*, *+*, *none of these* — has no fill and a 1px
-`#DEDBD4` inset ring.
+`EmptyControlRingBrush` inset ring.
+
+| Role | Value | Dark | Where | Key |
+| --- | --- | --- | --- | --- |
+| The rule of a normal button on tarjeta | `#E1DED7` | `#302F2C` | the 1px rule of a normal button on tarjeta | `ControlRuleBrush` |
+| The ring of an optional or empty control | `#DEDBD4` | `#32312E` | the inset ring of an optional or empty control | `EmptyControlRingBrush` |
 
 ## Notices
 
@@ -341,7 +362,7 @@ places the grammar fixes: *Guardar* on the right, *Cancelar* on the left — the
 above gives for walking away from a form, and the one `Persona.dc.html` draws.
 
 While a name is typed, up to three people the corpus already holds under a name spelled nearly the
-same way are offered under the field, each a pill with the organization they belong to; pressing one
+same way, or under a name the typed one is the start of or a word of, are offered under the field, each a pill with the organization they belong to; pressing one
 answers the dialogue with that person and adds nobody. *Guardar* still adds the name as typed. It is
 offered only while adding, never while correcting a name.
 
@@ -751,7 +772,8 @@ meeting's name, and none of the presses but one:
 **`Persona`** · Adding somebody, over whatever screen asked. The second of the two dialogues, and
 the last: name, and optionally an organization and since when. It adds an affiliation and never
 replaces one, and while a name is typed it offers up to three people already there under a nearly
-identical name, which a press answers with and adds nobody.
+identical name, or under a name the typed one is the start of or a word of, which a press answers
+with and adds nobody.
 
 ### The system sheet
 

@@ -14,7 +14,7 @@
   </style>
 </helmet>
 
-<div style="width: 1120px; height: 4180px; box-sizing: border-box; padding: 40px 48px; display: flex; flex-direction: column; gap: 30px; overflow: hidden; background: #FCFCFB; color: #1C1B19; font-family: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 20px;">
+<div style="width: 1120px; height: 4320px; box-sizing: border-box; padding: 40px 48px; display: flex; flex-direction: column; gap: 30px; overflow: hidden; background: #FCFCFB; color: #1C1B19; font-family: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 20px;">
 
   <div style="display: flex; align-items: flex-end; gap: 14px;">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke-linecap="round"><path d="M8 7a7 7 0 0 0 0 10" stroke="#1C1B19" stroke-width="2.2"></path><path d="M14.5 5a9.5 9.5 0 0 1 0 14" stroke="#4F7561" stroke-width="2.2"></path></svg>
@@ -49,6 +49,30 @@
         <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #4F7561;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #9B9891;">olivo<br>#4F7561</div></div>
         <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #C2683C;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #9B9891;">pico<br>#C2683C</div></div>
         <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: linear-gradient(90deg, #EEF2EF 0 50%, #F8EDE6 50%);"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #9B9891;">tintes<br>decisión · atención</div></div>
+      </div>
+
+      <!-- The same fifteen keys in the Dark column of docs/design.md §Colour and §Controls. This is the
+           only artboard with a dark sheet: the dark theme substitutes keyed values and changes no
+           layout, so a dark copy of every artboard would be eighteen more places to drift from this one. -->
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 12px; background: #1B1A18;">
+        <div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">oscuro · Dark</div>
+        <div style="display: grid; grid-template-columns: repeat(15, minmax(0, 1fr)); gap: 8px;">
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #1B1A18; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">papel<br>#1B1A18</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #22211F; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">tarjeta<br>#22211F</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #1E2521; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">decisión<br>#1E2521</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #2A211C; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">atención<br>#2A211C</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #ECEAE5; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">tinta<br>#ECEAE5</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #8E8B85; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">secundario<br>#8E8B85</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #64615C; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">terciario<br>#64615C</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #2D2C29; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">línea<br>#2D2C29</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #302F2C; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">pista<br>#302F2C</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #402D24; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">zona caliente<br>#402D24</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #6A947F; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">olivo<br>#6A947F</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #B86038; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">pico<br>#B86038</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #45423E; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">sin responder<br>#45423E</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #302F2C; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">regla de control<br>#302F2C</div></div>
+        <div style="display: flex; flex-direction: column; gap: 7px;"><div style="height: 54px; border-radius: 8px; background: #32312E; box-shadow: inset 0 0 0 1px #3A3936;"></div><div style="font-family: 'JetBrains Mono', 'Cascadia Mono', Consolas, monospace; font-size: 11px; line-height: 18px; color: #8E8B85;">anillo vacío<br>#32312E</div></div>
+        </div>
       </div>
 
       <div style="display: flex; align-items: center; gap: 20px;">
