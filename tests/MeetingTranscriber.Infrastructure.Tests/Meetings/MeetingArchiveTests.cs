@@ -86,7 +86,6 @@ public sealed class MeetingArchiveTests : IDisposable
         meeting.UpdatedAt.ShouldBe(Now);
         meeting.LifecycleState.ShouldBe(LifecycleState.Active);
         meeting.DeletedAt.ShouldBeNull();
-        meeting.TemplateId.ShouldBeNull();
 
         filed.Source.Kind.ShouldBe(ArtifactKind.DeepgramResponse);
         filed.Source.RelativePath.ShouldEndWith(AResponse().FileName);

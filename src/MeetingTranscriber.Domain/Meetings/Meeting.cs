@@ -19,13 +19,6 @@ public class Meeting
     /// </summary>
     public string? Context { get; set; }
 
-    /// <summary>
-    /// Nothing writes this. No shape and no classification put by is ever written onto a meeting, so
-    /// changing one or throwing it away cannot reach a meeting. The column stays because dropping it
-    /// rebuilds <c>meetings</c>, which is one of the indexed tables.
-    /// </summary>
-    public Guid? TemplateId { get; set; }
-
     public UtcTimestamp StartedAt { get; set; }
 
     public Duration? Duration { get; set; }

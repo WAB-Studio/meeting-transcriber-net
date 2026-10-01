@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Diagnostics;
 
 namespace MeetingTranscriber.Audio.Tests;
@@ -39,7 +38,7 @@ public sealed class FollowedProgramTests
         }
         finally
         {
-            Kill(program);
+            AnotherProcess.Kill(program);
         }
 
         watch.HasGone.ShouldBeTrue();
@@ -56,7 +55,7 @@ public sealed class FollowedProgramTests
         using (var program = AnotherProcess.Waiting())
         {
             id = program.Id;
-            Kill(program);
+            AnotherProcess.Kill(program);
         }
 
         using var watch = FollowedProgram.Watching(new AudioProcess(id, "powershell", 0));
@@ -78,25 +77,5 @@ public sealed class FollowedProgramTests
         watch.Dispose();
 
         watch.HasGone.ShouldBeFalse();
-    }
-
-    /// <summary>Ends a process and its children, and returns once Windows says it has ended.</summary>
-    private static void Kill(Process program)
-    {
-        try
-        {
-            if (!program.HasExited)
-            {
-                program.Kill(entireProcessTree: true);
-            }
-        }
-        catch (Exception ending) when (
-            ending is InvalidOperationException or Win32Exception or AggregateException)
-        {
-            // It ended between the question and the kill, which is what the kill was for; and a
-            // refusal to kill is told by the wait below not returning rather than by this.
-        }
-
-        program.WaitForExit();
     }
 }

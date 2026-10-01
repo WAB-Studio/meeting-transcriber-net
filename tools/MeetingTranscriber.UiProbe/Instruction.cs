@@ -56,7 +56,7 @@ internal enum Verb
     /// A table of names and never arbitrary text, which is the decision inside it. A verb taking
     /// any string answers a typo by sending nothing and reporting success — a walk that ran, said
     /// <em>done</em> and proved nothing, which is the failure this whole tool exists not to have.
-    /// <see cref="Instruction.KeyNamed"/> is the table, and a fourth name is added there on
+    /// <see cref="Instruction.KeyNamed"/> is the table, and a seventh name is added there on
     /// purpose, by somebody who wanted it.
     /// </para>
     /// </remarks>
@@ -112,6 +112,9 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
             ["enter"] = 0x0D,
             ["escape"] = 0x1B,
             ["tab"] = 0x09,
+            ["space"] = 0x20,
+            ["up"] = 0x26,
+            ["down"] = 0x28,
         };
 
     /// <summary>
@@ -208,9 +211,12 @@ internal sealed record Instruction(Verb Verb, string Subject, string Detail)
     /// naming what it does carry, rather than sent as an unrecognised code and reported as done.
     /// </para>
     /// <para>
-    /// Three, and they are the three a screen of this application needs: a field that commits on
+    /// Six, and they are the six a screen of this application needs: a field that commits on
     /// Enter, a dialogue that closes on Escape, and the move between controls that is how a screen
-    /// is walked without a mouse. Anything held down with another key is not here and is not an
+    /// is walked without a mouse. The last three are the keyboard's way along a group of radio
+    /// rows: space checks the focused one; up and down move to the next one. Measured on this application's
+    /// summary rows (2026-10-01): down moves the focus and leaves the check where it was, so a
+    /// row is chosen by space. Anything held down with another key is not here and is not an
     /// omission — it would be a second parameter and a second thing to spell, and no screen in this
     /// application asks for one.
     /// </para>

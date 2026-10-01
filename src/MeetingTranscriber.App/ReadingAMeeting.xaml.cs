@@ -116,6 +116,10 @@ public sealed partial class ReadingAMeeting : UserControl
     /// </summary>
     private bool _movingTheTrack;
 
+    /// <summary>True while the summary rows are being drawn, so a row drawn checked is not somebody
+    /// putting it back.</summary>
+    private bool _drawingTheSummaries;
+
     /// <summary>What the name field held when the meeting was drawn, so a leave that changed
     /// nothing writes nothing.</summary>
     private string _nameAsRead = string.Empty;
@@ -468,10 +472,11 @@ public sealed partial class ReadingAMeeting : UserControl
     /// choose between.
     /// </summary>
     /// <remarks>
-    /// <c>Click</c> and not <c>Checked</c>: setting <see cref="ToggleButton.IsChecked"/> while
-    /// drawing raises <c>Checked</c>, so wiring the write to it would put a summary back on every
-    /// redraw. The rows are the card's own, cleared and drawn again by every <see cref="Render"/>,
-    /// the way <c>Presses</c> are.
+    /// <c>Checked</c> and not <c>Click</c>: the arrow keys and UI Automation's Select — which is what
+    /// Narrator calls — check a row without clicking it, so a write on <c>Click</c> let the check
+    /// move while the summary stayed. <c>_drawingTheSummaries</c> keeps anything the drawing itself
+    /// raises from reading as somebody putting a summary back. The rows are the card's own, cleared
+    /// and drawn again by every <see cref="Render"/>, the way <c>Presses</c> are.
     /// </remarks>
     private void SummariesSection(MeetingScreen screen)
     {
@@ -483,25 +488,34 @@ public sealed partial class ReadingAMeeting : UserControl
             return;
         }
 
-        foreach (var given in screen.EverySummary)
-        {
-            var row = new RadioButton
-            {
-                Content = ScreenNumbers.Beside(given.WrittenBy, ScreenNumbers.At(given.AcceptedAt)),
-                Style = Chrome("ASummaryOfThisMeeting"),
-                GroupName = nameof(TheSummaries),
-                IsChecked = given.IsShown,
-            };
+        _drawingTheSummaries = true;
 
-            row.Click += (_, _) => ShowSummary(given);
-            TheSummaries.Children.Add(row);
+        try
+        {
+            foreach (var given in screen.EverySummary)
+            {
+                var row = new RadioButton
+                {
+                    Content = ScreenNumbers.Beside(given.WrittenBy, ScreenNumbers.At(given.AcceptedAt)),
+                    Style = Chrome("ASummaryOfThisMeeting"),
+                    GroupName = nameof(TheSummaries),
+                    IsChecked = given.IsShown,
+                };
+
+                row.Checked += (_, _) => ShowSummary(given);
+                TheSummaries.Children.Add(row);
+            }
+        }
+        finally
+        {
+            _drawingTheSummaries = false;
         }
     }
 
     /// <summary>Somebody chose another of the meeting's summaries. The one call that puts it back.</summary>
     private void ShowSummary(GivenSummary given)
     {
-        if (given.IsShown || _meeting is not { } meeting || Corpus().Folder is not { } folder)
+        if (_drawingTheSummaries || given.IsShown || _meeting is not { } meeting || Corpus().Folder is not { } folder)
         {
             return;
         }

@@ -242,11 +242,11 @@ internal sealed class McpHost : IDisposable
             "key",
             "Sends one key to a control and answers with the tree of the screen it became. `type` "
             + "raises no key event, so this is what commits a field that commits on Enter, closes "
-            + "a dialogue on Escape, or moves focus on Tab. Fails naming the three when the key is "
+            + "a dialogue on Escape, or moves focus on Tab. Fails naming the six when the key is "
             + "anything else, and when the control is disabled.",
             (
                 [Description("The x:Name of the control, or the words on it.")] string element,
-                [Description("One of: enter, escape, tab.")] string key) =>
+                [Description("One of: enter, escape, tab, space, up, down.")] string key) =>
                 Turn(session =>
                 {
                     session.Key(element, key);

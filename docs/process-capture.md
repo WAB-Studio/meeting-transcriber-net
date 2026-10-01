@@ -87,6 +87,7 @@ machine's loopback heard at −18.9 dBFS.
 | **Firefox**, the same page | **Works.** −12.0 dBFS over 6 s, resolved out of 10 processes. |
 | **Teams** (WebView2, MSIX) | **Opens.** The name resolves to the window process, activation succeeds and the stream runs. Whether a meeting's audio lands in it is **not probed** — that needs a signed-in account and somebody on the other end, and there are reports against Microsoft's own sample of the desktop client rendering where a process loopback of its tree hears nothing. Until somebody holds a meeting through it, treat Teams as unproven and not as working. |
 | **Zoom** | **Not probed.** Not installed on this machine. |
+| A parent whose **child** plays, the **parent killed** at 8 s of 20 (2026-10-01) | **The child is still heard.** Channel 0 reads −12.2 dBFS every second to the end, 2013 packets, 0 ms lost, while the capture says the program closed at second 8. So the process loopback follows the tree and not the root, and `FollowedProgram` — which watches the root — says *closed* of a program whose children channel 0 still hears. Not built against here: a watch over the whole tree has to decide what to do about process ids being reused, which is why the root's handle is held at all. |
 
 Two things the runs settled that are not in the table:
 

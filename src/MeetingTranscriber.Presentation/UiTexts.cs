@@ -859,8 +859,8 @@ public static class UiTexts
         "There is no summary: the last one that came back was not accepted. {0} On “{1}”.");
 
     // The same refusal over a meeting that already has a summary, so it cannot open with "there is
-    // no summary". Said beside the line saying the summary asked for again did not come back;
-    // asking again is already on the screen whenever these show.
+    // no summary". Said in place of the sentence that only says the summary asked for again
+    // failed, never beside it; asking again is already on the screen whenever these show.
     public static UiText TheLastSummaryWasNotAccepted { get; } = new(
         "El último que llegó no se aceptó. {0}",
         "The last one that came back was not accepted. {0}");

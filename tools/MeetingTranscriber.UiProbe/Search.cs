@@ -13,7 +13,9 @@ namespace MeetingTranscriber.UiProbe;
 /// exact words on it, then any element whose words contain what was asked for. The first tier
 /// with anything in it decides, and a tier holding more than one match is an error rather than a
 /// coin toss — a script that pressed whichever button UI Automation happened to list first would
-/// pass until the day a screen grew a second one.
+/// pass until the day a screen grew a second one. The one tie broken for the caller is a
+/// <c>key</c> between a control and the label inside it, which carry the same words: see
+/// <see cref="One"/>.
 /// </para>
 /// <para>
 /// What differs between the verbs is not the rule but where it is applied, and each of the three
@@ -43,13 +45,35 @@ internal static class Search
     /// screen instead — built out of the same walk that failed to find it, so the list cannot
     /// contain the thing the search just said was not there.
     /// </summary>
+    /// <param name="root">Where to look.</param>
+    /// <param name="target">What the instruction wrote.</param>
+    /// <param name="mustSupport">A pattern the element has to offer, or nothing.</param>
+    /// <param name="takingTheKeyboard">
+    /// Set by a <c>key</c>. A radio row and the label inside it carry the same words and a key can
+    /// only go to the first, so where the winning tier holds more than one and exactly the ones
+    /// that can hold the keyboard are fewer, those alone are the matches. Only a tie is broken
+    /// this way: a name that matches one thing still answers with that thing, disabled or not.
+    /// </param>
     internal static AutomationElement One(
         AutomationElement root,
         string target,
-        AutomationPattern? mustSupport = null)
+        AutomationPattern? mustSupport = null,
+        bool takingTheKeyboard = false)
     {
         var considered = Everything(root, mustSupport);
         var matches = Among(considered, target);
+
+        if (takingTheKeyboard && matches.Count > 1)
+        {
+            var focusable = matches
+                .Where(element => Reading.Flag(() => element.Current.IsKeyboardFocusable) == true)
+                .ToList();
+
+            if (focusable.Count > 0)
+            {
+                matches = focusable;
+            }
+        }
 
         if (matches.Count == 1)
         {

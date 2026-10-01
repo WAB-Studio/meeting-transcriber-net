@@ -120,9 +120,8 @@ public class ReadingAMeetingTests
     }
 
     /// <summary>
-    /// A summary is put back through the one call that records it, from a row's <c>Click</c> and
-    /// not its <c>Checked</c> (which drawing the checked row would raise), read out of source for
-    /// the reason above.
+    /// A summary is put back through the one call that records it, from a row's <c>Checked</c>
+    /// behind the drawing guard, read out of source for the reason above.
     /// </summary>
     [Fact]
     public void A_summary_is_put_back_through_the_one_call_that_records_it()
@@ -140,8 +139,18 @@ public class ReadingAMeetingTests
             RegexOptions.Singleline);
 
         section.Success.ShouldBeTrue("the screen no longer has a SummariesSection.");
-        section.Value.ShouldContain(".Click +=");
-        section.Value.ShouldNotContain(".Checked +=");
+        section.Value.ShouldContain(".Checked +=");
+        section.Value.ShouldNotContain(".Click +=");
+        section.Value.ShouldContain("_drawingTheSummaries = true");
+        section.Value.ShouldContain("_drawingTheSummaries = false");
+
+        var putBack = Regex.Match(
+            screen,
+            Regex.Escape("private void ShowSummary(GivenSummary given)") + @".*?\r?\n[ ]{4}\}",
+            RegexOptions.Singleline);
+
+        putBack.Success.ShouldBeTrue("the screen no longer has a ShowSummary.");
+        putBack.Value.ShouldContain("_drawingTheSummaries");
     }
 
     /// <summary>
