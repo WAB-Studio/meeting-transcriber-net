@@ -139,6 +139,31 @@ public class MeetingCardTextTests
     }
 
     /// <summary>
+    /// A summary refused because a file sits where the memory folder goes says which file to move,
+    /// and says it from one expression: the failure, the file asked for, then its catalogue entry.
+    /// </summary>
+    /// <remarks>
+    /// The window cannot be run here, so this reads the source without its prose. Replacing the
+    /// conditional with its fallback arm leaves the card saying a generic failure, and the person
+    /// who has to move a file is not told which one.
+    /// </remarks>
+    [Fact]
+    public void The_drawer_names_the_memory_file_a_refused_summary_needs_moved()
+    {
+        var code = Regex.Replace(
+            File.ReadAllText(AppSources.At(Screen).FullName), @"//[^\r\n]*", string.Empty);
+
+        Regex.IsMatch(
+                code,
+                @"failed\s+is\s+JobFailure\.MemoryFileInTheWay\s*&&\s*"
+                + @"SummarisingOnThisMachine\.MemoryFileInTheWay\(\)\s+is\s*\{\s*\}\s*\w+\s*\?\s*"
+                + @"TextLine\.Says\(\s*UiTexts\.NotSentMoveThisMemoryFile\b")
+            .ShouldBeTrue(
+                "MeetingsDrawer.xaml.cs no longer answers a refused summary with the memory file "
+                + "to move, so the card stops saying which file is in the way.");
+    }
+
+    /// <summary>
     /// Every reason a recording gives for not being a meeting is read out of a text that leaves
     /// room for exactly the values that reason says it takes.
     /// </summary>

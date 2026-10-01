@@ -50,7 +50,20 @@ public sealed record ReceivedMeeting(
     Artifact Manifest,
     Artifact Transcript,
     Artifact Utterances,
-    IReadOnlyList<string> PutBack);
+    IReadOnlyList<string> PutBack,
+    SpeechPastTheAudio? PastTheAudio);
+
+/// <summary>
+/// A response whose last turn ends after the meeting's audio does, so a voice heard there has no
+/// clip that plays.
+/// </summary>
+/// <remarks>
+/// Said and never refused: the response is paid for and is the meeting's either way, and the turns
+/// stay filed.
+/// </remarks>
+/// <param name="SpeechEnds">Where the latest stored turn ends.</param>
+/// <param name="Audio">How long the meeting's audio is.</param>
+public sealed record SpeechPastTheAudio(Duration SpeechEnds, Duration Audio);
 
 /// <summary>
 /// What <see cref="MeetingIntake.ReceiveWhatWasRefused"/> did: the filing itself, and which run it
@@ -632,6 +645,26 @@ public static class MeetingIntake
             filed.Card,
             rendered.Transcript,
             rendered.Utterances,
-            filed.PutBack);
+            filed.PutBack,
+            SpeechPast(context, meetingId));
+    }
+
+    /// <summary>Under this, speech ending after the audio is rounding and not news.</summary>
+    private const long AudioToleranceMilliseconds = 1_000;
+
+    private static SpeechPastTheAudio? SpeechPast(CorpusDbContext context, Guid meetingId)
+    {
+        var audio = context.Meetings.Where(row => row.Id == meetingId).Select(row => row.Duration).Single();
+        var turns = context.Utterances.Where(turn => turn.MeetingId == meetingId).Select(turn => turn.End).ToList();
+
+        if (audio is not { } length || turns.Count == 0)
+        {
+            return null;
+        }
+
+        var speechEnds = turns.MaxBy(end => end.Milliseconds);
+        return speechEnds.Milliseconds > length.Milliseconds + AudioToleranceMilliseconds
+            ? new SpeechPastTheAudio(speechEnds, length)
+            : null;
     }
 }

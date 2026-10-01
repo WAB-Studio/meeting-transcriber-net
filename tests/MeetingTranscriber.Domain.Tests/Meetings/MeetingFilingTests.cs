@@ -160,6 +160,45 @@ public class MeetingFilingTests
         after.Somebody.ShouldBe([new ChosenPerson(Jo, Attended: false, Subject: true)]);
     }
 
+    /// <summary>
+    /// A slot with both toggles off answers nothing, so it holds a place and must not keep the
+    /// kept classification's answer out.
+    /// </summary>
+    [Fact]
+    public void A_person_standing_with_nothing_ticked_takes_what_the_kept_classification_says_of_them()
+    {
+        var filed = MeetingFiling.Nothing with
+        {
+            Somebody = [new ChosenPerson(Jo, Attended: false, Subject: false)],
+        };
+        var kept = MeetingFiling.Nothing with
+        {
+            Somebody = [new ChosenPerson(Jo, Attended: true, Subject: false)],
+        };
+
+        filed.FilledFrom(kept).Somebody.ShouldBe([new ChosenPerson(Jo, Attended: true, Subject: false)]);
+    }
+
+    [Fact]
+    public void A_person_standing_with_nothing_ticked_and_not_kept_stays_on_the_draft()
+    {
+        var other = Guid.NewGuid();
+        var filed = MeetingFiling.Nothing with
+        {
+            Somebody = [new ChosenPerson(Jo, Attended: false, Subject: false)],
+        };
+        var kept = MeetingFiling.Nothing with
+        {
+            Somebody = [new ChosenPerson(other, Attended: true, Subject: false)],
+        };
+
+        filed.FilledFrom(kept).Somebody.ShouldBe(
+            [
+                new ChosenPerson(Jo, Attended: false, Subject: false),
+                new ChosenPerson(other, Attended: true, Subject: false),
+            ]);
+    }
+
     [Fact]
     public void Filling_an_empty_draft_from_a_classification_put_by_files_what_it_holds()
     {

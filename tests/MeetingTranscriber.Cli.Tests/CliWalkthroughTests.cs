@@ -238,6 +238,7 @@ public class CliWalkthroughTests
             filed.Value("response").ShouldBe($"meetings/{meeting}/{ResponseVersions.First}");
             filed.Value("transcript").ShouldStartWith($"meetings/{meeting}/");
             filed.Value("manifest").ShouldStartWith($"meetings/{meeting}/");
+            filed.Value("past audio").ShouldStartWith("speech runs to ");
             var turns = int.Parse(filed.Value("turns"), CultureInfo.InvariantCulture);
             turns.ShouldBeGreaterThan(0);
 

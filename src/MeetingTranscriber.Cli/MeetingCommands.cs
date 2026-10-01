@@ -93,6 +93,17 @@ public static class MeetingCommands
         Report.Line(output, "manifest", received.Manifest.RelativePath);
         PutBack(output, received.PutBack);
         Rendered(output, received.Turns, received.Transcript.RelativePath, received.Utterances.RelativePath);
+
+        if (received.PastTheAudio is { } past)
+        {
+            Report.Line(
+                output,
+                "past audio",
+                $"speech runs to {Report.Offset(past.SpeechEnds)} and this meeting's audio is "
+                + $"{Report.Offset(past.Audio)} long — a voice heard after {Report.Offset(past.Audio)} "
+                + "has no clip that plays");
+        }
+
         return Cli.Ok;
     }
 

@@ -137,7 +137,8 @@ public sealed record MeetingFiling(
     /// <remarks>
     /// It adds and never takes an answer away, for the reason <see cref="ShapedBy"/> gives: no
     /// meeting records which chip filled it, so pressing the one used last time on a filed meeting
-    /// must not wipe what the corpus holds. A person already standing keeps their toggles, and a
+    /// must not wipe what the corpus holds. A person already standing keeps their toggles — unless both are off, which answers
+    /// nothing, and then the kept classification's answer for them takes the place — and a
     /// path whose deepest node is already filled is not drawn twice. On a meeting nobody has filed,
     /// adding and replacing are the same thing.
     /// </remarks>
@@ -145,7 +146,16 @@ public sealed record MeetingFiling(
     {
         ArgumentNullException.ThrowIfNull(kept);
 
-        var standing = Somebody.Where(slot => slot.PersonId is not null).ToArray();
+        // A slot that answers nothing holds a place and no answer, so what the kept classification
+        // says of that person fills it in place, and they stay as they were when it says nothing.
+        var keptSlots = kept.Somebody.Where(slot => slot.PersonId is not null).ToArray();
+        var standing = Somebody
+            .Where(slot => slot.PersonId is not null)
+            .Select(slot => slot.Attended || slot.Subject
+                ? slot
+                : keptSlots.FirstOrDefault(
+                    held => held.PersonId == slot.PersonId && (held.Attended || held.Subject)) ?? slot)
+            .ToArray();
         var already = standing.Select(slot => slot.PersonId).ToHashSet();
 
         return new MeetingFiling(
@@ -155,7 +165,7 @@ public sealed record MeetingFiling(
             Adding(About, kept.About),
             [
                 .. standing,
-                .. kept.Somebody.Where(slot => slot.PersonId is not null && already.Add(slot.PersonId)),
+                .. keptSlots.Where(slot => already.Add(slot.PersonId)),
             ]);
     }
 
