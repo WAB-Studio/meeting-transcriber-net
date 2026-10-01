@@ -473,10 +473,15 @@ public sealed class RecoveryCommandTests : IDisposable
     /// opened at however fast it really ran — and the word that would have somebody diagnosing two
     /// channels drifting apart take that number for a measurement must not be beside it.
     /// </summary>
+    /// <remarks>
+    /// The fixture is ten blocks, a tenth of a second, so the second of packets a counter's rate is
+    /// read from never completes: the microphone ends inside it, placed by the clock throughout,
+    /// and reads as given up on whatever rate it counts in.
+    /// </remarks>
     [Fact]
     public void A_rate_a_counter_was_given_up_on_is_never_reported_as_measured()
     {
-        Recorded("daily", both: true, microphoneCountsBy: 160);
+        Recorded("daily", both: true, microphoneCountsBy: 100);
 
         var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--keep");
 

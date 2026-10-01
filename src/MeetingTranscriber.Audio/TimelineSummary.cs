@@ -29,10 +29,11 @@ public sealed record TimelineSummary(Duration Length, IReadOnlyList<SourceSummar
 /// <param name="Missing">How much of the recording the device never delivered and is silence.</param>
 /// <param name="Waited">How long after the recording's origin this source's first frame was read.</param>
 /// <param name="CounterGivenUp">
-/// Whether this device numbered its frames in something other than the frames it handed over, so
-/// its own counter was given up on and its audio placed by the instants beside it. The recording is
-/// the meeting either way; what is gone is the drift measurement, and a rate that reads as measured
-/// while being the label is the one thing this exists to stop.
+/// Whether this device counted its frames in a way no rate explains, or one that stopped explaining
+/// them, so its own counter was given up on and its audio placed by the instants beside it — or was
+/// still being told apart from one when the device ended. The recording is the meeting either way;
+/// what is gone is the drift measurement, and a rate that reads as measured while being the label
+/// is the one thing this exists to stop.
 /// </param>
 /// <param name="Stretches">
 /// How many devices fed this channel over the recording. One for almost every recording; more when

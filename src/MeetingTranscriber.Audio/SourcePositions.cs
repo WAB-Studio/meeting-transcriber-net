@@ -20,24 +20,48 @@ namespace MeetingTranscriber.Audio;
 /// ended is not a device that lost audio, and it is the one thing this looks for.
 /// </para>
 /// <para>
-/// It does not ask why the counter is wrong, and it does not have to. A counter counting in another
-/// rate and a driver whose counter is simply broken are the same news — this source's numbers cannot
-/// be laid out — and the answer to both is to stop reading them. The clock beside each packet is
-/// the same clock the whole timeline is built on, so a source placed by it is placed by the rule
-/// that was already in force, and a stretch the device really dropped still opens the gap it was.
+/// A counter that is wrong is not always a counter that cannot be used: a device that counts in a
+/// rate of its own counts evenly, and the unit is in the packets. The counter advances by the
+/// device's own frames while the frames handed over are those frames converted at the label ratio,
+/// so the two summed over a second of packets name the rate it counts in. One pair does not — the
+/// webcam's first packet was 463 frames and every other 480, and that pair alone names a rate no
+/// device has — so the decision is never taken on less than a second of them.
 /// </para>
 /// <para>
-/// The cost is named rather than hidden, and it is larger than it first looks. A source placed this
-/// way is measured against the very clock its positions were computed from, so it reports its own
-/// rate as exactly the rate it was opened at whatever it really ran at: the drift correction has
-/// nothing to steer by, and the check that stops a device whose two counters disagree cannot fire
-/// on it. For a source whose device numbers nothing that is right rather than a hole — the audio
-/// engine mixes at one rate and there is no crystal to disagree with. Here there is one. A device
-/// that both counts in its own unit and runs at a rate other than its label would be recorded at
-/// its label, and what says so is the stretch that comes back as missing, because the frames handed
-/// over and the clock are then the two numbers that disagree. Measuring such a device needs the
-/// rate its counter counts in, which nothing on this side of WASAPI reports, and it is a board task
-/// rather than a guess made here.
+/// Until then the source is placed by the clock, as a source whose device numbers nothing is, and
+/// two sums are kept over every consecutive pair of packets from the one that revealed the
+/// mismatch on: the counter's advance across the pair, and the frames the earlier packet handed
+/// over. The pair that starts at the source's first packet is never counted, because a first
+/// packet can be short. Once the frames summed reach a second of the label, the candidate rate is
+/// the label times the advance over the frames, and it is read only if it lands within half a
+/// percent of one rate of a closed table below the label. Over a second quantisation is gone, and
+/// a part in ten thousand off such a rate is drift, which is why the candidate is snapped and never
+/// used as it stands. The table is closed because the rates a device counts in are the rates audio
+/// hardware is built to; a counter no rate of it explains is one nothing can be said about.
+/// </para>
+/// <para>
+/// A counter that merely read low once and then counted in the frames handed over sums to a ratio
+/// of about one, which nothing below the label is within half a percent of, so it is given up and
+/// the meeting is recorded, never rescaled ahead of itself. What was placed before the decision
+/// keeps the clock's placement; nothing already placed is moved. From the switch on a position is
+/// the one the switch was placed at plus the counter's advance since, in frames of the label, so
+/// the switch opens neither a gap nor an overlap. A rescaled position that then falls more than
+/// one counting unit behind where the last packet ended gives the counter up as well, and the
+/// source goes back to the clock.
+/// </para>
+/// <para>
+/// The decision is taken once. A stretch the device really dropped inside that first second adds
+/// to the advance, so the candidate misses every rate and the counter is given up for the rest of
+/// the source, which is the same news as a counter nothing explains and costs the drift measurement
+/// and nothing else.
+/// </para>
+/// <para>
+/// A source placed by the clock is measured against the very clock its positions were computed
+/// from, so it reports its own rate as exactly the rate it was opened at: the drift correction has
+/// nothing to steer by, and what says a device ran at another rate is the stretch that comes back
+/// as missing. That is the cost of a counter that is given up, and it is why
+/// <see cref="CounterGivenUp"/> reads true from the moment the mismatch is seen until a rate is
+/// read — a source that ends inside its window was placed by the clock throughout.
 /// </para>
 /// <para>
 /// The check still holds in full for every source whose counter was usable, which is the case it
@@ -48,11 +72,31 @@ namespace MeetingTranscriber.Audio;
 /// </remarks>
 internal sealed class SourcePositions
 {
+    private const double Tolerance = 0.005;
+
+    /// <summary>
+    /// The rates a device is known to count in. Closed on purpose: the candidate a second of
+    /// packets gives is never exact, and the only way to tell a unit from drift is to ask which
+    /// rate audio hardware is built to run at it is within half a percent of.
+    /// </summary>
+    private static readonly int[] CountingRates =
+        [8_000, 11_025, 12_000, 16_000, 22_050, 24_000, 32_000, 44_100, 48_000, 88_200, 96_000, 176_400];
+
     private readonly int sampleRate;
     private FramePositions? placed;
     private long origin;
     private long next;
     private bool started;
+    private Phase phase;
+
+    private long previousDevice;
+    private int previousFrames;
+    private long advanced;
+    private long handedOver;
+
+    private int countingRate;
+    private long anchorDevice;
+    private long anchorPlaced;
 
     /// <summary>Positions for a source handing over <paramref name="sampleRate"/> frames a second.</summary>
     internal SourcePositions(int sampleRate)
@@ -61,11 +105,32 @@ internal sealed class SourcePositions
         this.sampleRate = sampleRate;
     }
 
+    private enum Phase
+    {
+        /// <summary>The counter has not disagreed with the frames handed over.</summary>
+        Trusted,
+
+        /// <summary>It disagreed, and a second of packets has not yet said in what unit.</summary>
+        Window,
+
+        /// <summary>A rate explains it, and positions are read in that rate.</summary>
+        Rescaled,
+
+        /// <summary>No rate explains it, or one stopped doing so.</summary>
+        GivenUp,
+    }
+
     /// <summary>
-    /// Whether this source's device numbered its frames in something other than the frames it
-    /// handed over, and its counter was given up on.
+    /// Whether this source's device counted its frames in a way no rate explains, or one that
+    /// stopped explaining them, so its counter was given up and its audio placed by the clock —
+    /// or has not yet been explained by a rate, and is placed by the clock until it is.
     /// </summary>
-    internal bool CounterGivenUp { get; private set; }
+    /// <remarks>
+    /// True from the packet that reveals the mismatch until a rate is read off the window that
+    /// follows it, and false once one has. A source that ends or is replaced inside its window was
+    /// placed by the clock throughout, so its rate is the label and not a measurement.
+    /// </remarks>
+    internal bool CounterGivenUp => phase is Phase.Window or Phase.GivenUp;
 
     /// <summary>
     /// Where <paramref name="packet"/>'s first frame goes, in the frames this source hands over.
@@ -94,18 +159,106 @@ internal sealed class SourcePositions
             return packet.DevicePosition;
         }
 
-        CounterGivenUp |= packet.DevicePosition < next;
+        if (phase == Phase.Trusted && packet.DevicePosition < next)
+        {
+            // The pair that revealed it is not counted: this packet is the later of it, and the
+            // window starts with the pair this packet opens.
+            phase = Phase.Window;
+            previousDevice = packet.DevicePosition;
+            previousFrames = frames;
+        }
+        else if (phase == Phase.Window)
+        {
+            advanced += packet.DevicePosition - previousDevice;
+            handedOver += previousFrames;
+            previousDevice = packet.DevicePosition;
+            previousFrames = frames;
+        }
 
         // Never behind where the last packet ended. The two answers are measured from different
-        // things — one from the device's counter, the other from the clock — so at the changeover
+        // things — one from the device's counter, the other from the clock — so at a changeover
         // they can disagree by whatever the source has drifted and by whatever it lost: a stretch
         // the device dropped puts its counter ahead of both the frames handed over and the clock,
         // and the clock's answer then lands short of a position already used. Sending a source
-        // backwards is the one thing giving the counter up exists to avoid, so the changeover
-        // costs the difference as a shorter first packet rather than as an overlap.
-        var where = CounterGivenUp ? Math.Max(elsewhere, next) : packet.DevicePosition;
+        // backwards is the one thing giving the counter up exists to avoid, so a changeover costs
+        // the difference as a shorter first packet rather than as an overlap.
+        var byTheClock = Math.Max(elsewhere, next);
+        long where;
+
+        switch (phase)
+        {
+            case Phase.Window:
+                where = byTheClock;
+
+                if (handedOver >= sampleRate)
+                {
+                    DecideTheRate(packet.DevicePosition, where);
+                }
+
+                break;
+            case Phase.Rescaled:
+                var rescaled = anchorPlaced
+                    + (long)Math.Round((packet.DevicePosition - anchorDevice) * (double)sampleRate / countingRate);
+
+                // One counting unit of slack, which is all rounding to the label can cost; past it
+                // the counter is going back on itself in its own rate and is given up like any.
+                if (rescaled < next - UnitInFrames())
+                {
+                    phase = Phase.GivenUp;
+                    where = byTheClock;
+                }
+                else
+                {
+                    where = Math.Max(rescaled, next);
+                }
+
+                break;
+            case Phase.GivenUp:
+                where = byTheClock;
+                break;
+            default:
+                where = packet.DevicePosition;
+                break;
+        }
+
         next = where + frames;
 
         return where;
+    }
+
+    private long UnitInFrames() => (sampleRate + countingRate - 1) / countingRate;
+
+    /// <summary>
+    /// Closes the window: reads the counter in the table's rate that explains the second just
+    /// summed, switching on <paramref name="device"/> at <paramref name="placedAt"/>, or gives it
+    /// up when none does.
+    /// </summary>
+    private void DecideTheRate(long device, long placedAt)
+    {
+        var candidate = sampleRate * (double)advanced / handedOver;
+        var best = 0;
+        var bestOff = double.MaxValue;
+
+        foreach (var rate in CountingRates)
+        {
+            var off = Math.Abs(candidate - rate);
+
+            if (rate < sampleRate && off <= rate * Tolerance && off < bestOff)
+            {
+                best = rate;
+                bestOff = off;
+            }
+        }
+
+        if (best == 0)
+        {
+            phase = Phase.GivenUp;
+            return;
+        }
+
+        phase = Phase.Rescaled;
+        countingRate = best;
+        anchorDevice = device;
+        anchorPlaced = placedAt;
     }
 }
