@@ -762,6 +762,8 @@ public static class UiTexts
 
     public static UiText Summarise { get; } = new("Resumir", "Summarise");
 
+    public static UiText SummariseAgain { get; } = new("Resumir de nuevo", "Summarise again");
+
     public static UiText Ignore { get; } = new("Ignorar", "Ignore");
 
     public static UiText ItIsInTheQueueNow { get; } =
