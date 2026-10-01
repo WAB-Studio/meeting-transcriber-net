@@ -1,4 +1,5 @@
 using MeetingTranscriber.Domain.Artifacts;
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
@@ -32,6 +33,11 @@ public sealed record RendersCaughtUp(
 /// render more, after which the transcript is newer again. A rename renders each meeting it
 /// touches itself and names the ones it could not; this is what finds those, and any the
 /// application closed before reaching, on the next launch.
+/// </para>
+/// <para>
+/// It is owed as well while a correction that reaches one of its words — in a turn, its title or its
+/// note — was made after its transcript was written; saving a correction renders what it touches
+/// itself, and this is what finds the meetings it did not reach.
 /// </para>
 /// <para>
 /// A render that fails is tried again next time and nobody is told. The files cost nothing and can
@@ -211,13 +217,15 @@ public static class OwedRenders
         var readable = Filed(context, ArtifactKind.Transcript);
         var lined = Filed(context, ArtifactKind.Utterances);
         var named = StillOnAnOlderName(context);
+        var uncorrected = StillWithoutACorrection(context);
 
         return context.Meetings
             .AsNoTracking()
             .Where(meeting => meeting.LifecycleState == LifecycleState.Active
                 && responded.Contains(meeting.Id)
                 && (!(readable.Contains(meeting.Id) && lined.Contains(meeting.Id))
-                    || named.Contains(meeting.Id)))
+                    || named.Contains(meeting.Id)
+                    || uncorrected.Contains(meeting.Id)))
             .OrderBy(meeting => meeting.StartedAt)
             .Select(meeting => meeting.Id)
             .ToArray();
@@ -258,6 +266,146 @@ public static class OwedRenders
             .Where(named => writtenAt.TryGetValue(named.Key, out var written) && named.Value > written)
             .Select(named => named.Key)
             .ToArray();
+    }
+
+    /// <summary>
+    /// The meetings a correction touches: active ones with a transcript, in the order they were
+    /// held, that a correction in <paramref name="corrections"/> reaches by scope and whose words say
+    /// the correction's wrong text.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both halves are the render's own. Scope is <see cref="MeetingRenderer.CorrectionsReaching"/>,
+    /// the upward walk the render applies, so scope has one rule. The words are the three things the
+    /// render runs <see cref="Terminology.Apply"/> over — each stored turn, the title and the context
+    /// note — read through <see cref="Terminology.Reaches"/>, so a word the render would replace
+    /// is a word this reads. A chain, where one correction only reaches what another has just written, is
+    /// not seen.
+    /// </para>
+    /// <para>
+    /// The turns are read and decided in memory and not by a SQL <c>LIKE</c>: SQLite folds case for
+    /// ASCII only, and a prefilter that missed <c>Ñ</c> against <c>ñ</c> would leave a meeting
+    /// rendered with the old word.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<Guid> TouchedBy(
+        CorpusDbContext context, IReadOnlyCollection<TerminologyCorrection> corrections)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(corrections);
+
+        if (corrections.Count is 0)
+        {
+            return [];
+        }
+
+        var withATranscript = Filed(context, ArtifactKind.Transcript);
+        var candidates = context.Meetings
+            .AsNoTracking()
+            .Where(meeting => meeting.LifecycleState == LifecycleState.Active
+                && withATranscript.Contains(meeting.Id))
+            .OrderBy(meeting => meeting.StartedAt)
+            .ThenBy(meeting => meeting.Id)
+            .Select(meeting => new { meeting.Id, meeting.Title, meeting.Context })
+            .ToArray();
+
+        return
+        [
+            .. candidates
+                .Where(meeting => Touches(context, meeting.Id, meeting.Title, meeting.Context, corrections))
+                .Select(meeting => meeting.Id),
+        ];
+    }
+
+    /// <summary>
+    /// <see cref="TouchedBy"/>'s rule for one meeting, so that a launch asking it of every meeting
+    /// does not read the whole corpus once for each.
+    /// </summary>
+    private static bool Touches(
+        CorpusDbContext context,
+        Guid meetingId,
+        string? title,
+        string? note,
+        IReadOnlyCollection<TerminologyCorrection> corrections)
+    {
+        var ids = corrections.Select(correction => correction.Id).ToHashSet();
+        var reaching = MeetingRenderer.CorrectionsReaching(context, meetingId)
+            .Where(correction => ids.Contains(correction.Id))
+            .ToArray();
+
+        if (reaching.Length is 0)
+        {
+            return false;
+        }
+
+        var turns = context.Utterances
+            .AsNoTracking()
+            .Where(turn => turn.MeetingId == meetingId)
+            .Select(turn => turn.Text)
+            .ToArray();
+
+        return reaching.Any(correction =>
+            (title is not null && Terminology.Reaches(title, correction))
+            || (note is not null && Terminology.Reaches(note, correction))
+            || turns.Any(turn => Terminology.Reaches(turn, correction)));
+    }
+
+    /// <summary>
+    /// The meetings whose transcript was written before a correction that reaches one of their words
+    /// was made. A render always moves the transcript's <c>ConfirmedAt</c>, so one catch-up settles
+    /// it and the next finds nothing.
+    /// </summary>
+    /// <remarks>
+    /// Time first, in memory, as <see cref="StillOnAnOlderName"/> compares: only the corrections
+    /// created after a meeting's transcript count, and a meeting left with none is not read at all.
+    /// A corpus with nothing newer than any transcript reads no turns.
+    /// </remarks>
+    private static Guid[] StillWithoutACorrection(CorpusDbContext context)
+    {
+        var made = context.TerminologyCorrections
+            .AsNoTracking()
+            .ToArray();
+
+        if (made.Length is 0)
+        {
+            return [];
+        }
+
+        var writtenAt = context.Artifacts
+            .AsNoTracking()
+            .Where(artifact => artifact.Kind == ArtifactKind.Transcript)
+            .Select(artifact => new { artifact.MeetingId, artifact.ConfirmedAt })
+            .ToArray()
+            .GroupBy(row => row.MeetingId)
+            .ToDictionary(group => group.Key, group => group.Max(row => row.ConfirmedAt));
+
+        var newer = writtenAt
+            .Select(written => (
+                Meeting: written.Key,
+                Corrections: made.Where(correction => correction.CreatedAt > written.Value).ToArray()))
+            .Where(row => row.Corrections.Length > 0)
+            .ToDictionary(row => row.Meeting, row => row.Corrections);
+
+        if (newer.Count is 0)
+        {
+            return [];
+        }
+
+        var held = context.Meetings
+            .AsNoTracking()
+            .Where(meeting => meeting.LifecycleState == LifecycleState.Active)
+            .OrderBy(meeting => meeting.StartedAt)
+            .ThenBy(meeting => meeting.Id)
+            .Select(meeting => new { meeting.Id, meeting.Title, meeting.Context })
+            .ToArray();
+
+        return
+        [
+            .. held
+                .Where(meeting => newer.TryGetValue(meeting.Id, out var corrections)
+                    && Touches(context, meeting.Id, meeting.Title, meeting.Context, corrections))
+                .Select(meeting => meeting.Id),
+        ];
     }
 
     private static IQueryable<Guid> Filed(CorpusDbContext context, ArtifactKind kind) => context.Artifacts

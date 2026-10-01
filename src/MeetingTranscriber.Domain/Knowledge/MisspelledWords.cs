@@ -145,16 +145,16 @@ public static class MisspelledWords
 
     /// <summary>
     /// The words the provider was unsure of, heard often, that look like a word heard far more
-    /// often — and that nobody has corrected yet.
+    /// often — and that nobody has corrected or said is right.
     /// </summary>
     public static IReadOnlyList<SuspectWord> Unprompted(
-        IEnumerable<HeardWord> heard, IEnumerable<string> alreadyCorrected)
+        IEnumerable<HeardWord> heard, IEnumerable<string> alreadyAnswered)
     {
         ArgumentNullException.ThrowIfNull(heard);
-        ArgumentNullException.ThrowIfNull(alreadyCorrected);
+        ArgumentNullException.ThrowIfNull(alreadyAnswered);
 
         var words = heard.ToList();
-        var corrected = alreadyCorrected
+        var corrected = alreadyAnswered
             .Select(wrong => wrong.ToLowerInvariant())
             .ToHashSet(StringComparer.Ordinal);
 

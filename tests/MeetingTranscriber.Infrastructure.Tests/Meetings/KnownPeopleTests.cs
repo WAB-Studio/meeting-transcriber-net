@@ -155,19 +155,28 @@ public class KnownPeopleTests
     }
 
     /// <summary>
-    /// Structural: the layering forbids <c>Infrastructure</c> and <c>Domain</c> referencing
-    /// <c>Processing</c>, so nothing here can summarise and this cannot go red while that holds.
-    /// It was not reddened by a mutation, because there is no edit to the code that adds the
-    /// reference without the build refusing it first.
+    /// A source scan and not an assembly reference: the layering already forbids <c>Infrastructure</c>
+    /// and <c>Domain</c> referencing <c>Processing</c>, so a check on references could never go red.
+    /// The three files that find a person and offer them are read without their prose, and none may
+    /// name what summarises. It goes red with a <c>using MeetingTranscriber.Processing.Summaries;</c>
+    /// added to any of them.
     /// </summary>
     [Fact]
     public void Who_somebody_might_be_is_found_by_code_that_reaches_nothing_that_summarises()
     {
-        foreach (var assembly in new[] { typeof(KnownPeople).Assembly, typeof(WhoTheyMightBe).Assembly })
+        var files = new[]
         {
-            assembly.GetReferencedAssemblies()
-                .Select(reference => reference.Name)
-                .ShouldNotContain("MeetingTranscriber.Processing");
+            RepositoryTree.At("src/MeetingTranscriber.Domain/Meetings/WhoTheyMightBe.cs"),
+            RepositoryTree.At("src/MeetingTranscriber.Infrastructure/Meetings/KnownPeople.cs"),
+            RepositoryTree.At("src/MeetingTranscriber.App/AddingSomebody.xaml.cs"),
+        };
+
+        files.Length.ShouldBe(3);
+        foreach (var file in files)
+        {
+            var code = SourceText.WithoutProse(file);
+            code.ShouldNotContain("Summaries", customMessage: file.Name);
+            code.ShouldNotContain("ClaudeCode", customMessage: file.Name);
         }
     }
 

@@ -195,6 +195,84 @@ public sealed class CorpusSettings(CorpusDbContext context)
         context.SaveChanges();
     }
 
+    /// <summary>
+    /// The key the words somebody said are right are stored under: a JSON array of lower-cased
+    /// words, with the instant of the last answer as <c>UpdatedAt</c>.
+    /// </summary>
+    public const string WordsSaidRightKey = "words-said-right";
+
+    /// <summary>
+    /// The words somebody answered <em>no</em> about, when a screen asked whether the corpus keeps
+    /// getting them wrong. Empty when there is no row and when the row is not a JSON array of
+    /// strings.
+    /// </summary>
+    /// <remarks>Nothing throws over what was read, as <see cref="LastExportMade"/> does not.</remarks>
+    public IReadOnlyList<string> WordsSaidRight()
+    {
+        var stored = context.Settings
+            .AsNoTracking()
+            .FirstOrDefault(setting => setting.Key == WordsSaidRightKey);
+
+        return stored is null ? [] : Read(stored.Value);
+    }
+
+    /// <summary>
+    /// Remembers that <paramref name="word"/> is right as written, so that it is not offered again
+    /// as one the corpus gets wrong.
+    /// </summary>
+    /// <remarks>
+    /// One row, rewritten rather than added to, and the word lower-cased with the invariant culture
+    /// the way every comparison of these words is made. A row this build cannot read is replaced
+    /// and not extended: what it held is not something this build could have offered anyway.
+    /// </remarks>
+    /// <param name="word">The word somebody said is right.</param>
+    /// <param name="at">When they said it, which is the press that said it.</param>
+    public void SayItIsRight(string word, UtcTimestamp at)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(word);
+
+        var stored = context.Settings.FirstOrDefault(setting => setting.Key == WordsSaidRightKey);
+        var words = stored is null ? [] : Read(stored.Value).ToList();
+
+        var said = word.ToLowerInvariant();
+        if (!words.Contains(said, StringComparer.Ordinal))
+        {
+            words.Add(said);
+        }
+
+        var value = JsonSerializer.Serialize(words);
+        if (stored is null)
+        {
+            context.Settings.Add(new Setting
+            {
+                Key = WordsSaidRightKey,
+                Value = value,
+                UpdatedAt = at,
+            });
+        }
+        else
+        {
+            stored.Value = value;
+            stored.UpdatedAt = at;
+        }
+
+        context.SaveChanges();
+    }
+
+    private static IReadOnlyList<string> Read(string stored)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<string[]>(stored) is { } words && words.All(word => word is not null)
+                ? words
+                : [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
     private sealed record StoredExport(
         [property: JsonPropertyName("kinds")] IReadOnlyList<string>? Kinds,
         [property: JsonPropertyName("meetings")] int? Meetings,

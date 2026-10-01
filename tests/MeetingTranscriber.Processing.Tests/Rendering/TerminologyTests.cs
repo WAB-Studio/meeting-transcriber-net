@@ -75,6 +75,15 @@ public class TerminologyTests
     }
 
     [Fact]
+    public void A_correction_reaches_a_text_only_where_it_would_replace_a_whole_word()
+    {
+        Terminology.Reaches("el html del sitio", Correct("ml", "ML")).ShouldBeFalse();
+        Terminology.Reaches("el ml del html", Correct("ml", "ML")).ShouldBeTrue();
+        Terminology.Reaches("dijo Nubeco", Correct("nubeco", "Nubeko", TerminologyMatchMode.IgnoreCase)).ShouldBeTrue();
+        Terminology.Reaches("dijo Nubeco", Correct("nubeco", "Nubeko")).ShouldBeFalse();
+    }
+
+    [Fact]
     public void A_word_that_carries_an_accent_is_one_word()
     {
         Terminology.Apply("la sesion de hoy", [Correct("sesion", "sesión")]).ShouldBe("la sesión de hoy");
