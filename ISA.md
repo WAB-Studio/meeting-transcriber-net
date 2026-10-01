@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 180/263
+progress: 180/267
 updated: 2026-09-30
 ---
 
@@ -233,6 +233,10 @@ Board: 3 · Grabador WinUI
 - [x] ISC-173.1: Every colour, text size and corner a screen uses is one of the system's named few, and never a value chosen on the screen itself.
 - [ ] ISC-173.2: A screen that rearranges itself moves between the two arrangements, so somebody can tell what arrived from what was already there.
 - [ ] ISC-173.3: Anti: with Windows asked for no animation, nothing on a screen moves, and nothing on it is lost for standing still.
+- [ ] ISC-203: The application is drawn in the theme Windows is set to.
+- [ ] ISC-203.1: With Windows set to dark every screen is drawn from the dark palette, and with Windows set to light from the light one.
+- [ ] ISC-203.2: Switching Windows between light and dark while the application is open redraws it in the new theme, with nothing pressed and without starting it again.
+- [ ] ISC-203.3: Anti: no screen shows Windows' own controls in one theme and the application's colours in the other.
 - [x] ISC-179: Every stage a meeting can be at is read from the one screen that meeting opens on.
 - [ ] ISC-180: Every thing an extraction left of a meeting says where in that meeting it was said.
 - [ ] ISC-180.1: The transcript at that moment opens under the thing that cited it, without leaving the screen it is read on.
