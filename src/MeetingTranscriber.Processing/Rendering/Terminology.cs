@@ -49,6 +49,46 @@ public static class Terminology
     }
 
     /// <summary>
+    /// Whether <see cref="Apply"/> would replace anything in <paramref name="text"/> with this
+    /// correction: its wrong text as a whole word, in the correction's mode. It asks the same
+    /// <c>IsWholeWord</c> the replacement does. It judges the text as given: a correction whose wrong
+    /// text only appears once an earlier correction has replaced something is not seen.
+    /// </summary>
+    public static bool Reaches(string text, TerminologyCorrection correction)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        ArgumentNullException.ThrowIfNull(correction);
+
+        if (string.IsNullOrEmpty(correction.WrongText))
+        {
+            return false;
+        }
+
+        var comparison = correction.MatchMode is TerminologyMatchMode.IgnoreCase
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        var read = 0;
+        while (read < text.Length)
+        {
+            var found = text.IndexOf(correction.WrongText, read, comparison);
+            if (found < 0)
+            {
+                return false;
+            }
+
+            if (IsWholeWord(text, found, correction.WrongText.Length))
+            {
+                return true;
+            }
+
+            read = found + correction.WrongText.Length;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Every whole-word occurrence, replaced left to right. Written out rather than as a regular
     /// expression because the alias is a person's text: it can hold a dot, a dash or a bracket, and
     /// one that has to be escaped before it is safe is one that will not be, eventually.

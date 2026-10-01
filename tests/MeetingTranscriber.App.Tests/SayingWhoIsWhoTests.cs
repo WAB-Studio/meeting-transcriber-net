@@ -324,6 +324,29 @@ public class SayingWhoIsWhoTests
     }
 
     /// <summary>
+    /// The dialogue's labels are evaluated again once the language is known, and not before.
+    /// </summary>
+    /// <remarks>
+    /// The markup's labels are one-time <c>x:Bind</c>s, evaluated when the page is built, which is
+    /// before <c>AskAsync</c> has been told the language. Without the call they read Spanish under
+    /// an English title, and the whole dialogue with them.
+    /// </remarks>
+    [Fact]
+    public void The_dialogue_reads_its_labels_in_the_language_it_was_opened_in()
+    {
+        var dialogue = File.ReadAllText(AppSources.At(Dialogue).FullName);
+
+        var ask = string.Join(
+            '\n',
+            Body(dialogue, "public async Task<Guid?> AskAsync(")
+                .Split('\n')
+                .Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
+
+        Regex.IsMatch(ask, @"_language = language;\s*Bindings\.Update\(\);")
+            .ShouldBeTrue("AskAsync must update its bindings right after it is given the language.");
+    }
+
+    /// <summary>
     /// One method's body, anchored on the closing brace at its own indentation.
     /// <c>ClassifyingAMeetingTests</c>' own helper, for the reason given there.
     /// </summary>

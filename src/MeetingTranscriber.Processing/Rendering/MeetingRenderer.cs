@@ -534,7 +534,7 @@ public static class MeetingRenderer
             meeting.Title,
             meeting.Context,
             names,
-            Corrections(context, meeting.Id));
+            CorrectionsReaching(context, meeting.Id));
     }
 
     /// <summary>
@@ -547,7 +547,7 @@ public static class MeetingRenderer
     /// project inherits its organization's terminology. The walk is bounded by the depth of the
     /// tree, which is why the tree has one.
     /// </remarks>
-    private static IReadOnlyList<TerminologyCorrection> Corrections(CorpusDbContext context, Guid meetingId)
+    public static IReadOnlyList<TerminologyCorrection> CorrectionsReaching(CorpusDbContext context, Guid meetingId)
     {
         var frontier = context.MeetingNodes
             .Where(link => link.MeetingId == meetingId)

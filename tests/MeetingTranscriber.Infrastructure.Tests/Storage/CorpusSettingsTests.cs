@@ -204,4 +204,80 @@ public class CorpusSettingsTests
         using var reopened = corpus.Open();
         new CorpusSettings(reopened).LastExportMade().ShouldBeNull();
     }
+
+    [Fact]
+    public void A_word_said_to_be_right_comes_back_after_the_corpus_is_reopened()
+    {
+        using var corpus = new TemporaryCorpus();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            new CorpusSettings(writing).SayItIsRight("Dipgram", Chosen);
+        }
+
+        using var reopened = corpus.Open();
+        new CorpusSettings(reopened).WordsSaidRight().ShouldBe(["dipgram"]);
+    }
+
+    [Fact]
+    public void Nobody_having_said_anything_is_right_reads_as_none()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        new CorpusSettings(context).WordsSaidRight().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Saying_a_word_is_right_twice_keeps_it_once()
+    {
+        using var corpus = new TemporaryCorpus();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            var settings = new CorpusSettings(writing);
+            settings.SayItIsRight("Dipgram", Chosen);
+            settings.SayItIsRight("dipgram", Chosen + Duration.FromSeconds(30));
+            settings.SayItIsRight("Nubeco", Chosen + Duration.FromSeconds(60));
+        }
+
+        using var reopened = corpus.Open();
+        new CorpusSettings(reopened).WordsSaidRight().ShouldBe(["dipgram", "nubeco"]);
+        reopened.Settings.Count(row => row.Key == CorpusSettings.WordsSaidRightKey).ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData("not json at all")]
+    [InlineData("{}")]
+    [InlineData("[1, 2]")]
+    [InlineData("[null]")]
+    public void A_words_said_right_row_this_build_cannot_read_reads_as_none(string stored)
+    {
+        using var corpus = new TemporaryCorpus();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            writing.Settings.Add(new Setting { Key = CorpusSettings.WordsSaidRightKey, Value = stored, UpdatedAt = Chosen });
+            writing.SaveChanges();
+        }
+
+        using var reopened = corpus.Open();
+        new CorpusSettings(reopened).WordsSaidRight().ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void The_words_said_right_are_stored_under_exactly_this_name()
+    {
+        CorpusSettings.WordsSaidRightKey.ShouldBe("words-said-right");
+
+        using var corpus = new TemporaryCorpus();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            new CorpusSettings(writing).SayItIsRight("dipgram", Chosen);
+        }
+
+        using var reopened = corpus.Open();
+        reopened.Settings.Single().Key.ShouldBe("words-said-right");
+    }
 }

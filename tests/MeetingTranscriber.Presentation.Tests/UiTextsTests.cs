@@ -89,6 +89,8 @@ public class UiTextsTests
         // real number, so what is in them is a placeholder standing where a figure will be, and
         // `min` is the unit the figure is per.
         //
+        // `ItIsNot`: a press answering a question with the one word both languages spell alike.
+        //
         // The pill that offers somebody already there is `{0} · {1}`: the person's name and the
         // organization are the corpus's and the separator is a mark and not a word.
         string[] sameEitherWayOnPurpose =
@@ -97,6 +99,7 @@ public class UiTextsTests
             nameof(UiTexts.Channel1),
             nameof(UiTexts.EnglishName),
             nameof(UiTexts.ExportsAudio),
+            nameof(UiTexts.ItIsNot),
             nameof(UiTexts.No),
             nameof(UiTexts.SomebodyAndWhereTheyBelong),
             nameof(UiTexts.SpanishName),

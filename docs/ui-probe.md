@@ -340,6 +340,40 @@ Reach an accented name from a shell that mangles one through the third tier —
 The one the last `wait` named. Failing that, the only window open. Anything else stops and tells you
 to `wait` for something on the screen you meant. It is never whichever window is in front.
 
+## Switching Windows between light and dark
+
+The application follows the theme Windows is set to, and follows a switch made while it is open, so
+a walk of both themes changes the machine's setting under a running window. `AppsUseLightTheme` is
+0 for dark and 1 for light; writing it is not enough, because nothing running is told, so the same
+script broadcasts `WM_SETTINGCHANGE` with `ImmersiveColorSet`.
+
+```powershell
+$key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+$had = (Get-ItemProperty $key).AppsUseLightTheme   # write this down: it is what goes back
+
+Add-Type -Namespace Probe -Name Broadcast -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto, SetLastError = true)]
+public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.UIntPtr wParam,
+    string lParam, uint flags, uint timeout, out System.UIntPtr result);
+'@
+
+function Set-AppTheme([int] $light) {
+    Set-ItemProperty $key -Name AppsUseLightTheme -Value $light
+    $result = [System.UIntPtr]::Zero
+    # HWND_BROADCAST, WM_SETTINGCHANGE, SMTO_ABORTIFHUNG
+    [Probe.Broadcast]::SendMessageTimeout([System.IntPtr]0xffff, 0x1A, [System.UIntPtr]::Zero,
+        'ImmersiveColorSet', 2, 5000, [ref]$result) | Out-Null
+}
+
+Set-AppTheme 0      # dark
+Set-AppTheme 1      # light
+Set-AppTheme $had   # put back what the machine had
+```
+
+Put back what the machine had, whatever the walk did, including when it fails halfway: it is the
+owner's setting and not the probe's. The title bar is read from a photograph (`see`), not from the
+tree, because it is Windows' and carries no automation name of this application's.
+
 ## What it will not do
 
 - **`press` is `Invoke` only, and `type` is `SetValue` only.** Either one fails naming what the

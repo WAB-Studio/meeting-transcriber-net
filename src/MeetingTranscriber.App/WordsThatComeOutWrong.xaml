@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="MeetingTranscriber.App.WordsThatComeOutWrong"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MeetingTranscriber.App"
+    xmlns:loc="using:MeetingTranscriber.Presentation"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- Words that come out wrong, on one meeting. The problem was never applying a correction, it
+         was finding one: nobody reads a corpus looking for what went wrong. So the person types
+         the word as it should be, and the corpus answers with how it actually got written, with
+         the close ones ticked. Under that, on the attention tint, the words that turned up by
+         themselves; on the right, what has already been fixed. Neither list needs a model to have
+         read the meetings.
+
+         What is repeated — the forms, the suspects, the corrections made — is built in the
+         code-behind, because how many there are is an answer and not a layout. What stays here is
+         the look, as the styles below, so the code-behind chooses a style and never a colour: every
+         brush in this file is a ThemeResource, and nothing is resolved by name in code. -->
+
+    <Grid x:Name="Root" RowSpacing="18">
+        <Grid.Resources>
+            <!-- Every Olivo *style* this screen builds in code is aliased here first. `Chrome` is a
+                 ResourceDictionary indexer over this screen's own resources and does not walk up to
+                 the application's, so a code-behind naming an Olivo key directly is green in CI and
+                 throws on the UI thread the moment a row is drawn. -->
+
+            <!-- One way the corpus wrote the word: a row of the several that are ticked at once. -->
+            <Style x:Key="FormTick" TargetType="CheckBox" BasedOn="{StaticResource Tick}" />
+
+            <Style x:Key="FormText" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}" />
+
+            <Style x:Key="FormCount" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
+
+            <!-- The words that turned up by themselves: they sounded uncertain and they resemble
+                 something said often. The attention tint, as `Correcciones.dc.html` draws them. -->
+            <Style x:Key="TurnedUpByThemselves" TargetType="Border" BasedOn="{StaticResource SomethingIsLostCard}" />
+
+            <Style x:Key="SuspectText" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}" />
+
+            <Style x:Key="SuspectData" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
+
+            <Style x:Key="SuspectAnswer" TargetType="Button" BasedOn="{StaticResource RowButtonOnCard}">
+                <Setter Property="Padding" Value="10,0,10,0" />
+                <Setter Property="MinWidth" Value="0" />
+            </Style>
+
+            <!-- One correction already made: the right word, where it holds, and what it replaces. -->
+            <Style x:Key="FixedWord" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}" />
+
+            <Style x:Key="FixedScope" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
+
+            <Style x:Key="FixedForms" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{ThemeResource SecondaryTextBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+
+            <!-- A line that says why a part of the screen is empty: a real answer and not a gap, so
+                 it reads as a fact rather than as something gone wrong. -->
+            <Style x:Key="SayingNothing" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                <Setter Property="Foreground" Value="{ThemeResource TertiaryTextBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+        </Grid.Resources>
+
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- The header. A sub-screen: it is reached from one meeting and returns to it. -->
+        <Grid Grid.Row="0" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Button
+                x:Name="BackButton"
+                Grid.Column="0"
+                VerticalAlignment="Top"
+                Style="{StaticResource ButtonAtTheMargin}"
+                Click="OnLeave"
+                Content="{x:Bind In(loc:UiTexts.BackToTheMeeting)}" />
+
+            <StackPanel Grid.Column="1" Spacing="1">
+                <TextBlock
+                    Style="{StaticResource SubScreenTitleText}"
+                    Text="{x:Bind In(loc:UiTexts.WordsThatComeOutWrong)}" />
+
+                <TextBlock x:Name="WhichMeetingText" Style="{StaticResource DataText}" />
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnSpacing="18">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*" />
+                <ColumnDefinition Width="2*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource Card}" Padding="{StaticResource LargeCardPadding}">
+                <ScrollViewer>
+                    <StackPanel Spacing="14">
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBox
+                                x:Name="TypedField"
+                                Grid.Column="0"
+                                Style="{StaticResource TypedField}"
+                                Header="{x:Bind In(loc:UiTexts.TheWordAsItShouldBe)}"
+                                TextChanged="OnTyped" />
+
+                            <ComboBox
+                                x:Name="ScopeBox"
+                                Grid.Column="1"
+                                VerticalAlignment="Bottom"
+                                MinWidth="180"
+                                Style="{StaticResource DropDown}" />
+                        </Grid>
+
+                        <TextBlock
+                            Style="{StaticResource DataText}"
+                            Text="{x:Bind In(loc:UiTexts.HowItCameOutWritten)}" />
+
+                        <StackPanel x:Name="TheForms" Spacing="2" />
+
+                        <TextBlock
+                            x:Name="NothingLikeItText"
+                            Style="{StaticResource SayingNothing}"
+                            Visibility="Collapsed" />
+
+                        <Button
+                            x:Name="SaveTheTickedButton"
+                            HorizontalAlignment="Right"
+                            Style="{StaticResource PrincipalActButton}"
+                            Click="OnSave" />
+
+                        <TextBlock
+                            x:Name="StatusText"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{ThemeResource PeakBrush}"
+                            TextWrapping="Wrap"
+                            Visibility="Collapsed" />
+
+                        <Border x:Name="SuspectsCard" Style="{StaticResource TurnedUpByThemselves}" Padding="{StaticResource SmallCardPadding}">
+                            <StackPanel Spacing="10">
+                                <TextBlock
+                                    Style="{StaticResource DataText}"
+                                    Text="{x:Bind In(loc:UiTexts.MaybeTheseCameOutWrong)}" />
+
+                                <StackPanel x:Name="TheSuspects" Spacing="10" />
+
+                                <TextBlock x:Name="MoreSuspectsText" Style="{StaticResource DataText}" Visibility="Collapsed" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock x:Name="NothingSeemsWrongText" Style="{StaticResource SayingNothing}" Visibility="Collapsed" />
+
+                        <TextBlock x:Name="SomeUnreadText" Style="{StaticResource SayingNothing}" Visibility="Collapsed" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource Card}" Padding="{StaticResource LargeCardPadding}">
+                <ScrollViewer>
+                    <StackPanel Spacing="10">
+                        <TextBlock
+                            Style="{StaticResource DataText}"
+                            Text="{x:Bind In(loc:UiTexts.AlreadyFixed)}" />
+
+                        <StackPanel x:Name="TheFixed" Spacing="12" />
+
+                        <TextBlock x:Name="MoreFixedText" Style="{StaticResource DataText}" Visibility="Collapsed" />
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

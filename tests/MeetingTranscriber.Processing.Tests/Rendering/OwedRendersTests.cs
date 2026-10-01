@@ -1,5 +1,6 @@
 using MeetingTranscriber.Domain.Artifacts;
 using MeetingTranscriber.Domain.Audio;
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Artifacts;
@@ -301,6 +302,149 @@ public class OwedRendersTests
         var again = OwedRenders.CatchUpOn(corpus.Root, new AClock(start.AddHours(4)));
         again.Rendered.ShouldBeEmpty();
         again.CouldNotRender.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A correction saved by something that never rendered what it touches — the application closed
+    /// first, or the render failed — leaves transcripts written before it. The next launch finds them
+    /// off the corpus: a correction made after the transcript, that reaches a word of the meeting.
+    /// </summary>
+    [Fact]
+    public void A_meeting_written_before_a_correction_that_reaches_it_is_rendered_again()
+    {
+        var start = new DateTimeOffset(2026, 3, 4, 14, 0, 0, TimeSpan.Zero);
+        using var corpus = new TemporaryCorpus();
+        var meeting = Transcribed(corpus);
+        var word = RenderedAt(corpus, meeting, start);
+
+        using (var context = corpus.Open())
+        {
+            new HumanLayer(context, UtcTimestamp.From(start.AddMinutes(30)))
+                .Correct(word, "Corregida", TerminologyMatchMode.IgnoreCase);
+        }
+
+        var caught = OwedRenders.CatchUpOn(corpus.Root, new AClock(start.AddHours(1)));
+
+        caught.Rendered.ShouldBe([meeting]);
+        caught.CouldNotRender.ShouldBeEmpty();
+        Rendered(corpus, meeting).ShouldAllBe(text => text.Contains("Corregida", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_correction_that_reaches_no_word_of_a_meeting_owes_it_nothing()
+    {
+        var start = new DateTimeOffset(2026, 3, 4, 14, 0, 0, TimeSpan.Zero);
+        using var corpus = new TemporaryCorpus();
+        var meeting = Transcribed(corpus);
+        RenderedAt(corpus, meeting, start);
+
+        using (var context = corpus.Open())
+        {
+            new HumanLayer(context, UtcTimestamp.From(start.AddMinutes(30)))
+                .Correct("zzzquux", "Corregida", TerminologyMatchMode.IgnoreCase);
+        }
+
+        OwedRenders.CatchUpOn(corpus.Root, new AClock(start.AddHours(1))).Rendered.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void A_correction_under_another_node_owes_a_meeting_nothing()
+    {
+        var start = new DateTimeOffset(2026, 3, 4, 14, 0, 0, TimeSpan.Zero);
+        using var corpus = new TemporaryCorpus();
+        var meeting = Transcribed(corpus);
+        var word = RenderedAt(corpus, meeting, start);
+
+        using (var context = corpus.Open())
+        {
+            var human = new HumanLayer(context, UtcTimestamp.From(start.AddMinutes(30)));
+            var elsewhere = human.Root(NodeKind.Organization, "Otra");
+            human.Correct(word, "Corregida", TerminologyMatchMode.IgnoreCase, elsewhere);
+        }
+
+        OwedRenders.CatchUpOn(corpus.Root, new AClock(start.AddHours(1))).Rendered.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// The render corrects the title and the context note as well as the turns, so a word only the
+    /// title says still owes the meeting a render. It goes red with the title left out of the rule.
+    /// </summary>
+    [Fact]
+    public void A_meeting_whose_title_alone_says_the_word_is_rendered_again()
+    {
+        var start = new DateTimeOffset(2026, 3, 4, 14, 0, 0, TimeSpan.Zero);
+        using var corpus = new TemporaryCorpus();
+        var meeting = Transcribed(corpus);
+
+        using (var context = corpus.Open())
+        {
+            context.Meetings.Single(row => row.Id == meeting).Title = "Reunion zorvexal";
+            context.SaveChanges();
+            MeetingRenderer.Render(context, meeting, UtcTimestamp.From(start));
+        }
+
+        using (var context = corpus.Open())
+        {
+            new HumanLayer(context, UtcTimestamp.From(start.AddMinutes(30)))
+                .Correct("zorvexal", "Corregida", TerminologyMatchMode.IgnoreCase);
+        }
+
+        var caught = OwedRenders.CatchUpOn(corpus.Root, new AClock(start.AddHours(1)));
+
+        caught.Rendered.ShouldBe([meeting]);
+
+        using var reading = corpus.Open();
+        var transcript = reading.Artifacts.Single(
+            artifact => artifact.MeetingId == meeting && artifact.Kind == ArtifactKind.Transcript);
+        File.ReadAllText(CorpusFiles.Locate(corpus.Root, transcript.RelativePath).FullName)
+            .ShouldContain("title: \"Reunion Corregida\"");
+    }
+
+    /// <summary>
+    /// Time is compared before any text is read: a correction older than the transcript it would
+    /// reach was applied by that render, and owes nothing.
+    /// </summary>
+    [Fact]
+    public void A_corpus_with_no_correction_newer_than_its_transcripts_owes_nothing()
+    {
+        var start = new DateTimeOffset(2026, 3, 4, 14, 0, 0, TimeSpan.Zero);
+        using var corpus = new TemporaryCorpus();
+        var meeting = Transcribed(corpus);
+
+        string word;
+        using (var context = corpus.Open())
+        {
+            MeetingRenderer.Render(context, meeting, UtcTimestamp.From(start.AddHours(1)));
+            word = Spellings.WordsOf(context.Utterances
+                .Where(turn => turn.MeetingId == meeting)
+                .OrderBy(turn => turn.Ordinal)
+                .Select(turn => turn.Text)
+                .First())[0].ToLowerInvariant();
+        }
+
+        using (var context = corpus.Open())
+        {
+            new HumanLayer(context, UtcTimestamp.From(start.AddMinutes(30)))
+                .Correct(word, "Corregida", TerminologyMatchMode.IgnoreCase);
+        }
+
+        OwedRenders.CatchUpOn(corpus.Root, new AClock(start.AddHours(2))).Rendered.ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// Renders the meeting at <paramref name="start"/> and answers the first word of its first turn,
+    /// lower-cased.
+    /// </summary>
+    private static string RenderedAt(TemporaryCorpus corpus, Guid meeting, DateTimeOffset start)
+    {
+        using var context = corpus.Open();
+        MeetingRenderer.Render(context, meeting, UtcTimestamp.From(start));
+
+        return Spellings.WordsOf(context.Utterances
+            .Where(turn => turn.MeetingId == meeting)
+            .OrderBy(turn => turn.Ordinal)
+            .Select(turn => turn.Text)
+            .First())[0].ToLowerInvariant();
     }
 
     private sealed class AClock(DateTimeOffset now) : TimeProvider

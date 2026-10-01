@@ -99,7 +99,8 @@ public static class KnownPeople
 
     private static List<Guid> OrganizationsAbove(CorpusDbContext context, OpenedOver over)
     {
-        var nodes = context.Nodes.AsNoTracking().ToDictionary(node => node.Id);
+        var held = context.Nodes.AsNoTracking().Select(node => node.Id).ToHashSet();
+        var classifying = new MeetingClassifying(context, TimeProvider.System);
 
         var filedUnder = context.MeetingNodes.AsNoTracking()
             .Where(link => link.MeetingId == over.Meeting)
@@ -110,24 +111,11 @@ public static class KnownPeople
         return
         [
             .. filedUnder
-                .Where(nodes.ContainsKey)
-                .Select(id => RootOf(nodes, id))
+                .Where(held.Contains)
+                .Select(id => classifying.PathTo(id).Nodes[0])
                 .Where(root => root.Kind is NodeKind.Organization)
                 .Select(root => root.Id)
                 .Distinct(),
         ];
-    }
-
-    private static Node RootOf(Dictionary<Guid, Node> nodes, Guid id)
-    {
-        var node = nodes[id];
-
-        // The tree is three levels at most and the database refuses a cycle, so this ends.
-        while (node.ParentId is { } parent && nodes.TryGetValue(parent, out var above))
-        {
-            node = above;
-        }
-
-        return node;
     }
 }

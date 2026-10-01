@@ -3,6 +3,7 @@ using MeetingTranscriber.Presentation;
 using MeetingTranscriber.Processing.Jobs;
 using MeetingTranscriber.Recording;
 
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 
 using Windows.System.UserProfile;
@@ -124,6 +125,10 @@ public partial class App : Application
     private void OpenMainWindow(CorpusFolder corpus)
     {
         var window = new MainWindow(_language, corpus);
+
+        // The title bar is the one part of a window the application's theme does not reach, so it
+        // is told to follow the app's own mode, which is Windows' while `RequestedTheme` is unset.
+        window.AppWindow.TitleBar.PreferredTheme = TitleBarTheme.UseDefaultAppMode;
         window.LanguageChosen += OnLanguageChosen;
         window.PackagingChecksAsked += OnPackagingChecksAsked;
         window.CorpusChosen += OnCorpusChosen;
@@ -288,6 +293,7 @@ public partial class App : Application
         }
 
         var window = new PackagingChecksWindow(_language);
+        window.AppWindow.TitleBar.PreferredTheme = TitleBarTheme.UseDefaultAppMode;
         window.LanguageChosen += OnLanguageChosen;
         window.Closed += (_, _) => _checks = null;
 

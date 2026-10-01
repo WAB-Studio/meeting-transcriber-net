@@ -96,12 +96,13 @@ public static class FindingCorrections
         ArgumentNullException.ThrowIfNull(context);
 
         var heard = Heard(context);
-        var corrected = context.TerminologyCorrections
+        var answered = context.TerminologyCorrections
             .AsNoTracking()
             .Select(correction => correction.WrongText)
-            .ToList();
+            .ToList()
+            .Concat(new CorpusSettings(context).WordsSaidRight());
 
-        return new UnpromptedWords(MisspelledWords.Unprompted(heard.Words, corrected), heard.Unread);
+        return new UnpromptedWords(MisspelledWords.Unprompted(heard.Words, answered), heard.Unread);
     }
 
     /// <summary>The words one meeting's response holds; empty when it cannot be read.</summary>
@@ -144,6 +145,38 @@ public static class FindingCorrections
             : corpus with { Suspects = MisspelledWords.HeardIn(corpus.Suspects, HeardIn(context, meetingId)) };
     }
 
+    /// <summary>
+    /// The spelling the stored turns of active meetings most often wrote <paramref name="word"/> in,
+    /// counted case-blind, ties broken by ordinal order. <paramref name="word"/> as given when no
+    /// turn holds it.
+    /// </summary>
+    /// <remarks>
+    /// A lookalike is counted lower-cased, so on its own it would store <c>deepgram</c> where the
+    /// person means <c>Deepgram</c>; this gives back what the corpus mostly says.
+    /// </remarks>
+    public static string AsMostOftenWritten(CorpusDbContext context, string word)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(word);
+
+        var wanted = word.ToLowerInvariant();
+        var texts = context.Utterances
+            .AsNoTracking()
+            .Where(turn => context.Meetings.Any(meeting =>
+                meeting.Id == turn.MeetingId && meeting.LifecycleState == LifecycleState.Active))
+            .Select(turn => turn.Text)
+            .ToList();
+
+        return texts
+            .SelectMany(Spellings.WordsOf)
+            .Where(written => string.Equals(written.ToLowerInvariant(), wanted, StringComparison.Ordinal))
+            .GroupBy(written => written, StringComparer.Ordinal)
+            .OrderByDescending(group => group.Count())
+            .ThenBy(group => group.Key, StringComparer.Ordinal)
+            .Select(group => group.Key)
+            .FirstOrDefault() ?? word;
+    }
+
     private static IReadOnlyList<WordAsHeard>? Read(CorpusDbContext context, string relativePath)
     {
         var file = CorpusFiles.Locate(context.Root, relativePath);
@@ -156,10 +189,12 @@ public static class FindingCorrections
         {
             return DeepgramTranscriptParser.WordsAsHeardInFile(file.FullName);
         }
+        // The parser checks every JsonElement's kind before it reads one as a string, an array or a
+        // number, so nothing on this path throws InvalidOperationException; a defect that did would
+        // be a bug to see and not a response to skip.
         catch (Exception unreadable) when (unreadable is DeepgramResponseException
             or IOException
-            or UnauthorizedAccessException
-            or InvalidOperationException)
+            or UnauthorizedAccessException)
         {
             return null;
         }

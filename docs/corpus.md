@@ -251,10 +251,12 @@ likely to be added, so this is a larger surface than it was when it was two.
 Everything else is a source, and the part that matters most is the **human layer**: `nodes`,
 `meeting_nodes`, `templates`, `template_nodes`, `template_people`, `people`, `affiliations`,
 `meeting_people`, `speaker_assignments`, `terminology_corrections`, `action_item_progress`, and the
-titles, context notes and classifications on `meetings`. None of it is inferable from any artifact, so a backup that copies
+titles, context notes and classifications on `meetings`, and the `words-said-right` row of
+`settings`. None of it is inferable from any artifact, so a backup that copies
 only the files loses it.
 
-`HumanLayer` writes all of it, and the reason it exists rather than a page of `context.Add` is the
+`HumanLayer` writes all of it but that one row, which `CorpusSettings` alone writes: a word somebody
+said is right, beside the preferences it already keeps. The reason `HumanLayer` exists rather than a page of `context.Add` is the
 two rules that cannot be constraints: exactly one person is the user of this install, and a speaker
 label somebody resolved is not overwritten by one the recording settled. The first is two rows
 changing together, which a unique index refuses halfway through; the second is the same row written

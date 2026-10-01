@@ -57,7 +57,7 @@
                  and is not pretending to. Quieter by ink and not by opacity — `docs/design.md`
                  gives three inks, and a faded one is a fourth grey nobody chose. -->
             <Style x:Key="MeetingUnnamed" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
-                <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource SecondaryTextBrush}" />
             </Style>
 
             <!-- When it was, how long it ran, what it occupies. Data, so the data rank: numbers
@@ -65,7 +65,7 @@
             <Style x:Key="MeetingWhen" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
 
             <Style x:Key="MeetingLine" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
-                <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource SecondaryTextBrush}" />
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
 
@@ -91,7 +91,7 @@
                  neither of the other two tints and reads as the application's own work in
                  progress. -->
             <Style x:Key="MeetingRunning" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
-                <Setter Property="Foreground" Value="{StaticResource OliveBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource OliveBrush}" />
             </Style>
 
             <!-- The act on the right of a row, and the normal rank rather than pico. *Transcribir*
@@ -144,7 +144,7 @@
                  window found it. -->
             <DataTemplate x:Key="SomethingIsLostMark">
                 <Path
-                    Stroke="{StaticResource PeakBrush}"
+                    Stroke="{ThemeResource PeakBrush}"
                     StrokeThickness="1.9"
                     StrokeLineJoin="Round"
                     StrokeStartLineCap="Round"
@@ -197,7 +197,7 @@
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 Style="{StaticResource BodyText}"
-                Foreground="{StaticResource SecondaryTextBrush}" />
+                Foreground="{ThemeResource SecondaryTextBrush}" />
 
             <!-- Its words are set in the code-behind and not bound here, because they are the one
                  thing on this screen that says which of the two positions the drawer is in. -->
@@ -230,13 +230,13 @@
             <TextBlock
                 Text="{x:Bind In(loc:UiTexts.TheRenderedFilesAreNeverAskedAbout)}"
                 Style="{StaticResource BodyText}"
-                Foreground="{StaticResource SecondaryTextBrush}"
+                Foreground="{ThemeResource SecondaryTextBrush}"
                 TextWrapping="Wrap"
                 MaxWidth="640" />
             <TextBlock
                 x:Name="MeetingsStatusText"
                 Style="{StaticResource BodyText}"
-                Foreground="{StaticResource SecondaryTextBrush}"
+                Foreground="{ThemeResource SecondaryTextBrush}"
                 TextWrapping="Wrap" />
         </StackPanel>
     </Grid>

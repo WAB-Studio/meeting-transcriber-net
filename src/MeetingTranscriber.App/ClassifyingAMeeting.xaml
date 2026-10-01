@@ -32,8 +32,15 @@
             <!-- Every Olivo *style* this screen builds in code is aliased here first. `Chrome` is a
                  ResourceDictionary indexer over this screen's own resources and does not walk up to
                  the application's, so a code-behind naming an Olivo key directly is green in CI and
-                 throws on the UI thread the moment a control is drawn. Brushes and sizes go through
-                 `Painted` and `Sized`, which read Application.Current.Resources. -->
+                 throws on the UI thread the moment a control is drawn. Sizes go through `Sized`, which
+                 reads Application.Current.Resources, and no brush is read in code at all: what is
+                 coloured is a style declared here, whose setters are ThemeResource. -->
+
+            <!-- The stroke of a glyph built in code. Only the colour is here: the geometry is one
+                 object per path and cannot be handed to a style's Data. -->
+            <Style x:Key="AGlyph" TargetType="Path">
+                <Setter Property="Stroke" Value="{ThemeResource TertiaryTextBrush}" />
+            </Style>
 
             <!-- One of the fourteen shapes, unchosen: the normal rank on papel at the control
                  height, which is what the artboard draws. -->
@@ -47,8 +54,8 @@
                  option of a set is; the decision tint is for something still waiting on a person,
                  and by the time a chip is lit it has been answered. -->
             <Style x:Key="ChipChosen" TargetType="Button" BasedOn="{StaticResource Chip}">
-                <Setter Property="Background" Value="{StaticResource OliveBrush}" />
-                <Setter Property="Foreground" Value="{StaticResource PaperBrush}" />
+                <Setter Property="Background" Value="{ThemeResource OliveBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource PaperBrush}" />
             </Style>
 
             <!-- *Ninguna — la lleno yo*, which fills nothing and so is drawn as the optional
@@ -60,7 +67,7 @@
                 <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
                 <Setter Property="Padding" Value="15,0,15,0" />
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="BorderBrush" Value="{StaticResource EmptyControlRingBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource EmptyControlRingBrush}" />
             </Style>
 
             <!-- The line under the fourteen, where a classification filled by hand is put by. Its
@@ -77,14 +84,14 @@
                  the section rank. A section title is a heading over a part of a screen; these three
                  are the beginning of a sentence the pills under them finish. -->
             <Style x:Key="ColumnHeading" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
-                <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource SecondaryTextBrush}" />
             </Style>
 
             <!-- What stands where the pills would be while a column has none. The transcript rank,
                  which is the rank the pills beside it take, so an empty column and a filled one sit
                  on the same line. -->
             <Style x:Key="NothingHere" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}">
-                <Setter Property="Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource TertiaryTextBrush}" />
             </Style>
 
             <!-- A pill in a path, and it is a picker rather than a label: what stands at that
@@ -110,13 +117,13 @@
 
             <!-- Where somebody belonged the day of the meeting, at the end of their row. -->
             <Style x:Key="WhereTheyBelonged" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
-                <Setter Property="Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource TertiaryTextBrush}" />
             </Style>
 
             <!-- *Agregar* and *Agregar a alguien*: optional, so no fill and the 1px inset ring. -->
             <Style x:Key="AnOptionalPress" TargetType="Button" BasedOn="{StaticResource ButtonAtTheMargin}">
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="BorderBrush" Value="{StaticResource EmptyControlRingBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource EmptyControlRingBrush}" />
                 <Setter Property="Height" Value="{StaticResource ControlHeight}" />
                 <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
                 <Setter Property="HorizontalAlignment" Value="Left" />
@@ -137,14 +144,14 @@
                  the room, and with one badge nobody filing that meeting by hand could say so. -->
             <Style x:Key="Badge" TargetType="Button" BasedOn="{StaticResource RowButtonAtTheMargin}">
                 <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="BorderBrush" Value="{StaticResource EmptyControlRingBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource EmptyControlRingBrush}" />
                 <Setter Property="Padding" Value="11,0,11,0" />
             </Style>
 
             <!-- And on. -->
             <Style x:Key="BadgeOn" TargetType="Button" BasedOn="{StaticResource Badge}">
-                <Setter Property="Background" Value="{StaticResource OliveBrush}" />
-                <Setter Property="Foreground" Value="{StaticResource PaperBrush}" />
+                <Setter Property="Background" Value="{ThemeResource OliveBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource PaperBrush}" />
                 <Setter Property="BorderThickness" Value="0" />
             </Style>
 
@@ -157,7 +164,7 @@
             <!-- The dividing rule above *Quiénes*. -->
             <Style x:Key="ARule" TargetType="Border">
                 <Setter Property="Height" Value="1" />
-                <Setter Property="Background" Value="{StaticResource LineBrush}" />
+                <Setter Property="Background" Value="{ThemeResource LineBrush}" />
             </Style>
         </Grid.Resources>
 
@@ -273,7 +280,7 @@
                     x:Name="StatusText"
                     Grid.Row="1"
                     Style="{StaticResource BodyText}"
-                    Foreground="{StaticResource PeakBrush}"
+                    Foreground="{ThemeResource PeakBrush}"
                     TextWrapping="Wrap"
                     Visibility="Collapsed" />
 

@@ -136,6 +136,9 @@ public sealed partial class ReadingAMeeting : UserControl
     /// <summary>Somebody asked to name who spoke on this meeting.</summary>
     public event EventHandler<Guid>? NameTheVoices;
 
+    /// <summary>Somebody asked to correct the words that came out wrong on this meeting.</summary>
+    public event EventHandler<Guid>? CorrectWords;
+
     /// <summary>Somebody asked to read the history of something this meeting is filed under.</summary>
     public event EventHandler<Guid>? NodeChosen;
 
@@ -358,6 +361,7 @@ public sealed partial class ReadingAMeeting : UserControl
             SummarisedText.Text = string.Empty;
             ClassifyButton.IsEnabled = false;
             WhoSpokeCard.Visibility = Visibility.Collapsed;
+            WordsCard.Visibility = Visibility.Collapsed;
 
             if (theRecordingToo)
             {
@@ -379,6 +383,7 @@ public sealed partial class ReadingAMeeting : UserControl
         TheActOnOffer(read.Screen);
         WhatItWasAbout(read.Screen);
         WhoSpokeSection();
+        WordsSection(read.Screen);
 
         if (theRecordingToo)
         {
@@ -523,6 +528,14 @@ public sealed partial class ReadingAMeeting : UserControl
             });
         }
     }
+
+    /// <summary>
+    /// The way to correct the words that came out wrong. Collapsed until the meeting has a
+    /// transcription, for the reason <see cref="WhoSpokeSection"/> is: before that there are no
+    /// words to be wrong.
+    /// </summary>
+    private void WordsSection(MeetingScreen screen) =>
+        WordsCard.Visibility = screen.ThereIsATranscription ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>
     /// What a screen with no player says instead, or nothing when there is one.
@@ -1189,6 +1202,22 @@ public sealed partial class ReadingAMeeting : UserControl
         if (_meeting is { } meeting)
         {
             NameTheVoices?.Invoke(this, meeting);
+        }
+    }
+
+    /// <summary>Somebody asked to correct the words on this meeting. <see cref="OnNameTheVoices"/>'s order.</summary>
+    private void OnCorrectWords(object sender, RoutedEventArgs e)
+    {
+        if (!CommitTheName())
+        {
+            return;
+        }
+
+        Pause();
+
+        if (_meeting is { } meeting)
+        {
+            CorrectWords?.Invoke(this, meeting);
         }
     }
 }

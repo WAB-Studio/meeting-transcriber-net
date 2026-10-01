@@ -97,4 +97,44 @@ public class WhoTheyMightBeTests
 
         Offered("Marina Robles", many).Count.ShouldBe(WhoTheyMightBe.MostOffered);
     }
+
+    /// <summary>
+    /// <c>Marina</c> against <c>Marina Robles</c> resembles it by about 0.46, far under the line, so
+    /// resemblance alone offers nobody — and a first name is the commonest way a duplicate person is
+    /// typed.
+    /// </summary>
+    [Fact]
+    public void A_first_name_offers_the_full_name_already_held()
+    {
+        var held = Somebody("Marina Robles");
+
+        Offered("Marina", held).Select(possible => possible.Person.Id).ShouldBe([held.Person.Id]);
+    }
+
+    [Fact]
+    public void A_surname_offers_the_full_name_already_held()
+    {
+        var held = Somebody("Marina Robles");
+
+        Offered("Robles", held).Select(possible => possible.Person.Id).ShouldBe([held.Person.Id]);
+    }
+
+    /// <summary>
+    /// Both come up for <c>Marina</c>: <c>Marinna</c> by resemblance and <c>Marina Robles</c> only as
+    /// containing it. The closer spelling is first, though the other holds both signals.
+    /// </summary>
+    [Fact]
+    public void A_part_comes_after_every_closer_spelling()
+    {
+        var contains = Somebody("Marina Robles", organization: true, met: true);
+        var resembles = Somebody("Marinna");
+
+        Offered("Marina", contains, resembles)
+            .Select(possible => possible.Person.Id)
+            .ShouldBe([resembles.Person.Id, contains.Person.Id]);
+    }
+
+    [Fact]
+    public void Two_letters_offer_nobody_by_being_a_start() =>
+        Offered("Ma", Somebody("Marina Robles")).ShouldBeEmpty();
 }

@@ -60,7 +60,7 @@
                  exists for exactly this: a stretch of what was actually said, read at length. -->
             <Style x:Key="Quoted" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}">
                 <Setter Property="TextWrapping" Value="Wrap" />
-                <Setter Property="Foreground" Value="{StaticResource SecondaryTextBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource SecondaryTextBrush}" />
             </Style>
 
             <Style x:Key="Data" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
@@ -80,7 +80,7 @@
             <!-- A meeting nobody filed. It is a real answer and not a gap: §5.3 says a casual chat
                  is stored with no links at all and found by text. -->
             <Style x:Key="FiledUnderNothing" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
-                <Setter Property="Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource TertiaryTextBrush}" />
             </Style>
 
             <!-- The press on every thing the AI left. It carries the minute it was said at, and
@@ -108,7 +108,7 @@
                  across the hour is visible without reading a list. -->
             <Style x:Key="ACitationOnTheTrack" TargetType="Rectangle">
                 <Setter Property="Height" Value="8" />
-                <Setter Property="Fill" Value="{StaticResource OliveBrush}" />
+                <Setter Property="Fill" Value="{ThemeResource OliveBrush}" />
             </Style>
         </Grid.Resources>
 
@@ -162,7 +162,7 @@
                 <TextBlock
                     x:Name="StageText"
                     Style="{StaticResource BodyText}"
-                    Foreground="{StaticResource SecondaryTextBrush}"
+                    Foreground="{ThemeResource SecondaryTextBrush}"
                     TextWrapping="Wrap" />
             </StackPanel>
         </Grid>
@@ -243,6 +243,24 @@
                             Content="{x:Bind In(loc:UiTexts.SayWhoIsWho)}" />
                     </StackPanel>
                 </Border>
+
+                <!-- The way to correct the words that come out wrong. Collapsed until the meeting has a
+                     transcription: before that there are no words to be wrong. The label is mono at
+                     the data rank, like the cards above it. -->
+                <Border x:Name="WordsCard" Style="{StaticResource ReadingCard}">
+                    <StackPanel Spacing="10">
+                        <TextBlock
+                            Style="{StaticResource DataText}"
+                            Text="{x:Bind In(loc:UiTexts.WordsThatComeOutWrongHere)}" />
+
+                        <Button
+                            x:Name="CorrectWordsButton"
+                            HorizontalAlignment="Right"
+                            Style="{StaticResource TakeTheStage}"
+                            Click="OnCorrectWords"
+                            Content="{x:Bind In(loc:UiTexts.CorrectWords)}" />
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </Grid>
 
@@ -290,7 +308,7 @@
                 <Slider
                     x:Name="Track"
                     Grid.Row="1"
-                    Foreground="{StaticResource OliveBrush}"
+                    Foreground="{ThemeResource OliveBrush}"
                     Minimum="0"
                     StepFrequency="1000"
                     ValueChanged="OnTrackMoved"
@@ -312,7 +330,7 @@
             x:Name="PlayerStatusText"
             Grid.Row="2"
             Style="{StaticResource BodyText}"
-            Foreground="{StaticResource PeakBrush}"
+            Foreground="{ThemeResource PeakBrush}"
             TextWrapping="Wrap"
             Visibility="Collapsed" />
     </Grid>

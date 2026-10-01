@@ -290,6 +290,49 @@ public class MeetingIntakeTests
     }
 
     /// <summary>
+    /// A paid response is the meeting's however long its speech runs, so it is filed, and the
+    /// caller is told a voice there has no audio under it.
+    /// </summary>
+    [Fact]
+    public void A_response_whose_speech_outruns_the_meetings_audio_is_filed_and_says_so()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var tenMinutes = Duration.FromMilliseconds(600_000);
+        var meetingId = RecordedMeetings.Recorded(context, SourceProfile.Multichannel, When, tenMinutes);
+
+        var received = ReceiveInto(context, meetingId, DeepgramFixtures.TwoChannelLong);
+
+        received.Turns.ShouldBeGreaterThan(0);
+        var lastEnd = context.Utterances.Where(turn => turn.MeetingId == meetingId).Max(turn => turn.End);
+        received.PastTheAudio.ShouldNotBeNull();
+        received.PastTheAudio.SpeechEnds.ShouldBe(lastEnd);
+        received.PastTheAudio.Audio.ShouldBe(tenMinutes);
+    }
+
+    [Fact]
+    public void A_response_inside_the_meetings_audio_says_nothing_of_it()
+    {
+        // The same bytes cannot be filed onto two meetings of one corpus, so the length is
+        // measured in a corpus of its own first.
+        Duration lastEnd;
+        using (var measuring = new TemporaryCorpus())
+        using (var measured = measuring.OpenMigrated())
+        {
+            var first = RecordedMeetings.Recorded(measured, SourceProfile.Multichannel, When, AnHour);
+            ReceiveInto(measured, first);
+            lastEnd = measured.Utterances.Where(turn => turn.MeetingId == first).Max(turn => turn.End);
+        }
+
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meetingId = RecordedMeetings.Recorded(
+            context, SourceProfile.Multichannel, When, Duration.FromMilliseconds(lastEnd.Milliseconds - 500));
+
+        ReceiveInto(context, meetingId).PastTheAudio.ShouldBeNull();
+    }
+
+    /// <summary>
     /// The length was counted off the audio the corpus holds. What the provider says it transcribed
     /// is a second number about the same file, and one meeting is never given two lengths.
     /// </summary>

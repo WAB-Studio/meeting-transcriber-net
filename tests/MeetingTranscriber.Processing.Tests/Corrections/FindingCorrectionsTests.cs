@@ -138,6 +138,66 @@ public class FindingCorrectionsTests
             .Message.ShouldContain(missing.ToString());
     }
 
+    /// <summary>
+    /// The answer <em>no</em> to a suspect is kept in the corpus, so the same word is not put in
+    /// front of the person again. It goes red with the settings' words left out of the union.
+    /// </summary>
+    [Fact]
+    public void A_word_somebody_said_is_right_is_not_offered_again()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        HeardDoubtfully(corpus, context, doubtful: "nubeco", commoner: "nubeko");
+
+        FindingCorrections.Unprompted(context).Suspects.Select(suspect => suspect.Word)
+            .ShouldBe(["nubeco"]);
+
+        new CorpusSettings(context).SayItIsRight("Nubeco", Later);
+
+        FindingCorrections.Unprompted(context).Suspects.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void A_lookalike_comes_back_as_the_turns_most_often_wrote_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        MeetingRows.Recorded(context, When, ["Nubeko y Nubeko", "dijo nubeko"]);
+
+        FindingCorrections.AsMostOftenWritten(context, "nubeko").ShouldBe("Nubeko");
+        FindingCorrections.AsMostOftenWritten(context, "nadie").ShouldBe("nadie");
+    }
+
+    /// <summary>
+    /// A meeting whose paid response holds <paramref name="doubtful"/> a few times at low confidence
+    /// and <paramref name="commoner"/> far more often at high confidence — the shape of a word the
+    /// provider keeps getting wrong. Written by hand because the committed responses hold no such
+    /// word, and a fixture holding one would be a corpus invented to fit the test.
+    /// </summary>
+    private static void HeardDoubtfully(
+        TemporaryCorpus corpus, CorpusDbContext context, string doubtful, string commoner)
+    {
+        var words = Enumerable.Repeat((doubtful, 0.4), 3).Concat(Enumerable.Repeat((commoner, 0.95), 20));
+        var response = JsonSerializer.Serialize(new
+        {
+            results = new
+            {
+                utterances = new[]
+                {
+                    new
+                    {
+                        words = words.Select(word => new { punctuated_word = word.Item1, confidence = word.Item2 }),
+                    },
+                },
+            },
+        });
+
+        var meeting = MeetingRows.Recorded(context, When, [$"{doubtful} {commoner}"], responseSha256: new string('f', 64));
+        var file = CorpusFiles.Locate(corpus.Root, CorpusFiles.PathFor(meeting, "deepgram.json"));
+        file.Directory!.Create();
+        File.WriteAllText(file.FullName, response);
+    }
+
     [Fact]
     public void Finding_candidates_reaches_nothing_that_summarises()
     {
