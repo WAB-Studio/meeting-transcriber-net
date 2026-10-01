@@ -26,13 +26,25 @@
             KeyDown="OnTheirNameKey"
             Header="{x:Bind In(loc:UiTexts.NameOfAPerson)}" />
 
+        <!-- Only while adding, and only when somebody the corpus holds is spelled nearly the same
+             way. Each pill answers the dialogue with that person and writes nothing. -->
+        <StackPanel x:Name="SomebodyAlreadyHereLine" Spacing="6" Visibility="Collapsed">
+            <TextBlock
+                Style="{StaticResource BodyText}"
+                Text="{x:Bind In(loc:UiTexts.IsItSomebodyAlreadyHere)}" />
+            <StackPanel x:Name="SomebodyAlreadyHereList" Spacing="6" />
+        </StackPanel>
+
         <!-- The organization is said beside the picker and never as a header on it: a pill has no
              part to draw one, so a `Header` here binds, builds green and shows nothing at all. -->
         <StackPanel x:Name="TheirOrganizationLine" Spacing="6">
             <TextBlock
                 Style="{StaticResource BodyText}"
                 Text="{x:Bind In(loc:UiTexts.Organization)}" />
-            <ComboBox x:Name="TheirOrganization" Style="{StaticResource DropDown}" />
+            <ComboBox
+                x:Name="TheirOrganization"
+                Style="{StaticResource DropDown}"
+                SelectionChanged="OnTheirOrganizationChosen" />
         </StackPanel>
 
         <!-- Optional, and empty means what `Affiliation` already means by no start: as far back as

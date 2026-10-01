@@ -1543,7 +1543,23 @@ public sealed partial class ClassifyingAMeeting : UserControl
             .Where(node => node.ParentId is null && node.Kind is NodeKind.Organization)
             .ToArray();
 
-        var made = await AskingWhoTheyAre.AskAsync(Corpus(), _language, Root.XamlRoot, organizations, correcting);
+        // What this screen cannot take: the person using this install, who is drawn above and is not
+        // a place, and everybody already standing in another place. Those are the two exclusions
+        // APlaceForSomebody's own picker makes, and it is asked here rather than restated, so a
+        // pill the dialogue offers is never somebody that picker would not.
+        var notOffered = read.Everybody
+            .Select(found => found.Person.Id)
+            .Where(id => id == read.Me?.Id || StandsInAnotherPlace(id, slot))
+            .ToHashSet();
+
+        var openedOver = new OpenedOver(
+            read.Meeting.Id,
+            [.. _chosen.Somebody.Where(place => place.PersonId is not null).Select(place => place.PersonId!.Value)],
+            [.. _chosen.Links.Select(link => link.Node)],
+            notOffered);
+
+        var made = await AskingWhoTheyAre.AskAsync(
+            Corpus(), openedOver, _language, Root.XamlRoot, organizations, correcting);
 
         if (made is { } id)
         {

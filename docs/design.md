@@ -338,6 +338,11 @@ own period, so this dialogue adds one and never replaces what is there. Two answ
 places the grammar fixes: *Guardar* on the right, *Cancelar* on the left — the verb the closed table
 above gives for walking away from a form, and the one `Persona.dc.html` draws.
 
+While a name is typed, up to three people the corpus already holds under a name spelled nearly the
+same way are offered under the field, each a pill with the organization they belong to; pressing one
+answers the dialogue with that person and adds nobody. *Guardar* still adds the name as typed. It is
+offered only while adding, never while correcting a name.
+
 ## Movement
 
 **Every screen ships moving.** Motion is not a polish pass that arrives once the screens work — a
@@ -741,7 +746,8 @@ meeting's name, and none of the presses but one:
 
 **`Persona`** · Adding somebody, over whatever screen asked. The second of the two dialogues, and
 the last: name, and optionally an organization and since when. It adds an affiliation and never
-replaces one.
+replaces one, and while a name is typed it offers up to three people already there under a nearly
+identical name, which a press answers with and adds nobody.
 
 ### The system sheet
 

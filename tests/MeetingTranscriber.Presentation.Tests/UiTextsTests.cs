@@ -88,6 +88,9 @@ public class UiTextsTests
         // `docs/design.md` §The artboards says an amount goes as `[costo]` until a run produces a
         // real number, so what is in them is a placeholder standing where a figure will be, and
         // `min` is the unit the figure is per.
+        //
+        // The pill that offers somebody already there is `{0} · {1}`: the person's name and the
+        // organization are the corpus's and the separator is a mark and not a word.
         string[] sameEitherWayOnPurpose =
         [
             nameof(UiTexts.Channel0),
@@ -95,6 +98,7 @@ public class UiTextsTests
             nameof(UiTexts.EnglishName),
             nameof(UiTexts.ExportsAudio),
             nameof(UiTexts.No),
+            nameof(UiTexts.SomebodyAndWhereTheyBelong),
             nameof(UiTexts.SpanishName),
             nameof(UiTexts.TheApplicationsName),
             nameof(UiTexts.TheEngineThatSummarises),
