@@ -245,6 +245,7 @@ public sealed partial class MainWindow : Window
         Reading.Left += OnLeftTheMeeting;
         Reading.Classify += OnClassifyTheMeeting;
         Reading.NameTheVoices += OnNameTheVoices;
+        Reading.CorrectWords += OnCorrectWords;
         Reading.NodeChosen += OnNodeChosen;
 
         NodeStory.Open(corpus);
@@ -258,6 +259,9 @@ public sealed partial class MainWindow : Window
         Voices.Open(corpus);
         Voices.Named += OnVoicesNamed;
         Voices.Left += OnLeftTheVoices;
+
+        Corrections.Open(corpus);
+        Corrections.Left += OnLeftTheCorrections;
 
         // The fourth, and the one that is not about a meeting. The language is raised on up from
         // it rather than answered there: which language the application is read in is the
@@ -345,6 +349,7 @@ public sealed partial class MainWindow : Window
         NodeStory.ReadIn(language);
         Classifying.ReadIn(language);
         Voices.ReadIn(language);
+        Corrections.ReadIn(language);
         Settings.ReadIn(language);
         Refresh();
     }
@@ -407,6 +412,7 @@ public sealed partial class MainWindow : Window
                 || Reading.IsShowingAMeeting
                 || Classifying.IsOpen
                 || Voices.IsOpen
+                || Corrections.IsOpen
                 || Settings.IsOpen
                 || NodeStory.IsShowingANode,
         };
@@ -1507,7 +1513,7 @@ public sealed partial class MainWindow : Window
     /// </remarks>
     private void ShowWhatTheRoomIsShowing(RecorderScreen screen)
     {
-        // Six now, and the order is what says which wins. The settings are first because they
+        // Seven now, and the order is what says which wins. The settings are first because they
         // are reached from the window itself and not from a meeting: the gear is pressable
         // whatever the room below is showing, so a screen underneath goes on holding whatever it
         // was holding and gets it back when this closes. Then filing, which is reached from the
@@ -1515,20 +1521,23 @@ public sealed partial class MainWindow : Window
         // whole of it, and asking it whether it has the window would put two screens in one room.
         // Naming the voices is reached from the meeting too, on exactly the same terms as filing,
         // and wins over it because the two are never both open at once — nothing on either screen
-        // opens the other. A node's story is reached from the meeting as well, so the meeting
-        // screen goes on holding one underneath it for the whole of it too.
+        // opens the other. Correcting words is reached from the meeting on the same terms again,
+        // and is never open beside either. A node's story is reached from the meeting as well, so
+        // the meeting screen goes on holding one underneath it for the whole of it too.
         var settings = Settings.IsOpen;
         var classifying = !settings && Classifying.IsOpen;
         var voices = !settings && !classifying && Voices.IsOpen;
-        var story = !settings && !classifying && !voices && NodeStory.IsShowingANode;
-        var reading = !settings && !classifying && !voices && !story && Reading.IsShowingAMeeting;
+        var corrections = !settings && !classifying && !voices && Corrections.IsOpen;
+        var story = !settings && !classifying && !voices && !corrections && NodeStory.IsShowingANode;
+        var reading = !settings && !classifying && !voices && !corrections && !story && Reading.IsShowingAMeeting;
 
         Settings.Visibility = settings ? Visibility.Visible : Visibility.Collapsed;
         Classifying.Visibility = classifying ? Visibility.Visible : Visibility.Collapsed;
         Voices.Visibility = voices ? Visibility.Visible : Visibility.Collapsed;
+        Corrections.Visibility = corrections ? Visibility.Visible : Visibility.Collapsed;
         NodeStory.Visibility = story ? Visibility.Visible : Visibility.Collapsed;
         Reading.Visibility = reading ? Visibility.Visible : Visibility.Collapsed;
-        Meetings.Visibility = settings || classifying || voices || story || reading
+        Meetings.Visibility = settings || classifying || voices || corrections || story || reading
             ? Visibility.Collapsed
             : Visibility.Visible;
 
@@ -1603,6 +1612,16 @@ public sealed partial class MainWindow : Window
     private void OnNameTheVoices(object? sender, Guid meeting)
     {
         Voices.Show(meeting);
+        Refresh();
+    }
+
+    /// <summary>
+    /// Somebody asked to correct the words that came out wrong on the meeting they are reading.
+    /// Shown before the room is rearranged, for the reason <see cref="OnMeetingChosen"/> gives.
+    /// </summary>
+    private void OnCorrectWords(object? sender, Guid meeting)
+    {
+        Corrections.Show(meeting);
         Refresh();
     }
 
@@ -1685,6 +1704,18 @@ public sealed partial class MainWindow : Window
     private void OnLeftTheVoices(object? sender, EventArgs e)
     {
         Voices.Close();
+        Refresh();
+    }
+
+    /// <summary>
+    /// Somebody came back from correcting words. Whatever was saved is already in the corpus and
+    /// the transcripts, so the meeting screen reads itself again: its transcript is what a
+    /// correction changes, and its recording has not moved.
+    /// </summary>
+    private void OnLeftTheCorrections(object? sender, EventArgs e)
+    {
+        Corrections.Close();
+        Reading.ReadAgain();
         Refresh();
     }
 
@@ -2314,6 +2345,7 @@ public sealed partial class MainWindow : Window
         Reading.Close();
         Classifying.Close();
         Voices.Close();
+        Corrections.Close();
 
         // The settings hold no file and no device, so this is not about letting anything go: it is
         // the same `_closed` the list keeps, for the same reason. A name being written into the

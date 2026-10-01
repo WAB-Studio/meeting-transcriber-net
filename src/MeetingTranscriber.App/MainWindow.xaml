@@ -41,7 +41,7 @@
          acrylic, because a translucent window is one where nothing weighs anything. What was here
          was the platform's Mica backdrop. -->
     <Grid
-        Background="{StaticResource PaperBrush}"
+        Background="{ThemeResource PaperBrush}"
         Padding="{StaticResource ScreenPadding}"
         RowSpacing="20">
         <Grid.RowDefinitions>
@@ -75,13 +75,13 @@
                 <Canvas Width="24" Height="24">
                     <Path
                         Data="M8 7a7 7 0 0 0 0 10"
-                        Stroke="{StaticResource InkBrush}"
+                        Stroke="{ThemeResource InkBrush}"
                         StrokeThickness="2.2"
                         StrokeStartLineCap="Round"
                         StrokeEndLineCap="Round" />
                     <Path
                         Data="M14.5 5a9.5 9.5 0 0 1 0 14"
-                        Stroke="{StaticResource OliveBrush}"
+                        Stroke="{ThemeResource OliveBrush}"
                         StrokeThickness="2.2"
                         StrokeStartLineCap="Round"
                         StrokeEndLineCap="Round" />
@@ -117,11 +117,11 @@
                             Canvas.Top="7.5"
                             Width="9"
                             Height="9"
-                            Stroke="{StaticResource InkBrush}"
+                            Stroke="{ThemeResource InkBrush}"
                             StrokeThickness="2" />
                         <Path
                             Data="M12 2.5v3M12 18.5v3M3.3 7l2.6 1.5M18.1 15.5l2.6 1.5M3.3 17l2.6-1.5M18.1 8.5l2.6-1.5"
-                            Stroke="{StaticResource InkBrush}"
+                            Stroke="{ThemeResource InkBrush}"
                             StrokeThickness="2"
                             StrokeStartLineCap="Round"
                             StrokeEndLineCap="Round" />
@@ -240,7 +240,7 @@
                     <Border
                         Grid.Column="1"
                         Width="1"
-                        Background="{StaticResource LineBrush}" />
+                        Background="{ThemeResource LineBrush}" />
 
                     <local:ChannelStrip
                         x:Name="Mine"
@@ -448,7 +448,7 @@
                         Grid.Column="0"
                         VerticalAlignment="Center"
                         Style="{StaticResource SectionText}"
-                        Foreground="{StaticResource OliveBrush}" />
+                        Foreground="{ThemeResource OliveBrush}" />
 
                     <TextBlock
                         x:Name="StripLine"
@@ -489,7 +489,7 @@
             <TextBlock
                 x:Name="OthersStopped"
                 Style="{StaticResource BodyText}"
-                Foreground="{StaticResource PeakBrush}"
+                Foreground="{ThemeResource PeakBrush}"
                 AutomationProperties.LiveSetting="Assertive"
                 TextWrapping="Wrap"
                 Visibility="Collapsed" />
@@ -500,7 +500,7 @@
             <TextBlock
                 x:Name="OthersMoved"
                 Style="{StaticResource BodyText}"
-                Foreground="{StaticResource PeakBrush}"
+                Foreground="{ThemeResource PeakBrush}"
                 AutomationProperties.LiveSetting="Assertive"
                 TextWrapping="Wrap"
                 Visibility="Collapsed" />
@@ -508,7 +508,7 @@
             <TextBlock
                 x:Name="MineStopped"
                 Style="{StaticResource BodyText}"
-                Foreground="{StaticResource PeakBrush}"
+                Foreground="{ThemeResource PeakBrush}"
                 AutomationProperties.LiveSetting="Assertive"
                 TextWrapping="Wrap"
                 Visibility="Collapsed" />
@@ -537,7 +537,7 @@
             <TextBlock
                 x:Name="MineMoved"
                 Style="{StaticResource BodyText}"
-                Foreground="{StaticResource PeakBrush}"
+                Foreground="{ThemeResource PeakBrush}"
                 AutomationProperties.LiveSetting="Assertive"
                 TextWrapping="Wrap"
                 Visibility="Collapsed" />
@@ -546,7 +546,7 @@
             <TextBlock
                 x:Name="HeardTwice"
                 Style="{StaticResource BodyText}"
-                Foreground="{StaticResource PeakBrush}"
+                Foreground="{ThemeResource PeakBrush}"
                 AutomationProperties.LiveSetting="Polite"
                 TextWrapping="Wrap"
                 Visibility="Collapsed" />
@@ -610,7 +610,7 @@
                 <TextBlock
                     x:Name="OutputText"
                     Style="{StaticResource BodyText}"
-                    Foreground="{StaticResource SecondaryTextBrush}"
+                    Foreground="{ThemeResource SecondaryTextBrush}"
                     IsTextSelectionEnabled="True"
                     TextWrapping="Wrap" />
             </ScrollViewer>
@@ -635,9 +635,14 @@
              recording kept paused. -->
         <local:SayingWhoIsWho x:Name="Voices" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
 
-        <!-- The settings, in that same room. It is the one of the five that is not about a meeting
+        <!-- Correcting the words that come out wrong, in the same room again — a sub-screen of a
+             sub-screen the way naming the voices is, reached from the meeting's own card and
+             returning to it with the recording kept paused. -->
+        <local:WordsThatComeOutWrong x:Name="Corrections" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
+
+        <!-- The settings, in that same room. It is the one of the six that is not about a meeting
              at all: it is reached from the gear above rather than from the list, which is why it
-             wins the room over all four of the others. A meeting under way keeps the strip while
+             wins the room over all five of the others. A meeting under way keeps the strip while
              it is up, exactly as it does behind the raised list. -->
         <local:Configuracion x:Name="Settings" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
 
@@ -651,7 +656,7 @@
                 x:Name="StatusText"
                 VerticalAlignment="Center"
                 Style="{StaticResource BodyText}"
-                Foreground="{StaticResource SecondaryTextBrush}"
+                Foreground="{ThemeResource SecondaryTextBrush}"
                 TextWrapping="Wrap" />
             <Button
                 x:Name="PackagingChecksButton"
