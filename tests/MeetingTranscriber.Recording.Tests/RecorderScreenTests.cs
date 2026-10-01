@@ -552,9 +552,95 @@ public class RecorderScreenTests
             .ShouldBe([alphaToo, alpha, bravo]);
     }
 
+    /// <summary>
+    /// ISC-204.1 and ISC-204.2: the program channel 0 follows ended while the meeting was being
+    /// recorded, and both ways out are on offer — the whole machine, and another program — with
+    /// nothing having to have been silent first.
+    /// </summary>
+    [Fact]
+    public void Both_ways_out_are_offered_once_the_program_being_followed_went_away()
+    {
+        var gone = Gone(RecorderState.Recording);
+
+        gone.NothingCameFromTheProgram.ShouldBeFalse();
+        gone.Allows(RecorderPress.RecordTheWholeMachine).ShouldBeTrue();
+        gone.Allows(RecorderPress.ChooseAnotherProgram).ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Where both reports stand the program having gone is the one said, because it is the cause;
+    /// the meter reads <em>sin señal</em> under either.
+    /// </summary>
+    [Fact]
+    public void A_program_that_went_away_is_said_instead_of_nothing_having_come()
+    {
+        var both = Silent(RecorderState.Recording) with { TheProgramWentAway = true };
+
+        both.TheProgramWentAwayIsOnScreen.ShouldBeTrue();
+        both.NothingCameIsOnScreen.ShouldBeFalse();
+        both.TheNoticeIsOnScreen.ShouldBeTrue();
+
+        Silent(RecorderState.Recording).NothingCameIsOnScreen.ShouldBeTrue();
+        Silent(RecorderState.Recording).TheProgramWentAwayIsOnScreen.ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(RecorderState.Choosing, false)]
+    [InlineData(RecorderState.Starting, false)]
+    [InlineData(RecorderState.Recording, true)]
+    [InlineData(RecorderState.Paused, true)]
+    [InlineData(RecorderState.Finishing, false)]
+    [InlineData(RecorderState.WithoutACorpus, false)]
+    public void A_program_that_went_away_is_said_only_while_a_meeting_records_and_the_whole_machine_was_not_taken(
+        RecorderState state, bool said)
+    {
+        Gone(state).TheProgramWentAwayIsOnScreen.ShouldBe(said);
+        (Gone(state) with { WholeMachineTaken = true }).TheProgramWentAwayIsOnScreen.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// The notice is said through a pause, because a process ending is not a level — and the two
+    /// presses wait for the state table, which reaches them only while recording. They are on
+    /// offer on resume.
+    /// </summary>
+    [Fact]
+    public void A_program_that_went_away_is_moved_from_only_once_the_meeting_is_recording()
+    {
+        var paused = Gone(RecorderState.Paused) with { AnotherProgramIsBeingChosen = true };
+
+        paused.Allows(RecorderPress.RecordTheWholeMachine).ShouldBeFalse();
+        paused.Allows(RecorderPress.ChooseAnotherProgram).ShouldBeFalse();
+        paused.Allows(RecorderPress.FollowAnotherProgram).ShouldBeFalse();
+        (paused with { State = RecorderState.Recording })
+            .Allows(RecorderPress.RecordTheWholeMachine).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void The_whole_machine_taken_ends_the_offer_over_a_program_that_went_away()
+    {
+        var taken = Gone(RecorderState.Recording) with { WholeMachineTaken = true };
+
+        taken.Allows(RecorderPress.RecordTheWholeMachine).ShouldBeFalse();
+        taken.Allows(RecorderPress.ChooseAnotherProgram).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void A_program_that_went_away_is_not_said_while_channel_0_is_being_moved()
+    {
+        var moving = Gone(RecorderState.Recording) with { AnotherProgramIsBeingOpened = true };
+
+        moving.TheNoticeIsOnScreen.ShouldBeFalse();
+        moving.TheProgramWentAwayIsOnScreen.ShouldBeFalse();
+        moving.Allows(RecorderPress.RecordTheWholeMachine).ShouldBeFalse();
+    }
+
     /// <summary>A meeting whose recording has reported that nothing came from the program.</summary>
     private static RecorderScreen Silent(RecorderState state) =>
         Screen(state, Everything) with { NothingCameFromTheProgram = true };
+
+    /// <summary>A meeting whose recording has reported that the program it follows ended.</summary>
+    private static RecorderScreen Gone(RecorderState state) =>
+        Screen(state, Everything) with { TheProgramWentAway = true };
 
     private static RecorderScreen Screen(RecorderState state, RecorderChoices chosen) =>
         new() { State = state, Chosen = chosen };

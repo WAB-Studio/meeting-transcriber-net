@@ -476,17 +476,19 @@ public sealed class RecoveryCommandTests : IDisposable
     /// <remarks>
     /// The fixture is ten blocks, a tenth of a second, so the second of packets a counter's rate is
     /// read from never completes: the microphone ends inside it, placed by the clock throughout,
-    /// and reads as given up on whatever rate it counts in.
+    /// and reads as undecided whatever rate it counts in — never as given up on, which is a
+    /// decision this source never reached.
     /// </remarks>
     [Fact]
-    public void A_rate_a_counter_was_given_up_on_is_never_reported_as_measured()
+    public void A_rate_a_counter_was_never_read_in_is_never_reported_as_measured()
     {
         Recorded("daily", both: true, microphoneCountsBy: 100);
 
         var run = CommandLine.Of("recover", "--in", Folder("daily").FullName, "--keep");
 
         run.Code.ShouldBe(Cli.Ok);
-        run.Value("ch1 recorded").ShouldContain("counter given up on");
+        run.Value("ch1 recorded").ShouldContain("counter undecided when it ended");
+        run.Value("ch1 recorded").ShouldNotContain("given up");
         run.Value("ch1 recorded").ShouldNotContain("measured");
 
         // The source beside it in the same recording counted in the frames it handed over, so it

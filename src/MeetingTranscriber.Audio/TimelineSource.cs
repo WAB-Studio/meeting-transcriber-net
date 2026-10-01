@@ -102,6 +102,7 @@ internal sealed class TimelineSource
     private bool started;
     private bool speaking;
     private bool counterGivenUp;
+    private bool counterUndecided;
 
     internal TimelineSource(AudioChannel channel, StreamFormat format)
     {
@@ -158,6 +159,14 @@ internal sealed class TimelineSource
     /// </summary>
     internal bool CounterGivenUp => counterGivenUp || positions.CounterGivenUp;
 
+    /// <summary>
+    /// Whether any of this source's devices ended, or was replaced, while the window that tells a
+    /// counter in another unit from one no rate explains was still open, so its audio was placed by
+    /// the clock without the counter ever being decided about. <see cref="Rate"/> is then the label
+    /// as well. A source can carry this and <see cref="CounterGivenUp"/> both, one stretch each.
+    /// </summary>
+    internal bool CounterUndecided => counterUndecided || positions.CounterUndecided;
+
     /// <summary>Frames of the interchange format this source has produced since its first one.</summary>
     internal long Produced { get; private set; }
 
@@ -204,6 +213,7 @@ internal sealed class TimelineSource
             // and before the format changes, because emptying it is done at that device's own rate.
             Drain();
             counterGivenUp |= positions.CounterGivenUp;
+            counterUndecided |= positions.CounterUndecided;
             Open(opening);
         }
 

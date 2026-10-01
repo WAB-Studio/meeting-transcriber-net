@@ -68,7 +68,8 @@ public class MeetingStageTests
     {
         var owed = new OwedWork(TheMeeting, stage, standing);
 
-        owed.MayBeStopped.ShouldBe(stage.Offers() is JobKind.Extract && standing is StageStanding.Running);
+        owed.MayBeStopped.ShouldBe(
+            (stage.Offers() ?? stage.OffersAgain()) is JobKind.Extract && standing is StageStanding.Running);
     }
 
     [Fact]
@@ -123,6 +124,103 @@ public class MeetingStageTests
         owed.Stage.ShouldBe(MeetingStage.Transcribed);
         owed.Next.ShouldBe(JobKind.Extract);
         owed.IsOwed.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Every_stage_says_what_it_may_be_asked_for_again()
+    {
+        foreach (var stage in Enum.GetValues<MeetingStage>())
+        {
+            Should.NotThrow(() => stage.OffersAgain());
+        }
+
+        Should.Throw<ArgumentOutOfRangeException>(() => ((MeetingStage)99).OffersAgain());
+    }
+
+    [Fact]
+    public void A_summarised_meeting_may_be_asked_for_another_summary()
+    {
+        MeetingStage.Summarised.OffersAgain().ShouldBe(JobKind.Extract);
+        Owed([ArtifactKind.Audio, ArtifactKind.DeepgramResponse, ArtifactKind.Extraction])
+            .MayBeAskedAgain.ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(MeetingStage.Recording)]
+    [InlineData(MeetingStage.Recorded)]
+    [InlineData(MeetingStage.Transcribed)]
+    public void A_meeting_not_yet_summarised_is_never_asked_for_a_summary_again(MeetingStage stage)
+    {
+        stage.OffersAgain().ShouldBeNull();
+        new OwedWork(TheMeeting, stage, StageStanding.NothingToDo).MayBeAskedAgain.ShouldBeFalse();
+    }
+
+    private static readonly ArtifactKind[] Summarised =
+        [ArtifactKind.Audio, ArtifactKind.DeepgramResponse, ArtifactKind.Extraction];
+
+    [Fact]
+    public void A_second_summary_asked_for_is_underway_and_then_running_and_never_owed()
+    {
+        var second = Job(JobKind.Extract);
+        var queued = OwedWork.Of(TheMeeting, Summarised, [second]);
+
+        queued.Standing.ShouldBe(StageStanding.Underway);
+        queued.IsOwed.ShouldBeFalse();
+        queued.MayBeAskedAgain.ShouldBeFalse();
+        queued.MayBeStopped.ShouldBeFalse();
+
+        second.Start(Noon);
+        var running = OwedWork.Of(TheMeeting, Summarised, [second]);
+
+        running.Standing.ShouldBe(StageStanding.Running);
+        running.IsOwed.ShouldBeFalse();
+        running.MayBeStopped.ShouldBeTrue();
+        running.MayBeAskedAgain.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void A_second_summary_that_failed_says_why_and_may_be_asked_for_again()
+    {
+        var first = Job(JobKind.Extract);
+        first.Start(Noon);
+        first.Succeed(Noon);
+
+        var second = ProcessingJob.Queue(
+            Guid.NewGuid(), TheMeeting, JobKind.Extract, "second", Noon + Duration.FromSeconds(60));
+        second.Start(Noon + Duration.FromSeconds(61));
+        second.FailPermanently(JobFailure.ExtractionRefused, "refused", Noon + Duration.FromSeconds(62));
+
+        var owed = OwedWork.Of(TheMeeting, Summarised, [first, second]);
+
+        owed.Failed.ShouldBe(JobFailure.ExtractionRefused);
+        owed.MayBeAskedAgain.ShouldBeTrue();
+        owed.IsOwed.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void A_summarised_meeting_whose_newest_summary_landed_carries_no_failure()
+    {
+        var failed = Job(JobKind.Extract);
+        failed.Start(Noon);
+        failed.FailPermanently(JobFailure.ExtractionRefused, "refused", Noon);
+
+        var landed = ProcessingJob.Queue(
+            Guid.NewGuid(), TheMeeting, JobKind.Extract, "later", Noon + Duration.FromSeconds(60));
+        landed.Start(Noon + Duration.FromSeconds(61));
+        landed.Succeed(Noon + Duration.FromSeconds(62));
+
+        OwedWork.Of(TheMeeting, Summarised, [failed, landed]).Failed.ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_summarised_meeting_stopped_on_a_person_is_not_asked_for_another_summary()
+    {
+        var uncertain = In(JobKind.Extract, JobState.AwaitingUser);
+
+        var owed = OwedWork.Of(TheMeeting, Summarised, [uncertain]);
+
+        owed.Standing.ShouldBe(StageStanding.StoppedOnAPerson);
+        owed.MayBeAskedAgain.ShouldBeFalse();
     }
 
     [Fact]

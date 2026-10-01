@@ -469,6 +469,31 @@ public class MeetingReadingTests
     }
 
     [Fact]
+    public void A_refused_second_summary_leaves_the_first_on_screen_and_says_it_failed()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0"], responseSha256: new string('a', 64), root: corpus.Root);
+        var first = UtcTimestamp.From(Recorded.Value.AddSeconds(1));
+        MeetingRows.Extracted(context, meeting, first, accepted: first, "what the meeting was about");
+        context.ProcessingJobs.Single(row => row.Kind == JobKind.Extract).Start(first);
+        context.ProcessingJobs.Single(row => row.Kind == JobKind.Extract).Succeed(first);
+        context.SaveChanges();
+
+        var later = UtcTimestamp.From(Recorded.Value.AddSeconds(2));
+        MeetingRows.RefusedExtraction(
+            context, meeting, later, new ExtractionRefusal(ExtractionCondition.NoEvidence, "decisions[0]", null));
+
+        var screen = new MeetingReading(context, Clock).Of(meeting).Screen;
+
+        screen.ThereIsASummary.ShouldBeTrue();
+        screen.Left.Abstract.ShouldBe("what the meeting was about");
+        screen.WhyTheSummaryWasRefused.ShouldBeNull();
+        screen.WhyTheLastSummaryFailed.ShouldBe(JobFailure.ExtractionRefused);
+    }
+
+    [Fact]
     public void A_citation_opens_the_turns_around_the_one_it_anchors_on()
     {
         using var corpus = new TemporaryCorpus();

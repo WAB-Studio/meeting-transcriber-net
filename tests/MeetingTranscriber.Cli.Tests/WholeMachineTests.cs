@@ -26,6 +26,40 @@ public class WholeMachineTests
     /// <summary>What the offer says, enough of it to tell it from any other line.</summary>
     private const string Offer = "Press w to record the whole machine";
 
+    /// <summary>
+    /// A program that closed is offered the same way as one that was silent, in words that say what
+    /// happened, and the key after it takes the offer like any other.
+    /// </summary>
+    [Fact]
+    public void The_offer_is_made_when_the_program_being_followed_has_closed()
+    {
+        var run = new Prompt();
+
+        run.Gate.Consider(heardNothing: false, run.Output, wentAway: true);
+
+        run.Said.ShouldContain(Offer);
+        run.Said.ShouldContain("closed");
+        run.Moves.ShouldBe(0);
+
+        run.Types("w");
+        run.Gate.Consider(heardNothing: false, run.Output, wentAway: true);
+
+        run.Moves.ShouldBe(1);
+    }
+
+    /// <summary>One offer for the meeting, whichever report comes second.</summary>
+    [Fact]
+    public void A_program_that_closed_after_the_offer_was_made_is_not_offered_again()
+    {
+        var run = new Prompt();
+
+        run.Gate.Consider(heardNothing: true, run.Output);
+        run.Gate.Consider(heardNothing: true, run.Output, wentAway: true);
+
+        run.Times(Offer).ShouldBe(1);
+        run.Said.ShouldNotContain("closed");
+    }
+
     [Fact]
     public void The_offer_is_made_when_channel_0_has_heard_nothing_from_the_program()
     {

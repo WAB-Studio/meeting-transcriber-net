@@ -35,7 +35,7 @@ public sealed record MeetingAndWork(Meeting Meeting, OwedWork Owed)
 /// remembered: it is being worked out from rows and files that never went anywhere.
 /// </para>
 /// <para>
-/// The writing half is five methods and none of them are mirrors. Taking a stage queues its job.
+/// The writing half is six methods and none of them are mirrors. Taking a stage queues its job.
 /// Leaving it records that it was turned down — and cancels whatever was queued for it, because
 /// work nobody has run is work nobody has paid for, and the press that spends money should not be
 /// the one with no way back. Neither moves the meeting: a stage that was left is the same stage,
@@ -49,10 +49,11 @@ public sealed record MeetingAndWork(Meeting Meeting, OwedWork Owed)
 /// <see cref="Taken"/> does for the other three, and <c>JobRunner.SendAgainAsync</c> is what sends
 /// it. The fifth stops a summary that is running, through <see cref="ProcessingJob.Cancel"/> — the
 /// one job kind whose <see cref="StageStanding.Running"/> a person may still answer, because what
-/// it already spent is not given back either way.
+/// it already spent is not given back either way. The sixth, <see cref="SummariseAgain"/>, queues
+/// another summary of a meeting that has one and leaves the one before where it is.
 /// </para>
 /// <para>
-/// All five re-read the meeting before they write. A screen that has been open a while is a
+/// All six re-read the meeting before they write. A screen that has been open a while is a
 /// screen showing what was true when it was drawn, and the press that matters most — the one that
 /// spends money — is exactly the one a stale screen would get wrong.
 /// </para>
@@ -547,6 +548,53 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
 
         var job = ProcessingJob.Queue(
             Guid.NewGuid(), meetingId, JobKind.Transcribe, NextKey(meetingId, JobKind.Transcribe), Now);
+        context.ProcessingJobs.Add(job);
+        context.SaveChanges();
+        write?.Commit();
+
+        return job;
+    }
+
+    /// <summary>
+    /// Somebody asked a summarised meeting for another summary: queues it and leaves the summary
+    /// before exactly as it was.
+    /// </summary>
+    /// <remarks>
+    /// Starts nothing, as <see cref="Taken"/> does for the stages: the pump that is already running
+    /// sends it within <c>JobRunner.HowOftenTheQueueIsLookedAt</c>. That the meeting has no other
+    /// summary queued, running or stopped on a person is <see cref="OwedWork.MayBeAskedAgain"/>'s,
+    /// and it is what keeps <c>OwedWork.Of</c>'s rule — a second job of a kind is not queued while
+    /// an earlier one is live — true.
+    /// </remarks>
+    /// <exception cref="MeetingStageException">
+    /// There is no such meeting, it is on its way out, or it is not summarised or has a summary
+    /// already queued, running or stopped on a person.
+    /// </exception>
+    public ProcessingJob SummariseAgain(Guid meetingId)
+    {
+        using var write = context.Database.CurrentTransaction is null
+            ? context.Database.BeginTransaction()
+            : null;
+
+        var owed = On(meetingId);
+        var meeting = context.Meetings.AsNoTracking().First(row => row.Id == meetingId);
+
+        if (meeting.LifecycleState is not LifecycleState.Active)
+        {
+            throw new MeetingStageException(
+                $"Meeting {meetingId} is on its way out, and nothing is bought for a meeting "
+                + "somebody asked to get rid of.");
+        }
+
+        if (!owed.MayBeAskedAgain)
+        {
+            throw new MeetingStageException(
+                $"Meeting {meetingId} is {owed.Stage} and {owed.Standing}, which offers no "
+                + "other summary to ask for.");
+        }
+
+        var job = ProcessingJob.Queue(
+            Guid.NewGuid(), meetingId, JobKind.Extract, NextKey(meetingId, JobKind.Extract), Now);
         context.ProcessingJobs.Add(job);
         context.SaveChanges();
         write?.Commit();

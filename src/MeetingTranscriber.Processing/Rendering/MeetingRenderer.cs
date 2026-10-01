@@ -535,6 +535,15 @@ public static class MeetingRenderer
                 (assignment, person) => new { assignment.SpeakerLabel, person.DisplayName })
             .ToDictionary(pair => pair.SpeakerLabel, pair => pair.DisplayName, StringComparer.Ordinal);
 
+        var corrections = CorrectionsReaching(context, meeting.Id);
+        var named = corrections.Where(correction => correction.NodeId is not null)
+            .Select(correction => correction.NodeId!.Value)
+            .Distinct()
+            .ToArray();
+        var depths = context.Nodes
+            .Where(node => named.Contains(node.Id))
+            .ToDictionary(node => node.Id, node => node.Depth);
+
         return new TranscriptHeader(
             meeting.Id,
             meeting.StartedAt,
@@ -542,7 +551,10 @@ public static class MeetingRenderer
             meeting.Title,
             meeting.Context,
             names,
-            CorrectionsReaching(context, meeting.Id));
+            corrections)
+        {
+            NodeDepths = depths,
+        };
     }
 
     /// <summary>

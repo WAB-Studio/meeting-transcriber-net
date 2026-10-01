@@ -484,6 +484,14 @@ public sealed partial class SayingWhoIsWho : UserControl
         var made = await AskingWhoTheyAre.AskAsync(
             Corpus(), openedOver, _language, Root.XamlRoot, read.Organizations, correcting);
 
+        // The screen was closed, or moved to another meeting, while the dialogue was open. Labels such
+        // as ch1:speaker_0 repeat across meetings, so nothing read, drafted or drawn from here may
+        // land on whichever meeting is showing now.
+        if (_meeting != read.Meeting.Id)
+        {
+            return;
+        }
+
         // The people are read again whether or not somebody was made: the picker draws from the
         // read taken when the screen opened, which has neither the person just added nor a name
         // just corrected. This is not Draw(), which would also drop the draft and the clip playing.
@@ -514,8 +522,11 @@ public sealed partial class SayingWhoIsWho : UserControl
             using var context = CorpusDatabase.Open(folder);
             _read = new MeetingVoices(context, TimeProvider.System).Of(meetingId);
         }
-        catch (Exception unreadable) when (unreadable is MeetingStageException
-            || ScreenFailures.Reportable(unreadable))
+        catch (MeetingStageException gone)
+        {
+            _status.Says(UiTexts.ThatIsNoLongerHowItWas, gone.Message);
+        }
+        catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
         {
             _status.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
         }

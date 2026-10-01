@@ -461,9 +461,13 @@ public static class AudioCommands
                     + $"{source.Missing.Milliseconds} ms missing, {source.Waited.Milliseconds} ms waited, "
                     // Never called measured. It is the device's label until the recording is long
                     // enough to say otherwise, and for a source whose counter was given up on it
-                    // stays the label however long the meeting was.
+                    // stays the label however long the meeting was. Two readings say why, in this
+                    // order when a source carries both (one stretch given up, another ended in
+                    // its window): the counter was given up on, or it was still undecided when
+                    // the device ended.
                     + $"{source.MeasuredRate:0} Hz"
                     + $"{(source.CounterGivenUp ? ", counter given up on" : string.Empty)}"
+                    + $"{(source.CounterUndecided ? ", counter undecided when it ended" : string.Empty)}"
                     + $"{Devices(source)}"));
         }
     }
@@ -651,7 +655,8 @@ public static class AudioCommands
                     Report.Offset(Duration.FromMilliseconds(second * 1000L)),
                     string.Join("   ", session.Sources.Select(source => $"{Name(source.Channel)} {source.Level()}")));
 
-                wholeMachine.Consider(session.HeardNothingFromTheProgram(), output);
+                wholeMachine.Consider(
+                    session.HeardNothingFromTheProgram(), output, wentAway: session.TheProgramWentAway());
 
                 if (second == wholeMachineAt)
                 {

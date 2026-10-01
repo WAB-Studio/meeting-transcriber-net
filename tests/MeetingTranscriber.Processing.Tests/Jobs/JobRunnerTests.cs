@@ -705,6 +705,51 @@ public sealed class JobRunnerTests
         reopened.ProcessingJobs.Single(row => row.Id == jobId).State.ShouldBe(JobState.Succeeded);
     }
 
+    /// <summary>Goes red with the runner or the door touching the earlier run's rows.</summary>
+    [Fact]
+    public async Task A_summary_asked_for_again_is_kept_beside_the_one_before()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, firstJob) = ArrangeSummarisable(corpus, When);
+        var clock = new MovingClock(When.Value);
+        var provider = new FakeSummaries().Answering(
+            new SummaryProviderAnswer.Extracted(Utf8(Accepted(meeting)), "1.0", "opus", null),
+            new SummaryProviderAnswer.Extracted(
+                Utf8(Accepted(meeting, "Se movio la fecha de lanzamiento.")), "1.0", "opus", null));
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        await JobRunner.RunWhatIsDueAsync(
+            lease, clock, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+
+        clock.Advance(TimeSpan.FromMinutes(5));
+
+        using (var context = corpus.Open())
+        {
+            new MeetingWork(context, clock).SummariseAgain(meeting);
+        }
+
+        await JobRunner.RunWhatIsDueAsync(
+            lease, clock, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+
+        using var reopened = corpus.Open();
+        var runs = reopened.ExtractionRuns.Where(row => row.MeetingId == meeting).ToList();
+        runs.Count(row => row.AcceptedAt != null).ShouldBe(2);
+
+        var summaries = reopened.Summaries.Where(row => row.MeetingId == meeting).ToList();
+        summaries.Count.ShouldBe(2);
+        var firstRun = runs.Single(row => row.JobId == firstJob);
+        summaries.Single(row => row.ExtractionRunId == firstRun.Id).Abstract
+            .ShouldBe("Se decidio la fecha de lanzamiento.");
+        reopened.Decisions.Count(row => row.ExtractionRunId == firstRun.Id).ShouldBe(1);
+
+        new MeetingReading(reopened, clock).Of(meeting).Screen.Left.Abstract
+            .ShouldBe("Se movio la fecha de lanzamiento.");
+    }
+
     /// <summary>Goes red with the two kinds ordered by <c>CreatedAt</c> alone.</summary>
     [Fact]
     public async Task A_pass_sends_the_transcriptions_before_the_summaries()
@@ -1129,11 +1174,12 @@ public sealed class JobRunnerTests
         return (meeting, job.Id);
     }
 
-    private static JsonNode Accepted(Guid meetingId) => JsonNode.Parse($$"""
+    private static JsonNode Accepted(Guid meetingId, string theAbstract = "Se decidio la fecha de lanzamiento.") =>
+        JsonNode.Parse($$"""
         {
           "schema_version": "1",
           "meeting_id": "{{meetingId}}",
-          "abstract": "Se decidio la fecha de lanzamiento.",
+          "abstract": "{{theAbstract}}",
           "summary": "",
           "participants": ["{{MeetingRows.SpeakerLabel}}"],
           "decisions": [

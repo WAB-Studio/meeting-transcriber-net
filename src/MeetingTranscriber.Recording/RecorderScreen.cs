@@ -171,9 +171,21 @@ public sealed record RecorderScreen
     /// <remarks>
     /// The report is the recording's to make and this only carries it. Nothing on a screen decides
     /// that a program has been silent long enough, because that is a measurement and not a layout.
-    /// What it gates is the notice and its two ways out: the whole machine, and another program.
+    /// It is one of the two reports that gate the notice and its two ways out — the whole machine,
+    /// and another program — and <see cref="TheProgramWentAway"/> is the other.
     /// </remarks>
     public bool NothingCameFromTheProgram { get; init; }
+
+    /// <summary>
+    /// Whether the recording has reported that the program channel 0 follows has ended since
+    /// channel 0 began following it.
+    /// </summary>
+    /// <remarks>
+    /// Carried and never worked out, for the reason <see cref="NothingCameFromTheProgram"/> is: the
+    /// report is the recording's to make. Where both stand, this is the one said, because it is
+    /// the cause.
+    /// </remarks>
+    public bool TheProgramWentAway { get; init; }
 
     /// <summary>Whether it has already been taken, which happens at most once in a meeting.</summary>
     public bool WholeMachineTaken { get; init; }
@@ -194,19 +206,34 @@ public sealed record RecorderScreen
 
     /// <summary>
     /// Whether the notice is on screen, and channel 0's meter reads <em>sin señal</em>: the
-    /// recording reported that nothing came, the whole machine has not been taken, no move is in
-    /// flight, and a meeting is under way. The one answer both the notice and the meter read.
+    /// recording reported that nothing came or that the program went away, the whole machine has
+    /// not been taken, no move is in flight, and a meeting is under way. The one answer both the
+    /// notice and the meter read.
     /// </summary>
     /// <remarks>
     /// Not while a move is in flight: the recording already names the new program by then, and the
-    /// notice would say nothing has come from a program that has not yet been judged. It returns,
-    /// naming the program channel 0 is on, if the move is refused.
+    /// notice would say something about a program that has not yet been judged. It returns, naming
+    /// the program channel 0 is on, if the move is refused. A paused meeting counts as under way,
+    /// so a program that goes away during a pause is said at once; the presses it offers come off
+    /// the state table, which reaches them only while recording.
     /// </remarks>
-    public bool NothingCameIsOnScreen =>
-        NothingCameFromTheProgram
+    public bool TheNoticeIsOnScreen =>
+        EitherReportStands
         && !WholeMachineTaken
         && !AnotherProgramIsBeingOpened
         && State.IsRecording();
+
+    /// <summary>
+    /// Whether either report stands. The one place that says so: the notice and both ways out read
+    /// it, so they cannot come to disagree about which reports they answer to.
+    /// </summary>
+    private bool EitherReportStands => NothingCameFromTheProgram || TheProgramWentAway;
+
+    /// <summary>Whether the notice says that nothing came, which is the other sentence's absence.</summary>
+    public bool NothingCameIsOnScreen => TheNoticeIsOnScreen && !TheProgramWentAway;
+
+    /// <summary>Whether the notice says that the program went away.</summary>
+    public bool TheProgramWentAwayIsOnScreen => TheNoticeIsOnScreen && TheProgramWentAway;
 
     /// <summary>
     /// The programs channel 0 may be moved onto: those running, less the one it follows now, in the
@@ -351,17 +378,17 @@ public sealed record RecorderScreen
         // moved. Offered first and by itself, because it is the whole of the consent: what is not
         // in Available is not on screen, so there is nothing to press before the offer exists.
         RecorderPress.RecordTheWholeMachine =>
-            NothingCameFromTheProgram
+            EitherReportStands
             && !WholeMachineTaken
             && !AnotherProgramIsBeingOpened
             && Chosen.Source?.IsTheWholeMachine == false,
 
-        // The same report, and the same consent: pointing channel 0 somewhere else is a way out of
-        // the same silence. Only while the recorder half is on screen, because a picker that is not
-        // there cannot be pressed and choosing without the meter in view defeats the point. And
-        // not once the picker is open or a move is under way, which is what keeps it one press.
+        // The same two reports, and the same consent: pointing channel 0 somewhere else is a way
+        // out of the same silence. Only while the recorder half is on screen, because a picker that
+        // is not there cannot be pressed and choosing without the meter in view defeats the point.
+        // And not once the picker is open or a move is under way, which is what keeps it one press.
         RecorderPress.ChooseAnotherProgram =>
-            NothingCameFromTheProgram
+            EitherReportStands
             && !WholeMachineTaken
             && !AnotherProgramIsBeingChosen
             && !AnotherProgramIsBeingOpened

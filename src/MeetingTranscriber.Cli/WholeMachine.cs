@@ -4,7 +4,8 @@ namespace MeetingTranscriber.Cli;
 
 /// <summary>
 /// The offer of the whole machine's audio, at a prompt: said once when channel 0 has heard nothing
-/// from the program it is following, and taken only by somebody answering it.
+/// from the program it is following or the program it follows has closed, and taken only by
+/// somebody answering it.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -63,17 +64,25 @@ public sealed class WholeMachine
     /// </summary>
     /// <param name="heardNothing">Whether channel 0 has heard nothing from the program.</param>
     /// <param name="output">Where the offer is written.</param>
-    public void Consider(bool heardNothing, TextWriter output)
+    /// <param name="wentAway">
+    /// Whether the program it follows has closed. Either report makes the offer, once; this one
+    /// says why, and is the sentence said where both stand because it is the cause.
+    /// </param>
+    public void Consider(bool heardNothing, TextWriter output, bool wentAway = false)
     {
         ArgumentNullException.ThrowIfNull(output);
 
-        if (heardNothing && !offered)
+        if ((heardNothing || wentAway) && !offered)
         {
             offered = true;
+            var why = wentAway
+                ? "that program closed and nothing has come from it since."
+                : "nothing at all has come from that program.";
+
             Report.Line(
                 output,
                 "no audio",
-                $"nothing at all has come from that program. Press {Key} to record the whole "
+                $"{why} Press {Key} to record the whole "
                 + "machine instead, which puts notifications and every other application in the "
                 + "recording. The meeting keeps running either way.");
 
@@ -124,8 +133,8 @@ public sealed class WholeMachine
                 output,
                 "channel 0",
                 "the whole machine's audio has not been offered, so there is nothing to take: "
-                + "channel 0 is following its program and has not been silent long enough for the "
-                + "offer to be worth making. Nothing moved.");
+                + "channel 0 is following its program and has neither been silent long enough nor "
+                + "lost its program for the offer to be worth making. Nothing moved.");
             return;
         }
 

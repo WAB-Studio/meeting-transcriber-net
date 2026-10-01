@@ -158,6 +158,46 @@ public class MeetingRendererTests
     }
 
     /// <summary>
+    /// Of two corrections of one word the project's is the more specific inside the project, so it
+    /// wins over its organization's. Both are added as rows with fixed ids, the organization's the
+    /// smaller: <c>HumanLayer.Correct</c> mints random ones, which would pass half the time without
+    /// the depth reaching the renderer.
+    /// </summary>
+    [Fact]
+    public void A_correction_under_a_project_wins_over_its_organizations_inside_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+        MeetingRenderer.Render(context, meeting, When);
+        var word = context.Utterances.First(turn => turn.MeetingId == meeting).Text.Split(' ')[0];
+
+        var human = new HumanLayer(context, TimeProvider.System);
+        var techsed = human.Root(NodeKind.Organization, "TechSed");
+        var coati = human.Under(techsed, NodeKind.Initiative, "Coati");
+        human.Link(meeting, coati, MeetingNodeRole.WorkOf);
+        context.TerminologyCorrections.Add(Row(1, word, "DE LA ORGANIZACION", techsed.Id));
+        context.TerminologyCorrections.Add(Row(2, word, "DEL PROYECTO", coati.Id));
+        context.SaveChanges();
+
+        var rendered = MeetingRenderer.Render(context, meeting, When);
+
+        var transcript = File.ReadAllText(CorpusFiles.Locate(corpus.Root, rendered.Transcript.RelativePath).FullName);
+        transcript.ShouldContain("DEL PROYECTO");
+        transcript.ShouldNotContain("DE LA ORGANIZACION");
+    }
+
+    private static TerminologyCorrection Row(int id, string wrong, string right, Guid node) => new()
+    {
+        Id = new Guid(id, 0, 0, [0, 0, 0, 0, 0, 0, 0, 0]),
+        NodeId = node,
+        WrongText = wrong,
+        CorrectText = right,
+        MatchMode = TerminologyMatchMode.Exact,
+        CreatedAt = UtcTimestamp.From(new DateTimeOffset(2026, 8, 7, 12, 0, 0, TimeSpan.Zero)),
+    };
+
+    /// <summary>
     /// A correction scoped to another meeting is another meeting's. Without the scope check every
     /// correction anybody ever wrote would apply to everything.
     /// </summary>

@@ -209,6 +209,7 @@ public sealed class SharedTimeline
             Length(source.Missing + offsets[index] + Math.Max(0, emitted - covered)),
             Length(offsets[index]),
             source.CounterGivenUp,
+            source.CounterUndecided,
             source.Stretches);
     }
 

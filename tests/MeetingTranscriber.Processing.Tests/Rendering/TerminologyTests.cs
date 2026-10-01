@@ -41,12 +41,36 @@ public class TerminologyTests
     [Fact]
     public void The_narrower_place_wins_whichever_order_the_rows_came_in()
     {
+        // Fixed ids, the everywhere row the smaller: with the place rank gone the id decides, and the
+        // wrong row would win every time instead of half of them.
         var everywhere = Correct("quati", "Coati");
+        everywhere.Id = new Guid("00000000-0000-0000-0000-000000000001");
         var underANode = Correct("quati", "Kwati");
+        underANode.Id = new Guid("00000000-0000-0000-0000-000000000002");
         underANode.NodeId = Guid.NewGuid();
 
         Terminology.Apply("hablamos de quati", [everywhere, underANode]).ShouldBe("hablamos de Kwati");
         Terminology.Apply("hablamos de quati", [underANode, everywhere]).ShouldBe("hablamos de Kwati");
+    }
+
+    /// <summary>
+    /// Of two node corrections of one word the deeper node is the more specific: a word somebody
+    /// fixed under a project beats the one fixed for its organization, inside that project. The
+    /// organization's row takes the smaller id, so without the depth the id would put it first.
+    /// </summary>
+    [Fact]
+    public void The_deeper_node_wins_whichever_order_the_rows_came_in()
+    {
+        var organization = Correct("quati", "Coati");
+        organization.Id = new Guid("00000000-0000-0000-0000-000000000001");
+        organization.NodeId = Guid.NewGuid();
+        var project = Correct("quati", "Kwati");
+        project.Id = new Guid("00000000-0000-0000-0000-000000000002");
+        project.NodeId = Guid.NewGuid();
+        var depths = new Dictionary<Guid, int> { [organization.NodeId.Value] = 0, [project.NodeId.Value] = 1 };
+
+        Terminology.Apply("hablamos de quati", [organization, project], depths).ShouldBe("hablamos de Kwati");
+        Terminology.Apply("hablamos de quati", [project, organization], depths).ShouldBe("hablamos de Kwati");
     }
 
     /// <summary>

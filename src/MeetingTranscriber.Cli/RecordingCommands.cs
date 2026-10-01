@@ -373,7 +373,8 @@ public static class RecordingCommands
                         "   ",
                         recording.Sources.Select(source => $"{Name(source.Channel)} {source.Level()}")));
 
-                wholeMachine.Consider(recording.HeardNothingFromTheProgram(), output);
+                wholeMachine.Consider(
+                    recording.HeardNothingFromTheProgram(), output, wentAway: recording.TheProgramWentAway());
 
                 if (recording.Sources.Any(source => source.HasEnded))
                 {

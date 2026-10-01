@@ -142,6 +142,12 @@ public sealed class MeetingRecording : IDisposable
     public bool HeardNothingFromTheProgram() => session.HeardNothingFromTheProgram();
 
     /// <summary>
+    /// Whether the program channel 0 is following has ended since it began following it. Nothing
+    /// is done about it until somebody does.
+    /// </summary>
+    public bool TheProgramWentAway() => session.TheProgramWentAway();
+
+    /// <summary>
     /// The program channel 0 is listening to now, or nothing when it is on the whole machine. Asked
     /// rather than remembered by the screen, because a move changes it and the screen is not the
     /// only thing that can have moved it.

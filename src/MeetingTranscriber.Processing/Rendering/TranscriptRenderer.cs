@@ -21,7 +21,14 @@ public sealed record TranscriptHeader(
     string? Title,
     string? Context,
     IReadOnlyDictionary<string, string> Names,
-    IReadOnlyList<TerminologyCorrection> Corrections);
+    IReadOnlyList<TerminologyCorrection> Corrections)
+{
+    /// <summary>
+    /// The depth of each node a correction in <see cref="Corrections"/> names, so that of two node
+    /// corrections of one word the deeper one is applied first. Empty for a caller holding no tree.
+    /// </summary>
+    public IReadOnlyDictionary<Guid, int> NodeDepths { get; init; } = new Dictionary<Guid, int>();
+}
 
 /// <summary>The two derived files of a meeting, as text and ready to be written.</summary>
 public sealed record RenderedTranscript(string Markdown, string Jsonl);
@@ -83,7 +90,7 @@ public static class TranscriptRenderer
         foreach (var turn in turns)
         {
             markdown.Append(CultureInfo.InvariantCulture, $"\n## {Speaker(header, turn)} — {Clock(turn.Start)}\n\n");
-            markdown.Append(Terminology.Apply(turn.Text, header.Corrections));
+            markdown.Append(Terminology.Apply(turn.Text, header.Corrections, header.NodeDepths));
             markdown.Append('\n');
         }
 
@@ -109,7 +116,7 @@ public static class TranscriptRenderer
                     channel = turn.Channel is { } channel ? (int)channel : (int?)null,
                     speaker_label = turn.SpeakerLabel,
                     confidence = turn.Confidence,
-                    text = Terminology.Apply(turn.Text, header.Corrections),
+                    text = Terminology.Apply(turn.Text, header.Corrections, header.NodeDepths),
                 },
                 Compact));
             jsonl.Append('\n');
@@ -146,7 +153,7 @@ public static class TranscriptRenderer
             return;
         }
 
-        var corrected = Terminology.Apply(value, header.Corrections);
+        var corrected = Terminology.Apply(value, header.Corrections, header.NodeDepths);
         markdown.Append(CultureInfo.InvariantCulture, $"{key}: {JsonSerializer.Serialize(corrected, Compact)}\n");
     }
 }
