@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 196/271
+progress: 196/275
 updated: 2026-10-01
 ---
 
@@ -246,7 +246,7 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-187: What a meeting was about and who was in it is somebody's to settle, on the meeting itself.
 - [ ] ISC-188: Every speaker a recording left unnamed is somebody's to name, and that name is what every later reading of the meeting shows.
 - [ ] ISC-191: A speaker left unnamed can be named by hearing them, not only by reading what they said.
-- [ ] ISC-191.1: Every unnamed speaker of a meeting whose audio is stored is offered a stretch of it where they talk and nobody talks over them.
+- [ ] ISC-191.1: Every unnamed speaker of a meeting whose audio is stored who ever spoke with nobody over them is offered a stretch where they did; one who never did says so and is named by reading.
 - [x] ISC-191.2: Anti: a speaker is never offered the first stretch they spoke alone in when the meeting holds a longer one.
 - [x] ISC-191.3: Anti: a meeting whose audio is not stored never offers a stretch that cannot play — it says its audio is gone, and its speakers are named by reading as before.
 - [x] ISC-202: A classification somebody filled by hand can be kept under a name of their own and used again.
@@ -267,6 +267,8 @@ Board: 4 · Deepgram BYOK
 - [ ] ISC-155: Anti: a turn lands where it was said in the meeting, however much of the meeting was left out of what was sent.
 - [ ] ISC-182: A meeting transcribed while it was being recorded has its transcript when it stops, and nothing transcribes it a second time on its own.
 - [ ] ISC-183: A live transcription the provider was lost in the middle of says which stretch of the meeting it is missing, rather than reading as the whole of it.
+- [ ] ISC-207: Anti: two live runs pointed at one folder of responses never both pay for the same audio.
+- [ ] ISC-208: A live run that ended leaves its folder of responses free for the next one.
 - [ ] ISC-193: A meeting goes from stop to summary with nothing pressed only when the person said it may, and only under the cost they allowed.
 - [ ] ISC-193.1: With unattended advance on, a meeting whose transcription is estimated under the ceiling the person set — in the same money the estimate is shown in — goes through what they settled should follow a recording, its transcription and its summary when that was settled too, with nothing pressed.
 - [ ] ISC-193.2: Anti: with unattended advance on, a meeting whose transcription is estimated over that ceiling is not sent, and waits for somebody to approve its cost.
@@ -290,6 +292,7 @@ Board: 5 · Summaries
 - [ ] ISC-190: A meeting's text leaves for a summary only on terms the person was told.
 - [ ] ISC-190.1: Automatic summaries cannot be turned on until the person has been shown which provider will receive the meeting's text and which way that provider was found to be charging.
 - [ ] ISC-190.2: Anti: when the provider reports no quota left, or a move to paid usage, the summary run stops rather than carrying on, and automatic summaries stop with it.
+- [ ] ISC-209: A summary somebody stops spends nothing more once it was stopped.
 - [ ] ISC-196: Every summary a meeting was ever given stays readable, and which one the meeting shows is somebody's to choose.
 - [ ] ISC-196.1: After a meeting accepts a second summary, the first can still be read from that meeting, whole and as it was accepted.
 - [ ] ISC-196.2: Somebody can put an earlier summary back as the one a meeting shows, and it is still the one shown after the application is closed and opened again.
@@ -308,7 +311,7 @@ Board: 6 · Conocimiento local
 - [x] ISC-95: Anti: a meeting on its way out is never something search offers.
 - [x] ISC-96: Maintaining the corpus — compacting it, or throwing the indexes away and building them again — leaves search answering exactly what it answered before.
 - [x] ISC-97: Anti: a query the index cannot parse is refused naming the query, never as a database error.
-- [x] ISC-98: The MCP server answers read-only over stdio and never writes.
+- [x] ISC-98: The MCP server answers read-only over stdio and never writes the corpus.
 - [x] ISC-99: Anti: an MCP response is bounded.
 - [x] ISC-100: Every MCP request is recorded locally.
 - [ ] ISC-101: Anti: what a meeting recorded is never rewritten by a later one — what changed is recorded beside it and both stay readable.
@@ -351,6 +354,7 @@ Board: 7 · Distribución y backup
 - [x] ISC-114.3: A corpus location that cannot be opened is refused naming the folder, rather than opened.
 - [x] ISC-114.4: Anti: a corpus location that cannot be opened never becomes a second, empty corpus somewhere else.
 - [ ] ISC-146: The package installs and uninstalls on a machine that is not the one it was built on.
+- [ ] ISC-206: The repository produces one signed package a machine can install, and what is inside it is what its manifest says.
 
 ## Not yet specified
 
@@ -811,7 +815,7 @@ Board: 7 · Distribución y backup
 - ISC-195.2 — `AudioIntakeTests.What_somebody_typed_that_the_folder_contradicts_is_refused_and_nothing_is_filed` (a theory over start, language and name, each over a titled folder) and `.What_somebody_typed_that_the_folder_agrees_with_is_filed`, plus `ImportAudioCommandTests.A_start_the_folder_contradicts_is_refused_rather_than_stored` (`tests/MeetingTranscriber.Recording.Tests` and `tests/MeetingTranscriber.Cli.Tests`), green 2026-09-30.
 - ISC-195.3 — `AudioIntakeTests.This_applications_own_recording_arrives_as_its_two_sources` (`tests/MeetingTranscriber.Recording.Tests`), green 2026-09-30: the brought-in meeting's id is not the card's.
 - ISC-169 — the 26 s `capture --out <folder> --seconds 26 --process explorer --then-process <pid> --then-process-at 12` run on this machine 2026-09-30, a `powershell` looping a Windows alarm beside it: channel 0 silent while on `explorer` and audible after the move at 12, both spools to 0:00:26, one `audio.wav`, the seam 8 ms recorded as lost, and `recordings --spool` naming the moment, `(one_program)` and what it had followed. `SpoolChangesTests` and `ReopenedSourceTests` (`tests/MeetingTranscriber.Audio.Tests`) and `CaptureCommandTests` (`tests/MeetingTranscriber.Cli.Tests`) green the same day. Not reached: the refusal onto the program already followed, which no test drives; a move made from the application's screen is held as a rule by `RecorderScreenTests` (`tests/MeetingTranscriber.Recording.Tests`) and its window by no probe here.
-- ISC-98 — `ChildProcessTests.The_server_answers_a_child_process_over_its_own_standard_streams` (`tests/MeetingTranscriber.Mcp.Tests`), green on CI at `2fa71f2` 2026-09-30, for the answering over stdio, and `ReadOnlyTests.Nothing_in_the_server_opens_a_corpus_that_can_be_written`, `.Nothing_in_the_server_writes_a_file_into_the_corpus` and `.Nothing_in_the_server_writes_its_own_SQL` (`tests/MeetingTranscriber.Mcp.Tests`) for never writing the corpus; the one file it writes is `agent-requests.jsonl`, outside it (ISC-100). Not reached: those three are sweeps of the source and not a write attempted through the running server.
+- ISC-98 — `ChildProcessTests.The_server_answers_a_child_process_over_its_own_standard_streams` (`tests/MeetingTranscriber.Mcp.Tests`), green on CI at `2fa71f2` 2026-09-30, for the answering over stdio, and `ReadOnlyTests.Nothing_in_the_server_opens_a_corpus_that_can_be_written`, `.Nothing_in_the_server_writes_a_file_into_the_corpus` and `.Nothing_in_the_server_writes_its_own_SQL` (`tests/MeetingTranscriber.Mcp.Tests`) for never writing the corpus; the one file it writes is `agent-requests.jsonl`, outside it (ISC-100). Not reached: those three are sweeps of the source and not a write attempted through the running server. Reworded 2026-10-01 from 'never writes' to 'never writes the corpus' (the server writes its own request record outside the corpus, ISC-100); the three sweeps re-run green against the new words 2026-10-01.
 - ISC-194 — held by its three leaves, `ISC-194.1`, `ISC-194.2` and `ISC-194.3`, green 2026-09-30.
 - ISC-194.1 — `CorpusExportTests.An_export_of_only_the_transcripts_carries_not_one_byte_of_audio`, `.Without_the_corrections_ticked_the_transcript_carries_no_name_no_corrected_word_and_no_note` and `.What_somebody_corrected_by_hand_goes_only_when_it_was_ticked` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-30: unticked, the transcript goes rendered without names, corrections or the context note, and the title goes always as the meeting's name, not a correction.
 - ISC-194.2 — `CorpusExportTests.What_an_export_holds_is_read_without_this_application` and `.An_export_of_everything_finds_every_meeting_with_what_it_had` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-30: the index and each card are read with `System.Text.Json` and text alone.
