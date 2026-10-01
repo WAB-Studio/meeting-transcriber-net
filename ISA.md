@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 175/263
+progress: 177/263
 updated: 2026-09-30
 ---
 
@@ -301,8 +301,8 @@ Board: 6 · Conocimiento local
 - [x] ISC-96: Maintaining the corpus — compacting it, or throwing the indexes away and building them again — leaves search answering exactly what it answered before.
 - [x] ISC-97: Anti: a query the index cannot parse is refused naming the query, never as a database error.
 - [x] ISC-98: The MCP server answers read-only over stdio and never writes.
-- [ ] ISC-99: Anti: an MCP response is bounded.
-- [ ] ISC-100: Every MCP request is recorded locally.
+- [x] ISC-99: Anti: an MCP response is bounded.
+- [x] ISC-100: Every MCP request is recorded locally.
 - [ ] ISC-101: Anti: what a meeting recorded is never rewritten by a later one — what changed is recorded beside it and both stay readable.
 - [ ] ISC-102: Two people asking the same corpus what still stands get the same answer, whoever is reading and whatever they read first.
 - [ ] ISC-103: What still stands comes back at the same cost with three hundred meetings behind it as with ten.
@@ -798,8 +798,10 @@ Board: 7 · Distribución y backup
 - ISC-195.2 — `AudioIntakeTests.What_somebody_typed_that_the_folder_contradicts_is_refused_and_nothing_is_filed` (a theory over start, language and name, each over a titled folder) and `.What_somebody_typed_that_the_folder_agrees_with_is_filed`, plus `ImportAudioCommandTests.A_start_the_folder_contradicts_is_refused_rather_than_stored` (`tests/MeetingTranscriber.Recording.Tests` and `tests/MeetingTranscriber.Cli.Tests`), green 2026-09-30.
 - ISC-195.3 — `AudioIntakeTests.This_applications_own_recording_arrives_as_its_two_sources` (`tests/MeetingTranscriber.Recording.Tests`), green 2026-09-30: the brought-in meeting's id is not the card's.
 - ISC-169 — the 26 s `capture --out <folder> --seconds 26 --process explorer --then-process <pid> --then-process-at 12` run on this machine 2026-09-30, a `powershell` looping a Windows alarm beside it: channel 0 silent while on `explorer` and audible after the move at 12, both spools to 0:00:26, one `audio.wav`, the seam 8 ms recorded as lost, and `recordings --spool` naming the moment, `(one_program)` and what it had followed. `SpoolChangesTests` and `ReopenedSourceTests` (`tests/MeetingTranscriber.Audio.Tests`) and `CaptureCommandTests` (`tests/MeetingTranscriber.Cli.Tests`) green the same day. Not reached: the refusal onto the program already followed, which no test drives; a move made from the application's screen is held as a rule by `RecorderScreenTests` (`tests/MeetingTranscriber.Recording.Tests`) and its window by no probe here.
-- ISC-98 — `ChildProcessTests.The_server_answers_a_child_process_over_its_own_standard_streams` (`tests/MeetingTranscriber.Mcp.Tests`), green on CI at `2fa71f2` 2026-09-30, for the answering over stdio, and `ReadOnlyTests.Nothing_in_the_server_opens_a_corpus_that_can_be_written`, `.Nothing_in_the_server_writes_a_file_into_the_corpus` and `.Nothing_in_the_server_writes_its_own_SQL` (`tests/MeetingTranscriber.Mcp.Tests`) for never writing. Not reached: those three are sweeps of the source and not a write attempted through the running server.
+- ISC-98 — `ChildProcessTests.The_server_answers_a_child_process_over_its_own_standard_streams` (`tests/MeetingTranscriber.Mcp.Tests`), green on CI at `2fa71f2` 2026-09-30, for the answering over stdio, and `ReadOnlyTests.Nothing_in_the_server_opens_a_corpus_that_can_be_written`, `.Nothing_in_the_server_writes_a_file_into_the_corpus` and `.Nothing_in_the_server_writes_its_own_SQL` (`tests/MeetingTranscriber.Mcp.Tests`) for never writing the corpus; the one file it writes is `agent-requests.jsonl`, outside it (ISC-100). Not reached: those three are sweeps of the source and not a write attempted through the running server.
 - ISC-194 — held by its three leaves, `ISC-194.1`, `ISC-194.2` and `ISC-194.3`, green 2026-09-30.
 - ISC-194.1 — `CorpusExportTests.An_export_of_only_the_transcripts_carries_not_one_byte_of_audio`, `.Without_the_corrections_ticked_the_transcript_carries_no_name_no_corrected_word_and_no_note` and `.What_somebody_corrected_by_hand_goes_only_when_it_was_ticked` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-30: unticked, the transcript goes rendered without names, corrections or the context note, and the title goes always as the meeting's name, not a correction.
 - ISC-194.2 — `CorpusExportTests.What_an_export_holds_is_read_without_this_application` and `.An_export_of_everything_finds_every_meeting_with_what_it_had` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-09-30: the index and each card are read with `System.Text.Json` and text alone.
 - ISC-194.3 — `CorpusSettingsTests.The_last_export_comes_back_after_the_corpus_is_reopened` (`tests/MeetingTranscriber.Infrastructure.Tests`), `CorpusExportTests.The_export_is_remembered_as_the_last_one_only_once_it_is_whole` (`tests/MeetingTranscriber.Processing.Tests`) and `ConfiguracionTests.The_export_block_is_on_the_settings_screen_and_says_what_the_catalogue_says` (`tests/MeetingTranscriber.App.Tests`), green 2026-09-30: the screen half is held by a source fact and not by a walk.
+- ISC-99 — `CorpusServerTests.A_long_meeting_cannot_come_back_whole_in_one_call`, `.An_answer_is_cut_at_its_size_whatever_its_row_count` and `.One_row_larger_than_an_answer_may_be_is_refused_naming_where_to_read_past_it` (`tests/MeetingTranscriber.Mcp.Tests`), green 2026-09-30.
+- ISC-100 — `CorpusServerTests.Every_request_is_recorded_with_what_was_asked_and_how_much_came_back`, `.A_call_over_a_folder_with_no_corpus_is_recorded_too`, `.A_request_that_cannot_be_recorded_is_not_answered` and `.A_session_leaves_nothing_in_the_corpus_folder_but_the_database` (`tests/MeetingTranscriber.Mcp.Tests`), green 2026-09-30. Not reached: a call the SDK refuses before any tool runs.

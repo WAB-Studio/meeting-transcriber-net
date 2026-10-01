@@ -293,6 +293,13 @@ public class ConfiguracionTests
         markup.ShouldContain("AutomationProperties.Name=\"{x:Bind In(loc:UiTexts.ExportTheCorpusToAFolder)}\"");
 
         screen.ShouldContain("CorpusExport.Into(");
+
+        // The line about the last export: drawn from a read of the corpus, and read whenever the
+        // screen is shown, so what it says is what the corpus says and not what it said last time.
+        markup.ShouldContain("x:Name=\"LastExportText\"");
+        screen.ShouldContain("new CorpusSettings(context).LastExportMade()");
+        screen.ShouldContain("UiTexts.LastExport.In(");
+        Handler("public async void Show(").ShouldContain("ReadTheLastExport();");
     }
 
     /// <summary>
