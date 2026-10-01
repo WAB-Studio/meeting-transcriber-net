@@ -63,7 +63,7 @@ internal static class CommandLine
           see <name>          write <name>.tree.txt and <name>.png of the screen
           press <element>     do to it what pressing it does
           type <element> <text>  put text in a field
-          key <element> <key>   send one key to it: enter, escape or tab
+          key <element> <key>   send one key to it: enter, escape, tab, space, up or down
           choose <list> <item>  pick a named thing out of a list
           wait <element>      stop until it is on a screen, and make that screen the one the
                               rest of the script is about

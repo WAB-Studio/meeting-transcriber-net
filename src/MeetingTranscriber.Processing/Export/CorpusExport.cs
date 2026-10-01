@@ -472,9 +472,9 @@ public static class CorpusExport
     private sealed record Correction(string Wrong, string Right, string MatchMode);
 
     /// <param name="SummaryShown">
-    /// The run of the <c>extractions/&lt;id&gt;.json</c> beside this file that the meeting showed,
-    /// which is a choice somebody may have made by putting an earlier summary back. Null where no
-    /// summary was accepted.
+    /// The run whose output is the export's <c>extractions/&lt;id&gt;.json</c> when the export also
+    /// carries the summaries, and which the meeting showed — a choice somebody may have made by
+    /// putting an earlier summary back. Null where no summary was accepted.
     /// </param>
     private sealed record MeetingCorrections(
         Guid MeetingId,

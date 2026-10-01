@@ -319,7 +319,7 @@ internal sealed class Session : IDisposable
         // has no script to check, refuses it here.
         var code = Instruction.KeyNamed(key);
 
-        var element = Search.One(_app.Windows.Active(), target);
+        var element = Search.One(_app.Windows.Active(), target, takingTheKeyboard: true);
 
         if (Reading.Flag(() => element.Current.IsEnabled) == false)
         {

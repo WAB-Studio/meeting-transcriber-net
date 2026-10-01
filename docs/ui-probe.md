@@ -207,10 +207,11 @@ kept.
   after *Cambiar*, where the pick moves the channel — counts as made: UI Automation refuses the call
   it was in the middle of, and a list left disabled is how the move shows. A list still enabled
   after a refusal is a refusal.
-- `key <element> <enter|escape|tab>` — focus it and send that key. Fails if it is disabled, if it
+- `key <element> <enter|escape|tab|space|up|down>` — focus it and send that key. Fails if it is disabled, if it
   will not take focus, if it takes focus and does not get the keyboard — which is what a window
   that is not in front does — or if Windows refuses the keystroke outright, which a locked
-  workstation and a secure desktop both do.
+  workstation and a secure desktop both do. A row and the label inside it carry the same words, so
+  where a name matches both, the one that can hold the keyboard is the one a key goes to.
 - `wait <element>` — block until it is on a window, and make that window the screen from then on.
 - `sleep <seconds>` — let that long pass, touching nothing. Script host only, capped at twenty
   minutes.
