@@ -117,8 +117,43 @@ public static class CorpusDatabase
     public static CorpusDbContext OpenMigrated(DirectoryInfo root)
     {
         var context = Open(root);
-        context.Database.Migrate();
+
+        try
+        {
+            context.Database.Migrate();
+        }
+        catch
+        {
+            // A context nobody is handed is one nobody disposes, and this now runs on every launch:
+            // a migration that threw would leave the file held by a connection the window's own
+            // refused-corpus flow cannot let go of.
+            context.Dispose();
+            ClearPoolsFor(root);
+            throw;
+        }
+
         return context;
+    }
+
+    /// <summary>
+    /// What a launch runs before the window reads anything: a corpus behind this build's schema is
+    /// migrated, and a folder with no corpus in it is left with none.
+    /// </summary>
+    /// <remarks>
+    /// Without it the screens that only read a corpus (the meetings list first among them) meet a
+    /// column this build expects and the file does not have, and show SQLite's own error for it. A
+    /// folder that holds nothing is not made into a corpus here, because the first thing kept still
+    /// makes one and that is the moment somebody has been told it is being made.
+    /// </remarks>
+    public static void BringUpToThisBuild(DirectoryInfo root)
+    {
+        if (!HoldsACorpus(root))
+        {
+            return;
+        }
+
+        OpenMigrated(root).Dispose();
+        ClearPoolsFor(root);
     }
 
     /// <summary>

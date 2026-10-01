@@ -58,6 +58,8 @@ internal static class CommandLine
         usage: dotnet run --project tools/MeetingTranscriber.UiProbe -- --out <folder> <instruction>...
                dotnet run --project tools/MeetingTranscriber.UiProbe -- --mcp
 
+          --refused-corpus   start the application over a corpus that will not open
+
           see <name>          write <name>.tree.txt and <name>.png of the screen
           press <element>     do to it what pressing it does
           type <element> <text>  put text in a field
@@ -101,9 +103,10 @@ internal static class CommandLine
     {
         string outFolder;
         IReadOnlyList<Instruction> script;
+        bool refusedCorpus;
         try
         {
-            if (!Ready(args, out outFolder, out script))
+            if (!Ready(args, out outFolder, out script, out refusedCorpus))
             {
                 Console.Error.WriteLine(Usage);
                 return BadScript;
@@ -117,7 +120,7 @@ internal static class CommandLine
 
         try
         {
-            Walk(outFolder, script);
+            Walk(outFolder, script, refusedCorpus);
             return 0;
         }
         catch (ProbeFailed failure)
@@ -137,10 +140,15 @@ internal static class CommandLine
         }
     }
 
-    private static bool Ready(string[] args, out string outFolder, out IReadOnlyList<Instruction> script)
+    private static bool Ready(
+        string[] args,
+        out string outFolder,
+        out IReadOnlyList<Instruction> script,
+        out bool refusedCorpus)
     {
         outFolder = string.Empty;
         script = [];
+        refusedCorpus = false;
 
         string? folder = null;
         var words = new List<string>();
@@ -151,6 +159,9 @@ internal static class CommandLine
             {
                 case "--out":
                     folder = Next(args, ref at);
+                    break;
+                case "--refused-corpus":
+                    refusedCorpus = true;
                     break;
                 case "--help" or "-h":
                     Console.WriteLine(Usage);
@@ -176,7 +187,7 @@ internal static class CommandLine
         return true;
     }
 
-    private static void Walk(string folder, IReadOnlyList<Instruction> script)
+    private static void Walk(string folder, IReadOnlyList<Instruction> script, bool refusedCorpus)
     {
         // Every refusal that does not need an application, before the pointer that says where
         // somebody's meetings are is touched — the same order Run already keeps for a script that
@@ -186,7 +197,9 @@ internal static class CommandLine
         // Before the application and let go after it, which is what the order of these two lines
         // says: a `using` is undone bottom up, so the application closes and only then does the
         // pointer go back.
-        using var corpus = ProbeCorpus.PointedAtItsOwn();
+        using var corpus = refusedCorpus
+            ? ProbeCorpus.PointedAtOneThatWillNotOpen()
+            : ProbeCorpus.PointedAtItsOwn();
         using var session = Session.Open(bearings);
 
         Console.WriteLine(session.StartedAs);

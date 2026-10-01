@@ -360,7 +360,7 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Says what the screen cannot say for itself — what happened around it.</summary>
-    public void Report(UiText text) => Say(text);
+    public void Report(UiText text, params object?[] values) => Say(text, values);
 
     /// <summary>
     /// The screen as the facts that decide what can be pressed, built fresh every time rather than
@@ -1249,9 +1249,9 @@ public sealed partial class MainWindow : Window
     private RecorderSource[] SourcesNow() =>
     [
         RecorderSource.TheWholeMachine,
-        .. (Ask(AudioProcesses.Running, UiTexts.WindowsDidNotSayWhatIsPlaying) ?? [])
-            .OrderBy(program => program.Name, StringComparer.CurrentCultureIgnoreCase)
-            .ThenBy(program => program.Id)
+        .. RecorderScreen.ProgramsChannelZeroMayMoveTo(
+                Ask(AudioProcesses.Running, UiTexts.WindowsDidNotSayWhatIsPlaying) ?? [],
+                followingNow: null)
             .Select(RecorderSource.Following),
     ];
 

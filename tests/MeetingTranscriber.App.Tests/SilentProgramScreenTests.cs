@@ -42,6 +42,22 @@ public class SilentProgramScreenTests
     }
 
     /// <summary>
+    /// The source picker lists programs in the order the move list does, because it is one picker
+    /// and the two must agree: one place decides that order and this window asks it.
+    /// </summary>
+    [Fact]
+    public void The_source_picker_lists_programs_in_the_order_the_move_list_does()
+    {
+        var window = File.ReadAllText(AppSources.At(Window).FullName);
+        var start = window.IndexOf("private RecorderSource[] SourcesNow()", StringComparison.Ordinal);
+        start.ShouldBeGreaterThan(-1, "MainWindow no longer has SourcesNow.");
+        var body = window[start..window.IndexOf(';', start)];
+
+        body.ShouldContain("RecorderScreen.ProgramsChannelZeroMayMoveTo(");
+        body.ShouldNotContain("OrderBy(", customMessage: "SourcesNow orders the programs itself again.");
+    }
+
+    /// <summary>
     /// Two presses named <em>Cambiar</em> read the same to somebody who cannot see which row they
     /// are beside, so this one says what it changes.
     /// </summary>

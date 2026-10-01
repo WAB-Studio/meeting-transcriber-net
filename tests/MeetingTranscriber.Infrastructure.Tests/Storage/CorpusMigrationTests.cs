@@ -196,6 +196,43 @@ public class CorpusMigrationTests
     }
 
     /// <summary>
+    /// A corpus that stands behind this build's schema is brought up to it by what a launch runs
+    /// before any window reads it, which is how it stops showing SQLite's own error for a column
+    /// it does not have.
+    /// </summary>
+    [Fact]
+    public void A_corpus_behind_this_build_is_brought_up_to_it()
+    {
+        using var corpus = new TemporaryCorpus();
+        using (var behind = corpus.Open())
+        {
+            behind.GetService<IMigrator>().Migrate(BeforeTheIndexes);
+            behind.Database.GetPendingMigrations().ShouldNotBeEmpty();
+        }
+
+        CorpusDatabase.ClearPoolsFor(corpus.Root);
+
+        CorpusDatabase.BringUpToThisBuild(corpus.Root);
+
+        using var after = corpus.Open();
+        after.Database.GetPendingMigrations().ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A folder with nothing in it is left with nothing: the first thing kept makes the corpus,
+    /// once somebody has been told there is none.
+    /// </summary>
+    [Fact]
+    public void A_folder_with_no_corpus_in_it_is_left_with_none()
+    {
+        using var corpus = new TemporaryCorpus();
+
+        CorpusDatabase.BringUpToThisBuild(corpus.Root);
+
+        File.Exists(corpus.DatabasePath).ShouldBeFalse();
+    }
+
+    /// <summary>
     /// One row in each of the six tables the new indexes cover, written before they exist.
     /// </summary>
     /// <remarks>

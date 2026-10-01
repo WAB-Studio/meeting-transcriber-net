@@ -259,6 +259,11 @@
       "text": "Grabada y sin transcribir es lo que una reunión es casi siempre. Escucharla no cuesta nada, y por eso el reproductor es el acto principal."
     },
     {
+      "id": "c-transcrita",
+      "file": "ReunionTranscrita.dc.html",
+      "text": "Transcrita y sin resumir: la misma pantalla que la de sólo grabada, con más cosas llenas. A la derecha aparecen quién habló y cuánto, y *Resumir* es el acto. El reproductor no tiene marcas, porque las marcas son las citas del resumen y todavía no hay resumen."
+    },
+    {
       "id": "x-primera",
       "file": "Primera.dc.html",
       "text": "Una sola pregunta, una sola vez: quién usa la aplicación. Sin ella la voz del micrófono se resuelve a nadie."
