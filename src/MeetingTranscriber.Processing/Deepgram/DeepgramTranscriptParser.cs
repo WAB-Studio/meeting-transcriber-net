@@ -35,6 +35,76 @@ public static class DeepgramTranscriptParser
         return Parse(response, profile);
     }
 
+    /// <summary>
+    /// Every word of the response as the provider wrote it, with how sure it was, in order — the
+    /// one thing the stored turns do not keep. Checks no profile and no channel count: those are
+    /// <see cref="Parse(Stream, SourceProfile)"/>'s, and the response was already parsed when it
+    /// was rendered.
+    /// </summary>
+    public static IReadOnlyList<WordAsHeard> WordsAsHeardInFile(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        using var response = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return WordsAsHeard(response);
+    }
+
+    /// <inheritdoc cref="WordsAsHeardInFile"/>
+    public static IReadOnlyList<WordAsHeard> WordsAsHeard(Stream response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+
+        using var document = Read(() => JsonDocument.Parse(response));
+        var root = document.RootElement;
+        if (root.ValueKind is not JsonValueKind.Object)
+        {
+            throw Malformed($"the whole response is {root.ValueKind} and has to be an object.");
+        }
+
+        var heard = new List<WordAsHeard>();
+        var results = Property(root, "results", JsonValueKind.Object);
+        foreach (var utterance in Property(results, "utterances", JsonValueKind.Array).EnumerateArray())
+        {
+            if (utterance.ValueKind is not JsonValueKind.Object
+                || !utterance.TryGetProperty("words", out var words) || words.ValueKind is not JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var word in words.EnumerateArray())
+            {
+                if (word.ValueKind is not JsonValueKind.Object
+                    || !word.TryGetProperty("confidence", out var confidence)
+                    || confidence.ValueKind is not JsonValueKind.Number
+                    || !confidence.TryGetDouble(out var sure))
+                {
+                    continue;
+                }
+
+                var written = WrittenAs(word);
+                if (written is not null)
+                {
+                    heard.Add(new WordAsHeard(written, sure));
+                }
+            }
+        }
+
+        return heard;
+    }
+
+    private static string? WrittenAs(JsonElement word)
+    {
+        foreach (var name in new[] { "punctuated_word", "word" })
+        {
+            if (word.TryGetProperty(name, out var property) && property.ValueKind is JsonValueKind.String)
+            {
+                return property.GetString();
+            }
+        }
+
+        return null;
+    }
+
     public static DeepgramTranscript Parse(Stream response, SourceProfile profile)
     {
         ArgumentNullException.ThrowIfNull(response);
