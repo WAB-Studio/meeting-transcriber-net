@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 196/275
+progress: 205/275
 updated: 2026-10-01
 ---
 
@@ -245,8 +245,8 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-180.1: The transcript at that moment opens under the thing that cited it, without leaving the screen it is read on.
 - [ ] ISC-187: What a meeting was about and who was in it is somebody's to settle, on the meeting itself.
 - [ ] ISC-188: Every speaker a recording left unnamed is somebody's to name, and that name is what every later reading of the meeting shows.
-- [ ] ISC-191: A speaker left unnamed can be named by hearing them, not only by reading what they said.
-- [ ] ISC-191.1: Every unnamed speaker of a meeting whose audio is stored who ever spoke with nobody over them is offered a stretch where they did; one who never did says so and is named by reading.
+- [x] ISC-191: A speaker left unnamed can be named by hearing them, not only by reading what they said.
+- [x] ISC-191.1: Every unnamed speaker of a meeting whose audio is stored who ever spoke with nobody over them is offered a stretch where they did; one who never did says so and is named by reading.
 - [x] ISC-191.2: Anti: a speaker is never offered the first stretch they spoke alone in when the meeting holds a longer one.
 - [x] ISC-191.3: Anti: a meeting whose audio is not stored never offers a stretch that cannot play — it says its audio is gone, and its speakers are named by reading as before.
 - [x] ISC-202: A classification somebody filled by hand can be kept under a name of their own and used again.
@@ -267,8 +267,8 @@ Board: 4 · Deepgram BYOK
 - [ ] ISC-155: Anti: a turn lands where it was said in the meeting, however much of the meeting was left out of what was sent.
 - [ ] ISC-182: A meeting transcribed while it was being recorded has its transcript when it stops, and nothing transcribes it a second time on its own.
 - [ ] ISC-183: A live transcription the provider was lost in the middle of says which stretch of the meeting it is missing, rather than reading as the whole of it.
-- [ ] ISC-207: Anti: two live runs pointed at one folder of responses never both pay for the same audio.
-- [ ] ISC-208: A live run that ended leaves its folder of responses free for the next one.
+- [x] ISC-207: Anti: two live runs pointed at one folder of responses never both pay for the same audio.
+- [x] ISC-208: A live run that ended leaves its folder of responses free for the next one.
 - [ ] ISC-193: A meeting goes from stop to summary with nothing pressed only when the person said it may, and only under the cost they allowed.
 - [ ] ISC-193.1: With unattended advance on, a meeting whose transcription is estimated under the ceiling the person set — in the same money the estimate is shown in — goes through what they settled should follow a recording, its transcription and its summary when that was settled too, with nothing pressed.
 - [ ] ISC-193.2: Anti: with unattended advance on, a meeting whose transcription is estimated over that ceiling is not sent, and waits for somebody to approve its cost.
@@ -292,11 +292,11 @@ Board: 5 · Summaries
 - [ ] ISC-190: A meeting's text leaves for a summary only on terms the person was told.
 - [ ] ISC-190.1: Automatic summaries cannot be turned on until the person has been shown which provider will receive the meeting's text and which way that provider was found to be charging.
 - [ ] ISC-190.2: Anti: when the provider reports no quota left, or a move to paid usage, the summary run stops rather than carrying on, and automatic summaries stop with it.
-- [ ] ISC-209: A summary somebody stops spends nothing more once it was stopped.
-- [ ] ISC-196: Every summary a meeting was ever given stays readable, and which one the meeting shows is somebody's to choose.
-- [ ] ISC-196.1: After a meeting accepts a second summary, the first can still be read from that meeting, whole and as it was accepted.
-- [ ] ISC-196.2: Somebody can put an earlier summary back as the one a meeting shows, and it is still the one shown after the application is closed and opened again.
-- [ ] ISC-196.3: Anti: putting an earlier summary back loses none of the others — every summary the meeting was given can still be read and chosen again.
+- [x] ISC-209: A summary somebody stops spends nothing more once it was stopped.
+- [x] ISC-196: Every summary a meeting was ever given stays readable, and which one the meeting shows is somebody's to choose.
+- [x] ISC-196.1: After a meeting accepts a second summary, the first can still be read from that meeting, whole and as it was accepted.
+- [x] ISC-196.2: Somebody can put an earlier summary back as the one a meeting shows, and it is still the one shown after the application is closed and opened again.
+- [x] ISC-196.3: Anti: putting an earlier summary back loses none of the others — every summary the meeting was given can still be read and chosen again.
 - [ ] ISC-205: A meeting that already has a summary can be asked for another from the meeting itself.
 
 ### F7 · Local knowledge
@@ -841,3 +841,12 @@ Board: 7 · Distribución y backup
 - ISC-203.2 — walked 2026-10-01 on the registered build: with the recorder open and nothing pressed, `AppsUseLightTheme` set to 1 and back to 0 with `WM_SETTINGCHANGE` broadcast, and the window, its title bar and the meter's code-built segments and scale photographed in the new theme each time, with no resize.
 - ISC-203.3 — `OlivoTests.No_screen_names_a_brush_that_cannot_follow_the_theme`, `.Both_themes_carry_the_same_brushes_and_nothing_else_is_a_brush`, `.No_code_behind_resolves_a_brush_by_name` and `.The_application_follows_Windows_and_each_window_it_opens_says_so_to_its_title_bar` (`tests/MeetingTranscriber.App.Tests`), green 2026-10-01, and the 2026-10-01 walk of `ISC-203.1`: the dialogue, the lists, the ticks and the title bar changed theme with the page. The guards read Olivo's own brushes; the platform's parts in the dialogue, lists and title bar are held by the photographs of that walk only, and High Contrast, where `Default` is the fallback, was not reached.
 - ISC-203 — held by its three leaves, `ISC-203.1`, `ISC-203.2` and `ISC-203.3`, green 2026-10-01.
+- ISC-196.1 — `MeetingReadingTests.Every_summary_a_meeting_was_given_is_offered_newest_first_with_the_one_shown_marked` and `.An_earlier_summary_put_back_is_read_whole_as_it_was_accepted` (`tests/MeetingTranscriber.Infrastructure.Tests`), green 2026-10-01. Not reached: the press on a running window.
+- ISC-196.2 — `MeetingReadingTests.A_summary_put_back_is_still_the_one_shown_after_the_corpus_is_opened_again` and `CorpusSearchTests.Search_answers_out_of_the_summary_somebody_put_back` (`tests/MeetingTranscriber.Infrastructure.Tests`), `CorpusExportTests.The_summary_a_meeting_shows_goes_with_what_was_corrected_by_hand` (`tests/MeetingTranscriber.Processing.Tests`), `MeetingScreenTests.A_summary_is_offered_to_choose_only_where_there_are_two` (`tests/MeetingTranscriber.Domain.Tests`) and `ReadingAMeetingTests.A_summary_is_put_back_through_the_one_call_that_records_it` (`tests/MeetingTranscriber.App.Tests`), green 2026-10-01. Not reached: the press on a running window.
+- ISC-196.3 — `MeetingReadingTests.Putting_a_summary_back_loses_none_of_the_others_and_each_can_be_chosen_again` and `.A_summary_accepted_after_one_was_put_back_is_the_one_shown` (`tests/MeetingTranscriber.Infrastructure.Tests`), green 2026-10-01. A later acceptance outranks a put-back, by design. Not reached: the press on a running window.
+- ISC-196 — held by its three leaves, `ISC-196.1` to `ISC-196.3`, green 2026-10-01.
+- ISC-209 — `JobRunnerTests.A_summary_somebody_stopped_is_let_go_within_a_look`, `.A_second_summary_stopped_before_it_ran_is_never_sent` and `ClaudeCodeSummariesTests.A_run_cancelled_from_outside_is_stopped_where_it_stands` (`tests/MeetingTranscriber.Processing.Tests`) and `MeetingWorkTests.A_second_summary_waiting_to_run_is_stopped_before_it_runs` (`tests/MeetingTranscriber.Infrastructure.Tests`), green 2026-10-01. Not reached: a real Claude Code run billed and stopped.
+- ISC-207 — `LiveDeepgramTests.A_second_run_over_a_folder_a_run_is_already_using_is_refused_before_anything_is_sent` (`tests/MeetingTranscriber.Cli.Tests`), green 2026-10-01.
+- ISC-208 — `LiveDeepgramTests.A_run_that_ended_leaves_the_folder_free_for_the_next_one` (`tests/MeetingTranscriber.Cli.Tests`), green 2026-10-01.
+- ISC-191.1 — `SayingWhoIsWhoTests.A_voice_nobody_ever_heard_alone_says_so_where_its_clip_would_be` (`tests/MeetingTranscriber.App.Tests`), `WhoIsWhoTests.A_voice_is_offered_the_longest_stretch_it_spoke_alone_in` and `.A_voice_that_never_spoke_alone_is_offered_nothing` (`tests/MeetingTranscriber.Domain.Tests`), green 2026-10-01. Not reached: the label on a running window.
+- ISC-191 — held by its three leaves, `ISC-191.1` to `ISC-191.3`, green 2026-10-01.

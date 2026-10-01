@@ -175,6 +175,20 @@ public partial class CorpusNamingTests
             ignoreOrder: true);
     }
 
+    /// <summary>
+    /// The one column of a run that is a person's word and not the run's record, named for what it
+    /// records: when the summary was put back, not when it was accepted.
+    /// </summary>
+    [Fact]
+    public void A_summary_put_back_is_stored_under_chosen_at()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Sql.Strings(context, "SELECT name FROM pragma_table_info('extraction_runs');")
+            .ShouldContain("chosen_at");
+    }
+
     [Fact]
     public void A_channel_that_stopped_following_is_stored_under_exactly_these_columns()
     {

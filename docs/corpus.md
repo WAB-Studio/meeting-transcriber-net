@@ -252,7 +252,8 @@ Everything else is a source, and the part that matters most is the **human layer
 `meeting_nodes`, `templates`, `template_nodes`, `template_people`, `people`, `affiliations`,
 `meeting_people`, `speaker_assignments`, `terminology_corrections`, `action_item_progress`, and the
 titles, context notes and classifications on `meetings`, and the `words-said-right` row of
-`settings`. None of it is inferable from any artifact, so a backup that copies
+`settings`, and the `chosen_at` somebody puts on an `extraction_runs` row by putting that summary
+back. None of it is inferable from any artifact, so a backup that copies
 only the files loses it.
 
 `HumanLayer` writes all of it but that one row, which `CorpusSettings` alone writes: a word somebody
@@ -276,7 +277,9 @@ Runs and jobs — `capture_runs`, `capture_source_changes`, `processing_jobs`, `
 charged, what state a restart found, and what a channel was on at each instant of a recording.
 `capture_source_changes` holds a fact nothing on the machine can produce again once the spool folder
 is gone, and a table whose whole point is holding an unrepeatable fact is the one that must not be
-left to a catch-all.
+left to a catch-all. One column on them is a person's and not a record: `extraction_runs.chosen_at`,
+which says when somebody put that summary back as the one its meeting shows. `HumanLayer` writes it
+like the rest of that layer, and nothing produces it again.
 
 ## Where the rule is enforced
 

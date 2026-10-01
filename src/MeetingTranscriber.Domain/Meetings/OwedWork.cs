@@ -48,9 +48,11 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
 
     /// <summary>
     /// True when the stage can be left for now — including one already asked for and not yet run,
-    /// which is what keeps the press that spends money from being the one with no way back.
+    /// which is what keeps the press that spends money from being the one with no way back. A
+    /// stage that is not owed, which is a summarised meeting whatever its second summary is
+    /// doing, cannot be left: there is nothing counted to stop counting.
     /// </summary>
-    public bool MayBeLeft => Standing.MayBeLeft();
+    public bool MayBeLeft => Next is not null && Standing.MayBeLeft();
 
     /// <summary>
     /// True when a summarised meeting may be asked for another summary: nothing about it is queued,
@@ -58,7 +60,10 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
     /// </summary>
     public bool MayBeAskedAgain => Stage.OffersAgain() is not null && Standing is StageStanding.NothingToDo;
 
-    /// <summary>Whether a running summary — the first, or another asked for — can be stopped from this screen.</summary>
+    /// <summary>
+    /// Whether a summary can be stopped from this screen: a running one, or a second one still
+    /// waiting to run.
+    /// </summary>
     /// <remarks>
     /// The one press offered over <see cref="StageStanding.Running"/>, which every other kind of
     /// stage offers nothing over: a transcription in flight is not something a person can call off,
@@ -66,10 +71,15 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
     /// <see cref="ProcessingJob.Cancel"/> is a move the job state table allows off
     /// <see cref="JobState.Running"/>, and stopping the process behind it spends nothing more than
     /// what already ran. On a summarised meeting it is the second summary that runs, and it stops
-    /// the same way.
+    /// the same way. A second summary still waiting to run, whether queued or a retry waiting for
+    /// its time, stops the same way too: nothing more is spent on it. A first summary that is only
+    /// queued is not here; it is left with <see cref="MayBeLeft"/> instead.
     /// </remarks>
     public bool MayBeStopped =>
-        (Next ?? Stage.OffersAgain()) is JobKind.Extract && Standing is StageStanding.Running;
+        (Next is JobKind.Extract && Standing is StageStanding.Running)
+        || (Next is null
+            && Stage.OffersAgain() is JobKind.Extract
+            && Standing is StageStanding.Running or StageStanding.Underway);
 
     /// <summary>
     /// The one job row that stops a meeting on a person, said once as an expression because the
@@ -111,11 +121,12 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
 
     private static StageStanding AgainStandingOf(IEnumerable<JobState> states)
     {
-        var seen = states.ToHashSet();
+        // The precedence a first summary is read by, asked of the one place that spells it. Only
+        // the answer differs: a second summary is never Offered or Declined, which would count a
+        // summarised meeting as waiting on somebody.
+        var standing = MeetingStages.StandingOf(states);
 
-        return seen.Contains(JobState.Running)
-            ? StageStanding.Running
-            : seen.Any(state => state.IsQueued()) ? StageStanding.Underway : StageStanding.NothingToDo;
+        return standing is StageStanding.Running or StageStanding.Underway ? standing : StageStanding.NothingToDo;
     }
 
     /// <summary>

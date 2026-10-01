@@ -758,6 +758,23 @@ public class MeetingWorkTests
     }
 
     [Fact]
+    public void A_second_summary_waiting_to_run_is_stopped_before_it_runs()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Summarised(context);
+        var work = new MeetingWork(context, Clock);
+
+        var job = work.SummariseAgain(meeting);
+        work.On(meeting).MayBeStopped.ShouldBeTrue();
+
+        work.StopTheSummary(meeting).Id.ShouldBe(job.Id);
+
+        context.ProcessingJobs.Single(row => row.Id == job.Id).State.ShouldBe(JobState.Cancelled);
+        work.On(meeting).MayBeAskedAgain.ShouldBeTrue();
+    }
+
+    [Fact]
     public void One_meetings_answer_is_never_read_off_anothers()
     {
         using var corpus = new TemporaryCorpus();

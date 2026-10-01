@@ -695,6 +695,33 @@ public class CorpusSearchTests
         Decided(reading, Tied.BrokenById).ShouldContain(Tied.HighestId);
     }
 
+    /// <summary>
+    /// The summary somebody put back is what search answers out of too, and not the newer one it
+    /// replaced on the screen: two answers to <em>which summary does this meeting have</em> is the
+    /// failure <c>TheRunThatCounts</c> exists to prevent. Goes red with the old <c>ORDER BY</c>.
+    /// </summary>
+    [Fact]
+    public void Search_answers_out_of_the_summary_somebody_put_back()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var recorded = UtcTimestamp.From(new DateTimeOffset(2026, 8, 19, 9, 0, 0, TimeSpan.Zero));
+        var meeting = MeetingRows.Recorded(context, recorded, ["turn 0"], root: corpus.Root);
+
+        var older = UtcTimestamp.From(recorded.Value.AddHours(1));
+        var newer = UtcTimestamp.From(recorded.Value.AddHours(2));
+        var first = MeetingRows.Extracted(context, meeting, older, accepted: older, "primerazo");
+        MeetingRows.Extracted(context, meeting, newer, accepted: newer, "segundazo");
+
+        CorpusSearch.Find(context, "segundazo").ShouldNotBeEmpty();
+        CorpusSearch.Find(context, "primerazo").ShouldBeEmpty();
+
+        new MeetingReading(context, TimeProvider.System).ShowSummary(meeting, first);
+
+        CorpusSearch.Find(context, "primerazo").ShouldNotBeEmpty();
+        CorpusSearch.Find(context, "segundazo").ShouldBeEmpty();
+    }
+
     /// <summary>What the meeting screen shows as the decision of the run it decided counts.</summary>
     private static string Decided(MeetingReading reading, Guid meetingId) =>
         reading.Of(meetingId).Screen.Left.Things

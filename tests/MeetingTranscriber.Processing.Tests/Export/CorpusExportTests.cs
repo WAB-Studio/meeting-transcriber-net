@@ -226,6 +226,33 @@ public class CorpusExportTests
             .ShouldNotContain(file => file.Name == CorpusExport.HandCorrectionsName);
     }
 
+    /// <summary>
+    /// Which summary a meeting shows is one of the things somebody settled by hand, so it goes with
+    /// the rest of that file. Goes red with <c>SummaryShown</c> left out of the record.
+    /// </summary>
+    [Fact]
+    public void The_summary_a_meeting_shows_goes_with_what_was_corrected_by_hand()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var destination = new TemporaryFolder();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root, "uno");
+
+        var older = MeetingRows.Extracted(context, meeting, Then, accepted: Then, "el primero");
+        var laterOn = UtcTimestamp.From(Then.Value.AddHours(1));
+        var newer = MeetingRows.Extracted(context, meeting, laterOn, accepted: laterOn, "el segundo");
+
+        new HumanLayer(context, UtcTimestamp.From(Then.Value.AddHours(2))).ShowSummary(meeting, older);
+
+        var exported = CorpusExport.Into(
+            context, destination.Folder.FullName, Ticks(ExportKind.HandCorrections), TimeZoneInfo.Utc, Now);
+        var corrections = File.ReadAllText(Path.Combine(
+            exported.Folder.GetDirectories().Single().FullName, CorpusExport.HandCorrectionsName));
+
+        corrections.ShouldContain(older.ToString());
+        corrections.ShouldNotContain(newer.ToString());
+    }
+
     [Fact]
     public void A_file_the_corpus_records_and_the_disk_has_lost_is_named_and_the_export_still_finishes()
     {

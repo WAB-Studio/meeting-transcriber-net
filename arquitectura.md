@@ -796,8 +796,10 @@ input_hash
 raw_output_hash
 ```
 
-El resultado estructurado contiene abstract, summary, temas, participantes,
-decisiones, acciones, preguntas abiertas y evidencia.
+El resultado estructurado contiene abstract, summary, participantes, decisiones,
+acciones, preguntas abiertas y evidencia. Los temas no: de qué trata una reunión
+lo archiva una persona al clasificarla, y el esquema `"1"` rechaza un campo
+`topics`.
 
 ### 7.2 Adaptador Claude Code
 

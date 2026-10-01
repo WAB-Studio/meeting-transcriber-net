@@ -178,12 +178,32 @@ public class MeetingScreenTests
 
     [Theory]
     [MemberData(nameof(EveryStageAgainstEveryStanding))]
-    public void Only_a_summary_that_is_running_may_be_stopped(MeetingStage stage, StageStanding standing)
+    public void A_summary_may_be_stopped_while_it_runs_and_a_second_one_while_it_waits(
+        MeetingStage stage, StageStanding standing)
     {
         var screen = Screen(new OwedWork(Meeting, stage, standing), RecordedAudio.Playable);
 
         screen.TheSummaryMayBeStopped.ShouldBe(
-            stage is MeetingStage.Transcribed or MeetingStage.Summarised && standing is StageStanding.Running);
+            (stage is MeetingStage.Transcribed && standing is StageStanding.Running)
+            || (stage is MeetingStage.Summarised
+                && standing is StageStanding.Running or StageStanding.Underway));
+    }
+
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    [InlineData(3, true)]
+    public void A_summary_is_offered_to_choose_only_where_there_are_two(int given, bool offered)
+    {
+        var every = Enumerable.Range(0, given)
+            .Select(n => new GivenSummary(Guid.NewGuid(), "claude-code", Then + Duration.FromSeconds(n), IsShown: n == 0))
+            .ToArray();
+
+        var owed = new OwedWork(Meeting, MeetingStage.Summarised, StageStanding.NothingToDo);
+        var screen = Screen(owed, RecordedAudio.Playable) with { EverySummary = every };
+
+        screen.ASummaryMayBeChosen.ShouldBe(offered);
     }
 
     [Fact]

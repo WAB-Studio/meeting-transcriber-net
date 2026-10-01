@@ -360,16 +360,26 @@ public sealed partial class SayingWhoIsWho : UserControl
     /// there — only when <paramref name="read"/>'s own recording is
     /// <see cref="RecordedAudio.Playable"/>, the domain's own answer to whether there is anything to
     /// play, and only once <see cref="_playing"/> is really open on it. A voice with no stretch it
-    /// spoke alone in is left with its longest turn to read and no clip to offer either. The main
+    /// spoke alone in has no clip to offer, says so where its clip would be, and is named by
+    /// reading its longest turn. The main
     /// clip is <c>clip-{position}</c> and the further ones <c>clip-{position}-{n}</c>, n from 1,
     /// under <see cref="UiTexts.OtherStretches"/>.
     /// </remarks>
     private UIElement? ClipRow(VoicesAsHeard read, Voice voice, int position)
     {
-        if (voice.SettledByTheRecording
-            || voice.Alone is not { } stretch
-            || read.TheRecording is not RecordedAudio.Playable
-            || _playing is not { } playing)
+        if (voice.SettledByTheRecording || read.TheRecording is not RecordedAudio.Playable)
+        {
+            return null;
+        }
+
+        // A label at the data rank and not a sentence: nothing failed, and a screen carries a
+        // sentence only where something did.
+        if (voice.Alone is not { } stretch)
+        {
+            return new TextBlock { Text = In(UiTexts.NeverHeardAlone), Style = Chrome("NeverHeardAloneSays") };
+        }
+
+        if (_playing is not { } playing)
         {
             return null;
         }

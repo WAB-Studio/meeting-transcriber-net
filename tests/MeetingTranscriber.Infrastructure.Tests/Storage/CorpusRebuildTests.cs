@@ -370,6 +370,11 @@ public class CorpusRebuildTests
         human.Correct("quati", "Coati", under: coati);
         human.Mark(Guid.Parse(ExtractionRunId), ordinal: 0, ActionItemState.Done, jo);
 
+        // The run is inserted unaccepted by `Project`, and a summary nobody accepted is not one to
+        // put back. Accepted here so `chosen_at` is compared across the rebuild and not a null.
+        Sql.Execute(context, $"UPDATE extraction_runs SET accepted_at = '{When}' WHERE id = '{ExtractionRunId}';");
+        human.ShowSummary(meeting, Guid.Parse(ExtractionRunId));
+
         var stored = context.Meetings.Find(meeting)!;
         human.Describe(stored, "la daily del equipo", "arranca el sprint");
     }

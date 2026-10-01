@@ -216,6 +216,12 @@ public class ExtractionRun
     /// </summary>
     public UtcTimestamp? AcceptedAt { get; set; }
 
+    /// <summary>
+    /// When somebody last put this summary back as the one its meeting shows, or never. A person's
+    /// word and not the run's record: <c>HumanLayer.ShowSummary</c> is its one writer.
+    /// </summary>
+    public UtcTimestamp? ChosenAt { get; set; }
+
     public UtcTimestamp CreatedAt { get; set; }
 
     public string? LastError { get; set; }

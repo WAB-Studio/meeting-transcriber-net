@@ -1039,6 +1039,27 @@ public class HumanLayerTests
         stored[1].State.ShouldBe(ActionItemState.Dropped);
         stored[1].OwnerPersonId.ShouldBeNull();
     }
+
+    [Fact]
+    public void Putting_back_a_summary_the_meeting_was_never_given_is_refused_and_writes_nothing()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var recorded = HumanLayerFixture.Interviewed;
+        var meeting = MeetingRows.Recorded(context, recorded, ["turn 0"], root: corpus.Root);
+        var elsewhere = MeetingRows.Recorded(context, recorded, ["turn 0"], root: corpus.Root);
+
+        var neverAccepted = MeetingRows.Extracted(context, meeting, recorded, accepted: null, "never accepted");
+        var ofAnother = MeetingRows.Extracted(context, elsewhere, recorded, accepted: recorded, "another meeting's");
+        var human = new HumanLayer(context, HumanLayerFixture.Now);
+
+        foreach (var run in new[] { neverAccepted, ofAnother, Guid.NewGuid() })
+        {
+            Should.Throw<MeetingStageException>(() => human.ShowSummary(meeting, run));
+        }
+
+        context.ExtractionRuns.AsNoTracking().Select(run => run.ChosenAt).ShouldAllBe(chosen => chosen == null);
+    }
 }
 
 /// <summary>

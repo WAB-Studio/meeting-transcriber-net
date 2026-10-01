@@ -220,6 +220,21 @@ public class SayingWhoIsWhoTests
     }
 
     /// <summary>
+    /// A voice somebody always talked over has no clip to bring and says so where its clip would
+    /// be. Goes red with the line removed.
+    /// </summary>
+    [Fact]
+    public void A_voice_nobody_ever_heard_alone_says_so_where_its_clip_would_be()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        var clipRow = Body(source, "private UIElement? ClipRow(VoicesAsHeard read, Voice voice, int position)");
+
+        clipRow.ShouldContain("UiTexts.NeverHeardAlone");
+        clipRow.ShouldContain("voice.Alone is not { } stretch");
+    }
+
+    /// <summary>
     /// The dialogue that adds somebody, and corrects somebody's name, is one component both
     /// screens share rather than two copies of a form.
     /// </summary>

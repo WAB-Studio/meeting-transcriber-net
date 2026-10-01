@@ -193,6 +193,121 @@ public class MeetingReadingTests
         left.Abstract.ShouldBe("the older run, accepted later");
     }
 
+    private static UtcTimestamp Hour(int hours) => UtcTimestamp.From(Recorded.Value.AddHours(hours));
+
+    [Fact]
+    public void Every_summary_a_meeting_was_given_is_offered_newest_first_with_the_one_shown_marked()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(context, Recorded, ["turn 0"], root: corpus.Root);
+
+        var older = MeetingRows.Extracted(context, meeting, Hour(1), accepted: Hour(1), "older");
+        var newer = MeetingRows.Extracted(context, meeting, Hour(2), accepted: Hour(2), "newer");
+        MeetingRows.Extracted(context, meeting, Hour(3), accepted: null, "never accepted");
+
+        var every = new MeetingReading(context, Clock).Of(meeting).Screen.EverySummary;
+
+        every.Select(given => given.RunId).ShouldBe([newer, older]);
+        every.Select(given => given.IsShown).ShouldBe([true, false]);
+        every.Select(given => given.AcceptedAt).ShouldBe([Hour(2), Hour(1)]);
+        every[0].WrittenBy.ShouldBe("claude-code");
+    }
+
+    [Fact]
+    public void An_earlier_summary_put_back_is_read_whole_as_it_was_accepted()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(context, Recorded, ["turn 0", "turn 1"], root: corpus.Root);
+
+        var first = MeetingRows.Extracted(
+            context, meeting, Hour(1), accepted: Hour(1), "the first go", actionAt: 1, questionAt: 1);
+        MeetingRows.Extracted(
+            context, meeting, Hour(2), accepted: Hour(2), "the second go", actionAt: 1, questionAt: 1);
+
+        var reading = new MeetingReading(context, Clock);
+        reading.ShowSummary(meeting, first);
+
+        var screen = reading.Of(meeting).Screen;
+
+        screen.Left.Abstract.ShouldBe("the first go");
+        screen.Left.Things.Select(thing => thing.Says)
+            .ShouldBe(["the first go", "the first go, to do", "the first go, unresolved"], ignoreOrder: true);
+        screen.Left.Wrote.SummarisedAt.ShouldBe(Hour(1));
+        screen.EverySummary.Single(given => given.IsShown).RunId.ShouldBe(first);
+    }
+
+    [Fact]
+    public void A_summary_put_back_is_still_the_one_shown_after_the_corpus_is_opened_again()
+    {
+        using var corpus = new TemporaryCorpus();
+        Guid meeting;
+        Guid first;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            meeting = MeetingRows.Recorded(context, Recorded, ["turn 0"], root: corpus.Root);
+            first = MeetingRows.Extracted(context, meeting, Hour(1), accepted: Hour(1), "the first go");
+            MeetingRows.Extracted(context, meeting, Hour(2), accepted: Hour(2), "the second go");
+
+            new MeetingReading(context, Clock).ShowSummary(meeting, first);
+        }
+
+        using var reopened = corpus.Open();
+
+        new MeetingReading(reopened, Clock).Of(meeting).Screen.Left.Abstract.ShouldBe("the first go");
+    }
+
+    [Fact]
+    public void Putting_a_summary_back_loses_none_of_the_others_and_each_can_be_chosen_again()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(context, Recorded, ["turn 0"], root: corpus.Root);
+
+        var oldest = MeetingRows.Extracted(context, meeting, Hour(1), accepted: Hour(1), "oldest");
+        var middle = MeetingRows.Extracted(context, meeting, Hour(2), accepted: Hour(2), "middle");
+        var newest = MeetingRows.Extracted(context, meeting, Hour(3), accepted: Hour(3), "newest");
+
+        // Each press a minute after the one before, because a summary put back at the same instant
+        // as another has no later word than it.
+        var minute = 0;
+        foreach (var (chosen, abstractIs) in new[] { (oldest, "oldest"), (middle, "middle"), (newest, "newest") })
+        {
+            minute++;
+            var at = new FakeClock(new DateTimeOffset(2026, 8, 19, 12, minute, 0, TimeSpan.Zero));
+            var reading = new MeetingReading(context, at);
+
+            reading.ShowSummary(meeting, chosen);
+
+            var screen = reading.Of(meeting).Screen;
+            screen.EverySummary.Count.ShouldBe(3);
+            screen.EverySummary.Single(given => given.IsShown).RunId.ShouldBe(chosen);
+            screen.Left.Abstract.ShouldBe(abstractIs);
+        }
+    }
+
+    [Fact]
+    public void A_summary_accepted_after_one_was_put_back_is_the_one_shown()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(context, Recorded, ["turn 0"], root: corpus.Root);
+
+        var first = MeetingRows.Extracted(context, meeting, Hour(1), accepted: Hour(1), "the first go");
+        MeetingRows.Extracted(context, meeting, Hour(2), accepted: Hour(2), "the second go");
+
+        new MeetingReading(context, Clock).ShowSummary(meeting, first);
+        new MeetingReading(context, Clock).Of(meeting).Screen.Left.Abstract.ShouldBe("the first go");
+
+        // Accepted after the 12:00 the first was put back at.
+        var later = UtcTimestamp.From(Clock.GetUtcNow().AddMinutes(30));
+        MeetingRows.Extracted(context, meeting, later, accepted: later, "the third go");
+
+        new MeetingReading(context, Clock).Of(meeting).Screen.Left.Abstract.ShouldBe("the third go");
+    }
+
     [Fact]
     public void A_meeting_that_arrived_without_a_recording_says_so_rather_than_saying_it_is_lost()
     {
@@ -469,7 +584,7 @@ public class MeetingReadingTests
     }
 
     [Fact]
-    public void A_refused_second_summary_leaves_the_first_on_screen_and_says_it_failed()
+    public void A_refused_second_summary_leaves_the_first_on_screen_and_says_what_it_was_refused_for()
     {
         using var corpus = new TemporaryCorpus();
         using var context = corpus.OpenMigrated();
@@ -489,7 +604,8 @@ public class MeetingReadingTests
 
         screen.ThereIsASummary.ShouldBeTrue();
         screen.Left.Abstract.ShouldBe("what the meeting was about");
-        screen.WhyTheSummaryWasRefused.ShouldBeNull();
+        screen.WhyTheSummaryWasRefused.ShouldBe(
+            new ExtractionRefusal(ExtractionCondition.NoEvidence, "decisions[0]", null));
         screen.WhyTheLastSummaryFailed.ShouldBe(JobFailure.ExtractionRefused);
     }
 

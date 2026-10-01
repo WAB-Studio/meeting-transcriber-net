@@ -998,6 +998,46 @@ public sealed class JobRunnerTests
     }
 
     /// <summary>
+    /// The half of ISC-209 for a second summary that never ran: stopped while it waited, it is not
+    /// sent. Goes red with the runner treating <see cref="JobState.Cancelled"/> as due, or with the
+    /// stop not written.
+    /// </summary>
+    [Fact]
+    public async Task A_second_summary_stopped_before_it_ran_is_never_sent()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, firstJob) = ArrangeSummarisable(corpus, When);
+        Guid second;
+
+        using (var context = corpus.OpenMigrated())
+        {
+            var first = context.ProcessingJobs.Single(row => row.Id == firstJob);
+            first.Start(When);
+            first.Succeed(When);
+            context.SaveChanges();
+
+            var work = new MeetingWork(context, When);
+            second = work.SummariseAgain(meeting).Id;
+            work.StopTheSummary(meeting);
+        }
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        var provider = new FakeSummaries().Answering(
+            new SummaryProviderAnswer.Extracted(Utf8(Accepted(meeting)), "1.0", "opus", null));
+
+        await JobRunner.RunWhatIsDueAsync(
+            lease, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+
+        provider.Requests.ShouldBeEmpty();
+
+        using var reopened = corpus.Open();
+        reopened.ProcessingJobs.Single(row => row.Id == second).State.ShouldBe(JobState.Cancelled);
+    }
+
+    /// <summary>
     /// The pump's own cancellation, mid-summary, still rethrows — the same fact
     /// <see cref="A_send_the_application_walked_out_of_leaves_the_job_where_a_restart_will_find_it"/>
     /// proves for a transcription. Goes red with the linked-token catch clauses in

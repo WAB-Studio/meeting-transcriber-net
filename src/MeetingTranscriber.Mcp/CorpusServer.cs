@@ -256,7 +256,8 @@ public sealed class CorpusServer(CorpusLocation where, FileInfo record)
             LeerResumen,
             "What one meeting was about, who transcribed and summarised it, and everything the "
             + "accepted extraction left: its decisions, what it left to do, and what it left open. "
-            + "Only the extraction accepted last answers. To quote one of them, open the "
+            + "Only the extraction the meeting shows answers: the one accepted last, or the one "
+            + "somebody put back since. To quote one of them, open the "
             + "turn it points at with `obtener_cita`.",
             (
                 [Description("The meeting's id, as another answer gave it.")] string meeting_id,
