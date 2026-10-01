@@ -100,8 +100,8 @@ public partial class NothingUnderTestReachesTheNetworkTests
         new(
             "tests/MeetingTranscriber.Audio.Tests/AnotherProcess.cs",
             "powershell.exe, running an encoded script that opens one file in this test's own "
-            + "temporary folder and holds it. Local, and the only thing it touches is a path the "
-            + "test made."),
+            + "temporary folder and holds it, and one that sleeps until it is killed, touching "
+            + "nothing. Local, and the only thing either touches is a path the test made."),
         new(
             "tests/MeetingTranscriber.Infrastructure.Tests/Storage/CorpusLocationTests.cs",
             "cmd.exe /c mklink /J, which is the one way to make a directory junction without a "

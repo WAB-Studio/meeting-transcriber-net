@@ -59,9 +59,11 @@ namespace MeetingTranscriber.Audio;
 /// A source placed by the clock is measured against the very clock its positions were computed
 /// from, so it reports its own rate as exactly the rate it was opened at: the drift correction has
 /// nothing to steer by, and what says a device ran at another rate is the stretch that comes back
-/// as missing. That is the cost of a counter that is given up, and it is why
-/// <see cref="CounterGivenUp"/> reads true from the moment the mismatch is seen until a rate is
-/// read — a source that ends inside its window was placed by the clock throughout.
+/// as missing. That is the cost of a counter that is given up, and it is why a rate is the label
+/// from the moment the mismatch is seen until one is read. Two readings say which kind of label it
+/// is: <see cref="CounterGivenUp"/> is the decision taken, and <see cref="CounterUndecided"/> is
+/// the window still open — a source that ends inside its window was placed by the clock
+/// throughout and was never decided either way.
 /// </para>
 /// <para>
 /// The check still holds in full for every source whose counter was usable, which is the case it
@@ -122,15 +124,28 @@ internal sealed class SourcePositions
 
     /// <summary>
     /// Whether this source's device counted its frames in a way no rate explains, or one that
-    /// stopped explaining them, so its counter was given up and its audio placed by the clock —
-    /// or has not yet been explained by a rate, and is placed by the clock until it is.
+    /// stopped explaining them, so its counter was given up and its audio placed by the clock.
+    /// </summary>
+    /// <remarks>
+    /// The decision, taken: true from the moment no rate explained the window, and never for a
+    /// window still open — that is <see cref="CounterUndecided"/>. Either way the rate is the label
+    /// and not a measurement.
+    /// </remarks>
+    internal bool CounterGivenUp => phase is Phase.GivenUp;
+
+    /// <summary>
+    /// Whether the packet that revealed a mismatch was followed by a window that had not yet
+    /// explained it or ruled out every rate when this source ended or was replaced.
     /// </summary>
     /// <remarks>
     /// True from the packet that reveals the mismatch until a rate is read off the window that
-    /// follows it, and false once one has. A source that ends or is replaced inside its window was
-    /// placed by the clock throughout, so its rate is the label and not a measurement.
+    /// follows it or the counter is given up, and false once either has happened. A source that
+    /// ends inside its window was placed by the clock throughout, so its rate is the label and not
+    /// a measurement — but nothing was decided about its counter, which is the difference a
+    /// diagnosis of drift needs: a source that ended in its first second must not be read as having
+    /// given its counter up.
     /// </remarks>
-    internal bool CounterGivenUp => phase is Phase.Window or Phase.GivenUp;
+    internal bool CounterUndecided => phase is Phase.Window;
 
     /// <summary>
     /// Where <paramref name="packet"/>'s first frame goes, in the frames this source hands over.

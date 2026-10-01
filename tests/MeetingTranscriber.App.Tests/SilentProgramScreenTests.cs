@@ -42,6 +42,20 @@ public class SilentProgramScreenTests
     }
 
     /// <summary>
+    /// The notice has a second sentence for the program having gone, and the window asks the
+    /// recording for it on the tick, paused or not, and hands it to the screen.
+    /// </summary>
+    [Fact]
+    public void The_notice_says_when_the_program_went_away_and_the_window_asks_the_recording()
+    {
+        var window = File.ReadAllText(AppSources.At(Window).FullName);
+
+        window.ShouldContain("UiTexts.ThatProgramWentAway");
+        window.ShouldContain("recording.TheProgramWentAway()");
+        window.ShouldContain("TheProgramWentAway = _wentAway");
+    }
+
+    /// <summary>
     /// The source picker lists programs in the order the move list does, because it is one picker
     /// and the two must agree: one place decides that order and this window asks it.
     /// </summary>

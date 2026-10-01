@@ -179,10 +179,14 @@ public class SharedTimelineTests
     /// ISC-132. A frame counter that goes back on itself used to be refused as a broken driver.
     /// Refusing it cost the whole meeting of anybody whose microphone numbers its frames in its own
     /// rate, because that device produces exactly this reading and nothing can tell the two apart —
-    /// so the counter is what gets given up on, and the recording carries on without it.
+    /// so the counter stops being trusted, and the recording carries on without it.
     /// </summary>
+    /// <remarks>
+    /// The backwards packet is the last of five, so the source ends inside the window that follows
+    /// it: the counter was not decided about, and the summary says undecided and not given up.
+    /// </remarks>
     [Fact]
-    public void A_source_whose_position_goes_backwards_gives_the_counter_up_and_keeps_the_meeting()
+    public void A_source_whose_position_goes_backwards_keeps_the_meeting_and_stops_trusting_its_counter()
     {
         var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, new Collected());
         var packets = Fabricated
@@ -199,7 +203,10 @@ public class SharedTimelineTests
         // instant beside it.
         timeline.Take(packets[4] with { DevicePosition = packets[1].DevicePosition });
 
-        timeline.Close().On(AudioChannel.Loopback).CounterGivenUp.ShouldBeTrue();
+        var summary = timeline.Close().On(AudioChannel.Loopback);
+
+        summary.CounterUndecided.ShouldBeTrue();
+        summary.CounterGivenUp.ShouldBeFalse();
     }
 
     /// <summary>
@@ -376,10 +383,11 @@ public class SharedTimelineTests
 
     /// <summary>
     /// A source that ends before the second of packets a rate is read from is placed by the clock
-    /// throughout, so its rate is its label and it says so.
+    /// throughout, so its rate is its label and it says so — as undecided, because nothing was
+    /// decided about its counter, and not as given up.
     /// </summary>
     [Fact]
-    public void A_source_that_ends_before_its_counter_is_explained_reads_as_given_up()
+    public void A_source_that_ends_before_its_counter_is_explained_says_it_was_never_read()
     {
         var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, new Collected());
 
@@ -389,7 +397,10 @@ public class SharedTimelineTests
             Fabricated.Packets(
                 AudioChannel.Microphone, MonoFloat, 48_000, 0, 0.5, Fabricated.Quiet, countsAtRate: 16_000));
 
-        timeline.Close().On(AudioChannel.Microphone).CounterGivenUp.ShouldBeTrue();
+        var summary = timeline.Close().On(AudioChannel.Microphone);
+
+        summary.CounterUndecided.ShouldBeTrue();
+        summary.CounterGivenUp.ShouldBeFalse();
     }
 
     /// <summary>
@@ -397,16 +408,18 @@ public class SharedTimelineTests
     /// device dropped puts its counter ahead of the frames it handed over, and running fast puts it
     /// ahead of the clock as well — so the position the clock would put the changeover at is behind
     /// where the last packet already ended. The recording carries on from where it actually got to,
-    /// because sending a source backwards at the changeover is the one thing the counter was given
-    /// up to avoid.
+    /// because sending a source backwards at the changeover is the one thing not trusting the
+    /// counter is there to avoid.
     /// </summary>
     /// <remarks>
     /// Written red, and the numbers are what it was written against: a source that dropped a second
     /// and ran 2000 ppm fast was placed at frame 287808 after its last packet had already reached
-    /// 288000 — 192 frames backwards, into the very reversal the counter was given up to avoid.
+    /// 288000 — 192 frames backwards, into the very reversal the counter was left unread to avoid.
+    /// Its last packet repeats the previous device position, which opens the window on the final
+    /// packet, so the source ends in it: the counter is undecided, not given up.
     /// </remarks>
     [Fact]
-    public void A_source_that_lost_a_stretch_before_giving_its_counter_up_still_records_the_meeting()
+    public void A_source_that_lost_a_stretch_before_its_counter_was_read_still_records_the_meeting()
     {
         var collected = new Collected();
         var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, collected);
@@ -426,7 +439,8 @@ public class SharedTimelineTests
 
         var summary = timeline.Close();
 
-        summary.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeTrue();
+        summary.On(AudioChannel.Microphone).CounterUndecided.ShouldBeTrue();
+        summary.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeFalse();
         summary.Length.Milliseconds.ShouldBeInRange(5_900, 6_100);
     }
 

@@ -173,6 +173,12 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private bool _nothingCame;
 
+    /// <summary>
+    /// Whether the recording has reported that the program channel 0 follows has ended. Cleared
+    /// when channel 0 moves, because the watch is taken again on the program it moved onto.
+    /// </summary>
+    private bool _wentAway;
+
     private bool _taken;
 
     /// <summary>
@@ -384,6 +390,7 @@ public sealed partial class MainWindow : Window
             State = state,
             Chosen = _chosen,
             NothingCameFromTheProgram = _nothingCame,
+            TheProgramWentAway = _wentAway,
             WholeMachineTaken = _taken,
             AnotherProgramIsBeingChosen = _choosingAnotherProgram,
             AnotherProgramIsBeingOpened = _openingAnotherProgram,
@@ -705,16 +712,20 @@ public sealed partial class MainWindow : Window
         var mine = meters.On(AudioChannel.Microphone);
 
         // *Sin señal* is channel 0's alone: channel 1 is a microphone, and a quiet one is nada.
-        Show(others, TheOthers, screen.NothingCameIsOnScreen);
+        Show(others, TheOthers, screen.TheNoticeIsOnScreen);
         Show(mine, Mine, noSignal: false);
 
         // The notice. Told from here, which runs every tick, so it appears on the tick the report
         // does; the sentence and its two presses are in the row under the card, in the tree
         // whichever way the window is arranged. `Tell` returns early when the text is unchanged.
+        // One row and two sentences: the program having gone is the cause, so it is the one said
+        // where both reports stand.
         Tell(
             OthersSentNothing,
-            screen.NothingCameIsOnScreen,
-            UiTexts.NothingCameFromThatProgram,
+            screen.TheNoticeIsOnScreen,
+            screen.TheProgramWentAwayIsOnScreen
+                ? UiTexts.ThatProgramWentAway
+                : UiTexts.NothingCameFromThatProgram,
             Capturing(_recording?.FollowingNow?.Name));
 
         // Each of the three named where its words are, rather than reached through the row above.
@@ -842,8 +853,8 @@ public sealed partial class MainWindow : Window
         }
 
         // The verdict and not the reading. *Nada* is what the last second said, and a meeting
-        // between sentences says it all the time; *sin señal* is the recording saying nothing ever
-        // arrived from this program, and it stands where the level does (`docs/design.md`
+        // between sentences says it all the time; *sin señal* is the recording saying nothing
+        // arrives from this program — it never did, or it went away — and it stands where the level does (`docs/design.md`
         // §NadaLlego). No peak under it: the meter keeps its memory, but there is nothing to mark.
         if (noSignal)
         {
@@ -1799,6 +1810,7 @@ public sealed partial class MainWindow : Window
 
         _report.Clear();
         _nothingCame = false;
+        _wentAway = false;
         _taken = false;
         _choosingAnotherProgram = false;
         _openingAnotherProgram = false;
@@ -2171,6 +2183,7 @@ public sealed partial class MainWindow : Window
             await Task.Run(() => recording.FollowAnotherProgram(program));
 
             _nothingCame = false;
+            _wentAway = false;
 
             if (!_closed)
             {
@@ -2180,7 +2193,7 @@ public sealed partial class MainWindow : Window
         catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
             // Reported and not thrown: the channel is where it was and the meeting is being
-            // recorded either way. `_nothingCame` stays set, so both ways out stay on screen.
+            // recorded either way. `_nothingCame` and `_wentAway` stay as they were, so both ways out stay on screen.
             if (!_closed)
             {
                 Say(UiTexts.AnotherProgramCouldNotBeFollowed, program.Name);
@@ -2273,13 +2286,15 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// The second. It reads what each channel is hearing onto the screen, and asks the recording
-    /// whether the program channel 0 is following has brought back nothing at all.
+    /// whether the program channel 0 is following has ended or has brought back nothing at all.
     /// </summary>
     /// <remarks>
-    /// The offer is never asked for while the meeting is paused. A paused recording hears nothing
-    /// from anything, so the rule it rests on would be true of a program that is playing perfectly
-    /// well — and an offer, once made, stays made until channel 0 moves. Nor while a move is in
-    /// flight, which is about to count the silence again. The meters are read either way: what a paused
+    /// The silence report is never asked for while the meeting is paused. A paused recording hears
+    /// nothing from anything, so the rule it rests on would be true of a program that is playing
+    /// perfectly well — and an offer, once made, stays made until channel 0 moves. The program
+    /// having gone is asked throughout, paused or not: a process ending is not a level, and it is
+    /// said at once and offered on resume. Neither is asked while a move is in flight, which is
+    /// about to count the silence, and take the watch, again. The meters are read either way: what a paused
     /// meeting is recording is silence, and showing that is how somebody sees the pause took.
     /// </remarks>
     private void OnWatch(object? sender, object e)
@@ -2297,6 +2312,15 @@ public sealed partial class MainWindow : Window
         // — the buttons, the pickers and the status line all answer to a press — so redrawing them
         // once a second would be a second's worth of work to say what it already said, and it
         // would take a selection out of the report every time it ran.
+        if (!_wentAway
+            && !_openingAnotherProgram
+            && recording.TheProgramWentAway())
+        {
+            _wentAway = true;
+            Refresh();
+            return;
+        }
+
         if (!_nothingCame
             && !_openingAnotherProgram
             && !recording.IsPaused

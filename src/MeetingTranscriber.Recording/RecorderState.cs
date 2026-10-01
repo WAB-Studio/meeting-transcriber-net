@@ -83,8 +83,8 @@ public enum RecorderPress
 
     /// <summary>
     /// Open channel 0's picker again, so another program can be chosen. The <em>Cambiar</em> on the
-    /// notice, offered by the recording's report that nothing came from the program, never by the
-    /// screen.
+    /// notice, offered by the recording's report that nothing came from the program or that the
+    /// program went away, never by the screen.
     /// </summary>
     ChooseAnotherProgram,
 
@@ -103,8 +103,8 @@ public enum RecorderPress
     /// Channel 1 and not either channel, because opening a source again is only something channel 1
     /// can do — <c>CaptureSession.OpenTheMicrophoneAgain</c> says why. A channel 0 that stopped is
     /// not opened again. Its ways out, <see cref="RecordTheWholeMachine"/> and
-    /// <see cref="FollowAnotherProgram"/>, answer a program that never brought anything; one that
-    /// played and then died is offered neither.
+    /// <see cref="FollowAnotherProgram"/>, answer a program that never brought anything and one
+    /// that went away.
     /// </remarks>
     TryTheMicrophoneAgain,
 }
@@ -130,9 +130,10 @@ public static class RecorderStates
             [RecorderState.Choosing] = Set(RecorderPress.Start),
 
             // Being recorded. The whole machine's audio is takeable only here, and so is another
-            // program: the offer comes from channel 0 having heard nothing, and a paused meeting
-            // hears nothing by definition, so a paused recording is exactly where that rule would
-            // say the wrong thing.
+            // program: the offer comes from channel 0 having heard nothing or from its program
+            // having gone, and a paused meeting hears nothing by definition, so a paused recording
+            // is exactly where the first of those would say the wrong thing. A program that goes
+            // away during a pause is said at once and offered on resume.
             //
             // Opening the microphone again is here and on Paused both, which is the opposite of
             // the rule above and is the same rule read properly: what makes the whole machine wrong

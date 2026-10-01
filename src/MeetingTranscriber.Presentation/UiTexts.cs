@@ -145,8 +145,14 @@ public static class UiTexts
     public static UiText NothingCameFromThatProgram { get; } = new(
         "No llegó nada de {0}.", "Nothing has come from {0}.");
 
+    // The notice's other sentence, in the same row and read as the same live region: the program
+    // channel 0 follows ended while the meeting was being recorded.
+    public static UiText ThatProgramWentAway { get; } = new(
+        "{0} se cerró y desde entonces no llega nada de los demás.",
+        "{0} closed, and nothing from the other side has arrived since.");
+
     // What channel 0's level reads while the notice stands: the recording's verdict that nothing
-    // ever arrived from this program, and not *nada*, which is the last second's reading and is
+    // arrives from this program (it never did, or it went away), and not *nada*, which is the last second's reading and is
     // true of a meeting between sentences. docs/design.md §NadaLlego.
     public static UiText NoSignal { get; } = new("sin señal", "no signal");
 

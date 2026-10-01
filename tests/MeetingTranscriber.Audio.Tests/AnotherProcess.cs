@@ -98,6 +98,30 @@ internal static class AnotherProcess
     }
 
     /// <summary>
+    /// Another process that does nothing at all until it is killed, which is a program somebody
+    /// can be following when it ends.
+    /// </summary>
+    /// <remarks>
+    /// Three hundred seconds is the bound the mark holder above sleeps for, and for the same reason:
+    /// a test that fails before it kills this leaves a process that ends itself. It touches nothing
+    /// and says nothing, so there is no handover to wait for — the process object exists once
+    /// `Start` returns, and it is the id that is watched.
+    /// </remarks>
+    internal static Process Waiting()
+    {
+        var start = new ProcessStartInfo(
+            "powershell.exe",
+            "-NoProfile -NonInteractive -Command \"Start-Sleep -Seconds 300\"")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        return Process.Start(start)
+            ?? throw new InvalidOperationException("powershell.exe did not start.");
+    }
+
+    /// <summary>
     /// Blocks until the other process says it has the mark, and fails saying what it said instead —
     /// or that it said nothing and ended — rather than asserting into a race.
     /// </summary>

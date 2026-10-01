@@ -567,7 +567,8 @@
                  for the reason the fault lines are: a collapsed element is not in the automation
                  tree, so a live region under a container the code-behind collapses is told its
                  words into nothing, and LiveRegionTests fails if anything stands between it and
-                 the row. Told, not bound, like the lines above. Polite, because nothing broke.
+                 the row. Told, not bound, like the lines above. Polite, because the meeting is still being recorded
+                 whichever of the two it says.
                  Never the running count of seconds the artboard draws: a live region whose text
                  changes every second is read out every second. -->
             <TextBlock

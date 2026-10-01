@@ -67,6 +67,13 @@ public sealed class CaptureSession : IDisposable
     /// </summary>
     private readonly Dictionary<AudioChannel, (string Device, long Packets)> followed = [];
 
+    /// <summary>
+    /// The handle held on the program channel 0 follows, or nothing while it is on the whole
+    /// machine. Replaced or cleared <i>before</i> the old one is disposed, and read without the
+    /// gate: see <see cref="TheProgramWentAway"/>.
+    /// </summary>
+    private volatile FollowedProgram? watched;
+
     private Thread? following;
     private bool followingCameBack;
     private bool over;
@@ -312,6 +319,14 @@ public sealed class CaptureSession : IDisposable
         }
 
         var session = new CaptureSession([.. opened], card, pause, folder, capturing);
+
+        // Taken last, once both devices are open and the card is written, so that no path that
+        // throws before a session exists leaves a handle behind.
+        if (follow is not null)
+        {
+            session.watched = FollowedProgram.Watching(follow);
+        }
+
         session.Follow();
         return session;
     }
@@ -380,6 +395,18 @@ public sealed class CaptureSession : IDisposable
     }
 
     /// <summary>
+    /// Whether the program channel 0 is following has ended since it began following it.
+    /// </summary>
+    /// <remarks>
+    /// Asked rather than announced, like <see cref="HeardNothingFromTheProgram"/>: nothing is done
+    /// about it until somebody does, and it goes on being true. It never takes the gate. A screen
+    /// asks every second, and the thread that follows a device and every move hold the gate across
+    /// device deadlines of seconds — so the watch is a volatile field, cleared or replaced before
+    /// the old one is disposed, over a handle whose wait cannot race its own closing.
+    /// </remarks>
+    public bool TheProgramWentAway() => watched?.HasGone ?? false;
+
+    /// <summary>
     /// Somebody choosing the whole machine's audio in place of the program channel 0 is following,
     /// while the meeting is still running. The recording goes on being one recording.
     /// </summary>
@@ -422,6 +449,10 @@ public sealed class CaptureSession : IDisposable
             }
 
             Move(AudioChannel.Loopback, new CaptureTarget.TheWholeMachine(), deviceId: null);
+
+            // Cleared first and disposed after, so a look from the screen's thread finds the old
+            // watch or none, and never one being closed.
+            ReplaceTheWatch(with: null);
         }
     }
 
@@ -467,6 +498,10 @@ public sealed class CaptureSession : IDisposable
             }
 
             Move(AudioChannel.Loopback, new CaptureTarget.Program(program), deviceId: null);
+
+            // Only once the move held: a Move that throws leaves the channel, and so its watch,
+            // exactly where they were.
+            ReplaceTheWatch(with: FollowedProgram.Watching(program));
         }
     }
 
@@ -561,6 +596,16 @@ public sealed class CaptureSession : IDisposable
                 was,
                 deviceId,
                 destination.Mode)));
+    }
+
+    /// <summary>
+    /// Puts <paramref name="with"/> where the watch was, and only then lets the old one go.
+    /// </summary>
+    private void ReplaceTheWatch(FollowedProgram? with)
+    {
+        var old = watched;
+        watched = with;
+        old?.Dispose();
     }
 
     /// <summary>Refuses a move onto a recording that has already been stopped.</summary>
@@ -798,6 +843,8 @@ public sealed class CaptureSession : IDisposable
         try
         {
             Stopped();
+
+            ReplaceTheWatch(with: null);
 
             // Asked first, all of them, for the same reason Stop asks before it waits — and here it
             // matters more, because disposing is an exit path in its own right. A caller that never
