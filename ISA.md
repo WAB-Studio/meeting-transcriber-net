@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 196/267
+progress: 196/271
 updated: 2026-10-01
 ---
 
@@ -180,6 +180,9 @@ Board: 2 · Spike y motor de audio
 - [x] ISC-186: Anti: a recording's folder is never gone while the corpus does not hold, verified, what that folder was the only copy of.
 - [ ] ISC-200: A source that dies while a meeting is being recorded is named by its device, together with the moment it was cut.
 - [ ] ISC-201: A microphone that died can be opened again while the meeting is still being recorded.
+- [ ] ISC-204: A recording whose followed program goes away mid-meeting can be pointed elsewhere without stopping.
+- [ ] ISC-204.1: A recording whose followed program goes away mid-meeting offers the whole machine's audio in its place, while the meeting is still running.
+- [ ] ISC-204.2: A recording whose followed program goes away mid-meeting offers another program in its place, while the meeting is still running.
 
 ### F4 · WinUI recorder
 Why: the application replaces OBS. Recording, pausing, stopping and recovering happen in one
@@ -291,6 +294,7 @@ Board: 5 · Summaries
 - [ ] ISC-196.1: After a meeting accepts a second summary, the first can still be read from that meeting, whole and as it was accepted.
 - [ ] ISC-196.2: Somebody can put an earlier summary back as the one a meeting shows, and it is still the one shown after the application is closed and opened again.
 - [ ] ISC-196.3: Anti: putting an earlier summary back loses none of the others — every summary the meeting was given can still be read and chosen again.
+- [ ] ISC-205: A meeting that already has a summary can be asked for another from the meeting itself.
 
 ### F7 · Local knowledge
 Why: people and agents query the corpus with no server, no network and no cloud, and every
