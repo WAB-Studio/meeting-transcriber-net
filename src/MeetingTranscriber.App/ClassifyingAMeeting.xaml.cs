@@ -110,6 +110,18 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// <summary>Which pill, if any, somebody is typing a name into, and what that name is for.</summary>
     private AFieldOnAPill? _naming;
 
+    /// <summary>
+    /// The classification put by whose chip is lit, which is the one the draft was last filled from.
+    /// Screen state and not the draft's: no meeting records which chip filled it.
+    /// </summary>
+    private Guid? _keptChosen;
+
+    /// <summary>
+    /// Whether the name field is open on the lit classification's name to correct it. While it is,
+    /// one press has one meaning on that line, so <em>Recordar</em> is off.
+    /// </summary>
+    private bool _correctingKept;
+
     public ClassifyingAMeeting() => InitializeComponent();
 
     /// <summary>The meeting was filed, and this screen is done with it.</summary>
@@ -172,6 +184,12 @@ public sealed partial class ClassifyingAMeeting : UserControl
         _chosen = MeetingFiling.Nothing;
         _deeper.Clear();
         _naming = null;
+        _keptChosen = null;
+        _correctingKept = false;
+        TheKeptNameIs(string.Empty);
+        RememberButton.IsEnabled = false;
+        CorrectKeptNameButton.Visibility = Visibility.Collapsed;
+        DiscardKeptButton.Visibility = Visibility.Collapsed;
 
         TheShapes.Children.Clear();
         Columns.Children.Clear();
@@ -319,6 +337,9 @@ public sealed partial class ClassifyingAMeeting : UserControl
             _chosen = MeetingFiling.Nothing;
             _deeper.Clear();
             _naming = null;
+            _keptChosen = null;
+            _correctingKept = false;
+            TheKeptNameIs(string.Empty);
         }
 
         if (_meeting is not { } meetingId)
@@ -391,6 +412,10 @@ public sealed partial class ClassifyingAMeeting : UserControl
                 WhichMeetingText.Text = string.Empty;
                 SaveButton.IsEnabled = false;
                 UnclassifyButton.IsEnabled = false;
+                RememberButton.IsEnabled = false;
+                CorrectKeptNameButton.Visibility = Visibility.Collapsed;
+                DiscardKeptButton.Visibility = Visibility.Collapsed;
+                _correctingKept = false;
                 return;
             }
 
@@ -399,6 +424,8 @@ public sealed partial class ClassifyingAMeeting : UserControl
             WhichMeetingText.Text = ScreenNumbers.Which(read.Meeting);
 
             TheShapesOnOffer();
+            TheKeptOnOffer(read);
+            TheLine(read);
             TheColumns(read);
             ThePeople(read);
         }
@@ -422,6 +449,260 @@ public sealed partial class ClassifyingAMeeting : UserControl
             chip.Click += (_, _) => ChooseTheShape(shape);
             TheShapes.Children.Add(chip);
         }
+    }
+
+    /// <summary>
+    /// The classifications put by, after the fourteen and drawn like them, each as its name.
+    /// </summary>
+    private void TheKeptOnOffer(MeetingAsClassified read)
+    {
+        foreach (var kept in read.Kept)
+        {
+            // Each lookup names its style as a literal, which is what lets a test see them all.
+            var lit = _keptChosen == kept.Template.Id;
+            var chip = new Button
+            {
+                Content = kept.Template.Name,
+                Style = lit ? Chrome("ChipChosen") : Chrome("Chip"),
+            };
+
+            chip.Click += (_, _) => ChooseTheKept(kept);
+            TheShapes.Children.Add(chip);
+        }
+    }
+
+    /// <summary>
+    /// Choosing one adds what it holds beside whatever is answered and writes nothing.
+    /// </summary>
+    /// <remarks>
+    /// What it adds and why it never takes an answer away is <see cref="MeetingFiling.FilledFrom"/>'s
+    /// own remark. The name field takes its name, so <em>Recordar</em> over it replaces what it
+    /// holds.
+    /// </remarks>
+    private void ChooseTheKept(KeptClassification kept)
+    {
+        _chosen = _chosen.FilledFrom(kept.Fills);
+        _keptChosen = kept.Template.Id;
+        _correctingKept = false;
+        TheKeptNameIs(kept.Template.Name);
+        _deeper.Clear();
+        _naming = null;
+        Changed();
+    }
+
+    /// <summary>
+    /// What the line under the chips offers now: the two presses only a lit classification has, and
+    /// <em>Recordar</em> once there is a name to put it by under and something to put by.
+    /// </summary>
+    private void TheLine(MeetingAsClassified read)
+    {
+        var lit = LitKept(read);
+        if (lit is null)
+        {
+            _keptChosen = null;
+        }
+
+        var visible = lit is null ? Visibility.Collapsed : Visibility.Visible;
+        CorrectKeptNameButton.Visibility = visible;
+        DiscardKeptButton.Visibility = visible;
+        RememberButton.IsEnabled = CanRemember();
+    }
+
+    /// <summary>
+    /// Nothing put by is lit any more, so the name field stops carrying its name: left there,
+    /// <em>Recordar</em> would replace that classification with whatever the draft became.
+    /// </summary>
+    private void Unlit()
+    {
+        _keptChosen = null;
+        _correctingKept = false;
+        TheKeptNameIs(string.Empty);
+    }
+
+    private KeptClassification? LitKept(MeetingAsClassified? read) =>
+        read?.Kept.FirstOrDefault(kept => kept.Template.Id == _keptChosen);
+
+    private bool CanRemember() =>
+        !_correctingKept
+        && !string.IsNullOrWhiteSpace(KeptNameBox.Text)
+        && (_chosen.Links.Count > 0 || _chosen.Named.Count > 0);
+
+    /// <summary>
+    /// Puts a name in the field from the code. Never from <see cref="Render"/>, which would erase
+    /// what somebody is typing; and under <c>_drawing</c>, because the box raises
+    /// <c>TextChanged</c> for text set from here as it does for text typed.
+    /// </summary>
+    private void TheKeptNameIs(string name)
+    {
+        var was = _drawing;
+        _drawing = true;
+
+        try
+        {
+            KeptNameBox.Text = name;
+        }
+        finally
+        {
+            _drawing = was;
+        }
+    }
+
+    /// <summary>
+    /// Where a write on the line ends: drawn again when it went through, said when it did not.
+    /// </summary>
+    private void TheLineWrote(TextLine? instead)
+    {
+        if (instead is { } refused)
+        {
+            _status.Says(refused);
+            Render();
+            return;
+        }
+
+        _correctingKept = false;
+        TheKeptNameIs(string.Empty);
+        Draw(theDraftToo: false);
+    }
+
+    private void OnRemember(object sender, RoutedEventArgs e) => Remember();
+
+    /// <summary>
+    /// Puts the draft by under the name typed. A name already put by is replaced, which is how one
+    /// is edited, and the chip of what was put by is lit.
+    /// </summary>
+    private void Remember()
+    {
+        if (_drawing || !CanRemember())
+        {
+            return;
+        }
+
+        var name = KeptNameBox.Text.Trim();
+        var filing = _chosen;
+
+        var instead = InTheCorpus(
+            human => (human.Keep(name, filing).Id, (TextLine?)null),
+            out var made);
+
+        if (instead is null)
+        {
+            _keptChosen = made;
+        }
+
+        TheLineWrote(instead);
+    }
+
+    /// <summary>
+    /// Opens the name field on the lit classification's name, selected. It asks and writes nothing:
+    /// Enter in the field is what corrects it, as it is on a pill.
+    /// </summary>
+    private void OnCorrectKeptName(object sender, RoutedEventArgs e)
+    {
+        if (LitKept(_read) is not { } lit)
+        {
+            return;
+        }
+
+        _correctingKept = true;
+        TheKeptNameIs(lit.Template.Name);
+        Render();
+        KeptNameBox.Focus(FocusState.Programmatic);
+        KeptNameBox.SelectAll();
+    }
+
+    private void OnKeptNameKey(object sender, KeyRoutedEventArgs pressed)
+    {
+        if (_drawing)
+        {
+            return;
+        }
+
+        if (pressed.Key is VirtualKey.Enter)
+        {
+            pressed.Handled = true;
+
+            if (_correctingKept)
+            {
+                CorrectTheKeptName();
+            }
+            else
+            {
+                Remember();
+            }
+        }
+        else if (pressed.Key is VirtualKey.Escape && _correctingKept)
+        {
+            pressed.Handled = true;
+            PutTheLineBack();
+        }
+    }
+
+    /// <summary>Leaving the field while correcting puts the line back and writes nothing.</summary>
+    private void OnKeptNameLeft(object sender, RoutedEventArgs e)
+    {
+        if (_drawing || !_correctingKept)
+        {
+            return;
+        }
+
+        PutTheLineBack();
+    }
+
+    private void OnKeptNameTyped(object sender, TextChangedEventArgs e)
+    {
+        if (_drawing)
+        {
+            return;
+        }
+
+        RememberButton.IsEnabled = CanRemember();
+    }
+
+    private void PutTheLineBack()
+    {
+        _correctingKept = false;
+        TheKeptNameIs(LitKept(_read)?.Template.Name ?? string.Empty);
+        Render();
+    }
+
+    private void CorrectTheKeptName()
+    {
+        var lit = LitKept(_read);
+        var name = KeptNameBox.Text.Trim();
+
+        // Nothing typed puts the line back, as it does on a pill.
+        if (lit is null || name.Length == 0)
+        {
+            PutTheLineBack();
+            return;
+        }
+
+        // The name that is going, not the one being typed, for the reason CorrectTheName gives.
+        TheLineWrote(InTheCorpus(human => human.Rename(lit.Template, name) is null
+            ? TextLine.Says(UiTexts.ThatIsNoLongerHowItWas, lit.Template.Name)
+            : null));
+    }
+
+    /// <summary>Throws the lit classification away. No meeting is reached by it.</summary>
+    private void OnDiscardKept(object sender, RoutedEventArgs e)
+    {
+        if (LitKept(_read) is not { } lit)
+        {
+            return;
+        }
+
+        var instead = InTheCorpus(human =>
+        {
+            human.Discard(lit.Template);
+            return null;
+        });
+
+        if (instead is null)
+        {
+            _keptChosen = null;
+        }
+
+        TheLineWrote(instead);
     }
 
     /// <summary>
@@ -464,6 +745,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
     private void ChooseTheShape(MeetingShape shape)
     {
         _chosen = _chosen.ShapedBy(shape);
+        Unlit();
         _deeper.Clear();
         _naming = null;
         Changed();
@@ -698,12 +980,13 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Two presses on this screen write a node — naming one and correcting one — and before
+    /// Five presses on this screen write through it — naming a node, correcting one, putting a
+    /// classification by, correcting its name, and discarding it — and before
     /// <see cref="InTheCorpus{T}"/> existed each spelled out the same ladder on its own: the folder,
     /// the context, the layer, the corpus saying no, the corpus failing. That is what made the
     /// <c>First</c>-versus-<c>FirstOrDefault</c> divergence #296 fixed possible — the same lookup
     /// written more than once, only one of which was right. This is that ladder now, for the tree's
-    /// own vocabulary; adding or correcting a person is <see cref="AddingSomebody"/>'s, in a
+    /// own vocabulary and the classifications put by under a name; adding or correcting a person is <see cref="AddingSomebody"/>'s, in a
     /// transaction of its own.
     /// </para>
     /// <para>
@@ -1288,6 +1571,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
     private void OnLeaveItUnclassified(object sender, RoutedEventArgs e)
     {
         _chosen = MeetingFiling.Nothing;
+        Unlit();
         _deeper.Clear();
         _naming = null;
         Changed();

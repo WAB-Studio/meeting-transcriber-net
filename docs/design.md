@@ -246,6 +246,8 @@ already named.
 | Commit a form | *Guardar* |
 | Walk away from one | *Cancelar* |
 | File a meeting under nothing, on purpose | *Dejarla sin clasificar* |
+| Put a classification by to file with again | *Recordar* |
+| Throw away a classification put by under a name | *Descartar* |
 | Add a person, anywhere | *Agregar a alguien* |
 | Add a path to a column | *Agregar* |
 
@@ -629,6 +631,15 @@ the correction somebody makes most often is the second half of a name typed twic
 tree offers two ways to name something new, *una organización nueva* and *un trabajo que no es de
 nadie en particular*, which is how work belonging to no organization gets into the tree without the
 screen ever saying the word *iniciativa*.
+
+Under the fourteen, a classification filled by hand can be put by: a name typed beside
+*Recordar* puts by what the columns and *Quiénes* hold, and it comes back on every meeting as
+a chip after the fourteen, drawn like them. Choosing it adds what it holds beside whatever is
+already answered and never takes an answer away, as a shape does. *Recordar* under the name
+of one already put by replaces what that one holds. With one lit, *Corregir este nombre…*
+opens its name in the same field and Enter corrects it, and *Descartar*, past the gap at the
+margin, throws it away. None of these reaches a meeting already filed with it: a meeting
+holds what it is filed under and never which chip filled it.
 
 **`QuienEsQuien`** · Who is who. **The voices are called *Tu micrófono*, *Voz 1*, *Voz 2*** and
 never the label they are stored under. Each brings a quotation, a small waveform and a clip to

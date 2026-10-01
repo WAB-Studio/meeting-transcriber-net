@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 177/263
+progress: 179/263
 updated: 2026-09-30
 ---
 
@@ -244,8 +244,8 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-191.3: Anti: a meeting whose audio is not stored never offers a stretch that cannot play — it says its audio is gone, and its speakers are named by reading as before.
 - [ ] ISC-202: A classification somebody filled by hand can be kept under a name of their own and used again.
 - [ ] ISC-202.1: A classification filled by hand and kept under a name is offered beside the thirteen after the application is closed and opened again.
-- [ ] ISC-202.2: Choosing a kept classification fills a meeting the way the classification it was kept from was filled.
-- [ ] ISC-202.3: Anti: changing or deleting a kept classification changes nothing about a meeting already filed with it.
+- [x] ISC-202.2: Choosing a kept classification fills a meeting the way the classification it was kept from was filled.
+- [x] ISC-202.3: Anti: changing or deleting a kept classification changes nothing about a meeting already filed with it.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly
@@ -805,3 +805,5 @@ Board: 7 · Distribución y backup
 - ISC-194.3 — `CorpusSettingsTests.The_last_export_comes_back_after_the_corpus_is_reopened` (`tests/MeetingTranscriber.Infrastructure.Tests`), `CorpusExportTests.The_export_is_remembered_as_the_last_one_only_once_it_is_whole` (`tests/MeetingTranscriber.Processing.Tests`) and `ConfiguracionTests.The_export_block_is_on_the_settings_screen_and_says_what_the_catalogue_says` (`tests/MeetingTranscriber.App.Tests`), green 2026-09-30: the screen half is held by a source fact and not by a walk.
 - ISC-99 — `CorpusServerTests.A_long_meeting_cannot_come_back_whole_in_one_call`, `.An_answer_is_cut_at_its_size_whatever_its_row_count` and `.One_row_larger_than_an_answer_may_be_is_refused_naming_where_to_read_past_it` (`tests/MeetingTranscriber.Mcp.Tests`), green 2026-09-30.
 - ISC-100 — `CorpusServerTests.Every_request_is_recorded_with_what_was_asked_and_how_much_came_back`, `.A_call_over_a_folder_with_no_corpus_is_recorded_too`, `.A_request_that_cannot_be_recorded_is_not_answered` and `.A_session_leaves_nothing_in_the_corpus_folder_but_the_database` (`tests/MeetingTranscriber.Mcp.Tests`), green 2026-09-30. Not reached: a call the SDK refuses before any tool runs.
+- ISC-202.2 — `KeptClassificationTests.Choosing_a_classification_put_by_files_a_meeting_the_way_the_one_it_was_put_by_from_was_filed` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `MeetingFilingTests.Filling_from_a_classification_put_by_takes_no_answer_away` (`tests/MeetingTranscriber.Domain.Tests`), green 2026-10-01. The domain fact red with `FilledFrom` handing back the kept filing. Not reached: the press itself, which needs a window.
+- ISC-202.3 — `KeptClassificationTests.Changing_renaming_or_discarding_a_classification_put_by_leaves_every_meeting_as_it_was` (`tests/MeetingTranscriber.Infrastructure.Tests`), green 2026-10-01: both meetings keep their links, namings, `template_id` and `updated_at` through a second keeping, a rename and a discard.

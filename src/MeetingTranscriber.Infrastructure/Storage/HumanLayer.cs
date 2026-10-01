@@ -10,7 +10,8 @@ namespace MeetingTranscriber.Infrastructure.Storage;
 
 /// <summary>
 /// The way in for everything a person approves: the classification tree, who is on a meeting, where
-/// they belong, which voice is whose, what the transcription gets wrong, and where an action stands.
+/// they belong, which voice is whose, what the transcription gets wrong, where an action stands,
+/// and the classifications somebody put by under a name.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -209,7 +210,9 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
             (context.Affiliations.Count(spell => spell.OrganizationId == stored.Id),
                 "person at it", "people at it"),
             (context.TerminologyCorrections.Count(fix => fix.NodeId == stored.Id),
-                "correction scoped to it", "corrections scoped to it"));
+                "correction scoped to it", "corrections scoped to it"),
+            (context.TemplateNodes.Count(row => row.NodeId == stored.Id),
+                "classification put by that files under it", "classifications put by that file under it"));
 
         if (what.Length > 0)
         {
@@ -264,21 +267,119 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
         }
     }
 
-    /// <summary>Names a template. It carries only its name; what it pre-fills arrives with the UI.</summary>
-    public MeetingTemplate Template(string name)
+    /// <summary>
+    /// Puts a classification filled by hand by, under a name, to file a meeting with again. Putting
+    /// one by under a name already used replaces what that one holds, which is how it is edited.
+    /// </summary>
+    /// <remarks>
+    /// Only the deepest node of each path is kept, as <see cref="MeetingFiling.Links"/> says, so a
+    /// classification put by files a meeting exactly as the one it came from was filed. A node or a
+    /// person the corpus does not hold is refused before anything is written.
+    /// </remarks>
+    /// <exception cref="ClassificationException">What was handed over links nothing and names nobody.</exception>
+    public MeetingTemplate Keep(string name, MeetingFiling filing)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(filing);
 
-        var template = new MeetingTemplate
+        name = name.Trim();
+        var links = filing.Links;
+        var named = filing.Named;
+        if (links.Count == 0 && named.Count == 0)
         {
-            Id = Guid.NewGuid(),
-            Name = name,
-            CreatedAt = Now,
-        };
+            throw new ClassificationException(
+                $"'{name}' would keep nothing: what was handed over links nothing and names nobody.");
+        }
 
-        context.Templates.Add(template);
+        using var keeping = context.Database.CurrentTransaction is null
+            ? context.Database.BeginTransaction()
+            : null;
+
+        foreach (var node in links.Select(link => link.Node).Distinct())
+        {
+            if (!context.Nodes.Any(stored => stored.Id == node))
+            {
+                throw new ArgumentException($"This corpus holds no node {node}.");
+            }
+        }
+
+        foreach (var person in named.Select(naming => naming.Person).Distinct())
+        {
+            if (!context.People.Any(stored => stored.Id == person))
+            {
+                throw new ArgumentException($"This corpus holds no person {person}.");
+            }
+        }
+
+        var template = context.Templates.FirstOrDefault(row => row.Name == name);
+        if (template is null)
+        {
+            template = new MeetingTemplate { Id = Guid.NewGuid(), Name = name, CreatedAt = Now };
+            context.Templates.Add(template);
+        }
+        else
+        {
+            context.TemplateNodes.RemoveRange(context.TemplateNodes.Where(row => row.TemplateId == template.Id));
+            context.TemplatePeople.RemoveRange(context.TemplatePeople.Where(row => row.TemplateId == template.Id));
+        }
+
+        context.TemplateNodes.AddRange(links.Select(link => new TemplateNode
+        {
+            TemplateId = template.Id,
+            NodeId = link.Node,
+            Role = link.Role,
+        }));
+        context.TemplatePeople.AddRange(named.Select(naming => new TemplatePerson
+        {
+            TemplateId = template.Id,
+            PersonId = naming.Person,
+            Role = naming.Role,
+        }));
+
         context.SaveChanges();
+        keeping?.Commit();
         return template;
+    }
+
+    /// <summary>
+    /// Changes the name a classification was put by under, or answers <c>null</c> when it is gone.
+    /// </summary>
+    /// <exception cref="ClassificationException">Another classification already carries the name.</exception>
+    public MeetingTemplate? Rename(MeetingTemplate kept, string name)
+    {
+        ArgumentNullException.ThrowIfNull(kept);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        name = name.Trim();
+
+        if (context.Templates.Find(kept.Id) is not { } stored)
+        {
+            return null;
+        }
+
+        if (context.Templates.Any(row => row.Name == name && row.Id != stored.Id))
+        {
+            throw new ClassificationException($"There is already a classification put by under '{name}'.");
+        }
+
+        stored.Name = name;
+        context.SaveChanges();
+        return stored;
+    }
+
+    /// <summary>
+    /// Throws a classification that was put by away, and what it held with it. No meeting is
+    /// reached: none records which one filled it. Discarding one that is gone is not a failure.
+    /// </summary>
+    public void Discard(MeetingTemplate kept)
+    {
+        ArgumentNullException.ThrowIfNull(kept);
+
+        if (context.Templates.Find(kept.Id) is { } stored)
+        {
+            context.Templates.Remove(stored);
+            context.SaveChanges();
+        }
     }
 
     /// <summary>
@@ -503,7 +604,7 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
     /// is a flag on the row and not something pointing at it: a corpus whose owner nothing else
     /// names is a fresh install, <see cref="Me"/> reads nobody, and the screen that asks who is
     /// using this install goes back to asking — which is the answer <see cref="Me"/>'s own remarks
-    /// say repairs itself. Anything they were actually on is one of the five below and refuses.
+    /// say repairs itself. Anything they were actually on is one of the six below and refuses.
     /// </para>
     /// </remarks>
     /// <exception cref="ClassificationException">Something names them, and the message says what.</exception>
@@ -530,7 +631,9 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
             (context.Decisions.Count(settled => settled.DecidedByPersonId == stored.Id),
                 "decision they made", "decisions they made"),
             (context.ActionItemProgress.Count(owned => owned.OwnerPersonId == stored.Id),
-                "action they own", "actions they own"));
+                "action they own", "actions they own"),
+            (context.TemplatePeople.Count(row => row.PersonId == stored.Id),
+                "classification put by that names them", "classifications put by that name them"));
 
         if (what.Length > 0)
         {
@@ -901,16 +1004,6 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
         MeetingManifest.Write(context, meeting.Id, now);
 
         edit?.Commit();
-    }
-
-    /// <summary>The shape the meeting was classified as, or none.</summary>
-    public void Shape(Meeting meeting, MeetingTemplate? template)
-    {
-        ArgumentNullException.ThrowIfNull(meeting);
-
-        meeting.TemplateId = template?.Id;
-        meeting.UpdatedAt = Now;
-        context.SaveChanges();
     }
 
     /// <summary>One instant, for as long as the edits made at it take.</summary>

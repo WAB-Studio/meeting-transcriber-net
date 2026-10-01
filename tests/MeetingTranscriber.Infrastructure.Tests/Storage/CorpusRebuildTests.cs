@@ -32,6 +32,8 @@ public class CorpusRebuildTests
         "nodes",
         "meeting_nodes",
         "templates",
+        "template_nodes",
+        "template_people",
         "people",
         "affiliations",
         "meeting_people",
@@ -346,9 +348,16 @@ public class CorpusRebuildTests
 
         var techsed = human.Root(NodeKind.Organization, "TechSed");
         var coati = human.Under(techsed, NodeKind.Initiative, "Coati");
-        var template = human.Template("trabajo");
         var ada = human.Add("Ada");
         var jo = human.Add("Jo");
+        human.Keep(
+            "trabajo",
+            new MeetingFiling(
+                null,
+                [new ChosenPath([techsed.Id, coati.Id])],
+                [],
+                [],
+                [new ChosenPerson(jo.Id, Attended: true, Subject: false)]));
 
         human.ThisIsMe(ada);
         human.Join(ada, techsed);
@@ -363,7 +372,6 @@ public class CorpusRebuildTests
 
         var stored = context.Meetings.Find(meeting)!;
         human.Describe(stored, "la daily del equipo", "arranca el sprint");
-        human.Shape(stored, template);
     }
 
     /// <summary>What a rebuild does: every derived row goes, then the same sources go back in.</summary>

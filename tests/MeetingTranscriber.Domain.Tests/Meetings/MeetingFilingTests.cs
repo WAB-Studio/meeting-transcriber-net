@@ -133,6 +133,50 @@ public class MeetingFilingTests
     }
 
     /// <summary>
+    /// A classification put by adds what it holds and never takes an answer away, for the reason a
+    /// shape does not: no meeting records which chip filled it.
+    /// </summary>
+    [Fact]
+    public void Filling_from_a_classification_put_by_takes_no_answer_away()
+    {
+        var other = Guid.NewGuid();
+        var filed = MeetingFiling.Nothing with
+        {
+            WorkOf = [new ChosenPath([Company, Project])],
+            Somebody = [new ChosenPerson(Jo, Attended: false, Subject: true)],
+        };
+        var kept = MeetingFiling.Nothing with
+        {
+            WorkOf = [new ChosenPath([Company, Project]), new ChosenPath([other])],
+            Counterpart = [new ChosenPath([Ticket])],
+            Somebody = [new ChosenPerson(Jo, Attended: true, Subject: false)],
+        };
+
+        var after = filed.FilledFrom(kept);
+
+        after.Shape.ShouldBeNull();
+        Down(after.WorkOf).ShouldBe([[Company, Project], [other]]);
+        Down(after.Counterpart).ShouldBe([[Ticket]]);
+        after.Somebody.ShouldBe([new ChosenPerson(Jo, Attended: false, Subject: true)]);
+    }
+
+    [Fact]
+    public void Filling_an_empty_draft_from_a_classification_put_by_files_what_it_holds()
+    {
+        var kept = MeetingFiling.Nothing with
+        {
+            About = [new ChosenPath([Ticket])],
+            Somebody = [new ChosenPerson(Jo, Attended: true, Subject: true)],
+        };
+
+        var after = MeetingFiling.Nothing.FilledFrom(kept);
+
+        after.Links.ShouldBe(kept.Links);
+        after.Named.ShouldBe(kept.Named, ignoreOrder: true);
+        after.Somebody.ShouldBe(kept.Somebody);
+    }
+
+    /// <summary>
     /// Both toggles off is somebody on the screen and on no row, which is the same answer an empty
     /// path gives. Named as having attended because their row is there, they would be filed as
     /// present at a meeting somebody deliberately took them off.

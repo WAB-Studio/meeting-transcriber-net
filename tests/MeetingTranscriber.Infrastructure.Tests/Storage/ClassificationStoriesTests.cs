@@ -8,7 +8,7 @@ namespace MeetingTranscriber.Infrastructure.Tests.Storage;
 /// <summary>
 /// The thirteen meetings arquitectura.md §5.3 lists, all in one corpus. They are what the
 /// classification vocabulary was closed against: three classes of node, three roles for a link to
-/// one, two for a person, and templates that carry only a name.
+/// one, two for a person, and templates that only pre-fill those.
 /// </summary>
 /// <remarks>
 /// <para>

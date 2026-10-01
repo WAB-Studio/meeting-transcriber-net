@@ -113,6 +113,10 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
 
     public DbSet<MeetingTemplate> Templates => Set<MeetingTemplate>();
 
+    public DbSet<TemplateNode> TemplateNodes => Set<TemplateNode>();
+
+    public DbSet<TemplatePerson> TemplatePeople => Set<TemplatePerson>();
+
     public DbSet<Person> People => Set<Person>();
 
     public DbSet<Affiliation> Affiliations => Set<Affiliation>();
@@ -229,6 +233,35 @@ public sealed class CorpusDbContext(DbContextOptions<CorpusDbContext> options) :
             template.ToTable("templates");
             template.HasKey(entity => entity.Id);
             template.HasIndex(entity => entity.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<TemplateNode>(link =>
+        {
+            link.ToTable("template_nodes", table => table.HasCheckConstraint(
+                "ck_template_nodes_role",
+                $"role IN ({WireNames<MeetingNodeRole>.AsSqlList()})"));
+
+            // The same shape as meeting_nodes, for the same reason: the role is part of the key.
+            link.HasKey(entity => new { entity.TemplateId, entity.NodeId, entity.Role });
+            link.HasIndex(entity => entity.NodeId);
+            link.HasOne<MeetingTemplate>().WithMany().HasForeignKey(entity => entity.TemplateId)
+                .OnDelete(DeleteBehavior.Cascade);
+            link.HasOne<Node>().WithMany().HasForeignKey(entity => entity.NodeId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TemplatePerson>(person =>
+        {
+            person.ToTable("template_people", table => table.HasCheckConstraint(
+                "ck_template_people_role",
+                $"role IN ({WireNames<MeetingPersonRole>.AsSqlList()})"));
+
+            person.HasKey(entity => new { entity.TemplateId, entity.PersonId, entity.Role });
+            person.HasIndex(entity => entity.PersonId);
+            person.HasOne<MeetingTemplate>().WithMany().HasForeignKey(entity => entity.TemplateId)
+                .OnDelete(DeleteBehavior.Cascade);
+            person.HasOne<Person>().WithMany().HasForeignKey(entity => entity.PersonId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Person>(person =>

@@ -350,7 +350,8 @@ public class ClassifyingAMeetingTests
     /// node is one of them.
     /// </summary>
     /// <remarks>
-    /// Two presses write a node — naming one and correcting one — each spelling out the same ladder
+    /// Five presses write through it — naming a node, correcting one, putting a classification by,
+    /// correcting its name and discarding it — each spelling out the same ladder
     /// before <c>InTheCorpus</c> existed: the folder, the context, the layer, the corpus saying no,
     /// the corpus failing. That is what made the <c>First</c>-versus-<c>FirstOrDefault</c>
     /// divergence #296 fixed possible — the same lookup written more than once, only one of which
@@ -373,11 +374,59 @@ public class ClassifyingAMeetingTests
         SourceLines.Occurrences(source, "CorpusDatabase.Open(").Count().ShouldBe(
             3,
             "this screen opens the corpus three times and each is a different thing it does: Draw "
-            + "reads the meeting, InTheCorpus writes the tree's vocabulary, and OnSave files it. "
+            + "reads the meeting, InTheCorpus writes the tree's vocabulary and the classifications put by under a name, and OnSave files it. "
             + "Adding or correcting a person opens its own, in AddingSomebody, and is not one of "
             + "these three. A fourth opening here is a fourth thing this screen does to the "
             + "corpus, and the answer is to say here what it is — not to raise the number. Read as "
             + "text, so a construction spelled another way walks past it.");
+    }
+
+    /// <summary>
+    /// The classifications put by are drawn after the fourteen, so they come back on every meeting.
+    /// </summary>
+    [Fact]
+    public void The_classifications_put_by_are_drawn_after_the_fourteen()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+        var render = Body(source, "private void Render(");
+
+        render.ShouldContain("TheShapesOnOffer(");
+        render.ShouldContain("TheKeptOnOffer(");
+        render.IndexOf("TheKeptOnOffer(", StringComparison.Ordinal).ShouldBeGreaterThan(
+            render.IndexOf("TheShapesOnOffer(", StringComparison.Ordinal),
+            "the classifications put by are drawn before the fourteen, or not drawn at all.");
+    }
+
+    /// <summary>
+    /// Throwing a classification away loses something, so it sits past the gap at the margin.
+    /// </summary>
+    [Fact]
+    public void Discarding_a_classification_put_by_is_the_press_that_loses_something()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        Regex.Match(markup, @"<Button\s+x:Name=""DiscardKeptButton""[^>]*>", RegexOptions.Singleline)
+            .Value.ShouldContain(
+                "Style=\"{StaticResource ItLosesSomething}\"",
+                customMessage: "the press that throws a classification away is not drawn as one that loses something.");
+    }
+
+    /// <summary>
+    /// Correcting a name asks and writes nothing: the press opens the field, and only Enter in it
+    /// commits, as it does on a pill.
+    /// </summary>
+    [Fact]
+    public void Correcting_the_name_of_a_classification_put_by_commits_only_on_Enter()
+    {
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        Body(source, "private void OnCorrectKeptName(").ShouldNotContain(
+            "InTheCorpus(",
+            customMessage: "the press renames straight away, so a mistaken press changes a name for good.");
+
+        Body(source, "private void OnKeptNameKey(").ShouldContain("CorrectTheKeptName(");
+
+        Body(source, "private void CorrectTheKeptName(").ShouldContain("InTheCorpus(");
     }
 
     /// <summary>

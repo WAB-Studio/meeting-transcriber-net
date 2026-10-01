@@ -131,6 +131,34 @@ public sealed record MeetingFiling(
             ]);
     }
 
+    /// <summary>
+    /// What a classification put by holds, on top of whatever has already been answered.
+    /// </summary>
+    /// <remarks>
+    /// It adds and never takes an answer away, for the reason <see cref="ShapedBy"/> gives: no
+    /// meeting records which chip filled it, so pressing the one used last time on a filed meeting
+    /// must not wipe what the corpus holds. A person already standing keeps their toggles, and a
+    /// path whose deepest node is already filled is not drawn twice. On a meeting nobody has filed,
+    /// adding and replacing are the same thing.
+    /// </remarks>
+    public MeetingFiling FilledFrom(MeetingFiling kept)
+    {
+        ArgumentNullException.ThrowIfNull(kept);
+
+        var standing = Somebody.Where(slot => slot.PersonId is not null).ToArray();
+        var already = standing.Select(slot => slot.PersonId).ToHashSet();
+
+        return new MeetingFiling(
+            null,
+            Adding(WorkOf, kept.WorkOf),
+            Adding(Counterpart, kept.Counterpart),
+            Adding(About, kept.About),
+            [
+                .. standing,
+                .. kept.Somebody.Where(slot => slot.PersonId is not null && already.Add(slot.PersonId)),
+            ]);
+    }
+
     /// <summary>The column a link of this role is drawn in.</summary>
     /// <remarks>
     /// Public, and it is what the screen draws the three columns from: it walks
@@ -195,6 +223,17 @@ public sealed record MeetingFiling(
                 .Select(role => (Person: slot.PersonId!.Value, Role: role)))
             .Distinct(),
     ];
+
+    /// <summary>One column with every path already filled, then each of the kept ones it lacks.</summary>
+    private static IReadOnlyList<ChosenPath> Adding(IReadOnlyList<ChosenPath> answered, IReadOnlyList<ChosenPath> kept)
+    {
+        var filled = answered.Where(path => path.Deepest is not null).ToList();
+        var deepest = filled.Select(path => path.Deepest).ToHashSet();
+
+        filled.AddRange(kept.Where(path => path.Deepest is not null && deepest.Add(path.Deepest)));
+
+        return filled;
+    }
 
     /// <summary>
     /// One column with the places a shape wants opened in it, keeping every path already answered.

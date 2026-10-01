@@ -249,9 +249,9 @@ about to be dropped. Three of those eight are the human layer, which is where a 
 likely to be added, so this is a larger surface than it was when it was two.
 
 Everything else is a source, and the part that matters most is the **human layer**: `nodes`,
-`meeting_nodes`, `templates`, `people`, `affiliations`, `meeting_people`, `speaker_assignments`,
-`terminology_corrections`, `action_item_progress`, and the titles, context notes and
-classifications on `meetings`. None of it is inferable from any artifact, so a backup that copies
+`meeting_nodes`, `templates`, `template_nodes`, `template_people`, `people`, `affiliations`,
+`meeting_people`, `speaker_assignments`, `terminology_corrections`, `action_item_progress`, and the
+titles, context notes and classifications on `meetings`. None of it is inferable from any artifact, so a backup that copies
 only the files loses it.
 
 `HumanLayer` writes all of it, and the reason it exists rather than a page of `context.Add` is the

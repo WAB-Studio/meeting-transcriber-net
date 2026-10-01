@@ -340,9 +340,9 @@ public static class MeetingsNobodyRecorded
     /// <remarks>
     /// <para>
     /// The row has to be as pressing record left it. Its length is what a finish writes last, so a
-    /// meeting that has one was recorded and saved; its title, its notes and the shape it was filed
-    /// under are what a person typed on it, and somebody who wrote on a meeting had one whatever the
-    /// folder says; and a lifecycle other than active is somebody's decision about it, which a sweep
+    /// meeting that has one was recorded and saved; its title and its notes are what a person typed
+    /// on it, and somebody who wrote on a meeting had one whatever the folder says; nothing writes a
+    /// shape onto a meeting, so it is not asked; and a lifecycle other than active is somebody's decision about it, which a sweep
     /// does not get to complete on their behalf.
     /// </para>
     /// <para>
@@ -363,7 +363,7 @@ public static class MeetingsNobodyRecorded
             return "it is a meeting that was recorded and saved.";
         }
 
-        if (meeting.Title is not null || meeting.Context is not null || meeting.TemplateId is not null)
+        if (meeting.Title is not null || meeting.Context is not null)
         {
             return "somebody wrote on it.";
         }
