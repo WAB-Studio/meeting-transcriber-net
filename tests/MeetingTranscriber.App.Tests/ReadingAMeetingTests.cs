@@ -120,6 +120,43 @@ public class ReadingAMeetingTests
     }
 
     /// <summary>
+    /// A summary is put back through the one call that records it, from a row's <c>Click</c> and
+    /// not its <c>Checked</c> (which drawing the checked row would raise), read out of source for
+    /// the reason above.
+    /// </summary>
+    [Fact]
+    public void A_summary_is_put_back_through_the_one_call_that_records_it()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        screen.ShouldContain("screen.ASummaryMayBeChosen");
+        screen.ShouldContain(".ShowSummary(meeting, given.RunId)");
+        markup.ShouldContain("UiTexts.ThisMeetingsSummaries");
+
+        var section = Regex.Match(
+            screen,
+            Regex.Escape("private void SummariesSection(MeetingScreen screen)") + @".*?\r?\n[ ]{4}\}",
+            RegexOptions.Singleline);
+
+        section.Success.ShouldBeTrue("the screen no longer has a SummariesSection.");
+        section.Value.ShouldContain(".Click +=");
+        section.Value.ShouldNotContain(".Checked +=");
+    }
+
+    /// <summary>
+    /// A refusal of a second summary is worded without denying the first one that is on screen.
+    /// </summary>
+    [Fact]
+    public void A_second_summary_that_was_refused_is_not_told_there_is_no_summary()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        screen.ShouldContain("ThereIsASummary: false, WhyTheSummaryWasRefused");
+        screen.ShouldContain("LastRefusedText(refusedAgain)");
+    }
+
+    /// <summary>
     /// The list's press and the screen it opens are wired to each other.
     /// </summary>
     /// <remarks>

@@ -822,6 +822,12 @@ public static class UiTexts
         "El resumen lo armó {0}, el {1}.",
         "{0} put the summary together, on {1}.");
 
+    // The data-rank label above the rows of a meeting's summaries, and the automation name of their
+    // panel (docs/design.md, The flow). Read by ReadingAMeeting.
+    public static UiText ThisMeetingsSummaries { get; } = new(
+        "resúmenes de esta reunión",
+        "this meeting's summaries");
+
     public static UiText NobodyHasTranscribedThisYet { get; } = new(
         "Todavía no la transcribió nadie.",
         "Nobody has transcribed it yet.");
@@ -851,6 +857,17 @@ public static class UiTexts
     public static UiText SummaryNotAcceptedOn { get; } = new(
         "No hay resumen: el último que llegó no se aceptó. {0} Sobre «{1}».",
         "There is no summary: the last one that came back was not accepted. {0} On “{1}”.");
+
+    // The same refusal over a meeting that already has a summary, so it cannot open with "there is
+    // no summary". Said beside the line saying the summary asked for again did not come back;
+    // asking again is already on the screen whenever these show.
+    public static UiText TheLastSummaryWasNotAccepted { get; } = new(
+        "El último que llegó no se aceptó. {0}",
+        "The last one that came back was not accepted. {0}");
+
+    public static UiText TheLastSummaryWasNotAcceptedOn { get; } = new(
+        "El último que llegó no se aceptó. {0} Sobre «{1}».",
+        "The last one that came back was not accepted. {0} On “{1}”.");
 
     public static UiText RefusedNotTheSchema { get; } = new(
         "Lo que devolvió no tiene la forma de un resumen.",
@@ -1114,6 +1131,12 @@ public static class UiTexts
     // The label over the further clips of a voice that said little (docs/design.md §QuienEsQuien).
     // Read by SayingWhoIsWho.
     public static UiText OtherStretches { get; } = new("otros fragmentos", "other stretches");
+
+    // The label where the clip of a voice somebody always talked over would be: it has no stretch
+    // heard alone to bring (docs/design.md §QuienEsQuien). Read by SayingWhoIsWho.
+    public static UiText NeverHeardAlone { get; } = new(
+        "siempre habló con alguien encima",
+        "somebody always spoke over this voice");
 
     // The placeholder on a voice's picker, over Everybody rather than over Ninguno: a voice
     // nobody has named yet reads better as an invitation than as the answer that empties it.

@@ -253,7 +253,7 @@ already named.
 | Change where the corpus is kept | *Cambiar* |
 | Say where Claude Code is | *Cambiar* |
 | Take the corpus out of the application | *Exportar* |
-| Stop a summary that is running | *Detener* |
+| Stop a summary that is running, or a second one waiting to run | *Detener* |
 | Take the whole machine instead | *Grabar toda la máquina* |
 | Buy a transcription or a summary | *Transcribir* · *Resumir* |
 | Ask a summarised meeting for another | *Resumir de nuevo* |
@@ -646,7 +646,14 @@ decision tint, then *Qué se decidió*, *Qué queda por hacer*, *Qué quedó sin
 carrying a timestamp pill that opens the transcript **in place**, not on another screen. Decisions
 take an olive bullet and open questions a pico one. The right column is who spoke with their share,
 what it was about, and who wrote this. The player runs along the bottom: **the coloured marks on the
-track are the summary's citations**, so where each thing falls across the hour is visible.
+track are the summary's citations**, so where each thing falls across the hour is visible. A
+meeting given more than one summary lists every one of them in the card that says who wrote this,
+under the label *resúmenes de esta reunión*, newest accepted first: a radio row each, saying who
+wrote it and when it was accepted. The chosen row is the summary on the screen, and choosing
+another puts that one back — for every reading of the meeting, search included, and after the
+application is closed and opened again. It is a radio row and never the two-way trough, even at
+two, because the set only grows. A meeting with one summary has nothing to choose and draws no
+rows.
 
 **`Clasificar`** · What it was about. The templates are the thirteen meetings of `arquitectura.md`
 §5.3 **by name only** — what each one fills in is not explained, it is seen on choosing.
@@ -678,7 +685,9 @@ never the label they are stored under. Each brings a quotation, a small waveform
 listen to before deciding — *two people look more alike in writing than they sound*. The microphone
 that caught exactly one voice is settled already and says so. **One that spoke little brings three
 clips instead of one**, because one is not enough to recognise somebody by. Nothing on it failed,
-so the screen carries no sentence at all: the clips being there are the instruction.
+so the screen carries no sentence at all: the clips being there are the instruction. A
+voice somebody always talked over has no clip to bring, and says so in a label where its clip
+would be.
 
 **`Correcciones`** · Words that come out wrong. **The problem was never applying a correction, it
 was finding one** — nobody reads a corpus looking for what went wrong. So: the person types the word

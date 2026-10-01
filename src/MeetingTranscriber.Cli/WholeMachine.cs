@@ -12,7 +12,9 @@ namespace MeetingTranscriber.Cli;
 /// The rule about when it is worth saying is <c>SilentProgram</c>'s and the move itself is the
 /// capture session's. What is here is the shape the offer takes when there is no window: a line
 /// beside the levels, and a key. Both commands that record show it, so it is one type rather than
-/// the same eight lines in each of their metering loops.
+/// the same eight lines in each of their metering loops. A program that closes after the offer was
+/// made for silence is said once more, in one further line, because the offer above cannot be
+/// rewritten.
 /// </para>
 /// <para>
 /// Public, and its keyboard is a constructor argument, because this is the whole of the consent
@@ -37,6 +39,7 @@ public sealed class WholeMachine
 
     private bool offered;
     private bool taken;
+    private bool saidItClosed;
 
     /// <param name="take">What moving channel 0 to the whole machine's audio is.</param>
     /// <param name="typed">
@@ -66,7 +69,9 @@ public sealed class WholeMachine
     /// <param name="output">Where the offer is written.</param>
     /// <param name="wentAway">
     /// Whether the program it follows has closed. Either report makes the offer, once; this one
-    /// says why, and is the sentence said where both stand because it is the cause.
+    /// says why, and is the sentence said where both stand because it is the cause. Where the
+    /// closing comes after an offer made for silence, it is said once more on a line of its own and
+    /// the offer is not printed again: a prompt cannot rewrite the line it printed, so it adds one.
     /// </param>
     public void Consider(bool heardNothing, TextWriter output, bool wentAway = false)
     {
@@ -75,6 +80,7 @@ public sealed class WholeMachine
         if ((heardNothing || wentAway) && !offered)
         {
             offered = true;
+            saidItClosed = wentAway;
             var why = wentAway
                 ? "that program closed and nothing has come from it since."
                 : "nothing at all has come from that program.";
@@ -100,6 +106,15 @@ public sealed class WholeMachine
         // choice made before there was anything to choose, and read as informed consent to put
         // every other application on the machine in the file.
         var pressed = Pressed();
+
+        if (offered && !taken && wentAway && !saidItClosed)
+        {
+            saidItClosed = true;
+            Report.Line(
+                output,
+                "no audio",
+                $"that program has closed since, so nothing more will come from it. Press {Key} to take the offer above.");
+        }
 
         if (offered && pressed)
         {

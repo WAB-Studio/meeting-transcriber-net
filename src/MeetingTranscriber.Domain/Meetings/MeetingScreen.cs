@@ -115,10 +115,10 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAu
 
     /// <summary>
     /// The first reason the latest summary attempt was refused, or nothing. An init property and
-    /// not a fourth positional member, for the reason <see cref="OwedWork.Failed"/> gives. Set only
-    /// while the meeting has no summary: <c>MeetingReading</c> reads it off the newest Extract job's
-    /// last run, and it is never set over a summary — a later attempt that failed is
-    /// <see cref="WhyTheLastSummaryFailed"/>.
+    /// not a fourth positional member, for the reason <see cref="OwedWork.Failed"/> gives. Set
+    /// whenever the newest summary attempt was refused, summarised or not: <c>MeetingReading</c>
+    /// reads it off the newest Extract job's last run. Over a summary that exists it is what the
+    /// attempt after it was refused for, beside <see cref="WhyTheLastSummaryFailed"/>.
     /// </summary>
     public ExtractionRefusal? WhyTheSummaryWasRefused { get; init; }
 
@@ -131,8 +131,23 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAu
     /// </summary>
     public JobFailure? WhyTheLastSummaryFailed => ThereIsASummary ? Owed.Failed : null;
 
-    /// <summary>Whether a running summary can be stopped from this screen: <see cref="OwedWork.MayBeStopped"/>.</summary>
+    /// <summary>
+    /// Whether a running summary, or a second one waiting to run, can be stopped from this screen:
+    /// <see cref="OwedWork.MayBeStopped"/>.
+    /// </summary>
     public bool TheSummaryMayBeStopped => Owed.MayBeStopped;
+
+    /// <summary>
+    /// Every summary this meeting was given, newest accepted first, the one on screen marked. An
+    /// init property for the reason <see cref="WhyTheSummaryWasRefused"/> gives.
+    /// </summary>
+    public IReadOnlyList<GivenSummary> EverySummary { get; init; } = [];
+
+    /// <summary>
+    /// Whether there is a choice to offer: one summary has nothing to choose between, and the set
+    /// only grows from there.
+    /// </summary>
+    public bool ASummaryMayBeChosen => EverySummary.Count > 1;
 }
 
 /// <summary>

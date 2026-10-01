@@ -71,6 +71,13 @@ public sealed record WhoWroteThis(
     public static WhoWroteThis Nobody { get; } = new(null, null, null, null);
 }
 
+/// <summary>One summary a meeting was given, as the screen offers it to be put back.</summary>
+/// <param name="RunId">The extraction run that wrote it, which is what putting it back names.</param>
+/// <param name="WrittenBy">The provider and model as one name.</param>
+/// <param name="AcceptedAt">When the filing accepted it.</param>
+/// <param name="IsShown">True for exactly one summary of a meeting: the one the screen shows.</param>
+public sealed record GivenSummary(Guid RunId, string WrittenBy, UtcTimestamp AcceptedAt, bool IsShown);
+
 /// <summary>
 /// Everything one extraction left of a meeting: the abstract, and the three anchored lists as one
 /// ordered run.

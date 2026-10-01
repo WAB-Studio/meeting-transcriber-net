@@ -47,16 +47,43 @@ public class WholeMachineTests
         run.Moves.ShouldBe(1);
     }
 
-    /// <summary>One offer for the meeting, whichever report comes second.</summary>
+    /// <summary>
+    /// One offer for the meeting, whichever report comes second, and the closing said once on a
+    /// line of its own: the offer above cannot be rewritten, and it no longer says the whole story.
+    /// </summary>
     [Fact]
-    public void A_program_that_closed_after_the_offer_was_made_is_not_offered_again()
+    public void A_program_that_closed_after_the_offer_was_made_is_said_once_and_not_offered_again()
     {
         var run = new Prompt();
 
         run.Gate.Consider(heardNothing: true, run.Output);
+        run.Said.ShouldNotContain("closed");
+
+        run.Gate.Consider(heardNothing: true, run.Output, wentAway: true);
+        run.Gate.Consider(heardNothing: true, run.Output, wentAway: true);
         run.Gate.Consider(heardNothing: true, run.Output, wentAway: true);
 
         run.Times(Offer).ShouldBe(1);
+        run.Times("has closed since").ShouldBe(1);
+        run.Moves.ShouldBe(0);
+    }
+
+    /// <summary>
+    /// Goes red with the <c>!taken</c> guard dropped: a recording already moved to the whole
+    /// machine's audio has nothing left to follow, and a line about the offer would be noise.
+    /// </summary>
+    [Fact]
+    public void A_program_that_closed_after_the_offer_was_taken_says_nothing()
+    {
+        var run = new Prompt();
+
+        run.Gate.Consider(heardNothing: true, run.Output);
+        run.Types("w");
+        run.Gate.Consider(heardNothing: true, run.Output);
+        run.Moves.ShouldBe(1);
+
+        run.Gate.Consider(heardNothing: true, run.Output, wentAway: true);
+
         run.Said.ShouldNotContain("closed");
     }
 

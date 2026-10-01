@@ -1,4 +1,5 @@
 using MeetingTranscriber.Audio;
+using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Infrastructure.Meetings;
@@ -308,6 +309,8 @@ public sealed partial class ReadingAMeeting : UserControl
         NameBox.Text = string.Empty;
         TheSections.Children.Clear();
         Presses.Children.Clear();
+        TheSummaries.Children.Clear();
+        TheSummariesCard.Visibility = Visibility.Collapsed;
         TheFiling.Children.Clear();
         TheVoices.Children.Clear();
     }
@@ -348,6 +351,8 @@ public sealed partial class ReadingAMeeting : UserControl
     {
         TheSections.Children.Clear();
         Presses.Children.Clear();
+        TheSummaries.Children.Clear();
+        TheSummariesCard.Visibility = Visibility.Collapsed;
         TheFiling.Children.Clear();
         TheVoices.Children.Clear();
 
@@ -379,6 +384,7 @@ public sealed partial class ReadingAMeeting : UserControl
         StageText.Text = In(MeetingWords.Reached(read.Screen.Stage));
 
         WhoWroteIt(read.Screen);
+        SummariesSection(read.Screen);
         WhatWasLeft(read.Screen.Left);
         TheActOnOffer(read.Screen);
         WhatItWasAbout(read.Screen);
@@ -419,19 +425,25 @@ public sealed partial class ReadingAMeeting : UserControl
 
         var summarised = wrote is { Summariser: { } model, SummarisedAt: { } then }
             ? UiTexts.SummarisedBy.In(_language, model, ScreenNumbers.At(then))
-            : screen.WhyTheSummaryWasRefused is { } refusal
+            : screen is { ThereIsASummary: false, WhyTheSummaryWasRefused: { } refusal }
                 ? RefusedText(refusal)
                 : In(screen.ThereIsASummary
                     ? UiTexts.TheCorpusDoesNotSayWhoSummarisedIt
                     : UiTexts.NobodyHasSummarisedThisYet);
 
         // The summary before stays on screen when the one after it failed, so the line says both.
-        SummarisedText.Text = screen.WhyTheLastSummaryFailed is { } failure
-            ? $"{summarised} {In(MeetingWords.Failed(failure))}"
-            : summarised;
+        // A refusal says what it was refused for, in words that do not open by denying the summary
+        // that is right there; every other failure keeps its own sentence.
+        SummarisedText.Text = screen switch
+        {
+            { WhyTheLastSummaryFailed: JobFailure.ExtractionRefused, WhyTheSummaryWasRefused: { } refusedAgain } =>
+                $"{summarised} {LastRefusedText(refusedAgain)}",
+            { WhyTheLastSummaryFailed: { } failure } => $"{summarised} {In(MeetingWords.Failed(failure))}",
+            _ => summarised,
+        };
     }
 
-    /// <summary>What the screen says about a summary attempt that was refused.</summary>
+    /// <summary>What the screen says about a summary attempt that was refused, over no summary.</summary>
     private string RefusedText(ExtractionRefusal refusal)
     {
         var condition = RefusedBecause(refusal.Condition).In(_language);
@@ -439,6 +451,76 @@ public sealed partial class ReadingAMeeting : UserControl
         return refusal.Statement is { } statement
             ? UiTexts.SummaryNotAcceptedOn.In(_language, condition, statement)
             : UiTexts.SummaryNotAccepted.In(_language, condition);
+    }
+
+    /// <summary>What the screen says about a second summary that was refused, over one that exists.</summary>
+    private string LastRefusedText(ExtractionRefusal refusal)
+    {
+        var condition = RefusedBecause(refusal.Condition).In(_language);
+
+        return refusal.Statement is { } statement
+            ? UiTexts.TheLastSummaryWasNotAcceptedOn.In(_language, condition, statement)
+            : UiTexts.TheLastSummaryWasNotAccepted.In(_language, condition);
+    }
+
+    /// <summary>
+    /// Every summary the meeting was given, as a radio row each, when there is more than one to
+    /// choose between.
+    /// </summary>
+    /// <remarks>
+    /// <c>Click</c> and not <c>Checked</c>: setting <see cref="ToggleButton.IsChecked"/> while
+    /// drawing raises <c>Checked</c>, so wiring the write to it would put a summary back on every
+    /// redraw. The rows are the card's own, cleared and drawn again by every <see cref="Render"/>,
+    /// the way <c>Presses</c> are.
+    /// </remarks>
+    private void SummariesSection(MeetingScreen screen)
+    {
+        TheSummaries.Children.Clear();
+        TheSummariesCard.Visibility = screen.ASummaryMayBeChosen ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!screen.ASummaryMayBeChosen)
+        {
+            return;
+        }
+
+        foreach (var given in screen.EverySummary)
+        {
+            var row = new RadioButton
+            {
+                Content = ScreenNumbers.Beside(given.WrittenBy, ScreenNumbers.At(given.AcceptedAt)),
+                Style = Chrome("ASummaryOfThisMeeting"),
+                GroupName = nameof(TheSummaries),
+                IsChecked = given.IsShown,
+            };
+
+            row.Click += (_, _) => ShowSummary(given);
+            TheSummaries.Children.Add(row);
+        }
+    }
+
+    /// <summary>Somebody chose another of the meeting's summaries. The one call that puts it back.</summary>
+    private void ShowSummary(GivenSummary given)
+    {
+        if (given.IsShown || _meeting is not { } meeting || Corpus().Folder is not { } folder)
+        {
+            return;
+        }
+
+        try
+        {
+            using var context = CorpusDatabase.Open(folder);
+            new MeetingReading(context, TimeProvider.System).ShowSummary(meeting, given.RunId);
+        }
+        catch (MeetingStageException stale)
+        {
+            _status.Says(UiTexts.ThatIsNoLongerHowItWas, stale.Message);
+        }
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
+        {
+            _status.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+        }
+
+        AfterWriting();
     }
 
     /// <summary>The sentence naming why an extraction was refused, one per condition.</summary>

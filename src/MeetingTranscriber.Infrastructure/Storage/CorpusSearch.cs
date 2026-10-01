@@ -279,8 +279,8 @@ public static class CorpusSearch
 
     /// <summary>
     /// Which extraction a meeting's summary, decisions, actions and open questions come from: the
-    /// last one accepted, ties broken out to the run's own id, and a run nobody accepted not read
-    /// at all.
+    /// one accepted or put back last, ties broken out to the run's own id, and a run nobody
+    /// accepted not read at all.
     /// </summary>
     /// <param name="meeting">
     /// The SQL naming the meeting: <c>meeting.id</c> where this correlates with a query,
@@ -302,10 +302,18 @@ public static class CorpusSearch
     /// break it. The two places both could have asked instead are still refused: a view has to be
     /// mapped keyless to be readable, and a column on <c>meetings</c> naming the run is a second
     /// copy of a fact the runs already hold, wrong from the moment a run is accepted and
-    /// something forgets to update it. What
+    /// something forgets to update it. <c>extraction_runs.chosen_at</c> is not that column: it
+    /// names no run, so it cannot go stale. What
     /// <c>CorpusSearchTests.Search_and_the_meeting_screen_break_a_tie_between_two_accepted_runs_the_same_way</c>
     /// holds is no longer that two spellings agree but that the one spelling reaches both readers,
     /// which is still worth running: they reach it by two different paths to the database.
+    /// </para>
+    /// <para>
+    /// A person putting a summary back is a newer word than its acceptance, and a later acceptance
+    /// is newer again. So the rule is the later of the two instants, <c>accepted_at</c> and
+    /// <c>chosen_at</c>, and nothing has to remember to clear a choice when a new summary is
+    /// accepted. The <c>coalesce</c> is not decoration: SQLite's two-argument <c>max()</c> is NULL
+    /// when either argument is, which would sort every run nobody put back last.
     /// </para>
     /// <para>
     /// Costed rather than indexed. This is a correlated subquery on four of the nine branches and
@@ -335,7 +343,8 @@ public static class CorpusSearch
     internal static string TheRunThatCounts(string meeting) => $"""
         (SELECT id FROM extraction_runs
           WHERE meeting_id = {meeting} AND accepted_at IS NOT NULL
-          ORDER BY accepted_at DESC, created_at DESC, id DESC
+          ORDER BY max(accepted_at, coalesce(chosen_at, accepted_at)) DESC,
+                   accepted_at DESC, created_at DESC, id DESC
           LIMIT 1)
         """;
 

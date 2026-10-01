@@ -110,6 +110,9 @@
 
             <!-- The words over the further clips of a voice that spoke little. -->
             <Style x:Key="OtherStretchesSay" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
+
+            <!-- The label where the clip of a voice somebody always talked over would be. -->
+            <Style x:Key="NeverHeardAloneSays" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
         </Grid.Resources>
 
         <Grid.RowDefinitions>

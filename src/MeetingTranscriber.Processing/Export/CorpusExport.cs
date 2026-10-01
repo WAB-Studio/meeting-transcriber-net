@@ -411,7 +411,9 @@ public static class CorpusExport
                 WireNames<TerminologyMatchMode>.Of(correction.MatchMode)))
             .ToArray();
 
-        return new MeetingCorrections(meeting.Id, meeting.Context, voices, people, filed, progress, corrections);
+        var summaryShown = new MeetingReading(context, TimeProvider.System).SummaryShown(meeting.Id);
+
+        return new MeetingCorrections(meeting.Id, meeting.Context, voices, people, filed, progress, corrections, summaryShown);
     }
 
     private static RootCorrections AtTheRoot(CorpusDbContext context, MeetingClassifying classifying)
@@ -469,6 +471,11 @@ public static class CorpusExport
 
     private sealed record Correction(string Wrong, string Right, string MatchMode);
 
+    /// <param name="SummaryShown">
+    /// The run of the <c>extractions/&lt;id&gt;.json</c> beside this file that the meeting showed,
+    /// which is a choice somebody may have made by putting an earlier summary back. Null where no
+    /// summary was accepted.
+    /// </param>
     private sealed record MeetingCorrections(
         Guid MeetingId,
         string? Context,
@@ -476,7 +483,8 @@ public static class CorpusExport
         IReadOnlyList<Named> People,
         IReadOnlyList<Filed> FiledUnder,
         IReadOnlyList<Progress> ActionProgress,
-        IReadOnlyList<Correction> Corrections);
+        IReadOnlyList<Correction> Corrections,
+        Guid? SummaryShown);
 
     private sealed record Belonging(string Organization, string? From, string? Until);
 

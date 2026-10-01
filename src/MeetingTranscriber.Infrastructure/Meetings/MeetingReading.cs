@@ -24,7 +24,8 @@ public sealed record MeetingAsRead(Meeting Meeting, MeetingScreen Screen, FileIn
 
 /// <summary>
 /// Reading one meeting out of the corpus: what a screen shows, what to unfold when somebody
-/// presses a citation, a stretch of the transcript, and the one thing the screen writes back.
+/// presses a citation, a stretch of the transcript, and what the screen writes back about the
+/// meeting.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -97,11 +98,16 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
         var owed = new MeetingWork(context, clock).On(meetingId);
         var audio = Audio(meetingId, out var recorded);
 
-        var screen = new MeetingScreen(owed, Left(meetingId), recorded)
+        // Asked once and handed to both readers: the abstract on screen and the row marked as shown
+        // are about one run, however the tie between runs would have been broken twice.
+        var shown = TheRunThatCounts(meetingId);
+
+        var screen = new MeetingScreen(owed, Left(meetingId, shown), recorded)
         {
-            WhyTheSummaryWasRefused = owed is { Failed: JobFailure.ExtractionRefused, Stage: not MeetingStage.Summarised }
+            WhyTheSummaryWasRefused = owed is { Failed: JobFailure.ExtractionRefused }
                 ? RefusalOfTheNewestExtraction(meetingId)
                 : null,
+            EverySummary = EverySummaryOf(meetingId, shown),
         };
 
         return new MeetingAsRead(meeting, screen, audio);
@@ -312,9 +318,10 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     /// What the AI left of this meeting, out of the one extraction that counts.
     /// </summary>
     /// <remarks>Which run that is, and why it is only ever one, is <see cref="TheRunThatCounts"/>.</remarks>
-    private WhatTheAiLeft Left(Guid meetingId)
+    /// <param name="meetingId">The meeting.</param>
+    /// <param name="summarised">The run that counts, as <see cref="TheRunThatCounts"/> named it.</param>
+    private WhatTheAiLeft Left(Guid meetingId, Guid? summarised)
     {
-        var summarised = TheRunThatCounts(meetingId);
         var wrote = Wrote(meetingId, summarised);
 
         if (summarised is not { } accepted)
@@ -369,6 +376,48 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
             WhatTheAiLeft.InTheOrderTheyWereSaid([.. decisions, .. actions, .. questions]),
             wrote);
     }
+
+    /// <summary>
+    /// Every summary the meeting was given, newest accepted first, the one on screen marked.
+    /// </summary>
+    /// <remarks>
+    /// A run nobody accepted is not one: it is not read anywhere else either. The order runs out
+    /// to the id, so two summaries accepted in the same millisecond are listed the same way every
+    /// time they are drawn.
+    /// </remarks>
+    private IReadOnlyList<GivenSummary> EverySummaryOf(Guid meetingId, Guid? shown) =>
+        [.. context.ExtractionRuns
+            .AsNoTracking()
+            .Where(row => row.MeetingId == meetingId && row.AcceptedAt != null)
+            .OrderByDescending(row => row.AcceptedAt)
+            .ThenByDescending(row => row.CreatedAt)
+            .ThenByDescending(row => row.Id)
+            .Select(row => new { row.Id, row.Provider, row.Model, row.AcceptedAt })
+            .ToList()
+            .Select(row => new GivenSummary(
+                row.Id,
+                Named(row.Provider, row.Model),
+                row.AcceptedAt!.Value,
+                row.Id == shown))];
+
+    /// <summary>
+    /// Puts one of the meeting's summaries back as the one it shows, for every reader of it.
+    /// </summary>
+    /// <exception cref="MeetingStageException">
+    /// There is no such meeting in this corpus, or it was never given that summary.
+    /// </exception>
+    public void ShowSummary(Guid meetingId, Guid extractionRunId)
+    {
+        Row(meetingId);
+
+        new HumanLayer(context, clock).ShowSummary(meetingId, extractionRunId);
+    }
+
+    /// <summary>
+    /// The extraction run the meeting shows, or none when nothing was accepted. What the export
+    /// asks, so the rule stays spelled once, in <see cref="CorpusSearch.TheRunThatCounts"/>.
+    /// </summary>
+    public Guid? SummaryShown(Guid meetingId) => TheRunThatCounts(meetingId);
 
     /// <summary>
     /// Who transcribed this meeting and who summarised it, and when each of them did.
@@ -489,11 +538,12 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The newest accepted one. A corpus keeps every extraction it was given — a newer one never
-    /// replaces an older one, which is what makes re-summarising safe — so a screen reading them
-    /// all would show the same decision two and three times over, worded slightly differently each
-    /// time, with nothing on it saying which one is current. One accepted at a later moment is the
-    /// one somebody accepted last, and that is the answer.
+    /// The one accepted or put back last. A corpus keeps every extraction it was given — a newer one
+    /// never replaces an older one, which is what makes re-summarising safe — so a screen reading
+    /// them all would show the same decision two and three times over, worded slightly differently
+    /// each time, with nothing on it saying which one is current. A person putting a summary back
+    /// is a newer word than its acceptance, and a later acceptance is newer again, so the run
+    /// accepted or put back last is the answer.
     /// </para>
     /// <para>
     /// A run nobody accepted is not read at all. A run that was refused or never filed is one whose

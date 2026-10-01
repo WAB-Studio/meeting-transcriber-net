@@ -64,12 +64,51 @@ public class MeetingStageTests
 
     [Theory]
     [MemberData(nameof(EveryStageAtEveryStanding))]
-    public void Only_a_running_summary_may_be_stopped(MeetingStage stage, StageStanding standing)
+    public void A_summary_may_be_stopped_while_it_runs_and_a_second_one_while_it_waits(
+        MeetingStage stage, StageStanding standing)
     {
         var owed = new OwedWork(TheMeeting, stage, standing);
 
-        owed.MayBeStopped.ShouldBe(
-            (stage.Offers() ?? stage.OffersAgain()) is JobKind.Extract && standing is StageStanding.Running);
+        var aFirstSummary = stage.Offers() is JobKind.Extract && standing is StageStanding.Running;
+        var aSecondOne = stage.Offers() is null
+            && stage.OffersAgain() is JobKind.Extract
+            && standing is StageStanding.Running or StageStanding.Underway;
+
+        owed.MayBeStopped.ShouldBe(aFirstSummary || aSecondOne);
+    }
+
+    public static TheoryData<JobState[]> SetsOfSecondSummaryJobs() => new()
+    {
+        { [JobState.Pending] },
+        { [JobState.Running] },
+        { [JobState.Running, JobState.Pending] },
+        { [JobState.FailedRetryable] },
+        { [JobState.Cancelled] },
+        { [JobState.FailedPermanent] },
+        { [JobState.Cancelled, JobState.Pending] },
+        { [] },
+    };
+
+    [Theory]
+    [MemberData(nameof(SetsOfSecondSummaryJobs))]
+    public void A_second_summary_reads_the_queue_the_way_a_first_one_does(JobState[] states)
+    {
+        var first = In(JobKind.Extract, JobState.Succeeded);
+        var jobs = states.Select(state => In(JobKind.Extract, state)).Prepend(first).ToArray();
+
+        var asked = MeetingStages.StandingOf(states);
+        var expected = asked is StageStanding.Running or StageStanding.Underway ? asked : StageStanding.NothingToDo;
+
+        OwedWork.Of(TheMeeting, Summarised, jobs).Standing.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void A_second_summary_waiting_to_run_is_not_something_to_leave()
+    {
+        var owed = OwedWork.Of(TheMeeting, Summarised, [In(JobKind.Extract, JobState.Succeeded), Job(JobKind.Extract)]);
+
+        owed.Standing.ShouldBe(StageStanding.Underway);
+        owed.MayBeLeft.ShouldBeFalse();
     }
 
     [Fact]
@@ -167,7 +206,7 @@ public class MeetingStageTests
         queued.Standing.ShouldBe(StageStanding.Underway);
         queued.IsOwed.ShouldBeFalse();
         queued.MayBeAskedAgain.ShouldBeFalse();
-        queued.MayBeStopped.ShouldBeFalse();
+        queued.MayBeStopped.ShouldBeTrue();
 
         second.Start(Noon);
         var running = OwedWork.Of(TheMeeting, Summarised, [second]);

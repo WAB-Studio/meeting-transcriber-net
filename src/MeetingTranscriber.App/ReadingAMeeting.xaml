@@ -104,6 +104,10 @@
                  they are on that page. -->
             <Style x:Key="TakeTheStage" TargetType="Button" BasedOn="{StaticResource RowButtonOnCard}" />
 
+            <!-- One summary the meeting was given, as a radio row of Olivo's `Option`. Declared here
+                 because `Chrome()` reads this screen's resources and not the application's. -->
+            <Style x:Key="ASummaryOfThisMeeting" TargetType="RadioButton" BasedOn="{StaticResource Option}" />
+
             <!-- One mark along the track for each thing the AI left, so where each of them falls
                  across the hour is visible without reading a list. -->
             <Style x:Key="ACitationOnTheTrack" TargetType="Rectangle">
@@ -189,6 +193,23 @@
                              worked out from which buttons are on screen. -->
                         <TextBlock x:Name="TranscribedText" Style="{StaticResource BodyText}" TextWrapping="Wrap" />
                         <TextBlock x:Name="SummarisedText" Style="{StaticResource BodyText}" TextWrapping="Wrap" />
+
+                        <!-- Every summary the meeting was given, one radio row each, newest accepted
+                             first, the checked one being the summary on screen. Drawn only when
+                             there are two or more: one summary has nothing to choose. A radio at
+                             two as at ten, because the set only grows and a control that changes
+                             shape at the third is two controls for one choice. The label is mono
+                             at the data rank, like the cards below. -->
+                        <StackPanel x:Name="TheSummariesCard" Spacing="6" Visibility="Collapsed">
+                            <TextBlock
+                                Style="{StaticResource DataText}"
+                                Text="{x:Bind In(loc:UiTexts.ThisMeetingsSummaries)}" />
+
+                            <StackPanel
+                                x:Name="TheSummaries"
+                                Spacing="2"
+                                AutomationProperties.Name="{x:Bind In(loc:UiTexts.ThisMeetingsSummaries)}" />
+                        </StackPanel>
 
                         <!-- The stage's two answers, in the two places docs/design.md fixes: the
                              neutral one on the left and the act on the right, exactly as they sit

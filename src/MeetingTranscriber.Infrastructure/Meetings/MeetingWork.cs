@@ -310,7 +310,8 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     }
 
     /// <summary>
-    /// Somebody asked to stop a summary that is running. Cancels its job and hands it back.
+    /// Somebody asked to stop a summary that is running, or a second one waiting to run. Cancels
+    /// its job and hands it back.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -340,7 +341,8 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
     /// </para>
     /// </remarks>
     /// <exception cref="MeetingStageException">
-    /// There is no such meeting, or none of its <see cref="JobKind.Extract"/> jobs is running.
+    /// There is no such meeting, or none of its <see cref="JobKind.Extract"/> jobs is running and it
+    /// has no second summary waiting to run.
     /// </exception>
     public ProcessingJob StopTheSummary(Guid meetingId)
     {
@@ -351,20 +353,34 @@ public sealed class MeetingWork(CorpusDbContext context, TimeProvider clock)
         // Read first, for the meeting-does-not-exist refusal every other method here gives: the
         // job query below would otherwise read the same "nothing to stop" sentence for a meeting
         // that never existed as for one whose summary simply is not running.
-        On(meetingId);
+        var owed = On(meetingId);
 
         var running = context.ProcessingJobs
             .FirstOrDefault(job => job.MeetingId == meetingId
                 && job.Kind == JobKind.Extract
-                && job.State == JobState.Running)
-            ?? throw new MeetingStageException(
-                $"Meeting {meetingId} has no summary running, so there is nothing to stop.");
+                && job.State == JobState.Running);
 
-        running.Cancel(Now);
+        // A second summary still waiting to run: queued, or a retry waiting for its time. Every
+        // such job goes, so none is left for the runner to start the moment this commits.
+        var waiting = running is null && owed.MayBeStopped
+            ? context.ProcessingJobs
+                .Where(job => job.MeetingId == meetingId && job.Kind == JobKind.Extract)
+                .AsEnumerable()
+                .Where(job => job.State.IsQueued())
+                .OrderBy(job => job.CreatedAt)
+                .ToList()
+            : [];
+
+        var stopped = running ?? waiting.FirstOrDefault()
+            ?? throw new MeetingStageException(
+                $"Meeting {meetingId} has no summary running, and no second summary waiting to run, so there is nothing to stop.");
+
+        running?.Cancel(Now);
+        waiting.ForEach(job => job.Cancel(Now));
         context.SaveChanges();
         write?.Commit();
 
-        return running;
+        return stopped;
     }
 
     /// <summary>

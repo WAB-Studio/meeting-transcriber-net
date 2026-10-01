@@ -11,7 +11,7 @@ namespace MeetingTranscriber.Infrastructure.Storage;
 /// <summary>
 /// The way in for everything a person approves: the classification tree, who is on a meeting, where
 /// they belong, which voice is whose, what the transcription gets wrong, where an action stands,
-/// and the classifications somebody put by under a name.
+/// the classifications somebody put by under a name, and which of a meeting's summaries it shows.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -947,6 +947,35 @@ public sealed class HumanLayer(CorpusDbContext context, TimeProvider clock)
         progress.UpdatedAt = Now;
         context.SaveChanges();
         return progress;
+    }
+
+    /// <summary>
+    /// Puts one of a meeting's accepted summaries back as the one it shows. A person's word that
+    /// nothing can produce again, which is why it is written here and nowhere else.
+    /// </summary>
+    /// <remarks>
+    /// It stamps the one column and nothing else: the other runs, their rows and their files stay
+    /// as they are, so putting a summary back is free and can be undone by putting another back.
+    /// Which summary then shows is a question <c>CorpusSearch.TheRunThatCounts</c> answers from the
+    /// later of <c>accepted_at</c> and <c>chosen_at</c>.
+    /// </remarks>
+    /// <exception cref="MeetingStageException">
+    /// The meeting was never given that summary: no run of that id belongs to it, or it was never
+    /// accepted. Nothing is written.
+    /// </exception>
+    public void ShowSummary(Guid meetingId, Guid extractionRunId)
+    {
+        var run = context.ExtractionRuns.SingleOrDefault(candidate =>
+            candidate.Id == extractionRunId && candidate.MeetingId == meetingId);
+
+        if (run is not { AcceptedAt: not null })
+        {
+            throw new MeetingStageException(
+                $"Meeting {meetingId} was never given a summary {extractionRunId}, so there is none to put back.");
+        }
+
+        run.ChosenAt = Now;
+        context.SaveChanges();
     }
 
     /// <summary>
