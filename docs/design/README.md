@@ -57,7 +57,7 @@ missing from this file.
 | Sistema | — | `Sistema.dc.html` | Olivo — the system sheet |
 
 Every artboard is 1120 wide; the flow is 720 tall except `Reunion` (860), `Correcciones` (820),
-`Configuracion` (760) and `Historia` (860), and the system sheet is 3920. The *Afterwards* row reads
+`Configuracion` (820) and `Historia` (860), and the system sheet is 4180. The *Afterwards* row reads
 left to right in the order a meeting gains things: recorded, transcribed, summarised.
 
 ## The names and the copy

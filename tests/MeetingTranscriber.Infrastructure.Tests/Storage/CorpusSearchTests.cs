@@ -241,6 +241,84 @@ public class CorpusSearchTests
     }
 
     /// <summary>
+    /// A correction is applied only where its scope reaches, so a term corrected under one node is
+    /// still written the way the provider heard it in a meeting under no node. Searching for the
+    /// corrected spelling has to find that meeting too, which is what asking for what the
+    /// correction says it gets written as is for. Red with no widening.
+    /// </summary>
+    [Fact]
+    public void A_term_also_finds_a_meeting_where_it_came_out_the_way_a_correction_says_it_gets_written_wrong()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Corpus.Write(context);
+        Alone(context, "cuokka al fondo");
+
+        // Digits only: EF writes a Guid in upper case and this row is raw SQL, and a foreign key
+        // compares text as written.
+        Sql.Execute(context, $"""
+            INSERT INTO nodes (id, kind, name, depth, parent_id, parent_kind, parent_depth, created_at, updated_at)
+            VALUES ('55555555-5555-5555-5555-555555555555', 'organization', 'Otra', 0, NULL, NULL, NULL,
+                    '{Corpus.When}', '{Corpus.When}');
+            """);
+        var somewhereElse = context.Nodes.Single(node => node.Name == "Otra");
+        new HumanLayer(context, TimeProvider.System).Correct("cuokka", "Quokka", under: somewhereElse);
+
+        var found = CorpusSearch.Find(context, "Quokka");
+
+        found.ShouldContain(hit => hit.MeetingId == Guid.Parse(AloneId) && hit.Source == SearchSource.Turn);
+    }
+
+    /// <summary>
+    /// Rewriting inside FTS5 syntax is a parser nobody here owns, so a query that is more than one
+    /// corrected term runs exactly as typed. Red widening on a contains.
+    /// </summary>
+    [Fact]
+    public void A_query_that_is_more_than_a_corrected_term_is_run_as_typed()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Corpus.Write(context);
+        Alone(context, "cuokka al fondo");
+        new HumanLayer(context, TimeProvider.System).Correct("cuokka", "Quokka");
+
+        // The term on its own finds the turn, so what is refused below is the query and not the turn.
+        CorpusSearch.Find(context, "Quokka").ShouldNotBeEmpty();
+        CorpusSearch.Find(context, "Quokka AND cuokka").ShouldBeEmpty();
+        CorpusSearch.Find(context, "\"Quokka\" \"cuokka\"").ShouldBeEmpty();
+    }
+
+    /// <summary>
+    /// A wrong text is somebody's typing, and one holding a quote must not become a query the index
+    /// refuses. Red without doubling the quote.
+    /// </summary>
+    [Fact]
+    public void An_alias_holding_a_quote_still_searches()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        Corpus.Write(context);
+        Alone(context, "cuok ka al fondo");
+        new HumanLayer(context, TimeProvider.System).Correct("cuok\"ka", "Quokka");
+
+        CorpusSearch.Find(context, "Quokka").ShouldContain(hit => hit.MeetingId == Guid.Parse(AloneId));
+        CorpusSearch.Find(context, "\"quokka\"").ShouldContain(hit => hit.MeetingId == Guid.Parse(AloneId));
+    }
+
+    private const string AloneId = "33333333-3333-3333-3333-333333333333";
+
+    /// <summary>One meeting under no node, with one turn.</summary>
+    private static void Alone(CorpusDbContext context, string text)
+    {
+        Sql.Execute(context, $"""
+            INSERT INTO meetings (id, title, context, started_at, source_profile, language, lifecycle_state, created_at, updated_at)
+            VALUES ('{AloneId}', 'sin clasificar', NULL, '{Corpus.When}', 'multichannel', 'es', 'active', '{Corpus.When}', '{Corpus.When}');
+            INSERT INTO utterances (id, meeting_id, ordinal, start_ms, end_ms, channel, speaker_label, text)
+            VALUES ('{AloneId}-0', '{AloneId}', 0, 0, 1000, 0, 'ch0:speaker_0', '{text}');
+            """);
+    }
+
+    /// <summary>
     /// A meeting on its way out does not answer. Offering it is offering something that will not be
     /// there when somebody opens it, and the deletion is already under way.
     /// </summary>

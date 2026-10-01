@@ -1,7 +1,7 @@
 ﻿---
 phase: climbing
-progress: 180/267
-updated: 2026-09-30
+progress: 188/267
+updated: 2026-10-01
 ---
 
 # ISA — meeting-transcriber-net
@@ -246,8 +246,8 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-191.1: Every unnamed speaker of a meeting whose audio is stored is offered a stretch of it where they talk and nobody talks over them.
 - [ ] ISC-191.2: Anti: a speaker is never offered the first stretch they spoke alone in when the meeting holds a longer one.
 - [ ] ISC-191.3: Anti: a meeting whose audio is not stored never offers a stretch that cannot play — it says its audio is gone, and its speakers are named by reading as before.
-- [ ] ISC-202: A classification somebody filled by hand can be kept under a name of their own and used again.
-- [ ] ISC-202.1: A classification filled by hand and kept under a name is offered beside the thirteen after the application is closed and opened again.
+- [x] ISC-202: A classification somebody filled by hand can be kept under a name of their own and used again.
+- [x] ISC-202.1: A classification filled by hand and kept under a name is offered beside the thirteen after the application is closed and opened again.
 - [x] ISC-202.2: Choosing a kept classification fills a meeting the way the classification it was kept from was filled.
 - [x] ISC-202.3: Anti: changing or deleting a kept classification changes nothing about a meeting already filed with it.
 
@@ -319,13 +319,13 @@ Board: 6 · Conocimiento local
 - [x] ISC-144: Asking for a node brings back the statements of its meetings in the order they were said, each carrying the meeting and the date it came from.
 - [x] ISC-145: A node's answer includes the statements of everything hanging off its children.
 - [ ] ISC-192: A word the transcripts keep getting wrong is found from the corpus itself, so somebody can correct it.
-- [ ] ISC-192.1: A word somebody types comes back with every way the corpus has written something like it, closest first, each with how many times it was written that way.
-- [ ] ISC-192.2: With nothing typed, the corpus offers as candidates the words the provider was unsure of that come up often and resemble a word coming up far more often.
+- [x] ISC-192.1: A word somebody types comes back with every way the corpus has written something like it, closest first, each with how many times it was written that way.
+- [x] ISC-192.2: With nothing typed, the corpus offers as candidates the words the provider was unsure of that come up often and resemble a word coming up far more often.
 - [ ] ISC-192.3: A correction belongs either to the whole corpus or to one node of the tree, and a meeting linked to no node is still corrected by those that belong to the whole corpus.
-- [ ] ISC-192.4: Anti: finding candidates, asked for or not, needs no model — nothing passes the corpus through one, and every candidate is found with none installed.
-- [ ] ISC-197: A person being added whom the corpus already holds under a name spelled a little differently is offered as the one already there, closest first, before a new person is made.
-- [ ] ISC-198: Anti: offering who a person being added already is needs no model — every candidate is found with none installed.
-- [ ] ISC-199: A term searched for also finds the meetings where it came out the way a correction elsewhere says it gets written wrong, though nobody corrected those meetings.
+- [x] ISC-192.4: Anti: finding candidates, asked for or not, needs no model — nothing passes the corpus through one, and every candidate is found with none installed.
+- [x] ISC-197: A person being added whom the corpus already holds under a name spelled a little differently is offered as the one already there, closest first, before a new person is made.
+- [x] ISC-198: Anti: offering who a person being added already is needs no model — every candidate is found with none installed.
+- [x] ISC-199: A term searched for also finds the meetings where it came out the way a correction elsewhere says it gets written wrong, though nobody corrected those meetings.
 
 ### F8 · Distribution and backup
 Why: the application installs, upgrades and comes back from a lost disk, because the corpus
@@ -817,3 +817,11 @@ Board: 7 · Distribución y backup
 - ISC-202.2 — `KeptClassificationTests.Choosing_a_classification_put_by_files_a_meeting_the_way_the_one_it_was_put_by_from_was_filed` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `MeetingFilingTests.Filling_from_a_classification_put_by_takes_no_answer_away` (`tests/MeetingTranscriber.Domain.Tests`), green 2026-10-01. The domain fact red with `FilledFrom` handing back the kept filing. Not reached: the press itself, which needs a window.
 - ISC-202.3 — `KeptClassificationTests.Changing_renaming_or_discarding_a_classification_put_by_leaves_every_meeting_as_it_was` (`tests/MeetingTranscriber.Infrastructure.Tests`), green 2026-10-01: both meetings keep their links, namings, `template_id` and `updated_at` through a second keeping, a rename and a discard.
 - ISC-140 — `TimelineDriftTests.Two_hours_of_a_microphone_counting_in_a_rate_of_its_own_and_running_slow_stay_under_fifty_milliseconds_apart` and `SharedTimelineTests.A_webcam_whose_first_packet_is_short_is_still_read_in_its_own_rate` (`tests/MeetingTranscriber.Audio.Tests`), green 2026-10-01 over a fabricated 16 kHz counter 200 ppm slow: measured rate within 1 Hz, missing audio under 100 ms; `.A_counter_whose_unit_does_not_divide_the_packets_evenly_is_still_read_in_its_own_rate` holds 11 025 Hz. Not reached: a real device, any other rate, a counter with noise
+- ISC-197 — `WhoTheyMightBeTests` (`tests/MeetingTranscriber.Domain.Tests`) and `KnownPeopleTests` (`tests/MeetingTranscriber.Infrastructure.Tests`), green 2026-10-01, plus a walk on the registered build over a probe corpus: `Marina Robles` added through *Nombrar uno nuevo…* on *Clasificar*, the dialogue opened again, `Marina Robless` typed, the pill `Marina Robles` pressed, the slot shows `Marina Robles` and the corpus holds one Marina. "Closest first" is read as resemblance in tenths with the signals ranking only within a tenth. Not reached: the pill on `SayingWhoIsWho`, walked by neither.
+- ISC-198 — `KnownPeopleTests.Who_somebody_might_be_is_found_by_code_that_reaches_nothing_that_summarises` (`tests/MeetingTranscriber.Infrastructure.Tests`) and `ClaudeCodeIsOptionalTests.Nothing_in_the_product_starts_a_program_this_rule_has_not_seen` (`tests/MeetingTranscriber.Isa.Tests`), green 2026-10-01. The assembly fact holds by construction, because the layering forbids the reference, and was not reddened by a mutation.
+- ISC-199 — `CorpusSearchTests.A_term_also_finds_a_meeting_where_it_came_out_the_way_a_correction_says_it_gets_written_wrong`, `.A_query_that_is_more_than_a_corrected_term_is_run_as_typed` and `.An_alias_holding_a_quote_still_searches` (`tests/MeetingTranscriber.Infrastructure.Tests`), green 2026-10-01.
+- ISC-202.1 — walked 2026-10-01 on the registered build over a probe corpus: on one meeting a path and a person filled and `Diaria de Nubeko` kept, the application closed and started, and on another meeting *Ninguna — la lleno yo* showed the chip, whose press filled that path and that person. The node was seeded with SQL because the naming field loses focus under the probe; the person went through the dialogue.
+- ISC-202 — held by its three leaves, `ISC-202.1`, `ISC-202.2` and `ISC-202.3`, green 2026-10-01.
+- ISC-192.1 — `MisspelledWordsTests.A_typed_word_comes_back_with_each_way_it_was_written_closest_first_and_how_often`, `.A_word_typed_as_one_is_found_written_as_two`, `.A_word_with_a_short_word_beside_it_is_not_offered_as_a_phrase` and `.Every_way_it_was_written_comes_back` (`tests/MeetingTranscriber.Domain.Tests`), plus `FindingCorrectionsTests.A_word_typed_against_a_filed_meeting_comes_back_as_the_turns_wrote_it` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-10-01.
+- ISC-192.2 — the `MisspelledWordsTests` facts about `Unprompted` (`tests/MeetingTranscriber.Domain.Tests`) and `FindingCorrectionsTests.Every_word_the_response_the_turns_came_from_holds_is_heard` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-10-01. Thresholds tuned against fixtures only, not a real corpus.
+- ISC-192.4 — `FindingCorrectionsTests.Finding_candidates_reaches_nothing_that_summarises` (`tests/MeetingTranscriber.Processing.Tests`) and `ClaudeCodeIsOptionalTests.Nothing_in_the_product_starts_a_program_this_rule_has_not_seen` (`tests/MeetingTranscriber.Isa.Tests`), green 2026-10-01.

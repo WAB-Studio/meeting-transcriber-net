@@ -4,6 +4,7 @@ using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 
 using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 
 namespace MeetingTranscriber.Infrastructure.Storage;
 
@@ -111,6 +112,10 @@ public sealed class CorpusSearchException(string query, Exception cause)
 /// to "where was this said", which is the question being asked; collapsing them would make the
 /// limit mean something different for a long meeting than for a short one.
 /// </para>
+/// <para>
+/// A query that is exactly a term somebody corrected is widened to the spellings the correction
+/// replaces, whatever scope each was written under; <c>Widened</c> says when and why.
+/// </para>
 /// </remarks>
 public static class CorpusSearch
 {
@@ -168,9 +173,11 @@ public static class CorpusSearch
 
         try
         {
+            var running = Widened(context, query);
+
             return RawSql.Rows(context, Sql, ReadHit, command =>
             {
-                RawSql.Bind(command, "@query", query);
+                RawSql.Bind(command, "@query", running);
                 RawSql.Bind(command, "@limit", limit);
                 RawSql.Bind(command, "@active", Active);
             });
@@ -179,6 +186,56 @@ public static class CorpusSearch
         {
             throw new CorpusSearchException(query, refused);
         }
+    }
+
+    /// <summary>
+    /// The query that runs: the one typed, plus every way a correction says the term it names got
+    /// written wrong, when the whole query is exactly such a term and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A correction is applied when a meeting is rendered and only to the meetings its scope
+    /// reaches, so a term somebody corrected under one organization is still written as the
+    /// provider heard it in a meeting under no organization at all. Searching for the right spelling
+    /// would miss that meeting while it holds the very thing being looked for. So the query also
+    /// asks for each <c>WrongText</c> that is corrected to it, and every scope counts, because the
+    /// claim is about meetings nobody corrected.
+    /// </para>
+    /// <para>
+    /// Only when the whole query, trimmed and with one pair of surrounding double quotes taken off,
+    /// is a <c>CorrectText</c>, ordinal and case-blind. <c>Coati AND quati</c>, a prefix, a term no
+    /// correction names and a query the index would refuse all run exactly as typed: rewriting
+    /// inside arbitrary FTS5 syntax is a parser this does not own, and a refusal still names the
+    /// query as it was typed. Each wrong text is an FTS5 phrase with its own quotes doubled, so an
+    /// alias holding a <c>"</c> searches instead of throwing.
+    /// </para>
+    /// </remarks>
+    private static string Widened(CorpusDbContext context, string query)
+    {
+        var term = query.Trim();
+        if (term.Length >= 2 && term[0] is '"' && term[^1] is '"' && !term[1..^1].Contains('"', StringComparison.Ordinal))
+        {
+            term = term[1..^1].Trim();
+        }
+
+        if (term.Length == 0)
+        {
+            return query;
+        }
+
+        var wrongs = context.TerminologyCorrections
+            .AsNoTracking()
+            .Select(fix => new { fix.CorrectText, fix.WrongText })
+            .ToList()
+            .Where(fix => string.Equals(fix.CorrectText.Trim(), term, StringComparison.OrdinalIgnoreCase))
+            .Select(fix => fix.WrongText.Trim())
+            .Where(wrong => wrong.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return wrongs.Count == 0
+            ? query
+            : $"({query}) OR {string.Join(" OR ", wrongs.Select(wrong => $"\"{wrong.Replace("\"", "\"\"", StringComparison.Ordinal)}\""))}";
     }
 
     /// <summary>

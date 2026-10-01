@@ -15,6 +15,29 @@ namespace MeetingTranscriber.Processing.Tests.Deepgram;
 public class DeepgramTranscriptParserTests
 {
     [Fact]
+    public void Every_word_of_every_utterance_is_read_as_written_with_its_confidence()
+    {
+        var path = DeepgramFixtures.PathOf(DeepgramFixtures.TwoChannelShort);
+
+        var heard = DeepgramTranscriptParser.WordsAsHeardInFile(path);
+
+        using var document = JsonDocument.Parse(File.ReadAllText(path));
+        var counted = document.RootElement.GetProperty("results").GetProperty("utterances")
+            .EnumerateArray()
+            .Sum(utterance => utterance.GetProperty("words").GetArrayLength());
+
+        heard.Count.ShouldBe(counted);
+        heard[0].ShouldBe(new WordAsHeard("Lento.", 0.99658203));
+    }
+
+    [Fact]
+    public void Words_are_not_read_from_something_that_is_not_a_response()
+    {
+        Should.Throw<DeepgramResponseException>(
+            () => DeepgramTranscriptParser.WordsAsHeard(new MemoryStream("{\"results\":{}}"u8.ToArray())));
+    }
+
+    [Fact]
     public void A_response_that_stops_early_is_refused()
     {
         var whole = Response(2, ["Lento.", "Lento."], [Utterance(0, 0, 1, 2, "Lento.")]);

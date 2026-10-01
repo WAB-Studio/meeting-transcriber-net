@@ -744,7 +744,7 @@ public static class UiTexts
 
     public static UiText NotSentAMemoryFileWasInTheWay { get; } = new(
         "No se envió: Claude Code habría leído en el resumen un CLAUDE.md de una carpeta por encima de donde se preparan los resúmenes. No se gastó nada. Muévalo o bórrelo y pida otro.",
-        "Not sent: Claude Code would have read a CLAUDE.md from a folder above where summaries are prepared into the summary. Nothing was spent. Move or delete it and ask for another.");
+        "Not sent: Claude Code would have read into the summary a CLAUDE.md from a folder above where summaries are prepared. Nothing was spent. Move or delete it and ask for another.");
 
     public static UiText NotSentMoveThisMemoryFile { get; } = new(
         "No se envió: Claude Code habría leído {0} en el resumen. No se gastó nada. Muévalo o bórrelo y pida otro.",
@@ -1020,6 +1020,13 @@ public static class UiTexts
     // What the dialogue that adds a person asks. An organization and a year are optional: a person
     // carries as many affiliations as they have, and a corpus that never learned the date has none.
     public static UiText NameOfAPerson { get; } = new("Nombre", "Name");
+
+    // Offered under the name field while a person is being added and somebody the corpus holds is
+    // spelled nearly the same way. The pill reads the name and the organization, and both are the
+    // corpus's and not the catalogue's: only the separator is.
+    public static UiText IsItSomebodyAlreadyHere { get; } = new("¿Es alguien que ya está?", "Is it somebody already here?");
+
+    public static UiText SomebodyAndWhereTheyBelong { get; } = new("{0} · {1}", "{0} · {1}");
 
     public static UiText Organization { get; } = new("Organización", "Organization");
 

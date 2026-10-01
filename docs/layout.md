@@ -11,7 +11,7 @@ src/MeetingTranscriber.Domain/            entities, states and pure rules
 src/MeetingTranscriber.Infrastructure/    SQLite, filesystem and credentials
 src/MeetingTranscriber.Mcp/               the corpus answered read-only over stdio, for an agent
 src/MeetingTranscriber.Presentation/      what the application says, and what language it says it in
-src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries, and the runner that sends what is queued
+src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries, the words a transcript keeps getting wrong, and the runner that sends what is queued
 src/MeetingTranscriber.Recording/         a meeting recorded into a corpus, and what a launch owes one: where the sides meet
 tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
 tools/MeetingTranscriber.UiProbe/         starts the application, reads its window, presses what is on it and

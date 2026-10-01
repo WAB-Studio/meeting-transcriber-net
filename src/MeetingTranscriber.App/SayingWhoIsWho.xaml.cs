@@ -474,8 +474,15 @@ public sealed partial class SayingWhoIsWho : UserControl
     /// </summary>
     private async Task AskWhoTheyAre(VoicesAsHeard read, Voice voice, Person? correcting)
     {
+        // This screen's picker offers everybody, so the dialogue may offer everybody too.
+        var openedOver = new OpenedOver(
+            read.Meeting.Id,
+            [.. _draft.Values.Where(person => person is not null).Select(person => person!.Value)],
+            [],
+            new HashSet<Guid>());
+
         var made = await AskingWhoTheyAre.AskAsync(
-            Corpus(), _language, Root.XamlRoot, read.Organizations, correcting);
+            Corpus(), openedOver, _language, Root.XamlRoot, read.Organizations, correcting);
 
         if (made is { } id)
         {

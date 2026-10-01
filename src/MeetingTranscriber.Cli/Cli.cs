@@ -156,6 +156,12 @@ public static class Cli
             "ask the corpus, in the index's own query syntax",
             MeetingCommands.Search),
         new(
+            "words",
+            $"words {Corpus.Option} <directory> [--like <term> | --meeting <id>]",
+            "how the corpus wrote something like a term, or the words it seems to keep getting wrong"
+            + " — in the whole corpus or in one meeting — and no model reads anything",
+            WordsCommands.Words),
+        new(
             "deepgram-live",
             "deepgram-live --audio <directory> --ceiling-minutes <n> --out <directory>"
             + " [--language <code>]",

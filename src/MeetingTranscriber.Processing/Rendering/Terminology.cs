@@ -1,6 +1,6 @@
-using System.Globalization;
 using System.Text;
 
+using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
 
 namespace MeetingTranscriber.Processing.Rendering;
@@ -20,7 +20,8 @@ namespace MeetingTranscriber.Processing.Rendering;
 /// Two rules carried over from the Python renderer, both learned the hard way. Longest first, so
 /// that a term which is a prefix of another does not eat it — correcting "Coati" before "Coati
 /// Cloud" leaves the second half stranded. And whole words only: without it, correcting "ml" to
-/// "ML" rewrites the middle of "html".
+/// "ML" rewrites the middle of "html". What counts as a word is <see cref="Spellings.IsWordCharacter"/>'s,
+/// so a form found in the corpus is split by the rule a correction made from it is applied by.
 /// </para>
 /// </remarks>
 public static class Terminology
@@ -96,17 +97,8 @@ public static class Terminology
         && Boundary(text, at + length, text[at + length - 1]);
 
     private static bool Boundary(string text, int index, char inside) =>
-        !IsWordCharacter(inside)
+        !Spellings.IsWordCharacter(inside)
         || index < 0
         || index >= text.Length
-        || !IsWordCharacter(text[index]);
-
-    /// <summary>
-    /// What counts as part of a word. Letters, digits, underscore and the marks that ride on a
-    /// letter, so "sesión" is one word in a corpus that is mostly Spanish.
-    /// </summary>
-    private static bool IsWordCharacter(char character) =>
-        char.IsLetterOrDigit(character)
-        || character is '_'
-        || CharUnicodeInfo.GetUnicodeCategory(character) is UnicodeCategory.NonSpacingMark;
+        || !Spellings.IsWordCharacter(text[index]);
 }
