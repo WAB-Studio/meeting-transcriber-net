@@ -203,7 +203,10 @@ kept.
 - `type <element> <text>` — set a field's value. Fails if it is disabled, read only, or takes none.
 - `choose <list> <item>` — open the list, pick the item by name, shut it again. A list too long
   to draw whole is asked what it holds rather than walked, so an item below the fold is named the
-  same way as one on screen.
+  same way as one on screen. A pick the screen answers by disabling the list — channel 0's picker
+  after *Cambiar*, where the pick moves the channel — counts as made: UI Automation refuses the call
+  it was in the middle of, and a list left disabled is how the move shows. A list still enabled
+  after a refusal is a refusal.
 - `key <element> <enter|escape|tab>` — focus it and send that key. Fails if it is disabled, if it
   will not take focus, if it takes focus and does not get the keyboard — which is what a window
   that is not in front does — or if Windows refuses the keystroke outright, which a locked

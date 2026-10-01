@@ -433,15 +433,33 @@ internal sealed class Session : IDisposable
         }
 
         Realise(chosen);
-        ((SelectionItemPattern)chosen.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        // A pick that moves something on the screen is answered by the screen disabling the list
+        // while it does, and UI Automation then refuses the call it was in the middle of: measured
+        // on channel 0's picker mid-recording, where the pick moves the channel, the move happened
+        // and Select still threw. The pick counts only when the list is disabled afterwards; a list
+        // that is still enabled is a refusal that means what it says.
+        TakenByTheScreen(list, () =>
+            ((SelectionItemPattern)chosen.GetCurrentPattern(SelectionItemPattern.Pattern)).Select());
 
         if (opens is not null
             && Reading.Flag(() => opens.Current.ExpandCollapseState == ExpandCollapseState.Expanded) == true)
         {
-            opens.Collapse();
+            TakenByTheScreen(list, opens.Collapse);
         }
 
         Thread.Sleep(HedgeAfterAPress);
+    }
+
+    private static void TakenByTheScreen(AutomationElement list, Action act)
+    {
+        try
+        {
+            act();
+        }
+        catch (ElementNotEnabledException) when (Reading.Flag(() => list.Current.IsEnabled) == false)
+        {
+            // The list went dark because of the act itself; see the call in Choose.
+        }
     }
 
     /// <summary>
