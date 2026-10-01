@@ -94,5 +94,40 @@ public static class RenderingAgain
     /// everything except out of memory, which says nothing about the meeting it was thrown on and
     /// would only be thrown again by moving to the next one under the same pressure.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A render walks the response parser, the domain's audio contract, the artifact writer, the
+    /// filesystem and SQLite, and any of those may learn a refusal tomorrow that this file will not
+    /// hear about — so naming what a render <em>may</em> throw is guaranteed to be incomplete, and
+    /// the incompleteness is not a missing line in a report. The sweep runs oldest first and
+    /// remembers nothing between launches, so one escape starves every meeting behind the one that
+    /// threw, on every launch, silently. That is precisely what happened here: a list of six types
+    /// carried neither <c>DeepgramResponseException</c> nor <c>AudioContractException</c>, and both
+    /// are on the ordinary path of an imported meeting, because the importer that read the Python
+    /// corpus filed a <c>deepgram.json</c> on its sha256 without ever parsing it and the meetings it
+    /// wrote sort first.
+    /// </para>
+    /// <para>
+    /// So the boundary is the meeting, which is what it was always said to be, and a defect inside
+    /// the render is absorbed with everything else. That is a departure from what
+    /// <c>MeetingsDrawer</c> says about the same choice — that a screen swallowing a defect leaves
+    /// it looking like a corpus somebody could not read — and the departure is the point rather
+    /// than an oversight. A screen has one person standing in front of it and nothing queued
+    /// behind; this has nobody in front of it and every later meeting behind it, so the cost of
+    /// absorbing is one named line and the cost of not absorbing is everybody else's files. What
+    /// keeps a defect visible here is instead the probes: the sweep's ordinary paths assert that
+    /// nothing was refused, so a render that starts throwing on every meeting fails the suite.
+    /// </para>
+    /// <para>
+    /// Excluded is what says nothing about the meeting it was thrown on and would only be thrown
+    /// again by moving to the next one. Out of memory is that, and today it is all of it: carrying
+    /// on would mean attempting N more renders under the pressure that just refused this one. A
+    /// stack overflow is not on the list because the runtime never offers one to a catch, and a
+    /// cancellation is not on it because nothing on this path has a token to cancel — a line for
+    /// one would be a line for a caller that does not exist. It reads the exception it was handed
+    /// and not the chain under it, which is the same call: an out-of-memory wrapped in a
+    /// <c>DbUpdateException</c> arrives as the corpus refusing a write, and that is a meeting.
+    /// </para>
+    /// </remarks>
     public static bool Absorbable(Exception thrown) => thrown is not OutOfMemoryException;
 }

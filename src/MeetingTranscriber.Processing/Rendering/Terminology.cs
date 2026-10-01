@@ -35,12 +35,21 @@ public static class Terminology
     /// leaves nothing for a later one of the same form, so a correction made under one organization
     /// would lose to an everywhere-correction if both were left to the order of the rows. Place comes
     /// before the text so that two forms differing only in case cannot put the everywhere-correction
-    /// first. Two node corrections at different depths still fall to the id: this is not given the tree.
+    /// first. Between two node corrections the deeper node goes first, because a correction made under a
+    /// project is the more specific word inside it; the depth comes from <paramref name="nodeDepths"/>,
+    /// and a node missing from it is ranked as a root. Only a caller holding no tree passes nothing,
+    /// and then two nodes tie and fall to the id.
     /// </remarks>
-    public static string Apply(string text, IEnumerable<TerminologyCorrection> corrections)
+    /// <param name="nodeDepths">The depth of each node a correction may name, as the tree has it.</param>
+    public static string Apply(
+        string text,
+        IEnumerable<TerminologyCorrection> corrections,
+        IReadOnlyDictionary<Guid, int>? nodeDepths = null)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(corrections);
+
+        int Place(TerminologyCorrection correction) => PlaceOf(correction, nodeDepths);
 
         var ordered = corrections
             .Where(correction => !string.IsNullOrEmpty(correction.WrongText))
@@ -57,9 +66,25 @@ public static class Terminology
         return text;
     }
 
-    /// <summary>A meeting's own correction is narrowest, a node's is next, and everywhere is widest.</summary>
-    private static int Place(TerminologyCorrection correction) =>
-        correction.MeetingId is not null ? 0 : correction.NodeId is not null ? 1 : 2;
+    /// <summary>
+    /// A meeting's own correction is narrowest, a node's is next with the deeper node before the
+    /// shallower, and everywhere is widest.
+    /// </summary>
+    private static int PlaceOf(TerminologyCorrection correction, IReadOnlyDictionary<Guid, int>? nodeDepths)
+    {
+        if (correction.MeetingId is not null)
+        {
+            return 0;
+        }
+
+        if (correction.NodeId is not { } node)
+        {
+            return int.MaxValue;
+        }
+
+        var depth = nodeDepths is not null && nodeDepths.TryGetValue(node, out var known) ? known : 0;
+        return 1 + Math.Max(0, Node.MaxDepth - depth);
+    }
 
     /// <summary>
     /// Whether <see cref="Apply"/> would replace anything in <paramref name="text"/> with this

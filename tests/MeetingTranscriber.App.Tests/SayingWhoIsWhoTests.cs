@@ -369,6 +369,38 @@ public class SayingWhoIsWhoTests
     }
 
     /// <summary>
+    /// A dialogue opened over one meeting may close after the screen moved to another, and labels
+    /// repeat across meetings, so the guard sits between the dialogue and anything that reads,
+    /// drafts or draws.
+    /// </summary>
+    [Fact]
+    public void A_dialogue_closed_over_another_meeting_writes_nothing_onto_this_one()
+    {
+        var ask = Body(File.ReadAllText(AppSources.At(Screen).FullName), "private async Task AskWhoTheyAre(");
+
+        var asked = ask.IndexOf("AskingWhoTheyAre.AskAsync(", StringComparison.Ordinal);
+        var guard = ask.IndexOf("_meeting != read.Meeting.Id", StringComparison.Ordinal);
+        var read = ask.IndexOf("ReadThePeopleAgain(", StringComparison.Ordinal);
+
+        asked.ShouldBeGreaterThan(-1);
+        guard.ShouldBeGreaterThan(asked);
+        read.ShouldBeGreaterThan(guard);
+    }
+
+    /// <summary>
+    /// The screen says a meeting that moved under it one way, here as in <c>Draw</c>: a stage
+    /// refusal is not a read that failed.
+    /// </summary>
+    [Fact]
+    public void Quien_es_quien_says_a_meeting_that_moved_the_way_the_rest_of_the_screen_does()
+    {
+        var reading = Body(File.ReadAllText(AppSources.At(Screen).FullName), "private void ReadThePeopleAgain(");
+
+        reading.ShouldContain("catch (MeetingStageException");
+        reading.ShouldContain("UiTexts.ThatIsNoLongerHowItWas");
+    }
+
+    /// <summary>
     /// One method's body, anchored on the closing brace at its own indentation.
     /// <c>ClassifyingAMeetingTests</c>' own helper, for the reason given there.
     /// </summary>
