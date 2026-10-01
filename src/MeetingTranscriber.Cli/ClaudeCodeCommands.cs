@@ -175,6 +175,7 @@ public static class ClaudeCodeCommands
     {
         SummaryProviderAnswer.DidNotAnswer said => said.Said,
         SummaryProviderAnswer.NotAvailable said => said.Said,
+        SummaryProviderAnswer.MemoryInTheWay said => said.Said,
         _ => string.Empty,
     };
 
@@ -187,8 +188,8 @@ public static class ClaudeCodeCommands
     private static void Refusal(
         List<string> report, List<string> leaks, string name, string path, SummaryProviderAnswer asked)
     {
-        if (asked is SummaryProviderAnswer.DidNotAnswer refused
-            && refused.Said.Contains($"'{path}'", StringComparison.OrdinalIgnoreCase))
+        if (asked is SummaryProviderAnswer.MemoryInTheWay refused
+            && string.Equals(refused.File, path, StringComparison.OrdinalIgnoreCase))
         {
             report.Add($"{name}: refused before the run started, naming {path}");
             return;

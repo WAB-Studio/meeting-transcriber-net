@@ -92,6 +92,24 @@ public class SummarisingAMeetingTests
     }
 
     [Fact]
+    public async Task A_memory_file_in_the_way_sends_nothing_and_says_so()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (_, jobId) = Arrange(corpus);
+        var provider = new FakeSummaries().Answering(
+            new SummaryProviderAnswer.MemoryInTheWay("A memory file sits above.", @"C:\work\CLAUDE.md"));
+
+        var ended = await SummariseAsync(corpus, jobId, provider);
+
+        ended.Outcome.ShouldBe(SummaryOutcome.NotSent);
+        ended.Failure.ShouldBe(JobFailure.MemoryFileInTheWay);
+        ended.Said.ShouldBe("A memory file sits above.");
+
+        using var reopened = corpus.OpenMigrated();
+        reopened.ExtractionRuns.Any().ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task A_summariser_that_did_not_answer_leaves_the_job_to_the_runner()
     {
         using var corpus = new TemporaryCorpus();

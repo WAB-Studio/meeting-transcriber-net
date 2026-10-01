@@ -150,9 +150,11 @@ internal sealed class TimelineSource
     internal int Stretches => stretches;
 
     /// <summary>
-    /// Whether any of this source's devices numbered its frames in something other than the frames
-    /// it handed over, and that counter was given up on. <see cref="Rate"/> is then the label and
-    /// not a measurement, because what a rate is measured from is the counter that was given up on.
+    /// Whether any of this source's devices counted its frames in a way no rate explains, or one
+    /// that stopped explaining them, so its counter was given up on and its audio placed by the
+    /// clock — or was still being told apart from one when that device ended. <see cref="Rate"/> is
+    /// then the label and not a measurement, because what a rate is measured from is the counter
+    /// that was not used.
     /// </summary>
     internal bool CounterGivenUp => counterGivenUp || positions.CounterGivenUp;
 

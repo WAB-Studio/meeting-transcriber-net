@@ -820,6 +820,33 @@ public sealed class JobRunnerTests
         job.Failure.ShouldBe(JobFailure.NoSummariserOnThisMachine);
     }
 
+    /// <summary>
+    /// Goes red with a memory file mapped to <c>DidNotAnswer</c>: the job would then be tried again
+    /// twice, and each try would be refused for the same file.
+    /// </summary>
+    [Fact]
+    public async Task A_summary_refused_for_a_memory_file_fails_for_good_at_once_and_says_which()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (_, jobId) = ArrangeSummarisable(corpus, When);
+
+        using var lease = RunnerLease.TryTake(corpus.Root);
+        lease.ShouldNotBeNull();
+
+        var provider = new FakeSummaries().Answering(
+            new SummaryProviderAnswer.MemoryInTheWay("A memory file sits above.", @"C:\work\CLAUDE.md"));
+
+        await JobRunner.RunWhatIsDueAsync(
+            lease, TimeProvider.System, FixtureBody(DeepgramFixtures.TwoChannelShort),
+            TestContext.Current.CancellationToken, provider);
+
+        using var reopened = corpus.Open();
+        var job = reopened.ProcessingJobs.Single(row => row.Id == jobId);
+        job.State.ShouldBe(JobState.FailedPermanent);
+        job.Attempt.ShouldBe(1);
+        job.Failure.ShouldBe(JobFailure.MemoryFileInTheWay);
+    }
+
     /// <summary>Goes red with an Extract job taken even though no summariser was handed over.</summary>
     [Fact]
     public async Task A_pass_given_no_summariser_leaves_the_summaries_queued()

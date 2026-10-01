@@ -103,6 +103,59 @@ public class TimelineDriftTests
     }
 
     /// <summary>
+    /// ISC-140. A microphone that counts its frames in a rate of its own and also runs slow: the
+    /// webcam of ISC-132 with a crystal that is two hundred parts per million off. Placed by the
+    /// clock, as it was when its counter was simply given up, its markers stay aligned and nothing
+    /// shows the drift but the rate it reports (its label) and the audio that comes back missing,
+    /// about 1.4 seconds of it over two hours. So this asserts those two as well as alignment: the
+    /// rate has to be the one it really ran at and the missing audio has to be the second the rate
+    /// was read from, not the drift.
+    /// </summary>
+    [Fact]
+    public void Two_hours_of_a_microphone_counting_in_a_rate_of_its_own_and_running_slow_stay_under_fifty_milliseconds_apart()
+    {
+        const double Marker = 60;
+        const double Seconds = 2 * 60 * 60;
+        const double Slow = 48_000 * 0.999_8;
+
+        var onsets = new Onsets();
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, onsets);
+
+        foreach (var packet in Fabricated.Merged(
+            Fabricated.Packets(
+                AudioChannel.Loopback, StereoFloat, LoopbackCrystal, 0, Seconds, Fabricated.Bursts(Marker),
+                jitterMs: JitterMs),
+            Fabricated.Packets(
+                AudioChannel.Microphone, MonoFloat, Slow, 0, Seconds, Fabricated.Bursts(Marker),
+                jitterMs: JitterMs, countsAtRate: 16_000)))
+        {
+            timeline.Take(packet);
+        }
+
+        var summary = timeline.Close();
+        var microphoneSummary = summary.On(AudioChannel.Microphone);
+
+        microphoneSummary.CounterGivenUp.ShouldBeFalse();
+        microphoneSummary.MeasuredRate.ShouldBe(Slow, tolerance: 1);
+        microphoneSummary.Missing.Milliseconds.ShouldBeLessThan(100);
+
+        var loopback = onsets.On(AudioChannel.Loopback);
+        var microphone = onsets.On(AudioChannel.Microphone);
+        var expected = (int)(Seconds / Marker);
+
+        loopback.Count.ShouldBe(expected);
+        microphone.Count.ShouldBe(expected);
+
+        for (var marker = 0; marker < expected; marker++)
+        {
+            Math.Abs(loopback[marker] - microphone[marker])
+                .ShouldBeLessThan(0.050, $"marker {marker} at {marker * Marker} s");
+            loopback[marker].ShouldBe(marker * Marker, tolerance: 0.050);
+            microphone[marker].ShouldBe(marker * Marker, tolerance: 0.050);
+        }
+    }
+
+    /// <summary>
     /// ISC-67, both halves of it. A device handed over late and a device running fast are two different
     /// numbers, and the recording keeps them apart. Read as one, a quarter second of a stream
     /// opening late looks like a clock that needs correcting, and the correction it triggers moves

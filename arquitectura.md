@@ -308,6 +308,8 @@ action_item_progress
 nodes
 meeting_nodes
 templates
+template_nodes
+template_people
 people
 affiliations
 meeting_people
@@ -383,10 +385,13 @@ reescribe la entrevista en una reunión con un empleado propio. Los dos extremos
 abiertos y no desconocidos: sin desde es "hasta donde este corpus llega", sin hasta
 es "sigue ahí".
 
-Los templates guardan sólo el nombre. Qué clases de hijos ofrece cada uno y qué
-ranuras muestra llega con la interfaz que los usa, y siempre va a pre-llenar nada
-más: un template no puede expresar lo que los constraints prohíben, y una reunión
-que no se parece a ninguno se clasifica a mano igual.
+Un template es una clasificación que alguien llenó a mano y guardó con un nombre para volver a
+usarla: qué nodos vincula y con qué papel, en `template_nodes`, y a quién nombra y cómo, en
+`template_people`, con los mismos nombres cerrados y los mismos CHECK que `meeting_nodes` y
+`meeting_people`. Sólo pre-llena: elegirlo suma lo que guardó a lo que la reunión ya tiene, no
+puede expresar lo que los constraints prohíben, y ninguna reunión guarda qué template la llenó,
+así que cambiarlo o descartarlo no toca ninguna reunión ya clasificada. Las trece de abajo no
+son templates guardados: son lo que el código abre al elegir cada una.
 
 #### Las trece reuniones contra las que se cerró
 

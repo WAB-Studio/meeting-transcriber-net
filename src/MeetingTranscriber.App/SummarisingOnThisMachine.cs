@@ -28,4 +28,11 @@ internal static class SummarisingOnThisMachine
 
     /// <summary>What the runner's pump sends a summary with, on this machine's own Claude Code.</summary>
     public static ISummaryProvider Provider() => ClaudeCodeSummaries.OnThisMachine(WhereClaudeCodeIs);
+
+    /// <summary>
+    /// The memory file a summary would be refused for on this machine right now, or nothing. The
+    /// meetings list asks it at draw time, so a refusal names the file as it stands and the path is
+    /// never stored.
+    /// </summary>
+    public static FileInfo? MemoryFileInTheWay() => ClaudeCodeSummaries.OnThisMachine(WhereClaudeCodeIs).MemoryFileInTheWay();
 }

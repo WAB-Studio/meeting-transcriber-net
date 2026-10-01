@@ -143,6 +143,13 @@ its fork point: no share in any wave can issue an id, whatever else it writes.
      `private/owed-closed.md` under the commit that closed it; an `owed_built` carrying no commit
      closed nothing. Every entry still open that was open when you counted has its `passed` raised
      by one, whatever became of the share that held it.
+   - **A screen nobody has walked is one line of one entry.** An `owed` whose whole ask is a walk of
+     a screen through the UI probe is not raised as an entry of its own: it becomes a line of the one
+     open entry titled *Screens not yet walked*, which you open the first time one arrives and which
+     carries, per screen, what the walk has to see and whether it spends. Its `passed` counts like
+     any other's. Entries already open for a walk are folded into it the next time you write the
+     ledger. A screen's line leaves when a share's record carries that walk, and a walk that spends
+     waits for a person to approve its cost like any other spend.
    - **Then say the six, and check they balance**: open at the start, closed, created by integration,
      created as a known consequence, preexisting found, open at the end. `end = start − closed +
      integration + consequence + preexisting`. It not balancing is an entry lost or counted twice,

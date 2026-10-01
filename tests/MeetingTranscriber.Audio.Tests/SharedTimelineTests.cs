@@ -227,11 +227,169 @@ public class SharedTimelineTests
         summary.Length.Milliseconds.ShouldBeInRange(7_900, 8_100);
         summary.On(AudioChannel.Microphone).Missing.Milliseconds.ShouldBeLessThan(100);
 
+        // A counter in a rate of the table is read in it, and so is measured like any other.
+        summary.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeFalse();
+
         foreach (var second in new[] { 1, 3, 6 })
         {
             collected.Loudest(AudioChannel.Microphone, second, second + 0.1).ShouldBeGreaterThan(0.5f);
             collected.Loudest(AudioChannel.Microphone, second + 0.3, second + 0.9).ShouldBe(0);
         }
+    }
+
+    /// <summary>
+    /// ISC-140. The webcam's own first packet was 463 frames and every one after it 480, so the
+    /// pair that revealed the mismatch says the counter advanced 160 against 463 frames handed
+    /// over — 16 587 Hz, a rate no device has. The decision is taken over a second of packets, and
+    /// the pair starting at the first packet is not among them.
+    /// </summary>
+    [Fact]
+    public void A_webcam_whose_first_packet_is_short_is_still_read_in_its_own_rate()
+    {
+        var collected = new Collected();
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, collected);
+
+        var microphone = Fabricated
+            .Packets(AudioChannel.Microphone, MonoFloat, 48_000, 0, 8, Fabricated.Bursts(1), countsAtRate: 16_000)
+            .ToList();
+
+        // Four bytes a frame, and the positions are left as the device wrote them.
+        microphone[0] = microphone[0] with { Samples = microphone[0].Samples[..(463 * 4)] };
+
+        Feed(
+            timeline,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 8, Fabricated.Bursts(1)),
+            microphone);
+
+        var summary = timeline.Close();
+
+        summary.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeFalse();
+
+        foreach (var second in new[] { 1, 3, 6 })
+        {
+            collected.Loudest(AudioChannel.Microphone, second, second + 0.1).ShouldBeGreaterThan(0.5f);
+        }
+    }
+
+    /// <summary>
+    /// A counter in 11 025 Hz advances 110.25 a packet, which the device can only report as a whole
+    /// number, so the positions read from it land up to a counting unit behind where the last
+    /// packet ended. That is the slack, and a source that stays inside it is neither given up on
+    /// nor sent backwards.
+    /// </summary>
+    [Fact]
+    public void A_counter_whose_unit_does_not_divide_the_packets_evenly_is_still_read_in_its_own_rate()
+    {
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, new Collected());
+
+        Feed(
+            timeline,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 30, Fabricated.Quiet),
+            Fabricated.Packets(
+                AudioChannel.Microphone, MonoFloat, 48_000, 0, 30, Fabricated.Quiet, countsAtRate: 11_025));
+
+        var summary = timeline.Close();
+
+        summary.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeFalse();
+        summary.On(AudioChannel.Microphone).Missing.Milliseconds.ShouldBeLessThan(100);
+        summary.Length.Milliseconds.ShouldBeInRange(29_900, 30_100);
+    }
+
+    /// <summary>
+    /// A counter that reads low once and then goes on in the frames it hands over is a glitch and
+    /// not a unit. Summed over a second it advances by about as much as it handed over, which no
+    /// rate below the label is within half a percent of, so it is given up — and the meeting kept.
+    /// Read on the one pair that revealed it, it would snap to 16 kHz and be rescaled ahead of
+    /// itself until the clock refused the recording.
+    /// </summary>
+    [Fact]
+    public void A_counter_that_reads_low_once_and_then_counts_in_the_frames_it_hands_over_is_given_up_and_the_meeting_kept()
+    {
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, new Collected());
+
+        var microphone = Fabricated
+            .Packets(AudioChannel.Microphone, MonoFloat, 48_000, 0, 8, Fabricated.Quiet)
+            .ToList();
+
+        microphone[1] = microphone[1] with { DevicePosition = microphone[0].DevicePosition + 160 };
+
+        Feed(
+            timeline,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 8, Fabricated.Quiet),
+            microphone);
+
+        var summary = timeline.Close();
+
+        summary.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeTrue();
+        summary.Length.Milliseconds.ShouldBeInRange(7_900, 8_100);
+    }
+
+    /// <summary>
+    /// A counter in a rate no hardware counts in, 10 kHz, is explained by nothing in the table:
+    /// taken as the ratio it gives it would be a drift of a part in a few thousand, which is what
+    /// the closed table exists to refuse.
+    /// </summary>
+    [Fact]
+    public void A_counter_no_rate_of_its_own_explains_is_still_given_up_on()
+    {
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, new Collected());
+
+        Feed(
+            timeline,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 8, Fabricated.Quiet),
+            Fabricated.Packets(
+                AudioChannel.Microphone, MonoFloat, 48_000, 0, 8, Fabricated.Quiet, countsAtRate: 10_000));
+
+        var summary = timeline.Close();
+
+        summary.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeTrue();
+        summary.Length.Milliseconds.ShouldBeInRange(7_900, 8_100);
+    }
+
+    /// <summary>
+    /// A counter read in its own rate that then goes back on itself is given up like any other:
+    /// past one counting unit behind where the last packet ended it is no longer explained, and
+    /// the source goes back to the clock rather than be sent backwards.
+    /// </summary>
+    [Fact]
+    public void A_counter_read_in_its_own_rate_that_falls_behind_is_given_up_on()
+    {
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, new Collected());
+
+        var microphone = Fabricated
+            .Packets(AudioChannel.Microphone, MonoFloat, 48_000, 0, 8, Fabricated.Quiet, countsAtRate: 16_000)
+            .ToList();
+
+        // Long after the second of packets the rate was read from.
+        microphone[300] = microphone[300] with { DevicePosition = microphone[299].DevicePosition };
+
+        Feed(
+            timeline,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 8, Fabricated.Quiet),
+            microphone);
+
+        var summary = timeline.Close();
+
+        summary.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeTrue();
+        summary.Length.Milliseconds.ShouldBeInRange(7_900, 8_100);
+    }
+
+    /// <summary>
+    /// A source that ends before the second of packets a rate is read from is placed by the clock
+    /// throughout, so its rate is its label and it says so.
+    /// </summary>
+    [Fact]
+    public void A_source_that_ends_before_its_counter_is_explained_reads_as_given_up()
+    {
+        var timeline = SharedTimeline.Of(StereoFloat, MonoFloat, new Collected());
+
+        Feed(
+            timeline,
+            Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 0.5, Fabricated.Quiet),
+            Fabricated.Packets(
+                AudioChannel.Microphone, MonoFloat, 48_000, 0, 0.5, Fabricated.Quiet, countsAtRate: 16_000));
+
+        timeline.Close().On(AudioChannel.Microphone).CounterGivenUp.ShouldBeTrue();
     }
 
     /// <summary>
@@ -276,7 +434,9 @@ public class SharedTimelineTests
     /// ISC-133. Giving a counter up switches this source's drift correction off, and the rate that
     /// comes back is then the label rather than anything measured. Reporting that number with
     /// nothing beside it would read as a device measured at exactly its nominal rate, which is the
-    /// one thing a person diagnosing two channels drifting apart would take at face value.
+    /// one thing a person diagnosing two channels drifting apart would take at face value. The
+    /// counter here is in 10 kHz, which no rate hardware counts in explains, so it is the case
+    /// that is still given up on.
     /// </summary>
     [Fact]
     public void A_recording_says_which_of_its_sources_had_its_counter_given_up_on()
@@ -287,7 +447,7 @@ public class SharedTimelineTests
             timeline,
             Fabricated.Packets(AudioChannel.Loopback, StereoFloat, 48_000, 0, 8, Fabricated.Quiet),
             Fabricated.Packets(
-                AudioChannel.Microphone, MonoFloat, 48_000, 0, 8, Fabricated.Quiet, countsAtRate: 16_000));
+                AudioChannel.Microphone, MonoFloat, 48_000, 0, 8, Fabricated.Quiet, countsAtRate: 10_000));
 
         var summary = timeline.Close();
 

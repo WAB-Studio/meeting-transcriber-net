@@ -79,6 +79,7 @@ public partial class CorpusNamingTests
         (JobFailure.ExtractionRefused, "extraction_refused"),
         (JobFailure.NoSummariserOnThisMachine, "no_summariser_on_this_machine"),
         (JobFailure.SummariserFailed, "summariser_failed"),
+        (JobFailure.MemoryFileInTheWay, "memory_file_in_the_way"),
         (ExtractionCondition.NotTheSchema, "not_the_schema"),
         (ExtractionCondition.InputNotAsPrepared, "input_not_as_prepared"),
         (ExtractionCondition.AnotherMeeting, "another_meeting"),

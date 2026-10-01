@@ -215,7 +215,7 @@ public sealed class MeetingAudioTests : IDisposable
 
         recording.File.Name.ShouldBe("audio.wav");
         recording.Length.Milliseconds.ShouldBeInRange(3_900, 4_100);
-        recording.Timeline.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeTrue();
+        recording.Timeline.On(AudioChannel.Microphone).CounterGivenUp.ShouldBeFalse();
         recording.Timeline.On(AudioChannel.Loopback).CounterGivenUp.ShouldBeFalse();
 
         // The microphone is on channel 1 and is really on it: a file made of silence would satisfy

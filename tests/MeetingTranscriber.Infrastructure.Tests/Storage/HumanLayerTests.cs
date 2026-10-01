@@ -41,7 +41,6 @@ public class HumanLayerTests
 
         var organization = human.Root(NodeKind.Organization, "TechSed");
         var initiative = human.Under(organization, NodeKind.Initiative, "Coati");
-        var template = human.Template("trabajo");
         var ada = human.Add("Ada");
         var meeting = fixture.Meeting("la daily");
 
@@ -52,11 +51,20 @@ public class HumanLayerTests
         human.Assign(meeting.Id, "ch1:speaker_0", ada);
         human.Correct("quati", "Coati", under: initiative);
         human.Describe(meeting, "la daily del equipo", "arranca el sprint");
-        human.Shape(meeting, template);
+        human.Keep(
+            "trabajo",
+            new MeetingFiling(
+                null,
+                [new ChosenPath([organization.Id, initiative.Id])],
+                [],
+                [],
+                [new ChosenPerson(ada.Id, Attended: true, Subject: false)]));
         human.Mark(fixture.ExtractionRunId(meeting), ordinal: 0, ActionItemState.Done, ada);
 
         context.Nodes.Count().ShouldBe(2);
         context.Templates.Count().ShouldBe(1);
+        context.TemplateNodes.Count().ShouldBe(1);
+        context.TemplatePeople.Count().ShouldBe(1);
         context.People.Count().ShouldBe(1);
         context.Affiliations.Count().ShouldBe(1);
         context.MeetingNodes.Count().ShouldBe(1);
@@ -68,7 +76,6 @@ public class HumanLayerTests
         var stored = context.Meetings.Single();
         stored.Title.ShouldBe("la daily del equipo");
         stored.Context.ShouldBe("arranca el sprint");
-        stored.TemplateId.ShouldBe(template.Id);
     }
 
     /// <summary>
@@ -886,6 +893,45 @@ public class HumanLayerTests
         context.MeetingNodes.Count().ShouldBe(1);
         context.Affiliations.Count().ShouldBe(1);
         context.TerminologyCorrections.Count().ShouldBe(1);
+    }
+
+    /// <summary>
+    /// A classification put by points at the node it files under, so removing that node is refused
+    /// and says so — and the cascade the schema keeps behind the refusal has not been reached.
+    /// </summary>
+    [Fact]
+    public void A_node_a_classification_put_by_files_under_is_not_removed()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
+
+        var techsed = human.Root(NodeKind.Organization, "TechSed");
+        human.Keep("soporte", new MeetingFiling(null, [new ChosenPath([techsed.Id])], [], [], []));
+
+        Should.Throw<ClassificationException>(() => human.Remove(techsed))
+            .Message.ShouldContain("1 classification put by that files under it");
+
+        context.Nodes.Count().ShouldBe(1);
+        context.TemplateNodes.Count().ShouldBe(1);
+    }
+
+    /// <summary>The same refusal for somebody a classification put by names.</summary>
+    [Fact]
+    public void Somebody_a_classification_put_by_names_is_not_removed()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var human = new HumanLayerFixture(context, corpus.Root).HumanLayer;
+
+        var ada = human.Add("Ada");
+        human.Keep("con ada", new MeetingFiling(null, [], [], [], [new ChosenPerson(ada.Id, true, false)]));
+
+        Should.Throw<ClassificationException>(() => human.Remove(ada))
+            .Message.ShouldContain("1 classification put by that names them");
+
+        context.People.Count().ShouldBe(1);
+        context.TemplatePeople.Count().ShouldBe(1);
     }
 
     /// <summary>The act this method exists for: a name nobody used, taken back off the tree.</summary>

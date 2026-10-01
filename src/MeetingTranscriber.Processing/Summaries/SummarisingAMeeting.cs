@@ -18,7 +18,7 @@ public enum SummaryOutcome
 
     /// <summary>
     /// Nothing was sent: the provider is not there, or would not say its version, or the corpus
-    /// could not give what a call needed before anything was sent.
+    /// could not give what a call needed before anything was sent, or a memory file was in the way.
     /// </summary>
     NotSent = 3,
 }
@@ -191,6 +191,7 @@ public static class SummarisingAMeeting
             {
                 SummaryProviderAnswer.DidNotAnswer didNotAnswer => didNotAnswer.Said,
                 SummaryProviderAnswer.NotAvailable notAvailable => notAvailable.Said,
+                SummaryProviderAnswer.MemoryInTheWay inTheWay => inTheWay.Said,
                 _ => throw new ArgumentOutOfRangeException(
                     nameof(correctionAnswer), correctionAnswer, "Extracted is filed above, not mapped here."),
             };
@@ -234,6 +235,8 @@ public static class SummarisingAMeeting
         SummaryProviderAnswer.DidNotAnswer didNotAnswer => new SummaryEnded(SummaryOutcome.DidNotAnswer, didNotAnswer.Said),
         SummaryProviderAnswer.NotAvailable notAvailable =>
             new SummaryEnded(SummaryOutcome.NotSent, notAvailable.Said, JobFailure.NoSummariserOnThisMachine),
+        SummaryProviderAnswer.MemoryInTheWay inTheWay =>
+            new SummaryEnded(SummaryOutcome.NotSent, inTheWay.Said, JobFailure.MemoryFileInTheWay),
         _ => throw new ArgumentOutOfRangeException(
             nameof(answer), answer, $"{answer.GetType()} is Extracted, and files rather than becoming a SummaryEnded here."),
     };

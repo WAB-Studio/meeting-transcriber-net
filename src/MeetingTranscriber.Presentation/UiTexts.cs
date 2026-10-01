@@ -644,6 +644,8 @@ public static class UiTexts
 
     // The two answers, and there are two. Taking the audio out to a folder is a copy and not an
     // answer — the recording is still waiting afterwards — so it is not a button on this row.
+    // *Descartar* is also how a classification put by is thrown away, on the classification screen:
+    // the same act, throwing away what somebody kept, applied to something else.
     public static UiText Keep { get; } = new("Conservar", "Keep");
 
     public static UiText Discard { get; } = new("Descartar", "Discard");
@@ -739,6 +741,14 @@ public static class UiTexts
         "Claude Code no devolvió un resumen, ni al intentarlo de nuevo. Se puede pedir otro.",
         "Claude Code did not come back with a summary, not even when it was tried again. Another "
         + "can be asked for.");
+
+    public static UiText NotSentAMemoryFileWasInTheWay { get; } = new(
+        "No se envió: Claude Code habría leído en el resumen un CLAUDE.md de una carpeta por encima de donde se preparan los resúmenes. No se gastó nada. Muévalo o bórrelo y pida otro.",
+        "Not sent: Claude Code would have read a CLAUDE.md from a folder above where summaries are prepared into the summary. Nothing was spent. Move or delete it and ask for another.");
+
+    public static UiText NotSentMoveThisMemoryFile { get; } = new(
+        "No se envió: Claude Code habría leído {0} en el resumen. No se gastó nada. Muévalo o bórrelo y pida otro.",
+        "Not sent: Claude Code would have read {0} into the summary. Nothing was spent. Move or delete it and ask for another.");
 
     // The two answers, and what comes back of them.
 
@@ -983,7 +993,15 @@ public static class UiTexts
     // What every picker on that screen offers for whatever already stands in it — a pill over the
     // tree and a row of people alike, because it is one act and one act reads as one entry. The
     // ellipsis says it asks a question rather than answering one, the way *Nombrar uno nuevo…* does.
+    // It is also what the line of a classification put by offers over its name.
     public static UiText CorrectThisName { get; } = new("Corregir este nombre…", "Correct this name…");
+
+    // Putting a filled classification by under a name, to file with again. A new act and not
+    // *Conservar*'s, which is not throwing a recording away.
+    public static UiText Remember { get; } = new("Recordar", "Remember");
+
+    public static UiText ANameToUseItAgainBy { get; } =
+        new("Un nombre para volver a usarla", "A name to use it again by");
 
     // Two entries and not a question with a noun in it. What stands at the top of the tree is either
     // an organization or a body of work belonging to nobody in particular, and #105's rule is that

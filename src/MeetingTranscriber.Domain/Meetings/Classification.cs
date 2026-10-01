@@ -199,14 +199,13 @@ public class MeetingNode
 }
 
 /// <summary>
-/// A named shape for a meeting — "work", "with a client", "interview", "class".
+/// A classification somebody filled by hand and put by under a name, to file with again.
 /// </summary>
 /// <remarks>
-/// Data and not code, so one can be added without touching the schema. Today it carries only its
-/// name, which is what the Python corpus called the meeting type. What each one pre-fills — which
-/// kinds of child a space has, which links it asks for — arrives with the interface that offers
-/// them, and it will always only pre-fill: a template can never express what the constraints
-/// forbid, and a meeting resembling none of them is classified by hand.
+/// It holds which nodes it links under which role, in <see cref="TemplateNode"/>, and whom it names
+/// under which role, in <see cref="TemplatePerson"/>. It is a preset over the closed names and never
+/// a new name: choosing it fills a draft, and a draft is classified by hand like any other. No
+/// meeting records which one filled it, so changing it or throwing it away reaches no meeting.
 /// </remarks>
 public class MeetingTemplate
 {
@@ -215,4 +214,24 @@ public class MeetingTemplate
     public required string Name { get; set; }
 
     public UtcTimestamp CreatedAt { get; set; }
+}
+
+/// <summary>A node a put-by classification links, with the role it links it under.</summary>
+public class TemplateNode
+{
+    public Guid TemplateId { get; set; }
+
+    public Guid NodeId { get; set; }
+
+    public MeetingNodeRole Role { get; set; }
+}
+
+/// <summary>A person a put-by classification names, with the role it names them under.</summary>
+public class TemplatePerson
+{
+    public Guid TemplateId { get; set; }
+
+    public Guid PersonId { get; set; }
+
+    public MeetingPersonRole Role { get; set; }
 }

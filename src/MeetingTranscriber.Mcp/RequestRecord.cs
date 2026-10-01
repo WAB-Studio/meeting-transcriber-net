@@ -2,6 +2,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 
 using MeetingTranscriber.Domain.Time;
+using MeetingTranscriber.Infrastructure.Storage;
 
 namespace MeetingTranscriber.Mcp;
 
@@ -62,7 +63,7 @@ internal static class RequestRecord
     /// <summary>This user's record: <c>%LOCALAPPDATA%\MeetingTranscriber\agent-requests.jsonl</c>.</summary>
     internal static FileInfo OfThisUser() => new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "MeetingTranscriber",
+        CorpusLocation.ApplicationFolderName,
         FileName));
 
     /// <summary>

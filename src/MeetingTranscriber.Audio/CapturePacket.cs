@@ -35,12 +35,13 @@ namespace MeetingTranscriber.Audio;
 /// says otherwise.
 /// </para>
 /// <para>
-/// Nor is the unit of <see cref="DevicePosition"/>, and that one is not a decision but something
-/// nothing here can know. A shared-mode client is handed the format it asked for, converted; the
-/// counter is not converted with it, and a device that runs at another rate goes on counting in its
-/// own frames. So the number is the device's own and says where the block goes only once something
-/// has decided it can be laid out at all — which is <see cref="SourcePositions"/>, and it is the
-/// only thing that may read this as a position on the recording.
+/// Nor is the unit of <see cref="DevicePosition"/>, and nothing the packet says tells it. A
+/// shared-mode client is handed the format it asked for, converted; the counter is not converted
+/// with it, and a device that runs at another rate goes on counting in its own frames. So the
+/// number is the device's own and says where the block goes only once something has decided it can
+/// be laid out at all — which is <see cref="SourcePositions"/>, and it is the only thing that may
+/// read this as a position on the recording. It works the unit out from how far the counter
+/// advances against the frames handed over, across a second of packets.
 /// </para>
 /// </remarks>
 /// <param name="Channel">Which of the two sources this came from.</param>

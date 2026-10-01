@@ -19,9 +19,11 @@
          many people are on it are answers, not a layout. What stays here is the look, as the
          styles below, so the code-behind chooses a style and never a colour.
 
-         Nothing is written to the corpus until *Guardar*, with one exception the design already
-         allows: naming a node or a person is corpus-wide vocabulary rather than something about
-         this meeting, so it is written when it is named. *Dejarla sin clasificar* writes nothing
+         Nothing is written to the corpus until *Guardar*, with two exceptions the design already
+         allows, both corpus-wide vocabulary rather than facts about this meeting: naming a node or
+         a person, which is written when it is named; and putting a classification by under a
+         name, correcting that name, or discarding it, which is written when it is pressed.
+         *Dejarla sin clasificar* writes nothing
          either — it empties the screen, and *Guardar* is still what files it. That is what keeps
          it honestly in the neutral left-hand slot rather than past the gap. -->
 
@@ -60,6 +62,16 @@
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="BorderBrush" Value="{StaticResource EmptyControlRingBrush}" />
             </Style>
+
+            <!-- The line under the fourteen, where a classification filled by hand is put by. Its
+                 presses are the same optional control the rest of the screen uses, at the control
+                 height, and the one that loses something sits past the gap. -->
+            <Style x:Key="TheLinesAct" TargetType="Button" BasedOn="{StaticResource NormalButtonOnPaper}">
+                <Setter Property="Height" Value="{StaticResource ControlHeight}" />
+                <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+            </Style>
+
+            <Style x:Key="ItLosesSomething" TargetType="Button" BasedOn="{StaticResource RowButtonThatLosesSomething}" />
 
             <!-- What a column is called: the artboard's 14/20 in secondary, and deliberately not
                  the section rank. A section title is a heading over a part of a screen; these three
@@ -190,6 +202,41 @@
             <!-- The fourteen, in the order `MeetingShape` declares them, which is §5.3's own row
                  order. Built in code because which of them exist is an answer and not a layout. -->
             <local:WrappingRow x:Name="TheShapes" HorizontalGap="8" VerticalGap="8" />
+
+            <!-- Putting a classification by, under a name typed here, and the two presses a chip
+                 lit from those put by adds: correcting its name, and throwing it away. The name
+                 is set by the code-behind and never by a redraw, which would erase what is being
+                 typed. -->
+            <StackPanel x:Name="KeepingIt" Orientation="Horizontal" Spacing="8">
+                <Button
+                    x:Name="DiscardKeptButton"
+                    Style="{StaticResource ItLosesSomething}"
+                    Click="OnDiscardKept"
+                    Visibility="Collapsed"
+                    Content="{x:Bind In(loc:UiTexts.Discard)}" />
+
+                <Button
+                    x:Name="CorrectKeptNameButton"
+                    Style="{StaticResource AnOptionalPress}"
+                    Click="OnCorrectKeptName"
+                    Visibility="Collapsed"
+                    Content="{x:Bind In(loc:UiTexts.CorrectThisName)}" />
+
+                <TextBox
+                    x:Name="KeptNameBox"
+                    Style="{StaticResource Naming}"
+                    PlaceholderText="{x:Bind In(loc:UiTexts.ANameToUseItAgainBy)}"
+                    TextChanged="OnKeptNameTyped"
+                    KeyDown="OnKeptNameKey"
+                    LostFocus="OnKeptNameLeft" />
+
+                <Button
+                    x:Name="RememberButton"
+                    Style="{StaticResource TheLinesAct}"
+                    Click="OnRemember"
+                    IsEnabled="False"
+                    Content="{x:Bind In(loc:UiTexts.Remember)}" />
+            </StackPanel>
         </StackPanel>
 
         <Border Grid.Row="2" Style="{StaticResource Card}" Padding="{StaticResource LargeCardPadding}">

@@ -44,6 +44,8 @@ public class CorpusMigrationTests
         "nodes",
         "meeting_nodes",
         "templates",
+        "template_nodes",
+        "template_people",
         "people",
         "affiliations",
         "meeting_people",

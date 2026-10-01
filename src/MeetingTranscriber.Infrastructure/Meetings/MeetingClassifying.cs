@@ -22,6 +22,11 @@ public sealed record PersonAsOfTheMeeting(
     IReadOnlyList<(Node Organization, UtcTimestamp? Since)> Belonged);
 
 /// <summary>
+/// A classification somebody put by under a name, and the filing it would fill a draft with.
+/// </summary>
+public sealed record KeptClassification(MeetingTemplate Template, MeetingFiling Fills);
+
+/// <summary>
 /// The screen that files a meeting, read: the meeting, what it is already filed under, the tree the
 /// pickers offer, and everybody who could be put on it.
 /// </summary>
@@ -36,12 +41,17 @@ public sealed record PersonAsOfTheMeeting(
 /// Whoever is using this install, or nobody while nothing has said. They are drawn on every meeting
 /// and stored on none — a row saying the owner of the corpus was at their own meeting says nothing.
 /// </param>
+/// <param name="Kept">
+/// Every classification put by under a name, by name, each with what choosing it would add. They are
+/// the corpus's and not this meeting's: no meeting records which one filled it.
+/// </param>
 public sealed record MeetingAsClassified(
     Meeting Meeting,
     MeetingFiling Chosen,
     IReadOnlyList<Node> Tree,
     IReadOnlyList<PersonAsOfTheMeeting> Everybody,
-    Person? Me);
+    Person? Me,
+    IReadOnlyList<KeptClassification> Kept);
 
 /// <summary>
 /// The corpus side of the screen a meeting is filed from: what to offer, what it is filed under
@@ -94,17 +104,51 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
             // the meeting carries no record of it. Re-opening a filed meeting shows the filing with
             // no chip lit, which is honest about what the corpus holds.
             null,
-            Paths(links, MeetingNodeRole.WorkOf, byId),
-            Paths(links, MeetingNodeRole.Counterpart, byId),
-            Paths(links, MeetingNodeRole.About, byId),
-            Slots(named, everybody));
+            Paths(links.Select(link => (link.NodeId, link.Role)), MeetingNodeRole.WorkOf, byId),
+            Paths(links.Select(link => (link.NodeId, link.Role)), MeetingNodeRole.Counterpart, byId),
+            Paths(links.Select(link => (link.NodeId, link.Role)), MeetingNodeRole.About, byId),
+            Slots(named.Select(row => (row.PersonId, row.Role)), everybody));
 
         return new MeetingAsClassified(
             meeting,
             chosen,
             tree,
             everybody,
-            new HumanLayer(context, clock).Me());
+            new HumanLayer(context, clock).Me(),
+            Kept(byId, everybody));
+    }
+
+    /// <summary>Every classification put by, by name, as the filing choosing it would add.</summary>
+    /// <remarks>
+    /// Read through the same <see cref="Paths"/> and <see cref="Slots"/> as a meeting's own filing, so
+    /// a classification put by is drawn exactly as the meeting it came from was.
+    /// </remarks>
+    private IReadOnlyList<KeptClassification> Kept(
+        IReadOnlyDictionary<Guid, Node> byId,
+        IReadOnlyList<PersonAsOfTheMeeting> everybody)
+    {
+        var templates = context.Templates.AsNoTracking().ToArray();
+        var nodes = context.TemplateNodes.AsNoTracking().ToArray().ToLookup(row => row.TemplateId);
+        var people = context.TemplatePeople.AsNoTracking().ToArray().ToLookup(row => row.TemplateId);
+
+        return
+        [
+            .. templates
+                .OrderBy(template => template.Name, StringComparer.Ordinal)
+                .Select(template =>
+                {
+                    var links = nodes[template.Id].Select(row => (row.NodeId, row.Role)).ToArray();
+
+                    return new KeptClassification(
+                        template,
+                        new MeetingFiling(
+                            null,
+                            Paths(links, MeetingNodeRole.WorkOf, byId),
+                            Paths(links, MeetingNodeRole.Counterpart, byId),
+                            Paths(links, MeetingNodeRole.About, byId),
+                            Slots(people[template.Id].Select(row => (row.PersonId, row.Role)), everybody)));
+                }),
+        ];
     }
 
     /// <summary>
@@ -350,13 +394,13 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
 
     /// <summary>One column of the filing, as the paths the screen draws it from.</summary>
     private static IReadOnlyList<ChosenPath> Paths(
-        IReadOnlyList<MeetingNode> links,
+        IEnumerable<(Guid Node, MeetingNodeRole Role)> links,
         MeetingNodeRole role,
         IReadOnlyDictionary<Guid, Node> byId) =>
     [
         .. links
             .Where(link => link.Role == role)
-            .Select(link => PathTo(byId[link.NodeId], byId))
+            .Select(link => PathTo(byId[link.Node], byId))
             .OrderBy(path => path.Nodes[^1].Name, StringComparer.Ordinal)
             .Select(path => new ChosenPath([.. path.Nodes.Select(node => node.Id)])),
     ];
@@ -369,7 +413,7 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
     /// screen with both toggles on, and not two rows of the same person.
     /// </remarks>
     private static IReadOnlyList<ChosenPerson> Slots(
-        IReadOnlyList<MeetingPerson> named,
+        IEnumerable<(Guid Person, MeetingPersonRole Role)> named,
         IReadOnlyList<PersonAsOfTheMeeting> everybody)
     {
         var byName = everybody.ToDictionary(
@@ -379,7 +423,7 @@ public sealed class MeetingClassifying(CorpusDbContext context, TimeProvider clo
         return
         [
             .. named
-                .GroupBy(row => row.PersonId)
+                .GroupBy(row => row.Person)
                 .OrderBy(person => byName.GetValueOrDefault(person.Key, string.Empty), StringComparer.Ordinal)
                 .ThenBy(person => person.Key)
                 .Select(person => new ChosenPerson(

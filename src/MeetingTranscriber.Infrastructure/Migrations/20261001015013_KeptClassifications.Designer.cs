@@ -3,6 +3,7 @@ using System;
 using MeetingTranscriber.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace MeetingTranscriber.Infrastructure.Migrations
 {
     [DbContext(typeof(CorpusDbContext))]
-    partial class CorpusDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261001015013_KeptClassifications")]
+    partial class KeptClassifications
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
@@ -412,7 +415,7 @@ namespace MeetingTranscriber.Infrastructure.Migrations
 
                             t.HasCheckConstraint("ck_processing_jobs_failure", "(state = 'failed_permanent') = (failure IS NOT NULL)");
 
-                            t.HasCheckConstraint("ck_processing_jobs_failure_name", "failure IS NULL OR failure IN ('audio_missing', 'corpus_refused', 'extraction_refused', 'key_refused', 'memory_file_in_the_way', 'no_key_on_this_machine', 'no_summariser_on_this_machine', 'out_of_credit', 'over_its_rate', 'provider_not_reached', 'request_refused', 'summariser_failed')");
+                            t.HasCheckConstraint("ck_processing_jobs_failure_name", "failure IS NULL OR failure IN ('audio_missing', 'corpus_refused', 'extraction_refused', 'key_refused', 'no_key_on_this_machine', 'no_summariser_on_this_machine', 'out_of_credit', 'over_its_rate', 'provider_not_reached', 'request_refused', 'summariser_failed')");
 
                             t.HasCheckConstraint("ck_processing_jobs_kind", "kind IN ('backup', 'capture', 'extract', 'finalize', 'render', 'transcribe')");
 

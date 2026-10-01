@@ -136,10 +136,11 @@ public sealed class ClaudeCodeSummaries : ISummaryProvider
 
         if (MemoryAbove(_workspaces, _environment) is { } memory)
         {
-            return new SummaryProviderAnswer.DidNotAnswer(
+            return new SummaryProviderAnswer.MemoryInTheWay(
                 $"A Claude Code memory file sits above where this run would work, at '{memory.FullName}', "
                 + "and Claude Code would have read it into the summary. Nothing was sent. "
-                + "Move or delete that file and summarise again.");
+                + "Move or delete that file and summarise again.",
+                memory.FullName);
         }
 
         var workspace = ClaudeCodeWorkspace.Build(_workspaces, request);
@@ -178,6 +179,9 @@ public sealed class ClaudeCodeSummaries : ISummaryProvider
             TryDelete(workspace.Folder);
         }
     }
+
+    /// <summary>The memory file a run would be refused for right now, or nothing. Costs nothing and starts no run.</summary>
+    public FileInfo? MemoryFileInTheWay() => MemoryAbove(_workspaces, _environment);
 
     /// <summary>
     /// The nearest Claude Code memory file in <paramref name="workspaces"/> or any folder above it,
