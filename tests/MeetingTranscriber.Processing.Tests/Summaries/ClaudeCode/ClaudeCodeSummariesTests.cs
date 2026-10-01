@@ -356,6 +356,53 @@ public class ClaudeCodeSummariesTests : IDisposable
         answer.ShouldBeOfType<SummaryProviderAnswer.Extracted>();
     });
 
+    /// <summary>
+    /// The profile spelled with 8.3 short names while the workspaces are spelled long is still the
+    /// person's own memory. .NET's <c>Path.GetFullPath</c> spells a path with 8.3 names in it out in full,
+    /// and this holds the exemption to that: red with the call removed, because the same file under two spellings is two
+    /// files and every summary is refused. A machine with short names switched off cannot produce
+    /// the second spelling, and says so rather than passing.
+    /// </summary>
+    [Fact]
+    public Task The_person_s_own_memory_is_found_under_its_short_spelling_too() => Proving(async () =>
+    {
+        var shortSpelling = ShortSpelling(_temporary.Folder.FullName);
+        if (string.Equals(shortSpelling, _temporary.Folder.FullName, StringComparison.OrdinalIgnoreCase))
+        {
+            Assert.Skip("This volume has 8.3 short names switched off, so there is no second spelling to compare.");
+        }
+
+        var fake = AFake();
+        fake.AnswersVersion("fake 1").Answers(FakeClaudeCode.Envelope("{}"));
+        Directory.CreateDirectory(Path.Combine(_temporary.Folder.FullName, ".claude"));
+        File.WriteAllText(
+            Path.Combine(_temporary.Folder.FullName, ".claude", "CLAUDE.md"), "my own memory");
+
+        var environment = new Dictionary<string, string>(FakeClaudeCode.MinimalEnvironment())
+        {
+            ["USERPROFILE"] = shortSpelling,
+        };
+
+        var provider = new ClaudeCodeSummaries(
+            () => fake.Executable, environment, _workspaces, TimeSpan.FromSeconds(30));
+
+        var answer = await provider.ExtractAsync(Request(), TestContext.Current.CancellationToken);
+
+        answer.ShouldBeOfType<SummaryProviderAnswer.Extracted>();
+    });
+
+    private static string ShortSpelling(string folder)
+    {
+        var buffer = new char[1024];
+        var length = GetShortPathNameW(folder, buffer, (uint)buffer.Length);
+
+        return length == 0 || length > buffer.Length ? folder : new string(buffer, 0, (int)length);
+    }
+
+    [System.Runtime.InteropServices.DllImport(
+        "kernel32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern uint GetShortPathNameW(string longPath, char[] shortPath, uint size);
+
     private FakeClaudeCode AFake() => _fake = FakeClaudeCode.In(Folder("fake"));
 
     /// <summary>

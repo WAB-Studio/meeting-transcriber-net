@@ -211,6 +211,8 @@ public sealed class ClaudeCodeSummaries : ISummaryProvider
                 ? Path.Combine(profile, ".claude")
                 : null;
 
+        // GetFullPath spells out any 8.3 short names, so the profile under one spelling and the
+        // workspaces under another still compare as the one file; a fact holds that.
         var own = configuration is null
             ? null
             : Path.GetFullPath(Path.Combine(configuration, "CLAUDE.md"));
