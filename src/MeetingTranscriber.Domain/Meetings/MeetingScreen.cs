@@ -117,10 +117,19 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAu
     /// The first reason the latest summary attempt was refused, or nothing. An init property and
     /// not a fourth positional member, for the reason <see cref="OwedWork.Failed"/> gives. Set only
     /// while the meeting has no summary: <c>MeetingReading</c> reads it off the newest Extract job's
-    /// last run, and a meeting that has since gained a summary has moved past that job's kind
-    /// entirely.
+    /// last run, and it is never set over a summary — a later attempt that failed is
+    /// <see cref="WhyTheLastSummaryFailed"/>.
     /// </summary>
     public ExtractionRefusal? WhyTheSummaryWasRefused { get; init; }
+
+    /// <summary>Whether a summarised meeting may be asked for another summary: <see cref="OwedWork.MayBeAskedAgain"/>.</summary>
+    public bool TheSummaryMayBeAskedForAgain => Owed.MayBeAskedAgain;
+
+    /// <summary>
+    /// Why the newest summary attempt failed over a meeting that already has one, or nothing. The
+    /// summary before stays on screen; this is what the attempt after it came to.
+    /// </summary>
+    public JobFailure? WhyTheLastSummaryFailed => ThereIsASummary ? Owed.Failed : null;
 
     /// <summary>Whether a running summary can be stopped from this screen: <see cref="OwedWork.MayBeStopped"/>.</summary>
     public bool TheSummaryMayBeStopped => Owed.MayBeStopped;

@@ -106,6 +106,20 @@ public class ReadingAMeetingTests
     }
 
     /// <summary>
+    /// Another summary of a summarised meeting is asked for through the one call that queues it,
+    /// read out of source for the reason above.
+    /// </summary>
+    [Fact]
+    public void Another_summary_is_asked_for_through_the_one_call_that_queues_it()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        screen.ShouldContain("screen.TheSummaryMayBeAskedForAgain");
+        screen.ShouldContain(".SummariseAgain(meeting)");
+        screen.ShouldContain("UiTexts.SummariseAgain");
+    }
+
+    /// <summary>
     /// The list's press and the screen it opens are wired to each other.
     /// </summary>
     /// <remarks>

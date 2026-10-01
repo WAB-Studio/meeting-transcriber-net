@@ -417,13 +417,18 @@ public sealed partial class ReadingAMeeting : UserControl
                 ? UiTexts.TheCorpusDoesNotSayWhoTranscribedIt
                 : UiTexts.NobodyHasTranscribedThisYet);
 
-        SummarisedText.Text = wrote is { Summariser: { } model, SummarisedAt: { } then }
+        var summarised = wrote is { Summariser: { } model, SummarisedAt: { } then }
             ? UiTexts.SummarisedBy.In(_language, model, ScreenNumbers.At(then))
             : screen.WhyTheSummaryWasRefused is { } refusal
                 ? RefusedText(refusal)
                 : In(screen.ThereIsASummary
                     ? UiTexts.TheCorpusDoesNotSayWhoSummarisedIt
                     : UiTexts.NobodyHasSummarisedThisYet);
+
+        // The summary before stays on screen when the one after it failed, so the line says both.
+        SummarisedText.Text = screen.WhyTheLastSummaryFailed is { } failure
+            ? $"{summarised} {In(MeetingWords.Failed(failure))}"
+            : summarised;
     }
 
     /// <summary>What the screen says about a summary attempt that was refused.</summary>
@@ -755,7 +760,8 @@ public sealed partial class ReadingAMeeting : UserControl
     }
 
     /// <summary>
-    /// The stage's two answers, each on screen only when it is one somebody may give.
+    /// The stage's answers, each on screen only when it is one somebody may give — or, on a summarised
+    /// meeting, the one way to ask for another summary.
     /// </summary>
     /// <remarks>
     /// The same pair the list carries, in the same two places and in the same order:
@@ -795,6 +801,18 @@ public sealed partial class ReadingAMeeting : UserControl
             stop.Click += (_, _) => StopTheSummary();
             Presses.Children.Add(stop);
         }
+
+        if (screen.TheSummaryMayBeAskedForAgain)
+        {
+            var again = new Button
+            {
+                Content = In(UiTexts.SummariseAgain),
+                Style = Chrome("TakeTheStage"),
+            };
+
+            again.Click += (_, _) => SummariseAgain();
+            Presses.Children.Add(again);
+        }
     }
 
     /// <summary>
@@ -822,6 +840,31 @@ public sealed partial class ReadingAMeeting : UserControl
             {
                 work.Take(meeting);
             }
+        }
+        catch (MeetingStageException stale)
+        {
+            _status.Says(UiTexts.ThatIsNoLongerHowItWas, stale.Message);
+        }
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
+        {
+            _status.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+        }
+
+        AfterWriting();
+    }
+
+    /// <summary>Somebody asked a summarised meeting for another summary. The one call that queues it.</summary>
+    private void SummariseAgain()
+    {
+        if (_meeting is not { } meeting || Corpus().Folder is not { } folder)
+        {
+            return;
+        }
+
+        try
+        {
+            using var context = CorpusDatabase.Open(folder);
+            new MeetingWork(context, TimeProvider.System).SummariseAgain(meeting);
         }
         catch (MeetingStageException stale)
         {

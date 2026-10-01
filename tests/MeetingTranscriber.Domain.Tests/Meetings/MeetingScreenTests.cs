@@ -183,7 +183,37 @@ public class MeetingScreenTests
         var screen = Screen(new OwedWork(Meeting, stage, standing), RecordedAudio.Playable);
 
         screen.TheSummaryMayBeStopped.ShouldBe(
-            stage is MeetingStage.Transcribed && standing is StageStanding.Running);
+            stage is MeetingStage.Transcribed or MeetingStage.Summarised && standing is StageStanding.Running);
+    }
+
+    [Fact]
+    public void A_summarised_meeting_offers_another_summary_and_nothing_to_buy()
+    {
+        var screen = Screen(
+            OwedWork.Of(Meeting, [ArtifactKind.Audio, ArtifactKind.DeepgramResponse, ArtifactKind.Extraction], []),
+            RecordedAudio.Playable);
+
+        screen.TheSummaryMayBeAskedForAgain.ShouldBeTrue();
+        screen.TheActOffered.ShouldBeNull();
+        screen.TheActMayBeLeft.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void A_failed_second_summary_is_said_only_over_a_summary()
+    {
+        var failed = ProcessingJob.Queue(Guid.NewGuid(), Meeting, JobKind.Extract, "a", Then);
+        failed.Start(Then);
+        failed.FailPermanently(JobFailure.ExtractionRefused, "refused", Then);
+
+        var over = Screen(
+            OwedWork.Of(Meeting, [ArtifactKind.Audio, ArtifactKind.DeepgramResponse, ArtifactKind.Extraction], [failed]),
+            RecordedAudio.Playable);
+        var without = Screen(
+            OwedWork.Of(Meeting, [ArtifactKind.Audio, ArtifactKind.DeepgramResponse], [failed]),
+            RecordedAudio.Playable);
+
+        over.WhyTheLastSummaryFailed.ShouldBe(JobFailure.ExtractionRefused);
+        without.WhyTheLastSummaryFailed.ShouldBeNull();
     }
 
     [Fact]

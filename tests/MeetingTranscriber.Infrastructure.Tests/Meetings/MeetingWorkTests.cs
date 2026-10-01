@@ -654,6 +654,110 @@ public class MeetingWorkTests
     }
 
     [Fact]
+    public void Summarising_again_queues_a_new_summary_and_leaves_the_one_before()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Summarised(context);
+        var work = new MeetingWork(context, Clock);
+        var before = context.ProcessingJobs.Single(row => row.MeetingId == meeting && row.Kind == JobKind.Extract);
+        var summaryBefore = context.Artifacts.Single(row => row.MeetingId == meeting && row.Kind == ArtifactKind.Extraction);
+
+        var job = work.SummariseAgain(meeting);
+
+        job.Kind.ShouldBe(JobKind.Extract);
+        job.State.ShouldBe(JobState.Pending);
+        job.IdempotencyKey.ShouldBe($"{meeting}/2");
+        job.IdempotencyKey.ShouldNotBe(before.IdempotencyKey);
+        before.State.ShouldBe(JobState.Succeeded);
+        context.Artifacts.Single(row => row.Id == summaryBefore.Id).Sha256.ShouldBe(summaryBefore.Sha256);
+        work.On(meeting).Standing.ShouldBe(StageStanding.Underway);
+    }
+
+    [Fact]
+    public void A_meeting_not_yet_summarised_is_not_summarised_again()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Transcribed(context);
+
+        Should.Throw<MeetingStageException>(() => new MeetingWork(context, Clock).SummariseAgain(meeting));
+
+        context.ProcessingJobs.Count(row => row.Kind == JobKind.Extract).ShouldBe(0);
+    }
+
+    [Fact]
+    public void A_summary_asked_for_again_is_not_asked_for_twice()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Summarised(context);
+        var work = new MeetingWork(context, Clock);
+
+        work.SummariseAgain(meeting);
+
+        Should.Throw<MeetingStageException>(() => work.SummariseAgain(meeting));
+        context.ProcessingJobs.Count(row => row.MeetingId == meeting && row.Kind == JobKind.Extract).ShouldBe(2);
+    }
+
+    [Fact]
+    public void A_meeting_stopped_on_a_person_is_not_summarised_again()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Summarised(context);
+        var stuck = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Extract, $"{meeting}/2", Later);
+        stuck.Start(Later);
+        stuck.AwaitUser("a restart found it running");
+        Add(context, stuck);
+
+        Should.Throw<MeetingStageException>(() => new MeetingWork(context, Clock).SummariseAgain(meeting));
+        context.ProcessingJobs.Count(row => row.MeetingId == meeting && row.Kind == JobKind.Extract).ShouldBe(2);
+    }
+
+    [Fact]
+    public void A_meeting_on_its_way_out_is_not_summarised_again()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Summarised(context);
+        var row = context.Meetings.Single(candidate => candidate.Id == meeting);
+        row.LifecycleState = LifecycleState.Deleting;
+        row.DeletedAt = Recorded;
+        context.SaveChanges();
+
+        Should.Throw<MeetingStageException>(() => new MeetingWork(context, Clock).SummariseAgain(meeting));
+        context.ProcessingJobs.Count(job => job.MeetingId == meeting && job.Kind == JobKind.Extract).ShouldBe(1);
+    }
+
+    [Fact]
+    public void A_meeting_the_corpus_does_not_hold_is_not_summarised_again()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Should.Throw<MeetingStageException>(() => new MeetingWork(context, Clock).SummariseAgain(Guid.NewGuid()))
+            .Message.ShouldContain("holds no meeting");
+    }
+
+    [Fact]
+    public void A_second_summary_that_is_running_is_stopped_like_the_first()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Summarised(context);
+        var work = new MeetingWork(context, Clock);
+
+        var job = work.SummariseAgain(meeting);
+        job.Start(UtcTimestamp.From(Clock.GetUtcNow()));
+        context.SaveChanges();
+        work.On(meeting).MayBeStopped.ShouldBeTrue();
+
+        work.StopTheSummary(meeting).State.ShouldBe(JobState.Cancelled);
+        work.On(meeting).MayBeAskedAgain.ShouldBeTrue();
+    }
+
+    [Fact]
     public void One_meetings_answer_is_never_read_off_anothers()
     {
         using var corpus = new TemporaryCorpus();
@@ -835,6 +939,21 @@ public class MeetingWorkTests
         });
 
         var job = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Transcribe, $"{meeting}/1", Recorded);
+        job.Start(Recorded);
+        job.Succeed(Recorded);
+        Add(context, job);
+
+        return meeting;
+    }
+
+    /// <summary>Transcribed, with an accepted summary and the job that made it succeeded.</summary>
+    private static Guid Summarised(CorpusDbContext context)
+    {
+        var meeting = Transcribed(context);
+
+        Add(context, NewArtifact(meeting, ArtifactKind.Extraction));
+
+        var job = ProcessingJob.Queue(Guid.NewGuid(), meeting, JobKind.Extract, $"{meeting}/1", Recorded);
         job.Start(Recorded);
         job.Succeed(Recorded);
         Add(context, job);

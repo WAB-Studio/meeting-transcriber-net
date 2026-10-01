@@ -99,7 +99,7 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
 
         var screen = new MeetingScreen(owed, Left(meetingId), recorded)
         {
-            WhyTheSummaryWasRefused = owed.Failed is JobFailure.ExtractionRefused
+            WhyTheSummaryWasRefused = owed is { Failed: JobFailure.ExtractionRefused, Stage: not MeetingStage.Summarised }
                 ? RefusalOfTheNewestExtraction(meetingId)
                 : null,
         };

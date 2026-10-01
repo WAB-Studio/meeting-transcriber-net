@@ -27,7 +27,7 @@ namespace MeetingTranscriber.Domain.Meetings;
 public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding Standing)
 {
     /// <summary>
-    /// Why the newest job of the stage's own kind failed for good, or null when there is no such
+    /// Why the newest job of the kind the stage offers, or offers again, failed for good, or null when there is no such
     /// job or it did not fail. An init property and not a fourth positional member:
     /// <c>MeetingScreenTests</c> constructs <see cref="OwedWork"/> directly, and a rename of one
     /// more positional member there is not worth this record growing a fourth one every time a
@@ -52,16 +52,24 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
     /// </summary>
     public bool MayBeLeft => Standing.MayBeLeft();
 
-    /// <summary>Whether a running summary can be stopped from this screen.</summary>
+    /// <summary>
+    /// True when a summarised meeting may be asked for another summary: nothing about it is queued,
+    /// running or stopped on a person, so a second one would be the only one in flight.
+    /// </summary>
+    public bool MayBeAskedAgain => Stage.OffersAgain() is not null && Standing is StageStanding.NothingToDo;
+
+    /// <summary>Whether a running summary — the first, or another asked for — can be stopped from this screen.</summary>
     /// <remarks>
     /// The one press offered over <see cref="StageStanding.Running"/>, which every other kind of
     /// stage offers nothing over: a transcription in flight is not something a person can call off,
     /// because there is no way to ask Deepgram whether it already landed. A summary is different —
     /// <see cref="ProcessingJob.Cancel"/> is a move the job state table allows off
     /// <see cref="JobState.Running"/>, and stopping the process behind it spends nothing more than
-    /// what already ran.
+    /// what already ran. On a summarised meeting it is the second summary that runs, and it stops
+    /// the same way.
     /// </remarks>
-    public bool MayBeStopped => Next is JobKind.Extract && Standing is StageStanding.Running;
+    public bool MayBeStopped =>
+        (Next ?? Stage.OffersAgain()) is JobKind.Extract && Standing is StageStanding.Running;
 
     /// <summary>
     /// The one job row that stops a meeting on a person, said once as an expression because the
@@ -101,6 +109,15 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
     /// </remarks>
     public bool IsOwed => Standing is StageStanding.Offered;
 
+    private static StageStanding AgainStandingOf(IEnumerable<JobState> states)
+    {
+        var seen = states.ToHashSet();
+
+        return seen.Contains(JobState.Running)
+            ? StageStanding.Running
+            : seen.Any(state => state.IsQueued()) ? StageStanding.Underway : StageStanding.NothingToDo;
+    }
+
     /// <summary>
     /// What is owed on a meeting, from what that meeting has and what it carries.
     /// </summary>
@@ -135,14 +152,21 @@ public sealed record OwedWork(Guid MeetingId, MeetingStage Stage, StageStanding 
         // turned up, or a capture the restart stopped, would otherwise be invisible on the only
         // screen that shows one at all — and one of them would have an accent button beside it
         // offering to spend again.
+        //
+        // A summarised meeting owes nothing, so its second summary is read differently: running,
+        // or queued, or nothing to do — never Offered or Declined, which would count it as waiting
+        // on somebody.
         var next = stage.Offers();
-        var ofNext = next is { } kind ? mine.Where(job => job.Kind == kind).ToArray() : [];
+        var again = stage.OffersAgain();
+        var ofNext = (next ?? again) is { } kind ? mine.Where(job => job.Kind == kind).ToArray() : [];
 
         var standing = mine.Any(Stopped)
             ? StageStanding.StoppedOnAPerson
             : next is not null
                 ? MeetingStages.StandingOf(ofNext.Select(job => job.State))
-                : StageStanding.NothingToDo;
+                : again is not null
+                    ? AgainStandingOf(ofNext.Select(job => job.State))
+                    : StageStanding.NothingToDo;
 
         // The newest attempt of the stage's own kind, and only that kind: a failed Extract job is
         // not what a Transcribe row is offered again over, and an answer that came after a failure

@@ -61,9 +61,10 @@ public enum StageStanding
     Declined = 4,
 
     /// <summary>
-    /// The stage has no action at all, so there is nothing to offer, decline or run. Its own
-    /// value rather than <see cref="Offered"/> over an empty list, which would have a finished
-    /// meeting reading as one still waiting to be told something.
+    /// Nothing is owed, queued or running: the stage has no action at all, so there is nothing to
+    /// offer, decline or run. Its own value rather than <see cref="Offered"/> over an empty list,
+    /// which would have a finished meeting reading as one still waiting to be told something. A
+    /// summarised meeting in it may still be asked for another summary.
     /// </summary>
     NothingToDo = 5,
 
@@ -114,7 +115,8 @@ public static class MeetingStages
     /// <para>
     /// The two stages off the ladder are the two with no action. <see cref="MeetingStage.Recording"/>
     /// is below it, where there is nothing yet to work on, and <see cref="MeetingStage.Summarised"/>
-    /// is above it, where there is nothing left the application owes.
+    /// is above it, where there is nothing left the application owes. The top one may still be
+    /// asked for again, which is <see cref="OffersAgain"/>'s and owes nothing.
     /// </para>
     /// </remarks>
     private static readonly Rung[] Ladder =
@@ -132,6 +134,14 @@ public static class MeetingStages
         .Append(KeyValuePair.Create(MeetingStage.Summarised, (JobKind?)null))
         .ToFrozenDictionary();
 
+    private static readonly FrozenDictionary<MeetingStage, JobKind?> Repeats = new Dictionary<MeetingStage, JobKind?>
+    {
+        [MeetingStage.Recording] = null,
+        [MeetingStage.Recorded] = null,
+        [MeetingStage.Transcribed] = null,
+        [MeetingStage.Summarised] = JobKind.Extract,
+    }.ToFrozenDictionary();
+
     /// <summary>
     /// The only kinds of file that say how far a meeting has got. Everything else it has — its
     /// recovery card, the files rendered off the response — says nothing about that, so a reader
@@ -145,6 +155,20 @@ public static class MeetingStages
     /// with it.
     /// </summary>
     public static JobKind? Offers(this MeetingStage stage) => Actions.TryGetValue(stage, out var kind)
+        ? kind
+        : throw new ArgumentOutOfRangeException(nameof(stage), stage, "Unknown meeting stage.");
+
+    /// <summary>
+    /// What a meeting at this stage may be asked for again although it owes nothing: another
+    /// summary, once it has one.
+    /// </summary>
+    /// <remarks>
+    /// Not <see cref="Offers"/>, and not a rung. Offering would make every summarised meeting read
+    /// as owed a summary — on the list, in the drawer's count and in the watch over what is
+    /// waiting — when the application is waiting on nobody. This is a second, closed table: what
+    /// may be asked for, by somebody who wants it, and never counted as owed.
+    /// </remarks>
+    public static JobKind? OffersAgain(this MeetingStage stage) => Repeats.TryGetValue(stage, out var kind)
         ? kind
         : throw new ArgumentOutOfRangeException(nameof(stage), stage, "Unknown meeting stage.");
 
