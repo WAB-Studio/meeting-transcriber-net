@@ -742,6 +742,14 @@ public static class UiTexts
         "Claude Code did not come back with a summary, not even when it was tried again. Another "
         + "can be asked for.");
 
+    public static UiText NotSentAMemoryFileWasInTheWay { get; } = new(
+        "No se envió: Claude Code habría leído en el resumen un CLAUDE.md de una carpeta por encima de donde se preparan los resúmenes. No se gastó nada. Muévalo o bórrelo y pida otro.",
+        "Not sent: Claude Code would have read a CLAUDE.md from a folder above where summaries are prepared into the summary. Nothing was spent. Move or delete it and ask for another.");
+
+    public static UiText NotSentMoveThisMemoryFile { get; } = new(
+        "No se envió: Claude Code habría leído {0} en el resumen. No se gastó nada. Muévalo o bórrelo y pida otro.",
+        "Not sent: Claude Code would have read {0} into the summary. Nothing was spent. Move or delete it and ask for another.");
+
     // The two answers, and what comes back of them.
 
     public static UiText Transcribe { get; } = new("Transcribir", "Transcribe");

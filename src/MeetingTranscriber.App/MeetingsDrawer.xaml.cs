@@ -1211,7 +1211,10 @@ public sealed partial class MeetingsDrawer : UserControl
         {
             lines.Children.Add(new TextBlock
             {
-                Text = In(MeetingWords.Failed(failed)),
+                Text = failed is JobFailure.MemoryFileInTheWay
+                    && SummarisingOnThisMachine.MemoryFileInTheWay() is { } inTheWay
+                    ? TextLine.Says(UiTexts.NotSentMoveThisMemoryFile, inTheWay.FullName).In(_language)
+                    : In(MeetingWords.Failed(failed)),
                 Style = Chrome("MeetingFailed"),
             });
         }

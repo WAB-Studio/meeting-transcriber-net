@@ -6,8 +6,9 @@ namespace MeetingTranscriber.Domain.Jobs;
 /// <remarks>
 /// A person reads a word chosen from this, never <see cref="ProcessingJob.LastError"/> verbatim:
 /// that column is for whoever is diagnosing, and this is for the meeting's own row. There are
-/// eleven members: eight about a transcription that did not happen, and three about a summary that
-/// was refused, that could not be sent, or that ran and gave back nothing usable.
+/// twelve members: eight about a transcription that did not happen, and four about a summary that
+/// was refused, that could not be sent, that a memory file stopped, or that ran and gave back
+/// nothing usable.
 /// </remarks>
 public enum JobFailure
 {
@@ -48,4 +49,9 @@ public enum JobFailure
 
     /// <summary>The summariser ran and gave back nothing usable, even after being tried again.</summary>
     SummariserFailed = 11,
+
+    /// <summary>
+    /// A Claude Code memory file sat above where the run would work, and nothing was sent.
+    /// </summary>
+    MemoryFileInTheWay = 12,
 }

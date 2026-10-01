@@ -209,13 +209,16 @@ edge would make SQLite depend on how a Deepgram response is parsed.
 
 `Recording` references `Processing`, and rendering reaches the application only through it: the
 application names two projects, `Presentation` for the words and `Recording` for everything else,
-and it is the second of those the whole corpus stack arrives on. Its one exception, and it is
-narrower than the renders' own: `App.xaml.cs` itself starts `JobRunner`'s pump, and
-`TranscribingOnThisMachinesKey` binds the key it sends with, so this one call site names
-`Processing` where the renders never made the application name anything past `Recording`. Both
-reach it through the reference `App.csproj`'s own comment already says brings `Processing` along —
-the same closure `App.xaml.cs` already reaches `Infrastructure` through — so a second, explicit
-`ProjectReference` would only restate what that comment already commits to. The rule still lives
+and it is the second of those the whole corpus stack arrives on. Its exceptions are five files, each naming `Processing` for one thing a window cannot do without:
+`App.xaml.cs` starts `JobRunner`'s pump; `TranscribingOnThisMachinesKey` binds the key a
+transcription sends with; `SummarisingOnThisMachine` composes the provider a summary is sent with,
+and tells the list of meetings which memory file stopped one; `Configuracion` exports the corpus
+through `Processing.Export` and asks Claude Code whether it answers through
+`Processing.Summaries`; and `AddingSomebody` catches the `RenderException` a corrected name can
+end on, from `Processing.Rendering`. All five reach it through the reference `App.csproj`'s own
+comment already says brings `Processing` along — the same closure `App.xaml.cs` already reaches
+`Infrastructure` through — so a second, explicit `ProjectReference` would only restate what that
+comment already commits to. The rule still lives
 where a build agent runs it — `Processing` and everything under it — and what the application
 holds is the call and the thread it goes on. The rendered files are the one
 thing a person is never asked about — they cost nothing and can be produced again, so no screen

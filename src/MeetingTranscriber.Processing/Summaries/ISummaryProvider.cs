@@ -103,7 +103,7 @@ public sealed record ExtractionRequest(
 /// </summary>
 /// <remarks>
 /// Closed, the way <c>CaptureTarget</c> is: a private constructor so nothing outside this file can
-/// add a fourth case, and three nested records so a caller pattern-matches on what actually
+/// add a fifth case, and four nested records so a caller pattern-matches on what actually
 /// happened rather than reading a flag and a set of nullable fields that might disagree with it.
 /// </remarks>
 public abstract record SummaryProviderAnswer
@@ -131,4 +131,13 @@ public abstract record SummaryProviderAnswer
     /// extract anything would spend on a call already known to fail.
     /// </summary>
     public sealed record NotAvailable(string Said) : SummaryProviderAnswer;
+
+    /// <summary>
+    /// The run was refused before it started, because of a memory file Claude Code would have read
+    /// into the summary. Nothing was sent, and retrying cannot change it: somebody has to move the
+    /// file.
+    /// </summary>
+    /// <param name="Said">The machine's own English, naming the file.</param>
+    /// <param name="File">The memory file, as a full path.</param>
+    public sealed record MemoryInTheWay(string Said, string File) : SummaryProviderAnswer;
 }
