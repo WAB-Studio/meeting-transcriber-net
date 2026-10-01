@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 185/267
+progress: 188/267
 updated: 2026-10-01
 ---
 
@@ -319,10 +319,10 @@ Board: 6 · Conocimiento local
 - [x] ISC-144: Asking for a node brings back the statements of its meetings in the order they were said, each carrying the meeting and the date it came from.
 - [x] ISC-145: A node's answer includes the statements of everything hanging off its children.
 - [ ] ISC-192: A word the transcripts keep getting wrong is found from the corpus itself, so somebody can correct it.
-- [ ] ISC-192.1: A word somebody types comes back with every way the corpus has written something like it, closest first, each with how many times it was written that way.
-- [ ] ISC-192.2: With nothing typed, the corpus offers as candidates the words the provider was unsure of that come up often and resemble a word coming up far more often.
+- [x] ISC-192.1: A word somebody types comes back with every way the corpus has written something like it, closest first, each with how many times it was written that way.
+- [x] ISC-192.2: With nothing typed, the corpus offers as candidates the words the provider was unsure of that come up often and resemble a word coming up far more often.
 - [ ] ISC-192.3: A correction belongs either to the whole corpus or to one node of the tree, and a meeting linked to no node is still corrected by those that belong to the whole corpus.
-- [ ] ISC-192.4: Anti: finding candidates, asked for or not, needs no model — nothing passes the corpus through one, and every candidate is found with none installed.
+- [x] ISC-192.4: Anti: finding candidates, asked for or not, needs no model — nothing passes the corpus through one, and every candidate is found with none installed.
 - [x] ISC-197: A person being added whom the corpus already holds under a name spelled a little differently is offered as the one already there, closest first, before a new person is made.
 - [x] ISC-198: Anti: offering who a person being added already is needs no model — every candidate is found with none installed.
 - [x] ISC-199: A term searched for also finds the meetings where it came out the way a correction elsewhere says it gets written wrong, though nobody corrected those meetings.
@@ -822,3 +822,6 @@ Board: 7 · Distribución y backup
 - ISC-199 — `CorpusSearchTests.A_term_also_finds_a_meeting_where_it_came_out_the_way_a_correction_says_it_gets_written_wrong`, `.A_query_that_is_more_than_a_corrected_term_is_run_as_typed` and `.An_alias_holding_a_quote_still_searches` (`tests/MeetingTranscriber.Infrastructure.Tests`), green 2026-10-01.
 - ISC-202.1 — walked 2026-10-01 on the registered build over a probe corpus: on one meeting a path and a person filled and `Diaria de Nubeko` kept, the application closed and started, and on another meeting *Ninguna — la lleno yo* showed the chip, whose press filled that path and that person. The node was seeded with SQL because the naming field loses focus under the probe; the person went through the dialogue.
 - ISC-202 — held by its three leaves, `ISC-202.1`, `ISC-202.2` and `ISC-202.3`, green 2026-10-01.
+- ISC-192.1 — `MisspelledWordsTests.A_typed_word_comes_back_with_each_way_it_was_written_closest_first_and_how_often`, `.A_word_typed_as_one_is_found_written_as_two`, `.A_word_with_a_short_word_beside_it_is_not_offered_as_a_phrase` and `.Every_way_it_was_written_comes_back` (`tests/MeetingTranscriber.Domain.Tests`), plus `FindingCorrectionsTests.A_word_typed_against_a_filed_meeting_comes_back_as_the_turns_wrote_it` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-10-01.
+- ISC-192.2 — the `MisspelledWordsTests` facts about `Unprompted` (`tests/MeetingTranscriber.Domain.Tests`) and `FindingCorrectionsTests.Every_word_the_response_the_turns_came_from_holds_is_heard` (`tests/MeetingTranscriber.Processing.Tests`), green 2026-10-01. Thresholds tuned against fixtures only, not a real corpus.
+- ISC-192.4 — `FindingCorrectionsTests.Finding_candidates_reaches_nothing_that_summarises` (`tests/MeetingTranscriber.Processing.Tests`) and `ClaudeCodeIsOptionalTests.Nothing_in_the_product_starts_a_program_this_rule_has_not_seen` (`tests/MeetingTranscriber.Isa.Tests`), green 2026-10-01.
