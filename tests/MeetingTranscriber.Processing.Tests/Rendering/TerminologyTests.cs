@@ -34,6 +34,22 @@ public class TerminologyTests
     }
 
     /// <summary>
+    /// The first correction to replace a word leaves nothing for a later one of the same form, so
+    /// the narrower place has to go first or a correction made under a node loses to one made
+    /// everywhere, depending on which row the query returned first.
+    /// </summary>
+    [Fact]
+    public void The_narrower_place_wins_whichever_order_the_rows_came_in()
+    {
+        var everywhere = Correct("quati", "Coati");
+        var underANode = Correct("quati", "Kwati");
+        underANode.NodeId = Guid.NewGuid();
+
+        Terminology.Apply("hablamos de quati", [everywhere, underANode]).ShouldBe("hablamos de Kwati");
+        Terminology.Apply("hablamos de quati", [underANode, everywhere]).ShouldBe("hablamos de Kwati");
+    }
+
+    /// <summary>
     /// Whole words only. Without it, correcting "ml" rewrites the middle of "html", and a corpus of
     /// speech about software is full of short terms that live inside longer words.
     /// </summary>

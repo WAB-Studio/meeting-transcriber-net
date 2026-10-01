@@ -53,15 +53,15 @@ Read `references/reviewer-lenses.md` for lens definitions.
 
 ## Step 3 — Spawn Reviewers
 
-Reviewer output goes in a scratch directory, and there is exactly one requirement on it: **it must
-not show up as untracked files in the very diff under review.** The session scratchpad the
-environment names is outside the tree, so it satisfies that by construction. **One folder per
-review.**
-
-```sh
-REVIEW_DIR="<scratchpad>/reviews/$$"
-mkdir -p "$REVIEW_DIR"
-```
+Reviewer output goes in a scratch directory, and there are two requirements on it: **it must
+not show up as untracked files in the very diff under review**, and **it is named for this review
+alone.** The session scratchpad the environment names is outside the tree, so it satisfies the
+first by construction. Write the folder out literally, as
+`<scratchpad>/reviews/<branch>-<head12>-<yyyyMMddHHmm>`, where `head12` is the first 12 characters
+of `git rev-parse HEAD`, with any `/` in the branch written as `-`. Create `<scratchpad>/reviews` with
+`mkdir -p`, then the review's own folder with `mkdir` and never `mkdir -p`, so a folder already
+there refuses. The shell keeps no variable between calls: `$$` named a different folder on the next
+call, and reviewers of different worktrees ended up reading and writing one shared place.
 
 Name each output file after the lens: `skeptic.md`, `architect.md`, `minimalist.md`.
 
@@ -69,16 +69,19 @@ Build each reviewer's prompt using the template in `references/reviewer-prompt.m
 
 ## Step 4 — Verify and Synthesize Verdict
 
-Confirm the output files exist before reading them:
+Confirm the output files exist before reading them, spelling the folder out again:
 
 ```sh
-ls "$REVIEW_DIR"/*.md
+ls <the folder from Step 3>/*.md
 ```
+
+The first line of every output file must be `head: <the full head SHA>`. A file with any other
+first line is a reviewer that read another tree: the verdict says so and does not read it.
 
 If any output file is missing or empty, note the failure in the verdict — do not silently skip
 a reviewer.
 
-Read each reviewer's output file from `$REVIEW_DIR/`. Deduplicate overlapping findings.
+Read each reviewer's output file from that folder. Deduplicate overlapping findings.
 Produce a single verdict using the format in `references/verdict-format.md`.
 
 ## Step 5 — Render Judgment

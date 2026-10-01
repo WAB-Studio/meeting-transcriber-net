@@ -11,8 +11,16 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace MeetingTranscriber.Processing.Rendering;
 
-/// <summary>A meeting that cannot be rendered, saying which one and what is missing.</summary>
-public sealed class RenderException(string message) : Exception(message);
+/// <summary>
+/// A meeting that cannot be rendered, saying which one and what is missing. A caller that rendered
+/// several and could not render some names them on <see cref="Meetings"/>, so nobody reads them back
+/// out of the message.
+/// </summary>
+public sealed class RenderException(string message, IReadOnlyList<Guid>? meetings = null) : Exception(message)
+{
+    /// <summary>The meetings a multi-meeting render could not render; empty for a single meeting's refusal.</summary>
+    public IReadOnlyList<Guid> Meetings { get; } = meetings ?? [];
+}
 
 /// <summary>What one render produced.</summary>
 public sealed record RenderedMeeting(int Turns, Artifact Transcript, Artifact Utterances);

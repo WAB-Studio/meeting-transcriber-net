@@ -113,6 +113,7 @@ public class RenamingSomebodyTests
         var thrown = Should.Throw<RenderException>(
             () => RenamingSomebody.Rename(corpus.Root, person, "Renata Corregida", TimeProvider.System));
         thrown.Message.ShouldContain(meeting.ToString());
+        thrown.Meetings.ShouldBe([meeting]);
 
         using var reading = corpus.OpenMigrated();
         reading.People.Single(row => row.Id == somebody).DisplayName.ShouldBe("Renata Corregida");

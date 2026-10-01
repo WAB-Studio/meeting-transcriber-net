@@ -196,6 +196,7 @@ public class CorrectingWordsTests
         var thrown = Should.Throw<RenderException>(
             () => CorrectingWords.Correct(corpus.Root, "Corregida", [word], under: null, TimeProvider.System));
         thrown.Message.ShouldContain(meeting.ToString());
+        thrown.Meetings.ShouldBe([meeting]);
 
         using var reading = corpus.OpenMigrated();
         reading.TerminologyCorrections.Single().CorrectText.ShouldBe("Corregida");

@@ -46,7 +46,7 @@ public static class RenamingSomebody
     /// </summary>
     /// <exception cref="RenderException">
     /// The rename itself always lands. One or more of their meetings could not be rendered again;
-    /// the exception names every one of them and leaves the rest — and the rename — exactly as they
+    /// the exception names every one of them, on <see cref="RenderException.Meetings"/>, and leaves the rest — and the rename — exactly as they
     /// landed. The next launch renders each named meeting again: <c>OwedRenders</c> finds them off the corpus.
     /// </exception>
     public static Person? Rename(DirectoryInfo root, Person person, string displayName, TimeProvider clock)
@@ -84,39 +84,19 @@ public static class RenamingSomebody
         }
 
         var now = UtcTimestamp.From(clock.GetUtcNow());
-        var stillTheOldName = new List<Guid>();
+        var again = RenderingAgain.Each(root, ordered, now);
 
-        foreach (var meeting in ordered)
+        if (again.NotRendered.Count > 0)
         {
-            try
-            {
-                using var context = CorpusDatabase.Open(root);
-                RenderingAgain.OneMeeting(context, meeting, now);
-            }
-            catch (Exception unrendered) when (Absorbable(unrendered))
-            {
-                stillTheOldName.Add(meeting);
-            }
-        }
+            var stillTheOldName = again.NotRendered.Select(refused => refused.Meeting).ToArray();
 
-        if (stillTheOldName.Count > 0)
-        {
             throw new RenderException(
                 $"{person.Id} was renamed to \"{displayName}\", but could not be rendered again for "
-                + $"{stillTheOldName.Count} meeting(s): {string.Join(", ", stillTheOldName)}. "
-                + "The next launch renders each one again.");
+                + $"{stillTheOldName.Length} meeting(s): {string.Join(", ", stillTheOldName)}. "
+                + "The next launch renders each one again.",
+                stillTheOldName);
         }
 
         return renamed;
     }
-
-    /// <summary>
-    /// What one meeting's failed render turns into an entry on the list instead of aborting every
-    /// meeting behind it — everything except a closed list of one, the same rule
-    /// <c>OwedRenders.Absorbable</c> holds and for the same reason: naming what a render
-    /// <em>may</em> throw is guaranteed to be incomplete, and out of memory is the one refusal that
-    /// says nothing about this meeting and would only be thrown again by moving to the next one
-    /// under the same pressure that just refused it.
-    /// </summary>
-    private static bool Absorbable(Exception thrown) => thrown is not OutOfMemoryException;
 }
