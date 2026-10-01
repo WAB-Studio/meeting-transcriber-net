@@ -11,10 +11,11 @@ namespace MeetingTranscriber.Mcp;
 /// whatever the person running it already trusted, reading the files that person can already read.
 /// </para>
 /// <para>
-/// It takes one optional pair, <c>--corpus &lt;folder&gt;</c>, which an MCP client config passes
-/// through its own <c>args</c> — the way a second process, or a test, points this server at a
-/// corpus that is not this user's. Without it <see cref="TheCorpusHere"/> asks what the window
-/// asks.
+/// It takes two optional pairs, in either order, which an MCP client config passes through its own
+/// <c>args</c>. <c>--corpus &lt;folder&gt;</c> is the way a second process, or a test, points this
+/// server at a corpus that is not this user's; without it <see cref="TheCorpusHere"/> asks what
+/// the window asks. <c>--record &lt;file&gt;</c> is where each request is written down, for the same
+/// reason: without it the record is this user's own, and a suite must never write into that.
 /// </para>
 /// </remarks>
 internal static class Program

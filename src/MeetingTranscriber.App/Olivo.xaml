@@ -814,6 +814,120 @@
         </Setter>
     </Style>
 
+    <!-- One tick of a set somebody may choose several of, which is what `Option` cannot be: a radio
+         row is one of a group, and this is each of its own. The box is `Correcciones.dc.html`'s —
+         18 by 18 at `PressedCorner`, a 1.5px `UnansweredBrush` ring when not ticked and an olivo
+         fill with a papel check when ticked, the check being that artboard's own 11px glyph at
+         stroke 3 of a 24 box. The row is `Option`'s, less what it tints: several rows can be ticked
+         at once, and a tint on each would say nothing.
+
+         Templated for the reason `Option` is: the platform's own CheckBox fills its box from the
+         system accent, and §And five things this application is not says this application never
+         uses it. Over and pressed are named and left empty, for the reason `Option` gives.
+
+         What the platform still owns is the whole of what a check box is: the keyboard, the
+         automation peer and `IsChecked`. Only what is drawn is Olivo's. -->
+    <Style x:Key="Tick" TargetType="CheckBox" BasedOn="{StaticResource DefaultCheckBoxStyle}">
+        <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
+        <Setter Property="FontSize" Value="{StaticResource BodySize}" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
+        <Setter Property="Padding" Value="12,0,12,0" />
+        <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Border
+                        x:Name="TheRow"
+                        Background="{TemplateBinding Background}"
+                        CornerRadius="{TemplateBinding CornerRadius}"
+                        MinHeight="{TemplateBinding MinHeight}"
+                        Padding="{TemplateBinding Padding}"
+                        Control.IsTemplateFocusTarget="True">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver" />
+                                <VisualState x:Name="Pressed" />
+                                <!-- Both the ring and the fill, because either may be the one on
+                                     screen, and a tick that went dead with one of them still at full
+                                     strength reads as half live. -->
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="TheWords.Foreground" Value="{StaticResource TertiaryTextBrush}" />
+                                        <Setter Target="Ticked.Background" Value="{StaticResource TertiaryTextBrush}" />
+                                        <Setter Target="Ring.BorderBrush" Value="{StaticResource EmptyControlRingBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckStates">
+                                <VisualState x:Name="Checked">
+                                    <VisualState.Setters>
+                                        <Setter Target="Ring.Visibility" Value="Collapsed" />
+                                        <Setter Target="Ticked.Visibility" Value="Visible" />
+                                        <Setter Target="Check.Visibility" Value="Visible" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Unchecked" />
+                                <VisualState x:Name="Indeterminate" />
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Visibility and never a changing fill, for the reason `Option` gives. -->
+                            <Grid Grid.Column="0" Width="18" Height="18" VerticalAlignment="Center">
+                                <Border
+                                    x:Name="Ring"
+                                    Width="18"
+                                    Height="18"
+                                    CornerRadius="{StaticResource PressedCorner}"
+                                    BorderBrush="{StaticResource UnansweredBrush}"
+                                    BorderThickness="1.5" />
+                                <Border
+                                    x:Name="Ticked"
+                                    Width="18"
+                                    Height="18"
+                                    CornerRadius="{StaticResource PressedCorner}"
+                                    Background="{StaticResource OliveBrush}"
+                                    Visibility="Collapsed" />
+                                <Viewbox x:Name="Check" Width="11" Height="11" Visibility="Collapsed">
+                                    <Canvas Width="24" Height="24">
+                                        <Path
+                                            Data="M5,12.5 L10,17.5 L19,7.5"
+                                            Stroke="{StaticResource PaperBrush}"
+                                            StrokeThickness="3"
+                                            StrokeStartLineCap="Round"
+                                            StrokeEndLineCap="Round"
+                                            StrokeLineJoin="Round" />
+                                    </Canvas>
+                                </Viewbox>
+                            </Grid>
+
+                            <ContentPresenter
+                                x:Name="TheWords"
+                                Grid.Column="1"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                Foreground="{TemplateBinding Foreground}"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                TextWrapping="Wrap" />
+                        </Grid>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style x:Key="TypedField" TargetType="TextBox" BasedOn="{StaticResource DefaultTextBoxStyle}">
         <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
         <Setter Property="FontSize" Value="{StaticResource BodySize}" />

@@ -99,7 +99,11 @@ WASAPI behind one, and `Recording` would bring both. It opens the corpus read-on
 anybody's corpus can be written through it whatever the code above says — that is the connection's
 promise and not a rule anything here has to remember. What SQLite does still write is its own
 `-wal` and `-shm` beside the database, which is what reading a write-ahead-logged file costs, so a
-corpus on a volume this user cannot write to is not readable from here either.
+corpus on a volume this user cannot write to is not readable from here either. The one file it
+writes of its own is a line per request, appended to `agent-requests.jsonl` under the user's local
+application data and outside the corpus, so that what an agent read can be reconstructed while the
+corpus is still never written through it. A packaged build keeps that file in the container an
+uninstall removes.
 
 `MeetingTranscriber.Recording` is where the rules that need more than one of `Audio`,
 `Infrastructure` and `Processing` live, and it is what the application composes through. The prompt

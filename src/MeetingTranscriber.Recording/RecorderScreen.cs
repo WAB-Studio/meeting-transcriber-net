@@ -213,6 +213,11 @@ public sealed record RecorderScreen
     /// order the source picker lists them. Never the whole machine, which is the act beside
     /// <em>Cambiar</em>, so nothing reaches it through a picker.
     /// </summary>
+    /// <remarks>
+    /// It is also the source picker's own order, and the window lists its programs through it: with
+    /// <paramref name="followingNow"/> <c>null</c> nothing is left out. One place decides that
+    /// order, so the move list and the source list cannot disagree.
+    /// </remarks>
     /// <param name="running">What the machine says is running.</param>
     /// <param name="followingNow">The program channel 0 follows, or nothing.</param>
     public static IReadOnlyList<AudioProcess> ProgramsChannelZeroMayMoveTo(

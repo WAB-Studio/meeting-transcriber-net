@@ -298,6 +298,17 @@ dotnet run --project tools/MeetingTranscriber.UiProbe -- --out $env:TEMP\ui-prob
 done, in C:\Users\pc\AppData\Local\Temp\ui-probe
 ```
 
+`--refused-corpus` starts the application over a corpus that will not open, for the walk of the
+refused-corpus screen. It points the application at `%USERPROFILE%\MeetingTranscriber.ui-probe.refused`,
+beside the probe's own folder, which it makes a corpus and then leaves with no `corpus.db`, so the
+launch resolves *no corpus in the folder*. The pointer goes aside and comes back as always, through
+the same close; the switch is for the script host and the MCP host does not take it.
+
+```powershell
+dotnet run --project tools/MeetingTranscriber.UiProbe -- --refused-corpus --out $env:TEMP\ui-probe `
+  see refused press ChangeWhereItIsKept
+```
+
 Exit: `0` it ran · `1` the screen or the application failed it · `2` the script was wrong and
 nothing was started · `3` the probe broke, which is not news about a screen
 

@@ -75,9 +75,44 @@ public partial class App : Application
         _language = UiLanguages.Resolve(_choice.Read(), WindowsLanguages());
         _corpus = CorpusLocation.OfThisUser().Resolve();
 
+        // No window exists yet, so none is held still while a corpus behind this build migrates.
+        var said = BringUp(_corpus);
+
         OpenMainWindow(_corpus);
 
+        if (said is not null)
+        {
+            _main?.Report(UiTexts.ThatDidNotGoThrough, said);
+        }
+
         StartWhatThisLaunchOwesTheCorpus(_corpus);
+    }
+
+    /// <summary>
+    /// Brings a corpus behind this build's schema up to it, before any screen reads it. The
+    /// machine's words when something <see cref="ScreenFailures.Reportable"/> stopped it, and
+    /// <c>null</c> otherwise: the window opens either way and says them on its report.
+    /// </summary>
+    /// <remarks>
+    /// Synchronous and with no <c>Task.Run</c> of its own, so the one place this file starts
+    /// background work stays one. A refused corpus has no folder and nothing to bring up.
+    /// </remarks>
+    private static string? BringUp(CorpusFolder corpus)
+    {
+        if (corpus.Folder is not { } folder)
+        {
+            return null;
+        }
+
+        try
+        {
+            CorpusDatabase.BringUpToThisBuild(folder);
+            return null;
+        }
+        catch (Exception stopped) when (ScreenFailures.Reportable(stopped))
+        {
+            return stopped.Message;
+        }
     }
 
     /// <summary>
@@ -150,7 +185,16 @@ public partial class App : Application
 
         var closing = _main;
 
+        // The old window is still on screen and holds still while the chosen corpus migrates. That
+        // is accepted: it is about to be replaced, and a migration is short.
+        var said = BringUp(_corpus);
+
         OpenMainWindow(_corpus);
+
+        if (said is not null)
+        {
+            _main?.Report(UiTexts.ThatDidNotGoThrough, said);
+        }
 
         closing?.Close();
 

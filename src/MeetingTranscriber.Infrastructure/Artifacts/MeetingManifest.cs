@@ -160,7 +160,12 @@ public static class MeetingManifest
             card.Title);
     }
 
-    private static string Serialise(MeetingCard card) => JsonSerializer.Serialize(
+    /// <summary>
+    /// The text of a card. Public because the export writes the same card into the folder it
+    /// makes, through this and not a second serialiser, so what a person reads there is the file
+    /// the corpus would have.
+    /// </summary>
+    public static string Serialise(MeetingCard card) => JsonSerializer.Serialize(
         new Card(
             card.MeetingId.ToString(),
             card.StartedAt.ToStorage(),

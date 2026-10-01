@@ -101,9 +101,10 @@ public enum RecorderPress
     /// </summary>
     /// <remarks>
     /// Channel 1 and not either channel, because opening a source again is only something channel 1
-    /// can do — <c>CaptureSession.OpenTheMicrophoneAgain</c> says why, and a channel 0 that stopped
-    /// is answered by pointing it somewhere — <see cref="RecordTheWholeMachine"/> or
-    /// <see cref="FollowAnotherProgram"/>.
+    /// can do — <c>CaptureSession.OpenTheMicrophoneAgain</c> says why. A channel 0 that stopped is
+    /// not opened again. Its ways out, <see cref="RecordTheWholeMachine"/> and
+    /// <see cref="FollowAnotherProgram"/>, answer a program that never brought anything; one that
+    /// played and then died is offered neither.
     /// </remarks>
     TryTheMicrophoneAgain,
 }

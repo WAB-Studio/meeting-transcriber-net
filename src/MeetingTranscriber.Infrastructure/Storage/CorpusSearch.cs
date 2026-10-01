@@ -363,9 +363,16 @@ public static class CorpusSearch
     /// A hit on a decision, an action or an open question carries the turn it cited — the position
     /// and both offsets — so it is quotable without a second lookup, exactly as a turn hit is. A
     /// summary carries none, because it is about the whole meeting; a node, a person, a voice and
-    /// the meeting's own words carry none for the same reason. Which is also why <c>ordinal</c> is last
-    /// in the ordering and does nothing on half the branches: it breaks ties inside one meeting's
+    /// the meeting's own words carry none for the same reason. Which is also why <c>ordinal</c> comes
+    /// after the score and the date and does nothing on half the branches: it breaks ties inside one meeting's
     /// turns, and where there is no position there is nothing left to break them with.
+    /// </para>
+    /// <para>
+    /// <b>A page of this answer is stable only with a unique last key</b>, because an agent reads on
+    /// by asking again for everything up to the end of the next page. Both orderings therefore end
+    /// on <c>meeting_id</c> and then <c>snippet</c>. What can still tie after them is two hits of
+    /// one source, in one meeting, at one position and one score, whose snippets read the same —
+    /// and two hits that read identically cannot trade places in any way a reader could see.
     /// </para>
     /// <para>
     /// <c>place</c> is what makes nine branches over eight indexes one answer, and with two it would
@@ -387,7 +394,7 @@ public static class CorpusSearch
     private static string Sql { get; } = $"""
         SELECT * FROM (
         SELECT *, ROW_NUMBER() OVER (
-                      PARTITION BY source ORDER BY score, started_at DESC, ordinal) AS place
+                      PARTITION BY source ORDER BY score, started_at DESC, ordinal, meeting_id, snippet) AS place
         FROM (
             SELECT meeting.id AS meeting_id,
                    meeting.started_at AS started_at,
@@ -550,7 +557,7 @@ public static class CorpusSearch
               AND asked.extraction_run_id = {TheRunThatCounts("meeting.id")}
         )
         )
-        ORDER BY place, score, started_at DESC, source, ordinal
+        ORDER BY place, score, started_at DESC, source, ordinal, meeting_id, snippet
         LIMIT @limit;
         """;
 }

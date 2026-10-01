@@ -83,6 +83,9 @@ internal sealed class ProbeCorpus : IDisposable
     /// </summary>
     private const string FolderName = CorpusLocation.ApplicationFolderName + ".ui-probe";
 
+    /// <summary>Where a corpus that will not open is kept, beside <see cref="FolderName"/>.</summary>
+    private const string RefusedFolderName = CorpusLocation.ApplicationFolderName + ".ui-probe.refused";
+
     /// <summary>What the user's pointer is called while this tool is holding it.</summary>
     private const string PutAsideSuffix = ".before-the-probe";
 
@@ -142,7 +145,45 @@ internal sealed class ProbeCorpus : IDisposable
     /// nothing to do, which is what makes the second session cheap, and the pool is emptied
     /// afterwards so that this process is not still holding the file for the rest of the session.
     /// </remarks>
-    internal static ProbeCorpus PointedAtItsOwn()
+    internal static ProbeCorpus PointedAtItsOwn() => PointedAt(FolderName);
+
+    /// <summary>
+    /// Points this user's application at a folder that once held a corpus and no longer does, so
+    /// the launch resolves <see cref="CorpusRefusal.NoCorpusInTheFolder"/> and the refused-corpus
+    /// screen is the one a script walks.
+    /// </summary>
+    /// <remarks>
+    /// A folder of its own beside the probe's, derived the same way. The pointer is chosen while
+    /// the corpus is there, because <see cref="CorpusLocation.Choose"/> refuses a folder with none,
+    /// and the corpus files go afterwards; the pointer is never written by hand. It is put back
+    /// through the same <see cref="Dispose"/> as the probe's own.
+    /// </remarks>
+    internal static ProbeCorpus PointedAtOneThatWillNotOpen()
+    {
+        var corpus = PointedAt(RefusedFolderName);
+
+        // The pool first, so nothing of this process holds the files about to go.
+        CorpusDatabase.ClearPoolsFor(corpus._folder);
+
+        try
+        {
+            var database = CorpusDatabase.PathIn(corpus._folder);
+            foreach (var file in new[] { database, database + "-wal", database + "-shm" })
+            {
+                File.Delete(file);
+            }
+        }
+        catch
+        {
+            // The pointer has moved already, and nobody holds this to put it back.
+            corpus.Dispose();
+            throw;
+        }
+
+        return corpus;
+    }
+
+    private static ProbeCorpus PointedAt(string folderName)
     {
         var location = CorpusLocation.OfThisUser();
 
@@ -151,7 +192,7 @@ internal sealed class ProbeCorpus : IDisposable
         // will accept. Derived rather than spelled, so the day the product moves its folder the
         // probe's follows.
         var folder = new DirectoryInfo(
-            Path.Combine(location.Fallback.Parent!.FullName, FolderName));
+            Path.Combine(location.Fallback.Parent!.FullName, folderName));
         folder.Create();
 
         using (CorpusDatabase.OpenMigrated(folder))

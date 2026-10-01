@@ -236,6 +236,7 @@ already named.
 | Point a channel somewhere else | *Cambiar* |
 | Change where the corpus is kept | *Cambiar* |
 | Say where Claude Code is | *Cambiar* |
+| Take the corpus out of the application | *Exportar* |
 | Stop a summary that is running | *Detener* |
 | Take the whole machine instead | *Grabar toda la máquina* |
 | Buy a transcription or a summary | *Transcribir* · *Resumir* |
@@ -261,6 +262,13 @@ at radius 4 and each half at 3; the chosen one is papel with weight 500 and the 
 with no fill. A set of more than two is a radio row: a 16px circle — genuinely round — olivo with a
 4px papel inset when chosen and a 1.5px `#C3BFB6` ring when not, and the whole chosen row sits on
 the decision tint.
+
+A set somebody may choose several of is a tick, and it is not a radio row: an 18 by 18 box at radius 4
+with the check inside it, as `Correcciones.dc.html` draws it. Unticked it is a 1.5px `#C3BFB6` ring;
+ticked it is olivo with a papel check, the glyph 11px at stroke 3. The row is the radio's — 34 high,
+the body size, ink — with no tint either way, because several rows are ticked at once and a tint on
+each would say nothing. The platform's own check box fills from the system accent, which §And five
+things this application is not forbids, so the control is `Tick` in `Olivo.xaml`.
 
 An optional or empty control — *add somebody*, *+*, *none of these* — has no fill and a 1px
 `#DEDBD4` inset ring.
@@ -639,7 +647,10 @@ context and what has already been fixed. **Neither list needs a model to have re
 **`Configuracion`** · Settings, the one screen that lives apart. **Choosing between transcribing and
 summarising stopped being a screen per meeting and became a preference set once.** The two engines
 are separate choices with a separate cost each, and *a model on this machine* is one option among
-them rather than a special case. Amounts go as `[costo]`.
+them rather than a special case. Amounts go as `[costo]`. Under where the corpus is kept there are
+four ticks for what an export takes — the audio, the transcripts, the summaries and what somebody
+corrected by hand — with *Exportar* beside them at the normal rank, and one line saying when the last
+export was made, what it took and where it went.
 
 **`Historia`** · A node's story. **The fourth kind of screen the product has**: every other one is
 about one meeting or about the list of them, and this one is about a thing several meetings hang

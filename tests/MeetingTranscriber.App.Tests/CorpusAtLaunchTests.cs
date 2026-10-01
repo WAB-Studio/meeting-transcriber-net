@@ -79,6 +79,35 @@ public sealed class CorpusAtLaunchTests
     }
 
     /// <summary>
+    /// A corpus behind this build is brought up to it before the window that reads it is built, at
+    /// the launch and again when a corpus is chosen, so no screen meets a column the file lacks.
+    /// </summary>
+    [Fact]
+    public void The_corpus_is_brought_up_to_this_build_before_any_window_is_built()
+    {
+        var brought = Occurrences("BringUp(").ToArray();
+        var calls = Occurrences("= BringUp(").ToArray();
+        var opened = Occurrences("OpenMainWindow(_corpus)").ToArray();
+
+        // Three and not two: the declaration is one occurrence and each of the two callers makes
+        // one more.
+        brought.Length.ShouldBe(
+            3,
+            "App.xaml.cs declares or calls BringUp a number of times other than its own "
+            + "declaration plus the one call each OnLaunched and OnCorpusChosen make.");
+        opened.Length.ShouldBe(2, "App.xaml.cs no longer opens a window in exactly two places.");
+
+        var previous = -1;
+        foreach (var open in opened)
+        {
+            calls.Any(at => at > previous && at < open).ShouldBeTrue(
+                "App.xaml.cs opens a window over a corpus that has not been brought up to this "
+                + "build since the window before it.");
+            previous = open;
+        }
+    }
+
+    /// <summary>
     /// The new window is up and activated before the old one closes, so there is never a moment
     /// with no window open — which is the one thing that would end the process outright, since
     /// nothing here handles an application with no window left.

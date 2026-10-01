@@ -354,9 +354,10 @@ public sealed record RecordingMeters
     /// <remarks>
     /// <para>
     /// One channel and not both, and it is the engine that decides that rather than the screen.
-    /// Channel 0 that stopped is answered by pointing it somewhere else, not by trying it again:
-    /// <c>CaptureSession.OpenTheMicrophoneAgain</c> says why. A dead channel 0 still says it died
-    /// and still dims: what it has no answer to is *try that again*.
+    /// A channel 0 that stopped is not opened again: <c>CaptureSession.OpenTheMicrophoneAgain</c>
+    /// says why. Its ways out, <c>RecordTheWholeMachine</c> and <c>FollowAnotherProgram</c>, answer
+    /// a program that never brought anything, and one that played and then died is offered
+    /// neither. It still says it died and still dims.
     /// </para>
     /// <para>
     /// False for a screen with no meeting on it, because <see cref="Channels"/> is empty there —

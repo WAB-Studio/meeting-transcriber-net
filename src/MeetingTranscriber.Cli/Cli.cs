@@ -172,7 +172,8 @@ public static class Cli
             "claude-live",
             "claude-live --out <directory>",
             "run the real Claude Code once over a made-up meeting, with sentinels planted around it,"
-            + " and say which of them reached the run — spends one run of this machine's Claude plan",
+            + " and say which of them reached the run — spends one run of this machine's Claude plan when the refusals hold. The"
+            + " directory must be new and outside any tree holding a CLAUDE.md, such as one under %TEMP%",
             ClaudeCodeCommands.Live),
         new(
             "key",

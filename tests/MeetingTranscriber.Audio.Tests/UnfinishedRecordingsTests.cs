@@ -1211,6 +1211,12 @@ public sealed partial class UnfinishedRecordingsTests : IDisposable
             (Path.Combine("MeetingTranscriber.Recording", "AudioIntake.cs"),
                 [DirectoryDelete]),
 
+            // An export's own folder, renamed from its `.partial` name once it is whole. It is made
+            // inside a folder the person picked and never under `spool/`, so it is never a recording
+            // anybody is still owed a decision about.
+            (Path.Combine("MeetingTranscriber.Processing", "Export", "CorpusExport.cs"),
+                [DirectoryMove]),
+
             // A Claude Code run's own scratch workspace, deleted once the process that used it has
             // exited, killed or not. It lives under `%TEMP%\meeting-transcriber-summaries\`, never
             // under `spool/`, and holds nothing but the one run's own prompt files.

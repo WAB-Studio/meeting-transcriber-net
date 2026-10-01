@@ -31,7 +31,7 @@ of why a screen is shaped the way it is, and they are mined into `../design.md`.
 artboard wherever the artboard ends up, or it carries `page` and is about the page as a whole —
 exactly one of the two, and no coordinates of its own. It used to carry only a position, and five
 notes had already come loose from the artboards they were written about by the time a row grew.
-`ReunionTranscrita` and `Sistema` have no note; that is a sentence nobody has written, not an entry
+`Sistema` has no note; that is a sentence nobody has written, not an entry
 missing from this file.
 
 | Page | Row | File | Screen |

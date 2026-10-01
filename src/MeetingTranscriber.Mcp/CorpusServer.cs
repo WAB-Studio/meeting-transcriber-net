@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text;
 
 using MeetingTranscriber.Domain.Knowledge;
 using MeetingTranscriber.Domain.Meetings;
@@ -22,9 +23,15 @@ namespace MeetingTranscriber.Mcp;
 /// <b>ISC-98 says this server answers read-only over stdio and never writes.</b> That it answers
 /// over stdio is <c>ChildProcessTests.The_server_answers_a_child_process_over_its_own_standard_streams</c>,
 /// a real child process started and spoken to over its own standard input and output; that it never
-/// writes is the three source sweeps in <c>ReadOnlyTests</c>, which are sweeps of the source and not
+/// writes is the source sweeps in <c>ReadOnlyTests</c>, which are sweeps of the source and not
 /// a run. The whole tool surface is held over <c>StreamServerTransport</c> — a real client, a real
 /// session and real answers, over two pipes.
+/// </para>
+/// <para>
+/// <b>The one file this server does write is the record of what it was asked</b> (ISC-100), and it
+/// is written outside the corpus on purpose: a line kept in the corpus folder would make "never
+/// writes the corpus" false, and the connection is read-only by design. See
+/// <see cref="RequestRecord"/>.
 /// </para>
 /// <para>
 /// <b>The barrier was not packaging and not an alias.</b> A child process with redirected streams
@@ -45,8 +52,24 @@ namespace MeetingTranscriber.Mcp;
 /// reaches: the process this runs in has one answer and a test has its own, and the alternative
 /// was a second process writing over somebody's real pointer file.
 /// </param>
-public sealed class CorpusServer(CorpusLocation where)
+/// <param name="record">
+/// Where each request is written down. Handed in for the same reason: a suite must never write into
+/// the real one, and the executable takes <c>--record &lt;file&gt;</c> for the same seam.
+/// </param>
+public sealed class CorpusServer(CorpusLocation where, FileInfo record)
 {
+    private const string Buscar = "buscar_reuniones";
+    private const string LeerResumen = "leer_resumen";
+    private const string LeerTurnos = "leer_turnos";
+    private const string ObtenerCita = "obtener_cita";
+    private const string ListarDecisiones = "listar_decisiones";
+    private const string ListarAcciones = "listar_acciones";
+    private const string ListarNodos = "listar_nodos";
+    private const string LeerNodo = "leer_nodo";
+
+    private const string Saltar =
+        "How many rows of this answer to skip, as the answer before it said. Starts at 0.";
+
     private const string Instructions = """
         Answers questions about the meetings this Windows user has recorded: what was said, what
         was decided, what was left to do, and where in a recording each of those was said.
@@ -86,13 +109,22 @@ public sealed class CorpusServer(CorpusLocation where)
         it ever paid for. A search hit carries none: a hit is a pointer to a meeting, and what is
         worth checking is whatever you then open.
 
+        Every list comes back a page at a time. An answer that was cut says so on its first line and
+        says what to pass as `saltar` to read on; nothing is skipped or repeated between two pages of
+        one question over a corpus that did not change between them. No answer is larger than 64 KiB,
+        whatever its row count: a page stops at the last row that fits, and a single row larger than
+        that is refused naming the `saltar` that reads past it.
+
+        Every call that reaches a tool is recorded on this machine, with what was asked and how much
+        came back, or why nothing did.
+
         A corpus that is not there yet, one on a disk that is not plugged in, and one this build's
         schema has moved past are all answered in words. They are answers and not the end of the
         session: ask again once the thing they name has been dealt with.
         """;
 
     /// <summary>Refused rather than parsed further: what a line this server cannot read is told.</summary>
-    private const string Usage = "Usage: meeting-transcriber-mcp [--corpus <folder>]";
+    private const string Usage = "Usage: meeting-transcriber-mcp [--corpus <folder>] [--record <file>]";
 
     /// <summary>
     /// The server as the executable runs it: this user's corpus over stdio, or — named through
@@ -120,27 +152,38 @@ public sealed class CorpusServer(CorpusLocation where)
     /// </remarks>
     internal static async Task<int> RunAsync(IReadOnlyList<string> arguments)
     {
-        CorpusLocation where;
-        switch (arguments)
+        string? corpus = null;
+        string? recorded = null;
+
+        // Each flag once, in either order, with a value that says something. Anything else is the
+        // usage line, including a flag with nothing after it.
+        for (var at = 0; at < arguments.Count; at += 2)
         {
-            case []:
-                where = CorpusLocation.OfThisUser();
-                break;
+            var taken = at + 1 < arguments.Count && !string.IsNullOrWhiteSpace(arguments[at + 1]);
 
-            case [var flag, var folder]
-                when string.Equals(flag, "--corpus", StringComparison.Ordinal)
-                    && !string.IsNullOrWhiteSpace(folder):
-                where = CorpusLocation.At(new DirectoryInfo(folder));
-                break;
-
-            default:
+            if (taken && corpus is null && arguments[at] == "--corpus")
+            {
+                corpus = arguments[at + 1];
+            }
+            else if (taken && recorded is null && arguments[at] == "--record")
+            {
+                recorded = arguments[at + 1];
+            }
+            else
+            {
                 Console.Error.WriteLine(Usage);
                 return 2;
+            }
         }
+
+        var where = corpus is null
+            ? CorpusLocation.OfThisUser()
+            : CorpusLocation.At(new DirectoryInfo(corpus));
 
         Console.SetOut(Console.Error);
 
-        var options = new CorpusServer(where).Options();
+        var options = new CorpusServer(
+            where, recorded is null ? RequestRecord.OfThisUser() : new FileInfo(recorded)).Options();
 
         await using var server = McpServer.Create(new StdioServerTransport(options), options);
         await server.RunAsync();
@@ -185,7 +228,7 @@ public sealed class CorpusServer(CorpusLocation where)
     private McpServerPrimitiveCollection<McpServerTool> Tools() =>
     [
         Tool(
-            "buscar_reuniones",
+            Buscar,
             "Searches every index at once — turns, summaries, titles and notes, the tree a meeting "
             + "is filed under, the people named on it and the voices recognised in it — and "
             + "answers with the best of each, ranked. The query is FTS5 syntax, so "
@@ -194,95 +237,113 @@ public sealed class CorpusServer(CorpusLocation where)
             (
                 [Description("What to look for, in FTS5 syntax.")] string query,
                 [Description("How many hits at most. Above 200 is answered with 200.")]
-                int limite = CorpusSearch.DefaultLimit) =>
-                Answer(corpus =>
-                {
-                    var wanted = Answers.AtMost(limite);
-                    var hits = CorpusSearch.Find(corpus, Asked(query), wanted + 1);
+                int limite = CorpusSearch.DefaultLimit,
+                [Description(Saltar)] int saltar = 0) =>
+                Answer(
+                    Buscar,
+                    Args(("query", query), ("limite", limite), ("saltar", saltar)),
+                    corpus =>
+                    {
+                        var wanted = Answers.AtMost(limite);
+                        var skipped = Answers.Skipped(saltar);
+                        var hits = CorpusSearch.Find(corpus, Asked(query), skipped + wanted + 1);
 
-                    return Text(Answers.All(
-                        "hits",
-                        [.. hits.Take(wanted).Select(Answers.Points)],
-                        hits.Count > wanted));
-                })),
+                        return Answers.Paged(
+                            null, "hits", [.. hits.Skip(skipped).Select(Answers.Points)], skipped, wanted);
+                    })),
 
         Tool(
-            "leer_resumen",
+            LeerResumen,
             "What one meeting was about, who transcribed and summarised it, and everything the "
             + "accepted extraction left: its decisions, what it left to do, and what it left open. "
             + "Only the extraction accepted last answers. To quote one of them, open the "
             + "turn it points at with `obtener_cita`.",
-            ([Description("The meeting's id, as another answer gave it.")] string meeting_id) =>
-                Answer(corpus =>
-                {
-                    var meeting = Named(meeting_id);
-                    var reading = new MeetingReading(corpus, TimeProvider.System);
-                    var read = reading.Of(meeting);
-                    var left = read.Screen.Left;
-                    var voices = new MeetingVoices(corpus, TimeProvider.System).Heard(meeting);
+            (
+                [Description("The meeting's id, as another answer gave it.")] string meeting_id,
+                [Description(Saltar)] int saltar = 0) =>
+                Answer(
+                    LeerResumen,
+                    Args(("meeting_id", meeting_id), ("saltar", saltar)),
+                    corpus =>
+                    {
+                        var meeting = Named(meeting_id);
+                        var skipped = Answers.Skipped(saltar);
+                        var reading = new MeetingReading(corpus, TimeProvider.System);
+                        var read = reading.Of(meeting);
+                        var left = read.Screen.Left;
+                        var voices = new MeetingVoices(corpus, TimeProvider.System).Heard(meeting);
 
-                    return Text(string.Join(
-                        Environment.NewLine,
-                        Answers.About(read.Meeting, reading.TranscribedFrom(meeting)),
-                        $"transcribed_by: {left.Wrote.Transcriber ?? Answers.Nothing}",
-                        $"summarised_by: {left.Wrote.Summariser ?? Answers.Nothing}",
-                        $"abstract: {left.Abstract ?? Answers.Nothing}",
-                        string.Empty,
-                        Answers.All(
+                        // The whole of what the extraction left is already in hand, so a page is a
+                        // slice of it and the bound is the only thing that cuts.
+                        return Answers.Paged(
+                            string.Join(
+                                Environment.NewLine,
+                                Answers.About(read.Meeting, reading.TranscribedFrom(meeting)),
+                                $"transcribed_by: {left.Wrote.Transcriber ?? Answers.Nothing}",
+                                $"summarised_by: {left.Wrote.Summariser ?? Answers.Nothing}",
+                                $"abstract: {left.Abstract ?? Answers.Nothing}"),
                             "things the extraction left",
-                            [.. left.Things.Take(Answers.MostRowsInOneAnswer)
+                            [.. left.Things.Skip(skipped)
+                                .Take(Answers.MostRowsInOneAnswer + 1)
                                 .Select(thing => Answers.Left(thing, voices.NameOf(thing.SpeakerLabel)))],
-                            left.Things.Count > Answers.MostRowsInOneAnswer)));
-                })),
+                            skipped,
+                            Answers.MostRowsInOneAnswer);
+                    })),
 
         Tool(
-            "leer_turnos",
+            LeerTurnos,
             "The turns said in one stretch of a meeting, which is how a transcript is opened a "
             + "piece at a time. The stretch takes the turns that began inside it, so two adjoining "
             + "calls answer exactly what one call over both would have and no turn is quoted twice.",
             (
                 [Description("The meeting's id, as another answer gave it.")] string meeting_id,
                 [Description("Where the stretch opens, in milliseconds from the meeting's start.")] long desde_ms,
-                [Description("Where it closes. The first offset outside the stretch.")] long hasta_ms) =>
-                Answer(corpus =>
-                {
-                    var meeting = Named(meeting_id);
-                    var from = Offset(desde_ms, nameof(desde_ms));
-                    var to = Offset(hasta_ms, nameof(hasta_ms));
-
-                    if (to < from)
+                [Description("Where it closes. The first offset outside the stretch.")] long hasta_ms,
+                [Description(Saltar)] int saltar = 0) =>
+                Answer(
+                    LeerTurnos,
+                    Args(("meeting_id", meeting_id), ("desde_ms", desde_ms), ("hasta_ms", hasta_ms), ("saltar", saltar)),
+                    corpus =>
                     {
-                        throw new McpRefused(
-                            $"hasta_ms ({hasta_ms}) is before desde_ms ({desde_ms}), so the stretch "
-                            + "asked for has nothing in it.");
-                    }
+                        var meeting = Named(meeting_id);
+                        var from = Offset(desde_ms, nameof(desde_ms));
+                        var to = Offset(hasta_ms, nameof(hasta_ms));
+                        var skipped = Answers.Skipped(saltar);
 
-                    // The meeting's own row is read first, so a meeting this corpus does not hold is
-                    // refused by name rather than answered with an empty stretch — which would read
-                    // as a meeting that was silent for those seconds. The row and not the screen:
-                    // this tool needs two of its fields and none of the stage, the extraction or the
-                    // audio file that reading the screen would cost.
-                    var reading = new MeetingReading(corpus, TimeProvider.System);
-                    var about = reading.Row(meeting);
-                    var voices = new MeetingVoices(corpus, TimeProvider.System).Heard(meeting);
+                        if (to < from)
+                        {
+                            throw new McpRefused(
+                                $"hasta_ms ({hasta_ms}) is before desde_ms ({desde_ms}), so the stretch "
+                                + "asked for has nothing in it.");
+                        }
 
-                    // One past the bound, in the query: the stretch asked for can be the whole of a
-                    // three-hour meeting, and the extra row is what says there was more without
-                    // reading the rest to count it.
-                    var turns = reading.Between(meeting, from, to, Answers.MostRowsInOneAnswer + 1);
+                        // The meeting's own row is read first, so a meeting this corpus does not hold
+                        // is refused by name rather than answered with an empty stretch — which would
+                        // read as a meeting that was silent for those seconds. The row and not the
+                        // screen: this tool needs two of its fields and none of the stage, the
+                        // extraction or the audio file that reading the screen would cost.
+                        var reading = new MeetingReading(corpus, TimeProvider.System);
+                        var about = reading.Row(meeting);
+                        var voices = new MeetingVoices(corpus, TimeProvider.System).Heard(meeting);
 
-                    return Text(
-                        Answers.About(about, reading.TranscribedFrom(meeting))
-                        + Environment.NewLine + Environment.NewLine
-                        + Answers.All(
+                        // Everything up to one past the page, in the query: the stretch asked for can
+                        // be the whole of a three-hour meeting, and the extra row is what says there
+                        // was more without reading the rest to count it. Turns are ordered by their
+                        // position, which is unique in a meeting, so two pages never trade a turn.
+                        var turns = reading.Between(
+                            meeting, from, to, skipped + Answers.MostRowsInOneAnswer + 1);
+
+                        return Answers.Paged(
+                            Answers.About(about, reading.TranscribedFrom(meeting)),
                             "turns",
-                            [.. turns.Take(Answers.MostRowsInOneAnswer)
+                            [.. turns.Skip(skipped)
                                 .Select(turn => Answers.Said(turn, voices.NameOf(turn.SpeakerLabel)))],
-                            turns.Count > Answers.MostRowsInOneAnswer));
-                })),
+                            skipped,
+                            Answers.MostRowsInOneAnswer);
+                    })),
 
         Tool(
-            "obtener_cita",
+            ObtenerCita,
             "The transcript around one cited turn: the turn itself and the two either side, which "
             + "is what says whether a decision really follows from what was said. Anchored by the "
             + "turn's position and never by an id — a rebuild mints new ids and positions survive "
@@ -290,61 +351,72 @@ public sealed class CorpusServer(CorpusLocation where)
             (
                 [Description("The meeting's id, as another answer gave it.")] string meeting_id,
                 [Description("The cited turn's position, as another answer gave it.")] int utterance_ordinal) =>
-                Answer(corpus =>
-                {
-                    var meeting = Named(meeting_id);
-                    var at = Position(utterance_ordinal, nameof(utterance_ordinal));
+                Answer(
+                    ObtenerCita,
+                    Args(("meeting_id", meeting_id), ("utterance_ordinal", utterance_ordinal)),
+                    corpus =>
+                    {
+                        var meeting = Named(meeting_id);
+                        var at = Position(utterance_ordinal, nameof(utterance_ordinal));
 
-                    var reading = new MeetingReading(corpus, TimeProvider.System);
-                    var about = reading.Row(meeting);
-                    var turns = reading.Around(meeting, at);
-                    var voices = new MeetingVoices(corpus, TimeProvider.System).Heard(meeting);
+                        var reading = new MeetingReading(corpus, TimeProvider.System);
+                        var about = reading.Row(meeting);
+                        var turns = reading.Around(meeting, at);
+                        var voices = new MeetingVoices(corpus, TimeProvider.System).Heard(meeting);
 
-                    return Text(
-                        Answers.About(about, reading.TranscribedFrom(meeting))
-                        + Environment.NewLine + Environment.NewLine
-                        + Answers.All(
+                        // No `saltar`: there are five turns at most, and when they do not fit in one
+                        // answer what reads them is `leer_turnos`, which does page.
+                        return Answers.Paged(
+                            Answers.About(about, reading.TranscribedFrom(meeting)),
                             "turns",
                             [.. turns.Select(turn => Answers.Said(turn, voices.NameOf(turn.SpeakerLabel)))],
-                            more: false));
-                })),
+                            skipped: null,
+                            turns.Count);
+                    })),
 
         Tool(
-            "listar_decisiones",
+            ListarDecisiones,
             "Everything the meetings of a stretch of time settled, newest meeting first, out of "
             + "the one extraction of each that was accepted. Each carries the meeting it was "
             + "settled in and the turn it was settled at.",
-            Listing(LeftKind.Decision, "decisions")),
+            Listing(ListarDecisiones, LeftKind.Decision, "decisions")),
 
         Tool(
-            "listar_acciones",
+            ListarAcciones,
             "Everything the meetings of a stretch of time left for somebody to do, newest meeting "
             + "first, out of the one extraction of each that was accepted. Each carries the "
             + "meeting it was left in and the turn it was left at.",
-            Listing(LeftKind.Action, "actions")),
+            Listing(ListarAcciones, LeftKind.Action, "actions")),
 
         Tool(
-            "listar_nodos",
+            ListarNodos,
             "Every node of the tree a meeting can be filed under: the organizations, the bodies of "
             + "work inside them and the subjects inside those, root first. This is how a node gets "
             + "an id — nothing else answers with one. Small: the tree stops at three levels and "
             + "belongs to one person.",
             (
                 [Description("How many at most. Above 200 is answered with 200.")]
-                int limite = CorpusSearch.DefaultLimit) =>
-                Answer(corpus =>
-                {
-                    var wanted = Answers.AtMost(limite);
-                    var tree = CorpusNodes.All(corpus);
+                int limite = CorpusSearch.DefaultLimit,
+                [Description(Saltar)] int saltar = 0) =>
+                Answer(
+                    ListarNodos,
+                    Args(("limite", limite), ("saltar", saltar)),
+                    corpus =>
+                    {
+                        var wanted = Answers.AtMost(limite);
+                        var skipped = Answers.Skipped(saltar);
+                        var tree = CorpusNodes.All(corpus);
 
-                    return Text(Answers.All(
-                        "nodes",
-                        [.. tree.Take(wanted).Select(Answers.Filed)],
-                        tree.Count > wanted));
-                })),
+                        return Answers.Paged(
+                            null,
+                            "nodes",
+                            [.. tree.Skip(skipped).Take(wanted + 1).Select(Answers.Filed)],
+                            skipped,
+                            wanted);
+                    })),
 
         Tool(
-            "leer_nodo",
+            LeerNodo,
             "One node's history: everything the meetings filed under it settled, left to do and "
             + "left open, oldest first, each carrying the meeting it was said in and when that "
             + "meeting was. It includes everything hanging off the node's children, so an "
@@ -353,17 +425,24 @@ public sealed class CorpusServer(CorpusLocation where)
             (
                 [Description("The node's id, as listar_nodos gave it.")] string nodo_id,
                 [Description("How many at most. Above 200 is answered with 200.")]
-                int limite = CorpusSearch.DefaultLimit) =>
-                Answer(corpus =>
-                {
-                    var wanted = Answers.AtMost(limite);
-                    var statements = CorpusStatements.Under(corpus, Node(nodo_id), wanted + 1);
+                int limite = CorpusSearch.DefaultLimit,
+                [Description(Saltar)] int saltar = 0) =>
+                Answer(
+                    LeerNodo,
+                    Args(("nodo_id", nodo_id), ("limite", limite), ("saltar", saltar)),
+                    corpus =>
+                    {
+                        var wanted = Answers.AtMost(limite);
+                        var skipped = Answers.Skipped(saltar);
+                        var statements = CorpusStatements.Under(corpus, Node(nodo_id), skipped + wanted + 1);
 
-                    return Text(Answers.All(
-                        "statements",
-                        [.. statements.Take(wanted).Select(Answers.Left)],
-                        statements.Count > wanted));
-                })),
+                        return Answers.Paged(
+                            null,
+                            "statements",
+                            [.. statements.Skip(skipped).Select(Answers.Left)],
+                            skipped,
+                            wanted);
+                    })),
     ];
 
     /// <summary>
@@ -371,32 +450,40 @@ public sealed class CorpusServer(CorpusLocation where)
     /// written twice, because what a caller sees of them is identical and a second copy is a second
     /// place for the window and the limit to come apart.
     /// </summary>
-    private Delegate Listing(LeftKind kind, string what) => (
+    private Delegate Listing(string tool, LeftKind kind, string what) => (
         [Description("The earliest meeting to answer about, as 2026-08-19T09:00:00.000Z. Optional.")]
         string? desde = null,
         [Description("The first meeting too late to answer about. Optional.")]
         string? hasta = null,
         [Description("How many at most. Above 200 is answered with 200.")]
-        int limite = CorpusSearch.DefaultLimit) =>
-        Answer(corpus =>
-        {
-            var wanted = Answers.AtMost(limite);
+        int limite = CorpusSearch.DefaultLimit,
+        [Description(Saltar)] int saltar = 0) =>
+        Answer(
+            tool,
+            Args(("desde", desde), ("hasta", hasta), ("limite", limite), ("saltar", saltar)),
+            corpus =>
+            {
+                var wanted = Answers.AtMost(limite);
+                var skipped = Answers.Skipped(saltar);
 
-            // One past the bound, for the reason `leer_turnos` asks for one past its own: the limit
-            // is in the SQL, so an answer of exactly `wanted` rows cannot say whether it was cut,
-            // and counting the rest would be a second query over the whole corpus.
-            var statements = CorpusStatements.Of(
-                corpus,
-                kind,
-                Instant(desde, nameof(desde)),
-                Instant(hasta, nameof(hasta)),
-                wanted + 1);
+                // Everything up to one past the page, for the reason `leer_turnos` asks for one past
+                // its own: the limit is in the SQL, so an answer of exactly `wanted` rows cannot say
+                // whether it was cut, and counting the rest would be a second query over the whole
+                // corpus.
+                var statements = CorpusStatements.Of(
+                    corpus,
+                    kind,
+                    Instant(desde, nameof(desde)),
+                    Instant(hasta, nameof(hasta)),
+                    skipped + wanted + 1);
 
-            return Text(Answers.All(
-                what,
-                [.. statements.Take(wanted).Select(Answers.Left)],
-                statements.Count > wanted));
-        });
+                return Answers.Paged(
+                    null, what, [.. statements.Skip(skipped).Select(Answers.Left)], skipped, wanted);
+            });
+
+    /// <summary>What a request asked, by the names the tool gave its parameters.</summary>
+    private static IReadOnlyDictionary<string, object?> Args(params (string Name, object? Value)[] asked) =>
+        asked.ToDictionary(one => one.Name, one => one.Value);
 
     private static McpServerTool Tool(string name, string does, Delegate what) =>
         McpServerTool.Create(what, new McpServerToolCreateOptions { Name = name, Description = does });
@@ -518,16 +605,33 @@ public sealed class CorpusServer(CorpusLocation where)
     /// grow to cover a defect: a defect said as though it were a thing a person can deal with is a
     /// defect nobody ever finds.
     /// </para>
+    /// <para>
+    /// <b>Every call that gets here is recorded, in the same call and before the answer leaves.</b>
+    /// An answer, a refusal on the list and a defect off it all leave one line, because what an
+    /// agent read is reconstructed from what it was asked and how much came back, and a call that
+    /// was refused is part of that. A request that cannot be recorded is not answered: a record
+    /// with holes is worse than none, since it would be read as complete. A defect is recorded with
+    /// its type and then thrown again, and if its own record fails too it is the defect that
+    /// arrives. What is not reached is a call the SDK refuses before any tool runs — an unknown
+    /// tool, or arguments that do not bind.
+    /// </para>
     /// </remarks>
-    private CallToolResult Answer(Func<CorpusDbContext, CallToolResult> work)
+    private CallToolResult Answer(
+        string tool, IReadOnlyDictionary<string, object?> asked, Func<CorpusDbContext, Answers.Page> work)
     {
+        string? folder = null;
+        Answers.Page? page = null;
+        string? refusal = null;
+
         try
         {
             var corpus = TheCorpusHere.OpenReadOnly(where);
 
             try
             {
-                return work(corpus);
+                // Read before the corpus is let go of, which is when the root stops being readable.
+                folder = corpus.Root.FullName;
+                page = work(corpus);
             }
             finally
             {
@@ -543,13 +647,83 @@ public sealed class CorpusServer(CorpusLocation where)
                 or IOException
                 or UnauthorizedAccessException)
         {
-            return new CallToolResult
-            {
-                Content = [new TextContentBlock { Text = refused.Message }],
-                IsError = true,
-            };
+            refusal = refused.Message;
         }
+        catch (Exception defect)
+        {
+            try
+            {
+                Record(tool, asked, folder, answered: false, rows: 0, said: string.Empty, more: false, defect.GetType().Name);
+            }
+            catch (Exception failedToRecord) when (failedToRecord is not OutOfMemoryException)
+            {
+                // The defect is what has to arrive, and it is about to.
+            }
+
+            throw;
+        }
+
+        var said = page?.Text ?? refusal!;
+
+        try
+        {
+            Record(tool, asked, folder, page is not null, page?.Rows ?? 0, said, page?.More ?? false, refusal);
+        }
+        catch (Exception failedToRecord) when (failedToRecord is IOException or UnauthorizedAccessException)
+        {
+            return Failed(
+                $"This request could not be recorded in '{record.FullName}', so it was not answered: "
+                + failedToRecord.Message);
+        }
+
+        return page is null ? Failed(said) : Text(said);
     }
+
+    /// <summary>
+    /// One line of the record. Where no corpus opened, the corpus is the folder that was looked
+    /// for, or nothing when even that could not be read.
+    /// </summary>
+    private void Record(
+        string tool,
+        IReadOnlyDictionary<string, object?> asked,
+        string? folder,
+        bool answered,
+        int rows,
+        string said,
+        bool more,
+        string? refusal)
+    {
+        if (folder is null)
+        {
+            try
+            {
+                folder = where.Resolve().Path;
+            }
+            catch (Exception unreadable) when (unreadable is IOException or UnauthorizedAccessException)
+            {
+                folder = null;
+            }
+        }
+
+        RequestRecord.Append(
+            record,
+            new RecordedRequest(
+                UtcTimestamp.From(DateTimeOffset.UtcNow),
+                folder,
+                tool,
+                asked,
+                answered,
+                rows,
+                Encoding.UTF8.GetByteCount(said),
+                more,
+                refusal));
+    }
+
+    private static CallToolResult Failed(string said) => new()
+    {
+        Content = [new TextContentBlock { Text = said }],
+        IsError = true,
+    };
 
     private static CallToolResult Text(string said) =>
         new() { Content = [new TextContentBlock { Text = said }] };

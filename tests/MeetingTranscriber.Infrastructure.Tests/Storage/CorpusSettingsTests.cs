@@ -126,4 +126,82 @@ public class CorpusSettingsTests
         using var reopened = corpus.Open();
         reopened.Settings.Single().Value.ShouldBe(stored);
     }
+
+    [Fact]
+    public void A_corpus_nobody_has_exported_says_so()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        new CorpusSettings(context).LastExportMade().ShouldBeNull();
+    }
+
+    [Fact]
+    public void The_last_export_comes_back_after_the_corpus_is_reopened()
+    {
+        using var corpus = new TemporaryCorpus();
+        var made = new LastExport(Chosen, [ExportKind.Audio, ExportKind.HandCorrections], 3, @"C:somewheremeeting-transcriber-export-20260916-101400");
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            var settings = new CorpusSettings(writing);
+            settings.Exported(made with { Meetings = 1 });
+            settings.Exported(made);
+        }
+
+        using var reopened = corpus.Open();
+
+        // One row, rewritten: what the screen says is the last export and not a history.
+        reopened.Settings.Single().Key.ShouldBe(CorpusSettings.LastExportKey);
+        var last = new CorpusSettings(reopened).LastExportMade().ShouldNotBeNull();
+        last.At.ShouldBe(Chosen);
+        last.Kinds.ShouldBe(made.Kinds);
+        last.Meetings.ShouldBe(3);
+        last.Folder.ShouldBe(made.Folder);
+    }
+
+    /// <summary>
+    /// The four names an export kind is stored under, spelled out, for the reason the names above
+    /// are: the kinds are stored only inside the <c>last-export</c> value, so the sweep in
+    /// <c>CorpusNamingTests</c> never reaches them.
+    /// </summary>
+    [Fact]
+    public void Each_kind_an_export_can_carry_is_stored_under_exactly_this_name()
+    {
+        using var corpus = new TemporaryCorpus();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            new CorpusSettings(writing).Exported(new LastExport(
+                Chosen,
+                [ExportKind.Audio, ExportKind.Transcripts, ExportKind.Summaries, ExportKind.HandCorrections],
+                0,
+                "folder"));
+        }
+
+        using var reopened = corpus.Open();
+        using var stored = System.Text.Json.JsonDocument.Parse(reopened.Settings.Single().Value);
+
+        stored.RootElement.GetProperty("kinds").EnumerateArray().Select(kind => kind.GetString()).ToArray()
+            .ShouldBe(["audio", "transcripts", "summaries", "hand_corrections"]);
+    }
+
+    [Theory]
+    [InlineData("not json at all")]
+    [InlineData("{}")]
+    [InlineData("{\"kinds\":[\"tapes\"],\"meetings\":1,\"folder\":\"x\"}")]
+    [InlineData("{\"kinds\":[\"audio\"],\"meetings\":\"many\",\"folder\":\"x\"}")]
+    public void A_last_export_this_build_cannot_read_reads_as_none(string stored)
+    {
+        using var corpus = new TemporaryCorpus();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            writing.Settings.Add(new Setting { Key = CorpusSettings.LastExportKey, Value = stored, UpdatedAt = Chosen });
+            writing.SaveChanges();
+        }
+
+        using var reopened = corpus.Open();
+        new CorpusSettings(reopened).LastExportMade().ShouldBeNull();
+    }
 }
