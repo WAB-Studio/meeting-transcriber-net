@@ -24,15 +24,47 @@ namespace MeetingTranscriber.Infrastructure.Storage;
 /// </remarks>
 public sealed class DeepgramKeyException : Exception
 {
-    public DeepgramKeyException(string message)
+    public DeepgramKeyException(DeepgramKeyRefusal refusal, string message)
         : base(message)
     {
+        Refusal = refusal;
     }
 
-    public DeepgramKeyException(string message, Exception cause)
+    public DeepgramKeyException(DeepgramKeyRefusal refusal, string message, Exception cause)
         : base(message, cause)
     {
+        Refusal = refusal;
     }
+
+    /// <summary>
+    /// Which refusal this is, so a front end says it in its own words and its own language rather
+    /// than printing this message's English — the settings screen is the case, and it reads only
+    /// this.
+    /// </summary>
+    public DeepgramKeyRefusal Refusal { get; }
+}
+
+/// <summary>Why this machine's Deepgram key could not be what the caller asked it to be.</summary>
+public enum DeepgramKeyRefusal
+{
+    /// <summary>A key was asked for and this machine holds none.</summary>
+    NoKey,
+
+    /// <summary>What was offered to keep has nothing in it once the space around it is gone.</summary>
+    NothingInIt,
+
+    /// <summary>
+    /// This machine would not store the key, or stored something other than what went in. Either
+    /// way nothing can be relied on to hold it, and whether a key was there before is a fresh
+    /// question to ask.
+    /// </summary>
+    NotKept,
+
+    /// <summary>
+    /// Windows would not say what this machine holds, or would not take it away. Whether a key is
+    /// there is not known.
+    /// </summary>
+    StoreDidNotAnswer,
 }
 
 /// <summary>
@@ -48,10 +80,12 @@ public sealed class DeepgramKeyException : Exception
 /// <c>Nothing_but_the_key_itself_reaches_the_credential_store</c>, which fails when a second file
 /// under <c>src/</c> names <c>CredentialManager</c>, and
 /// <c>Nothing_but_the_key_itself_reads_a_Deepgram_key</c>, which fails when a file it does not
-/// list names this type. The four listed are <c>MeetingTranscriber.Cli\KeyCommands.cs</c>, which
-/// puts a key there, <c>MeetingTranscriber.Cli\DeepgramCommands.cs</c>, which spends with one,
-/// <c>MeetingTranscriber.App\TranscribingOnThisMachinesKey.cs</c>, which spends with one for the
-/// application's runner, in the one assembly no suite can reference, and this file.
+/// list names this type. The ones listed are <c>MeetingTranscriber.Cli\KeyCommands.cs</c>, which
+/// puts a key there, <c>MeetingTranscriber.App\KeepingThisMachinesKey.cs</c>, which puts one there
+/// from the settings screen and can never read it back, <c>MeetingTranscriber.Cli\DeepgramCommands.cs</c>,
+/// which spends with one, <c>MeetingTranscriber.App\TranscribingOnThisMachinesKey.cs</c>, which
+/// spends with one for the application's runner, in the one assembly no suite can reference, and
+/// this file.
 /// </para>
 /// <para>
 /// An instance over a target name, with one static factory for the name the product uses. The
@@ -158,6 +192,7 @@ public sealed class DeepgramKey
             // is what turns this into an answer instead of a stack trace for every front end,
             // including the ones that do not exist yet.
             throw new DeepgramKeyException(
+                DeepgramKeyRefusal.NothingInIt,
                 "That is not a Deepgram key — there is nothing in it. Whatever key this machine "
                 + "already held is still there.");
         }
@@ -173,15 +208,32 @@ public sealed class DeepgramKey
             // 2560-byte ceiling is caught before the call, and a vault a policy on this machine has
             // closed comes back out of advapi32. Both are this machine refusing to hold the key.
             throw new DeepgramKeyException(
+                DeepgramKeyRefusal.NotKept,
                 "This machine would not store the Deepgram key. A key far longer than one Deepgram "
                 + "issues, and a vault a policy on this machine has closed, are the two reasons it "
                 + "says no.",
                 refused);
         }
 
-        if (!string.Equals(Stored(), secret, StringComparison.Ordinal))
+        string? cameBack;
+        try
+        {
+            cameBack = Stored();
+        }
+        catch (DeepgramKeyException unread) when (unread.Refusal is DeepgramKeyRefusal.StoreDidNotAnswer)
+        {
+            // Written and then not readable is not kept, for the reason the comparison below gives.
+            throw new DeepgramKeyException(
+                DeepgramKeyRefusal.NotKept,
+                $"The Deepgram key was written to '{Target}' and could not be read back, so nothing "
+                + "on this machine can be relied on to hold it.",
+                unread.InnerException ?? unread);
+        }
+
+        if (!string.Equals(cameBack, secret, StringComparison.Ordinal))
         {
             throw new DeepgramKeyException(
+                DeepgramKeyRefusal.NotKept,
                 $"The Deepgram key was written to '{Target}' and what came back is not what went "
                 + "in, so nothing on this machine can be relied on to hold it. Nothing is quoted "
                 + "here on purpose.");
@@ -197,6 +249,7 @@ public sealed class DeepgramKey
     public string Read() =>
         StoredKey()
         ?? throw new DeepgramKeyException(
+            DeepgramKeyRefusal.NoKey,
             "There is no Deepgram key on this machine, so nothing can be transcribed until one is "
             + "kept.");
 
@@ -205,7 +258,21 @@ public sealed class DeepgramKey
     /// caller asked for the key not to be on this machine, and it is not. The same shape
     /// <see cref="HumanLayer.Unlink"/> already states.
     /// </summary>
-    public void Forget() => CredentialManager.TryDeleteCredential(Target);
+    /// <exception cref="DeepgramKeyException">Windows would not take it away.</exception>
+    public void Forget()
+    {
+        try
+        {
+            CredentialManager.TryDeleteCredential(Target);
+        }
+        catch (Win32Exception refused)
+        {
+            throw new DeepgramKeyException(
+                DeepgramKeyRefusal.StoreDidNotAnswer,
+                $"Windows would not take away what this machine holds under '{Target}'.",
+                refused);
+        }
+    }
 
     /// <summary>
     /// What Credential Manager holds under <see cref="Target"/>, or nothing when it holds nothing
@@ -223,5 +290,25 @@ public sealed class DeepgramKey
     /// <summary>
     /// What Credential Manager holds under <see cref="Target"/>, exactly as it holds it.
     /// </summary>
-    private string? Stored() => CredentialManager.ReadCredential(Target)?.Password;
+    /// <remarks>
+    /// A credential that is not there comes back as nothing; anything else Windows says no with
+    /// arrives out of advapi32 as a <see cref="Win32Exception"/>, and is a refusal here for the
+    /// reason <see cref="Keep"/> gives — every front end catches this type and none catches that
+    /// one, so left alone it ends the application that only asked whether a key was kept.
+    /// </remarks>
+    /// <exception cref="DeepgramKeyException">Windows would not say.</exception>
+    private string? Stored()
+    {
+        try
+        {
+            return CredentialManager.ReadCredential(Target)?.Password;
+        }
+        catch (Win32Exception refused)
+        {
+            throw new DeepgramKeyException(
+                DeepgramKeyRefusal.StoreDidNotAnswer,
+                $"Windows would not say what this machine holds under '{Target}'.",
+                refused);
+        }
+    }
 }

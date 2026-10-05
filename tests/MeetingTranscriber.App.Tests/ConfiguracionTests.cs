@@ -316,6 +316,86 @@ public class ConfiguracionTests
     }
 
     /// <summary>
+    /// The Deepgram key is on the settings screen — whether one is kept, a field to paste one, the
+    /// press that keeps it and the press that takes it away — and every one of them reaches the
+    /// store through the one file of the application that cannot read a key back.
+    /// </summary>
+    /// <remarks>
+    /// Read out of source for the reason every check in this class is: the screen's own probe needs
+    /// a packaged build on a desktop. What it holds is the wiring a build agent would otherwise
+    /// never see — a press that called nothing, or a screen that reached the store some other way.
+    /// </remarks>
+    [Fact]
+    public void The_Deepgram_key_is_kept_and_taken_away_from_the_settings_screen()
+    {
+        var markup = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
+
+        markup.ShouldContain("x:Name=\"DeepgramKeyText\"");
+        markup.ShouldContain("Click=\"OnKeepTheKey\"");
+        markup.ShouldContain("Click=\"OnRemoveTheKey\"");
+        markup.ShouldContain(
+            "AutomationProperties.Name=\"{x:Bind In(loc:UiTexts.SaveTheDeepgramKey)}\"");
+
+        Handler("public async void Show(").ShouldContain("_aKeyIsKept = WhetherAKeyIsKept();");
+        Handler("private static bool? WhetherAKeyIsKept(").ShouldContain("KeepingThisMachinesKey.IsThere");
+        Handler("private void OnKeepTheKey(")
+            .ShouldContain("KeepingThisMachinesKey.Keep(DeepgramKeyBox.Password);");
+        Handler("private void OnRemoveTheKey(").ShouldContain("KeepingThisMachinesKey.Forget();");
+    }
+
+    /// <summary>
+    /// A key is never on screen as characters: the field is a secret field whose reveal is off, and
+    /// it is emptied after every press, kept or refused, and when the screen closes.
+    /// </summary>
+    /// <remarks>
+    /// The reveal lives in the style, so the style is what is read — a screen that took the field
+    /// off <c>TypedSecret</c> is caught by the second assertion.
+    /// </remarks>
+    [Fact]
+    public void A_pasted_key_is_never_shown_and_does_not_stay_in_the_field()
+    {
+        var markup = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
+        var olivo = File.ReadAllText(
+            AppSources.At(Path.Combine("MeetingTranscriber.App", "Olivo.xaml")).FullName);
+
+        var field = markup[markup.IndexOf("x:Name=\"DeepgramKeyBox\"", StringComparison.Ordinal)..];
+        markup[..markup.IndexOf("x:Name=\"DeepgramKeyBox\"", StringComparison.Ordinal)]
+            .TrimEnd().ShouldEndWith("<PasswordBox");
+        field[..field.IndexOf("/>", StringComparison.Ordinal)]
+            .ShouldContain("Style=\"{StaticResource TypedSecret}\"");
+        olivo.ShouldContain("<Setter Property=\"PasswordRevealMode\" Value=\"Hidden\" />");
+
+        var keeping = Handler("private void OnKeepTheKey(");
+        var finallyBlock = keeping[keeping.IndexOf("finally", StringComparison.Ordinal)..];
+        finallyBlock[..finallyBlock.IndexOf('}')].ShouldContain("DeepgramKeyBox.Password = string.Empty;");
+        Handler("public void Close(").ShouldContain("DeepgramKeyBox.Password = string.Empty;");
+    }
+
+    /// <summary>
+    /// A paste the machine will not keep is a sentence and not a crash: the press catches the key's
+    /// own refusal and says it by its kind, never by its English message.
+    /// </summary>
+    [Fact]
+    public void A_key_this_machine_will_not_keep_is_said_rather_than_thrown()
+    {
+        var keeping = Handler("private void OnKeepTheKey(");
+
+        keeping.ShouldContain("catch (DeepgramKeyException refused)");
+        keeping.ShouldContain("Refused(refused.Refusal)");
+        keeping.ShouldNotContain(".Message");
+
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        screen.ShouldContain("DeepgramKeyRefusal.NothingInIt => UiTexts.ThatIsNotADeepgramKey,");
+        screen.ShouldContain("DeepgramKeyRefusal.NotKept => UiTexts.ThisMachineWouldNotKeepTheKey,");
+
+        // Asking and taking away are refusals too, and neither may reach the dispatcher.
+        Handler("private static bool? WhetherAKeyIsKept(").ShouldContain("catch (DeepgramKeyException)");
+        Handler("private void OnRemoveTheKey(").ShouldContain("catch (DeepgramKeyException)");
+    }
+
+    /// <summary>
     /// The handler's own body, from its signature to the closing brace that balances it, so a
     /// negative assertion over it says nothing about the rest of the screen.
     /// </summary>

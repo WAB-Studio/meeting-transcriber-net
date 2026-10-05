@@ -10,11 +10,13 @@
     mc:Ignorable="d">
 
     <!-- The one screen that lives apart, and everything on it is an answer about this install
-         rather than about the next meeting. Six blocks: what should happen when a recording ends,
-         what runs it (two engines, each on its own card), who is using the application and in
-         which language, where the corpus is, what an export takes out of it, and where Claude Code
-         is. The first four are the artboard's own order; the export block sits under where the
-         corpus is because it is about the same folder, and Claude Code stays last.
+         rather than about the next meeting. Seven blocks: what should happen when a recording ends,
+         what runs it (two engines, each on its own card), the Deepgram key the first of them
+         spends, who is using the application and in which language, where the corpus is, what an
+         export takes out of it, and where Claude Code is. The artboard draws no key; it sits under
+         the engine cards because that engine is what it is for, and the rest are the artboard's
+         own order — the export block under where the corpus is because it is about the same
+         folder, and Claude Code last.
 
          The first block is the whole reason this screen exists. Choosing between transcribing and
          summarising stopped being a question per meeting and became a preference set once, so it
@@ -152,6 +154,57 @@
                         </StackPanel>
                     </Border>
                 </Grid>
+
+                <!-- The Deepgram key this machine transcribes with, right under the engine that
+                     spends it. Until this block the only way to put one here was a terminal, so
+                     somebody who installed the application could record and never transcribe.
+
+                     The field is a secret field and is emptied after every press, kept or refused:
+                     what was pasted is never on screen as characters and does not stay in the
+                     control. The line under it says whether a key is kept and nothing else about
+                     it — no length, no last four characters — because the screen cannot read the
+                     key at all: everything here goes through `KeepingThisMachinesKey`, which has
+                     no read.
+
+                     *Quitar* loses something — Deepgram shows a key once, so it is often not one
+                     somebody can paste again — so it takes the rank that says so, at the margin,
+                     and sits on the line saying a key is kept rather than on *Guardar*'s row: the
+                     gap `docs/design.md` asks for between an act and what loses something is a
+                     whole line here. It is drawn while a key may be there to take away. -->
+                <StackPanel Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <PasswordBox
+                            x:Name="DeepgramKeyBox"
+                            MinWidth="320"
+                            Style="{StaticResource TypedSecret}"
+                            Header="{x:Bind In(loc:UiTexts.DeepgramKeyHeader)}"
+                            PasswordChanged="OnDeepgramKeyTyped" />
+                        <Button
+                            x:Name="KeepTheKeyButton"
+                            VerticalAlignment="Bottom"
+                            Style="{StaticResource NormalButtonOnPaper}"
+                            Click="OnKeepTheKey"
+                            IsEnabled="False"
+                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.SaveTheDeepgramKey)}"
+                            Content="{x:Bind In(loc:UiTexts.Save)}" />
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock
+                            x:Name="DeepgramKeyText"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{ThemeResource SecondaryTextBrush}" />
+                        <Button
+                            x:Name="RemoveTheKeyButton"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource RowButtonThatLosesSomething}"
+                            Click="OnRemoveTheKey"
+                            Visibility="Collapsed"
+                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.RemoveTheDeepgramKey)}"
+                            Content="{x:Bind In(loc:UiTexts.Remove)}" />
+                    </StackPanel>
+                </StackPanel>
 
                 <!-- Who is using the application, and the language it is read in. Moved here off
                      the front door whole, handlers and all: both are answers about this install,
