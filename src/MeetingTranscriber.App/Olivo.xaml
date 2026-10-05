@@ -954,6 +954,21 @@
         <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
     </Style>
 
+    <!-- A typed field for a secret: the same field as `TypedField`, showing dots. The platform's
+         eye that reveals what was typed is turned off in the style and not on the screen, because
+         a secret on screen is a secret in whatever recorded that screen — and a meeting
+         application is the one kind of application whose screen somebody is often sharing. -->
+    <Style x:Key="TypedSecret" TargetType="PasswordBox" BasedOn="{StaticResource DefaultPasswordBoxStyle}">
+        <Setter Property="FontFamily" Value="{StaticResource TextFace}" />
+        <Setter Property="FontSize" Value="{StaticResource BodySize}" />
+        <Setter Property="Foreground" Value="{ThemeResource InkBrush}" />
+        <Setter Property="Background" Value="{ThemeResource PaperBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource LineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource PressedCorner}" />
+        <Setter Property="PasswordRevealMode" Value="Hidden" />
+    </Style>
+
     <!-- `docs/design.md` §Controls also draws a two-way choice — two halves inside a `#E6E4DE`
          trough — and there is nothing for it here, because nothing in the application offers a
          choice of two yet. The one screen that wanted the shape wanted it for an answer that

@@ -71,7 +71,7 @@ public class DeepgramKeyTests : IDisposable
         key.Forget();
 
         key.IsThere.ShouldBeFalse();
-        Should.Throw<DeepgramKeyException>(() => key.Read());
+        Should.Throw<DeepgramKeyException>(() => key.Read()).Refusal.ShouldBe(DeepgramKeyRefusal.NoKey);
     }
 
     /// <summary>
@@ -104,8 +104,10 @@ public class DeepgramKeyTests : IDisposable
     {
         key.Keep(NotAKey);
 
-        Should.Throw<DeepgramKeyException>(() => key.Keep(string.Empty));
-        Should.Throw<DeepgramKeyException>(() => key.Keep("   "));
+        Should.Throw<DeepgramKeyException>(() => key.Keep(string.Empty))
+            .Refusal.ShouldBe(DeepgramKeyRefusal.NothingInIt);
+        Should.Throw<DeepgramKeyException>(() => key.Keep("   "))
+            .Refusal.ShouldBe(DeepgramKeyRefusal.NothingInIt);
         Should.Throw<ArgumentNullException>(() => key.Keep(null!));
 
         key.Read().ShouldBe(NotAKey);
@@ -122,6 +124,7 @@ public class DeepgramKeyTests : IDisposable
     {
         var refused = Should.Throw<DeepgramKeyException>(() => key.Keep(new string('k', 4000)));
 
+        refused.Refusal.ShouldBe(DeepgramKeyRefusal.NotKept);
         refused.InnerException.ShouldNotBeNull();
         refused.Message.ShouldNotContain("kkkk");
         key.IsThere.ShouldBeFalse();
@@ -174,8 +177,8 @@ public class DeepgramKeyTests : IDisposable
                 + "DeepgramKey to be one.");
 
     /// <summary>
-    /// And nothing but the key itself and the three files that put one there or spend with one
-    /// names the type. The wider half: who holds a key, as opposed to who can reach the store.
+    /// And nothing but the key itself and the files that put one there or spend with one names the
+    /// type. The wider half: who holds a key, as opposed to who can reach the store.
     /// </summary>
     /// <remarks>
     /// Matched as the whole word, so <c>DeepgramKeyException</c> does not trip it. Catching the
@@ -188,16 +191,35 @@ public class DeepgramKeyTests : IDisposable
         Naming(@"\bDeepgramKey\b(?!Exception)")
             .ShouldBe(
                 [
+                    Path.Combine("MeetingTranscriber.App", "KeepingThisMachinesKey.cs"),
                     Path.Combine("MeetingTranscriber.App", "TranscribingOnThisMachinesKey.cs"),
                     Path.Combine("MeetingTranscriber.Cli", "DeepgramCommands.cs"),
                     Path.Combine("MeetingTranscriber.Cli", "KeyCommands.cs"),
                     Path.Combine("MeetingTranscriber.Infrastructure", "Storage", "DeepgramKey.cs"),
                 ],
                 "a Deepgram key is read by the thing about to spend money with it and by nothing "
-                + "else, so a fifth file naming this type is a place the key can be written down. "
+                + "else, so a file off this list naming this type is a place the key can be written down. "
                 + "The answer is to add the caller here on purpose, saying what it does with the "
                 + "key — DeepgramCommands and TranscribingOnThisMachinesKey are on it because they "
-                + "are the two things that spend with a key — and never to widen the rule.");
+                + "are the two things that spend with a key, KeyCommands and "
+                + "KeepingThisMachinesKey because they are the prompt and the settings screen "
+                + "putting one there, and the second has no read at all — and never to widen the "
+                + "rule.");
+
+    /// <summary>
+    /// The settings screen's way to the key puts one there, asks whether there is one and takes it
+    /// away, and never reads one: it is on the list above as a whole file, so without this a read
+    /// added to it later would pass the sweep and hand the key to a screen.
+    /// </summary>
+    [Fact]
+    public void The_settings_screen_s_way_to_the_key_cannot_read_it()
+    {
+        var route = new FileInfo(
+            Path.Combine(RepositoryTree.Src.FullName, "MeetingTranscriber.App", "KeepingThisMachinesKey.cs"));
+
+        route.Exists.ShouldBeTrue();
+        File.ReadAllText(route.FullName).ShouldNotContain(".Read(");
+    }
 
     /// <summary>
     /// Which files under <c>src/</c> match <paramref name="pattern"/>, as paths from the project

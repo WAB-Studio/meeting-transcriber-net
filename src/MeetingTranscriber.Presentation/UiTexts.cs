@@ -704,12 +704,16 @@ public static class UiTexts
     // and never from LastError's own English. Above the press, on the meeting's own row.
 
     public static UiText NotSentNoKeyOnThisMachine { get; } = new(
-        "No se envió: esta máquina no guarda ninguna clave de Deepgram. No se cobró nada.",
-        "Not sent: no Deepgram key is kept on this machine. Nothing was charged.");
+        "No se envió: esta máquina no guarda ninguna clave de Deepgram. Puede guardar una en "
+        + "Configuración. No se cobró nada.",
+        "Not sent: no Deepgram key is kept on this machine. One can be kept from Settings. Nothing "
+        + "was charged.");
 
     public static UiText DeepgramRefusedTheKey { get; } = new(
-        "Deepgram no aceptó la clave de esta máquina. No se transcribió ni se cobró nada.",
-        "Deepgram would not accept this machine's key. Nothing was transcribed or charged.");
+        "Deepgram no aceptó la clave de esta máquina. Puede cambiarla en Configuración. No se "
+        + "transcribió ni se cobró nada.",
+        "Deepgram would not accept this machine's key. It can be changed from Settings. Nothing was "
+        + "transcribed or charged.");
 
     public static UiText DeepgramAccountOutOfCredit { get; } = new(
         "Deepgram rechazó la cuenta: no le queda crédito. No se transcribió nada.",
@@ -1232,6 +1236,63 @@ public static class UiTexts
     // the corpus, which is the recordings, the responses already paid for and everything read out
     // of them, and the sentence under it already says the word *reuniones*.
     public static UiText WhereItIsKept { get; } = new("Dónde se guarda", "Where it is kept");
+
+    // ── The settings screen, the Deepgram key ────────────────────────────────────────────────────
+    //
+    // Nothing here ever carries the key or any part of it: the screen says whether one is kept and
+    // what happened to a paste, and that is the whole of what it knows.
+
+    public static UiText DeepgramKeyHeader { get; } = new("Clave de Deepgram", "Deepgram key");
+
+    // The line under the field. A label and not a sentence: whether a key is kept is a state, and
+    // the one sentence this block gets is the one that says a paste failed.
+    public static UiText ADeepgramKeyIsKept { get; } =
+        new("Guardada en esta máquina", "Kept on this machine");
+
+    public static UiText NoDeepgramKeyIsKept { get; } =
+        new("Ninguna guardada en esta máquina", "None kept on this machine");
+
+    // Windows would not say. Not a guess either way: *Quitar* stays offered, since a key may be
+    // there to take away.
+    public static UiText WhetherADeepgramKeyIsKeptIsUnknown { get; } = new(
+        "Windows no dijo si hay una guardada en esta máquina",
+        "Windows would not say whether one is kept on this machine");
+
+    /// <summary>
+    /// The accessible name of the press that keeps a pasted key. It still shows <see cref="Save"/>,
+    /// and so does the press beside who is using the application, so a screen reader is told which.
+    /// </summary>
+    public static UiText SaveTheDeepgramKey { get; } =
+        new("Guardar la clave de Deepgram", "Save the Deepgram key");
+
+    // Taking the key off this machine, which is an act of its own in `docs/design.md`'s verb table.
+    public static UiText Remove { get; } = new("Quitar", "Remove");
+
+    public static UiText RemoveTheDeepgramKey { get; } =
+        new("Quitar la clave de Deepgram de esta máquina", "Remove the Deepgram key from this machine");
+
+    public static UiText TheDeepgramKeyIsKept { get; } = new(
+        "Listo: la clave de Deepgram quedó guardada en esta máquina.",
+        "Done: the Deepgram key is kept on this machine.");
+
+    public static UiText TheDeepgramKeyIsRemoved { get; } = new(
+        "Listo: esta máquina ya no guarda ninguna clave de Deepgram.",
+        "Done: this machine no longer keeps a Deepgram key.");
+
+    public static UiText TheDeepgramKeyWasNotRemoved { get; } = new(
+        "No se quitó: Windows no dejó quitar la clave de Deepgram de esta máquina.",
+        "Not removed: Windows would not take the Deepgram key off this machine.");
+
+    // The two ways a paste is refused, one per refusal `Keep` can make. Neither quotes what was
+    // pasted, and neither says what Windows said: the line under the field, read again afterwards,
+    // is what says whether a key is still kept.
+    public static UiText ThatIsNotADeepgramKey { get; } = new(
+        "No se guardó: la clave está vacía. Nada cambió en esta máquina.",
+        "Not kept: the key is empty. Nothing changed on this machine.");
+
+    public static UiText ThisMachineWouldNotKeepTheKey { get; } = new(
+        "No se guardó: esta máquina no aceptó guardar la clave de Deepgram.",
+        "Not kept: this machine would not store the Deepgram key.");
 
     // ── The settings screen, what it says about Claude Code ──────────────────────────────────────
 

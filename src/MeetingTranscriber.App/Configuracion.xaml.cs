@@ -14,9 +14,9 @@ using Microsoft.Windows.Storage.Pickers;
 namespace MeetingTranscriber.App;
 
 /// <summary>
-/// The settings screen: what should happen when a recording ends, what runs it, who is using this
-/// install and in which language, where the corpus is, what an export takes out of it, and where
-/// Claude Code is.
+/// The settings screen: what should happen when a recording ends, what runs it, the Deepgram key it
+/// transcribes with, who is using this install and in which language, where the corpus is, what an
+/// export takes out of it, and where Claude Code is.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -157,6 +157,13 @@ public sealed partial class Configuracion : UserControl
 
     private readonly ScreenStatus _status = new();
 
+    /// <summary>
+    /// Whether this machine held a Deepgram key the last time this screen asked, or
+    /// <see langword="null"/> when Windows would not say. A yes or a no and never the key: the
+    /// screen asks <see cref="KeepingThisMachinesKey"/>, which cannot read one.
+    /// </summary>
+    private bool? _aKeyIsKept;
+
     /// <summary>True once the window closed, so nothing draws into a control that is going.</summary>
     private bool _closed;
 
@@ -217,6 +224,7 @@ public sealed partial class Configuracion : UserControl
         FillTheLanguagePicker();
         ShowWhatHappensWhenARecordingEnds();
         ShowWhoIsUsingThis();
+        ShowTheKey();
         SayWhereTheCorpusIs();
         ShowTheExport();
         Render();
@@ -243,10 +251,12 @@ public sealed partial class Configuracion : UserControl
         ReadWhatHappensWhenARecordingEnds();
         ReadWhoIsUsingThis();
         ReadTheLastExport();
+        _aKeyIsKept = WhetherAKeyIsKept();
 
         FillTheLanguagePicker();
         ShowWhatHappensWhenARecordingEnds();
         ShowWhoIsUsingThis();
+        ShowTheKey();
         SayWhereTheCorpusIs();
         ShowTheExport();
         ShowWhereClaudeCodeIs();
@@ -260,6 +270,9 @@ public sealed partial class Configuracion : UserControl
     {
         _open = false;
         _status.Nothing();
+
+        // A key pasted and never saved does not wait in a screen nobody is looking at.
+        DeepgramKeyBox.Password = string.Empty;
         Render();
     }
 
@@ -650,6 +663,119 @@ public sealed partial class Configuracion : UserControl
         ShowWhereClaudeCodeIs();
         Render();
     }
+
+    /// <summary>
+    /// Asks whether this machine holds a Deepgram key, and answers nothing rather than ending the
+    /// application when Windows would not say — opening the settings screen is not something a
+    /// credential store gets to crash.
+    /// </summary>
+    private static bool? WhetherAKeyIsKept()
+    {
+        try
+        {
+            return KeepingThisMachinesKey.IsThere;
+        }
+        catch (DeepgramKeyException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Draws whether a Deepgram key is kept, and the press that takes it away while one may be.
+    /// </summary>
+    private void ShowTheKey()
+    {
+        var said = _aKeyIsKept switch
+        {
+            true => UiTexts.ADeepgramKeyIsKept,
+            false => UiTexts.NoDeepgramKeyIsKept,
+            null => UiTexts.WhetherADeepgramKeyIsKeptIsUnknown,
+        };
+
+        DeepgramKeyText.Text = said.In(_language);
+        RemoveTheKeyButton.Visibility = _aKeyIsKept is false ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>
+    /// The press is dead while the field holds nothing at all, which the empty field already says.
+    /// A paste of nothing but spaces is not dead: it shows as dots, so it reaches <c>Keep</c> and
+    /// comes back as the sentence saying it was empty, rather than as a press that will not go
+    /// with nothing to say why.
+    /// </summary>
+    private void OnDeepgramKeyTyped(object sender, RoutedEventArgs e) =>
+        KeepTheKeyButton.IsEnabled = DeepgramKeyBox.Password.Length > 0;
+
+    /// <summary>
+    /// Keeps what was pasted as this machine's Deepgram key, in place of whatever was there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every refusal is <c>Keep</c>'s and arrives as <see cref="DeepgramKeyException"/>, which is
+    /// caught by its kind and said in this screen's own words: its message is English written for a
+    /// prompt, and this screen speaks the language somebody chose.
+    /// </para>
+    /// <para>
+    /// The field is emptied whatever happened, and the store is asked again afterwards rather than
+    /// the line being set from the outcome: a write refused part-way may or may not have left the
+    /// key that was there before, and only asking says which.
+    /// </para>
+    /// </remarks>
+    private void OnKeepTheKey(object sender, RoutedEventArgs e)
+    {
+        UiText said;
+        try
+        {
+            KeepingThisMachinesKey.Keep(DeepgramKeyBox.Password);
+            said = UiTexts.TheDeepgramKeyIsKept;
+        }
+        catch (DeepgramKeyException refused)
+        {
+            said = Refused(refused.Refusal);
+        }
+        finally
+        {
+            DeepgramKeyBox.Password = string.Empty;
+        }
+
+        _aKeyIsKept = WhetherAKeyIsKept();
+        ShowTheKey();
+        Say(said);
+    }
+
+    /// <summary>
+    /// Takes the Deepgram key off this machine, and says it is gone only once the store, asked
+    /// again, says there is none.
+    /// </summary>
+    private void OnRemoveTheKey(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            KeepingThisMachinesKey.Forget();
+        }
+        catch (DeepgramKeyException)
+        {
+            // Said below: the store is asked again either way, and whatever it answers is the line.
+        }
+
+        _aKeyIsKept = WhetherAKeyIsKept();
+        ShowTheKey();
+        Say(_aKeyIsKept is false ? UiTexts.TheDeepgramKeyIsRemoved : UiTexts.TheDeepgramKeyWasNotRemoved);
+    }
+
+    /// <summary>What this screen says for each way a paste can be refused.</summary>
+    /// <remarks>
+    /// Keeping a key refuses in these two ways and no other — there being no key, or a store that
+    /// would not answer a read, are what asking says — so any other arm is a defect and not a
+    /// sentence.
+    /// </remarks>
+    private static UiText Refused(DeepgramKeyRefusal refusal) => refusal switch
+    {
+        DeepgramKeyRefusal.NothingInIt => UiTexts.ThatIsNotADeepgramKey,
+        DeepgramKeyRefusal.NotKept => UiTexts.ThisMachineWouldNotKeepTheKey,
+        _ => throw new InvalidOperationException(
+            $"Keeping a Deepgram key refused as '{refusal}', which only asking for one can say."),
+    };
 
     private void OnBack(object sender, RoutedEventArgs e) => Left?.Invoke(this, EventArgs.Empty);
 

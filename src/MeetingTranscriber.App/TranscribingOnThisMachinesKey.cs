@@ -11,7 +11,7 @@ namespace MeetingTranscriber.App;
 /// <remarks>
 /// Here and nowhere a suite can reference, the same reason <c>DeepgramCommands</c> is the command
 /// line's own site for the same call: <c>DeepgramKeyTests.Nothing_but_the_key_itself_reads_a_Deepgram_key</c>
-/// fails on a fourth file naming <see cref="DeepgramKey"/>, so a test that wanted to drive this
+/// fails on any file it does not list naming <see cref="DeepgramKey"/>, so a test that wanted to drive this
 /// class for real would be the second caller that guard exists to catch. What a suite gets instead
 /// is <see cref="MeetingTranscriber.Processing.Intake.SendingToTheProvider"/> itself — every fact
 /// about what a call comes to is proved against a lambda or a fake client, and this class adds

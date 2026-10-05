@@ -27,15 +27,14 @@ public delegate ConsoleKeyInfo Keystroke(bool intercept);
 /// <remarks>
 /// <para>
 /// A machine-level act, the same kind as <c>capture</c>, <c>recovery</c>, <c>rebuild</c> and
-/// <c>import-audio</c> — <c>docs/layout.md</c> says that is what the prompt is for. Whether a key
-/// field ever appears on a settings screen is not decided here and is not this command's to
-/// decide; if one does, it goes through <see cref="DeepgramKey.OfThisInstall"/> like everything
-/// else and the sweep in <c>DeepgramKeyTests</c> makes it declare itself.
+/// <c>import-audio</c> — <c>docs/layout.md</c> says that is what the prompt is for. The settings
+/// screen puts a key here too, through <c>KeepingThisMachinesKey</c> in the application, and both
+/// reach the same <see cref="DeepgramKey.Keep"/> so they answer the same paste the same way.
 /// </para>
 /// <para>
 /// It holds no rule of its own, which is <c>docs/layout.md</c>'s rule about this project and not a
 /// preference. Trimming, refusing an empty key and reading a write back are
-/// <see cref="DeepgramKey.Keep"/>'s, so a screen built later gets them for free; what is here is
+/// <see cref="DeepgramKey.Keep"/>'s, so the settings screen gets them for free; what is here is
 /// argument parsing, a keyboard, a report and an exit code.
 /// </para>
 /// <para>

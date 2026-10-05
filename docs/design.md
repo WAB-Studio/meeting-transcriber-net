@@ -269,6 +269,7 @@ already named.
 | Throw away a classification put by under a name | *Descartar* |
 | Add a person, anywhere | *Agregar a alguien* |
 | Add a path to a column | *Agregar* |
+| Take the Deepgram key off this machine | *Quitar* |
 
 A screen needing a verb that is not here either found a new act — which is a decision — or is saying
 one of these in its own words, which is the thing this table exists to stop.
@@ -290,6 +291,11 @@ ticked it is olivo with a papel check, the glyph 11px at stroke 3. The row is th
 the body size, ink — with no tint either way, because several rows are ticked at once and a tint on
 each would say nothing. The platform's own check box fills from the system accent, which §And five
 things this application is not forbids, so the control is `Tick` in `Olivo.xaml`.
+
+A field for a secret — the Deepgram key, the one there is — is the typed field showing dots, `TypedSecret` in
+`Olivo.xaml`, with the platform's reveal turned off: a secret on screen is a secret in whatever recorded
+the screen, and a meeting is when somebody is sharing theirs. It is emptied after every press, and
+nothing beside it ever says anything about what is in it beyond whether one is kept.
 
 An optional or empty control — *add somebody*, *+*, *none of these* — has no fill and a 1px
 `EmptyControlRingBrush` inset ring.
@@ -704,7 +710,11 @@ are separate choices with a separate cost each, and *a model on this machine* is
 them rather than a special case. Amounts go as `[costo]`. Under where the corpus is kept there are
 four ticks for what an export takes — the audio, the transcripts, the summaries and what somebody
 corrected by hand — with *Exportar* beside them at the normal rank, and one line saying when the last
-export was made, what it took and where it went.
+export was made, what it took and where it went. Under the two engines is the Deepgram key the first
+of them spends: a secret field with *Guardar* beside it at the normal rank, and under it one label
+saying whether a key is kept on this machine, with *Quitar* at the margin beside it while one is. The
+artboard does not draw it; it is here because without it a person who installed the application
+could record and never transcribe.
 
 **`Historia`** · A node's story. **The fourth kind of screen the product has**: every other one is
 about one meeting or about the list of them, and this one is about a thing several meetings hang

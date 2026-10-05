@@ -155,6 +155,7 @@ public sealed class TranscribingAMeetingTests
         var (_, job) = Queue(corpus);
 
         SendingToTheProvider send = (_, _, _, _) => throw new DeepgramKeyException(
+            DeepgramKeyRefusal.NoKey,
             "There is no Deepgram key on this machine, so nothing can be transcribed until one "
             + "is kept.");
 
