@@ -1,7 +1,7 @@
 ﻿---
 phase: climbing
-progress: 205/275
-updated: 2026-10-01
+progress: 205/281
+updated: 2026-10-05
 ---
 
 # ISA — meeting-transcriber-net
@@ -273,6 +273,12 @@ Board: 4 · Deepgram BYOK
 - [ ] ISC-193.1: With unattended advance on, a meeting whose transcription is estimated under the ceiling the person set — in the same money the estimate is shown in — goes through what they settled should follow a recording, its transcription and its summary when that was settled too, with nothing pressed.
 - [ ] ISC-193.2: Anti: with unattended advance on, a meeting whose transcription is estimated over that ceiling is not sent, and waits for somebody to approve its cost.
 - [ ] ISC-193.3: Anti: unattended advance is off until somebody turns it on.
+- [ ] ISC-210: The Deepgram key is put on this machine, replaced and taken off it from the application, with nothing typed at a command line.
+- [ ] ISC-210.1: Whether this machine holds a Deepgram key is read on the application's settings screen.
+- [ ] ISC-210.2: A key pasted into the application is the key this machine holds afterwards, in place of whatever it held before.
+- [ ] ISC-210.3: Taking the key off this machine from the application leaves it holding none.
+- [ ] ISC-210.4: Anti: the application never shows a Deepgram key — neither one this machine holds nor one being pasted.
+- [ ] ISC-210.5: Anti: a key this machine will not keep is refused in one sentence on the screen, and never as a crash.
 
 ### F6 · Summaries
 Why: a meeting becomes a summary whose every claim resolves to something said, using the user's
