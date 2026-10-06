@@ -710,12 +710,14 @@ Antes de llamar a Deepgram:
 - existe audio suficiente en los canales esperados;
 - el perfil de fuente coincide con el número de canales;
 - el idioma está configurado;
-- se muestra coste estimado y se solicita aprobación;
+- se muestran los minutos que se enviarían, estimados a partir de lo que se envía, y se solicita aprobación;
 - no existe un `deepgram.json` confirmado para esa versión del audio;
 - el SHA-256 del audio coincide con el de la ejecución aprobada.
 
-Los precios son configuración versionada, no constantes eternas. La UI muestra
-que el valor es una estimación y cuándo se actualizó la tabla.
+Ninguna pantalla muestra dinero: ningún proveedor cotiza un precio antes de una
+llamada, y una cifra escrita sin esa cotización sería inventada. El diálogo que
+aprueba una transcripción dice cuántos minutos se enviarán; el de un resumen
+dice el modelo y ninguna cifra.
 
 ### 6.6 Transcripción
 

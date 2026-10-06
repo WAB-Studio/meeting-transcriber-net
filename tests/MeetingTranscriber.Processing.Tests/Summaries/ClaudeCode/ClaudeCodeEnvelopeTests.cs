@@ -72,6 +72,31 @@ public class ClaudeCodeEnvelopeTests
         return data;
     }
 
+    [Fact]
+    public void The_entry_naming_the_model_asked_for_wins_over_the_default_s()
+    {
+        var output = Bytes(Wrap("""{"a":1}""", modelUsage: """
+            "modelUsage":{"claude-sonnet-4-5":{"outputTokens":900},"claude-opus-4-1":{"outputTokens":5}}
+            """.Trim()));
+
+        var asked = ClaudeCodeEnvelope.Read(output, ProviderVersion, "opus")
+            .ShouldBeOfType<SummaryProviderAnswer.Extracted>();
+        var none = ClaudeCodeEnvelope.Read(output, ProviderVersion)
+            .ShouldBeOfType<SummaryProviderAnswer.Extracted>();
+
+        asked.Model.ShouldBe("claude-opus-4-1");
+        none.Model.ShouldBe("claude-sonnet-4-5");
+    }
+
+    [Fact]
+    public void A_run_that_reported_no_usage_is_recorded_under_the_model_it_asked_for()
+    {
+        var output = Bytes(FakeClaudeCode.Envelope("""{"a":1}"""));
+
+        ClaudeCodeEnvelope.Read(output, ProviderVersion, "opus")
+            .ShouldBeOfType<SummaryProviderAnswer.Extracted>().Model.ShouldBe("opus");
+    }
+
     [Theory]
     [MemberData(nameof(NotAnExtraction))]
     public void An_envelope_with_no_extraction_says_so(byte[] standardOutput)

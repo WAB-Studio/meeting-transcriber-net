@@ -104,6 +104,13 @@ public sealed record WhatTheAiLeft(
     IReadOnlyList<LeftThing> Things,
     WhoWroteThis Wrote)
 {
+    /// <summary>
+    /// The summary's longer account of the meeting, drawn under <see cref="Abstract"/>, or none
+    /// when the run left no text there. An init property and not a fourth positional member, for
+    /// the reason <see cref="MeetingScreen.WhyTheSummaryWasRefused"/> gives.
+    /// </summary>
+    public string? Body { get; init; }
+
     /// <summary>A meeting nothing has been made of yet.</summary>
     public static WhatTheAiLeft Nothing { get; } = new(null, [], WhoWroteThis.Nobody);
 

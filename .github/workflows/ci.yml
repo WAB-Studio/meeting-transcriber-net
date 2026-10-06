@@ -183,6 +183,15 @@ jobs:
           Write-Host "Audit floor: $($entries.Count) entries, contract at $actual, $($paths.Count) paths resolve, stated once, $($readers.Count) readers point at it."
           exit 0
 
+      # Restoring is most of what a cold runner spends before the first test, and none of it changes
+      # until a package or a project does. The key is every file that can change what restore
+      # fetches, so a bump is a miss and everything else is a hit.
+      - uses: actions/cache@v4
+        with:
+          path: ~\.nuget\packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props', '**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
       - name: Restore
         run: dotnet restore
 
@@ -191,6 +200,17 @@ jobs:
 
       - name: Build
         run: dotnet build --no-restore -warnaserror
+
+      # Defender scanning every file a test creates and deletes is what makes a suite that makes
+      # thousands of small databases slow on a runner. The folder to leave alone is the one the tests
+      # write under, which is `Path.GetTempPath()` (`$env:TEMP`) — `TemporaryCorpus` makes its
+      # folders there — and not `$env:RUNNER_TEMP`, which holds nothing a test writes.
+      - name: Leave the tests' temporary folder out of Defender
+        shell: pwsh
+        # Best effort: an exclusion needs an elevated session, and a runner that refuses it is a
+        # slower run and not a failed one.
+        continue-on-error: true
+        run: Add-MpPreference -ExclusionPath ([IO.Path]::GetTempPath())
 
       - name: Test
         env:

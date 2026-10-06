@@ -133,6 +133,69 @@ public class MeetingRendererTests
     }
 
     /// <summary>
+    /// What a screen reads is what <c>utterances.jsonl</c> says, turn by turn: a correction
+    /// everywhere and one under a node both reach it, and the stored rows are left as the provider
+    /// returned them.
+    /// </summary>
+    [Fact]
+    public void What_a_screen_reads_carries_the_corrections_the_render_carries()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+        MeetingRenderer.Render(context, meeting, When);
+
+        var turns = context.Utterances.Where(turn => turn.MeetingId == meeting).OrderBy(turn => turn.Ordinal).ToList();
+        var everywhere = turns[0].Text.Split(' ')[0];
+        var underANode = turns.SelectMany(turn => turn.Text.Split(' ')).First(word => word != everywhere);
+
+        var human = new HumanLayer(context, TimeProvider.System);
+        var techsed = human.Root(NodeKind.Organization, "TechSed");
+        human.Link(meeting, techsed, MeetingNodeRole.WorkOf);
+        human.Correct(everywhere, "EN TODAS PARTES");
+        human.Correct(underANode, "BAJO UN NODO", under: techsed);
+
+        var read = MeetingRenderer.AsRead(context, meeting);
+        var rendered = MeetingRenderer.Render(context, meeting, When);
+
+        var jsonl = File.ReadAllLines(CorpusFiles.Locate(corpus.Root, rendered.Utterances.RelativePath).FullName)
+            .Select(line => System.Text.Json.JsonDocument.Parse(line).RootElement.GetProperty("text").GetString())
+            .ToArray();
+
+        read.Select(turn => turn.Text).ShouldBe(jsonl);
+        read[0].Text.ShouldContain("EN TODAS PARTES");
+        read.ShouldContain(turn => turn.Text.Contains("BAJO UN NODO", StringComparison.Ordinal));
+
+        // Stored words untouched, labels unchanged.
+        context.Utterances.Where(turn => turn.MeetingId == meeting).OrderBy(turn => turn.Ordinal)
+            .Select(turn => turn.Text).ToList().ShouldBe([.. turns.Select(turn => turn.Text)]);
+        read.Select(turn => turn.SpeakerLabel).ShouldBe([.. turns.Select(turn => turn.SpeakerLabel)]);
+    }
+
+    [Fact]
+    public void What_a_screen_reads_is_every_turn_in_order()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = Recorded(context, corpus.Root);
+        var rendered = MeetingRenderer.Render(context, meeting, When);
+
+        var read = MeetingRenderer.AsRead(context, meeting);
+
+        read.Count.ShouldBe(rendered.Turns);
+        read.Select(turn => turn.Ordinal).ShouldBe([.. Enumerable.Range(0, rendered.Turns)]);
+    }
+
+    [Fact]
+    public void What_a_screen_reads_of_a_meeting_the_corpus_does_not_hold_is_refused_by_name()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        Should.Throw<MeetingStageException>(() => MeetingRenderer.AsRead(context, Guid.NewGuid()));
+    }
+
+    /// <summary>
     /// A correction written against an organization reaches a meeting hanging off a project inside
     /// it. Upwards through the tree, which is the direction that needs saying out loud.
     /// </summary>

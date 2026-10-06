@@ -22,7 +22,8 @@ public static class ClaudeCodeEnvelope
     /// Reads one run's standard output as the envelope it has to be, or says what was missing and
     /// quotes as much of <c>"result"</c> as there was to quote.
     /// </summary>
-    public static SummaryProviderAnswer Read(byte[] standardOutput, string providerVersion)
+    public static SummaryProviderAnswer Read(
+        byte[] standardOutput, string providerVersion, string? modelAsked = null)
     {
         ArgumentNullException.ThrowIfNull(standardOutput);
         ArgumentNullException.ThrowIfNull(providerVersion);
@@ -72,7 +73,7 @@ public static class ClaudeCodeEnvelope
                 : null;
 
             return new SummaryProviderAnswer.Extracted(
-                NoBom.GetBytes(output), providerVersion, ChooseModel(root), sessionId);
+                NoBom.GetBytes(output), providerVersion, ChooseModel(root, modelAsked ?? ClaudeCodeSummaries.Model), sessionId);
         }
     }
 
@@ -96,7 +97,8 @@ public static class ClaudeCodeEnvelope
 
     /// <summary>
     /// The model that answered, chosen off <c>"modelUsage"</c>: the entry whose name contains
-    /// <see cref="ClaudeCodeSummaries.Model"/>, otherwise the one with the most
+    /// <paramref name="asked"/> (<see cref="ClaudeCodeSummaries.Model"/> when the run asked for no
+    /// other), otherwise the one with the most
     /// <c>"outputTokens"</c>, otherwise — with no <c>"modelUsage"</c> at all —
     /// <see cref="ClaudeCodeSummaries.Model"/> itself. The CLI bills housekeeping models in the same
     /// run, so the first key is not necessarily the one that answered.
@@ -108,11 +110,11 @@ public static class ClaudeCodeEnvelope
     /// keep whichever the object listed first — a rule this envelope has never seen exercised, and
     /// names here so a tie reads as decided rather than as an accident of enumeration order.
     /// </remarks>
-    private static string ChooseModel(JsonElement root)
+    private static string ChooseModel(JsonElement root, string asked)
     {
         if (!root.TryGetProperty("modelUsage", out var modelUsage) || modelUsage.ValueKind != JsonValueKind.Object)
         {
-            return ClaudeCodeSummaries.Model;
+            return asked;
         }
 
         string? matching = null;
@@ -122,7 +124,7 @@ public static class ClaudeCodeEnvelope
         foreach (var entry in modelUsage.EnumerateObject())
         {
             if (matching is null
-                && entry.Name.Contains(ClaudeCodeSummaries.Model, StringComparison.OrdinalIgnoreCase))
+                && entry.Name.Contains(asked, StringComparison.OrdinalIgnoreCase))
             {
                 matching = entry.Name;
             }
@@ -141,7 +143,7 @@ public static class ClaudeCodeEnvelope
             }
         }
 
-        return matching ?? mostTokens ?? ClaudeCodeSummaries.Model;
+        return matching ?? mostTokens ?? asked;
     }
 
     private static bool IsString(JsonElement owner, string key, string expected) =>

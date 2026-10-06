@@ -17,7 +17,7 @@ public sealed record LastExport(UtcTimestamp At, IReadOnlyList<ExportKind> Kinds
 /// <summary>
 /// The preferences a corpus carries: what the person using it settled once, read back the same way
 /// after the application was closed and reopened. It also remembers when the corpus was last
-/// exported and what went.
+/// exported and what went, and which model writes its summaries.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -99,6 +99,61 @@ public sealed class CorpusSettings(CorpusDbContext context)
             context.Settings.Add(new Setting
             {
                 Key = AfterARecordingKey,
+                Value = wire,
+                UpdatedAt = at,
+            });
+        }
+        else
+        {
+            stored.Value = wire;
+            stored.UpdatedAt = at;
+        }
+
+        context.SaveChanges();
+    }
+
+    /// <summary>
+    /// The key the model that writes summaries is stored under, by its wire name.
+    /// </summary>
+    public const string SummaryModelKey = "summary-model";
+
+    /// <summary>
+    /// The model a summary is asked of, or <see cref="Domain.Meetings.SummaryModel.Sonnet"/> when nobody
+    /// has chosen and when what is stored is not something this build knows.
+    /// </summary>
+    /// <remarks>
+    /// Nothing throws over what was read, as <see cref="WhenARecordingEnds()"/> does not. Sonnet is
+    /// the model every summary ran on before this was a choice, so a corpus that says nothing
+    /// keeps doing what it did.
+    /// </remarks>
+    public SummaryModel SummaryModel()
+    {
+        var stored = context.Settings
+            .AsNoTracking()
+            .FirstOrDefault(setting => setting.Key == SummaryModelKey)?
+            .Value;
+
+        return stored is not null
+            && WireNames<SummaryModel>.FromWire.TryGetValue(stored, out var chosen)
+            ? chosen
+            : Domain.Meetings.SummaryModel.Sonnet;
+    }
+
+    /// <summary>
+    /// Settles the model summaries are asked of, as of <paramref name="at"/>. One row, rewritten.
+    /// </summary>
+    /// <param name="chosen">What was chosen.</param>
+    /// <param name="at">When it was chosen, which is the press that chose it.</param>
+    public void SummaryModel(SummaryModel chosen, UtcTimestamp at)
+    {
+        var wire = WireNames<SummaryModel>.Of(chosen);
+        var stored = context.Settings.FirstOrDefault(setting => setting.Key == SummaryModelKey);
+
+        if (stored is null)
+        {
+            context.Settings.Add(new Setting
+            {
+                Key = SummaryModelKey,
                 Value = wire,
                 UpdatedAt = at,
             });

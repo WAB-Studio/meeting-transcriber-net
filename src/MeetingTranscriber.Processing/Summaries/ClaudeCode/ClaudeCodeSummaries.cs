@@ -52,13 +52,14 @@ public sealed class ClaudeCodeSummaries : ISummaryProvider
     /// The arguments a run is started with, always in this order. Nothing from the meeting and no
     /// path from the corpus is ever among them — the prompt goes in on standard input — and an
     /// argument the installed CLI does not know fails the run loudly rather than reaching further
-    /// than was asked.
+    /// than was asked. The model is the one the request asks for, or <see cref="Model"/> when it
+    /// asks for none.
     /// </summary>
-    private static readonly IReadOnlyList<string> ArgumentsForARun =
+    private static IReadOnlyList<string> ArgumentsForARun(string model) =>
     [
         "-p",
         "--output-format", "json",
-        "--model", Model,
+        "--model", model,
         "--tools", string.Empty,
         "--strict-mcp-config",
         "--setting-sources", "project",
@@ -143,6 +144,7 @@ public sealed class ClaudeCodeSummaries : ISummaryProvider
                 memory.FullName);
         }
 
+        var model = request.Model ?? Model;
         var workspace = ClaudeCodeWorkspace.Build(_workspaces, request);
         try
         {
@@ -153,7 +155,7 @@ public sealed class ClaudeCodeSummaries : ISummaryProvider
             try
             {
                 result = await RunAsync(
-                    executable, ArgumentsForARun, workspace.Folder, workspace.Prompt, timeout.Token)
+                    executable, ArgumentsForARun(model), workspace.Folder, workspace.Prompt, timeout.Token)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (!stopping.IsCancellationRequested)
@@ -172,7 +174,7 @@ public sealed class ClaudeCodeSummaries : ISummaryProvider
                     $"Claude Code exited with code {result.ExitCode}: {FirstLine(result.StandardError, 200)}");
             }
 
-            return ClaudeCodeEnvelope.Read(result.StandardOutput, checkedOnce.Availability.Version!);
+            return ClaudeCodeEnvelope.Read(result.StandardOutput, checkedOnce.Availability.Version!, model);
         }
         finally
         {
