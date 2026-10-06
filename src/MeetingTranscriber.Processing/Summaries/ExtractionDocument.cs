@@ -7,6 +7,10 @@ namespace MeetingTranscriber.Processing.Summaries;
 /// the shape says it belongs and nothing else is there. Nothing here says whether the meeting
 /// supports it — <see cref="Summaries.ExtractionCheck"/> is what asks that.
 /// </summary>
+/// <param name="Title">
+/// A short name for the meeting, or <c>null</c> when the document carries none. Optional because a
+/// missing title is no reason to refuse a good summary: the schema version stays <c>"1"</c>.
+/// </param>
 public sealed record ExtractionDocument(
     string SchemaVersion,
     Guid MeetingId,
@@ -15,7 +19,8 @@ public sealed record ExtractionDocument(
     IReadOnlyList<string> Participants,
     IReadOnlyList<ExtractedDecision> Decisions,
     IReadOnlyList<ExtractedAction> Actions,
-    IReadOnlyList<ExtractedQuestion> OpenQuestions);
+    IReadOnlyList<ExtractedQuestion> OpenQuestions,
+    string? Title = null);
 
 /// <summary>
 /// Where a decision, an action or an open question was said: the turn it names, and the words it

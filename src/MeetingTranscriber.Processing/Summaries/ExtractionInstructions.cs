@@ -31,7 +31,8 @@ public static class ExtractionInstructions
 
         Answer with one JSON object in exactly the shape schema.md describes, and nothing before or after it.
 
-        - Write the abstract, the summary and every statement in the language the meeting was held in.
+        - Write the abstract, the title, the summary and every statement in the language the meeting was held in.
+        - title is a short name for the meeting, a few words, the way a person would label it in a list.
         - Every decision, action and open question cites the one turn it was said in: that turn's ordinal,
           its start_ms and its speaker_label exactly as meeting.json gives them, and quoted_text copied word
           for word from that turn's text.
@@ -72,6 +73,7 @@ public static class ExtractionInstructions
           "schema_version": "1",
           "meeting_id": "00000000-0000-0000-0000-000000000000",
           "abstract": "El equipo revisó el lanzamiento de la campaña y quién sigue cada frente.",
+          "title": "Lanzamiento de la campaña",
           "summary": "Se repasó el estado de la campaña, se fijó una fecha para el envío del primer correo y quedó pendiente resolver el presupuesto de publicidad paga.",
           "participants": ["ch1:speaker_0", "ch0:speaker_0"],
           "decisions": [
@@ -126,6 +128,7 @@ public static class ExtractionInstructions
         - schema_version: the string "1".
         - meeting_id: the meeting's id, as a string.
         - abstract: one or two sentences saying what the meeting was for. Never empty.
+        - title: optional. A short name for the meeting, a few words. Never empty when present.
         - summary: a longer account of the meeting. It may be empty.
         - participants: an array of speaker labels.
         - decisions: an array of objects with "statement" and "evidence".

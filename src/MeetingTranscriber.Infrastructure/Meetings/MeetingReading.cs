@@ -275,6 +275,34 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
     }
 
     /// <summary>
+    /// Names the meeting <paramref name="title"/> when nobody has named it, and leaves it alone
+    /// when somebody has.
+    /// </summary>
+    /// <remarks>
+    /// What a summary calls the meeting is a suggestion for a meeting that reads <em>Sin nombre</em>,
+    /// never a correction of a name a person typed — so the question is asked on the row as it is now,
+    /// not on what was read when the summary began, and a second summary never renames. It writes
+    /// through <see cref="HumanLayer.Describe"/> like <see cref="Name"/>, so the recovery card follows.
+    /// </remarks>
+    /// <returns>Whether the meeting was named.</returns>
+    /// <exception cref="MeetingStageException">There is no such meeting in this corpus.</exception>
+    public bool NameIfNobodyHas(Guid meetingId, string title)
+    {
+        var meeting = context.Meetings.FirstOrDefault(row => row.Id == meetingId)
+            ?? throw new MeetingStageException($"This corpus holds no meeting {meetingId}.");
+
+        var named = title?.Trim();
+
+        if (string.IsNullOrEmpty(named) || meeting.Title is not null)
+        {
+            return false;
+        }
+
+        new HumanLayer(context, clock).Describe(meeting, named, meeting.Context);
+        return true;
+    }
+
+    /// <summary>
     /// The file this meeting plays from, when one is really there, and which of the three states
     /// its recording is in either way.
     /// </summary>

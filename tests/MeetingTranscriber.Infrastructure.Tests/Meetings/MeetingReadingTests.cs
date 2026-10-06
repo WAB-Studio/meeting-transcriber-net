@@ -749,6 +749,35 @@ public class MeetingReadingTests
     }
 
     [Fact]
+    public void Naming_if_nobody_has_leaves_a_named_meeting_alone()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(context, Recorded, [], root: corpus.Root);
+        var reading = new MeetingReading(context, Clock);
+
+        reading.Name(meeting, "Llamada");
+
+        reading.NameIfNobodyHas(meeting, "Lanzamiento").ShouldBeFalse();
+        context.Meetings.Single(row => row.Id == meeting).Title.ShouldBe("Llamada");
+    }
+
+    [Fact]
+    public void Naming_if_nobody_has_writes_the_recovery_card()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(context, Recorded, [], root: corpus.Root);
+
+        new MeetingReading(context, Clock).NameIfNobodyHas(meeting, " Lanzamiento ").ShouldBeTrue();
+
+        context.Meetings.Single(row => row.Id == meeting).Title.ShouldBe("Lanzamiento");
+        MeetingManifest.Read(
+                CorpusFiles.Locate(corpus.Root, CorpusFiles.PathFor(meeting, MeetingManifest.FileName)))
+            .Title.ShouldBe("Lanzamiento");
+    }
+
+    [Fact]
     public void A_meeting_this_corpus_does_not_hold_is_refused_by_name()
     {
         using var corpus = new TemporaryCorpus();
