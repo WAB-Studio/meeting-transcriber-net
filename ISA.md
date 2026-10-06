@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 203/288
+progress: 203/293
 updated: 2026-10-05
 ---
 
@@ -368,6 +368,11 @@ Board: 7 · Distribución y backup
 - [ ] ISC-206: The repository produces one signed package a machine can install, and what is inside it is what its manifest says.
 - [ ] ISC-215: The installed application is called Meeting Transcriber wherever Windows lists it, never by the name of a project in this repository.
 - [ ] ISC-216: Installing the application puts a shortcut to it on the desktop.
+- [ ] ISC-217: The installed application is shown by its own mark wherever Windows draws it, never by a placeholder or a generic icon.
+- [ ] ISC-217.1: Every image the package names for Windows to draw is the application's mark, at every scale and target size Windows chooses between.
+- [ ] ISC-217.2: The mark the taskbar and Start draw with nothing behind it stands out from a light taskbar and from a dark one.
+- [ ] ISC-217.3: The application's window carries the mark in its title bar.
+- [ ] ISC-217.4: The desktop shortcut the install makes shows the mark.
 
 ## Not yet specified
 
