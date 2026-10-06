@@ -304,7 +304,7 @@ everywhere else in this application. *Detenida* is the one that waits on a perso
 primary ink to be noticed; the others are quiet.
 
 A drop-down is a 34-high control on papel with a 1px `#E6E4DE` rule and an 11px chevron in
-secondary. Its open list stands directly under the pill and inside the window, no taller than the
+secondary. Its open list is placed under the pill from code once the platform opens it (`PickerList`); it is still a window of its own, and that it stays under the pill has not been photographed. It is no taller than the
 control's `MaxDropDownHeight` and as wide as the pill, or 560 where a program's name needs it, held
 to the room the window has to the right of the pill. No control offers a two-way choice now. When one does, it is two halves inside a `#E6E4DE`
 trough with 3px of padding, the trough at radius 4 and each half at 3; the chosen one is papel with

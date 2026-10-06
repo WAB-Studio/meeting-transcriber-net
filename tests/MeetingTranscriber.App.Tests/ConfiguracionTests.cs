@@ -197,6 +197,7 @@ public class ConfiguracionTests
 
         // The runner is stopped before the copy, and the folder is recorded inside the copy's own
         // rollback, after it was found whole.
+        handler.ShouldContain("await stop()");
         handler.IndexOf("await stop()", StringComparison.Ordinal)
             .ShouldBeLessThan(handler.IndexOf("CorpusMove.Copy(", StringComparison.Ordinal));
         handler.ShouldContain("whenWhole: () => CorpusLocation.OfThisUser().Choose(to)");

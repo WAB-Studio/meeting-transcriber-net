@@ -114,6 +114,43 @@ public class CorpusMoveTests
         Everything(old.Root).ShouldBe(before);
     }
 
+    /// <summary>
+    /// ISC-223.2 and ISC-223.3: the folder is recorded as where the meetings are only after every
+    /// file was found whole, so a copy that is not found whole never reaches <c>whenWhole</c>.
+    /// </summary>
+    /// <remarks>
+    /// Goes red with <c>whenWhole?.Invoke()</c> moved above <c>FindEveryFileWhole</c> in
+    /// <see cref="CorpusMove.Copy"/>: the flag is set before the damaged file is found.
+    /// </remarks>
+    [Fact]
+    public void A_copy_not_found_whole_is_never_recorded()
+    {
+        using var old = new TemporaryCorpus();
+        using var arrived = new TemporaryCorpus();
+        FillIn(old, meetings: 1);
+
+        string damaged;
+        using (var context = CorpusDatabase.Open(old.Root))
+        {
+            damaged = context.Artifacts.First().RelativePath;
+        }
+
+        CorpusDatabase.ClearPoolsFor(old.Root);
+        File.AppendAllText(CorpusFiles.Locate(old.Root, damaged).FullName, "changed after it was hashed");
+
+        var recorded = false;
+
+        Should.Throw<IOException>(
+            () => CorpusMove.Copy(
+                old.Root,
+                arrived.Root,
+                CancellationToken.None,
+                whenWhole: () => recorded = true,
+                applicationData: NoApplicationData));
+
+        recorded.ShouldBeFalse();
+    }
+
     [Fact]
     public void A_file_the_corpus_records_and_the_folder_does_not_hold_undoes_the_move()
     {

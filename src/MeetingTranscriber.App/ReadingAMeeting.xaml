@@ -115,20 +115,8 @@
             <Style x:Key="TheSelectionsPress" TargetType="Button" BasedOn="{StaticResource PillButton}" />
 
             <!-- Play and pause as one glyph at the control height, the shape of a press that does
-                 one thing and says which in its name and tooltip. Waits on `IconButton` in the
-                 dictionary, which another change adds; until it lands this is the same press
-                 spelled from what is there: the margin rank, square at `ControlHeight`, a 1px rule. -->
-            <Style x:Key="ThePlayGlyph" TargetType="Button" BasedOn="{StaticResource ButtonAtTheMargin}">
-                <Setter Property="Width" Value="{StaticResource ControlHeight}" />
-                <Setter Property="MinWidth" Value="{StaticResource ControlHeight}" />
-                <Setter Property="Height" Value="{StaticResource ControlHeight}" />
-                <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
-                <Setter Property="Padding" Value="0" />
-                <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="BorderBrush" Value="{ThemeResource EmptyControlRingBrush}" />
-                <Setter Property="HorizontalContentAlignment" Value="Center" />
-                <Setter Property="VerticalContentAlignment" Value="Center" />
-            </Style>
+                 one thing and says which in its name and tooltip. -->
+            <Style x:Key="ThePlayGlyph" TargetType="Button" BasedOn="{StaticResource IconButton}" />
 
             <!-- One thing this meeting was filed under: the whole path down the tree, as one chip.
                  The path and not its deepest node alone, because *ticket #4312* on its own says

@@ -14,9 +14,10 @@ namespace MeetingTranscriber.App;
 /// A <c>ComboBox</c> opens its list in a popup of its own window, placed by the platform for a
 /// carousel: over the entry that is chosen, and with nothing bounding it, as wide as the monitor.
 /// Neither <c>ShouldConstrainToRootBounds</c> nor <c>DesiredPlacement</c> on the template's popup
-/// changed that, which a photograph of the whole desktop showed. What does hold is moving the
-/// popup after the platform has opened it: its offsets are put where the pill's own bottom edge is
-/// and its width is bounded by the window, queued at low priority because the platform sets its
+/// changed that, which a photograph of the whole desktop showed. This moves the
+/// popup after the platform opens it: its offsets are put where the pill's own bottom edge is
+/// and its width is bounded by the window. Whether the platform leaves those offsets in place has
+/// not been seen on screen yet (fb-67). The move is queued at low priority because the platform sets its
 /// own offsets while it opens and a write made during <c>DropDownOpened</c> is overwritten by them.
 /// </remarks>
 public static class PickerList
