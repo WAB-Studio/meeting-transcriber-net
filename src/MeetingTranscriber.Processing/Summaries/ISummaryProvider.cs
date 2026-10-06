@@ -103,6 +103,12 @@ public sealed record ExtractionRequest(
     /// asks for no model, and every caller that does not choose one stays as it was.
     /// </summary>
     public string? Model { get; init; }
+
+    /// <summary>
+    /// How much reasoning the call asks for, as the provider's own level name, or nothing for the
+    /// provider's default. An init property for the reason <see cref="Model"/> is one.
+    /// </summary>
+    public string? Effort { get; init; }
 }
 
 /// <summary>

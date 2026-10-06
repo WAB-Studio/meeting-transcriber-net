@@ -249,6 +249,39 @@ public class SummarisingAMeetingTests
         provider.Requests.ShouldAllBe(request => request.Model == "opus");
     }
 
+    [Fact]
+    public async Task No_effort_chosen_asks_high()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = Arrange(corpus);
+        var provider = new FakeSummaries().Answering(Extracted(Accepted(meeting)));
+
+        await SummariseAsync(corpus, jobId, provider);
+
+        provider.Requests.Single().Effort.ShouldBe("high");
+    }
+
+    [Fact]
+    public async Task The_effort_chosen_is_the_one_asked_for()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = Arrange(corpus);
+        using (var context = corpus.OpenMigrated())
+        {
+            new CorpusSettings(context).SummaryEffort(SummaryEffort.Low, Recorded);
+        }
+
+        var broken = Accepted(meeting);
+        Remove(broken, "abstract");
+        var provider = new FakeSummaries().Answering(Extracted(broken), Extracted(Accepted(meeting)));
+
+        await SummariseAsync(corpus, jobId, provider);
+
+        // Both rounds, so one job asks one effort.
+        provider.Requests.Count.ShouldBe(2);
+        provider.Requests.ShouldAllBe(request => request.Effort == "low");
+    }
+
     /// <summary>ISC-116.</summary>
     [Fact]
     public async Task A_statement_nothing_supports_comes_back_accepted_only_without_it()

@@ -3,7 +3,6 @@ using MeetingTranscriber.Presentation;
 using MeetingTranscriber.Processing.Jobs;
 using MeetingTranscriber.Recording;
 
-using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 
 using Windows.System.UserProfile;
@@ -29,6 +28,7 @@ namespace MeetingTranscriber.App;
 public partial class App : Application
 {
     private readonly LanguageChoice _choice = LanguageChoice.OfThisUser();
+    private readonly ThemeChoice _theme = ThemeChoice.OfThisUser();
 
     private MainWindow? _main;
     private PackagingChecksWindow? _checks;
@@ -134,9 +134,9 @@ public partial class App : Application
     {
         var window = new MainWindow(_language, corpus);
 
-        // The title bar is the one part of a window the application's theme does not reach, so it
-        // is told to follow the app's own mode, which is Windows' while `RequestedTheme` is unset.
-        window.AppWindow.TitleBar.PreferredTheme = TitleBarTheme.UseDefaultAppMode;
+        // The theme somebody chose, or Windows' own: the title bar is the one part of a window the
+        // content's theme does not reach, which is why this is one call and not a property.
+        ShownInTheme.Apply(window, ChosenTheme());
         window.AppWindow.SetIcon(TheMark);
         window.LanguageChosen += OnLanguageChosen;
         window.PackagingChecksAsked += OnPackagingChecksAsked;
@@ -282,6 +282,15 @@ public partial class App : Application
     }
 
     /// <summary>
+    /// The theme somebody chose, read from the file the settings screen writes it to and read again
+    /// for each window the application makes. Not held in a field: the pick is made on a screen of
+    /// a window that is already open, and the next window made — one replacing it over another
+    /// corpus — has to follow it without the pick travelling up through the window. A file that
+    /// cannot be read follows Windows, which is what <see cref="ThemeChoice.Read"/> answers.
+    /// </summary>
+    private AppTheme ChosenTheme() => _theme.Read();
+
+    /// <summary>
     /// What Windows is set to, most wanted first. <c>GlobalizationPreferences</c> rather than
     /// <c>ApplicationLanguages</c> on purpose: the second is already narrowed to what this
     /// application declares it speaks, so asking it would be asking ourselves.
@@ -302,7 +311,7 @@ public partial class App : Application
         }
 
         var window = new PackagingChecksWindow(_language);
-        window.AppWindow.TitleBar.PreferredTheme = TitleBarTheme.UseDefaultAppMode;
+        ShownInTheme.Apply(window, ChosenTheme());
         window.AppWindow.SetIcon(TheMark);
         window.LanguageChosen += OnLanguageChosen;
         window.Closed += (_, _) => _checks = null;

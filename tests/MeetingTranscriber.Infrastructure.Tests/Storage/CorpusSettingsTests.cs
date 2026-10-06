@@ -203,6 +203,81 @@ public class CorpusSettingsTests
     }
 
     [Fact]
+    public void No_effort_chosen_reads_as_high()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        new CorpusSettings(context).SummaryEffort().ShouldBe(SummaryEffort.High);
+    }
+
+    [Theory]
+    [InlineData(SummaryEffort.High)]
+    [InlineData(SummaryEffort.Medium)]
+    [InlineData(SummaryEffort.Low)]
+    public void An_effort_chosen_is_read_back(SummaryEffort chosen)
+    {
+        using var corpus = new TemporaryCorpus();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            var settings = new CorpusSettings(writing);
+
+            // Another effort first, so the answer read back is the rewrite of one row and not the
+            // only row there was.
+            settings.SummaryEffort(SummaryEffort.High == chosen ? SummaryEffort.Low : SummaryEffort.High, Chosen);
+            settings.SummaryEffort(chosen, Chosen + Duration.FromSeconds(5));
+        }
+
+        using var reopened = corpus.Open();
+        new CorpusSettings(reopened).SummaryEffort().ShouldBe(chosen);
+        reopened.Settings.Count(row => row.Key == CorpusSettings.SummaryEffortKey).ShouldBe(1);
+    }
+
+    [Fact]
+    public void A_stored_effort_this_build_cannot_read_is_high()
+    {
+        using var corpus = new TemporaryCorpus();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            writing.Settings.Add(new Setting
+            {
+                Key = CorpusSettings.SummaryEffortKey,
+                Value = "ludicrous",
+                UpdatedAt = Chosen,
+            });
+
+            writing.SaveChanges();
+        }
+
+        using var reopened = corpus.Open();
+        new CorpusSettings(reopened).SummaryEffort().ShouldBe(SummaryEffort.High);
+    }
+
+    /// <summary>
+    /// The three names the effort is stored under, which are also the levels Claude Code's
+    /// <c>--effort</c> takes: a renamed member would change what is asked of the provider as well as
+    /// what is stored.
+    /// </summary>
+    [Theory]
+    [InlineData(SummaryEffort.High, "high")]
+    [InlineData(SummaryEffort.Medium, "medium")]
+    [InlineData(SummaryEffort.Low, "low")]
+    public void The_summary_efforts_names_on_disk(SummaryEffort chosen, string stored)
+    {
+        using var corpus = new TemporaryCorpus();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            new CorpusSettings(writing).SummaryEffort(chosen, Chosen);
+        }
+
+        using var reopened = corpus.Open();
+        reopened.Settings.Single().Value.ShouldBe(stored);
+    }
+
+    [Fact]
     public void A_corpus_nobody_has_exported_says_so()
     {
         using var corpus = new TemporaryCorpus();

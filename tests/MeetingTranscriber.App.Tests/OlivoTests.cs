@@ -673,10 +673,13 @@ public partial class OlivoTests
     [Fact]
     public void The_application_follows_Windows_and_each_window_it_opens_says_so_to_its_title_bar()
     {
-        // Leaving RequestedTheme unset is the whole mechanism by which the window follows a switch
-        // of Windows' theme, so putting it back is the one edit that turns the feature off with
-        // every other check green. The title bar is the one part of a window the application's
-        // theme does not reach: each window the application makes is told to follow it.
+        // The application follows Windows unless a theme was chosen, and *Sistema* is what nobody
+        // having chosen reads as. Leaving Application.RequestedTheme unset is the whole mechanism by
+        // which the window follows a switch of Windows' theme (and it throws once the application
+        // runs, so a chosen theme could never be put there), so putting it back is the one edit that
+        // turns both off with every other check green. A chosen theme is put on each window's root
+        // content, and with it the title bar, the one part of a window the content's theme does not
+        // reach: each window the application makes goes through `ShownInTheme.Apply`.
         File.ReadAllText(AppSources.At(Path.Combine("MeetingTranscriber.App", "App.xaml")).FullName)
             .ShouldNotContain("RequestedTheme=");
 
@@ -691,8 +694,8 @@ public partial class OlivoTests
             launch[made..]
                 .Split('\n')
                 .Take(8)
-                .Any(line => line.Contains("PreferredTheme = TitleBarTheme.UseDefaultAppMode", StringComparison.Ordinal))
-                .ShouldBeTrue($"the window made by {window} is not told to follow the application's theme.");
+                .Any(line => line.Contains("ShownInTheme.Apply(", StringComparison.Ordinal))
+                .ShouldBeTrue($"the window made by {window} is not shown in the application's theme.");
         }
     }
 

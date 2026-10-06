@@ -7,7 +7,9 @@ using MeetingTranscriber.Processing.Summaries;
 using MeetingTranscriber.Recording;
 
 using Microsoft.UI;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Windows.Storage.Pickers;
 
@@ -15,8 +17,8 @@ namespace MeetingTranscriber.App;
 
 /// <summary>
 /// The settings screen: what should happen when a recording ends, what runs it, the Deepgram key it
-/// transcribes with, who is using this install and in which language, where the corpus is, what an
-/// export takes out of it, and where Claude Code is.
+/// transcribes with, who is using this install, the language and theme the application is read and
+/// drawn in, where the corpus is, what an export takes out of it, and where Claude Code is.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -67,6 +69,12 @@ public sealed partial class Configuracion : UserControl
     /// <summary>The order the model picker offers and reads a selection back in, for the same reason.</summary>
     private static readonly SummaryModel[] Models = Enum.GetValues<SummaryModel>();
 
+    /// <summary>The effort picker's order, for the same reason.</summary>
+    private static readonly SummaryEffort[] Efforts = Enum.GetValues<SummaryEffort>();
+
+    /// <summary>The theme picker's order, for the same reason.</summary>
+    private static readonly AppTheme[] Themes = Enum.GetValues<AppTheme>();
+
     /// <summary>
     /// Where this application's corpus is, or what stopped it being found. Handed over once by the
     /// window that holds this, for the reason the sibling screens give: what XAML constructs takes
@@ -82,6 +90,12 @@ public sealed partial class Configuracion : UserControl
     private WindowId _window;
 
     private UiLanguage _language;
+
+    /// <summary>
+    /// The theme the application is drawn in, as of the last time this screen read the file it is
+    /// kept in. Read there and not asked of the window: a pick is what writes it.
+    /// </summary>
+    private AppTheme _theme = AppTheme.System;
 
     /// <summary>Whether this screen is up. There is no meeting under it, so nothing else says.</summary>
     private bool _open;
@@ -159,24 +173,33 @@ public sealed partial class Configuracion : UserControl
     /// <summary>What was last asked of the model picker, for the reason the field above gives.</summary>
     private SummaryModel _wantedSummaryModel = SummaryModel.Sonnet;
 
+    /// <summary>How much reasoning summaries are asked for, as of the last read or write.</summary>
+    private SummaryEffort _summaryEffort = SummaryEffort.High;
+
+    /// <summary>What was last asked of the effort picker, for the reason the field above gives.</summary>
+    private SummaryEffort _wantedSummaryEffort = SummaryEffort.High;
+
     /// <summary>
     /// Which choice of what happens after a recording is the newest. A write that comes up in turn
     /// and finds a newer one waiting writes nothing: the last choice wins, and the one before it
     /// was never going to be seen.
     /// </summary>
-    private int _afterARecordingAsk;
+    private readonly LastChoice _afterARecordingChoice = new();
 
-    /// <summary>The same number for the model picker.</summary>
-    private int _summaryModelAsk;
+    /// <summary>The same for the model picker.</summary>
+    private readonly LastChoice _summaryModelChoice = new();
+
+    /// <summary>The same for the effort picker.</summary>
+    private readonly LastChoice _summaryEffortChoice = new();
 
     /// <summary>
-    /// The end of the line of writes. Everything this screen writes to the corpus waits for the one
-    /// before it: the first step puts a name and an after-recording choice on one screen, and on a
-    /// fresh install two writes at once are two migrations of a folder with no schema racing for
-    /// one write lock — which <see cref="WhoIsUsingThisRow.BeingKept"/> alone could not see across
-    /// two different writes.
+    /// The line of writes. Everything this screen writes to the corpus waits for the one before it:
+    /// the first step puts a name and an after-recording choice on one screen, and on a fresh
+    /// install two writes at once are two migrations of a folder with no schema racing for one
+    /// write lock — which <see cref="WhoIsUsingThisRow.BeingKept"/> alone could not see across two
+    /// different writes. What it does is <see cref="WritesInTurn"/>'s, which runs.
     /// </summary>
-    private Task _lastWrite = Task.CompletedTask;
+    private readonly WritesInTurn _writes = new();
 
     /// <summary>
     /// Whether this screen is open as the first step: while nobody has said who is using the
@@ -272,9 +295,12 @@ public sealed partial class Configuracion : UserControl
 
         ReadWhatHappensWhenARecordingEnds();
         _aKeyIsKept = WhetherAKeyIsKept();
+        _theme = ThemeChoice.OfThisUser().Read();
 
         FillTheLanguagePicker();
+        FillTheThemePicker();
         FillTheModelPicker();
+        FillTheEffortPicker();
         ShowWhatHappensWhenARecordingEnds();
         ShowWhoIsUsingThis();
         ShowTheKey();
@@ -296,7 +322,9 @@ public sealed partial class Configuracion : UserControl
         Bindings.Update();
 
         FillTheLanguagePicker();
+        FillTheThemePicker();
         FillTheModelPicker();
+        FillTheEffortPicker();
         ShowWhatHappensWhenARecordingEnds();
         ShowWhoIsUsingThis();
         ShowTheKey();
@@ -330,9 +358,12 @@ public sealed partial class Configuracion : UserControl
         ReadWhoIsUsingThis();
         ReadTheLastExport();
         _aKeyIsKept = WhetherAKeyIsKept();
+        _theme = ThemeChoice.OfThisUser().Read();
 
         FillTheLanguagePicker();
+        FillTheThemePicker();
         FillTheModelPicker();
+        FillTheEffortPicker();
         ShowWhatHappensWhenARecordingEnds();
         ShowWhoIsUsingThis();
         ShowTheKey();
@@ -376,8 +407,8 @@ public sealed partial class Configuracion : UserControl
             "The settings screen was never given a corpus, so it has nothing to answer about.");
 
     /// <summary>
-    /// Reads what was settled about a recording that ends, and the model summaries are asked of —
-    /// the two preferences the corpus keeps for the whole install.
+    /// Reads what was settled about a recording that ends, and the model and the effort summaries
+    /// are asked with — the preferences the corpus keeps for the whole install.
     /// </summary>
     /// <remarks>
     /// A corpus nobody has answered in really does answer <see cref="AfterARecording.DoNothing"/>,
@@ -390,6 +421,7 @@ public sealed partial class Configuracion : UserControl
     {
         _afterARecording = AfterARecording.DoNothing;
         _summaryModel = SummaryModel.Sonnet;
+        _summaryEffort = SummaryEffort.High;
         _settledIsKnown = true;
 
         try
@@ -400,6 +432,7 @@ public sealed partial class Configuracion : UserControl
                 var settings = new CorpusSettings(context);
                 _afterARecording = settings.WhenARecordingEnds();
                 _summaryModel = settings.SummaryModel();
+                _summaryEffort = settings.SummaryEffort();
             }
         }
         catch (Exception wouldNotRead) when (ScreenFailures.Reportable(wouldNotRead))
@@ -413,6 +446,7 @@ public sealed partial class Configuracion : UserControl
 
         _wantedAfterARecording = _afterARecording;
         _wantedSummaryModel = _summaryModel;
+        _wantedSummaryEffort = _summaryEffort;
     }
 
     /// <summary>
@@ -559,19 +593,35 @@ public sealed partial class Configuracion : UserControl
         }
 
         SummaryModelPicker.IsEnabled = live;
+
+        _filling = true;
+        try
+        {
+            EffortPicker.SelectedIndex = _settledIsKnown ? Array.IndexOf(Efforts, _wantedSummaryEffort) : -1;
+        }
+        finally
+        {
+            _filling = false;
+        }
+
+        EffortPicker.IsEnabled = live;
     }
 
     /// <summary>
     /// Arranges the screen as the first step or as the whole of it: the title, which cards are on
-    /// it, and whether <em>Empezar</em> is. Nothing here decides which — <see cref="_firstStep"/>
+    /// it (the application's own card, the folder, the export and Claude Code come off in the first step;
+    /// the rest stay), and whether <em>Empezar</em> is. Nothing here decides which — <see cref="_firstStep"/>
     /// is set by <see cref="Open"/> and <see cref="Show"/>.
     /// </summary>
     private void Arrange()
     {
         TitleText.Text = In(_firstStep ? UiTexts.GetStarted : UiTexts.Settings);
 
+        // The two engine cards stay in the first step: the answer about what happens after a
+        // recording is not given without the engines it starts in view, and the second says how it
+        // is paid (`OnYourClaudePlan`) before anything is chosen from it.
         var whole = _firstStep ? Visibility.Collapsed : Visibility.Visible;
-        EnginesRow.Visibility = whole;
+        AppCard.Visibility = whole;
         FolderCard.Visibility = whole;
         ExportCard.Visibility = whole;
         ClaudeCodeCard.Visibility = whole;
@@ -609,14 +659,74 @@ public sealed partial class Configuracion : UserControl
             $"This screen has no name for the model summaries are asked of: '{model}'."),
     };
 
+    /// <summary>Puts the efforts in the picker without any of it reading as somebody choosing.</summary>
+    private void FillTheEffortPicker()
+    {
+        _filling = true;
+        try
+        {
+            EffortPicker.ItemsSource = Efforts.Select(offered => In(Named(offered))).ToArray();
+            EffortPicker.SelectedIndex = _settledIsKnown ? Array.IndexOf(Efforts, _wantedSummaryEffort) : -1;
+        }
+        finally
+        {
+            _filling = false;
+        }
+    }
+
+    /// <summary>What an effort is called in the picker.</summary>
+    /// <remarks>
+    /// One table, held to <see cref="SummaryEffort"/> by <c>ConfiguracionTests</c> and ending in a
+    /// throw, for the reason <see cref="Named(SummaryModel)"/> does.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">This screen has no name for that effort.</exception>
+    private static UiText Named(SummaryEffort effort) => effort switch
+    {
+        SummaryEffort.High => UiTexts.EffortHigh,
+        SummaryEffort.Medium => UiTexts.EffortMedium,
+        SummaryEffort.Low => UiTexts.EffortLow,
+        _ => throw new InvalidOperationException(
+            $"This screen has no name for the effort summaries are asked with: '{effort}'."),
+    };
+
+    /// <summary>Puts the themes in the picker without any of it reading as somebody choosing.</summary>
+    private void FillTheThemePicker()
+    {
+        _filling = true;
+        try
+        {
+            ThemePicker.ItemsSource = Themes.Select(offered => In(Named(offered))).ToArray();
+            ThemePicker.SelectedIndex = Array.IndexOf(Themes, _theme);
+        }
+        finally
+        {
+            _filling = false;
+        }
+    }
+
+    /// <summary>What a theme is called in the picker.</summary>
+    /// <remarks>
+    /// One table, held to <see cref="AppTheme"/> by <c>ConfiguracionTests</c> and ending in a throw,
+    /// for the reason <see cref="Named(SummaryModel)"/> does.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">This screen has no name for that theme.</exception>
+    private static UiText Named(AppTheme theme) => theme switch
+    {
+        AppTheme.System => UiTexts.ThemeSystem,
+        AppTheme.Light => UiTexts.ThemeLight,
+        AppTheme.Dark => UiTexts.ThemeDark,
+        _ => throw new InvalidOperationException(
+            $"This screen has no name for the theme the application is drawn in: '{theme}'."),
+    };
+
     /// <summary>
     /// Says when the last export was and what it took, and whether the press may be used. Nothing
     /// here decides anything.
     /// </summary>
     /// <remarks>
     /// The press is live only with a corpus that opened and holds something, at least one tick, and
-    /// no export already running. The press's words are set here and not left to the binding,
-    /// because <c>Bindings.Update</c> runs on a change of language and would otherwise put
+    /// no export already running. The press's name and tooltip are set here and not left to the
+    /// binding, because <c>Bindings.Update</c> runs on a change of language and would otherwise put
     /// <em>Exportar</em> back over an export that is still going.
     /// </remarks>
     private void ShowTheExport()
@@ -644,7 +754,11 @@ public sealed partial class Configuracion : UserControl
             Ticks(kind).IsEnabled = !_exporting;
         }
 
-        ExportButton.Content = In(_exporting ? UiTexts.Exporting : UiTexts.Export);
+        // A glyph carries no word, so what it is called and what it does are set here: the name
+        // while it runs says so, and the tooltip says what an export is for.
+        AutomationProperties.SetName(
+            ExportButton, In(_exporting ? UiTexts.Exporting : UiTexts.ExportTheCorpusToAFolder));
+        ToolTipService.SetToolTip(ExportButton, In(UiTexts.WhatAnExportIsFor));
         ExportButton.IsEnabled =
             Corpus().Refusal is null && ThereIsACorpus() && Ticked().Count > 0 && !_exporting;
     }
@@ -1280,7 +1394,7 @@ public sealed partial class Configuracion : UserControl
         try
         {
             CorpusExported? made = null;
-            await OneWriteAtATime(async () => made = await Task.Run(() =>
+            await _writes.Run(async () => made = await Task.Run(() =>
             {
                 using var context = CorpusDatabase.OpenMigrated(folder);
                 return CorpusExport.Into(context, chosen.FullName, kinds, TimeZoneInfo.Local, at);
@@ -1367,15 +1481,15 @@ public sealed partial class Configuracion : UserControl
         }
 
         var at = Now();
-        var ask = ++_afterARecordingAsk;
+        var ask = _afterARecordingChoice.Ask();
         _wantedAfterARecording = chosen;
         var wrote = false;
 
         try
         {
-            await OneWriteAtATime(async () =>
+            await _writes.Run(async () =>
             {
-                if (ask != _afterARecordingAsk)
+                if (!_afterARecordingChoice.IsStill(ask))
                 {
                     return;
                 }
@@ -1397,7 +1511,7 @@ public sealed partial class Configuracion : UserControl
                 // The options go back to what is really on disk, unless a newer choice is waiting
                 // and will say its own. A screen left showing what was pressed would have somebody
                 // expecting a transcription that was never asked for.
-                if (ask == _afterARecordingAsk)
+                if (_afterARecordingChoice.IsStill(ask))
                 {
                     _wantedAfterARecording = _afterARecording;
                     ShowWhatHappensWhenARecordingEnds();
@@ -1417,13 +1531,13 @@ public sealed partial class Configuracion : UserControl
 
             // Also what is wanted when nothing newer is, so a screen shown again mid-write (which
             // reads the old value) cannot leave a later press of that old value looking like no change.
-            if (ask == _afterARecordingAsk)
+            if (_afterARecordingChoice.IsStill(ask))
             {
                 _wantedAfterARecording = chosen;
             }
         }
 
-        if (_closed || ask != _afterARecordingAsk)
+        if (_closed || !_afterARecordingChoice.IsStill(ask))
         {
             return;
         }
@@ -1459,15 +1573,15 @@ public sealed partial class Configuracion : UserControl
         }
 
         var at = Now();
-        var ask = ++_summaryModelAsk;
+        var ask = _summaryModelChoice.Ask();
         _wantedSummaryModel = chosen;
         var wrote = false;
 
         try
         {
-            await OneWriteAtATime(async () =>
+            await _writes.Run(async () =>
             {
-                if (ask != _summaryModelAsk)
+                if (!_summaryModelChoice.IsStill(ask))
                 {
                     return;
                 }
@@ -1486,7 +1600,7 @@ public sealed partial class Configuracion : UserControl
         {
             if (!_closed)
             {
-                if (ask == _summaryModelAsk)
+                if (_summaryModelChoice.IsStill(ask))
                 {
                     _wantedSummaryModel = _summaryModel;
                     ShowWhatHappensWhenARecordingEnds();
@@ -1502,13 +1616,13 @@ public sealed partial class Configuracion : UserControl
         {
             _summaryModel = chosen;
 
-            if (ask == _summaryModelAsk)
+            if (_summaryModelChoice.IsStill(ask))
             {
                 _wantedSummaryModel = chosen;
             }
         }
 
-        if (_closed || ask != _summaryModelAsk)
+        if (_closed || !_summaryModelChoice.IsStill(ask))
         {
             return;
         }
@@ -1520,34 +1634,85 @@ public sealed partial class Configuracion : UserControl
     }
 
     /// <summary>
-    /// Runs one write to the corpus once every write asked before it has finished, and answers what
-    /// it answered. The line is kept in <see cref="_lastWrite"/>; asking and chaining happen on the
-    /// UI thread, so there is no second thread to race it.
+    /// Somebody chose how much reasoning summaries are asked for. Written the way
+    /// <see cref="OnSummaryModelChosen"/> is written, for the same reasons, and through the same
+    /// line of writes.
     /// </summary>
-    /// <remarks>
-    /// A write that failed leaves the line as it was for the next one: only its own caller sees the
-    /// failure.
-    /// <para>
-    /// An export takes its place in this line too, so a choice made during one is written after it:
-    /// that is the price of never running two migrations at once. The name's own press and the
-    /// export's stay dead while they run, as double-press guards — the choices are what stays live.
-    /// </para>
-    /// </remarks>
-    private async Task OneWriteAtATime(Func<Task> write)
+    private async void OnSummaryEffortChosen(object sender, SelectionChangedEventArgs e)
     {
-        var before = _lastWrite;
-        var done = new TaskCompletionSource();
-        _lastWrite = done.Task;
+        if (_filling
+            || !_settledIsKnown
+            || EffortPicker.SelectedIndex < 0
+            || Corpus().Folder is not { } folder)
+        {
+            return;
+        }
+
+        var chosen = Efforts[EffortPicker.SelectedIndex];
+        if (chosen == _wantedSummaryEffort)
+        {
+            return;
+        }
+
+        var at = Now();
+        var ask = _summaryEffortChoice.Ask();
+        _wantedSummaryEffort = chosen;
+        var wrote = false;
 
         try
         {
-            await before;
-            await write();
+            await _writes.Run(async () =>
+            {
+                if (!_summaryEffortChoice.IsStill(ask))
+                {
+                    return;
+                }
+
+                await Task.Run(() =>
+                {
+                    folder.Create();
+                    using var context = CorpusDatabase.OpenMigrated(folder);
+                    new CorpusSettings(context).SummaryEffort(chosen, at);
+                });
+
+                wrote = true;
+            });
         }
-        finally
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
         {
-            done.SetResult();
+            if (!_closed)
+            {
+                if (_summaryEffortChoice.IsStill(ask))
+                {
+                    _wantedSummaryEffort = _summaryEffort;
+                    ShowWhatHappensWhenARecordingEnds();
+                }
+
+                Say(UiTexts.ThatDidNotGoThrough, refused.Message);
+            }
+
+            return;
         }
+
+        if (wrote)
+        {
+            _summaryEffort = chosen;
+
+            if (_summaryEffortChoice.IsStill(ask))
+            {
+                _wantedSummaryEffort = chosen;
+            }
+        }
+
+        if (_closed || !_summaryEffortChoice.IsStill(ask))
+        {
+            return;
+        }
+
+        _status.Nothing();
+        ShowWhatHappensWhenARecordingEnds();
+        SayWhereTheCorpusIs();
+        Render();
     }
 
     /// <summary>Which option on this screen offers <paramref name="answer"/>.</summary>
@@ -1624,7 +1789,7 @@ public sealed partial class Configuracion : UserControl
 
         try
         {
-            await OneWriteAtATime(() => Task.Run(() =>
+            await _writes.Run(() => Task.Run(() =>
             {
                 folder.Create();
                 using var context = CorpusDatabase.OpenMigrated(folder);
@@ -1686,6 +1851,52 @@ public sealed partial class Configuracion : UserControl
         }
 
         LanguageChosen?.Invoke(this, chosen);
+    }
+
+    /// <summary>
+    /// Somebody chose the theme the application is drawn in: put on this window at once, and kept
+    /// so that the next window the application makes — and the next launch — is drawn in it too.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Applied to this window before it is written, as the language is: what somebody just asked
+    /// for is not held back by a preference file, and a file that cannot be written is a theme that
+    /// does not survive the session and is said, rather than a pick that does nothing. The window
+    /// is reached from what this screen is drawn on and from the id it was handed, so the pick
+    /// does not travel up through the window for something it can do itself.
+    /// </para>
+    /// <para>
+    /// Selecting what is already selected is not somebody choosing, for the reason the language's
+    /// is not: the picker is filled from what is kept, and taking that for a pick would write a
+    /// choice every time this screen opened.
+    /// </para>
+    /// </remarks>
+    private void OnThemeChosen(object sender, SelectionChangedEventArgs e)
+    {
+        if (_filling || ThemePicker.SelectedIndex < 0)
+        {
+            return;
+        }
+
+        var chosen = Themes[ThemePicker.SelectedIndex];
+        if (chosen == _theme)
+        {
+            return;
+        }
+
+        _theme = chosen;
+        ShownInTheme.Apply(XamlRoot?.Content, AppWindow.GetFromWindowId(_window), chosen);
+
+        try
+        {
+            ThemeChoice.OfThisUser().Write(chosen);
+            _status.Nothing();
+            Render();
+        }
+        catch (Exception unwritable) when (ScreenFailures.Reportable(unwritable))
+        {
+            Say(UiTexts.TheThemeWasNotRemembered);
+        }
     }
 
     /// <summary>

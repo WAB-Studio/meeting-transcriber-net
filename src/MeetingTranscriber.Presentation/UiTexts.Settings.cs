@@ -15,6 +15,39 @@ public static partial class UiTexts
 
     public static UiText Folder { get; } = new("Carpeta", "Folder");
 
+    // The card for how the application itself looks and reads, and its two pickers. The theme's
+    // three answers are one per member of `AppTheme`; *Sistema* is "whichever Windows is set to".
+    public static UiText App { get; } = new("Aplicación", "App");
+
+    public static UiText Theme { get; } = new("Tema", "Theme");
+
+    public static UiText ThemeSystem { get; } = new("Sistema", "System");
+
+    public static UiText ThemeLight { get; } = new("Claro", "Light");
+
+    public static UiText ThemeDark { get; } = new("Oscuro", "Dark");
+
+    // Said when the pick was applied to this window and could not be written down, so the next
+    // launch will not have it. The language's own sentence is the same shape.
+    public static UiText TheThemeWasNotRemembered { get; } = new(
+        "No se pudo recordar el tema; la próxima vez se abrirá con el de Windows.",
+        "The theme could not be remembered; next time it opens in Windows' theme.");
+
+    // Under *Resumir con*: how that engine is paid. Summaries run on the person's own Claude plan,
+    // because the application strips every API key before it starts one, so no card says a price.
+    public static UiText OnYourClaudePlan { get; } =
+        new("Con tu plan de Claude", "On your Claude plan");
+
+    // The picker for how much reasoning a summary is asked to spend, one answer per member of
+    // `SummaryEffort`.
+    public static UiText Effort { get; } = new("Esfuerzo", "Effort");
+
+    public static UiText EffortHigh { get; } = new("Alto", "High");
+
+    public static UiText EffortMedium { get; } = new("Medio", "Medium");
+
+    public static UiText EffortLow { get; } = new("Bajo", "Low");
+
     // The press that asks Claude Code whether it answers, and what it says when it does. Said only
     // after that press: opening the screen says nothing about an engine that is there.
     public static UiText Test { get; } = new("Probar", "Test");
@@ -183,6 +216,11 @@ public static partial class UiTexts
     /// </summary>
     public static UiText ExportTheCorpusToAFolder { get; } =
         new("Exportar las reuniones a una carpeta", "Export the meetings to a folder");
+
+    // The tooltip of the export's glyph: the press shows no word, so what it does is said on hover.
+    public static UiText WhatAnExportIsFor { get; } = new(
+        "Guarda el audio en WAV y las transcripciones en una carpeta, por ejemplo para pasarlas a otra PC.",
+        "Saves the audio as WAV and the transcripts to a folder, for instance to move them to another PC.");
 
     // On the press while an export runs, and nowhere else: there is no success sentence, because
     // the line below it changing is what says it worked.

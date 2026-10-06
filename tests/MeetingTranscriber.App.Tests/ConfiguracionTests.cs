@@ -292,7 +292,12 @@ public class ConfiguracionTests
         markup.ShouldContain("Style=\"{StaticResource Tick}\"");
         markup.ShouldContain("Click=\"OnExport\"");
         markup.ShouldContain("In(loc:UiTexts.Export)");
-        markup.ShouldContain("AutomationProperties.Name=\"{x:Bind In(loc:UiTexts.ExportTheCorpusToAFolder)}\"");
+
+        // The press is a glyph: its name and its tooltip are set where it is drawn, and say what it
+        // exports and what an export is for.
+        markup.ShouldContain("Style=\"{StaticResource TheExportGlyph}\"");
+        Handler("private void ShowTheExport(").ShouldContain("UiTexts.ExportTheCorpusToAFolder");
+        Handler("private void ShowTheExport(").ShouldContain("UiTexts.WhatAnExportIsFor");
 
         screen.ShouldContain("CorpusExport.Into(");
 
@@ -450,9 +455,10 @@ public class ConfiguracionTests
     /// them are never two migrations of a folder with no schema racing for one write lock.
     /// </summary>
     /// <remarks>
-    /// The four writes are the name, what happens after a recording, the summary model and an
-    /// export. The count of <c>OpenMigrated</c> is the other half: a fifth write added beside them
-    /// that skipped the line would be found here and not by somebody's first install.
+    /// The five writes are the name, what happens after a recording, the summary model, the
+    /// summary effort and an export. The count of <c>OpenMigrated</c> is the other half: a sixth
+    /// write added beside them that skipped the line would be found here and not by somebody's
+    /// first install. The line itself is <c>WritesInTurn</c>'s, which has facts of its own.
     /// </remarks>
     [Fact]
     public void The_screen_writes_one_thing_at_a_time()
@@ -462,15 +468,18 @@ public class ConfiguracionTests
             "private async void OnKeepWhoIsUsingThis(",
             "private async void OnAfterARecordingChosen(",
             "private async void OnSummaryModelChosen(",
+            "private async void OnSummaryEffortChosen(",
             "private async void OnExport(",
         })
         {
-            Handler(handler).ShouldContain("OneWriteAtATime(", customMessage: handler);
+            Handler(handler).ShouldContain("_writes.Run(", customMessage: handler);
         }
 
         var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        screen.ShouldContain("private readonly WritesInTurn _writes = new();");
+        screen.ShouldNotContain("OneWriteAtATime(");
         Regex.Matches(screen, Regex.Escape("CorpusDatabase.OpenMigrated(")).Count
-            .ShouldBe(4, "a write to the corpus that does not go through the line of writes");
+            .ShouldBe(5, "a write to the corpus that does not go through the line of writes");
     }
 
     /// <summary>
@@ -501,6 +510,110 @@ public class ConfiguracionTests
                 "SummaryModel",
                 Path.Combine("MeetingTranscriber.Domain", "Meetings", "SummaryModel.cs"))
             .ShouldNameItsWholeEnum("SummaryModel");
+
+    /// <summary>
+    /// Every effort a summary can be asked with has a name on this screen, for the reason a model
+    /// has.
+    /// </summary>
+    [Fact]
+    public void Every_summary_effort_has_a_name_on_this_screen() =>
+        EnumTable.Read(
+                Screen,
+                "effort",
+                "SummaryEffort",
+                Path.Combine("MeetingTranscriber.Domain", "Meetings", "SummaryEffort.cs"))
+            .ShouldNameItsWholeEnum("SummaryEffort");
+
+    /// <summary>
+    /// Every theme the application can be drawn in has a name on this screen, which is what makes
+    /// it a thing a person can choose.
+    /// </summary>
+    [Fact]
+    public void Every_theme_has_a_name_on_this_screen() =>
+        EnumTable.Read(
+                Screen,
+                "theme",
+                "AppTheme",
+                Path.Combine("MeetingTranscriber.Presentation", "ThemeChoice.cs"))
+            .ShouldNameItsWholeEnum("AppTheme");
+
+    /// <summary>
+    /// The row about who is using the application holds the name and its press and nothing else:
+    /// the language and the theme are on a card of their own, so a press beside a field is the
+    /// field's height and the row is not two questions.
+    /// </summary>
+    [Fact]
+    public void The_name_row_holds_the_name_and_its_save_only()
+    {
+        var markup = Markup();
+        var name = markup.IndexOf("x:Name=\"WhoIsUsingThisBox\"", StringComparison.Ordinal);
+        var card = markup.IndexOf("x:Name=\"AppCard\"", StringComparison.Ordinal);
+        var language = markup.IndexOf("x:Name=\"LanguagePicker\"", StringComparison.Ordinal);
+        var theme = markup.IndexOf("x:Name=\"ThemePicker\"", StringComparison.Ordinal);
+
+        name.ShouldBeGreaterThan(-1);
+        card.ShouldBeGreaterThan(name);
+        language.ShouldBeGreaterThan(card, "the language picker is back on the name's card");
+        theme.ShouldBeGreaterThan(card);
+
+        markup[name..card].ShouldContain("Style=\"{StaticResource ButtonBesideAField}\"");
+        markup[name..card].ShouldNotContain("<ComboBox");
+        markup.ShouldContain("x:Key=\"ButtonBesideAField\"");
+        markup.ShouldContain("<Setter Property=\"Height\" Value=\"{StaticResource ControlHeight}\" />");
+    }
+
+    /// <summary>
+    /// The first step shows the two engine cards and what the second is paid with, so the answer
+    /// about what happens after a recording is never given without the engines in view.
+    /// </summary>
+    [Fact]
+    public void The_first_step_shows_the_engines()
+    {
+        Handler("private void Arrange(").ShouldNotContain("EnginesRow");
+        Handler("public void Open(").ShouldContain("Arrange();");
+
+        var markup = Markup();
+        markup.ShouldContain("x:Name=\"EnginesRow\"");
+        markup.ShouldContain("In(loc:UiTexts.OnYourClaudePlan)");
+        markup.IndexOf("In(loc:UiTexts.OnYourClaudePlan)", StringComparison.Ordinal)
+            .ShouldBeLessThan(markup.IndexOf("x:Name=\"SummaryModelPicker\"", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The export press says what an export is for on hover, and the key's removal is drawn as a
+    /// press with a rule rather than as a word.
+    /// </summary>
+    [Fact]
+    public void Export_says_what_it_does_on_hover()
+    {
+        var markup = Markup();
+
+        markup.ShouldContain("x:Key=\"TheExportGlyph\"");
+        markup.ShouldContain("BasedOn=\"{StaticResource IconButton}\"");
+        Handler("private void ShowTheExport(")
+            .ShouldContain("ToolTipService.SetToolTip(ExportButton, In(UiTexts.WhatAnExportIsFor))");
+
+        markup.ShouldContain("Style=\"{StaticResource TheKeysRemovePress}\"");
+        markup.ShouldContain("<Setter Property=\"BorderBrush\" Value=\"{ThemeResource EmptyControlRingBrush}\" />");
+    }
+
+    /// <summary>
+    /// A pick of the theme is applied to this window, written down, and never taken for a pick when
+    /// the picker was only being filled.
+    /// </summary>
+    [Fact]
+    public void A_theme_pick_is_applied_written_and_not_a_pick_when_the_picker_is_filled()
+    {
+        var pick = Handler("private void OnThemeChosen(");
+
+        pick.ShouldContain("if (_filling");
+        pick.ShouldContain("chosen == _theme");
+        pick.ShouldContain("ShownInTheme.Apply(");
+        pick.ShouldContain("ThemeChoice.OfThisUser().Write(chosen)");
+    }
+
+    private static string Markup() => File.ReadAllText(
+        AppSources.At(Path.Combine("MeetingTranscriber.App", "Configuracion.xaml")).FullName);
 
     /// <summary>
     /// The handler's own body, from its signature to the closing brace that balances it, so a
