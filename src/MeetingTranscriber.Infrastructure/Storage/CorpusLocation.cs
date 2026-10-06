@@ -205,15 +205,26 @@ public sealed class CorpusLocation
     /// allowed to be under AppData at all, and that nothing in <c>src/</c> mentions the other API.
     /// </para>
     /// </remarks>
-    public static CorpusLocation OfThisUser()
+    public static CorpusLocation OfThisUser() => Under(new DirectoryInfo(Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ApplicationFolderName)));
+
+    /// <summary>
+    /// The location kept in <paramref name="applicationFolder"/>: its setting is
+    /// <c>corpus-location</c> there, and its fallback is that folder itself.
+    /// </summary>
+    /// <remarks>
+    /// What <see cref="OfThisUser"/> is for the profile's folder. The UI probe is the other caller,
+    /// through <see cref="ApplicationHome"/>: it gives the application a folder of its own to keep
+    /// these in, so it never has to move the owner's.
+    /// </remarks>
+    public static CorpusLocation Under(DirectoryInfo applicationFolder)
     {
-        var applicationFolder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            ApplicationFolderName);
+        ArgumentNullException.ThrowIfNull(applicationFolder);
 
         return new CorpusLocation(
-            new FileInfo(Path.Combine(applicationFolder, SettingName)),
-            new DirectoryInfo(applicationFolder));
+            new FileInfo(Path.Combine(applicationFolder.FullName, SettingName)),
+            applicationFolder);
     }
 
     /// <summary>

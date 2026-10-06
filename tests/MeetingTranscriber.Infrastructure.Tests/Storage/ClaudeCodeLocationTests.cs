@@ -9,6 +9,15 @@ namespace MeetingTranscriber.Infrastructure.Tests.Storage;
 public class ClaudeCodeLocationTests
 {
     [Fact]
+    public void Under_a_folder_the_pointer_is_in_it()
+    {
+        using var folder = new TemporaryFolder();
+
+        ClaudeCodeLocation.Under(folder.Folder).Setting.FullName
+            .ShouldBe(Path.Combine(folder.Folder.FullName, ClaudeCodeLocation.SettingName));
+    }
+
+    [Fact]
     public void Nobody_having_chosen_one_is_nothing_chosen()
     {
         using var folder = new TemporaryFolder();

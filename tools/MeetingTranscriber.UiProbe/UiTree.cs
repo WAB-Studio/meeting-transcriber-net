@@ -103,10 +103,18 @@ internal static class UiTree
     }
 
     /// <summary>
-    /// One window as text: a header saying which window and when, then a line per element.
+    /// One screen as text: a header saying which window and when, a line per element, and then each
+    /// of its popups under a line of its own. The first of <paramref name="scope"/> is the screen
+    /// and the rest are its popups (<see cref="AppWindows.Scope"/>).
     /// </summary>
-    internal static string Render(AutomationElement window)
+    /// <remarks>
+    /// The <c>cursor:</c> line is what the picture would show if it drew the cursor, which it does
+    /// not: the cursor is a fact about the moment and not a thing in the window, and it is said
+    /// only when it is over the screen or one of its popups.
+    /// </remarks>
+    internal static string Render(IReadOnlyList<AutomationElement> scope)
     {
+        var window = scope[0];
         var text = new StringBuilder();
         // Through Reading like every other read in this tool. It was not, and that mattered: a
         // press that closes the window it was on races this line, and an unguarded throw here
@@ -117,8 +125,31 @@ internal static class UiTree
             .Append(" read ").Append(DateTime.UtcNow.ToString("O"))
             .AppendLine();
 
-        var whole = Walk(window, (element, depth) =>
-            text.Append(' ', depth * 2).AppendLine(LineFor(element)));
+        // Best effort: a tree never depended on the cursor, and a locked desktop that will not
+        // say which is showing is not a reason to lose the tree.
+        try
+        {
+            var cursor = Pointer.CursorAt();
+            if (scope.Any(one => Over(one, cursor.X, cursor.Y)))
+            {
+                text.Append("cursor: ").Append(cursor.Name).Append(" at ")
+                    .Append(cursor.X).Append(',').Append(cursor.Y).AppendLine();
+            }
+        }
+        catch (ProbeFailed)
+        {
+            // The line is simply absent.
+        }
+
+        var whole = Written(window, text);
+
+        foreach (var popup in scope.Skip(1))
+        {
+            text.Append("popup hwnd=0x").Append(AppWindows.Handle(popup).ToString("X8"))
+                .Append(" \"").Append(ElementWords.Name(popup)).Append('"').AppendLine();
+
+            whole &= Written(popup, text);
+        }
 
         if (!whole)
         {
@@ -127,6 +158,14 @@ internal static class UiTree
 
         return text.ToString();
     }
+
+    private static bool Written(AutomationElement root, StringBuilder text) =>
+        Walk(root, (element, depth) =>
+            text.Append(' ', depth * 2).AppendLine(LineFor(element)));
+
+    private static bool Over(AutomationElement window, int x, int y) =>
+        Native.GetWindowRect(AppWindows.Handle(window), out var rect)
+        && x >= rect.Left && x < rect.Right && y >= rect.Top && y < rect.Bottom;
 
     /// <summary>
     /// What the element is, what it is called in the source, and every string on it a person can

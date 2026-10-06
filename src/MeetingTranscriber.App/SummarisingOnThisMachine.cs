@@ -24,7 +24,7 @@ internal static class SummarisingOnThisMachine
     /// process's own <c>PATH</c>.
     /// </summary>
     public static FileInfo? WhereClaudeCodeIs() => ClaudeCodeExecutable.Find(
-        ClaudeCodeLocation.OfThisUser().Chosen(), Environment.GetEnvironmentVariable("PATH"));
+        App.Home.ClaudeCode.Chosen(), Environment.GetEnvironmentVariable("PATH"));
 
     /// <summary>What the runner's pump sends a summary with, on this machine's own Claude Code.</summary>
     public static ISummaryProvider Provider() => ClaudeCodeSummaries.OnThisMachine(WhereClaudeCodeIs);

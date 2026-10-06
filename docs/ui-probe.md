@@ -29,7 +29,11 @@ suffix never has to be the memorable part. A build with a suffix prints the iden
 and a file setting none warns — the element is `PackageIdentitySuffix`, and a typo in it would
 otherwise be indistinguishable from having no file at all.
 
-Alone on the machine, skip that file.
+Alone on the machine, skip that file — **unless the application is also installed here.** A machine
+with the signed package installed is not alone: its checkout without a suffix registers under the
+installed package's own name, and registering the build takes that name, the installed
+application's language and theme files included. Give a checkout on such a machine a suffix, and
+remove its registration when you are done.
 
 Point the package registration at the build output. Check what is registered now:
 
@@ -66,7 +70,7 @@ from the checkout before deleting it, or the machine keeps a package aimed at no
 A checkout with a package of its own gets its own redirected `LOCALAPPDATA`, so it opens in whatever
 Windows says rather than in the language somebody last picked: the examples below are in Spanish and
 a package with no preference yet opens in English here. `choose LanguagePicker` on it once and it
-sticks. The corpus is not in there — every checkout shares one.
+sticks. The corpus is not in there — every checkout shares the probe's home.
 
 Then put the server where the checkout can reach it. `.mcp.json` at the repository root names it
 already, spelled the same in every clone, so nothing is registered by hand and no path in it is
@@ -146,8 +150,8 @@ exactly when the corpus is reachable and nobody has said who is using it. So a w
 `StartButton` before anything on the recorder, and what it presses it on is the settings screen,
 not the main window — the recorder is behind it until then.
 
-Starting on an empty corpus means deleting `%USERPROFILE%MeetingTranscriber.ui-probe` by hand: no
-verb does it, and a corpus that already has a name in it opens on the recorder.
+Starting on an empty corpus means emptying the probe's home, `%USERPROFILE%\MeetingTranscriber.ui-probe`,
+by hand: no verb does it, and a corpus that already has a name in it opens on the recorder.
 
 **`SettingsButton` is a word at the foot and is not on screen while a sub-screen has the room.**
 The way out of a sub-screen is `BackButton` in the bar, which exists only while one has the room, so
@@ -163,31 +167,22 @@ probe records meetings into it, keeps and discards recordings on the list, and k
 application in the middle of both. A machine whose corpus has something to lose gets the rule
 back, and this paragraph is where that goes.
 
-**The probe drives a corpus of its own.** It is `%USERPROFILE%\MeetingTranscriber.ui-probe`, made on
-the first `start` of a session that needs it, and it is a real corpus — the application opens it the
-way it opens any other, because ISC-114.2 says the corpus opens wherever it was moved to. What the
-probe does is move the pointer: `%USERPROFILE%\MeetingTranscriber\corpus-location` goes aside as
-`corpus-location.before-the-probe` while an application is open, and comes back when it closes. If
-there was no pointer at all, what goes aside instead is an empty `corpus-location.none-before-the-probe`,
-and putting back means deleting the pointer again rather than writing one. The pointer is not touched
-until the first `start`, so a Claude Code session that never drives the application never moves it,
-and it is set again at every `start` rather than only the first — the application reads the pointer
-when it launches, so that is the moment it has to be right.
+**The probe drives a home of its own.** It is `%USERPROFILE%\MeetingTranscriber.ui-probe`, made on
+the first `start` of a session that needs it, holding a real corpus: the application opens it the
+way it opens any other. The application is told its home on its launch line,
+`--home "<folder>"` (`ApplicationHome` in Infrastructure writes and reads that line, so the two
+halves cannot disagree), and keeps its corpus pointer, its Claude Code pointer and its first corpus
+there. **Nothing under `%USERPROFILE%\MeetingTranscriber` is read, moved or written by a probe
+session**, so there is no pointer to put aside, nothing to put back and nothing to heal by hand after
+a killed run. The line `start` prints says the home the application was started with; the settings
+screen's folder card shows the folder it is really using. **A launch that was told its home writes
+`resolved-home` inside it, and `start` refuses, closing the application, when that file does not name
+the probe's home within ten seconds of the window opening**: a launch line that did not arrive leaves
+the application on the owner's corpus with nothing on its screen saying so, and the absent report is
+the only place that shows.
 
-**If a killed run left it moved and you are not going to run another**, move
-`corpus-location.before-the-probe` back over `corpus-location` — or, if what is there is
-`corpus-location.none-before-the-probe`, delete both files. With neither there the application opens
-the corpus in `%USERPROFILE%\MeetingTranscriber`, which is where it puts one when nobody has said
-otherwise. Nothing was lost either way: a pointer says where a corpus is and never holds one. The
-next probe session heals it too, and it cannot make things worse while it does: nothing in the probe
-ever overwrites or deletes what is put aside, so whichever of those two files is there is still the
-one that goes back when that session closes.
-
-**While a probe session has an application open, so is the user's own.** If they start
-MeetingTranscriber from the Start menu in that window they get the probe's corpus and no meetings of
-theirs, with nothing on screen saying why — the pointer is machine-wide and there is only one of it.
-It comes right when the probe closes. An unattended run on a machine somebody is also using is the
-case this does not cover.
+**The user's own application is not disturbed.** It opens on the user's own corpus whether or not a
+probe session is open, because the probe moves nothing the user's reads.
 
 **Two probe sessions at once are still two writers over one SQLite file** — the probe's corpus is one
 folder for every checkout, the same way the user's is. Run them one at a time, and read the list
@@ -211,16 +206,77 @@ the probe's never is, so a meter moving before a meeting is not something it can
 here, so a script meaning to catch the saving state samples it with consecutive `see`s rather than
 a `sleep`.
 
-**A probe session can spend.** The Deepgram key is this user's and not the corpus's. A probe
-that presses *Transcribir* or *Reintentar* sends real audio to Deepgram on this machine's key.
-So does a probe corpus whose settings say to transcribe when a recording ends, for every
-recording the probe stops, and so does `record` run at a prompt into such a corpus, the next time
-the application opens it. Do none of these unless the run is meant to spend, or run with no key
-kept.
+## What it still shares with you, and how it never spends
+
+**What a home does not isolate**, in so many words:
+
+- **The Deepgram key.** It is in Windows Credential Manager under `MeetingTranscriber:deepgram`, one
+  per Windows user and not per package or per home. No walk saves or removes it: none presses
+  *Guardar* or *Quitar* on the key card, or *Empezar* with a key typed on *Primeros pasos*, and a
+  *Primeros pasos* walk leaves the key field empty.
+- **The language and theme files.** On a checkout with no `PackageIdentitySuffix`, the package's own
+  `LocalApplicationData\MeetingTranscriber` (`ui-language`, `ui-theme`) are the installed
+  application's files. A suffix gives a checkout its own.
+- **The front of the desktop and the mouse**, below.
+
+**Nothing a walk does may spend.** The command line's `record` queues whatever the corpus's *after a
+recording* setting asks for, and the application, once started over that corpus, sends the queue on
+the real key (`StartWhatThisLaunchOwesTheCorpus`, `JobRunner.PumpAsync`). So, for a walk over a
+meeting recorded through the command line:
+
+1. Before any `record` into the home, its *after a recording* setting is *Nada*: the walk presses
+   `AfterNothing` on the settings (or on *Primeros pasos*), and `see` shows it ticked.
+2. The `record` output's line `queued: nothing — transcribing is a separate press` is read.
+3. Before every `start` over the home, `dotnet run --project src/MeetingTranscriber.Cli -- status
+   --corpus "%USERPROFILE%\MeetingTranscriber.ui-probe"` runs and its `jobs` line is read. A
+   `pending` or `running` count other than zero stops the walk: the application is not started over
+   that home until a person has dealt with the job.
+4. No walk presses *Transcribir*, *Resumir*, *Resumir de nuevo* or *Reintentar*.
+
+**Microphone consent stays a person's step.** Windows asks for it with its own prompt the first time
+a package opens a microphone and keeps the answer per package family, so each checkout with its own
+suffix is asked again. The probe never answers that prompt and never writes the consent store.
+
+A recorded meeting for a walk comes from the command line, under those four steps: `dotnet run
+--project src/MeetingTranscriber.Cli -- record --corpus "%USERPROFILE%\MeetingTranscriber.ui-probe"
+--language es --seconds 20`. That runs without package identity, under Windows' *desktop apps*
+microphone switch. A walk of *Empezar a grabar* itself needs a package a person has allowed to use
+the microphone. A meeting with a transcript comes from `import-response` of a committed fixture,
+which spends nothing.
+
+## What it takes from the desktop
+
+**While a probe session has an application open, its window is in front of the desktop and stays
+there.** `start` brings the window to the foreground and makes it topmost, and every verb checks both
+again before it acts. The foreground is taken in three ways in order, each read back before the next:
+`SetForegroundWindow`; attaching this thread's input to the thread of the window that has the
+foreground, then `BringWindowToTop` and `SetForegroundWindow`; and UI Automation's `SetFocus`. When
+all three are refused the verb fails naming what has the foreground. A popup of the screen having the
+foreground counts as the screen having it, so taking it back never dismisses an open list. A
+minimised window is restored first.
+
+**`hover`, `drag` and `select` use the person's own mouse**, through `SendInput` in physical pixels
+over the whole virtual desktop. Do not use the machine while one runs.
+
+**`see` is a copy of the desktop** over the screen's rectangle, grown to cover its popups and clipped
+to the virtual desktop. It is not a print of the window any more, so it shows an open list, a flyout
+and a tooltip, and it shows whatever covers the window that is not part of the application. The
+check that the inside is not one flat colour stays, with its ten-second budget.
+
+**A screen's popups are part of it.** The screens are the process's top-level windows that have no
+owner. A screen's popups are its process's visible top-level windows whose owner chain reaches the
+screen. Their trees are written under the screen's, each after a line `popup hwnd=0x… "<name>"`;
+`press`, `choose` and the rest look in the screen and in its popups; `wait` names the screen even when
+what it waited for is on a popup. **This is the owner rule, and it is not yet measured:** whether a
+XAML popup is a window with an owner, and whether it is read as one, has to be recorded against a
+registered build with a list open and a tooltip showing. If a popup turns out to have no owner, the
+rule becomes the process's visible top-level windows that are not screens and whose rectangle
+intersects the monitor the screen is on.
 
 ## The verbs
 
-- `see` — the tree of the screen, and a picture of the window. Changes nothing.
+- `see` — the tree of the screen and its popups, and a picture of the desktop over them. Changes
+  nothing.
 - `press <element>` — invoke it. Fails if it is disabled or cannot be invoked.
 - `type <element> <text>` — set a field's value. Fails if it is disabled, read only, or takes none.
 - `choose <list> <item>` — open the list, pick the item by name, shut it again. A list too long
@@ -238,18 +294,35 @@ kept.
 - `sleep <seconds>` — let that long pass, touching nothing. Script host only, capped at twenty
   minutes.
 - `kill` — end the application the way a crash does, with nothing asked and nothing let finish.
+- `hover <element>` — move the pointer to the centre of the element, hold it there two seconds and read
+  the cursor every 50 ms. Answers with the cursor as a sequence, `hand from 0.0 s; arrow at 0.85 s;
+  hand at 1.00 s`, then the tree, which has the words of a tooltip it opened. The cursor is named by
+  comparing `GetCursorInfo` with the system's arrow, ibeam, wait, cross, hand, sizeall, sizewe, sizens, no
+  and appstarting; any other handle reads `another (0x…)`.
+- `drag <element> <dx>,<dy>` — press the left button at the element's centre, move by that many
+  physical pixels in 12 steps 20 ms apart and let go; `0,0` is a click. Each number is within ±4000,
+  and anything else is refused before anything starts. Answers with the window's rectangle before and
+  after, and the element's range value before and after when it has one.
+- `select <element> <text>` — find `text` with the element's text pattern, press at the left edge of
+  its first line, drag to the right edge of its last and let go, then read the pattern's own
+  selection and fail when it is not `text`. An element with no text pattern is refused naming what it
+  does offer. A real drag and not `TextPatternRange.Select`, because the *Corregir* pill listens to
+  the selection a mouse makes, and the pattern's own is not shown to raise it.
+- `size <width>x<height>` — set the window in physical pixels, keeping its position, each between 200
+  and 8000. Answers with the rectangle the window now has, which is not the one asked for when its
+  content will not go smaller.
+
+`see` writes one line under the tree's header, `cursor: <name> at x,y`, when the cursor is over the
+picture. No cursor is drawn into it.
 
 Put a `wait` after any `press`, `type`, `choose` or `key` whose effect you are about to look at. It
 is the only thing here that synchronises.
 
-**A `see` whose window will not be photographed still writes the tree**, says why there is no
-picture, and fails on it. That is not a hypothetical: on 2026-09-02 this window printed its frame
-around a black rectangle for the whole ten-second budget, three runs in a row, foreground or not,
-while the tree read whole through the same window and every other application on the machine
-printed normally. Nothing here fixes that — a redraw, a minimise and restore and a one-pixel resize
-were each tried and each left it black — so what the tool does instead is not lose the half it
-could read. If `see` starts failing that way, `wait` and `press` still work, and the tree beside the
-failure is the screen.
+**A `see` whose desktop will not be photographed still writes the tree**, says why there is no
+picture, and fails on it. The picture was a print of the window until 2026-10, and printed its frame
+around a black rectangle on 2026-09-02; it is a copy of the desktop now, so what fails is a window
+that is minimised, covered by something that is not the application, or that never drew. `wait` and
+`press` still work, and the tree beside the failure is the screen.
 
 `sleep` is for the one screen that is a function of elapsed real time — a meeting running — and
 nothing else here makes ninety seconds pass: `wait` is capped at fifteen seconds and returns on the
@@ -283,9 +356,9 @@ answer instead of writing the whole walk in advance. `see` also returns the pict
 
 ```text
 start                          → 7feb8c95-...!App is process 12216, from C:\...\win-x64\...exe
-                                 its corpus is C:\Users\...\MeetingTranscriber.ui-probe, and the
-                                 pointer in C:\Users\...\MeetingTranscriber\corpus-location is put
-                                 back on close
+                                 its home is C:\Users\...\MeetingTranscriber.ui-probe; nothing under
+                                 %USERPROFILE%\MeetingTranscriber is read or written; the Deepgram
+                                 key is shared
                                  window "Meeting Transcriber" ... (the whole tree)
 press PackagingChecksButton    → pressed PackagingChecksButton
                                  The application has 2 windows open — "Comprobaciones de
@@ -325,10 +398,10 @@ done, in C:\Users\pc\AppData\Local\Temp\ui-probe
 ```
 
 `--refused-corpus` starts the application over a corpus that will not open, for the walk of the
-refused-corpus screen. It points the application at `%USERPROFILE%\MeetingTranscriber.ui-probe.refused`,
-beside the probe's own folder, which it makes a corpus and then leaves with no `corpus.db`, so the
-launch resolves *no corpus in the folder*. The pointer goes aside and comes back as always, through
-the same close; the switch is for the script host and the MCP host does not take it.
+refused-corpus screen. It starts the application with the home `%USERPROFILE%\MeetingTranscriber.ui-probe.refused`,
+beside the probe's own, whose own pointer names a subfolder that held a corpus when it was chosen and
+holds none now, so the launch resolves *no corpus in the folder*. Nothing is put aside or back; the
+switch is for the script host and the MCP host does not take it.
 
 ```powershell
 dotnet run --project tools/MeetingTranscriber.UiProbe -- --refused-corpus --out $env:TEMP\ui-probe `
@@ -361,7 +434,8 @@ Reach an accented name from a shell that mangles one through the third tier —
 ## Which window is the screen
 
 The one the last `wait` named. Failing that, the only window open. Anything else stops and tells you
-to `wait` for something on the screen you meant. It is never whichever window is in front.
+to `wait` for something on the screen you meant. It is never whichever window is in front: the
+screen is what the script said, and the desktop is made to agree with it.
 
 ## Switching Windows between light and dark
 
@@ -415,20 +489,12 @@ Windows is the proof.
   which is Windows' and has no tree this probe reads, so choosing a folder — and with it moving the
   meetings to an empty one — is walked by a person. Everything around it is drivable: the card, the
   tick, *Mover* and *Cancelar* once a folder is chosen.
-- **It will not bring a window forward — and `key` is the one verb that needs it in front.** A
-  window behind another still photographs, and every other verb reaches it through UI Automation. A
-  key goes to whatever has the keyboard, so `key` asks the element for focus and then reads back
-  whether it really got it, refusing when it did not rather than reporting a keystroke that landed
-  in whatever you were typing in. There is no verb that brings a window forward and none is
-  planned: what an unattended run can do is leave the foreground alone — start the application
-  last, use `key` before anything else takes focus, and treat its refusal as *something else took
-  the keyboard* rather than as something to retry. The check narrows the window between asking and
-  sending; it does not close it, because the foreground belongs to the machine and not to this
-  process.
-- **It drives a corpus of its own and the preference file of whichever package this checkout
-  registered.** The corpus is `%USERPROFILE%\MeetingTranscriber.ui-probe`, one folder for every
-  checkout, and the user's pointer is put back when the application closes — see *Record may be
-  pressed*. The preferences are the package's own, so a checkout with a package of its own has its
-  own.
+- **It brings its window forward, and holds it there.** See *What it takes from the desktop*. What it
+  cannot do is take the foreground from a window of higher integrity, a locked workstation or a
+  secure desktop; those make the verb fail naming what has it, rather than act on the wrong window.
+- **It drives a home of its own and the preference files of whichever package this checkout
+  registered.** The home is `%USERPROFILE%\MeetingTranscriber.ui-probe`, one folder for every
+  checkout, and the user's own folder is never touched — see *Record may be pressed*. The
+  preferences are the package's own, so a checkout with a package of its own has its own.
 - **It drives only the application it started**, and closes only that one — including when it is
   killed rather than asked, once the application is running.

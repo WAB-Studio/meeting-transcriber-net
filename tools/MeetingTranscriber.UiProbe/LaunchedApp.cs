@@ -90,6 +90,53 @@ internal sealed class LaunchedApp : IDisposable
     }
 
     /// <summary>
+    /// How the process ended, as a sentence fragment to hang on "it crashed" — <c>, with exit code
+    /// 0xC000027B</c> — or nothing while it is running or when Windows will not say.
+    /// </summary>
+    /// <remarks>
+    /// The code is what tells a crash on launch from a quiet exit, and the one this was added for
+    /// (<c>0xC000027B</c>, a XAML fail-fast) says which half of the application died without a
+    /// debugger being attached to it.
+    /// </remarks>
+    internal string ExitedWith => ExitedWithOf(_process);
+
+    private static string ExitedWithOf(Process process)
+    {
+        try
+        {
+            return process.HasExited ? $", with exit code 0x{(uint)process.ExitCode:X8}" : string.Empty;
+        }
+        catch (Exception unreadable) when (unreadable is InvalidOperationException or Win32Exception)
+        {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// The exit code of a process that was activated and had gone before a <see cref="Process"/>
+    /// could be made of it, when the kernel still remembers it.
+    /// </summary>
+    private static string ExitedWithOf(uint id)
+    {
+        var handle = Native.OpenProcess(Native.ProcessQueryLimitedInformation, false, id);
+        if (handle == IntPtr.Zero)
+        {
+            return ", and Windows would not say with what exit code";
+        }
+
+        try
+        {
+            return Native.GetExitCodeProcess(handle, out var code)
+                ? $", with exit code 0x{code:X8}"
+                : string.Empty;
+        }
+        finally
+        {
+            Native.CloseHandle(handle);
+        }
+    }
+
+    /// <summary>
     /// The file Windows actually started, which is not necessarily the one that was last built:
     /// what runs is whatever layout the package registration points at.
     /// </summary>
@@ -102,13 +149,13 @@ internal sealed class LaunchedApp : IDisposable
     /// </remarks>
     internal string RunningFrom { get; }
 
-    internal static LaunchedApp Start(string aumid)
+    internal static LaunchedApp Start(string aumid, string arguments)
     {
         var manager = (Native.IApplicationActivationManager)Activator.CreateInstance(
             typeof(Native.ApplicationActivationManager))!;
 
         var asked = DateTime.Now;
-        var outcome = manager.ActivateApplication(aumid, arguments: null, options: 0, out var id);
+        var outcome = manager.ActivateApplication(aumid, arguments, options: 0, out var id);
         if (outcome != 0)
         {
             throw new ProbeFailed(
@@ -339,8 +386,8 @@ internal sealed class LaunchedApp : IDisposable
 
         return image ?? throw new ProbeFailed(
             $"Process {process.Id} would not say what it is running within "
-            + $"{ToPublishItsModules.TotalSeconds:0} seconds. The application started and stopped, "
-            + "which is a crash on launch.");
+            + $"{ToPublishItsModules.TotalSeconds:0} seconds. The application started and stopped"
+            + $"{ExitedWithOf(process)}, which is a crash on launch.");
     }
 
     private static Process Of(uint id, string aumid)
@@ -353,7 +400,7 @@ internal sealed class LaunchedApp : IDisposable
         {
             throw new ProbeFailed(
                 $"{aumid} was activated as process {id} and had gone before it could be read. "
-                + "The application started and stopped, which is a crash on launch.");
+                + $"The application started and stopped{ExitedWithOf(id)}, which is a crash on launch.");
         }
     }
 

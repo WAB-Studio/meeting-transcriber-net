@@ -14,13 +14,19 @@ namespace MeetingTranscriber.UiProbe;
 /// </para>
 /// <para>
 /// The answer never comes from what the desktop has in front. It was written that way first and
-/// it was wrong: this tool cannot raise a window and does not try, so the window in front is
-/// decided by the person's last click and by whichever <c>Activate()</c> the application happened
-/// to call — which means <c>press MeetingsButton</c> followed by <c>see meetings</c> would
-/// photograph whichever window won a race, and write it under the name the script asked for. An
-/// artifact of the wrong screen under the right name is worse than no artifact, because it is
-/// believed. So the screen is what the script said it is, and before a script has said, the only
-/// window there is.
+/// it was wrong: the window in front is decided by the person's last click and by whichever
+/// <c>Activate()</c> the application happened to call — which means <c>press MeetingsButton</c>
+/// followed by <c>see meetings</c> would photograph whichever window won a race, and write it
+/// under the name the script asked for. An artifact of the wrong screen under the right name is
+/// worse than no artifact, because it is believed. So the screen is what the script said it is,
+/// and before a script has said, the only window there is. <see cref="Foreground"/> then brings
+/// that one in front, which is the other half: the screen is chosen by the script and the desktop
+/// is made to agree, never the other way round.
+/// </para>
+/// <para>
+/// A screen's popups are part of it. A list, a flyout or a tooltip the platform opens is a window
+/// of its own, with the screen for its owner, and a picture or a tree of the screen that left it
+/// out would show a closed drop-down for an open one — see <see cref="PopupsOf"/>.
 /// </para>
 /// </remarks>
 internal sealed class AppWindows(int processId)
@@ -35,9 +41,11 @@ internal sealed class AppWindows(int processId)
     internal void TheScreenIs(AutomationElement window) => _named = Handle(window);
 
     /// <summary>
-    /// Every top-level window the process has. <c>Window</c> and not merely "a child of the
-    /// desktop with our process id": a WinUI host puts helper windows out there too, and each one
-    /// would otherwise count towards the application having more than one screen.
+    /// Every top-level window the process has that is a screen. <c>Window</c> and not merely "a
+    /// child of the desktop with our process id": a WinUI host puts helper windows out there too,
+    /// and each one would otherwise count towards the application having more than one screen. A
+    /// window with an owner is not one either: it is a popup of whatever owns it, and
+    /// <see cref="PopupsOf"/> is where it is read.
     /// </summary>
     internal IReadOnlyList<AutomationElement> All()
     {
@@ -50,10 +58,88 @@ internal sealed class AppWindows(int processId)
         var windows = new List<AutomationElement>(found.Count);
         for (var index = 0; index < found.Count; index++)
         {
-            windows.Add(found[index]);
+            var window = found[index];
+            if (Native.GetWindow(Handle(window), Native.GwOwner) == IntPtr.Zero)
+            {
+                windows.Add(window);
+            }
         }
 
         return windows;
+    }
+
+    /// <summary>
+    /// The windows the process has open that belong to <paramref name="screen"/>: visible top-level
+    /// windows whose owner chain reaches it.
+    /// </summary>
+    /// <remarks>
+    /// Found with <c>EnumWindows</c> and not with UI Automation, which reads a list the platform
+    /// opened as a window only when it feels like it — and a popup nobody finds is a picture of a
+    /// closed drop-down for an open one. The rule is the owner, and what an owner-less popup would
+    /// need instead is in <c>docs/ui-probe.md</c>, with what was measured.
+    /// </remarks>
+    internal IReadOnlyList<IntPtr> PopupsOf(AutomationElement screen)
+    {
+        var screenHandle = Handle(screen);
+        var popups = new List<IntPtr>();
+
+        Native.EnumWindows(
+            (window, parameter) =>
+            {
+                if (window == screenHandle || !Native.IsWindowVisible(window))
+                {
+                    return true;
+                }
+
+                Native.GetWindowThreadProcessId(window, out var owner);
+                if (owner == (uint)processId && OwnedBy(window, screenHandle))
+                {
+                    popups.Add(window);
+                }
+
+                return true;
+            },
+            IntPtr.Zero);
+
+        return popups;
+    }
+
+    /// <summary>The screen and then its popups, as the one set of elements a verb looks in.</summary>
+    internal IReadOnlyList<AutomationElement> Scope(AutomationElement screen)
+    {
+        var scope = new List<AutomationElement> { screen };
+
+        foreach (var popup in PopupsOf(screen))
+        {
+            var element = Reading.Of(() => AutomationElement.FromHandle(popup));
+            if (element is not null)
+            {
+                scope.Add(element);
+            }
+        }
+
+        return scope;
+    }
+
+    private static bool OwnedBy(IntPtr window, IntPtr screen)
+    {
+        // The depth is a ceiling and not a belief: an owner chain is short and cannot loop, and a
+        // loop here would be a probe that hangs on a desktop it did not make.
+        for (var depth = 0; depth < 16; depth++)
+        {
+            window = Native.GetWindow(window, Native.GwOwner);
+            if (window == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            if (window == screen)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

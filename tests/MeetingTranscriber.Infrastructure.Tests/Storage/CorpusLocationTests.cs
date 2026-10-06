@@ -26,6 +26,17 @@ public class CorpusLocationTests
         UtcTimestamp.From(new DateTimeOffset(2026, 8, 18, 10, 0, 0, TimeSpan.Zero));
 
     [Fact]
+    public void Under_a_folder_the_pointer_and_the_first_corpus_are_in_it()
+    {
+        using var folder = new TemporaryFolder();
+
+        var location = CorpusLocation.Under(folder.Folder);
+
+        location.Setting.FullName.ShouldBe(Path.Combine(folder.Folder.FullName, CorpusLocation.SettingName));
+        location.Fallback.FullName.ShouldBe(folder.Folder.FullName);
+    }
+
+    [Fact]
     public void With_nobody_having_chosen_the_corpus_is_directly_under_the_users_profile()
     {
         var expected = Path.Combine(

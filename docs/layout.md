@@ -308,13 +308,14 @@ free to stop watching silently. Starting a window is the line, not the reference
 `ProbeIsNotDrivenTests` in that suite is what holds the line rather than this sentence: it sweeps
 the suite's own source and fails the moment a fact names anything that opens or presses a window.
 
-The probe references one project, `MeetingTranscriber.Infrastructure`, for two types: `CorpusLocation`, which is where the
-application is told its corpus is, and `CorpusDatabase`, which is what makes one. The probe drives a
-corpus of its own by moving that setting and putting it back, which is the same act as a person
-moving their corpus and adds nothing to the product. What it still never references is
-`MeetingTranscriber.App` — touching a type from that assembly would fire the Windows App SDK module
-initializer in the probe's own process — so it reaches the application only the way anybody else
-does, through the shell.
+The probe references one project, `MeetingTranscriber.Infrastructure`, for three types:
+`ApplicationHome`, `CorpusLocation` and `CorpusDatabase`. It gives the application a home of its
+own and tells it so on its launch line, `--home "<folder>"`, rather than moving a setting of the
+owner's: the application keeps its corpus pointer, its Claude Code pointer and its first corpus in
+that home, and nothing under the owner's `%USERPROFILE%\MeetingTranscriber` is read or written by a
+probe session. What it still never references is `MeetingTranscriber.App` — touching a type from
+that assembly would fire the Windows App SDK module initializer in the probe's own process — so it
+reaches the application only the way anybody else does, through the shell.
 
 The project split in `arquitectura.md` §3 is the destination, not the scaffolding: a project
 appears when there is code to put in it, and one the destination never named appears when the code

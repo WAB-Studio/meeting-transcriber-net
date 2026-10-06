@@ -1,4 +1,4 @@
-namespace MeetingTranscriber.App.Tests;
+﻿namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
 /// What <c>App.xaml.cs</c> does about the corpus, apart from <see cref="LaunchWorkTests"/>: which
@@ -26,11 +26,17 @@ public sealed class CorpusAtLaunchTests
     [Fact]
     public void The_corpus_is_resolved_once_before_any_window_is_built()
     {
-        var resolved = Occurrences("CorpusLocation.OfThisUser().Resolve()").ToArray();
+        var resolved = Occurrences("Home.Corpus.Resolve()").ToArray();
+        var homed = Occurrences("Home = ").ToArray();
         var built = Occurrences("new MainWindow(").ToArray();
 
         resolved.ShouldNotBeEmpty("App.xaml.cs no longer resolves where the corpus is.");
+        homed.ShouldNotBeEmpty("App.xaml.cs no longer settles its home from the launch line.");
         built.ShouldNotBeEmpty("App.xaml.cs no longer builds a MainWindow.");
+
+        resolved.Min().ShouldBeGreaterThan(
+            homed.Min(),
+            "App.xaml.cs resolves where the corpus is before it has settled its home.");
 
         built.Min().ShouldBeGreaterThan(
             resolved.Min(),
@@ -129,17 +135,50 @@ public sealed class CorpusAtLaunchTests
     }
 
     /// <summary>
-    /// Only the launch resolves where the corpus is. The settings screen is the one other file
-    /// that names <see cref="MeetingTranscriber.Infrastructure.Storage.CorpusLocation.OfThisUser"/>,
-    /// and it does so to write a folder somebody picked, never to read one.
+    /// A launch that was told its home says so before anything else is done with it, so the probe
+    /// that started it can refuse a launch that was not told.
+    /// </summary>
+    [Fact]
+    public void The_home_is_reported_as_soon_as_it_is_settled()
+    {
+        var homed = Occurrences("Home = ").ToArray();
+        var reported = Occurrences("Home.ReportIfAsked()").ToArray();
+        var resolved = Occurrences("Home.Corpus.Resolve()").ToArray();
+
+        reported.ShouldNotBeEmpty("App.xaml.cs no longer reports the home the launch resolved.");
+        reported.Min().ShouldBeGreaterThan(homed.Min());
+        reported.Min().ShouldBeLessThan(
+            resolved.Min(),
+            "App.xaml.cs opens a corpus before it has said which home it is in.");
+    }
+
+    /// <summary>
+    /// Only the launch resolves where the corpus is, and only the launch decides which home it is
+    /// in. The settings screen is the one other file that names <c>App.Home</c>, and it does so to
+    /// write a folder somebody picked, never to read one.
     /// </summary>
     [Fact]
     public void Only_the_launch_resolves_where_the_corpus_is()
     {
-        var offenders = AppSources.With(".cs")
-            .Where(file => file.Name is not ("App.xaml.cs" or "Configuracion.xaml.cs"))
+        // (a) Nobody asks for the profile's own pointer past the home the launch settled.
+        var ownPointers = AppSources.With(".cs")
             .Where(file => File.ReadAllText(file.FullName)
-                .Contains("CorpusLocation.OfThisUser()", StringComparison.Ordinal))
+                .Contains("CorpusLocation.OfThisUser(", StringComparison.Ordinal)
+                || File.ReadAllText(file.FullName)
+                    .Contains("ClaudeCodeLocation.OfThisUser(", StringComparison.Ordinal))
+            .Select(file => file.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        ownPointers.ShouldBeEmpty(
+            "these files go round the home the launch settled, which is how a probe walk would "
+            + "read the owner's pointer: " + string.Join(", ", ownPointers));
+
+        // (b) Nobody but the launch resolves where the corpus is.
+        var offenders = AppSources.With(".cs")
+            .Where(file => file.Name is not "App.xaml.cs")
+            .Where(file => File.ReadAllText(file.FullName)
+                .Contains("Home.Corpus.Resolve()", StringComparison.Ordinal))
             .Select(file => file.Name)
             .Order(StringComparer.Ordinal)
             .ToArray();
@@ -147,13 +186,6 @@ public sealed class CorpusAtLaunchTests
         offenders.ShouldBeEmpty(
             "these files resolve where the corpus is themselves, which is a second answer to the "
             + "one question this application cannot be wrong about: " + string.Join(", ", offenders));
-
-        File.ReadAllText(AppSources.At("MeetingTranscriber.App/Configuracion.xaml.cs").FullName)
-            .ShouldNotContain(
-                "CorpusLocation.OfThisUser().Resolve()",
-                customMessage: "the settings screen reads where the corpus is rather than only "
-                + "writing a folder somebody picked, which is the launch's question and not this "
-                + "screen's.");
     }
 
     private static IEnumerable<int> Occurrences(string what) => SourceLines.Occurrences(Launch, what);

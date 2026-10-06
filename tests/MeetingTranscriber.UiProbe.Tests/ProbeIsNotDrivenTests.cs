@@ -35,7 +35,7 @@ public class ProbeIsNotDrivenTests
     /// </remarks>
     private const string Drives =
         @"\b(Sess" + "ion|Launched" + "App|Mcp" + "Host|Command" + "Line|Ui" + "Thread|Bear"
-        + "ings|Probe" + @"Corpus)\b";
+        + "ings|Probe" + @"Corpus|Fore" + "ground|Poin" + @"ter)\b";
 
     /// <summary>
     /// Nothing here names anything that opens or presses a window.

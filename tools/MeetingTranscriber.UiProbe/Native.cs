@@ -5,16 +5,77 @@ namespace MeetingTranscriber.UiProbe;
 
 /// <summary>
 /// The Win32 and COM entry points this tool cannot reach any other way: activating a packaged
-/// application and getting its process back, asking which window is in front, copying the pixels
-/// under one, and putting a keystroke into the input queue.
+/// application and getting its process back, bringing its window in front and keeping it there,
+/// copying the pixels of the desktop under it, and putting a keystroke or a pointer movement into
+/// the input queue.
 /// </summary>
 internal static class Native
 {
+    /// <summary><c>INPUT_MOUSE</c>.</summary>
+    internal const uint InputMouse = 0;
+
+    /// <summary><c>MOUSEEVENTF_MOVE</c>.</summary>
+    internal const uint MouseMove = 0x0001;
+
+    /// <summary><c>MOUSEEVENTF_LEFTDOWN</c>.</summary>
+    internal const uint MouseLeftDown = 0x0002;
+
+    /// <summary><c>MOUSEEVENTF_LEFTUP</c>.</summary>
+    internal const uint MouseLeftUp = 0x0004;
+
+    /// <summary><c>MOUSEEVENTF_VIRTUALDESK</c>: the absolute position is over every monitor.</summary>
+    internal const uint MouseVirtualDesk = 0x4000;
+
+    /// <summary><c>MOUSEEVENTF_ABSOLUTE</c>: the position is a place and not a movement.</summary>
+    internal const uint MouseAbsolute = 0x8000;
+
+    /// <summary><c>GW_OWNER</c>.</summary>
+    internal const uint GwOwner = 4;
+
+    /// <summary><c>SW_RESTORE</c>.</summary>
+    internal const int SwRestore = 9;
+
+    /// <summary><c>SWP_NOSIZE</c>.</summary>
+    internal const uint SwpNoSize = 0x0001;
+
+    /// <summary><c>SWP_NOMOVE</c>.</summary>
+    internal const uint SwpNoMove = 0x0002;
+
+    /// <summary><c>SWP_NOZORDER</c>.</summary>
+    internal const uint SwpNoZOrder = 0x0004;
+
+    /// <summary><c>SWP_NOACTIVATE</c>.</summary>
+    internal const uint SwpNoActivate = 0x0010;
+
+    /// <summary><c>SWP_SHOWWINDOW</c>.</summary>
+    internal const uint SwpShowWindow = 0x0040;
+
+    /// <summary><c>HWND_TOPMOST</c>.</summary>
+    internal static readonly IntPtr HwndTopmost = new(-1);
+
+    /// <summary><c>SM_XVIRTUALSCREEN</c>.</summary>
+    internal const int SmXVirtualScreen = 76;
+
+    /// <summary><c>SM_YVIRTUALSCREEN</c>.</summary>
+    internal const int SmYVirtualScreen = 77;
+
+    /// <summary><c>SM_CXVIRTUALSCREEN</c>.</summary>
+    internal const int SmCxVirtualScreen = 78;
+
+    /// <summary><c>SM_CYVIRTUALSCREEN</c>.</summary>
+    internal const int SmCyVirtualScreen = 79;
+
+    /// <summary><c>SRCCOPY</c>.</summary>
+    internal const uint SrcCopy = 0x00CC0020;
+
     /// <summary>
-    /// <c>PW_RENDERFULLCONTENT</c>: print what the window composes rather than only what it
-    /// paints into its own device context.
+    /// <c>CAPTUREBLT</c>: include the layered windows — a tooltip, a flyout, a list a platform
+    /// control opens in a window of its own — which a plain copy of the desktop leaves out.
     /// </summary>
-    internal const uint PW_RENDERFULLCONTENT = 2;
+    internal const uint CaptureBlt = 0x40000000;
+
+    /// <summary><c>CURSOR_SHOWING</c>.</summary>
+    internal const uint CursorShowing = 0x0001;
 
     /// <summary><c>INPUT_KEYBOARD</c>.</summary>
     internal const uint InputKeyboard = 1;
@@ -73,17 +134,27 @@ internal static class Native
         internal IntPtr dwExtraInfo;
     }
 
+    /// <summary><c>CURSORINFO</c>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct CursorInfo
+    {
+        internal int cbSize;
+        internal uint flags;
+        internal IntPtr hCursor;
+        internal Point ptScreenPos;
+    }
+
     /// <summary>
-    /// <c>MOUSEINPUT</c>, declared and never used.
+    /// <c>MOUSEINPUT</c>: what the pointer verbs send, and the largest arm of <c>INPUT</c>'s union.
     /// </summary>
     /// <remarks>
-    /// It is here because it is the largest arm of <c>INPUT</c>'s union — 32 bytes against
-    /// <c>KEYBDINPUT</c>'s 24 on x64 — and therefore what fixes the size of the whole structure.
-    /// <c>SendInput</c> is passed that size and rejects any other by doing nothing, so leaving the
-    /// arm out would give a probe whose key verb silently pressed no key, which is the exact failure
-    /// that verb exists not to have. <c>HARDWAREINPUT</c> is the third arm and is deliberately
-    /// absent: it is eight bytes, so it changes no size, and a declaration that measures nothing and
-    /// is never assigned is a line somebody has to work out the purpose of.
+    /// It is 32 bytes against <c>KEYBDINPUT</c>'s 24 on x64 and therefore what fixes the size of the
+    /// whole structure. <c>SendInput</c> is passed that size and rejects any other by doing
+    /// nothing, so leaving the arm out would give a probe whose key verb silently pressed no key,
+    /// which is the exact failure that verb exists not to have. <c>HARDWAREINPUT</c> is the third
+    /// arm and is deliberately absent: it is eight bytes, so it changes no size, and a declaration
+    /// that measures nothing and is never assigned is a line somebody has to work out the purpose
+    /// of.
     /// </remarks>
     [StructLayout(LayoutKind.Sequential)]
     internal struct MouseInput
@@ -154,9 +225,68 @@ internal static class Native
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool ClientToScreen(IntPtr window, ref Point point);
 
+    internal delegate bool EnumWindowsProc(IntPtr window, IntPtr parameter);
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    internal static extern bool PrintWindow(IntPtr window, IntPtr deviceContext, uint flags);
+    internal static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
+
+    [DllImport("user32.dll")]
+    internal static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr GetWindow(IntPtr window, uint command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsWindowVisible(IntPtr window);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool IsIconic(IntPtr window);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool ShowWindow(IntPtr window, int command);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetWindowPos(
+        IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool SetForegroundWindow(IntPtr window);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool BringWindowToTop(IntPtr window);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool AttachThreadInput(
+        uint attach, uint to, [MarshalAs(UnmanagedType.Bool)] bool attached);
+
+    [DllImport("kernel32.dll")]
+    internal static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetCursorInfo(ref CursorInfo info);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr LoadCursor(IntPtr instance, IntPtr name);
+
+    [DllImport("user32.dll")]
+    internal static extern int GetSystemMetrics(int index);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool BitBlt(
+        IntPtr to, int x, int y, int width, int height, IntPtr from, int fromX, int fromY, uint operation);
 
     /// <summary>
     /// Puts events into the same queue a keyboard does, which is the only way to raise a real key
@@ -302,6 +432,16 @@ internal static class Native
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool CloseHandle(IntPtr handle);
+
+    /// <summary><c>PROCESS_QUERY_LIMITED_INFORMATION</c>.</summary>
+    internal const uint ProcessQueryLimitedInformation = 0x1000;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern IntPtr OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool GetExitCodeProcess(IntPtr process, out uint exitCode);
 
     /// <summary>
     /// The image a process is running, asked of the kernel rather than of the process's loaded
