@@ -317,7 +317,7 @@ public class ArtifactReconcilerTests
         using var context = corpus.OpenMigrated();
         var meeting = Recorded(context);
 
-        var carrying = new[] { "loopback.blocks", "microphone.blocks", "manifest.json", "changes.jsonl" }
+        var carrying = new[] { "loopback.blocks", "microphone.blocks", "manifest.json", "changes.jsonl", "pauses.jsonl" }
             .Select(name => Drop(corpus, $"spool/{meeting}/{name}", "written"))
             .ToArray();
 
@@ -384,6 +384,12 @@ public class ArtifactReconcilerTests
         aboutCard.ShouldContain("which meeting");
         aboutChanges.ShouldNotContain("which meeting");
         aboutChanges.ShouldContain("what somebody moved");
+
+        var pauses = Drop(corpus, $"spool/{meeting}/pauses.jsonl", "{}");
+        var aboutPauses = ArtifactReconciler.Check(context).Single(finding => finding.RelativePath == pauses).Detail;
+        aboutPauses.ShouldContain("holds no audio");
+        aboutPauses.ShouldNotContain("only copy");
+        aboutPauses.ShouldContain("paused");
     }
 
     /// <summary>

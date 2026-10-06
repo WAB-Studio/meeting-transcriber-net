@@ -79,6 +79,11 @@ public static class MeetingAudio
     /// Both spools or neither. A meeting with one side of the conversation missing is not a shorter
     /// meeting, and the timeline is two named sources for that reason — so a folder holding one
     /// spool is a recovery somebody has to look at, not a recording to make half of.
+    /// <para>
+    /// The stretches the folder's <see cref="RecordingPauses"/> say were paused are left out of the
+    /// recording, from both channels at the same frames, so the file is as long as what was recorded
+    /// and not as long as the clock on the wall. A folder with no pauses file is poured whole.
+    /// </para>
     /// </remarks>
     public static Materialised Materialise(DirectoryInfo folder)
     {
@@ -92,12 +97,16 @@ public static class MeetingAudio
 
         try
         {
-            var (frames, timeline) = Pour(loopback, microphone, unfinished);
+            var paused = RecordingPauses.Stretches(folder);
+            var (frames, timeline) = Pour(loopback, microphone, unfinished, paused);
             if (frames <= 0)
             {
                 throw new AudioCaptureException(
-                    $"'{folder.FullName}' holds two spools and no audio: neither source delivered a "
-                    + "block, so there is no recording in it to make.");
+                    paused.Count > 0
+                        ? $"'{folder.FullName}' was paused from start to finish, so there is no audio "
+                            + "in it to make a recording of."
+                        : $"'{folder.FullName}' holds two spools and no audio: neither source delivered a "
+                            + "block, so there is no recording in it to make.");
             }
 
             var peaks = Verify(unfinished, frames);
@@ -160,11 +169,12 @@ public static class MeetingAudio
     private static (long Frames, TimelineSummary Timeline) Pour(
         SpoolReader loopback,
         SpoolReader microphone,
-        FileInfo into)
+        FileInfo into,
+        IReadOnlyList<(long From, long? To)> paused)
     {
         using var wav = new WaveFileWriter(into.FullName, BlockSpool.WaveFormatOf(Interchange));
         var aligned = new AlignedWav(wav);
-        var timeline = SharedTimeline.Of(loopback.Format, microphone.Format, aligned);
+        var timeline = SharedTimeline.Of(loopback.Format, microphone.Format, aligned, paused);
 
         foreach (var packet in InOrder(loopback.Packets(), microphone.Packets()))
         {

@@ -26,6 +26,7 @@ meetings/<meeting_id>/
 spool/<meeting_id>/
   manifest.json          source     what the recording said about itself when it started
   changes.jsonl          source     what somebody moved while it was recording, if anything
+  pauses.jsonl           source     when it was paused and carried on, if it was
   <channel>.blocks       source     while the blocks are the only recoverable copy
   audio.wav              derived    the recording these blocks were poured into, until the spool goes
   <channel>.wav          derived    one source on its own, for listening to; poured again on demand
@@ -130,6 +131,12 @@ cannot hold: the card is written once and says what each channel opened on, so a
 moved to the whole machine an hour in is only written down here. Losing it leaves a folder saying
 its channel 0 followed one program when most of what is in the file is everything the machine
 played. Most recordings never have one.
+
+`pauses.jsonl` is a source under the same rule, one line per `Pause()` and `Resume()` that changed the
+state, in the order they happened. The spool keeps receiving silent blocks while paused, so the blocks
+cannot say which stretches were a pause: this file does, on the packets' own clock, and
+`MeetingAudio.Materialise` leaves those stretches out of `audio.wav`. A pause with no resume runs to the
+end. Lose it and the pause comes back as silence in the meeting.
 
 That is true until the meeting is finished. Afterwards it is in the corpus too, in
 `capture_source_changes`, and this file is what the corpus was read from — so before a finish the

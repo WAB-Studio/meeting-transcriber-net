@@ -34,8 +34,7 @@ public class RecordingClockTests
     /// ISC-158.9, in both of the states a meeting can be running in, and counting from when the
     /// devices opened rather than from anything later. Paused is the one a rule written as
     /// "recording" would drop, and it is the state somebody is most likely to be reading the
-    /// number in: what says a pause is a stretch of the meeting rather than a break in it is the
-    /// clock going on climbing through it, which is also what the file does.
+    /// number in: the clock stands where the pause found it, which is the length of the file.
     /// </summary>
     [Theory]
     [MemberData(nameof(WhileTheMeetingRuns))]
@@ -47,6 +46,30 @@ public class RecordingClockTests
         clock.Showing.ShouldBeTrue();
         clock.Ran.ShouldBe(Duration.FromSeconds(754));
     }
+
+    /// <summary>A paused stretch is not counted: the clock reads the length of what is being written.</summary>
+    [Fact]
+    public void A_paused_stretch_is_not_counted()
+    {
+        var clock = RecordingClock.Of(
+            RecorderState.Paused,
+            Opened,
+            Opened + Duration.FromSeconds(754),
+            paused: Duration.FromSeconds(54));
+
+        clock.Showing.ShouldBeTrue();
+        clock.Ran.ShouldBe(Duration.FromSeconds(700));
+    }
+
+    /// <summary>More paused than ran can only be two clocks disagreeing, and reads as no time.</summary>
+    [Fact]
+    public void A_clock_paused_longer_than_it_ran_reads_as_no_time() =>
+        RecordingClock.Of(
+            RecorderState.Paused,
+            Opened,
+            Opened + Duration.FromSeconds(10),
+            paused: Duration.FromSeconds(11))
+            .Ran.ShouldBe(Duration.Zero);
 
     /// <summary>
     /// ISC-158.9's other edge. A clock left standing after the devices are gone is a screen saying

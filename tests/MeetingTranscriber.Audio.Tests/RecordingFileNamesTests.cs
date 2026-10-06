@@ -79,6 +79,8 @@ public sealed class RecordingFileNamesTests : IDisposable
 
         SpoolManifest.Write(folder, Card());
         SpoolChanges.Append(folder, Moving());
+        RecordingPauses.Append(folder, new PauseLine(PauseMark.Paused, 1_000, Moving().At));
+        RecordingPauses.Append(folder, new PauseLine(PauseMark.Resumed, 2_000, Moving().At));
 
         BlockSpool.ToWav(BlockSpool.FileFor(folder, AudioChannel.Loopback));
         BlockSpool.ToWav(BlockSpool.FileFor(folder, AudioChannel.Microphone));
@@ -95,6 +97,7 @@ public sealed class RecordingFileNamesTests : IDisposable
             [
                 "manifest.json",
                 "changes.jsonl",
+                "pauses.jsonl",
                 "loopback.blocks",
                 "microphone.blocks",
                 "loopback.wav",

@@ -13,10 +13,11 @@ namespace MeetingTranscriber.Recording;
 /// runs. What the window keeps is drawing a number from this.
 /// </para>
 /// <para>
-/// <b>It is the stretch since the devices opened, and a pause is inside it.</b> That is the
-/// recording's own arithmetic rather than a second opinion about it: what a paused meeting records
-/// is silence of exactly the length the pause lasted, so a screen that stopped counting through a
-/// pause would be the one thing on it disagreeing with the file.
+/// <b>It is the stretch since the devices opened, less what was paused.</b> That is the
+/// recording's own arithmetic rather than a second opinion about it: the meeting leaves every
+/// paused stretch out when it is made, so a screen that went on counting through a pause would be
+/// the one thing on it disagreeing with the file. A pause that is going on stops the number where
+/// it is, and it climbs again on the resume.
 /// </para>
 /// <para>
 /// <b>It is a count and not a statement of what the meeting turned out to be</b>, and the
@@ -49,10 +50,8 @@ public sealed record RecordingClock
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Running for exactly as long as a meeting is being recorded, paused included — the meeting's
-    /// clock keeps running through a pause, so a screen that took the number away for it would
-    /// hide the one thing saying the pause is inside the meeting rather than a break in it.
-    /// Starting and finishing show nothing, the same answer the meters give and for the same
+    /// Shown for exactly as long as a meeting is being recorded, paused included: a paused meeting
+    /// still has a length, standing where the pause found it. Starting and finishing show nothing, the same answer the meters give and for the same
     /// reason: in neither is a meeting being recorded, and a clock left standing through the
     /// minutes it takes to make a long meeting is a screen saying one still is.
     /// </para>
@@ -71,16 +70,23 @@ public sealed record RecordingClock
     /// the same field one line apart — and not to allow a case where the two disagree.
     /// </param>
     /// <param name="now">What time it is.</param>
-    public static RecordingClock Of(RecorderState state, UtcTimestamp? startedAt, UtcTimestamp now)
+    /// <param name="paused">
+    /// How much of the stretch since <paramref name="startedAt"/> was paused, a pause still going on
+    /// included. Never makes the clock negative: more paused than ran reads as no time.
+    /// </param>
+    public static RecordingClock Of(
+        RecorderState state, UtcTimestamp? startedAt, UtcTimestamp now, Duration paused = default)
     {
         if (!state.IsRecording() || startedAt is not { } opened)
         {
             return Nothing;
         }
 
+        var since = now > opened ? now - opened : Duration.Zero;
+
         return new RecordingClock
         {
-            Ran = now > opened ? now - opened : Duration.Zero,
+            Ran = since > paused ? since - paused : Duration.Zero,
             Showing = true,
         };
     }

@@ -372,6 +372,12 @@ public static class ArtifactReconciler
             "what somebody moved while a recording in the spool was running; it holds no audio, and "
             + "no artifact row points at it"),
 
+        SpoolFile.Pauses => new ArtifactFinding(
+            ArtifactState.Spooled,
+            relativePath,
+            "when a recording in the spool was paused and carried on, which the meeting leaves out; "
+            + "it holds no audio, and no artifact row points at it"),
+
         // Says what the file is rather than what deleting it would cost, and says it
         // conditionally. audio.wav is what MeetingAudio.Materialise wrote from the blocks in this
         // same folder and <channel>.wav is what BlockSpool.ToWav pours one source into — but this

@@ -32,6 +32,7 @@ public sealed class CaptureSession : IDisposable
     private readonly CaptureSource[] sources;
     private readonly RecordingPause pause;
     private readonly DirectoryInfo folder;
+    private readonly Lock pausing = new();
 
     /// <summary>
     /// One caller's, and it is what keeps a recording from being moved while it is being stopped.
@@ -755,10 +756,49 @@ public sealed class CaptureSession : IDisposable
     /// on it, and unlike a source that failed to open, nothing downstream could tell that from a
     /// room where only one person was talking.
     /// </remarks>
-    public void Pause() => pause.Pause();
+    /// <remarks>
+    /// The pause is written beside the blocks first, at the packets' own clock, and the devices are
+    /// told only once it is down: the recording is cut out of the meeting at the end from that line,
+    /// so silence with no line behind it would stay in the meeting. A line that cannot be written
+    /// throws to the press and leaves the meeting recording.
+    /// </remarks>
+    public void Pause() => Mark(PauseMark.Paused);
 
     /// <summary>Lets both devices reach the recording again.</summary>
-    public void Resume() => pause.Resume();
+    /// <remarks>The same order as <see cref="Pause"/>, for the same reason.</remarks>
+    public void Resume() => Mark(PauseMark.Resumed);
+
+    /// <summary>
+    /// How much of the meeting so far has been paused, which is what the clock on screen leaves
+    /// out so that it reads the length of what is being written.
+    /// </summary>
+    public Duration PausedFor(UtcTimestamp now) => pause.PausedFor(now);
+
+    private void Mark(PauseMark kind)
+    {
+        // Under a gate of its own because a press is a line and a state together, and two presses
+        // interleaving would write them in one order and flip the state in the other. Not the
+        // capture mark's: pausing crosses threads by design and a move in flight must not hold it.
+        lock (pausing)
+        {
+            if (pause.IsPaused == (kind == PauseMark.Paused))
+            {
+                return;
+            }
+
+            var when = UtcTimestamp.From(TimeProvider.System.GetUtcNow());
+            RecordingPauses.Append(folder, new PauseLine(kind, MonotonicInstant.Now().Ticks, when));
+
+            if (kind == PauseMark.Paused)
+            {
+                pause.Pause(when);
+            }
+            else
+            {
+                pause.Resume(when);
+            }
+        }
+    }
 
     /// <summary>The source feeding <paramref name="channel"/>.</summary>
     public CaptureSource On(AudioChannel channel) =>

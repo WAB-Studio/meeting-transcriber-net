@@ -69,6 +69,15 @@ public enum SpoolFile
     /// nothing ever clears the one a crashed capture, read or save leaves.
     /// </remarks>
     Mark = 5,
+
+    /// <summary>When the meeting was paused and when it carried on.</summary>
+    /// <remarks>
+    /// A pause keeps spooling silent blocks, so the blocks alone cannot say which stretches were a
+    /// pause; this file does, and the recording is cut at those stretches when the blocks are poured
+    /// into the meeting's audio. It is a source for that reason: lose it and the pause comes back as
+    /// silence inside the meeting. It holds no audio and carries no meeting id.
+    /// </remarks>
+    Pauses = 6,
 }
 
 /// <summary>
@@ -98,6 +107,10 @@ public static class RecordingFiles
 
     /// <summary>What the log of mid-recording changes is called.</summary>
     public const string Changes = "changes.jsonl";
+
+    /// <summary>What the log of pauses and resumes is called.</summary>
+    /// <remarks>See <see cref="SpoolFile.Pauses"/> for what it holds and why it is a file of its own.</remarks>
+    public const string Pauses = "pauses.jsonl";
 
     /// <summary>What the recording the blocks become is called.</summary>
     /// <remarks>
@@ -181,6 +194,11 @@ public static class RecordingFiles
         if (Named(fileName, Changes))
         {
             return SpoolFile.Changes;
+        }
+
+        if (Named(fileName, Pauses))
+        {
+            return SpoolFile.Pauses;
         }
 
         if (Named(fileName, CaptureMark) || Named(fileName, ReadingMark) || Named(fileName, SavingMark))

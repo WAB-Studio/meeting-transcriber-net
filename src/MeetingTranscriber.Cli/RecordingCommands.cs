@@ -357,7 +357,7 @@ public static class RecordingCommands
                 if (second == pauseAt)
                 {
                     recording.Pause();
-                    Report.Line(output, "paused", "the meeting's clock keeps running");
+                    Report.Line(output, "paused", "the meeting leaves this stretch out");
                 }
 
                 if (second == resumeAt)

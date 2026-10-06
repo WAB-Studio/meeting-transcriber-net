@@ -1,3 +1,5 @@
+using MeetingTranscriber.Domain.Time;
+
 namespace MeetingTranscriber.Audio;
 
 /// <summary>
@@ -6,20 +8,19 @@ namespace MeetingTranscriber.Audio;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>A pause is silence and never a gap.</b> The meeting's clock is the transcript's clock, so an
-/// hour with ten minutes paused is an hour of audio carrying ten minutes of silence — which means
-/// the paused stretch has to be as real on disk as the rest. Substituting the block rather than
-/// dropping it is what makes that arithmetic rather than bookkeeping: the devices go on counting
-/// frames and the positions go on landing where they always did, so the length of a pause is
-/// something the recording was told by the hardware rather than something the application worked
-/// out afterwards and wrote down somewhere.
+/// <b>A pause is silence while it is recorded and nothing once the meeting is made.</b> The spool
+/// goes on receiving blocks, with nothing in them, and that is not the meeting's last word: each
+/// pause is written down beside the blocks (<see cref="RecordingPauses"/>) and
+/// <see cref="MeetingAudio.Materialise"/> leaves those stretches out when it pours the blocks into
+/// the recording. A meeting somebody paused for ten minutes is ten minutes shorter than the clock
+/// on the wall, and what was said after the pause is where it was said in the meeting that remains.
 /// </para>
 /// <para>
-/// Dropping the blocks instead was the obvious thing and is wrong twice. The timeline gives up on
-/// a source that has fallen half a minute behind, so any pause longer than that would lose the
-/// meeting rather than quieten it; and a folder recovered off a machine that died mid-pause would
-/// need something beside the blocks saying which stretches were pauses, when the whole point of
-/// the spool format is that the blocks say what they hold on their own.
+/// Substituting the block rather than dropping it is still what the spool does, for two reasons
+/// that have not changed. The timeline gives up on a source that has fallen half a minute behind,
+/// so any pause longer than that would lose the meeting rather than quieten it; and the blocks keep
+/// the positions the devices counted, so the marks and the blocks are two accounts of one clock and
+/// the cut is made at the end from both rather than guessed at while recording.
 /// </para>
 /// <para>
 /// <b>One of these per recording, not one per source.</b> That is the whole reason the state and
@@ -59,14 +60,71 @@ public sealed class RecordingPause
     /// </summary>
     private volatile bool paused;
 
+    /// <summary>What the clock on screen reads, and so what is left out of it.</summary>
+    private readonly Lock counting = new();
+
+    private Duration before;
+    private UtcTimestamp? since;
+
     /// <summary>Whether the meeting is paused.</summary>
     public bool IsPaused => paused;
 
-    /// <summary>Pauses the meeting. Saying it twice is saying it once.</summary>
-    public void Pause() => paused = true;
+    /// <summary>
+    /// Pauses the meeting, at <paramref name="at"/> on the clock the screen reads. Saying it twice is
+    /// saying it once, and says so.
+    /// </summary>
+    /// <returns>Whether the state changed.</returns>
+    public bool Pause(UtcTimestamp at)
+    {
+        lock (counting)
+        {
+            if (paused)
+            {
+                return false;
+            }
 
-    /// <summary>Lets the devices reach the recording again.</summary>
-    public void Resume() => paused = false;
+            since = at;
+            paused = true;
+            return true;
+        }
+    }
+
+    /// <summary>Lets the devices reach the recording again, at <paramref name="at"/>.</summary>
+    /// <returns>Whether the state changed.</returns>
+    public bool Resume(UtcTimestamp at)
+    {
+        lock (counting)
+        {
+            if (!paused)
+            {
+                return false;
+            }
+
+            before += Stretch(at);
+            since = null;
+            paused = false;
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// How much of the meeting so far was paused, a pause that is still going on counted to
+    /// <paramref name="now"/>.
+    /// </summary>
+    /// <remarks>
+    /// What the clock on screen takes away, so that it reads the length of what is being written. A
+    /// clock that stepped back is no time rather than a throw, the way <c>RecordingClock</c> reads it.
+    /// </remarks>
+    public Duration PausedFor(UtcTimestamp now)
+    {
+        lock (counting)
+        {
+            return before + Stretch(now);
+        }
+    }
+
+    private Duration Stretch(UtcTimestamp to) =>
+        since is { } from && to > from ? to - from : Duration.Zero;
 
     /// <summary>
     /// What <paramref name="packet"/> is worth to the recording right now: itself, or the same

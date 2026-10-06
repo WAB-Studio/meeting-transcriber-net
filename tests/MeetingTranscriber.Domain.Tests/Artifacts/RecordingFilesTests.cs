@@ -11,6 +11,7 @@ public class RecordingFilesTests
     [Theory]
     [InlineData("manifest.json", SpoolFile.Card)]
     [InlineData("changes.jsonl", SpoolFile.Changes)]
+    [InlineData("pauses.jsonl", SpoolFile.Pauses)]
     [InlineData("loopback.blocks", SpoolFile.Blocks)]
     [InlineData("microphone.blocks", SpoolFile.Blocks)]
     [InlineData("audio.wav", SpoolFile.Poured)]
@@ -56,6 +57,7 @@ public class RecordingFilesTests
     [InlineData("Audio.WAV", SpoolFile.Poured)]
     [InlineData("Manifest.JSON", SpoolFile.Card)]
     [InlineData("Changes.JSONL", SpoolFile.Changes)]
+    [InlineData("Pauses.JSONL", SpoolFile.Pauses)]
     public void Case_is_not_what_tells_two_of_these_apart(string name, SpoolFile what) =>
         RecordingFiles.WhatIsInASpoolFolder(name).ShouldBe(what);
 
