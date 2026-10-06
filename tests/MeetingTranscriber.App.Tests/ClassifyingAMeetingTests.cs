@@ -590,6 +590,27 @@ public class ClassifyingAMeetingTests
     }
 
     /// <summary>
+    /// The line under the chips holds its height whether or not a chip is lit, so nothing below it
+    /// moves when one is.
+    /// </summary>
+    [Fact]
+    public void A_lit_chip_is_described_in_a_line_kept_for_it()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        Regex.IsMatch(markup, @"<TextBlock\s[^>]*x:Name=""ShapeDescription""[^>]*MinHeight=""\d+""")
+            .ShouldBeTrue("the description line has no MinHeight, so the screen moves when a chip is lit.");
+
+        var source = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        source.ShouldNotContain(
+            "ShapeDescription.Visibility",
+            customMessage: "the description line is collapsed in code, so it gives up its height with no chip lit.");
+
+        source.ShouldContain("ShapeDescription.Text = ", customMessage: "nothing writes the description line.");
+    }
+
+    /// <summary>
     /// A pill opens under a pointer. Its first press was read as the one that had just dismissed its
     /// list, because "never dismissed" was <c>long.MinValue</c> and the elapsed time against it
     /// overflowed to a negative number — so on Clasificar, whose pills are built again by every

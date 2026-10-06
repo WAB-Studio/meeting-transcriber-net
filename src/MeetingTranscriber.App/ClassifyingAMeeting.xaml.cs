@@ -204,6 +204,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
         Columns.ColumnDefinitions.Clear();
         Who.Children.Clear();
         WhichMeetingText.Text = string.Empty;
+        ShapeDescription.Text = string.Empty;
         StatusText.Text = string.Empty;
         StatusText.Visibility = Visibility.Collapsed;
     }
@@ -242,6 +243,38 @@ public sealed partial class ClassifyingAMeeting : UserControl
         MeetingShape.FilledByHand => UiTexts.TheShapeFilledByHand,
         _ => throw new InvalidOperationException($"This screen has no name for the shape '{shape}'."),
     };
+
+    /// <summary>
+    /// What stands under the chips for the one that is lit: its own tooltip sentence, then what it
+    /// opens — each path's levels joined by <c> › </c>, and the paths and the places for somebody
+    /// joined by <c> · </c>, all in that chip's own words.
+    /// </summary>
+    /// <remarks>
+    /// Read off <see cref="MeetingShapes.Opens"/> and <see cref="MeetingShapes.Names"/>, the two
+    /// tables the columns are drawn from, so the line cannot say a place the screen will not open.
+    /// A role the kind names no levels for runs in the generic ones, as <see cref="NameAt"/> does.
+    /// <em>Ninguna — la lleno yo</em> opens nothing and so reads its sentence alone.
+    /// </remarks>
+    private string WhatTheChipSays(MeetingShape shape)
+    {
+        var opens = MeetingShapes.Opens(shape);
+        var names = MeetingShapes.Names(shape);
+        var generic = MeetingShapes.Names(null).Levels;
+        var parts = new List<string> { In(Described(shape)) };
+
+        foreach (var role in Enum.GetValues<MeetingNodeRole>())
+        {
+            var levels = names.Levels.TryGetValue(role, out var named) ? named : generic[role];
+
+            for (var path = 0; path < opens.Paths(role); path++)
+            {
+                parts.Add(string.Join(" › ", levels.Select(level => In(Named(level)))));
+            }
+        }
+
+        parts.AddRange(names.Somebody.Select(place => In(Named(place))));
+        return string.Join(" · ", parts);
+    }
 
     /// <summary>One line on what kind of meeting a chip is, shown when it is pointed at.</summary>
     /// <remarks>
@@ -491,6 +524,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
             if (_read is not { } read)
             {
                 WhichMeetingText.Text = string.Empty;
+                ShapeDescription.Text = string.Empty;
                 SaveButton.IsEnabled = false;
                 UnclassifyButton.IsEnabled = false;
                 RememberButton.IsEnabled = false;
@@ -506,6 +540,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
             WhichMeetingText.Text = ScreenNumbers.Which(read.Meeting);
 
             TheShapesOnOffer();
+            ShapeDescription.Text = _chosen.Shape is { } lit ? WhatTheChipSays(lit) : string.Empty;
             TheKeptOnOffer(read);
             TheLine(read);
             TheColumns(read);

@@ -794,7 +794,12 @@ application is closed and opened again. It is a radio row and never the two-way 
 two, because the set only grows. A meeting with one summary has nothing to choose and draws no
 rows.
 
-**`Clasificar`** · What it was about. The templates are the fourteen chips — the thirteen meetings
+**`Clasificar`** · The screen is titled *Clasificar* — the words of the press that opens it, one entry
+used twice — and not by a question. Under the chips stands one line kept for the lit chip, two lines of
+body text high whether or not a chip is lit, so nothing below it moves: the chip's own tooltip sentence,
+then what it opens, each path's levels joined by *›* and the paths and the places for somebody by *·* —
+*Una clase o curso · Universidad › Materia · Profesor*. *Ninguna — la lleno yo* reads its sentence
+alone, and with no chip lit the line is empty. The templates are the fourteen chips — the thirteen meetings
 of `arquitectura.md` §5.3 **by name**, and *Ninguna — la lleno yo* — each with a one-phrase tooltip,
 and what each one fills in is not explained, it is seen on choosing. **A lit chip names its places in
 that kind of meeting's own words**: *Clase* opens *Universidad › Materia* and a *Profesor*;

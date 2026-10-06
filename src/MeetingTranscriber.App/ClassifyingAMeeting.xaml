@@ -199,6 +199,16 @@
                  order. Built in code because which of them exist is an answer and not a layout. -->
             <local:WrappingRow x:Name="TheShapes" HorizontalGap="8" VerticalGap="8" />
 
+            <!-- What the lit chip is and what it opens, in the chip's own words. Its height is
+                 held, two lines of body text, whether or not a chip is lit, so nothing below it
+                 moves when one is. Never collapsed: the code-behind sets its text and nothing
+                 else about it. -->
+            <TextBlock
+                x:Name="ShapeDescription"
+                Style="{StaticResource BodyText}"
+                Foreground="{ThemeResource SecondaryTextBrush}"
+                MinHeight="40"
+                TextWrapping="Wrap" />
 
             <!-- Putting a classification by, under a name typed here, and the two presses a chip
                  lit from those put by adds: correcting its name, and throwing it away. The name
