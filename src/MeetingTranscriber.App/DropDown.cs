@@ -90,7 +90,12 @@ public sealed partial class DropDown : Control
     private bool _pressed;
     private bool _openAtPress;
     private bool _refocus;
-    private long _dismissedAt = long.MinValue;
+
+    // Nothing until a press light-dismisses the list. It was `long.MinValue` for "never", and
+    // `Environment.TickCount64 - long.MinValue` overflows to a negative number below the window, so
+    // every press on a fresh pill was read as the one that had just dismissed the list and the pill
+    // never opened under a pointer.
+    private long? _dismissedAt;
     private XamlRoot? _watching;
 
     /// <summary>Makes the drop-down. Its look is the style a screen gives it, and none is given by default.</summary>
@@ -373,7 +378,8 @@ public sealed partial class DropDown : Control
     private void OnPillPressed(object sender, PointerRoutedEventArgs e)
     {
         _pressed = true;
-        _openAtPress = IsDropDownOpen || Environment.TickCount64 - _dismissedAt < JustDismissed.TotalMilliseconds;
+        _openAtPress = IsDropDownOpen
+            || (_dismissedAt is { } at && Environment.TickCount64 - at < JustDismissed.TotalMilliseconds);
         UpdateStates();
     }
 
@@ -397,6 +403,9 @@ public sealed partial class DropDown : Control
         _refocus = _openAtPress;
         IsDropDownOpen = !_openAtPress;
         _openAtPress = false;
+
+        // One dismissal swallows at most the one press it came with.
+        _dismissedAt = null;
     }
 
     /// <summary>
@@ -578,9 +587,11 @@ public sealed partial class DropDown : Control
             return;
         }
 
+        // Closed first: a screen answers a pick by drawing itself again from inside the handler, and
+        // that takes this pill off the tree, so what is left to do here has to be done by then.
         _refocus = true;
-        SelectedIndex = index;
         IsDropDownOpen = false;
+        SelectedIndex = index;
     }
 
     private void Unhook()
