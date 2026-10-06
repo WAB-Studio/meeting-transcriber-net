@@ -495,4 +495,18 @@ public class ReadingAMeetingTests
         screen.ShouldNotContain("VolumeSlider.Visibility =");
     }
 
+    /// <summary>
+    /// A gap, hit-testable, so a pointer crossing from the speaker to the slider does not leave the
+    /// panel on the way (fb-130). Painted in the paper the player stands on and not as
+    /// <c>Transparent</c>, which a screen may not name (<c>OlivoTests</c>): the same look, and a
+    /// brush is what makes the gap hit-testable.
+    /// </summary>
+    [Fact]
+    public void The_slider_stands_apart_from_the_speaker()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        markup.ShouldMatch(@"x:Name=""TheVolume""[^>]*Spacing=""8""");
+        markup.ShouldMatch(@"x:Name=""TheVolume""[^>]*Background=""\{ThemeResource PaperBrush\}""");
+    }
 }

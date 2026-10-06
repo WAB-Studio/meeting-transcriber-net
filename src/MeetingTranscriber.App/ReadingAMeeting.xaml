@@ -503,6 +503,8 @@
                 x:Name="TheVolume"
                 Grid.Column="4"
                 Orientation="Horizontal"
+                Spacing="8"
+                Background="{ThemeResource PaperBrush}"
                 VerticalAlignment="Center"
                 PointerEntered="OnVolumeAreaEntered"
                 PointerExited="OnVolumeAreaExited">
