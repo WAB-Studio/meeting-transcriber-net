@@ -39,7 +39,8 @@ namespace MeetingTranscriber.App;
 /// A press on the pill while the list is open closes it and does not open it again. The press that
 /// light-dismisses the list is the same press that reaches the pill, and in which order they arrive
 /// is the platform's, so the pill asks both ways: whether the list was open when the press came, or
-/// closed an instant before it.
+/// closed an instant before it. How long "an instant" is, and the rule as a whole, is
+/// <see cref="PillPress.ClosesTheList"/>.
 /// </para>
 /// </remarks>
 public sealed partial class DropDown : Control
@@ -71,9 +72,6 @@ public sealed partial class DropDown : Control
         typeof(double),
         typeof(DropDown),
         new PropertyMetadata((8 * 34d) + 10));
-
-    /// <summary>How long after a light-dismiss the pill still reads a press as the one that did it.</summary>
-    private static readonly TimeSpan JustDismissed = TimeSpan.FromMilliseconds(300);
 
     private IReadOnlyList<string>? _items;
     private Entry[] _entries = [];
@@ -378,8 +376,7 @@ public sealed partial class DropDown : Control
     private void OnPillPressed(object sender, PointerRoutedEventArgs e)
     {
         _pressed = true;
-        _openAtPress = IsDropDownOpen
-            || (_dismissedAt is { } at && Environment.TickCount64 - at < JustDismissed.TotalMilliseconds);
+        _openAtPress = PillPress.ClosesTheList(IsDropDownOpen, _dismissedAt, Environment.TickCount64);
         UpdateStates();
     }
 

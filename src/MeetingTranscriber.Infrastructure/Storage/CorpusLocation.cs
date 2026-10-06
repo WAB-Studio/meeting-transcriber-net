@@ -189,7 +189,8 @@ public sealed class CorpusLocation
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <see cref="Environment.SpecialFolder.UserProfile"/>, and neither way into application data.
+    /// <see cref="ApplicationHome.ProfileFolder"/>, which is under the user's profile, and neither way
+    /// into application data.
     /// <c>ApplicationData.Current.LocalFolder</c> is the package's own folder —
     /// <c>%LOCALAPPDATA%\Packages\&lt;family&gt;\LocalCache</c> — which uninstalling the
     /// application deletes. <c>%LOCALAPPDATA%</c> itself reads back as an ordinary path and is not
@@ -205,9 +206,7 @@ public sealed class CorpusLocation
     /// allowed to be under AppData at all, and that nothing in <c>src/</c> mentions the other API.
     /// </para>
     /// </remarks>
-    public static CorpusLocation OfThisUser() => Under(new DirectoryInfo(Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        ApplicationFolderName)));
+    public static CorpusLocation OfThisUser() => Under(ApplicationHome.ProfileFolder());
 
     /// <summary>
     /// The location kept in <paramref name="applicationFolder"/>: its setting is

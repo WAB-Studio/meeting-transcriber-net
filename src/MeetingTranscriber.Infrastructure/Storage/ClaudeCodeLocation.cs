@@ -36,9 +36,7 @@ public sealed class ClaudeCodeLocation
     public FileInfo Setting { get; }
 
     /// <summary>The one kept beside where this user's corpus location is kept.</summary>
-    public static ClaudeCodeLocation OfThisUser() => Under(new DirectoryInfo(Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        CorpusLocation.ApplicationFolderName)));
+    public static ClaudeCodeLocation OfThisUser() => Under(ApplicationHome.ProfileFolder());
 
     /// <summary>The one kept in <paramref name="applicationFolder"/>.</summary>
     public static ClaudeCodeLocation Under(DirectoryInfo applicationFolder)

@@ -45,9 +45,16 @@ public sealed class ApplicationHome
     public ClaudeCodeLocation ClaudeCode { get; }
 
     /// <summary><c>%USERPROFILE%\MeetingTranscriber</c>.</summary>
-    public static ApplicationHome OfThisUser() => Under(new DirectoryInfo(Path.Combine(
+    public static ApplicationHome OfThisUser() => Under(ProfileFolder());
+
+    /// <summary>
+    /// This user's application folder, <c>%USERPROFILE%\MeetingTranscriber</c>: the one spelling of
+    /// it. Why the profile and never application data is <see cref="CorpusLocation.OfThisUser"/>'s
+    /// remark.
+    /// </summary>
+    public static DirectoryInfo ProfileFolder() => new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        CorpusLocation.ApplicationFolderName)));
+        CorpusLocation.ApplicationFolderName));
 
     /// <summary>A home in <paramref name="folder"/>.</summary>
     public static ApplicationHome Under(DirectoryInfo folder)
