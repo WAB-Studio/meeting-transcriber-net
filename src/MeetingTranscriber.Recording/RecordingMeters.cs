@@ -183,6 +183,22 @@ public sealed record ChannelReading
     }
 
     /// <summary>
+    /// What each source being listened to before a meeting reads, in channel order. Reading empties
+    /// each level, so it is called from the one place that ticks, as <see cref="ReadFrom(MeetingRecording)"/>
+    /// is.
+    /// </summary>
+    /// <remarks>
+    /// Never stopped: nothing is being recorded, so a stream that ends has cut nothing short, and
+    /// <see cref="ListeningBeforeAMeeting"/> hands over no end for a reading to carry.
+    /// </remarks>
+    public static IReadOnlyList<ChannelReading> ReadFrom(ListeningBeforeAMeeting listening)
+    {
+        ArgumentNullException.ThrowIfNull(listening);
+
+        return listening.Read();
+    }
+
+    /// <summary>
     /// One channel's reading, built from what it is listening to rather than from a name somebody
     /// read off it — which is the whole of the rule, and the reason this is not spelled out as an
     /// initialiser at the one call site that needs a device to reach.
@@ -314,5 +330,32 @@ public sealed record RecordingMeters
         return state.IsRecording()
             ? new RecordingMeters { Channels = channels }
             : Nothing;
+    }
+
+    /// <summary>
+    /// The meters as they are before a meeting, while somebody is choosing what to record.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A second factory and not <see cref="Of"/> metering <see cref="RecorderState.Choosing"/>,
+    /// because <c>Of</c> is the rule that a state with no meeting in it reads as nothing — ISC-80's
+    /// own facts hold it to that, and a level left on screen after a meeting ended is exactly what
+    /// they exist against. What this shows is a different thing: what the chosen source is hearing
+    /// now, so the right program and microphone can be picked by ear (ISC-218).
+    /// </para>
+    /// <para>
+    /// Nothing is ever stopped here and the microphone is never offered again: a listening stream
+    /// that ended has recorded nothing, so there is no meeting for it to have died in.
+    /// </para>
+    /// </remarks>
+    /// <param name="channels">What each channel being listened to last read as.</param>
+    public static RecordingMeters BeforeAMeeting(IReadOnlyList<ChannelReading> channels)
+    {
+        ArgumentNullException.ThrowIfNull(channels);
+
+        return new RecordingMeters
+        {
+            Channels = [.. channels.Select(reading => reading with { StoppedAt = null })],
+        };
     }
 }
