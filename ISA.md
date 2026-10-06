@@ -1,6 +1,6 @@
 ﻿---
 phase: climbing
-progress: 210/312
+progress: 210/323
 updated: 2026-10-06
 ---
 
@@ -247,6 +247,12 @@ Board: 3 · Grabador WinUI
 - [x] ISC-173.1: Every colour, text size and corner a screen uses is one of the system's named few, and never a value chosen on the screen itself.
 - [ ] ISC-173.2: A screen that rearranges itself moves between the two arrangements, so somebody can tell what arrived from what was already there.
 - [ ] ISC-173.3: Anti: with Windows asked for no animation, nothing on a screen moves, and nothing on it is lost for standing still.
+- [ ] ISC-173.4: Every list a screen offers opens beside the control it belongs to, whole and inside the window, and that control goes on showing what is chosen while it is open.
+- [ ] ISC-173.4.1: Every list a screen offers opens directly under or directly over the control it belongs to, never covering that control, inside the window and with every entry readable whole, whatever the window's height.
+- [ ] ISC-173.4.2: While a list is open, the control it belongs to goes on showing what is chosen.
+- [ ] ISC-173.5: Every press shows it is under the pointer for as long as the pointer is over it, a tooltip opening included.
+- [ ] ISC-173.5.1: The pointer is the hand over every press for as long as it is over it, a tooltip opening included.
+- [ ] ISC-173.5.2: Every press looks different while the pointer is over it than it does without the pointer.
 - [x] ISC-203: The application is drawn in the theme Windows is set to, unless somebody chose light or dark in its settings.
 - [x] ISC-203.1: With no theme chosen in the settings, every screen is drawn from the dark palette with Windows set to dark, and from the light one with Windows set to light.
 - [x] ISC-203.2: With no theme chosen in the settings, switching Windows between light and dark while the application is open redraws it in the new theme, with nothing pressed and without starting it again.
@@ -270,13 +276,14 @@ Board: 3 · Grabador WinUI
 - [ ] ISC-212: A transcribed meeting's whole transcript is read on the screen that meeting opens on, every turn under the name and with the corrections its rendered transcript carries.
 - [ ] ISC-213: A word a transcript got wrong is corrected from where somebody reads it — a meeting's transcript or a speaker's quotation — by selecting it, never by typing how it came out and never from the corrections screen alone.
 - [ ] ISC-214: The programs a meeting can follow are offered one per application that shows a window or plays sound, never one per process and never two for one application.
+- [ ] ISC-225: The window is moved by dragging the bar at its top, anywhere on it but its presses.
 
 ### F5 · Deepgram BYOK
 Why: a recording becomes a transcript on the user's own key, and the user is charged exactly
 once for exactly what they approved.
 Board: 4 · Deepgram BYOK
 - [x] ISC-84: The Deepgram key lives in Windows Credential Manager and is read from nowhere else.
-- [ ] ISC-85: Anti: no Deepgram call happens without an explicit approval of an estimate of what that call will cost — given for that call, or given beforehand as a ceiling the estimate falls under — worked out from what is actually sent and never from how long the meeting was.
+- [ ] ISC-85: Anti: no Deepgram call happens without an explicit approval of how many minutes that call will send — given for that call, or given beforehand as a ceiling those minutes fall under — counted from what is actually sent and never from how long the meeting was; what is approved is minutes, never an amount of money.
 - [x] ISC-86: Transcribing again is a new version beside what was paid for, never a replacement.
 - [x] ISC-87: A job whose outcome is uncertain — a charge that may already have happened — stops on a person.
 - [ ] ISC-88: What the provider returns has the shape the fixtures describe.
@@ -286,9 +293,9 @@ Board: 4 · Deepgram BYOK
 - [ ] ISC-183: A live transcription the provider was lost in the middle of says which stretch of the meeting it is missing, rather than reading as the whole of it.
 - [x] ISC-207: Anti: two live runs pointed at one folder of responses never both pay for the same audio.
 - [x] ISC-208: A live run that ended leaves its folder of responses free for the next one.
-- [ ] ISC-193: A meeting goes from stop to summary with nothing pressed only when the person said it may, and only under the cost they allowed.
-- [ ] ISC-193.1: With unattended advance on, a meeting whose transcription is estimated under the ceiling the person set — in the same money the estimate is shown in — goes through what they settled should follow a recording, its transcription and its summary when that was settled too, with nothing pressed.
-- [ ] ISC-193.2: Anti: with unattended advance on, a meeting whose transcription is estimated over that ceiling is not sent, and waits for somebody to approve its cost.
+- [ ] ISC-193: A meeting goes from stop to summary with nothing pressed only when the person said it may, and only under the minutes they allowed.
+- [ ] ISC-193.1: With unattended advance on, a meeting whose transcription would send fewer minutes than the ceiling the person set goes through what they settled should follow a recording, its transcription and its summary when that was settled too, with nothing pressed.
+- [ ] ISC-193.2: Anti: with unattended advance on, a meeting whose transcription would send as many minutes as that ceiling or more is not sent, and waits for somebody to approve the minutes it would send.
 - [ ] ISC-193.3: Anti: unattended advance is off until somebody turns it on.
 - [ ] ISC-210: The Deepgram key is put on this machine, replaced and taken off it from the application, with nothing typed at a command line.
 - [ ] ISC-210.1: Whether this machine holds a Deepgram key is read on the application's settings screen.
@@ -296,6 +303,10 @@ Board: 4 · Deepgram BYOK
 - [ ] ISC-210.3: Taking the key off this machine from the application leaves it holding none.
 - [ ] ISC-210.4: Anti: the application never shows a Deepgram key — neither one this machine holds nor one being pasted.
 - [ ] ISC-210.5: Anti: a key this machine will not keep is refused in one sentence on the screen, and never as a crash.
+- [ ] ISC-224: A meeting is transcribed with the Deepgram model chosen for it, and what the corpus keeps of that transcription names that model.
+- [ ] ISC-224.1: A meeting is sent to Deepgram asking for the model chosen for that meeting, and for no other.
+- [ ] ISC-224.2: What the corpus keeps of a meeting's transcription names the model that transcription was asked for.
+- [ ] ISC-224.3: Anti: a meeting nobody chose a model for is never sent asking for anything but Nova-3.
 
 ### F6 · Summaries
 Why: a meeting becomes a summary whose every claim resolves to something said, using the user's
