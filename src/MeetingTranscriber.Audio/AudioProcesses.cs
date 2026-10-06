@@ -144,38 +144,54 @@ public static class AudioProcesses
         var matched = named.Select(process => process.Id).ToHashSet();
         var byId = processes.ToLookup(process => process.Id);
 
-        bool UnderAnother(AudioProcess process)
+        return [.. named.Where(process => !Ancestry(process, byId).Any(above => matched.Contains(above.Id)))];
+    }
+
+    /// <summary>
+    /// The process at the top of <paramref name="process"/>'s own same-name tree: the last ancestor
+    /// carrying its name however many of another name stand between, or the process itself when
+    /// none does. The same walk <see cref="Roots"/> reduces matches with, asked of one process.
+    /// </summary>
+    internal static AudioProcess RootOf(AudioProcess process, ILookup<int, AudioProcess> byId) =>
+        Ancestry(process, byId)
+            .LastOrDefault(above => above.Name.Equals(process.Name, StringComparison.OrdinalIgnoreCase))
+        ?? process;
+
+    /// <summary>
+    /// What started <paramref name="process"/>, then what started that, and so on up while the
+    /// snapshot still knows each one — nearest first.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is its own ancestor. Reused ids let a snapshot describe a chain that comes back
+    /// round, and reading that as "this one stands under a match" would drop the only candidate
+    /// there was; a step limit ends a chain that never comes back to where it began.
+    /// </remarks>
+    internal static IEnumerable<AudioProcess> Ancestry(AudioProcess process, ILookup<int, AudioProcess> byId)
+    {
+        var above = process.StartedBy;
+
+        for (var step = 0; step < Ancestors; step++)
         {
-            var above = process.StartedBy;
-
-            for (var step = 0; step < Ancestors; step++)
+            if (above == process.Id)
             {
-                // Nothing is its own ancestor. Reused ids let a snapshot describe a chain that
-                // comes back round, and reading that as "this one stands under a match" would drop
-                // the only candidate there was.
-                if (above == process.Id)
-                {
-                    return false;
-                }
-
-                if (matched.Contains(above))
-                {
-                    return true;
-                }
-
-                var parent = byId[above].FirstOrDefault();
-                if (parent is null || parent.StartedBy == above)
-                {
-                    return false;
-                }
-
-                above = parent.StartedBy;
+                yield break;
             }
 
-            return false;
-        }
+            var parent = byId[above].FirstOrDefault();
+            if (parent is null)
+            {
+                yield break;
+            }
 
-        return [.. named.Where(process => !UnderAnother(process))];
+            yield return parent;
+
+            if (parent.StartedBy == above)
+            {
+                yield break;
+            }
+
+            above = parent.StartedBy;
+        }
     }
 
     private static string Names(IReadOnlyList<AudioProcess> processes) =>

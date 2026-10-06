@@ -263,6 +263,33 @@ public sealed record RecorderScreen
     }
 
     /// <summary>
+    /// The applications on offer to channel 0, less the one it follows now, in the order the source
+    /// picker lists them: by name, then window title, then process id.
+    /// </summary>
+    /// <remarks>
+    /// The follower is left out by process id and never by what is on its title, which changes
+    /// with a browser's tab: a list compared on it would offer the program being followed. One
+    /// place decides the order, so the picker and the move list cannot disagree.
+    /// </remarks>
+    /// <param name="offered">What <c>AudioPrograms.Offered</c> says, one per application.</param>
+    /// <param name="followingNow">The program channel 0 follows, or nothing.</param>
+    public static IReadOnlyList<OfferedProgram> ProgramsOnOffer(
+        IReadOnlyList<OfferedProgram> offered,
+        AudioProcess? followingNow)
+    {
+        ArgumentNullException.ThrowIfNull(offered);
+
+        return
+        [
+            .. offered
+                .Where(program => program.Process.Id != followingNow?.Id)
+                .OrderBy(program => program.Process.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(program => program.Title, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(program => program.Process.Id),
+        ];
+    }
+
+    /// <summary>
     /// Whether the microphone's device stopped responding, as the meters last read it.
     /// </summary>
     /// <remarks>

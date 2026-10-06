@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 
 using MeetingTranscriber.Recording;
@@ -17,7 +18,7 @@ namespace MeetingTranscriber.App;
 /// reached. <c>docs/design.md</c> §The meter is what it is drawn from.
 /// </summary>
 /// <remarks>
-/// It draws and it remembers one number. Everything it is asked about a channel arrives as a
+/// It draws and it remembers the loudest the source has reached, and what it is showing now. Everything it is asked about a channel arrives as a
 /// <see cref="ChannelReading"/> from a project a build agent can run, and every word on it is set
 /// by the window out of the catalogue — this control names no text of its own, which is what keeps
 /// one component from having to know which language it is in.
@@ -54,10 +55,23 @@ public sealed partial class ChannelMeter : UserControl
     private float? _loudestSoFar;
 
     /// <summary>
-    /// How full the bar was the last time anything drew it, so a resize puts it back where it stood
-    /// instead of emptying it until the next reading arrives.
+    /// The level the bar is showing, in decibels, or nothing when it shows none. It is what a resize
+    /// puts back where it stood, and it is what falls: a reading louder than it raises it at once
+    /// and a quieter one leaves it to <see cref="MeterBallistics.Fall"/>, advanced a frame at a time.
     /// </summary>
-    private double? _asFullAs;
+    private double? _shown;
+
+    /// <summary>
+    /// What the channel read last, in decibels: the floor for a silent reading. The shown level
+    /// falls towards it and never under it.
+    /// </summary>
+    private double _read = MeterScale.Quietest;
+
+    /// <summary>When <see cref="OnFrame"/> last advanced the shown level.</summary>
+    private long _lastFrame;
+
+    /// <summary>Whether <see cref="OnFrame"/> is listening to the composition target right now.</summary>
+    private bool _falling;
 
     /// <summary>
     /// Whether the source behind this bar is gone. Kept rather than passed down to each of the two
@@ -89,6 +103,12 @@ public sealed partial class ChannelMeter : UserControl
             (LevelLayer, "LevelSegment"),
             (ClippedLayer, "ClippedSegment"),
         ];
+
+        // The frame listener lives only while the control is on screen and the bar is above the
+        // floor: a subscription to the composition target held by a control nobody can see is a
+        // callback every frame for as long as the window lives.
+        Loaded += (_, _) => KeepFalling();
+        Unloaded += (_, _) => StopFalling();
     }
 
     /// <summary>
@@ -182,7 +202,11 @@ public sealed partial class ChannelMeter : UserControl
     /// the colour goes with it.
     /// </para>
     /// </remarks>
-    /// <param name="reading">What the channel read, or nothing.</param>
+    /// <param name="reading">
+    /// What the channel read, or nothing. May be given at any rate: a louder reading is drawn at
+    /// once, a quieter or silent one lets the shown level fall, and nothing or a stopped source
+    /// empties the bar where it stands.
+    /// </param>
     /// <param name="noSignal">
     /// Whether the recording has said nothing ever arrived from this channel's program. The level
     /// then reads <em>sin señal</em> in pico, which the window words, and the peak is not drawn.
@@ -204,8 +228,25 @@ public sealed partial class ChannelMeter : UserControl
         var moved = died != _died;
         _died = died;
 
-        _asFullAs = reading is { IsSilent: false, Stopped: false } ? reading.Meter : null;
+        if (reading is null || died)
+        {
+            _shown = null;
+            _read = MeterScale.Quietest;
+        }
+        else
+        {
+            _read = reading.IsSilent ? MeterScale.Quietest : reading.Level.Decibels;
+
+            // Rising is at once and nothing eases it; a source that was drawn as nothing starts
+            // from what it reads, and one still silent stays drawn as nothing.
+            if (_read > (_shown ?? MeterScale.Quietest) || (_shown is null && !reading.IsSilent))
+            {
+                _shown = Math.Max(_read, MeterScale.Quietest);
+            }
+        }
+
         Draw();
+        KeepFalling();
 
         // The level's ink follows what it is saying. Where the source is alive it is a measurement
         // and reads in tinta, because it is what the row is about; where the source is gone the
@@ -242,7 +283,8 @@ public sealed partial class ChannelMeter : UserControl
         }
 
         var hotFrom = MeterScale.Along(MeterScale.HotFrom) * width;
-        var to = (_asFullAs ?? 0) * width;
+        double? asFullAs = _shown is { } shown ? MeterScale.Along((float)shown) : null;
+        var to = (asFullAs ?? 0) * width;
 
         ShowOnly(TrackLayer, 0, width);
 
@@ -254,8 +296,8 @@ public sealed partial class ChannelMeter : UserControl
         // Nothing arriving means no level and no peak: a bar drawn to nothing is what says the
         // source is silent, and the two coloured layers are the ones that would otherwise claim
         // something was heard.
-        ShowOnly(LevelLayer, 0, _asFullAs is null ? 0 : to);
-        ShowOnly(ClippedLayer, hotFrom, _asFullAs is null ? hotFrom : Math.Max(hotFrom, to));
+        ShowOnly(LevelLayer, 0, asFullAs is null ? 0 : to);
+        ShowOnly(ClippedLayer, hotFrom, asFullAs is null ? hotFrom : Math.Max(hotFrom, to));
 
         // Off LoudestSoFar and not off the field behind it, which is what makes the mark and the
         // words the window writes beside it one answer: a source that died has no peak to say, and
@@ -271,6 +313,63 @@ public sealed partial class ChannelMeter : UserControl
                 0,
                 -PeakStandsProud);
         }
+    }
+
+    /// <summary>
+    /// Listens to the composition target while there is a level to let fall, and stops listening
+    /// when there is not.
+    /// </summary>
+    private void KeepFalling()
+    {
+        var anythingToFall = IsLoaded && _shown is { } shown
+            && shown > MeterScale.Quietest && shown > _read;
+
+        if (anythingToFall && !_falling)
+        {
+            _lastFrame = Stopwatch.GetTimestamp();
+            CompositionTarget.Rendering += OnFrame;
+            _falling = true;
+        }
+        else if (!anythingToFall)
+        {
+            StopFalling();
+        }
+    }
+
+    private void StopFalling()
+    {
+        if (_falling)
+        {
+            CompositionTarget.Rendering -= OnFrame;
+            _falling = false;
+        }
+    }
+
+    /// <summary>
+    /// One composition frame: the shown level falls by what the time since the last one allows,
+    /// and the bar is drawn again only if that moved it. Not a duration and not an animation, so a
+    /// machine asked for none still sees the bar fall, which is what <c>Movement</c> says.
+    /// </summary>
+    private void OnFrame(object? sender, object e)
+    {
+        var now = Stopwatch.GetTimestamp();
+        var elapsed = Stopwatch.GetElapsedTime(_lastFrame, now).TotalMilliseconds;
+        _lastFrame = now;
+
+        if (_shown is not { } shown)
+        {
+            StopFalling();
+            return;
+        }
+
+        var fallen = MeterBallistics.Fall(shown, _read, elapsed);
+        if (fallen != shown)
+        {
+            _shown = fallen;
+            Draw();
+        }
+
+        KeepFalling();
     }
 
     /// <summary>

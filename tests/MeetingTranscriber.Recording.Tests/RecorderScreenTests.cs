@@ -552,6 +552,29 @@ public class RecorderScreenTests
             .ShouldBe([alphaToo, alpha, bravo]);
     }
 
+    [Fact]
+    public void The_applications_on_offer_leave_out_the_one_followed_by_its_id_whatever_its_title_says()
+    {
+        var following = new AudioProcess(1, "a", StartedBy: 1);
+        var other = new AudioProcess(2, "b", StartedBy: 1);
+
+        RecorderScreen.ProgramsOnOffer(
+            [new OfferedProgram(other, "x"), new OfferedProgram(following, "a new tab")],
+            following)
+            .ShouldBe([new OfferedProgram(other, "x")]);
+    }
+
+    [Fact]
+    public void The_applications_on_offer_are_ordered_by_name_then_title_then_id()
+    {
+        var bravo = new OfferedProgram(new AudioProcess(9, "Bravo", StartedBy: 1), "a");
+        var alphaLate = new OfferedProgram(new AudioProcess(8, "alpha", StartedBy: 1), "z");
+        var alphaEarly = new OfferedProgram(new AudioProcess(3, "alpha", StartedBy: 1), "b");
+
+        RecorderScreen.ProgramsOnOffer([bravo, alphaLate, alphaEarly], null)
+            .ShouldBe([alphaEarly, alphaLate, bravo]);
+    }
+
     /// <summary>
     /// ISC-204.1 and ISC-204.2: the program channel 0 follows ended while the meeting was being
     /// recorded, and both ways out are on offer — the whole machine, and another program — with

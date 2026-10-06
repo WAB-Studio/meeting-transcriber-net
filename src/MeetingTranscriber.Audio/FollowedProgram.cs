@@ -5,8 +5,8 @@ using Microsoft.Win32.SafeHandles;
 namespace MeetingTranscriber.Audio;
 
 /// <summary>
-/// Whether the program channel 0 follows is still running, read off a handle held on it for as
-/// long as channel 0 follows it.
+/// Whether the program channel 0 follows is still running: its root's handle, held for as long as
+/// channel 0 follows it, and then whether anything it started is still alive.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -16,6 +16,16 @@ namespace MeetingTranscriber.Audio;
 /// snapshot that cannot tell the program from whatever Windows gave its id to next. A handle
 /// opened on the process pins the id for as long as it is held, and is signalled the moment the
 /// process ends whatever else still holds it.
+/// </para>
+/// <para>
+/// A signalled root is not yet a program that went. A launcher-style program starts the process
+/// that plays and exits, and a meeting in it goes on: the tree is what is followed, so the program
+/// has gone only when its root's handle is signalled <i>and</i> no running process has the root's
+/// id in its parent chain. The list is asked only once the root is signalled, so a program that
+/// is running costs a handle wait and never a snapshot, while a root that ended with children
+/// still playing costs one on each look; and the root's id cannot be handed to
+/// another process while the handle is held, so the chain is read against the id of the program
+/// that was followed.
 /// </para>
 /// <para>
 /// Two refusals are answered without throwing. Nothing running as that id when the handle is
@@ -37,13 +47,25 @@ public sealed class FollowedProgram : IDisposable
 
     private const uint Signalled = 0x00000000;
 
+    /// <summary>How far up a parent chain is followed before it is taken for a loop.</summary>
+    private const int Ancestors = 64;
+
     private readonly SafeProcessHandle? handle;
     private readonly bool goneFromTheStart;
+    private readonly int root;
+    private readonly Func<IReadOnlyList<AudioProcess>> running;
+    private volatile bool treeEnded;
 
-    private FollowedProgram(SafeProcessHandle? handle, bool goneFromTheStart)
+    private FollowedProgram(
+        SafeProcessHandle? handle,
+        bool goneFromTheStart,
+        int root,
+        Func<IReadOnlyList<AudioProcess>> running)
     {
         this.handle = handle;
         this.goneFromTheStart = goneFromTheStart;
+        this.root = root;
+        this.running = running;
     }
 
     /// <summary>
@@ -51,25 +73,34 @@ public sealed class FollowedProgram : IDisposable
     /// operating system refusing the handle; see the remarks on the type for the two ways it does.
     /// </summary>
     /// <param name="program">The program channel 0 begins to follow.</param>
-    public static FollowedProgram Watching(AudioProcess program)
+    /// <param name="running">
+    /// What is running, asked once the root has ended. Nothing means
+    /// <see cref="AudioProcesses.Running"/>; a test answers it.
+    /// </param>
+    public static FollowedProgram Watching(
+        AudioProcess program,
+        Func<IReadOnlyList<AudioProcess>>? running = null)
     {
         ArgumentNullException.ThrowIfNull(program);
+
+        running ??= AudioProcesses.Running;
 
         var opened = OpenProcess(Synchronize, false, program.Id);
         if (!opened.IsInvalid)
         {
-            return new FollowedProgram(opened, goneFromTheStart: false);
+            return new FollowedProgram(opened, goneFromTheStart: false, program.Id, running);
         }
 
         var why = Marshal.GetLastWin32Error();
         opened.Dispose();
-        return new FollowedProgram(null, goneFromTheStart: why == NothingRunsAsThat);
+        return new FollowedProgram(null, goneFromTheStart: why == NothingRunsAsThat, program.Id, running);
     }
 
     /// <summary>
-    /// Whether the program ended since it began to be followed: the handle is signalled, or there
-    /// was nothing to hold. A program that is running, a wait that failed and a handle already let
-    /// go of are all false.
+    /// Whether the program ended since it began to be followed: the root's handle is signalled and
+    /// nothing it started is still running, or there was nothing to hold. A program that is
+    /// running, a root that ended while its children go on, a wait or a list that failed and a
+    /// handle already let go of are all false.
     /// </summary>
     /// <remarks>
     /// Read without any gate, once a second, from the screen's thread. The handle is a
@@ -92,9 +123,17 @@ public sealed class FollowedProgram : IDisposable
                 return false;
             }
 
+            if (treeEnded)
+            {
+                return true;
+            }
+
             try
             {
-                return WaitForSingleObject(handle, 0) == Signalled;
+                if (WaitForSingleObject(handle, 0) != Signalled)
+                {
+                    return false;
+                }
             }
             catch (ObjectDisposedException)
             {
@@ -102,7 +141,57 @@ public sealed class FollowedProgram : IDisposable
                 // any longer, and not a program that went.
                 return false;
             }
+
+            // The root ended. Whether the program did is whether anything is still standing under
+            // it, and a list that cannot be had says nothing is known, as a refused handle does.
+            try
+            {
+                treeEnded = !AnythingStandsUnderTheRoot(running());
+            }
+            catch (AudioCaptureException)
+            {
+                return false;
+            }
+
+            return treeEnded;
         }
+    }
+
+    /// <summary>Whether any process in <paramref name="processes"/> descends from the root.</summary>
+    /// <remarks>
+    /// Walked through the list and not through the immediate parent, because a launcher starts a
+    /// helper and the helper starts the window. A chain that comes back round is a reused id and
+    /// is not a descent, and one whose middle has itself ended is not followed: the snapshot no
+    /// longer says whose child its last process was.
+    /// </remarks>
+    private bool AnythingStandsUnderTheRoot(IReadOnlyList<AudioProcess> processes)
+    {
+        var byId = processes.ToLookup(process => process.Id);
+
+        bool Descends(AudioProcess process)
+        {
+            var above = process.StartedBy;
+
+            for (var step = 0; step < Ancestors; step++)
+            {
+                if (above == root)
+                {
+                    return true;
+                }
+
+                var parent = byId[above].FirstOrDefault();
+                if (parent is null || parent.StartedBy == above || above == process.Id)
+                {
+                    return false;
+                }
+
+                above = parent.StartedBy;
+            }
+
+            return false;
+        }
+
+        return processes.Any(process => process.Id != root && Descends(process));
     }
 
     /// <summary>Lets go of the handle. Saying it twice is saying it once, and it never throws.</summary>

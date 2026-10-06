@@ -45,6 +45,40 @@ public sealed class FollowedProgramTests
     }
 
     /// <summary>
+    /// A launcher-style program: the root ends and the process it started goes on playing. The
+    /// program has not gone, because the tree is what is followed.
+    /// </summary>
+    [Fact]
+    public void A_root_that_exits_while_its_child_plays_has_not_gone()
+    {
+        using var program = AnotherProcess.Waiting();
+        var child = new AudioProcess(program.Id + 1_000_000, "player", StartedBy: program.Id);
+        using var watch = FollowedProgram.Watching(
+            new AudioProcess(program.Id, "powershell", 0), () => [child]);
+
+        AnotherProcess.Kill(program);
+
+        watch.HasGone.ShouldBeFalse("a child of the root is still running.");
+    }
+
+    /// <summary>
+    /// The root has ended and nothing in the list descends from it, however far down the chain
+    /// goes, so the program has gone. A process that merely runs does not keep it.
+    /// </summary>
+    [Fact]
+    public void A_root_and_its_children_gone_has_gone()
+    {
+        using var program = AnotherProcess.Waiting();
+        var unrelated = new AudioProcess(program.Id + 1_000_000, "other", StartedBy: 4);
+        using var watch = FollowedProgram.Watching(
+            new AudioProcess(program.Id, "powershell", 0), () => [unrelated]);
+
+        AnotherProcess.Kill(program);
+
+        watch.HasGone.ShouldBeTrue();
+    }
+
+    /// <summary>
     /// An id nothing runs as is a program that has already gone, and following it is not an error:
     /// the list a person picked from can be a second old.
     /// </summary>
