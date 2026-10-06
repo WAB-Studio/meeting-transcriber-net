@@ -48,9 +48,10 @@ public sealed record WhoIsUsingThisRow(
         new(CorpusIsReachable: false, SomebodyHasSaid: false, Typed: "", BeingKept: false);
 
     /// <summary>
-    /// Whether the question is still being put. It is what makes this a question rather than a
-    /// label, and it goes the moment there is an answer — a sentence that stayed would keep asking
-    /// something this install has settled.
+    /// Whether the question is still being put: the corpus is reachable and nobody has said. It is
+    /// the rule for opening the settings screen as the first step, and it goes the moment there is
+    /// an answer — a first step that stayed would keep asking something this install has settled.
+    /// A corpus that was refused is not asking: every block would be dead there.
     /// </summary>
     public bool IsAsking => CorpusIsReachable && !SomebodyHasSaid;
 

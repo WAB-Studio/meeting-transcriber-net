@@ -188,6 +188,14 @@ what a single-project MSIX means — which is why it knows about its two sibling
 That is the right home today by elimination rather than by design: splitting the packaging out would
 take a `.wapproj` and full MSBuild, which §3 deliberately does not use.
 
+**The name and the shortcut.** The manifest names the application *Meeting Transcriber* in
+`<DisplayName>` and in the window's `VisualElements`, which is what Start and the installed-apps
+list say, and the window `<Application>` carries a `desktop7` `windows.shortcut` extension that
+puts `Meeting Transcriber.lnk` on the desktop. `desktop7` is ignorable, so a block under the wrong
+namespace is dropped without a word and `PackageManifestTests` reads it by namespace. A shortcut is
+the install's doing, so an installed copy is where it is seen: install the package on the machine
+§4 says and look at the desktop, and uninstalling takes it away again.
+
 ### Then prove the package, in the same breath
 
 ```powershell

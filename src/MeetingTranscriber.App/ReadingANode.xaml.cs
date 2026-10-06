@@ -359,5 +359,6 @@ public sealed partial class ReadingANode : UserControl
         _ => throw new InvalidOperationException($"This screen has no bullet for the section '{kind}'."),
     };
 
-    private void OnBack(object sender, RoutedEventArgs e) => Left?.Invoke(this, EventArgs.Empty);
+    /// <summary>Leaves the screen, which is the window's app bar's to ask.</summary>
+    public void GoBack() => Left?.Invoke(this, EventArgs.Empty);
 }

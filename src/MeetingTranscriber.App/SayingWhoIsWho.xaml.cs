@@ -331,7 +331,13 @@ public sealed partial class SayingWhoIsWho : UserControl
             Text = VoiceWords.TurnsSaid(voice.TurnsSaid, _language),
             Style = Chrome("VoiceData"),
         });
-        left.Children.Add(new TextBlock { Text = voice.Quoted.Text, Style = Chrome("VoiceQuoted") });
+
+        // The quotation is where a wrong word is seen, so the words are selectable and a right-click
+        // on a selection offers the dialogue that corrects it there.
+        var quoted = new TextBlock { Text = voice.Quoted.Text, Style = Chrome("VoiceQuoted") };
+        quoted.ContextFlyout = CorrectingAWord.OfferedOver(
+            quoted, In(UiTexts.CorrectThisWord), words => _ = CorrectAWordAsync(read, words));
+        left.Children.Add(quoted);
 
         if (ClipRow(read, voice, position) is { } clip)
         {
@@ -341,7 +347,7 @@ public sealed partial class SayingWhoIsWho : UserControl
         Grid.SetColumn(left, 0);
         layout.Children.Add(left);
 
-        var right = settled ? SettledName(voice) : APicker(read, voice, standing, position);
+        var right = settled ? SettledName(voice) : APickerAndItsCorrection(read, voice, standing, position);
         Grid.SetColumn(right, 1);
         layout.Children.Add(right);
 
@@ -439,21 +445,50 @@ public sealed partial class SayingWhoIsWho : UserControl
     };
 
     /// <summary>
-    /// The picker over everybody the corpus holds, for a voice nothing has settled — naming
-    /// somebody new, and correcting whoever the draft already has standing there.
+    /// The picker over everybody the corpus holds, for a voice nothing has settled, and — beside it
+    /// and outside its list — the press that corrects the name of whoever stands there.
     /// </summary>
-    private FrameworkElement APicker(VoicesAsHeard read, Voice voice, Guid? standing, int position)
+    /// <remarks>
+    /// The press is a margin press and never an entry of the list: an entry in a list of people is
+    /// read as one more person to choose, and correcting a name is an act on the one chosen, not a
+    /// choice. It stands only beside a voice somebody has been put on.
+    /// </remarks>
+    private FrameworkElement APickerAndItsCorrection(VoicesAsHeard read, Voice voice, Guid? standing, int position)
+    {
+        var picker = APicker(read, voice, standing, position);
+
+        if (standing is not { } standingId
+            || read.Everybody.FirstOrDefault(person => person.Id == standingId) is not { } them)
+        {
+            return picker;
+        }
+
+        var correct = new Button
+        {
+            Content = In(UiTexts.CorrectThisName),
+            Style = Chrome("CorrectTheirName"),
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+
+        AutomationProperties.SetAutomationId(correct, $"correct-{position}");
+        correct.Click += (_, _) => _ = AskWhoTheyAre(read, voice, them);
+
+        var both = new StackPanel { Spacing = 4 };
+        both.Children.Add(picker);
+        both.Children.Add(correct);
+        return both;
+    }
+
+    /// <summary>
+    /// The picker over everybody the corpus holds, for a voice nothing has settled — naming
+    /// somebody new.
+    /// </summary>
+    private ComboBox APicker(VoicesAsHeard read, Voice voice, Guid? standing, int position)
     {
         var extras = new List<(UiText Words, Action Chose)>
         {
             (UiTexts.NameANewOne, () => _ = AskWhoTheyAre(read, voice, correcting: null)),
         };
-
-        if (standing is { } standingId
-            && read.Everybody.FirstOrDefault(person => person.Id == standingId) is { } them)
-        {
-            extras.Add((UiTexts.CorrectThisName, () => _ = AskWhoTheyAre(read, voice, them)));
-        }
 
         var picker = OneOfThese.Build(
             In,
@@ -513,6 +548,49 @@ public sealed partial class SayingWhoIsWho : UserControl
         }
 
         Render();
+    }
+
+    /// <summary>
+    /// Opens the dialogue that corrects one word over the one a selection in a quotation stands
+    /// for, and says what is left to say when it saved.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is drawn again: the quotation is the voice's own words as they were stored, a
+    /// correction is applied when a transcript is rendered, and a redraw here would drop the draft
+    /// and the clip playing. The corrected words are on the meeting's own screen.
+    /// </remarks>
+    private async Task CorrectAWordAsync(VoicesAsHeard read, string selection)
+    {
+        if (CorrectingAWord.TheWordIn(selection) is not { } word)
+        {
+            return;
+        }
+
+        bool saved;
+
+        try
+        {
+            saved = await AskingHowAWordGoes.AskAsync(Corpus(), read.Meeting.Id, word, _language, Root.XamlRoot);
+        }
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
+        {
+            // Said and not dropped: the press that opened this was fired and forgotten.
+            _status.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+            ShowTheStatus();
+            return;
+        }
+
+        // The screen was closed, or moved to another meeting, while the dialogue was open.
+        if (!saved || _meeting != read.Meeting.Id)
+        {
+            return;
+        }
+
+        if (AskingHowAWordGoes.Afterwards is { } afterwards)
+        {
+            _status.Says(afterwards);
+            ShowTheStatus();
+        }
     }
 
     /// <summary>
@@ -688,10 +766,14 @@ public sealed partial class SayingWhoIsWho : UserControl
         Named?.Invoke(this, meeting);
     }
 
-    /// <summary>Back and Cancelar both leave without writing anything.</summary>
-    private void OnLeave(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Leaves without writing anything: the app bar's back and *Cancelar* both come here.
+    /// </summary>
+    public void GoBack()
     {
         Close();
         Left?.Invoke(this, EventArgs.Empty);
     }
+
+    private void OnLeave(object sender, RoutedEventArgs e) => GoBack();
 }

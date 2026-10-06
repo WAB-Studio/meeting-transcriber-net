@@ -236,29 +236,29 @@ public sealed record RecorderScreen
     public bool TheProgramWentAwayIsOnScreen => TheNoticeIsOnScreen && TheProgramWentAway;
 
     /// <summary>
-    /// The programs channel 0 may be moved onto: those running, less the one it follows now, in the
-    /// order the source picker lists them. Never the whole machine, which is the act beside
-    /// <em>Cambiar</em>, so nothing reaches it through a picker.
+    /// The applications on offer to channel 0, less the one it follows now, in the order the source
+    /// picker lists them: by name, then window title, then process id.
     /// </summary>
     /// <remarks>
-    /// It is also the source picker's own order, and the window lists its programs through it: with
-    /// <paramref name="followingNow"/> <c>null</c> nothing is left out. One place decides that
-    /// order, so the move list and the source list cannot disagree.
+    /// The follower is left out by process id and never by what is on its title, which changes
+    /// with a browser's tab: a list compared on it would offer the program being followed. One
+    /// place decides the order, so the picker and the move list cannot disagree.
     /// </remarks>
-    /// <param name="running">What the machine says is running.</param>
+    /// <param name="offered">What <c>AudioPrograms.Offered</c> says, one per application.</param>
     /// <param name="followingNow">The program channel 0 follows, or nothing.</param>
-    public static IReadOnlyList<AudioProcess> ProgramsChannelZeroMayMoveTo(
-        IReadOnlyList<AudioProcess> running,
+    public static IReadOnlyList<OfferedProgram> ProgramsOnOffer(
+        IReadOnlyList<OfferedProgram> offered,
         AudioProcess? followingNow)
     {
-        ArgumentNullException.ThrowIfNull(running);
+        ArgumentNullException.ThrowIfNull(offered);
 
         return
         [
-            .. running
-                .Where(program => program.Id != followingNow?.Id)
-                .OrderBy(program => program.Name, StringComparer.CurrentCultureIgnoreCase)
-                .ThenBy(program => program.Id),
+            .. offered
+                .Where(program => program.Process.Id != followingNow?.Id)
+                .OrderBy(program => program.Process.Name, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(program => program.Title, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(program => program.Process.Id),
         ];
     }
 

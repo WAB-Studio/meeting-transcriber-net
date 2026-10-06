@@ -32,6 +32,16 @@ public sealed record MeetingScreen(OwedWork Owed, WhatTheAiLeft Left, RecordedAu
     public MeetingStage Stage => Owed.Stage;
 
     /// <summary>
+    /// Whether a job for this meeting is queued or running, which is when the screen has to keep
+    /// asking what became of it.
+    /// </summary>
+    /// <remarks>
+    /// Read off the standing, which is what <see cref="OwedWork.Status"/> reads too, so the two
+    /// cannot part: a status of queued, transcribing or summarising is exactly these two standings.
+    /// </remarks>
+    public bool WorkIsUnderWay => Owed.Standing is StageStanding.Running or StageStanding.Underway;
+
+    /// <summary>
     /// Whether what this meeting recorded can be played back.
     /// </summary>
     /// <remarks>

@@ -91,6 +91,44 @@ public static class MeetingRenderer
             turns.Count, Of(written, ArtifactKind.Transcript), Of(written, ArtifactKind.Utterances));
     }
 
+    /// <summary>
+    /// Every turn of a meeting in ordinal order, each as the rendered files say it: the stored words
+    /// passed through the corrections that reach the meeting.
+    /// </summary>
+    /// <remarks>
+    /// What the screen that shows the transcript reads, so that the screen and <c>transcript.md</c>
+    /// say the same words once the files are rendered again: the corrections are read now, and the
+    /// file carries the ones there were when it was last rendered. It asks <see cref="Header"/> for the corrections and the node depths and
+    /// works out neither itself, which keeps the one place that decides which corrections reach a
+    /// meeting the one place. Labels are unchanged, and so is every stored row: nothing is written.
+    /// </remarks>
+    /// <exception cref="MeetingStageException">The corpus holds no such meeting.</exception>
+    public static IReadOnlyList<Turn> AsRead(CorpusDbContext context, Guid meetingId)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        var meeting = context.Meetings.AsNoTracking().FirstOrDefault(row => row.Id == meetingId)
+            ?? throw new MeetingStageException($"This corpus holds no meeting {meetingId}.");
+        var header = Header(context, meeting);
+
+        return
+        [
+            .. context.Utterances
+                .AsNoTracking()
+                .Where(turn => turn.MeetingId == meetingId)
+                .OrderBy(turn => turn.Ordinal)
+                .ToList()
+                .Select(turn => new Turn(
+                    turn.Ordinal,
+                    turn.Start,
+                    turn.End,
+                    turn.Channel,
+                    turn.SpeakerLabel,
+                    Terminology.Apply(turn.Text, header.Corrections, header.NodeDepths),
+                    turn.Confidence)),
+        ];
+    }
+
     /// <summary>The one artifact of that kind the write came back with.</summary>
     /// <remarks>
     /// By kind and not by position. The set goes in as a list and comes back as one, so a third

@@ -128,6 +128,81 @@ public class CorpusSettingsTests
     }
 
     [Fact]
+    public void No_model_chosen_reads_as_sonnet()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+
+        new CorpusSettings(context).SummaryModel().ShouldBe(SummaryModel.Sonnet);
+    }
+
+    [Theory]
+    [InlineData(SummaryModel.Sonnet)]
+    [InlineData(SummaryModel.Opus)]
+    [InlineData(SummaryModel.Haiku)]
+    public void A_model_chosen_is_read_back(SummaryModel chosen)
+    {
+        using var corpus = new TemporaryCorpus();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            var settings = new CorpusSettings(writing);
+
+            // Another model first, so the answer read back is the rewrite of one row and not the
+            // only row there was.
+            settings.SummaryModel(SummaryModel.Sonnet == chosen ? SummaryModel.Haiku : SummaryModel.Sonnet, Chosen);
+            settings.SummaryModel(chosen, Chosen + Duration.FromSeconds(5));
+        }
+
+        using var reopened = corpus.Open();
+        new CorpusSettings(reopened).SummaryModel().ShouldBe(chosen);
+        reopened.Settings.Count(row => row.Key == CorpusSettings.SummaryModelKey).ShouldBe(1);
+    }
+
+    [Fact]
+    public void A_stored_model_this_build_cannot_read_is_sonnet()
+    {
+        using var corpus = new TemporaryCorpus();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            writing.Settings.Add(new Setting
+            {
+                Key = CorpusSettings.SummaryModelKey,
+                Value = "gpt_5",
+                UpdatedAt = Chosen,
+            });
+
+            writing.SaveChanges();
+        }
+
+        using var reopened = corpus.Open();
+        new CorpusSettings(reopened).SummaryModel().ShouldBe(SummaryModel.Sonnet);
+    }
+
+    /// <summary>
+    /// The three names the summary model is stored under, spelled out for the reason
+    /// <see cref="The_names_on_disk"/> gives. They are also what Claude Code's <c>--model</c> takes,
+    /// so a renamed member would change what is asked of the provider as well as what is stored.
+    /// </summary>
+    [Theory]
+    [InlineData(SummaryModel.Sonnet, "sonnet")]
+    [InlineData(SummaryModel.Opus, "opus")]
+    [InlineData(SummaryModel.Haiku, "haiku")]
+    public void The_summary_models_names_on_disk(SummaryModel chosen, string stored)
+    {
+        using var corpus = new TemporaryCorpus();
+
+        using (var writing = corpus.OpenMigrated())
+        {
+            new CorpusSettings(writing).SummaryModel(chosen, Chosen);
+        }
+
+        using var reopened = corpus.Open();
+        reopened.Settings.Single().Value.ShouldBe(stored);
+    }
+
+    [Fact]
     public void A_corpus_nobody_has_exported_says_so()
     {
         using var corpus = new TemporaryCorpus();

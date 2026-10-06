@@ -62,6 +62,21 @@ public class ClaudeCodeSummariesTests : IDisposable
     });
 
     [Fact]
+    public Task A_run_asked_for_a_model_passes_it_and_one_asked_for_none_runs_the_default() => Proving(async () =>
+    {
+        var fake = AFake();
+        fake.AnswersVersion("fake 1").Answers(FakeClaudeCode.Envelope("{}"), FakeClaudeCode.Envelope("{}"));
+        var provider = Provider(fake);
+
+        await provider.ExtractAsync(Request() with { Model = "opus" }, TestContext.Current.CancellationToken);
+        await provider.ExtractAsync(Request(), TestContext.Current.CancellationToken);
+
+        var runs = fake.Calls.Where(one => one.Arguments.Contains("-p")).ToArray();
+        After(runs[0].Arguments, "--model").ShouldBe("opus");
+        After(runs[1].Arguments, "--model").ShouldBe(ClaudeCodeSummaries.Model);
+    });
+
+    [Fact]
     public Task A_run_carries_no_key_it_found_in_the_environment() => Proving(async () =>
     {
         var fake = AFake();

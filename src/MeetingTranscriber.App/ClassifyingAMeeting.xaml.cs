@@ -412,6 +412,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
                 RememberButton.IsEnabled = false;
                 CorrectKeptNameButton.Visibility = Visibility.Collapsed;
                 DiscardKeptButton.Visibility = Visibility.Collapsed;
+                KeepingIt.Visibility = Visibility.Collapsed;
                 _correctingKept = false;
                 return;
             }
@@ -491,6 +492,11 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// What the line under the chips offers now: the two presses only a lit classification has, and
     /// <em>Recordar</em> once there is a name to put it by under and something to put by.
     /// </summary>
+    /// <remarks>
+    /// The line is there only for what it is for: a classification filled by hand, which is the one
+    /// a person may want to put by, or one already put by and lit, which is the one the line edits.
+    /// Beside a chip somebody chose from the fourteen it offers to name what was already named.
+    /// </remarks>
     private void TheLine(MeetingAsClassified read)
     {
         var lit = LitKept(read);
@@ -498,6 +504,10 @@ public sealed partial class ClassifyingAMeeting : UserControl
         {
             _keptChosen = null;
         }
+
+        KeepingIt.Visibility = lit is not null || _chosen.Shape is MeetingShape.FilledByHand
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
         var visible = lit is null ? Visibility.Collapsed : Visibility.Visible;
         CorrectKeptNameButton.Visibility = visible;
@@ -873,12 +883,7 @@ public sealed partial class ClassifyingAMeeting : UserControl
                     role, row, level, parent is { } above ? Node.Holds(above.Kind) : null))));
         }
 
-        if (standing is { } here)
-        {
-            extras.Add((UiTexts.CorrectThisName, () => Naming(AFieldOnAPill.ACorrection(role, row, level, here))));
-        }
-
-        return OneOfThese.Build(
+        var pill = OneOfThese.Build(
             In,
             Chrome("Picker"),
             [.. WhatMayStandAt(read, path, level).Select(node => (node.Id, node.Name))],
@@ -892,6 +897,35 @@ public sealed partial class ClassifyingAMeeting : UserControl
             In(Heading(role)),
             APillAt(role, row, level),
             () => _drawing);
+
+        // Correcting what stands here is a press beside the pill and never an entry in its list:
+        // the list is what the pill may be changed to, and an entry that changes nothing in it is
+        // one more thing to read past. It exists only over a pill that holds something.
+        if (standing is not { } here)
+        {
+            return pill;
+        }
+
+        return BesideIt(
+            pill,
+            APillAt(role, row, level),
+            () => Naming(AFieldOnAPill.ACorrection(role, row, level, here)));
+    }
+
+    /// <summary>A pill with the press that corrects its name standing beside it.</summary>
+    private StackPanel BesideIt(UIElement pill, string id, Action correct)
+    {
+        var press = new Button { Content = In(UiTexts.CorrectThisName), Style = Chrome("TheCorrection") };
+
+        AutomationProperties.SetAutomationId(press, $"{id}-correct");
+        press.Click += (_, _) => correct();
+
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 7,
+            Children = { pill, press },
+        };
     }
 
     /// <summary>
@@ -1069,27 +1103,40 @@ public sealed partial class ClassifyingAMeeting : UserControl
         InTheCorpus<object?>(human => (null, write(human)), out _);
 
     /// <summary>
-    /// The field a new name is typed into, standing where its pill was.
+    /// The field a new name is typed into, standing where its pill was, with the two presses that
+    /// end it.
     /// </summary>
     /// <remarks>
-    /// It commits on Enter and on nothing else. Leaving the field puts the pill back and writes
-    /// nothing, which is the opposite of what a name field usually does and is right here for one
-    /// reason: what a commit does is write a node into the classification tree for good, and there
-    /// is no screen anywhere in this application that can take one out again. Committing on a
-    /// focus that was lost — a click on another pill, the window going to the background — would
-    /// grow a tree of half-typed names that every picker after it offers. That holds for a
-    /// correction too — leaving the field puts the old name back, because a name half retyped and
-    /// abandoned is not a correction somebody made.
+    /// <para>
+    /// It commits on Enter or <em>Guardar</em> and on nothing else, and it is put away by Escape or
+    /// <em>Cancelar</em> and by nothing else. What a commit does is write a node into the
+    /// classification tree for good, and there is no screen anywhere in this application that can
+    /// take one out again: committing on a focus that was lost would grow a tree of half-typed names
+    /// that every picker after it offers. Putting the pill back on a lost focus, which this did
+    /// before, is why a press anywhere else — <em>Agregar</em> included — erased what had been
+    /// typed and looked like a press that did nothing. That holds for a correction too: a name half
+    /// retyped and abandoned is not a correction somebody made, and the press that abandons it is
+    /// <em>Cancelar</em>.
+    /// </para>
+    /// <para>
+    /// What is typed survives a redraw. The field is built again by every <c>Changed()</c>, so its
+    /// text is kept on <see cref="AFieldOnAPill.Typed"/> as it is written and put back here; that is
+    /// what replaces the <c>LostFocus</c> handler as the answer to a redraw taking the field away.
+    /// One field is open at a time: opening another, on another pill, drops what the first held.
+    /// The act is on the right and the way out on its left, as <c>docs/design.md</c> §Two places
+    /// has it.
+    /// </para>
     /// </remarks>
     private UIElement AName(MeetingAsClassified read, MeetingNodeRole role, int row, ChosenPath path, int level)
     {
+        var kept = _naming?.Typed;
         var correcting = _naming?.Correcting;
 
         var wrong = correcting is { } id
             ? read.Tree.FirstOrDefault(node => node.Id == id)?.Name
             : null;
 
-        var typing = new TextBox { Style = Chrome("Naming"), Text = wrong ?? string.Empty };
+        var typing = new TextBox { Style = Chrome("Naming"), Text = kept ?? wrong ?? string.Empty };
 
         // Named for the same reason the pills are, and it is the control that most needed it: this
         // is the only thing on the screen that commits on Enter, so a walk that cannot address it
@@ -1104,15 +1151,29 @@ public sealed partial class ClassifyingAMeeting : UserControl
 
         typing.Loaded += (_, _) =>
         {
+            // Once, when it opens. A redraw builds the field again and must not take focus from
+            // whatever somebody pressed to cause it — the press that corrects a kept name, or the
+            // next place's picker.
+            if (_naming is not { Opened: false } opening)
+            {
+                return;
+            }
+
+            opening.Opened = true;
             typing.Focus(FocusState.Programmatic);
 
-            // Selected and not left with the caret at the end. The field opens holding the name that
-            // is wrong, so typing replaces it, and somebody who only wanted one letter changed still
-            // has it one arrow key away.
+            // Selected when it opens holding the name that is wrong, so typing replaces it, and
+            // somebody who only wanted one letter changed still has it one arrow key away.
             typing.SelectAll();
         };
 
-        typing.LostFocus += (_, _) => NeverMind(role, row, level);
+        typing.TextChanged += (_, _) =>
+        {
+            if (!_drawing && _naming is { } open && open.StandsIn(role, row, level))
+            {
+                open.Typed = typing.Text;
+            }
+        };
 
         typing.KeyDown += (_, pressed) =>
         {
@@ -1128,7 +1189,20 @@ public sealed partial class ClassifyingAMeeting : UserControl
             }
         };
 
-        return typing;
+        var save = new Button { Content = In(UiTexts.Save), Style = Chrome("TheLinesAct") };
+        AutomationProperties.SetAutomationId(save, $"{APillAt(role, row, level)}-save");
+        save.Click += (_, _) => NameANode(read, role, row, path, level, typing.Text);
+
+        var cancel = new Button { Content = In(UiTexts.Cancel), Style = Chrome("AnOptionalPress") };
+        AutomationProperties.SetAutomationId(cancel, $"{APillAt(role, row, level)}-cancel");
+        cancel.Click += (_, _) => NeverMind(role, row, level);
+
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 7,
+            Children = { typing, cancel, save },
+        };
     }
 
     /// <summary>Puts the pill back where the field is, having written nothing.</summary>
@@ -1341,18 +1415,15 @@ public sealed partial class ClassifyingAMeeting : UserControl
             (UiTexts.NameANewOne, () => _ = AskWhoTheyAre(read, slot, correcting: null)),
         };
 
-        // The same words the pill over the tree uses, because it is the same act — `docs/design.md`
-        // says a name typed wrong is corrected where it was typed, and one idea said two ways on one
-        // screen is two ideas to whoever reads it.
-        //
-        // Offered only over somebody the list above actually shows. A slot holding the person using
-        // this install is drawn with nothing selected — they are filtered out of `offered` — and an
-        // entry offering to correct a name the picker will not show is an entry about nothing.
-        if (person.PersonId is { } standing
-            && offered.Any(one => one.Id == standing)
-            && read.Everybody.FirstOrDefault(found => found.Person.Id == standing)?.Person is { } them)
+        // The press the pill over the tree has, beside the picker and not in its list, because it is
+        // the same act. Only over somebody the list above actually shows: a slot holding the person
+        // using this install is drawn with nothing selected — they are filtered out of `offered` —
+        // and a press correcting a name the picker will not show is a press about nothing.
+        Person? correctable = null;
+
+        if (person.PersonId is { } standing && offered.Any(one => one.Id == standing))
         {
-            extras.Add((UiTexts.CorrectThisName, () => _ = AskWhoTheyAre(read, slot, them)));
+            correctable = read.Everybody.FirstOrDefault(found => found.Person.Id == standing)?.Person;
         }
 
         var picker = OneOfThese.Build(
@@ -1365,13 +1436,17 @@ public sealed partial class ClassifyingAMeeting : UserControl
             // nobody, which files nothing.
             chosen => PutSomebodyIn(slot, chosen),
             extras,
-            UiTexts.NoneOfThese,
+            UiTexts.ChooseSomebody,
             In(UiTexts.Who),
             APlaceAt(slot),
             () => _drawing);
 
-        Grid.SetColumn(picker, 0);
-        row.Children.Add(picker);
+        FrameworkElement place = correctable is { } them
+            ? BesideIt(picker, APlaceAt(slot), () => _ = AskWhoTheyAre(read, slot, them))
+            : picker;
+
+        Grid.SetColumn(place, 0);
+        row.Children.Add(place);
 
         var badges = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         var pressed = new List<(Button Button, MeetingPersonRole Role)>();
@@ -1529,8 +1604,8 @@ public sealed partial class ClassifyingAMeeting : UserControl
     /// Opens the one dialogue this screen has, over the place it was asked from.
     /// </summary>
     /// <remarks>
-    /// The second of the two <c>docs/design.md</c> §Notices allows, and the list is closed — which is
-    /// why naming a node is done on the pill and not in a third one. It is <see cref="AddingSomebody"/>,
+    /// The second of the three <c>docs/design.md</c> §Notices allows, and the list is closed — which is
+    /// why naming a node is done on the pill and not in a fourth one. It is <see cref="AddingSomebody"/>,
     /// shared with <c>SayingWhoIsWho</c>, which needs the same form for the same two jobs: adding
     /// somebody and correcting the name of somebody already there.
     /// </remarks>
@@ -1619,7 +1694,8 @@ public sealed partial class ClassifyingAMeeting : UserControl
         Filed?.Invoke(this, meeting);
     }
 
-    private void OnBack(object sender, RoutedEventArgs e)
+    /// <summary>Leaves the screen, which is the window's app bar's to ask.</summary>
+    public void GoBack()
     {
         // Nothing is written on the way out, and nothing was written on the way in: a draft
         // abandoned leaves the meeting exactly as it was found.
@@ -1667,6 +1743,15 @@ public sealed partial class ClassifyingAMeeting : UserControl
         /// The node whose name is being corrected, or nothing when this field names a new one.
         /// </summary>
         public Guid? Correcting { get; }
+
+        /// <summary>
+        /// What has been typed into the field so far, once anything has. The field is built again by
+        /// every redraw of the screen, and this is what it is built holding.
+        /// </summary>
+        public string? Typed { get; set; }
+
+        /// <summary>Whether the field has been given focus, which happens once, when it opens.</summary>
+        public bool Opened { get; set; }
 
         /// <summary>A field that will write a node the corpus does not have yet.</summary>
         public static AFieldOnAPill ANewOne(MeetingNodeRole role, int row, int level, NodeKind? placed) =>

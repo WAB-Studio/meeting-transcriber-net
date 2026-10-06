@@ -1,5 +1,7 @@
 using MeetingTranscriber.Infrastructure.Storage;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace MeetingTranscriber.Testing;
 
 /// <summary>
@@ -13,6 +15,9 @@ namespace MeetingTranscriber.Testing;
 /// </remarks>
 public sealed class TemporaryCorpus : IDisposable
 {
+    private static readonly Lazy<string> MigratedOnce =
+        new(MakeTheMigratedDatabase, LazyThreadSafetyMode.ExecutionAndPublication);
+
     private readonly string directory;
 
     public TemporaryCorpus()
@@ -36,7 +41,68 @@ public sealed class TemporaryCorpus : IDisposable
 
     public CorpusDbContext Open() => CorpusDatabase.Open(Root);
 
-    public CorpusDbContext OpenMigrated() => CorpusDatabase.OpenMigrated(Root);
+    /// <summary>
+    /// The corpus brought up to this build's schema, by copying a database migrated once for the
+    /// whole test process rather than running every migration for each test.
+    /// </summary>
+    /// <remarks>
+    /// A test that calls <c>CorpusDatabase.OpenMigrated</c> itself still migrates; only this helper
+    /// changed. The copy goes in only where there is no database yet, so a test that opened its
+    /// corpus first and then asks for it migrated keeps what it wrote and migrates it as before.
+    /// </remarks>
+    public CorpusDbContext OpenMigrated()
+    {
+        if (!File.Exists(DatabasePath))
+        {
+            File.Copy(MigratedOnce.Value, DatabasePath);
+        }
+
+        return CorpusDatabase.OpenMigrated(Root);
+    }
+
+    /// <summary>
+    /// One migrated database, in a folder of its own, closed and checkpointed before the first copy.
+    /// </summary>
+    /// <remarks>
+    /// A database with its <c>-wal</c> beside it is a different database from the one without, so
+    /// the log is folded into the file and the connections are let go of before anything is copied,
+    /// and a log that is still there afterwards is a failure rather than a copy of half a database.
+    /// </remarks>
+    private static string MakeTheMigratedDatabase()
+    {
+        var template = new DirectoryInfo(
+            Path.Combine(Path.GetTempPath(), "meeting-transcriber-tests", "template-" + Guid.NewGuid().ToString("n")));
+        template.Create();
+
+        using (var context = CorpusDatabase.OpenMigrated(template))
+        {
+            context.Database.ExecuteSqlRaw("PRAGMA wal_checkpoint(TRUNCATE);");
+        }
+
+        CorpusDatabase.ClearPoolsFor(template);
+
+        var log = new FileInfo(CorpusDatabase.PathIn(template) + "-wal");
+        if (log.Exists && log.Length > 0)
+        {
+            throw new InvalidOperationException(
+                $"The migrated template still has a write-ahead log at '{log.FullName}', so copying it would copy half a database.");
+        }
+
+        // Nothing owns a process-wide template, so the process takes it away when it ends.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try
+            {
+                template.Delete(recursive: true);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // A leftover temp folder is not worth failing a finished run over.
+            }
+        };
+
+        return CorpusDatabase.PathIn(template);
+    }
 
     public void Dispose()
     {

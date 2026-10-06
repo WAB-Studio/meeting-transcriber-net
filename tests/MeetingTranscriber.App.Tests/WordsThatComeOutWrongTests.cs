@@ -118,7 +118,7 @@ public class WordsThatComeOutWrongTests
     }
 
     /// <summary>
-    /// The places are read off the meeting's filing and the corrections' paths off the one tree
+    /// The places are read off the one read both screens offer them from, and the corrections' paths off the one tree
     /// walk, and the screen walks no parent itself.
     /// </summary>
     [Fact]
@@ -127,7 +127,8 @@ public class WordsThatComeOutWrongTests
         var source = File.ReadAllText(AppSources.At(Screen).FullName);
 
         source.ShouldNotContain("ParentId");
-        source.ShouldContain(".Filing(");
+        source.ShouldNotContain(".Filing(");
+        source.ShouldContain(".Places(");
         source.ShouldContain(".PathTo(");
     }
 }

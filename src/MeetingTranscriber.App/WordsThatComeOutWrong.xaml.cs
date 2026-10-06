@@ -80,6 +80,21 @@ public sealed partial class WordsThatComeOutWrong : UserControl
 
     private bool _saving;
 
+    /// <summary>
+    /// The one place <see cref="_saving"/> changes, so <see cref="MayGoBackChanged"/> is raised
+    /// wherever it does and the app bar never draws its back press against a stale answer.
+    /// </summary>
+    private void Saving(bool value)
+    {
+        if (_saving == value)
+        {
+            return;
+        }
+
+        _saving = value;
+        MayGoBackChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <summary>True while this screen is setting its own controls, so that is not read as somebody typing.</summary>
     private bool _drawing;
 
@@ -174,7 +189,7 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         _suspects = [];
         _ticked.Clear();
         _status.Nothing();
-        _saving = false;
+        Saving(false);
 
         ClearTheField();
     }
@@ -192,13 +207,10 @@ public sealed partial class WordsThatComeOutWrong : UserControl
     /// <summary>Everything the corpus says about this meeting that the screen draws, read once.</summary>
     private sealed record Held(
         Meeting Meeting,
-        IReadOnlyList<Place> Places,
+        IReadOnlyList<(Guid Node, IReadOnlyList<string> Path)> Places,
         IReadOnlyDictionary<Guid, string[]> Paths,
         UnpromptedWords Unprompted,
         IReadOnlyList<WordCorrected> Corrected);
-
-    /// <summary>One node the meeting is filed under or above, with its path root first.</summary>
-    private sealed record Place(Guid Node, string[] Path);
 
     /// <summary>Reads the meeting's places, its suspects and the corrections made, off the UI thread.</summary>
     private async Task ReadAsync(Guid meetingId, int generation)
@@ -253,25 +265,10 @@ public sealed partial class WordsThatComeOutWrong : UserControl
 
         var classifying = new MeetingClassifying(context, TimeProvider.System);
 
-        // Every node on every path the meeting is filed under, root first and each once: filed
-        // under WAB Studio › Proyecto X it can be corrected in Proyecto X or in all of WAB Studio,
-        // which is the scope the renderer's upward walk reads.
-        var paths = new Dictionary<Guid, string[]>();
-        var places = new List<Place>();
-        foreach (var (_, path) in classifying.Filing(meetingId))
-        {
-            for (var at = 0; at < path.Nodes.Count; at++)
-            {
-                var node = path.Nodes[at];
-                if (paths.ContainsKey(node.Id))
-                {
-                    continue;
-                }
-
-                paths[node.Id] = [.. path.Nodes.Take(at + 1).Select(step => step.Name)];
-                places.Add(new Place(node.Id, paths[node.Id]));
-            }
-        }
+        // The places a correction can hold in, from the one read the dialogue on the meeting's own
+        // screen offers too, so the two cannot offer different scopes for one meeting.
+        var places = classifying.Places(meetingId);
+        var paths = places.ToDictionary(place => place.Node, place => place.Path.ToArray());
 
         // A correction for one meeting is an edit to one transcript, which this screen does not
         // write and so does not list as a fix of words that keep coming out wrong.
@@ -416,7 +413,7 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         ScopeBox.Items.Add(In(UiTexts.InEveryMeeting));
         foreach (var place in places)
         {
-            ScopeBox.Items.Add(UiTexts.OnlyIn.In(_language, ScreenNumbers.Inside(place.Path)));
+            ScopeBox.Items.Add(UiTexts.OnlyIn.In(_language, ScreenNumbers.Inside([.. place.Path])));
         }
 
         ScopeBox.SelectedIndex = chosen >= 0 && chosen < ScopeBox.Items.Count ? chosen : 0;
@@ -593,10 +590,6 @@ public sealed partial class WordsThatComeOutWrong : UserControl
             && WordsScreen.MayBeSaved(TypedField.Text, saving);
         TypedField.IsEnabled = !_saving;
         ScopeBox.IsEnabled = !_saving;
-
-        // A save outlives the press that started it, and leaving would read the meeting again
-        // before the transcripts the save is still rendering have changed.
-        BackButton.IsEnabled = !_saving;
     }
 
     /// <summary>
@@ -629,7 +622,7 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         var generation = _generation;
         var scope = ChosenScope();
 
-        _saving = true;
+        Saving(true);
         _status.Nothing();
         RefreshSave();
 
@@ -666,7 +659,7 @@ public sealed partial class WordsThatComeOutWrong : UserControl
             return;
         }
 
-        _saving = false;
+        Saving(false);
 
         if (!saved)
         {
@@ -802,9 +795,28 @@ public sealed partial class WordsThatComeOutWrong : UserControl
         await SearchAsync();
     }
 
-    /// <summary>Back leaves without writing anything; whatever was saved is already in the corpus.</summary>
-    private void OnLeave(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// Whether the way back is open: not while a save renders, because leaving would read the
+    /// meeting again before the transcripts the save is still rendering have changed. The
+    /// window's app bar draws its back press dead on it.
+    /// </summary>
+    public bool MayGoBack => !_saving;
+
+    /// <summary>Raised where <see cref="MayGoBack"/> changes value.</summary>
+    public event EventHandler? MayGoBackChanged;
+
+    /// <summary>
+    /// Leaves without writing anything; whatever was saved is already in the corpus. Refused
+    /// while a save renders, here rather than on whichever press asked: the app bar's button and
+    /// Alt+Left reach the same door.
+    /// </summary>
+    public void GoBack()
     {
+        if (_saving)
+        {
+            return;
+        }
+
         Close();
         Left?.Invoke(this, EventArgs.Empty);
     }

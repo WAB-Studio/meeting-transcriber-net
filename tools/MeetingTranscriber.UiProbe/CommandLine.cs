@@ -85,8 +85,8 @@ internal static class CommandLine
         of its own — a folder is emptied of trees and pictures when a run starts, so the second half
         of a two-run walk would take the first half's with it.
 
-          --out crash choose MicrophonePicker fifine choose SourcePicker "Everything this machine
-            plays" choose SpokenPicker English press RecordButton sleep 60 see running kill
+          --out crash choose MicrophonePicker fifine choose SourcePicker "All audio"
+            choose SpokenPicker English press RecordButton sleep 60 see running kill
 
         Record is disabled until the microphone, what channel 0 follows and what will be spoken
         have each been chosen, so a script that presses it says all three first.

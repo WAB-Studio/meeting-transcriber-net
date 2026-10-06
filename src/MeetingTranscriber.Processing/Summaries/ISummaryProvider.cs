@@ -95,7 +95,15 @@ public sealed record SummaryCorrection(byte[] PreviousOutput, string WhatWasWron
 /// <param name="Schema">The shape the answer has to take.</param>
 /// <param name="Correction">What is being corrected, or nothing on a first attempt.</param>
 public sealed record ExtractionRequest(
-    MeetingInput Input, string Instructions, ExtractionSchema Schema, SummaryCorrection? Correction);
+    MeetingInput Input, string Instructions, ExtractionSchema Schema, SummaryCorrection? Correction)
+{
+    /// <summary>
+    /// The model the call asks for, as the provider's own alias, or nothing for the provider's
+    /// default. An init property and not a fifth positional member: the command line's own request
+    /// asks for no model, and every caller that does not choose one stays as it was.
+    /// </summary>
+    public string? Model { get; init; }
+}
 
 /// <summary>
 /// What a call to a provider came back with: an extraction, a run that gave back nothing usable, or

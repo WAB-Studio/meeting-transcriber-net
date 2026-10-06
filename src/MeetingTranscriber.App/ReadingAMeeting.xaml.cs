@@ -5,6 +5,7 @@ using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Infrastructure.Meetings;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Presentation;
+using MeetingTranscriber.Processing.Rendering;
 using MeetingTranscriber.Recording;
 
 using Microsoft.UI.Xaml;
@@ -23,16 +24,18 @@ using Duration = MeetingTranscriber.Domain.Time.Duration;
 namespace MeetingTranscriber.App;
 
 /// <summary>
-/// The screen one meeting is read from: what the AI left of it, who wrote that, what it would cost
-/// to get the rest — and, along the bottom, the recording itself.
+/// The screen one meeting is read from: what the AI left of it, the whole transcript under that,
+/// who made what, what the meeting is doing now — and, along the bottom, the recording itself.
 /// </summary>
 /// <remarks>
 /// <para>
-/// There is no screen here for reading the transcript, and that is deliberate rather than missing:
-/// nobody opens an application to read a hundred and forty-eight turns. What somebody comes back
-/// for is what was decided, what is left to do and what was left unresolved — so those are the
-/// screen, each thing carrying the minute it was said at, and the transcript is what one of those
-/// opens, in place and without changing screen.
+/// What somebody comes back for first is what was decided, what is left to do and what was left
+/// unresolved, so those are on top, each thing carrying the minute it was said at and unfolding the
+/// turns around it in place. Under them stands the whole transcript, once there is one, because a
+/// meeting that is transcribed has to be readable (<c>docs/design.md</c> §Reunion). It is a
+/// repeater and draws only the lines in view, and every line is read through
+/// <see cref="MeetingRenderer.AsRead"/>, so this screen and <c>transcript.md</c> say the same words.
+/// A word is corrected where it is read, in the dialogue <see cref="CorrectingAWord"/>.
 /// </para>
 /// <para>
 /// It decides nothing about the meeting. Every question it asks — whether the player is there,
@@ -73,6 +76,18 @@ public sealed partial class ReadingAMeeting : UserControl
     private const double HowWideAMarkIs = 2;
 
     private readonly DispatcherTimer _watch = new() { Interval = HowOftenTheTrackIsRead };
+
+    /// <summary>
+    /// How often a meeting with work under way is asked what it is doing. Often enough that a
+    /// summary that lands is on screen within a moment of landing, and rare enough that a stretch
+    /// of waiting is a read of one meeting's jobs every couple of seconds and nothing more.
+    /// </summary>
+    private static readonly TimeSpan HowOftenTheWorkIsAsked = TimeSpan.FromSeconds(2);
+
+    private readonly DispatcherTimer _workWatch = new() { Interval = HowOftenTheWorkIsAsked };
+
+    /// <summary>True while a read of the meeting's work is out, so a slow one is not asked twice.</summary>
+    private bool _askingTheWork;
 
     /// <summary>
     /// Where the meetings are, handed over once by the window that holds this. Not a constructor
@@ -116,9 +131,33 @@ public sealed partial class ReadingAMeeting : UserControl
     /// </summary>
     private bool _movingTheTrack;
 
-    /// <summary>True while the summary rows are being drawn, so a row drawn checked is not somebody
-    /// putting it back.</summary>
-    private bool _drawingTheSummaries;
+    /// <summary>
+    /// Every turn of the meeting as the rendered files say it, read with it, or nothing while there
+    /// is no transcription. What the transcript's lines and the turns unfolded under a citation are
+    /// both made of, so the two cannot say different words.
+    /// </summary>
+    private IReadOnlyList<Turn>? _turns;
+
+    /// <summary>
+    /// The words last selected on a line of the transcript, and the line they are on. Kept at the
+    /// moment they are selected and not read back when pressed: a line scrolled out of view is
+    /// recycled with its selection.
+    /// </summary>
+    private (TextBlock Line, string Words)? _selected;
+
+    /// <summary>One line of the transcript: who said it, the minute, and the words.</summary>
+    private sealed record TranscriptLine(string Who, Duration At, string Text);
+
+    /// <summary>
+    /// What a repeater builds each line with, handed the screen's own two methods: the line is
+    /// built here, where the styles are, and a recycled line lets go of what it held selected.
+    /// </summary>
+    private sealed class LineFactory(Func<TranscriptLine, UIElement> build, Action<UIElement> recycle) : IElementFactory
+    {
+        public UIElement GetElement(ElementFactoryGetArgs args) => build((TranscriptLine)args.Data);
+
+        public void RecycleElement(ElementFactoryRecycleArgs args) => recycle(args.Element);
+    }
 
     /// <summary>What the name field held when the meeting was drawn, so a leave that changed
     /// nothing writes nothing.</summary>
@@ -130,6 +169,8 @@ public sealed partial class ReadingAMeeting : UserControl
     {
         InitializeComponent();
         _watch.Tick += OnWatch;
+        _workWatch.Tick += OnWorkWatch;
+        TheTranscriptLines.ItemTemplate = new LineFactory(ATurn, Recycled);
     }
 
     /// <summary>Somebody asked to go back to the meetings.</summary>
@@ -232,6 +273,7 @@ public sealed partial class ReadingAMeeting : UserControl
     public void Pause()
     {
         _watch.Stop();
+        _workWatch.Stop();
 
         if (_playing is { IsPlaying: true } playing)
         {
@@ -253,6 +295,7 @@ public sealed partial class ReadingAMeeting : UserControl
         _read = null;
         _filing = null;
         _voices = null;
+        _turns = null;
         _status.Nothing();
 
         if (_meeting is not { } meetingId)
@@ -278,6 +321,14 @@ public sealed partial class ReadingAMeeting : UserControl
                 _read = new MeetingReading(context, TimeProvider.System).Of(meetingId);
                 _filing = new MeetingClassifying(context, TimeProvider.System).Filing(meetingId);
                 _voices = new MeetingVoices(context, TimeProvider.System).Heard(meetingId);
+
+                // The corrected words and not the stored ones: what the rendered files carry, read
+                // now, so a correction made a moment ago is on this screen without waiting for the
+                // files to be written again. Only once there is a transcription to read.
+                if (_read.Screen.ThereIsATranscription)
+                {
+                    _turns = MeetingRenderer.AsRead(context, meetingId);
+                }
             }
             catch (MeetingStageException gone)
             {
@@ -304,13 +355,21 @@ public sealed partial class ReadingAMeeting : UserControl
     public void Close()
     {
         StopPlaying();
+        _workWatch.Stop();
         _meeting = null;
         _read = null;
         _filing = null;
         _voices = null;
+        _turns = null;
+        _selected = null;
         _status.Nothing();
         _nameAsRead = string.Empty;
         NameBox.Text = string.Empty;
+        TheTranscriptLines.ItemsSource = null;
+        TheTranscriptCard.Visibility = Visibility.Collapsed;
+        CorrectAWordButton.Visibility = Visibility.Collapsed;
+        WhoMadeWhat.Visibility = Visibility.Collapsed;
+        SummaryFailedText.Visibility = Visibility.Collapsed;
         TheSections.Children.Clear();
         Presses.Children.Clear();
         TheSummaries.Children.Clear();
@@ -359,15 +418,20 @@ public sealed partial class ReadingAMeeting : UserControl
         TheSummariesCard.Visibility = Visibility.Collapsed;
         TheFiling.Children.Clear();
         TheVoices.Children.Clear();
+        _selected = null;
+        CorrectAWordButton.Visibility = Visibility.Collapsed;
 
         if (_read is not { } read)
         {
+            _workWatch.Stop();
             NameBox.Text = string.Empty;
             NameBox.IsEnabled = false;
             WhenText.Text = string.Empty;
             StageText.Text = _status.In(_language);
-            TranscribedText.Text = string.Empty;
-            SummarisedText.Text = string.Empty;
+            WhoMadeWhat.Visibility = Visibility.Collapsed;
+            SummaryFailedText.Visibility = Visibility.Collapsed;
+            TheTranscriptLines.ItemsSource = null;
+            TheTranscriptCard.Visibility = Visibility.Collapsed;
             ClassifyButton.IsEnabled = false;
             WhoSpokeCard.Visibility = Visibility.Collapsed;
             WordsCard.Visibility = Visibility.Collapsed;
@@ -385,11 +449,21 @@ public sealed partial class ReadingAMeeting : UserControl
         NameBox.IsEnabled = read.Screen.TheNameMayBeTyped;
 
         WhenText.Text = ScreenNumbers.When(read.Meeting);
-        StageText.Text = In(MeetingWords.Reached(read.Screen.Stage));
 
-        WhoWroteIt(read.Screen);
+        // What the meeting is, in the one word the list says; or what a read just refused, which a
+        // word saying the meeting is fine would otherwise hide.
+        StageText.Text = _status.IsSaying
+            ? _status.In(_language)
+            : In(MeetingWords.Status(read.Screen.Owed.Status));
+
+        // The standing decides whether something is under way, and the status is read off the same
+        // standing, so asking again while it holds and stopping when it does not cannot part.
+        KeepAskingWhileWorkIsUnderWay(read.Screen.WorkIsUnderWay);
+
+        WhoMadeWhatSection(read.Screen);
         SummariesSection(read.Screen);
         WhatWasLeft(read.Screen.Left);
+        TheTranscriptSection();
         TheActOnOffer(read.Screen);
         WhatItWasAbout(read.Screen);
         WhoSpokeSection();
@@ -408,43 +482,53 @@ public sealed partial class ReadingAMeeting : UserControl
     }
 
     /// <summary>
-    /// Who transcribed this meeting and who summarised it, and when each of them did.
+    /// Who made what and when, as a compact table: a row for the transcription once there is one
+    /// and a row for the summary once there is one, and under it the one sentence a refused or
+    /// failed summary comes to.
     /// </summary>
     /// <remarks>
-    /// Three answers each and not two. A meeting that arrived here already transcribed carries the
-    /// response and no run, so the corpus has nothing to name — and reading that as nobody having
-    /// transcribed it, under a line that says the meeting is transcribed, is the screen saying two
-    /// opposite things about the same meeting. Whether each half exists at all is
+    /// Two answers per row and not one. A meeting that arrived here already transcribed carries the
+    /// response and no run, so the corpus has nothing to name — and a row that was left out for
+    /// that would be the screen saying the meeting was never transcribed, under a status that says
+    /// it was. The row is there and its cell says nothing is recorded. A stage that has not
+    /// happened has no row at all: the status above already says where the meeting is, and a row
+    /// reading <em>nobody yet</em> says it twice. Whether each stage exists is
     /// <see cref="MeetingScreen"/>'s, in a project a build agent runs.
     /// </remarks>
-    private void WhoWroteIt(MeetingScreen screen)
+    private void WhoMadeWhatSection(MeetingScreen screen)
     {
         var wrote = screen.Left.Wrote;
 
+        var transcribed = screen.ThereIsATranscription ? Visibility.Visible : Visibility.Collapsed;
+        TranscribedLabel.Visibility = transcribed;
+        TranscribedText.Visibility = transcribed;
         TranscribedText.Text = wrote is { Transcriber: { } who, TranscribedAt: { } when }
-            ? UiTexts.TranscribedBy.In(_language, who, ScreenNumbers.At(when))
-            : In(screen.ThereIsATranscription
-                ? UiTexts.TheCorpusDoesNotSayWhoTranscribedIt
-                : UiTexts.NobodyHasTranscribedThisYet);
+            ? ScreenNumbers.Beside(who, ScreenNumbers.At(when))
+            : In(UiTexts.NotRecorded);
 
-        var summarised = wrote is { Summariser: { } model, SummarisedAt: { } then }
-            ? UiTexts.SummarisedBy.In(_language, model, ScreenNumbers.At(then))
-            : screen is { ThereIsASummary: false, WhyTheSummaryWasRefused: { } refusal }
-                ? RefusedText(refusal)
-                : In(screen.ThereIsASummary
-                    ? UiTexts.TheCorpusDoesNotSayWhoSummarisedIt
-                    : UiTexts.NobodyHasSummarisedThisYet);
+        var summarised = screen.ThereIsASummary ? Visibility.Visible : Visibility.Collapsed;
+        SummarisedLabel.Visibility = summarised;
+        SummarisedText.Visibility = summarised;
+        SummarisedText.Text = wrote is { Summariser: { } model, SummarisedAt: { } then }
+            ? ScreenNumbers.Beside(model, ScreenNumbers.At(then))
+            : In(UiTexts.NotRecorded);
 
-        // The summary before stays on screen when the one after it failed, so the line says both.
-        // A refusal says what it was refused for, in words that do not open by denying the summary
-        // that is right there; every other failure keeps its own sentence.
-        SummarisedText.Text = screen switch
+        WhoMadeWhat.Visibility = screen.ThereIsATranscription ? Visibility.Visible : Visibility.Collapsed;
+
+        // The summary before stays on screen when the one after it failed, so the sentence is about
+        // the attempt after it. A refusal says what it was refused for, in words that do not open by
+        // denying the summary that is right there; every other failure keeps its own sentence.
+        var failed = screen switch
         {
+            { ThereIsASummary: false, WhyTheSummaryWasRefused: { } refusal } => RefusedText(refusal),
             { WhyTheLastSummaryFailed: JobFailure.ExtractionRefused, WhyTheSummaryWasRefused: { } refusedAgain } =>
-                $"{summarised} {LastRefusedText(refusedAgain)}",
-            { WhyTheLastSummaryFailed: { } failure } => $"{summarised} {In(MeetingWords.Failed(failure))}",
-            _ => summarised,
+                LastRefusedText(refusedAgain),
+            { WhyTheLastSummaryFailed: { } failure } => In(MeetingWords.Failed(failure)),
+            _ => string.Empty,
         };
+
+        SummaryFailedText.Text = failed;
+        SummaryFailedText.Visibility = failed.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>What the screen says about a summary attempt that was refused, over no summary.</summary>
@@ -474,9 +558,11 @@ public sealed partial class ReadingAMeeting : UserControl
     /// <remarks>
     /// <c>Checked</c> and not <c>Click</c>: the arrow keys and UI Automation's Select — which is what
     /// Narrator calls — check a row without clicking it, so a write on <c>Click</c> let the check
-    /// move while the summary stayed. <c>_drawingTheSummaries</c> keeps anything the drawing itself
-    /// raises from reading as somebody putting a summary back. The rows are the card's own, cleared
-    /// and drawn again by every <see cref="Render"/>, the way <c>Presses</c> are.
+    /// move while the summary stayed. A row being drawn never writes, and there is no flag saying
+    /// so: <c>IsChecked</c> is set in the initialiser, before <c>Checked +=</c>, so drawing raises
+    /// nothing a handler hears; and the one row drawn checked is the one shown, which
+    /// <see cref="ShowSummary"/> refuses on <c>given.IsShown</c> anyway. The rows are the card's own,
+    /// cleared and drawn again by every <see cref="Render"/>, the way <c>Presses</c> are.
     /// </remarks>
     private void SummariesSection(MeetingScreen screen)
     {
@@ -488,34 +574,25 @@ public sealed partial class ReadingAMeeting : UserControl
             return;
         }
 
-        _drawingTheSummaries = true;
-
-        try
+        foreach (var given in screen.EverySummary)
         {
-            foreach (var given in screen.EverySummary)
+            var row = new RadioButton
             {
-                var row = new RadioButton
-                {
-                    Content = ScreenNumbers.Beside(given.WrittenBy, ScreenNumbers.At(given.AcceptedAt)),
-                    Style = Chrome("ASummaryOfThisMeeting"),
-                    GroupName = nameof(TheSummaries),
-                    IsChecked = given.IsShown,
-                };
+                Content = ScreenNumbers.Beside(given.WrittenBy, ScreenNumbers.At(given.AcceptedAt)),
+                Style = Chrome("ASummaryOfThisMeeting"),
+                GroupName = nameof(TheSummaries),
+                IsChecked = given.IsShown,
+            };
 
-                row.Checked += (_, _) => ShowSummary(given);
-                TheSummaries.Children.Add(row);
-            }
-        }
-        finally
-        {
-            _drawingTheSummaries = false;
+            row.Checked += (_, _) => ShowSummary(given);
+            TheSummaries.Children.Add(row);
         }
     }
 
     /// <summary>Somebody chose another of the meeting's summaries. The one call that puts it back.</summary>
     private void ShowSummary(GivenSummary given)
     {
-        if (_drawingTheSummaries || given.IsShown || _meeting is not { } meeting || Corpus().Folder is not { } folder)
+        if (given.IsShown || _meeting is not { } meeting || Corpus().Folder is not { } folder)
         {
             return;
         }
@@ -535,6 +612,14 @@ public sealed partial class ReadingAMeeting : UserControl
         }
 
         AfterWriting();
+
+        // The redraw threw the row somebody was on away with the rest of them, so the keyboard goes
+        // back to the one that is checked now — and not to wherever the framework leaves it, which
+        // was the press that files the meeting. Somebody walking the group with the arrow keys, or
+        // Narrator reading it, would otherwise have to find the group again after every choice.
+        TheSummaries.Children.OfType<RadioButton>()
+            .FirstOrDefault(row => row.IsChecked is true)?
+            .Focus(FocusState.Keyboard);
     }
 
     /// <summary>The sentence naming why an extraction was refused, one per condition.</summary>
@@ -651,7 +736,7 @@ public sealed partial class ReadingAMeeting : UserControl
     private static UiText? WhyItWillNotPlay(RecordedAudio recording) => recording switch
     {
         RecordedAudio.NoneYet => UiTexts.ThereIsNoRecordingUnderThisMeetingYet,
-        RecordedAudio.NotWhereTheCorpusSaysItIs => UiTexts.TheRecordingIsNotWhereTheCorpusSaysItIs,
+        RecordedAudio.NotWhereTheCorpusSaysItIs => UiTexts.TheRecordingFileIsMissing,
         RecordedAudio.Playable => null,
         _ => throw new InvalidOperationException($"This screen has no text for a recording that is '{recording}'."),
     };
@@ -667,13 +752,19 @@ public sealed partial class ReadingAMeeting : UserControl
     /// </remarks>
     private void WhatWasLeft(WhatTheAiLeft left)
     {
-        if (left.Abstract is { } about)
+        // The abstract and, under it, the summary's longer account: what the AI wrote about the
+        // meeting is one block on the decision tint, and a summary shown as its title alone is a
+        // summary that was left out. Either alone is still drawn.
+        if (left.Abstract is not null || left.Body is not null)
         {
-            TheSections.Children.Add(new Border
+            var about = new StackPanel { Spacing = 10 };
+
+            foreach (var words in new[] { left.Abstract, left.Body }.OfType<string>())
             {
-                Style = Chrome("TheAbstract"),
-                Child = new TextBlock { Text = about, Style = Chrome("Said") },
-            });
+                about.Children.Add(new TextBlock { Text = words, Style = Chrome("Said") });
+            }
+
+            TheSections.Children.Add(new Border { Style = Chrome("TheAbstract"), Child = about });
         }
 
         foreach (var kind in Enum.GetValues<LeftKind>())
@@ -800,40 +891,36 @@ public sealed partial class ReadingAMeeting : UserControl
     }
 
     /// <summary>The turns around a cited one, as the lines they are read as.</summary>
+    /// <remarks>
+    /// Out of the turns this screen already read, corrected, and not out of the corpus again: the
+    /// lines unfolded under a citation and the lines of the transcript are one set of words, so a
+    /// correction cannot show in one and not the other.
+    /// </remarks>
     private IReadOnlyList<UIElement> TheTranscriptAround(LeftThing thing)
     {
-        if (_meeting is not { } meeting || Corpus().Folder is not { } folder)
-        {
-            return [];
-        }
-
-        IReadOnlyList<Turn> turns;
-        WhoIsWho voices;
-
-        try
-        {
-            using var context = CorpusDatabase.Open(folder);
-            turns = new MeetingReading(context, TimeProvider.System).Around(meeting, thing.TurnOrdinal);
-            voices = new MeetingVoices(context, TimeProvider.System).Heard(meeting);
-        }
-        catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
-        {
-            return [new TextBlock { Text = unreadable.Message, Style = Chrome("Quoted") }];
-        }
-
         // No branch for an empty answer, and that is a fact about the corpus rather than an
         // omission: a citation is a foreign key onto the turn it names, so a thing the AI left
         // cannot be here at all unless the turn it was said in is there to unfold — and every label
         // a turn of this meeting carries is one WhoIsWho.Of built a voice for, from the same turns.
+        if (_turns is not { } turns || _voices is not { } voices)
+        {
+            return [];
+        }
+
+        var first = Math.Max(0, thing.TurnOrdinal - MeetingReading.TurnsEitherSide);
+        var last = thing.TurnOrdinal + MeetingReading.TurnsEitherSide;
+
         return
         [
-            .. turns.Select(turn => Spoken(
-                VoiceWords.ReadsAs(voices.ForLabel(turn.SpeakerLabel)!, _language), turn.Start, turn.Text)),
+            .. turns
+                .Where(turn => turn.Ordinal >= first && turn.Ordinal <= last)
+                .Select(turn => Spoken(
+                    VoiceWords.ReadsAs(voices.ForLabel(turn.SpeakerLabel)!, _language), turn.Start, turn.Text)),
         ];
     }
 
     /// <summary>
-    /// One turn, as a line of the transcript.
+    /// One turn, as a line unfolded under a citation.
     /// </summary>
     /// <remarks>
     /// <paramref name="who"/> is <see cref="VoiceWords.ReadsAs"/>'s: their name once somebody has
@@ -853,6 +940,232 @@ public sealed partial class ReadingAMeeting : UserControl
 
         line.Children.Add(new TextBlock { Text = text, Style = Chrome("Quoted") });
         return line;
+    }
+
+    // ── The transcript ────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The whole transcript, once there is one: a line per turn, under what the AI left.
+    /// </summary>
+    /// <remarks>
+    /// Handed to the repeater as data and never built here a line at a time: the repeater asks for
+    /// the lines in view, which is what keeps an hour of talk as cheap as five minutes of it. Who
+    /// said each line is <see cref="VoiceWords.ReadsAs"/>'s, for the reason <see cref="Spoken"/>
+    /// gives.
+    /// </remarks>
+    private void TheTranscriptSection()
+    {
+        if (_turns is not { Count: > 0 } turns || _voices is not { } voices)
+        {
+            TheTranscriptLines.ItemsSource = null;
+            TheTranscriptCard.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        TheTranscriptLines.ItemsSource = new List<TranscriptLine>(
+            turns.Select(turn => new TranscriptLine(
+                VoiceWords.ReadsAs(voices.ForLabel(turn.SpeakerLabel)!, _language), turn.Start, turn.Text)));
+
+        TheTranscriptCard.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// One line of the transcript: who said it and the minute as a press that seeks the player, and
+    /// under them the words, selectable and offering <em>Corregir</em> on a right-click.
+    /// </summary>
+    private UIElement ATurn(TranscriptLine line)
+    {
+        var who = new TextBlock
+        {
+            Text = line.Who,
+            Style = Chrome("Data"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        // The minute is the press's whole words, for the reason the citations' presses are: what
+        // pressing it does is the help text, which a screen reader reads and the eye does not.
+        var minute = new Button
+        {
+            Content = ScreenNumbers.Long(line.At),
+            Style = Chrome("WhenItWasSaid"),
+        };
+
+        AutomationProperties.SetHelpText(minute, In(UiTexts.WhereThisWasSaid));
+        minute.Click += (_, _) => GoTo(line.At);
+
+        var heading = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        heading.Children.Add(who);
+        heading.Children.Add(minute);
+
+        var said = new TextBlock { Text = line.Text, Style = Chrome("Spoken") };
+        said.SelectionChanged += (_, _) => OnSelectionChanged(said);
+        said.ContextFlyout = CorrectingAWord.OfferedOver(
+            said, In(UiTexts.CorrectThisWord), words => _ = CorrectAsync(words));
+
+        var turn = new StackPanel { Spacing = 2 };
+        turn.Children.Add(heading);
+        turn.Children.Add(said);
+        return turn;
+    }
+
+    /// <summary>
+    /// A line scrolled out of view lets go of what it held selected: the repeater reuses the
+    /// words' place for another line, and a button still offering to correct words nobody can see
+    /// would be correcting what the reader no longer has in front of them.
+    /// </summary>
+    private void Recycled(UIElement turn)
+    {
+        if (_selected is { } held && turn is StackPanel { Children.Count: 2 } panel
+            && ReferenceEquals(panel.Children[1], held.Line))
+        {
+            _selected = null;
+            CorrectAWordButton.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    /// <summary>
+    /// Keeps the words selected on a line, and shows the press on the heading while there are some.
+    /// </summary>
+    private void OnSelectionChanged(TextBlock line)
+    {
+        var words = line.SelectedText;
+
+        if (CorrectingAWord.TheWordIn(words) is not null)
+        {
+            _selected = (line, words);
+        }
+        else if (_selected is { } held && ReferenceEquals(held.Line, line))
+        {
+            _selected = null;
+        }
+
+        CorrectAWordButton.Visibility = _selected is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>The press on the heading: corrects the words selected last on a line.</summary>
+    private void OnCorrectTheSelection(object sender, RoutedEventArgs e)
+    {
+        if (_selected is { } held)
+        {
+            _ = CorrectAsync(held.Words);
+        }
+    }
+
+    /// <summary>
+    /// Opens the dialogue over the one word a selection stands for, and reads the transcript again
+    /// when it saved.
+    /// </summary>
+    /// <remarks>
+    /// The corrections are <see cref="CorrectingAWord"/>'s to write, through
+    /// <c>CorrectingWords.Correct</c> and nowhere else. What is read again is the meeting, which
+    /// draws the transcript from the rendered words and so shows the correction; the player is not
+    /// touched, because correcting a word says nothing about the recording under it.
+    /// </remarks>
+    private async Task CorrectAsync(string selection)
+    {
+        if (CorrectingAWord.TheWordIn(selection) is not { } word || _meeting is not { } meeting)
+        {
+            return;
+        }
+
+        bool saved;
+
+        try
+        {
+            saved = await AskingHowAWordGoes.AskAsync(Corpus(), meeting, word, _language, Root.XamlRoot);
+        }
+        catch (Exception refused) when (ScreenFailures.Reportable(refused))
+        {
+            // Said and not dropped: the press that opened this was fired and forgotten, so a
+            // dialogue that could not open would otherwise be a press that did nothing.
+            _status.Says(UiTexts.ThatDidNotGoThrough, refused.Message);
+            StageText.Text = _status.In(_language);
+            return;
+        }
+
+        // The screen moved to another meeting, or was let go of, while the dialogue was open.
+        if (!saved || _meeting != meeting)
+        {
+            return;
+        }
+
+        Draw(theRecordingToo: false);
+
+        if (AskingHowAWordGoes.Afterwards is { } afterwards)
+        {
+            _status.Says(afterwards);
+            StageText.Text = _status.In(_language);
+        }
+    }
+
+    // ── What is under way ─────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Starts asking what the meeting is doing while something is under way for it, and stops when
+    /// nothing is.
+    /// </summary>
+    private void KeepAskingWhileWorkIsUnderWay(bool underWay)
+    {
+        if (underWay)
+        {
+            _workWatch.Start();
+        }
+        else
+        {
+            _workWatch.Stop();
+        }
+    }
+
+    private void OnWorkWatch(object? sender, object e) => _ = AskTheWorkAsync();
+
+    /// <summary>
+    /// Asks what is owed on the meeting, off the UI thread, and draws it again only when its status
+    /// changed.
+    /// </summary>
+    /// <remarks>
+    /// Without touching the player: a summary that lands while somebody is listening is more of the
+    /// screen, and the recording is exactly where it was. A status that did not change draws
+    /// nothing, so a minute of waiting is not a minute of the screen blinking.
+    /// </remarks>
+    private async Task AskTheWorkAsync()
+    {
+        if (_askingTheWork || _meeting is not { } meeting || Corpus().Folder is not { } folder)
+        {
+            return;
+        }
+
+        _askingTheWork = true;
+
+        try
+        {
+            var owed = await Task.Run(() =>
+            {
+                using var context = CorpusDatabase.Open(folder);
+                return new MeetingWork(context, TimeProvider.System).On(meeting);
+            });
+
+            // Another meeting was opened, or this one let go of, while the corpus was being asked.
+            if (_workWatch.IsEnabled && _meeting == meeting && _read is { } read && owed.Status != read.Screen.Owed.Status && CommitTheName())
+            {
+                Draw(theRecordingToo: false);
+            }
+        }
+        catch (MeetingStageException gone)
+        {
+            _workWatch.Stop();
+            _status.Says(UiTexts.ThatIsNoLongerHowItWas, gone.Message);
+            StageText.Text = _status.In(_language);
+        }
+        catch (Exception unreadable) when (ScreenFailures.Reportable(unreadable))
+        {
+            _workWatch.Stop();
+            _status.Says(UiTexts.ThatDidNotGoThrough, unreadable.Message);
+            StageText.Text = _status.In(_language);
+        }
+        finally
+        {
+            _askingTheWork = false;
+        }
     }
 
     /// <summary>
@@ -1102,7 +1415,7 @@ public sealed partial class ReadingAMeeting : UserControl
             // off the same two reads — so it falls to the sentence that would be true if it ever
             // did: the corpus says there is a recording here and this screen has no file.
             SayThePlayerWillNot(In(WhyItWillNotPlay(read.Screen.TheRecording)
-                ?? UiTexts.TheRecordingIsNotWhereTheCorpusSaysItIs));
+                ?? UiTexts.TheRecordingFileIsMissing));
 
             return;
         }
@@ -1291,7 +1604,8 @@ public sealed partial class ReadingAMeeting : UserControl
         Marks.Children.Clear();
     }
 
-    private void OnBack(object sender, RoutedEventArgs e)
+    /// <summary>Leaves the screen, which is the window's app bar's to ask.</summary>
+    public void GoBack()
     {
         // The name first, and this screen stays where it is when the corpus would not take it.
         // Pressing back with a title typed is somebody who meant to keep it — and leaving over a
@@ -1308,7 +1622,7 @@ public sealed partial class ReadingAMeeting : UserControl
 
     /// <summary>Somebody asked to file this meeting under what it was about.</summary>
     /// <remarks>
-    /// The name first, for the reason <see cref="OnBack"/> gives, and then the recording is stopped
+    /// The name first, for the reason <see cref="GoBack"/> gives, and then the recording is stopped
     /// where it is: the screen that files this meeting takes the window, and a player left running
     /// behind a collapsed one is sound coming out of an application that appears to be doing
     /// nothing else. It is paused and not closed, because coming back is a redraw.

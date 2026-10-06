@@ -5,9 +5,8 @@ using MeetingTranscriber.Domain.Time;
 namespace MeetingTranscriber.Recording.Tests;
 
 /// <summary>
-/// ISC-80 and ISC-150, over the half of the recording screen a machine with no sound card can
-/// run: what each channel reads as while a meeting is being recorded, and the one warning about
-/// this machine that costs nothing to be sure of.
+/// ISC-80, over the half of the recording screen a machine with no sound card can run: what each
+/// channel reads as while a meeting is being recorded.
 /// </summary>
 /// <remarks>
 /// What is not here is a window, for the reason <see cref="RecorderScreenTests"/> says: reaching
@@ -22,12 +21,6 @@ public class RecordingMetersTests
     private static readonly LevelReading Nothing = new(0f);
 
     private static readonly AudioDevice Jabra = new("{0.0.1.0}.jabra", "Jabra Evolve 65", false);
-
-    private static readonly AudioDevice Speakers =
-        new("{speakers}", "Desk speakers", IsDefault: true) { Kind = EndpointKind.Speakers };
-
-    private static readonly AudioDevice AHeadset =
-        new("{headset}", "A headset", IsDefault: true) { Kind = EndpointKind.Headset };
 
     /// <summary>The moment a device stopped answering, in the readings that have one.</summary>
     private static readonly UtcTimestamp WentQuiet =
@@ -73,7 +66,7 @@ public class RecordingMetersTests
     [Fact]
     public void A_channel_hearing_nothing_reads_as_silent_and_one_hearing_something_does_not()
     {
-        var meters = Metered(RecorderState.Recording, Speakers, others: Nothing, mine: Speech);
+        var meters = Metered(RecorderState.Recording, others: Nothing, mine: Speech);
 
         var others = meters.On(AudioChannel.Loopback).ShouldNotBeNull();
         others.IsSilent.ShouldBeTrue();
@@ -93,7 +86,7 @@ public class RecordingMetersTests
     [MemberData(nameof(WhileTheMeetingRuns))]
     public void Both_channels_are_metered_for_as_long_as_the_meeting_is_running(RecorderState state)
     {
-        var meters = Metered(state, Speakers, others: Nothing, mine: Speech);
+        var meters = Metered(state, others: Nothing, mine: Speech);
 
         // Reached by channel and not by position. What order the readings arrive in is the
         // projection's, which needs two open devices and is not something this can hold — so
@@ -111,124 +104,11 @@ public class RecordingMetersTests
     [MemberData(nameof(WithNoMeetingRunning))]
     public void Nothing_is_metered_when_no_meeting_is_being_recorded(RecorderState state)
     {
-        var meters = Metered(state, Speakers, others: Speech, mine: Speech);
+        var meters = Metered(state, others: Speech, mine: Speech);
 
         meters.Channels.ShouldBeEmpty();
         meters.On(AudioChannel.Loopback).ShouldBeNull();
     }
-
-    /// <summary>ISC-150.</summary>
-    [Theory]
-    [MemberData(nameof(WhileTheMeetingRuns))]
-    public void A_meeting_playing_through_speakers_says_the_others_are_heard_twice(RecorderState state) =>
-        Metered(state, Speakers, others: Speech, mine: Speech)
-            .TheOthersAreHeardTwice.ShouldBeTrue();
-
-    [Theory]
-    [MemberData(nameof(WhileTheMeetingRuns))]
-    public void A_meeting_playing_through_a_headset_says_nothing_of_the_kind(RecorderState state) =>
-        Metered(state, AHeadset, others: Speech, mine: Speech)
-            .TheOthersAreHeardTwice.ShouldBeFalse();
-
-    /// <summary>
-    /// ISC-150.1. Before the machine has answered once there is no last answer to stand, so the
-    /// line is empty — which is this rule having nothing yet rather than this rule failing.
-    /// </summary>
-    /// <remarks>
-    /// <see cref="RecordingMeters.Of"/> directly rather than through <see cref="Metered"/>, which
-    /// takes a device the compiler insists on. This is the one test whose whole subject is the
-    /// answer being nothing, and widening <see cref="Metered"/> for it would cost the three tests
-    /// that read better for having to name a device.
-    /// </remarks>
-    [Fact]
-    public void Nothing_is_said_about_the_speakers_before_the_machine_has_answered()
-    {
-        var playback = new WhatTheMachinePlaysThrough();
-
-        playback.Standing.ShouldBeNull();
-        playback.Ask(Refusing());
-        playback.Standing.ShouldBeNull();
-
-        RecordingMeters.Of(
-                RecorderState.Recording,
-                playback.Standing,
-                [Reading(AudioChannel.Loopback, Speech), Reading(AudioChannel.Microphone, Speech)])
-            .TheOthersAreHeardTwice.ShouldBeFalse();
-    }
-
-    /// <summary>
-    /// ISC-150.1, read literally: with the machine answering the line says what it says, and with
-    /// the machine then refusing it goes on saying it. Asked twice because a rule that holds for
-    /// one refused read and not the next is the same defect, and one refusal of each kind because
-    /// both are the machine not saying and the rule does not tell them apart.
-    /// </summary>
-    [Fact]
-    public void What_the_machine_last_said_about_the_speakers_stands_when_it_stops_answering()
-    {
-        var playback = new WhatTheMachinePlaysThrough();
-        playback.Ask(() => Speakers);
-
-        playback.Ask(Refusing());
-        playback.Ask(Silent());
-
-        playback.Standing.ShouldBe(Speakers);
-        Metered(RecorderState.Recording, playback.Standing!, others: Speech, mine: Speech)
-            .TheOthersAreHeardTwice.ShouldBeTrue();
-    }
-
-    /// <summary>
-    /// The other direction, and the one that says <em>keeps the last answer</em> is not <em>keeps
-    /// the first answer</em>. Somebody plugging a headset in is the whole reason the question is
-    /// asked again at all, and a rule that stopped at the first answer would tell that person the
-    /// room could hear them for the rest of the hour.
-    /// </summary>
-    [Fact]
-    public void A_machine_that_answers_again_replaces_what_was_standing()
-    {
-        var playback = new WhatTheMachinePlaysThrough();
-        playback.Ask(() => Speakers);
-        playback.Ask(Refusing());
-
-        playback.Ask(() => AHeadset);
-
-        playback.Standing.ShouldBe(AHeadset);
-        Metered(RecorderState.Recording, playback.Standing!, others: Speech, mine: Speech)
-            .TheOthersAreHeardTwice.ShouldBeFalse();
-    }
-
-    /// <summary>
-    /// What the last meeting was told does not carry into the next one. The rule above holds an
-    /// answer across a machine that hiccuped inside a meeting; between two meetings nothing is
-    /// watching the endpoint move, so an answer carried over would warn about a room on the
-    /// strength of a question asked about a different meeting.
-    /// </summary>
-    [Fact]
-    public void What_the_last_meeting_was_told_does_not_stand_for_the_next_one()
-    {
-        var playback = new WhatTheMachinePlaysThrough();
-        playback.Ask(() => Speakers);
-
-        playback.ForgetTheLastMeeting();
-        playback.Ask(Refusing());
-
-        playback.Standing.ShouldBeNull();
-        RecordingMeters.Of(
-                RecorderState.Recording,
-                playback.Standing,
-                [Reading(AudioChannel.Loopback, Speech), Reading(AudioChannel.Microphone, Speech)])
-            .TheOthersAreHeardTwice.ShouldBeFalse();
-    }
-
-    /// <summary>
-    /// The warning is about a microphone that is open, so it goes when the microphone does. It is
-    /// worse than a meter left standing: a line about the room hearing somebody, on a screen where
-    /// nothing is being recorded, is a sentence about a meeting that is not happening.
-    /// </summary>
-    [Theory]
-    [MemberData(nameof(WithNoMeetingRunning))]
-    public void Nothing_is_warned_about_when_no_meeting_is_being_recorded(RecorderState state) =>
-        Metered(state, Speakers, others: Speech, mine: Speech)
-            .TheOthersAreHeardTwice.ShouldBeFalse();
 
     /// <summary>
     /// A device that stopped on its own, while the rest of the meeting carries on being recorded.
@@ -240,7 +120,7 @@ public class RecordingMetersTests
     public void A_channel_whose_device_stopped_on_its_own_says_so_and_the_other_one_does_not()
     {
         var meters = Metered(
-            RecorderState.Recording, Speakers, others: Speech, mine: Nothing, mineStopped: true);
+            RecorderState.Recording, others: Speech, mine: Nothing, mineStopped: true);
 
         meters.On(AudioChannel.Loopback).ShouldNotBeNull().Stopped.ShouldBeFalse();
         meters.On(AudioChannel.Microphone).ShouldNotBeNull().Stopped.ShouldBeTrue();
@@ -255,7 +135,7 @@ public class RecordingMetersTests
     public void A_channel_whose_device_stopped_says_when_it_was_cut_off()
     {
         var meters = Metered(
-            RecorderState.Recording, Speakers, others: Speech, mine: Nothing, mineStopped: true);
+            RecorderState.Recording, others: Speech, mine: Nothing, mineStopped: true);
 
         meters.On(AudioChannel.Microphone).ShouldNotBeNull().StoppedAt.ShouldBe(WentQuiet);
         meters.On(AudioChannel.Loopback).ShouldNotBeNull().StoppedAt.ShouldBeNull();
@@ -288,10 +168,10 @@ public class RecordingMetersTests
     [Fact]
     public void The_microphone_dying_is_what_a_screen_offers_to_open_again()
     {
-        Metered(RecorderState.Recording, Speakers, others: Speech, mine: Nothing, mineStopped: true)
+        Metered(RecorderState.Recording, others: Speech, mine: Nothing, mineStopped: true)
             .TheMicrophoneDied.ShouldBeTrue();
 
-        Metered(RecorderState.Recording, Speakers, others: Speech, mine: Speech)
+        Metered(RecorderState.Recording, others: Speech, mine: Speech)
             .TheMicrophoneDied.ShouldBeFalse();
     }
 
@@ -306,7 +186,6 @@ public class RecordingMetersTests
     {
         var meters = RecordingMeters.Of(
             RecorderState.Recording,
-            Speakers,
             [
                 Reading(AudioChannel.Loopback, Nothing, WentQuiet),
                 Reading(AudioChannel.Microphone, Speech),
@@ -325,7 +204,7 @@ public class RecordingMetersTests
     [MemberData(nameof(WithNoMeetingRunning))]
     public void Nothing_is_offered_to_be_opened_again_when_no_meeting_is_being_recorded(
         RecorderState state) =>
-        Metered(state, Speakers, others: Speech, mine: Nothing, mineStopped: true)
+        Metered(state, others: Speech, mine: Nothing, mineStopped: true)
             .TheMicrophoneDied.ShouldBeFalse();
 
     /// <summary>
@@ -492,34 +371,48 @@ public class RecordingMetersTests
             .ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// The words under a meter are read from the loudest reading since they were last written. A
+    /// reading empties the level, so a stretch between two words reads silent, and <em>nada</em>
+    /// written from that stretch would stand over a live conversation.
+    /// </summary>
+    [Fact]
+    public void The_words_read_the_loudest_since_they_were_written()
+    {
+        var heard = Reading(AudioChannel.Microphone, Speech);
+        var between = Reading(AudioChannel.Microphone, Nothing);
+
+        ChannelReading.Loudest(heard, between).Level.ShouldBe(Speech);
+        ChannelReading.Loudest(between, heard).Level.ShouldBe(Speech);
+        ChannelReading.Loudest(between, between).IsSilent.ShouldBeTrue();
+        ChannelReading.Loudest(heard, between).IsSilent.ShouldBeFalse();
+    }
+
+    /// <summary>
+    /// Only the level is kept from the louder reading. Whether the channel is still there is a fact
+    /// about now, and the later reading is now: a channel that died after a loud stretch is dead.
+    /// </summary>
+    [Fact]
+    public void A_channel_that_died_after_a_loud_stretch_still_reads_as_dead()
+    {
+        var loud = Reading(AudioChannel.Microphone, Speech);
+        var died = Reading(AudioChannel.Microphone, Nothing, WentQuiet);
+
+        var kept = ChannelReading.Loudest(loud, died);
+
+        kept.StoppedAt.ShouldBe(WentQuiet);
+        kept.Level.ShouldBe(Speech);
+    }
+
     private static RecorderState[] States() => Enum.GetValues<RecorderState>();
-
-    /// <summary>
-    /// A machine that did not answer inside the deadline — the refusal <c>DeviceEnquiry.Answering</c>
-    /// really makes, built by the factory that really makes it, so what is fabricated here is the
-    /// machine and never the sentence.
-    /// </summary>
-    private static Func<AudioDevice> Refusing() =>
-        () => throw AudioDeviceWedgedException.NoAnswerAbout(DeviceQuestion.PlaybackDevice.Asked);
-
-    /// <summary>
-    /// A machine that answered and named nothing, which is the other refusal
-    /// <c>AudioDevices.Playback</c> produces. It is a plain <see cref="AudioCaptureException"/>, and
-    /// the rule treats the two the same on purpose.
-    /// </summary>
-    private static Func<AudioDevice> Silent() =>
-        () => throw new AudioCaptureException(
-            "Windows names no playback device, so there is nothing for channel 0 to listen to.");
 
     private static RecordingMeters Metered(
         RecorderState state,
-        AudioDevice playback,
         LevelReading others,
         LevelReading mine,
         bool mineStopped = false) =>
         RecordingMeters.Of(
             state,
-            playback,
             [
                 Reading(AudioChannel.Loopback, others),
                 Reading(AudioChannel.Microphone, mine, mineStopped ? WentQuiet : null),

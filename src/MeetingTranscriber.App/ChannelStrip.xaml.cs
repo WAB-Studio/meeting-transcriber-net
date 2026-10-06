@@ -33,6 +33,13 @@ public sealed partial class ChannelStrip : UserControl
     /// </summary>
     public event EventHandler<int>? Chose;
 
+    /// <summary>
+    /// Raised when somebody opens this strip's list, so the window can read the machine again
+    /// before they choose from it — which is what stands where a press that refreshed the list
+    /// used to. Raised for the opening and never for the window filling the list.
+    /// </summary>
+    public event EventHandler? Opening;
+
     /// <summary>True while <see cref="Offer"/> is filling the picker, so refilling is not a pick.</summary>
     private bool _filling;
 
@@ -47,8 +54,8 @@ public sealed partial class ChannelStrip : UserControl
     /// Set from outside and once, because this is one control used twice: its own <c>x:Name</c>s
     /// are the same on both strips, and two elements answering to one id is a probe that cannot say
     /// which picker it just chose in. The picker keeps the name it has always had, which is what
-    /// ISC-158.1's recorded evidence and every walk written against this screen ask for; the chip
-    /// and the role take that name and a suffix.
+    /// ISC-158.1's recorded evidence and every walk written against this screen ask for; the role
+    /// takes that name and a suffix.
     /// </remarks>
     public string Identity
     {
@@ -56,7 +63,6 @@ public sealed partial class ChannelStrip : UserControl
         set
         {
             AutomationProperties.SetAutomationId(Picker, value);
-            AutomationProperties.SetAutomationId(Chip, value + "Channel");
             AutomationProperties.SetAutomationId(Role, value + "Role");
         }
     }
@@ -82,19 +88,18 @@ public sealed partial class ChannelStrip : UserControl
         set => Meter.LoudestSoFarSaid = value;
     }
 
-    /// <summary>Says which channel this is: the chip, the role beside it, and what the picker chooses.</summary>
-    /// <param name="channel">The channel's number, as the mono chip the artboards draw.</param>
+    /// <summary>Says which channel this is: the role beside the picker, and what the picker chooses.</summary>
     /// <param name="role">What this channel is for, in words: the others, or you.</param>
     /// <param name="picker">What the picker chooses, for somebody who cannot see the two texts.</param>
     /// <remarks>
-    /// One call and not three properties, because a strip described in part is a strip that looks
-    /// finished: set two of the three and the missing one is silently empty, and one of them —
-    /// <paramref name="role"/> — is also the only thing that names the bar to a screen reader, so
-    /// forgetting it leaves the one element here carrying a value announcing nothing at all.
+    /// One call and not two properties, because a strip described in part is a strip that looks
+    /// finished: <paramref name="role"/> is also the only thing that names the bar to a screen
+    /// reader, so forgetting it leaves the one element here carrying a value announcing nothing at
+    /// all. No channel number is among them: the index is the provider's, and nothing on a screen
+    /// says it.
     /// </remarks>
-    public void Describe(string channel, string role, string picker)
+    public void Describe(string role, string picker)
     {
-        Chip.Text = channel;
         Role.Text = role;
         Meter.ChannelName = role;
 
@@ -136,8 +141,8 @@ public sealed partial class ChannelStrip : UserControl
     /// with nothing on screen that looked wrong.
     /// </para>
     /// <para>
-    /// The whole card dims where the source is gone, and the whole card is this control: the chip,
-    /// the role, the picker and the bar under them. <c>docs/design.md</c> §The three states asks
+    /// The whole card dims where the source is gone, and the whole card is this control: the role,
+    /// the picker and the bar under them. <c>docs/design.md</c> §The three states asks
     /// for that rather than for a dimmed bar, and the difference is what it is for — a channel
     /// nobody is recording on is not a meter reading low, it is a row that has stopped being about
     /// anything. Dimming the bar alone would leave the device's name standing at full weight over
@@ -158,6 +163,8 @@ public sealed partial class ChannelStrip : UserControl
 
     /// <summary>Forgets the loudest moment, which a new meeting's meter has none of.</summary>
     public void ForgetTheLoudestMoment() => Meter.ForgetTheLoudestMoment();
+
+    private void OnOpened(object? sender, object e) => Opening?.Invoke(this, EventArgs.Empty);
 
     private void OnChosen(object sender, SelectionChangedEventArgs e)
     {

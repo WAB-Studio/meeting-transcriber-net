@@ -533,23 +533,26 @@ public class RecorderScreenTests
             .NothingCameIsOnScreen.ShouldBeFalse();
 
     [Fact]
-    public void The_programs_offered_to_move_to_leave_out_the_one_being_followed()
+    public void The_applications_on_offer_leave_out_the_one_followed_by_its_id_whatever_its_title_says()
     {
         var following = new AudioProcess(1, "a", StartedBy: 1);
         var other = new AudioProcess(2, "b", StartedBy: 1);
 
-        RecorderScreen.ProgramsChannelZeroMayMoveTo([other, following], following).ShouldBe([other]);
+        RecorderScreen.ProgramsOnOffer(
+            [new OfferedProgram(other, "x"), new OfferedProgram(following, "a new tab")],
+            following)
+            .ShouldBe([new OfferedProgram(other, "x")]);
     }
 
     [Fact]
-    public void The_programs_offered_to_move_to_are_in_the_order_the_source_picker_lists_them()
+    public void The_applications_on_offer_are_ordered_by_name_then_title_then_id()
     {
-        var bravo = new AudioProcess(9, "Bravo", StartedBy: 1);
-        var alpha = new AudioProcess(8, "alpha", StartedBy: 1);
-        var alphaToo = new AudioProcess(3, "alpha", StartedBy: 1);
+        var bravo = new OfferedProgram(new AudioProcess(9, "Bravo", StartedBy: 1), "a");
+        var alphaLate = new OfferedProgram(new AudioProcess(8, "alpha", StartedBy: 1), "z");
+        var alphaEarly = new OfferedProgram(new AudioProcess(3, "alpha", StartedBy: 1), "b");
 
-        RecorderScreen.ProgramsChannelZeroMayMoveTo([bravo, alpha, alphaToo], null)
-            .ShouldBe([alphaToo, alpha, bravo]);
+        RecorderScreen.ProgramsOnOffer([bravo, alphaLate, alphaEarly], null)
+            .ShouldBe([alphaEarly, alphaLate, bravo]);
     }
 
     /// <summary>

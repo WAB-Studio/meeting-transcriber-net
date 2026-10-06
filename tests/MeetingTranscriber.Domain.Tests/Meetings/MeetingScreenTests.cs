@@ -236,6 +236,21 @@ public class MeetingScreenTests
         without.WhyTheLastSummaryFailed.ShouldBeNull();
     }
 
+    [Theory]
+    [InlineData(StageStanding.Offered, false)]
+    [InlineData(StageStanding.Underway, true)]
+    [InlineData(StageStanding.Running, true)]
+    [InlineData(StageStanding.StoppedOnAPerson, false)]
+    [InlineData(StageStanding.Declined, false)]
+    [InlineData(StageStanding.NothingToDo, false)]
+    public void Work_is_under_way_while_a_job_is_queued_or_running_and_not_otherwise(
+        StageStanding standing, bool underWay)
+    {
+        var owed = new OwedWork(Meeting, MeetingStage.Transcribed, standing);
+
+        Screen(owed, RecordedAudio.Playable).WorkIsUnderWay.ShouldBe(underWay);
+    }
+
     [Fact]
     public void A_stage_stopped_on_a_person_is_never_offered_again_from_this_screen()
     {

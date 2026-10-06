@@ -159,8 +159,87 @@ internal static class ScreenMotion
         Storyboard.SetTarget(fade, element);
         Storyboard.SetTargetProperty(fade, nameof(UIElement.Opacity));
 
-        var moving = new Storyboard { Children = { travel, fade } };
+        Begin(element, heading, arriving, new Storyboard { Children = { travel, fade } });
+    }
 
+    /// <summary>
+    /// Brings <paramref name="element"/> in or takes it out by its opacity alone, over what
+    /// <see cref="Move.EnteringOrLeaving"/> is worth. Nothing about its size moves, so what is
+    /// around it does not either.
+    /// </summary>
+    /// <remarks>
+    /// What a sub-screen arrives by: it fills a room that is already its own, and a height that
+    /// grew into it would be the room travelling for a screen that was only asked to appear. It
+    /// keeps what <see cref="ArriveOrLeave"/> keeps — where the element is heading is remembered
+    /// here, and a move worth nothing is no animation at all.
+    /// </remarks>
+    public static void Fade(FrameworkElement element, bool arriving)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        var heading = Headings.GetOrCreateValue(element);
+
+        heading.Moving?.Stop();
+        heading.Moving = null;
+        heading.Arriving = arriving;
+
+        var milliseconds = Now.Milliseconds(Move.EnteringOrLeaving);
+
+        if (milliseconds == 0)
+        {
+            Settle(element, arriving);
+            return;
+        }
+
+        element.Opacity = arriving ? 0 : 1;
+        element.Visibility = Visibility.Visible;
+
+        var fade = new DoubleAnimation
+        {
+            From = arriving ? 0 : 1,
+            To = arriving ? 1 : 0,
+            Duration = new Duration(TimeSpan.FromMilliseconds(milliseconds)),
+            EasingFunction = new CubicEase
+            {
+                EasingMode = arriving ? EasingMode.EaseOut : EasingMode.EaseIn,
+            },
+        };
+
+        Storyboard.SetTarget(fade, element);
+        Storyboard.SetTargetProperty(fade, nameof(UIElement.Opacity));
+
+        Begin(element, heading, arriving, new Storyboard { Children = { fade } });
+    }
+
+    /// <summary>
+    /// Puts <paramref name="element"/> on screen or away at once, with nothing travelling, and
+    /// remembers where it is heading like the two moves above.
+    /// </summary>
+    /// <remarks>
+    /// What a screen that takes the room does to the card it takes it from: the card is not on its
+    /// way anywhere, it is simply not there. It still goes through here and not through
+    /// <c>Visibility</c>, because <see cref="IsShowing"/> answers from what was last told rather
+    /// than from the property, and a card put away by the property would be asked about as if it
+    /// were still on its way in.
+    /// </remarks>
+    public static void Put(FrameworkElement element, bool showing)
+    {
+        ArgumentNullException.ThrowIfNull(element);
+
+        var heading = Headings.GetOrCreateValue(element);
+
+        heading.Moving?.Stop();
+        heading.Moving = null;
+        heading.Arriving = showing;
+
+        Settle(element, showing);
+    }
+
+    /// <summary>
+    /// Runs a move that has been built, and puts the element where it was going when it is over.
+    /// </summary>
+    private static void Begin(FrameworkElement element, Heading heading, bool arriving, Storyboard moving)
+    {
         // Settled at the end whichever way it went, so the element is never left holding the
         // ceiling the animation drove it to: one kept at the height it had when it arrived would
         // stop growing the next time anything in it got longer.

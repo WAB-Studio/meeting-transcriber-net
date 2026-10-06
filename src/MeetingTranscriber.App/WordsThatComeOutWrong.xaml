@@ -78,14 +78,6 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Button
-                x:Name="BackButton"
-                Grid.Column="0"
-                VerticalAlignment="Top"
-                Style="{StaticResource ButtonAtTheMargin}"
-                Click="OnLeave"
-                Content="{x:Bind In(loc:UiTexts.BackToTheMeeting)}" />
-
             <StackPanel Grid.Column="1" Spacing="1">
                 <TextBlock
                     Style="{StaticResource SubScreenTitleText}"

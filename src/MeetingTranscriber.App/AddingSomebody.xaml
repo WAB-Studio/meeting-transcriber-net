@@ -8,11 +8,12 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
+    Style="{StaticResource Notice}"
     PrimaryButtonClick="OnSomebodyNamed"
     PrimaryButtonText="{x:Bind In(loc:UiTexts.Save)}"
     CloseButtonText="{x:Bind In(loc:UiTexts.Cancel)}">
 
-    <!-- Adding a person, and correcting one — the second and last dialogue `docs/design.md`
+    <!-- Adding a person, and correcting one — the second of the three dialogues `docs/design.md`
          §Notices allows. Two screens open it now, `ClassifyingAMeeting` and `SayingWhoIsWho`, and
          it does two jobs and is not two dialogues: adding somebody and correcting the name of
          somebody already there are the same form with one field.
@@ -54,7 +55,8 @@
             x:Name="TheirYearBox"
             Style="{StaticResource TypedField}"
             MaxLength="4"
-            Header="{x:Bind In(loc:UiTexts.From)}" />
+            Header="{x:Bind In(loc:UiTexts.SinceYear)}"
+            PlaceholderText="{x:Bind In(loc:UiTexts.Year)}" />
 
         <TextBlock
             x:Name="DialogueStatusText"

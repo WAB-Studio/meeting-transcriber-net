@@ -10,28 +10,28 @@
     mc:Ignorable="d">
 
     <!-- The one screen that lives apart, and everything on it is an answer about this install
-         rather than about the next meeting. Seven blocks: what should happen when a recording ends,
-         what runs it (two engines, each on its own card), the Deepgram key the first of them
-         spends, who is using the application and in which language, where the corpus is, what an
-         export takes out of it, and where Claude Code is. The artboard draws no key; it sits under
-         the engine cards because that engine is what it is for, and the rest are the artboard's
-         own order — the export block under where the corpus is because it is about the same
-         folder, and Claude Code last.
+         rather than about the next meeting. Every block is a card with its own heading: what
+         should happen after a recording, the two engines (the summarising one with the model it
+         is asked of), the Deepgram key the first of them spends, who is using the application
+         and in which language, the folder the meetings live in, what an export takes out of it,
+         and where Claude Code is. The artboard draws no key; it sits under the engine cards
+         because that engine is what it is for.
 
-         The first block is the whole reason this screen exists. Choosing between transcribing and
-         summarising stopped being a question per meeting and became a preference set once, so it
-         is asked here, before any recording, and nothing asks again — which is what makes the
-         presses on a meeting's own row load-bearing rather than a convenience.
+         Choosing between transcribing and summarising stopped being a question per meeting and
+         became a preference set once, so it is asked here, before any recording, and nothing
+         asks again — which is what makes the presses on a meeting's own row load-bearing rather
+         than a convenience.
 
-         Neither engine is a picker. `docs/design.md` says there is one transcription engine and one
-         summariser, so neither is a choice: what is drawn is the answer with its cost beside it,
-         and a *Descargar* that downloads nothing is the live control that does nothing this
-         repository refuses outright — so the row for a model that does not exist is not drawn at
-         all.
+         The same screen is the first step: while nobody has said who is using the application it
+         opens with only the cards needed to begin (after recording, the Deepgram key, your name),
+         a *Get started* title and *Start* to leave it — not a second drawing of three blocks this
+         screen already has. `Configuracion.Open` decides it, and the press at the foot of the
+         window always opens the whole of it.
 
-         A sub-screen of the window and not a window of its own, the way the meeting screen and the
-         filing screen are: it is reached from the gear on the front door and returns there, and
-         a meeting under way keeps its strip above it for the whole of that. -->
+         A sub-screen of the window and not a window of its own, the way the meeting screen and
+         the filing screen are: it is reached from the word at the foot of the front door, left
+         through the window's app bar, and a meeting under way keeps its strip above it for the
+         whole of that. -->
 
     <Grid x:Name="Root" RowSpacing="18">
         <Grid.RowDefinitions>
@@ -40,25 +40,16 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- The header, in the shape the meeting screen's is. The way back does not name where back
-             is, and that is the one place this differs from its siblings: the meeting screen is
-             reached from the list and returns to it, and this one is reached from wherever the
-             window happened to be. -->
+        <!-- The header, in the shape the meeting screen's is. Left through `GoBack`, which the
+             window's app bar calls. -->
         <Grid Grid.Row="0" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Button
-                x:Name="BackButton"
-                Grid.Column="0"
-                VerticalAlignment="Center"
-                Style="{StaticResource ButtonAtTheMargin}"
-                Click="OnBack"
-                Content="{x:Bind In(loc:UiTexts.BackFromSettings)}" />
-
             <TextBlock
+                x:Name="TitleText"
                 Grid.Column="1"
                 VerticalAlignment="Center"
                 Text="{x:Bind In(loc:UiTexts.Settings)}"
@@ -71,11 +62,10 @@
                      set of more than two is a radio row, and every part of how one is drawn is
                      Olivo's `Option`.
 
-                     The group goes dead when the corpus is not reachable, which is the rule the
-                     row about who is using the application already applies one block down: the
-                     answer has nowhere to be kept, the refusal is already on screen naming the
-                     folder, and a press that would fail is worse than one that is plainly not
-                     available. -->
+                     The group goes dead when the corpus is not reachable: the answer has nowhere
+                     to be kept, the refusal is already on screen naming the folder, and a press
+                     that would fail is worse than one that is plainly not available. It is never
+                     dead for a write in flight: a choice made meanwhile is written after it. -->
                 <Border Style="{StaticResource Card}" Padding="{StaticResource LargeCardPadding}">
                     <RadioButtons
                         x:Name="AfterARecordingOptions"
@@ -100,15 +90,14 @@
 
                 <!-- The two engines, side by side, each on its own card because they are charged
                      separately: if one of the two fails the other is already done and is not paid
-                     for again, which is the sentence at the foot of this screen.
+                     for again.
 
-                     Written out and not built from a list, which is the one thing about this block
-                     worth arguing. `docs/design.md` says a model on this machine is one more row in
-                     both lists rather than a special case — and it is: one more row here is one
-                     more pair of lines here. A loop over a list of one would be preparation for a
-                     shape nobody has drawn, and the shape is already known to be different, because
-                     a local model brings a size, a download and a state none of these two have. -->
-                <Grid ColumnSpacing="18">
+                     Written out and not built from a list: `docs/design.md` says a model on this
+                     machine is one more row in both lists, and one more row here is one more pair
+                     of lines. A loop over a list of one would be preparation for a shape nobody
+                     has drawn. Transcribing has no choice to make; summarising has the model it
+                     is asked of, once for every meeting. -->
+                <Grid x:Name="EnginesRow" ColumnSpacing="18">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="*" />
@@ -120,19 +109,9 @@
                                 Text="{x:Bind In(loc:UiTexts.TranscribeWith)}"
                                 Style="{StaticResource BodyText}"
                                 Foreground="{ThemeResource SecondaryTextBrush}" />
-                            <StackPanel Spacing="2">
-                                <TextBlock
-                                    Text="{x:Bind In(loc:UiTexts.TheEngineThatTranscribes)}"
-                                    Style="{StaticResource BodyText}" />
-
-                                <!-- The data rank, in a quieter ink: until a run produces a number
-                                     this is `docs/design.md`'s placeholder standing where a figure
-                                     will go, and a placeholder is not a sentence. -->
-                                <TextBlock
-                                    Text="{x:Bind In(loc:UiTexts.WhatAMinuteCosts)}"
-                                    Style="{StaticResource DataText}"
-                                    Foreground="{ThemeResource SecondaryTextBrush}" />
-                            </StackPanel>
+                            <TextBlock
+                                Text="{x:Bind In(loc:UiTexts.TheEngineThatTranscribes)}"
+                                Style="{StaticResource BodyText}" />
                         </StackPanel>
                     </Border>
 
@@ -142,15 +121,20 @@
                                 Text="{x:Bind In(loc:UiTexts.SummariseWith)}"
                                 Style="{StaticResource BodyText}"
                                 Foreground="{ThemeResource SecondaryTextBrush}" />
-                            <StackPanel Spacing="2">
-                                <TextBlock
-                                    Text="{x:Bind In(loc:UiTexts.TheEngineThatSummarises)}"
-                                    Style="{StaticResource BodyText}" />
-                                <TextBlock
-                                    Text="{x:Bind In(loc:UiTexts.WhatItCosts)}"
-                                    Style="{StaticResource DataText}"
-                                    Foreground="{ThemeResource SecondaryTextBrush}" />
-                            </StackPanel>
+                            <TextBlock
+                                Text="{x:Bind In(loc:UiTexts.TheEngineThatSummarises)}"
+                                Style="{StaticResource BodyText}" />
+
+                            <!-- Written the moment it is chosen, through the one gate every write
+                                 on this screen goes through, and dead with the group above it when
+                                 there is nowhere to write. -->
+                            <ComboBox
+                                x:Name="SummaryModelPicker"
+                                HorizontalAlignment="Left"
+                                MinWidth="180"
+                                Style="{StaticResource DropDown}"
+                                AutomationProperties.Name="{x:Bind In(loc:UiTexts.SummariseWith)}"
+                                SelectionChanged="OnSummaryModelChosen" />
                         </StackPanel>
                     </Border>
                 </Grid>
@@ -171,275 +155,290 @@
                      and sits on the line saying a key is kept rather than on *Guardar*'s row: the
                      gap `docs/design.md` asks for between an act and what loses something is a
                      whole line here. It is drawn while a key may be there to take away. -->
-                <StackPanel Spacing="4">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <PasswordBox
-                            x:Name="DeepgramKeyBox"
-                            MinWidth="320"
-                            Style="{StaticResource TypedSecret}"
-                            Header="{x:Bind In(loc:UiTexts.DeepgramKeyHeader)}"
-                            PasswordChanged="OnDeepgramKeyTyped" />
-                        <Button
-                            x:Name="KeepTheKeyButton"
-                            VerticalAlignment="Bottom"
-                            Style="{StaticResource NormalButtonOnPaper}"
-                            Click="OnKeepTheKey"
-                            IsEnabled="False"
-                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.SaveTheDeepgramKey)}"
-                            Content="{x:Bind In(loc:UiTexts.Save)}" />
-                    </StackPanel>
-
-                    <StackPanel Orientation="Horizontal" Spacing="8">
+                <Border Style="{StaticResource Card}" Padding="{StaticResource SmallCardPadding}">
+                    <StackPanel Spacing="8">
                         <TextBlock
-                            x:Name="DeepgramKeyText"
-                            VerticalAlignment="Center"
+                            Text="{x:Bind In(loc:UiTexts.DeepgramKeyHeader)}"
                             Style="{StaticResource BodyText}"
                             Foreground="{ThemeResource SecondaryTextBrush}" />
-                        <Button
-                            x:Name="RemoveTheKeyButton"
-                            VerticalAlignment="Center"
-                            Style="{StaticResource RowButtonThatLosesSomething}"
-                            Click="OnRemoveTheKey"
-                            Visibility="Collapsed"
-                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.RemoveTheDeepgramKey)}"
-                            Content="{x:Bind In(loc:UiTexts.Remove)}" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <PasswordBox
+                                x:Name="DeepgramKeyBox"
+                                MinWidth="320"
+                                Style="{StaticResource TypedSecret}"
+                                AutomationProperties.Name="{x:Bind In(loc:UiTexts.DeepgramKeyHeader)}"
+                                PasswordChanged="OnDeepgramKeyTyped" />
+                            <Button
+                                x:Name="KeepTheKeyButton"
+                                VerticalAlignment="Bottom"
+                                Style="{StaticResource NormalButtonOnCard}"
+                                Click="OnKeepTheKey"
+                                IsEnabled="False"
+                                AutomationProperties.Name="{x:Bind In(loc:UiTexts.SaveTheDeepgramKey)}"
+                                Content="{x:Bind In(loc:UiTexts.Save)}" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock
+                                x:Name="DeepgramKeyText"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource BodyText}"
+                                Foreground="{ThemeResource SecondaryTextBrush}" />
+                            <Button
+                                x:Name="RemoveTheKeyButton"
+                                VerticalAlignment="Center"
+                                Style="{StaticResource RowButtonThatLosesSomething}"
+                                Click="OnRemoveTheKey"
+                                Visibility="Collapsed"
+                                AutomationProperties.Name="{x:Bind In(loc:UiTexts.RemoveTheDeepgramKey)}"
+                                Content="{x:Bind In(loc:UiTexts.Remove)}" />
+                        </StackPanel>
                     </StackPanel>
-                </StackPanel>
+                </Border>
 
-                <!-- Who is using the application, and the language it is read in. Moved here off
-                     the front door whole, handlers and all: both are answers about this install,
-                     and the front door only carried them until this screen existed.
-
-                     It is one field and one press whether it is being answered for the first time
-                     or corrected afterwards — the asking is the sentence under it, which is on
-                     screen exactly while nobody has answered. The affiliation the design asks about
-                     is not here and is not missing: `docs/design.md` says the first screen of an
-                     application is not where somebody enumerates their jobs, and the `Persona`
-                     dialogue is where one is added. -->
-                <StackPanel Spacing="4">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBox
-                            x:Name="WhoIsUsingThisBox"
-                            MinWidth="240"
-                            Style="{StaticResource TypedField}"
-                            Header="{x:Bind In(loc:UiTexts.WhoIsUsingTheApplication)}"
-                            TextChanged="OnWhoIsUsingThisTyped" />
-                        <Button
-                            x:Name="WhoIsUsingThisButton"
-                            VerticalAlignment="Bottom"
-                            Style="{StaticResource NormalButtonOnPaper}"
-                            Click="OnKeepWhoIsUsingThis"
-                            Content="{x:Bind In(loc:UiTexts.Save)}" />
-
-                        <!-- The language the application is **read** in, which is not the language
-                             a meeting is spoken in: that one is on the recording card, beside what
-                             it is about.
-
-                             Its label is beside it and not over it: a picker is a pill and a pill
-                             carries no header, so what it chooses is said as text. That text is
-                             also what a screen reader is given, by name. -->
+                <!-- Who is using the application, and the language it is read in. Both are answers
+                     about this install. It is one field and one press whether it is being
+                     answered for the first time or corrected afterwards. The affiliation the design
+                     asks about is not here and is not missing: `docs/design.md` says the first
+                     screen of an application is not where somebody enumerates their jobs, and the
+                     `Persona` dialogue is where one is added. -->
+                <Border Style="{StaticResource Card}" Padding="{StaticResource SmallCardPadding}">
+                    <StackPanel Spacing="8">
                         <TextBlock
-                            VerticalAlignment="Bottom"
-                            Margin="0,0,0,7"
-                            Text="{x:Bind In(loc:UiTexts.Language)}"
+                            Text="{x:Bind In(loc:UiTexts.You)}"
                             Style="{StaticResource BodyText}"
                             Foreground="{ThemeResource SecondaryTextBrush}" />
-                        <ComboBox
-                            x:Name="LanguagePicker"
-                            MinWidth="150"
-                            VerticalAlignment="Bottom"
-                            Style="{StaticResource DropDown}"
-                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.Language)}"
-                            SelectionChanged="OnLanguageChosen" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBox
+                                x:Name="WhoIsUsingThisBox"
+                                MinWidth="240"
+                                Style="{StaticResource TypedField}"
+                                Header="{x:Bind In(loc:UiTexts.WhoIsUsingTheApplication)}"
+                                TextChanged="OnWhoIsUsingThisTyped" />
+                            <Button
+                                x:Name="WhoIsUsingThisButton"
+                                VerticalAlignment="Bottom"
+                                Style="{StaticResource NormalButtonOnCard}"
+                                Click="OnKeepWhoIsUsingThis"
+                                Content="{x:Bind In(loc:UiTexts.Save)}" />
+
+                            <!-- The language the application is **read** in, which is not the
+                                 language a meeting is spoken in: that one is on the recording
+                                 card, beside what it is about.
+
+                                 Its label is beside it and not over it: a picker is a pill and a
+                                 pill carries no header, so what it chooses is said as text. That
+                                 text is also what a screen reader is given, by name. -->
+                            <TextBlock
+                                VerticalAlignment="Bottom"
+                                Margin="0,0,0,7"
+                                Text="{x:Bind In(loc:UiTexts.Language)}"
+                                Style="{StaticResource BodyText}"
+                                Foreground="{ThemeResource SecondaryTextBrush}" />
+                            <ComboBox
+                                x:Name="LanguagePicker"
+                                MinWidth="150"
+                                VerticalAlignment="Bottom"
+                                Style="{StaticResource DropDown}"
+                                AutomationProperties.Name="{x:Bind In(loc:UiTexts.Language)}"
+                                SelectionChanged="OnLanguageChosen" />
+                        </StackPanel>
                     </StackPanel>
+                </Border>
 
-                    <!-- Left and not merely bounded. A `MaxWidth` on a block that stretches centres
-                         it, so this sentence stood in the middle of a window nothing else on the
-                         row was under — which a probe photographed. -->
-                    <TextBlock
-                        x:Name="NobodyHasSaidYet"
-                        HorizontalAlignment="Left"
-                        Text="{x:Bind In(loc:UiTexts.NobodyHasSaidWhoIsUsingThis)}"
-                        Style="{StaticResource BodyText}"
-                        Foreground="{ThemeResource SecondaryTextBrush}"
-                        TextWrapping="Wrap"
-                        MaxWidth="640"
-                        Visibility="Collapsed" />
-                </StackPanel>
+                <!-- The folder the meetings live in, as data, and which folder was refused when
+                     there is nowhere. This is the only line in the application that says which
+                     refusal it was, and the meetings list's own sentence —
+                     `UiTexts.TheCorpusCouldNotBeOpened` — sends somebody to this screen for it.
 
-                <!-- Where the corpus is, and which folder was refused when there is nowhere. This
-                     is the only line in the application that says which refusal it was, and the
-                     meetings list's own sentence — `UiTexts.TheCorpusCouldNotBeOpened` — sends
-                     somebody to this screen for it. It came here off the recording card with the
-                     row above, which is why that entry now names this screen and not that one.
-
-                     A sentence, and so the body rank in a quieter ink. The path inside it is data
-                     and the line around it is not — `docs/design.md` §Type: text never goes in
-                     mono, and a number that is part of a sentence is text.
-
-                     *Cambiar* is beside it now, and only when the corpus was refused: a corpus
-                     that opened is moved by moving the files and then saying so, and no screen
-                     offers the first half — that is the artboard's other *Cambiar*, over a corpus
-                     that opened, and this card does not build it. -->
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0" Spacing="4">
-                        <TextBlock
-                            Text="{x:Bind In(loc:UiTexts.WhereItIsKept)}"
-                            Style="{StaticResource BodyText}"
-                            Foreground="{ThemeResource SecondaryTextBrush}" />
-                        <TextBlock
-                            x:Name="CorpusText"
-                            Style="{StaticResource BodyText}"
-                            Foreground="{ThemeResource SecondaryTextBrush}"
-                            TextWrapping="Wrap" />
-                    </StackPanel>
-
-                    <Button
-                        x:Name="ChangeWhereItIsKept"
-                        Grid.Column="1"
-                        VerticalAlignment="Bottom"
-                        Style="{StaticResource PillButton}"
-                        Click="OnChangeWhereItIsKept"
-                        Visibility="Collapsed"
-                        AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhereTheCorpusIsKept)}"
-                        Content="{x:Bind In(loc:UiTexts.Change)}" />
-                </Grid>
-
-                <!-- Taking the corpus out: four ticks for what goes, and the press. Every tick starts
-                     ticked, because the whole package is what somebody asking to take their data
-                     out expects, and nothing ticked leaves the press dead. The press is at the
-                     normal rank and is not this screen's principal act; there is no sentence when
-                     it worked, because the line beside it changing is what says so. The line names
-                     when the last one was made, what it took and where it went, and is drawn only
-                     once there has been one. The press is dead exactly where the corpus is, since
-                     there is nothing to take out of a corpus that will not open. -->
-                <StackPanel Spacing="8">
-                    <TextBlock
-                        Text="{x:Bind In(loc:UiTexts.WhatAnExportTakes)}"
-                        Style="{StaticResource BodyText}"
-                        Foreground="{ThemeResource SecondaryTextBrush}" />
-
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <CheckBox
-                            x:Name="ExportAudio"
-                            Style="{StaticResource Tick}"
-                            IsChecked="True"
-                            Checked="OnExportTicked"
-                            Unchecked="OnExportTicked"
-                            Content="{x:Bind In(loc:UiTexts.ExportsAudio)}" />
-                        <CheckBox
-                            x:Name="ExportTranscripts"
-                            Style="{StaticResource Tick}"
-                            IsChecked="True"
-                            Checked="OnExportTicked"
-                            Unchecked="OnExportTicked"
-                            Content="{x:Bind In(loc:UiTexts.ExportsTranscripts)}" />
-                        <CheckBox
-                            x:Name="ExportSummaries"
-                            Style="{StaticResource Tick}"
-                            IsChecked="True"
-                            Checked="OnExportTicked"
-                            Unchecked="OnExportTicked"
-                            Content="{x:Bind In(loc:UiTexts.ExportsSummaries)}" />
-                        <CheckBox
-                            x:Name="ExportHandCorrections"
-                            Style="{StaticResource Tick}"
-                            IsChecked="True"
-                            Checked="OnExportTicked"
-                            Unchecked="OnExportTicked"
-                            Content="{x:Bind In(loc:UiTexts.ExportsHandCorrections)}" />
-                    </StackPanel>
-
+                     *Cambiar* is beside it, and only when the corpus was refused: a corpus that
+                     opened is moved by moving the files and then saying so, and no screen offers
+                     the first half. -->
+                <Border x:Name="FolderCard" Style="{StaticResource Card}" Padding="{StaticResource SmallCardPadding}">
                     <Grid ColumnSpacing="12">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock
-                            x:Name="LastExportText"
-                            Grid.Column="0"
-                            Style="{StaticResource BodyText}"
-                            Foreground="{ThemeResource SecondaryTextBrush}"
-                            TextWrapping="Wrap"
-                            Visibility="Collapsed" />
+                        <StackPanel Grid.Column="0" Spacing="8">
+                            <TextBlock
+                                Text="{x:Bind In(loc:UiTexts.Folder)}"
+                                Style="{StaticResource BodyText}"
+                                Foreground="{ThemeResource SecondaryTextBrush}" />
+                            <TextBlock
+                                x:Name="CorpusText"
+                                Style="{StaticResource BodyText}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
 
                         <Button
-                            x:Name="ExportButton"
+                            x:Name="ChangeWhereItIsKept"
                             Grid.Column="1"
-                            VerticalAlignment="Top"
-                            Style="{StaticResource NormalButtonOnPaper}"
-                            Click="OnExport"
-                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.ExportTheCorpusToAFolder)}"
-                            Content="{x:Bind In(loc:UiTexts.Export)}" />
+                            VerticalAlignment="Bottom"
+                            Style="{StaticResource PillButton}"
+                            Click="OnChangeWhereItIsKept"
+                            Visibility="Collapsed"
+                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhereTheCorpusIsKept)}"
+                            Content="{x:Bind In(loc:UiTexts.Change)}" />
                     </Grid>
-                </StackPanel>
+                </Border>
+
+                <!-- Taking the meetings out: four ticks for what goes, and the press. Every tick
+                     starts ticked, because the whole package is what somebody asking to take their
+                     data out expects, and nothing ticked leaves the press dead. The press is at the
+                     normal rank and is not this screen's principal act; there is no sentence when
+                     it worked, because the line beside it changing is what says so. The line names
+                     when the last one was made, what it took and where it went, and is drawn only
+                     once there has been one. The press is dead exactly where the corpus is, since
+                     there is nothing to take out of a corpus that will not open. -->
+                <Border x:Name="ExportCard" Style="{StaticResource Card}" Padding="{StaticResource SmallCardPadding}">
+                    <StackPanel Spacing="8">
+                        <TextBlock
+                            Text="{x:Bind In(loc:UiTexts.Export)}"
+                            Style="{StaticResource BodyText}"
+                            Foreground="{ThemeResource SecondaryTextBrush}" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <CheckBox
+                                x:Name="ExportAudio"
+                                Style="{StaticResource Tick}"
+                                IsChecked="True"
+                                Checked="OnExportTicked"
+                                Unchecked="OnExportTicked"
+                                Content="{x:Bind In(loc:UiTexts.ExportsAudio)}" />
+                            <CheckBox
+                                x:Name="ExportTranscripts"
+                                Style="{StaticResource Tick}"
+                                IsChecked="True"
+                                Checked="OnExportTicked"
+                                Unchecked="OnExportTicked"
+                                Content="{x:Bind In(loc:UiTexts.ExportsTranscripts)}" />
+                            <CheckBox
+                                x:Name="ExportSummaries"
+                                Style="{StaticResource Tick}"
+                                IsChecked="True"
+                                Checked="OnExportTicked"
+                                Unchecked="OnExportTicked"
+                                Content="{x:Bind In(loc:UiTexts.ExportsSummaries)}" />
+                            <CheckBox
+                                x:Name="ExportHandCorrections"
+                                Style="{StaticResource Tick}"
+                                IsChecked="True"
+                                Checked="OnExportTicked"
+                                Unchecked="OnExportTicked"
+                                Content="{x:Bind In(loc:UiTexts.ExportsHandCorrections)}" />
+                        </StackPanel>
+
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock
+                                x:Name="LastExportText"
+                                Grid.Column="0"
+                                Style="{StaticResource BodyText}"
+                                Foreground="{ThemeResource SecondaryTextBrush}"
+                                TextWrapping="Wrap"
+                                Visibility="Collapsed" />
+
+                            <Button
+                                x:Name="ExportButton"
+                                Grid.Column="1"
+                                VerticalAlignment="Top"
+                                Style="{StaticResource NormalButtonOnCard}"
+                                Click="OnExport"
+                                AutomationProperties.Name="{x:Bind In(loc:UiTexts.ExportTheCorpusToAFolder)}"
+                                Content="{x:Bind In(loc:UiTexts.Export)}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
                 <!-- Where Claude Code is, the last block this screen carries. The data line names
                      the executable somebody chose, or nothing when nobody has — the search of
-                     `PATH` that stands in for that has no line of its own, the way a corpus
-                     nobody has moved has none either. The sentence beneath it is drawn only when
-                     Claude Code is not on this machine or did not answer; silence is what "it is
-                     there" gets, the same rule the corpus block above already keeps for an opened
-                     corpus.
+                     `PATH` that stands in for that has no line of its own. The sentence beneath it
+                     is drawn when Claude Code is not on this machine or did not answer, and after
+                     *Probar* when it did: silence is what "it is there" gets until somebody asks.
 
-                     *Cambiar* is always offered, unlike the corpus one: there is no refused state
-                     to wait for, since nothing here has to have been chosen before it can be
-                     changed. Both presses on this screen show the same word and are told apart for
-                     a screen reader by `AutomationProperties.Name` (D2). -->
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
+                     *Cambiar* is always offered, unlike the folder one: there is no refused state
+                     to wait for. Where two presses show the same word they are told apart for a
+                     screen reader by `AutomationProperties.Name`. -->
+                <Border x:Name="ClaudeCodeCard" Style="{StaticResource Card}" Padding="{StaticResource SmallCardPadding}">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0" Spacing="4">
-                        <TextBlock
-                            x:Name="ClaudeCodeText"
-                            Style="{StaticResource BodyText}"
-                            Foreground="{ThemeResource SecondaryTextBrush}"
-                            TextWrapping="Wrap" />
-                        <TextBlock
-                            x:Name="ClaudeCodeStatusText"
-                            Style="{StaticResource BodyText}"
-                            Foreground="{ThemeResource SecondaryTextBrush}"
-                            TextWrapping="Wrap"
-                            Visibility="Collapsed" />
-                    </StackPanel>
+                        <StackPanel Grid.Column="0" Spacing="8">
+                            <TextBlock
+                                Text="{x:Bind In(loc:UiTexts.TheEngineThatSummarises)}"
+                                Style="{StaticResource BodyText}"
+                                Foreground="{ThemeResource SecondaryTextBrush}" />
+                            <TextBlock
+                                x:Name="ClaudeCodeText"
+                                Style="{StaticResource BodyText}"
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                x:Name="ClaudeCodeStatusText"
+                                Style="{StaticResource BodyText}"
+                                Foreground="{ThemeResource SecondaryTextBrush}"
+                                TextWrapping="Wrap"
+                                Visibility="Collapsed" />
+                        </StackPanel>
 
-                    <Button
-                        x:Name="ChangeWhereClaudeCodeIs"
-                        Grid.Column="1"
-                        VerticalAlignment="Top"
-                        Style="{StaticResource PillButton}"
-                        Click="OnChangeWhereClaudeCodeIs"
-                        AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhereClaudeCodeIs)}"
-                        Content="{x:Bind In(loc:UiTexts.Change)}" />
-                </Grid>
-
-                <TextBlock
-                    Text="{x:Bind In(loc:UiTexts.EachIsPaidForSeparately)}"
-                    Style="{StaticResource BodyText}"
-                    Foreground="{ThemeResource TertiaryTextBrush}"
-                    TextWrapping="Wrap" />
+                        <StackPanel
+                            Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            VerticalAlignment="Top">
+                            <Button
+                                x:Name="TestClaudeCodeButton"
+                                Style="{StaticResource PillButton}"
+                                Click="OnTestClaudeCode"
+                                Content="{x:Bind In(loc:UiTexts.Test)}" />
+                            <Button
+                                x:Name="ChangeWhereClaudeCodeIs"
+                                Style="{StaticResource PillButton}"
+                                Click="OnChangeWhereClaudeCodeIs"
+                                AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhereClaudeCodeIs)}"
+                                Content="{x:Bind In(loc:UiTexts.Change)}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 
         <!-- Said where it happened rather than in a notice, which is what the filing screen already
-             does: a corpus that would not open and an answer that was refused are things about this
-             screen, and the two the design allows to stop a screen are a charge and adding a
-             person. -->
-        <TextBlock
-            x:Name="StatusText"
-            Grid.Row="2"
-            Style="{StaticResource BodyText}"
-            Foreground="{ThemeResource PeakBrush}"
-            TextWrapping="Wrap"
-            Visibility="Collapsed" />
+             does: an answer that was refused is a thing about this screen, and the two the design
+             allows to stop a screen are a charge and adding a person. *Empezar* is the principal
+             act of the first step and is on screen only there. -->
+        <Grid Grid.Row="2" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock
+                x:Name="StatusText"
+                Grid.Column="0"
+                VerticalAlignment="Center"
+                Style="{StaticResource BodyText}"
+                Foreground="{ThemeResource PeakBrush}"
+                TextWrapping="Wrap"
+                Visibility="Collapsed" />
+
+            <Button
+                x:Name="StartButton"
+                Grid.Column="1"
+                Style="{StaticResource PrincipalActButton}"
+                Click="OnStart"
+                Visibility="Collapsed"
+                Content="{x:Bind In(loc:UiTexts.Start)}" />
+        </Grid>
     </Grid>
 </UserControl>

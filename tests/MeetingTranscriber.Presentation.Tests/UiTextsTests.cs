@@ -72,22 +72,19 @@ public class UiTextsTests
         // to looks like. One more costs a red test until somebody says which it is.
         //
         // The two language names are equal so a picker stays findable by somebody who cannot read
-        // the language the application is in; "no" is the same word in both. The four the redrawn
-        // front door added are one answer said four times: **what a machine, a provider or a maker
-        // called something is not translated.** A channel's chip is the index the provider reports
-        // back, and `docs/design.md` §Type puts every number that gets compared to another one in
-        // mono; the engine is what Deepgram called that model; and the product's name is the
-        // product's. `TheShapeDaily` is the same answer once more: a daily is called a daily in
+        // the language the application is in; "no" is the same word in both. The two the redrawn
+        // front door kept are one answer said twice: **what a machine, a provider or a maker
+        // called something is not translated.** The engine is what Deepgram called that model, and
+        // the product's name is the product's. The channel chips went with the channel numbers
+        // they said: nothing on a screen names a channel index any more.
+        // `TheShapeDaily` is the same answer once more: a daily is called a daily in
         // both, and the word came into Spanish from the ceremony rather than being translated out
         // of it.
         //
         // The export's tick for the recording is `Audio` in both: the word is the same one.
         //
-        // The settings screen added three. `TheEngineThatSummarises` is the maker's answer a fifth
-        // time — Anthropic called that model Claude. The two costs are not words at all:
-        // `docs/design.md` §The artboards says an amount goes as `[costo]` until a run produces a
-        // real number, so what is in them is a placeholder standing where a figure will be, and
-        // `min` is the unit the figure is per.
+        // The settings screen added `TheEngineThatSummarises`, the maker's answer a fifth time —
+        // Anthropic called that model Claude.
         //
         // `ItIsNot`: a press answering a question with the one word both languages spell alike.
         //
@@ -95,8 +92,6 @@ public class UiTextsTests
         // organization are the corpus's and the separator is a mark and not a word.
         string[] sameEitherWayOnPurpose =
         [
-            nameof(UiTexts.Channel0),
-            nameof(UiTexts.Channel1),
             nameof(UiTexts.EnglishName),
             nameof(UiTexts.ExportsAudio),
             nameof(UiTexts.ItIsNot),
@@ -107,8 +102,6 @@ public class UiTextsTests
             nameof(UiTexts.TheEngineThatSummarises),
             nameof(UiTexts.TheEngineThatTranscribes),
             nameof(UiTexts.TheShapeDaily),
-            nameof(UiTexts.WhatAMinuteCosts),
-            nameof(UiTexts.WhatItCosts),
         ];
 
         var sameEitherWay = Catalogue

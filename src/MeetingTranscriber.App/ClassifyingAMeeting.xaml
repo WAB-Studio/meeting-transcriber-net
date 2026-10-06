@@ -129,6 +129,13 @@
                 <Setter Property="HorizontalAlignment" Value="Left" />
             </Style>
 
+            <!-- Correcting what stands in a pill or a place for somebody: beside it, at the margin,
+                 because it is an act on what is there and not one of the things it can become. -->
+            <Style x:Key="TheCorrection" TargetType="Button" BasedOn="{StaticResource ButtonAtTheMargin}">
+                <Setter Property="Height" Value="{StaticResource ControlHeight}" />
+                <Setter Property="MinHeight" Value="{StaticResource ControlHeight}" />
+            </Style>
+
             <!-- The `+` at the end of a path: the same optional control, square, carrying a glyph
                  instead of a word. What it is called is its automation name, because a glyph with
                  no name is nothing to a screen reader. -->
@@ -174,21 +181,13 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- The header. A sub-screen: it is reached from one meeting and returns to it, and the way
-             back says where back is rather than saying "back". -->
+        <!-- The header. A sub-screen: it is reached from one meeting and returns to it, through
+             `GoBack`, which the window's app bar calls. -->
         <Grid Grid.Row="0" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-
-            <Button
-                x:Name="BackButton"
-                Grid.Column="0"
-                VerticalAlignment="Top"
-                Style="{StaticResource ButtonAtTheMargin}"
-                Click="OnBack"
-                Content="{x:Bind In(loc:UiTexts.BackToTheMeeting)}" />
 
             <StackPanel Grid.Column="1" Spacing="1">
                 <TextBlock
@@ -311,13 +310,13 @@
             </Grid>
         </Border>
 
-        <!-- Adding a person, and correcting one — the second and last dialogue `docs/design.md`
-             §Notices allows. It has two callers now and both are on this screen: the entry on an
-             empty place, and the entry on a place somebody already stands in. This is
+        <!-- Adding a person, and correcting one — the second of the three dialogues `docs/design.md`
+             §Notices allows. It has two callers now and both are on this screen: the entry in the list of an
+             empty place, and the press beside a place somebody already stands in. This is
              `AddingSomebody`, shared with `SayingWhoIsWho`, which is the screen that names voices
              and needs the same form for the same two jobs.
 
-             Naming a node is not a third dialogue for the same reason it is not a second: it
+             Naming a node is not a fourth dialogue and is not a second use of this one: it
              happens on the pill, in place, where the picker offering it stands — and so does
              correcting one. -->
         <local:AddingSomebody x:Name="AskingWhoTheyAre" />

@@ -111,6 +111,43 @@ public class MeetingReadingTests
     }
 
     [Fact]
+    public void A_summarised_meeting_reads_the_summary_s_body()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0", "turn 1", "turn 2"], root: corpus.Root);
+        MeetingRows.Extracted(
+            context, meeting, Recorded, accepted: Recorded, "what the meeting was about",
+            actionAt: 1, questionAt: 2);
+
+        context.Summaries.Single(row => row.MeetingId == meeting).Body = "the longer account";
+        context.SaveChanges();
+
+        var left = new MeetingReading(context, Clock).Of(meeting).Screen.Left;
+
+        left.Abstract.ShouldBe("what the meeting was about");
+        left.Body.ShouldBe("the longer account");
+    }
+
+    [Fact]
+    public void A_summary_with_no_body_reads_as_none()
+    {
+        using var corpus = new TemporaryCorpus();
+        using var context = corpus.OpenMigrated();
+        var meeting = MeetingRows.Recorded(
+            context, Recorded, ["turn 0", "turn 1", "turn 2"], root: corpus.Root);
+        MeetingRows.Extracted(
+            context, meeting, Recorded, accepted: Recorded, "what the meeting was about",
+            actionAt: 1, questionAt: 2);
+
+        context.Summaries.Single(row => row.MeetingId == meeting).Body = "  ";
+        context.SaveChanges();
+
+        new MeetingReading(context, Clock).Of(meeting).Screen.Left.Body.ShouldBeNull();
+    }
+
+    [Fact]
     public void An_extraction_nobody_accepted_is_not_read_at_all()
     {
         using var corpus = new TemporaryCorpus();

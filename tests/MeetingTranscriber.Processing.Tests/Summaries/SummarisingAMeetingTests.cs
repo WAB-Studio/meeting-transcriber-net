@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 
 using MeetingTranscriber.Domain.Jobs;
 using MeetingTranscriber.Domain.Knowledge;
+using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 using MeetingTranscriber.Processing.Summaries;
@@ -213,6 +214,39 @@ public class SummarisingAMeetingTests
         second.AcceptedAt.ShouldNotBeNull();
         second.CorrectsRunId.ShouldBe(first.Id);
         first.AcceptedAt.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task No_model_chosen_asks_sonnet()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = Arrange(corpus);
+        var provider = new FakeSummaries().Answering(Extracted(Accepted(meeting)));
+
+        await SummariseAsync(corpus, jobId, provider);
+
+        provider.Requests.Single().Model.ShouldBe("sonnet");
+    }
+
+    [Fact]
+    public async Task The_model_chosen_in_settings_is_the_one_asked_for()
+    {
+        using var corpus = new TemporaryCorpus();
+        var (meeting, jobId) = Arrange(corpus);
+        using (var context = corpus.OpenMigrated())
+        {
+            new CorpusSettings(context).SummaryModel(SummaryModel.Opus, Recorded);
+        }
+
+        var broken = Accepted(meeting);
+        Remove(broken, "abstract");
+        var provider = new FakeSummaries().Answering(Extracted(broken), Extracted(Accepted(meeting)));
+
+        await SummariseAsync(corpus, jobId, provider);
+
+        // Both rounds, so one job asks one model.
+        provider.Requests.Count.ShouldBe(2);
+        provider.Requests.ShouldAllBe(request => request.Model == "opus");
     }
 
     /// <summary>ISC-116.</summary>

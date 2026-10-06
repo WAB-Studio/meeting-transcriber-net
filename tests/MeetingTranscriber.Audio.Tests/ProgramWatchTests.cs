@@ -30,7 +30,10 @@ public sealed class ProgramWatchTests
             watch.HasGone.ShouldBeFalse();
 
             AnotherProcess.Kill(b);
-            watch.HasGone.ShouldBeTrue();
+
+            // Waited for and not read once: a killed tree stays in the machine's list for a moment
+            // while Windows lets go of it, which the screen's next look a second later never sees.
+            SpinWait.SpinUntil(() => watch.HasGone, TimeSpan.FromSeconds(10)).ShouldBeTrue();
         }
         finally
         {
@@ -53,7 +56,7 @@ public sealed class ProgramWatchTests
         {
             watch.Watch(new CaptureTarget.Program(new AudioProcess(a.Id, "powershell", 0)));
             AnotherProcess.Kill(a);
-            watch.HasGone.ShouldBeTrue();
+            SpinWait.SpinUntil(() => watch.HasGone, TimeSpan.FromSeconds(10)).ShouldBeTrue();
 
             watch.Watch(new CaptureTarget.TheWholeMachine());
 

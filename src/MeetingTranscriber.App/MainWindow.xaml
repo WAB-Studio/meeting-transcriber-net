@@ -31,6 +31,10 @@
          asked Windows for no animation. How long that is worth is Movement's, in a project a build
          agent runs against both answers; what moves is ScreenMotion's.
 
+         A sub-screen is not the drawer: nothing travels for it. The recorder card and the report go
+         at once, the strip stays when a meeting is under way, and the sub-screen fills everything
+         between the bar and the foot, arriving by a fade.
+
          The raise is never refused, a meeting being recorded included, and it costs nothing
          because the strip below the card travels the other way as the half leaves. What a meeting
          under way is doing, and the press that stops it, are on screen whichever of the two
@@ -57,21 +61,36 @@
              deliberately unfinished, so what is drawn here is the placeholder those artboards
              carry, in one place for whoever draws the real one.
 
-             The gear at the right is the one press on this row, and it is the only thing anywhere
-             in the application that reaches the settings. It says what it opens by name rather than
-             only drawing a cog: nothing else here is pressable, so a shape with no name is the one
-             control on this row a screen reader would announce as nothing. -->
+             The back button is the one press on this row, and it is every sub-screen's: it is on
+             screen while one has the room and never for the raised list, and it is drawn dead
+             while a screen refuses to be left. Nothing stands at the right of the bar; the
+             settings are reached from the foot. -->
         <Grid x:Name="TheApplication" Grid.Row="0" ColumnSpacing="11" Margin="6,0,6,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
+
+            <!-- The way back out of a sub-screen. The arrow is a glyph, a code point that says the
+                 same in either language, and it takes the button's ink so that it dims when the
+                 button does. The button names itself, because a shape with no name is what a screen
+                 reader would announce as nothing. Collapsed on the main arrangement, where there
+                 is nowhere to go back to. -->
+            <Button
+                x:Name="BackButton"
+                Grid.Column="0"
+                Style="{StaticResource BackButtonStyle}"
+                Visibility="Collapsed"
+                AutomationProperties.Name="{x:Bind In(loc:UiTexts.Back)}"
+                Click="OnBack">
+                <FontIcon Glyph="&#xE72B;" FontSize="{StaticResource BodySize}" />
+            </Button>
 
             <!-- Drawn on the artboards' own 24-unit box inside a Viewbox rather than as two paths
                  each stretched to its own bounds, which would scale the two arcs independently and
                  pull the mark apart. -->
-            <Viewbox Grid.Column="0" Width="22" Height="22" VerticalAlignment="Center">
+            <Viewbox Grid.Column="1" Width="22" Height="22" VerticalAlignment="Center">
                 <Canvas Width="24" Height="24">
                     <Path
                         Data="M8 7a7 7 0 0 0 0 10"
@@ -89,45 +108,10 @@
             </Viewbox>
 
             <TextBlock
-                Grid.Column="1"
+                Grid.Column="2"
                 VerticalAlignment="Center"
                 Text="{x:Bind In(loc:UiTexts.TheApplicationsName)}"
                 Style="{StaticResource SectionText}" />
-
-            <!-- Drawn on the artboards' own 24-unit box inside a Viewbox, for the reason the mark
-                 beside it is: two arcs each stretched to its own bounds would scale independently.
-                 The cog is one stroked ring and six teeth as straight runs out from the centre,
-                 which is a shape and not an icon inside a rounded square — `docs/design.md`
-                 §And five things this application is not names that square as the single most
-                 recognisable gesture of a settings list and refuses it outright. -->
-            <Button
-                x:Name="SettingsButton"
-                Grid.Column="2"
-                Width="34"
-                Height="34"
-                Padding="0"
-                VerticalAlignment="Center"
-                Style="{StaticResource ButtonAtTheMargin}"
-                AutomationProperties.Name="{x:Bind In(loc:UiTexts.Settings)}"
-                Click="OnOpenSettings">
-                <Viewbox Width="18" Height="18">
-                    <Canvas Width="24" Height="24">
-                        <Ellipse
-                            Canvas.Left="7.5"
-                            Canvas.Top="7.5"
-                            Width="9"
-                            Height="9"
-                            Stroke="{ThemeResource InkBrush}"
-                            StrokeThickness="2" />
-                        <Path
-                            Data="M12 2.5v3M12 18.5v3M3.3 7l2.6 1.5M18.1 15.5l2.6 1.5M3.3 17l2.6-1.5M18.1 8.5l2.6-1.5"
-                            Stroke="{ThemeResource InkBrush}"
-                            StrokeThickness="2"
-                            StrokeStartLineCap="Round"
-                            StrokeEndLineCap="Round" />
-                    </Canvas>
-                </Viewbox>
-            </Button>
         </Grid>
 
         <!-- What the next meeting will record, on tarjeta. A card and not a stack of controls on
@@ -147,7 +131,7 @@
             <StackPanel x:Name="TheNextMeeting" Spacing="18">
                 <!-- The screen's title, and at its right the two things that are true of the
                      meeting as a whole rather than of one channel: what will be spoken in it, and
-                     what will transcribe it. -->
+                     what transcribes it. -->
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -174,19 +158,17 @@
                              The line that used to explain it is gone. `docs/design.md` §The rules
                              the design imposes: a screen gets one sentence and only where something
                              failed, and **if an option needs a line explaining it, its name is
-                             wrong** — *Idioma de la reunión* does not need one. What names it to a
-                             screen reader is its automation name, because the pill carries no
-                             header — and its placeholder says the same words, because this is the
-                             one picker on the screen with nothing beside it: the two on the
-                             channels carry a chip and a role, and on a fresh install this one
-                             opens with nothing chosen and would otherwise be an empty box under a
-                             status line telling somebody to choose what will be spoken. -->
+                             wrong**. It is called *Idioma*, the one word the settings screen's own
+                             picker uses. What names it to a screen reader is its automation name,
+                             because the pill carries no header — and its placeholder says the same
+                             word, because this is the one picker on the screen with nothing beside
+                             it, and on a fresh install it opens with nothing chosen. -->
                         <ComboBox
                             x:Name="SpokenPicker"
                             MinWidth="180"
                             Style="{StaticResource DropDown}"
-                            PlaceholderText="{x:Bind In(loc:UiTexts.WhatWillBeSpoken)}"
-                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.WhatWillBeSpoken)}"
+                            PlaceholderText="{x:Bind In(loc:UiTexts.Language)}"
+                            AutomationProperties.Name="{x:Bind In(loc:UiTexts.Language)}"
                             SelectionChanged="OnSpokenChosen" />
 
                         <!-- What transcribes the meeting. #97 settled that it is **shown here and
@@ -219,10 +201,10 @@
                      things, a 1px rule separates them, because a third tint at the same lightness
                      as the paper is depth as decoration.
 
-                     The channels are two and they are fixed: channel 0 is the others, channel 1 is
-                     you. This is never a list. Everything in it is dead the moment a recording
+                     The channels are two and they are fixed: the others, and you. This is never a
+                     list. Everything in it is dead the moment a recording
                      starts — changing the microphone half way through is not a thing the engine can
-                     do, so it is not a thing this screen offers. The one exception is channel 0's
+                     do, so it is not a thing this screen offers. The one exception is the others'
                      picker, which comes back to life when *Cambiar* is pressed on the notice that
                      nothing arrived from its program: pick, look at the meter, pick the next. -->
                 <Grid ColumnSpacing="20">
@@ -235,7 +217,8 @@
                     <local:ChannelStrip
                         x:Name="TheOthers"
                         Grid.Column="0"
-                        Chose="OnSourceChosen" />
+                        Chose="OnSourceChosen"
+                        Opening="OnSourcesOpened" />
 
                     <Border
                         Grid.Column="1"
@@ -245,7 +228,8 @@
                     <local:ChannelStrip
                         x:Name="Mine"
                         Grid.Column="2"
-                        Chose="OnMicrophoneChosen" />
+                        Chose="OnMicrophoneChosen"
+                        Opening="OnMicrophonesOpened" />
                 </Grid>
 
                 <!-- The five lines a narrator is told about used to be here, each under the meter
@@ -263,53 +247,20 @@
                      nobody can see or reach is a recording of an hour of silence the application
                      did notice. -->
 
-                <!-- The foot: the neutral answers on the left, the act on the right. -->
+                <!-- The foot of the card: the act on the right. Nothing stands at its left: what
+                     used to was a pill that read as a two-way with one answer, and a press that
+                     asked the machine for what the pickers now read when they are opened. -->
                 <Grid ColumnSpacing="16">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
-                        <!-- When the meeting gets transcribed. #97 settled that this is chosen
-                             here, per meeting, as the two-way the artboard draws — and **nothing
-                             in this application transcribes during a recording**, so the choice
-                             has one answer and *Al terminar* is what happens to every meeting.
-
-                             So it is the pill and not the trough, which is the same shape and the
-                             same reason as the engine beside the title: a value that is true here
-                             and settled elsewhere. Drawn as the two-way it would be the page's own
-                             spec for a **live** control — trough, chosen half in papel at weight
-                             500 — with nothing behind it: somebody presses *En vivo*, nothing
-                             happens, no line appears, and they record an hour believing it is
-                             being transcribed as they speak. Every other control on this card that
-                             cannot be pressed is visibly dead; a two-way that looked alive would be
-                             the one thing here that lies, and it would spend the trough's meaning
-                             on a screen where it means the opposite. The card that makes live
-                             transcription real is the one that brings the trough. -->
-                        <Border Style="{StaticResource Pill}">
-                            <TextBlock
-                                VerticalAlignment="Center"
-                                Text="{x:Bind In(loc:UiTexts.TranscribedAtTheEnd)}"
-                                Style="{StaticResource BodyText}" />
-                        </Border>
-
-                        <!-- The neutral press on this card: it opens no question and answers none,
-                             it asks the machine what it has again. -->
-                        <Button
-                            x:Name="RefreshTheMachineButton"
-                            VerticalAlignment="Center"
-                            Style="{StaticResource ButtonAtTheMargin}"
-                            Click="OnRefreshTheMachine"
-                            Content="{x:Bind In(loc:UiTexts.RefreshTheList)}" />
-                    </StackPanel>
 
                     <!-- The one thing this screen is for takes the principal rank, and nothing else
                          on the screen does: `docs/design.md` §Controls says a screen has at most one
                          of the first. The three beside it steer a recording that is already running
                          rather than being what the screen is asking for, so they are normal. -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
                         <Button
                             x:Name="PauseButton"
                             VerticalAlignment="Center"
@@ -541,16 +492,6 @@
                 AutomationProperties.LiveSetting="Assertive"
                 TextWrapping="Wrap"
                 Visibility="Collapsed" />
-            <!-- True of both channels at once, so it sits under both rather than beside either.
-                 Told, not bound, for the reason the four above are. -->
-            <TextBlock
-                x:Name="HeardTwice"
-                Style="{StaticResource BodyText}"
-                Foreground="{ThemeResource PeakBrush}"
-                AutomationProperties.LiveSetting="Polite"
-                TextWrapping="Wrap"
-                Visibility="Collapsed" />
-
             <!-- The notice, and it is not on screen until the recording has made it. That is the
                  whole of the consent here: there is nothing to press early, so nothing pressed
                  early can be spent on it.
@@ -596,7 +537,7 @@
                     VerticalAlignment="Center"
                     Style="{StaticResource ButtonAtTheMargin}"
                     Click="OnChooseAnotherProgram"
-                    AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhatChannel0Follows)}"
+                    AutomationProperties.Name="{x:Bind In(loc:UiTexts.ChangeWhatTheOthersFollow)}"
                     Content="{x:Bind In(loc:UiTexts.Change)}" />
                 <Button
                     x:Name="WholeMachineButton"
@@ -607,12 +548,15 @@
                     Content="{x:Bind In(loc:UiTexts.RecordTheWholeMachine)}" />
             </Grid>
 
-            <ScrollViewer MaxHeight="180">
+            <!-- What went wrong, and only that: a stop that worked says nothing, because the meeting
+                 is in the list and that is the answer. Not selectable, so the cursor never turns
+                 into a text cursor over it, and it takes no room while it holds no line — the
+                 window collapses it then, and while a sub-screen has the room. -->
+            <ScrollViewer x:Name="TheReport" MaxHeight="180" Visibility="Collapsed">
                 <TextBlock
                     x:Name="OutputText"
                     Style="{StaticResource BodyText}"
                     Foreground="{ThemeResource SecondaryTextBrush}"
-                    IsTextSelectionEnabled="True"
                     TextWrapping="Wrap" />
             </ScrollViewer>
         </StackPanel>
@@ -642,7 +586,7 @@
         <local:WordsThatComeOutWrong x:Name="Corrections" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
 
         <!-- The settings, in that same room. It is the one of the six that is not about a meeting
-             at all: it is reached from the gear above rather than from the list, which is why it
+             at all: it is reached from the foot rather than from the list, which is why it
              wins the room over all five of the others. A meeting under way keeps the strip while
              it is up, exactly as it does behind the raised list. -->
         <local:Configuracion x:Name="Settings" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
@@ -652,18 +596,36 @@
              back is the redraw filing already relies on and not a second reopen. -->
         <local:ReadingANode x:Name="NodeStory" Grid.Row="3" Margin="6,0,6,0" Visibility="Collapsed" />
 
-        <StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="8" Margin="6,0,6,0">
+        <!-- The foot: *Configuración* at the left, as a word at the margin and never a cog, which read
+             as a theme toggle; the refusal sentence beside it; and the packaging press, a scaffold
+             outside the product, at the right. The settings press is not on screen while a
+             sub-screen has the room, because the way out of one is the bar's. -->
+        <Grid Grid.Row="4" ColumnSpacing="8" Margin="6,0,6,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Button
+                x:Name="SettingsButton"
+                Grid.Column="0"
+                Style="{StaticResource ButtonAtTheMargin}"
+                Click="OnOpenSettings"
+                Content="{x:Bind In(loc:UiTexts.Settings)}" />
             <TextBlock
                 x:Name="StatusText"
+                Grid.Column="1"
                 VerticalAlignment="Center"
                 Style="{StaticResource BodyText}"
                 Foreground="{ThemeResource SecondaryTextBrush}"
                 TextWrapping="Wrap" />
             <Button
                 x:Name="PackagingChecksButton"
+                Grid.Column="2"
                 Style="{StaticResource ButtonAtTheMargin}"
                 Click="OnOpenPackagingChecks"
                 Content="{x:Bind In(loc:UiTexts.PackagingChecks)}" />
-        </StackPanel>
+        </Grid>
     </Grid>
 </Window>

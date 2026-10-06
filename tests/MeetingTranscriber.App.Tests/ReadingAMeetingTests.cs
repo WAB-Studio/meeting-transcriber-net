@@ -120,8 +120,8 @@ public class ReadingAMeetingTests
     }
 
     /// <summary>
-    /// A summary is put back through the one call that records it, from a row's <c>Checked</c>
-    /// behind the drawing guard, read out of source for the reason above.
+    /// A summary is put back through the one call that records it, from a row's <c>Checked</c>,
+    /// read out of source for the reason above.
     /// </summary>
     [Fact]
     public void A_summary_is_put_back_through_the_one_call_that_records_it()
@@ -133,24 +133,166 @@ public class ReadingAMeetingTests
         screen.ShouldContain(".ShowSummary(meeting, given.RunId)");
         markup.ShouldContain("UiTexts.ThisMeetingsSummaries");
 
-        var section = Regex.Match(
-            screen,
-            Regex.Escape("private void SummariesSection(MeetingScreen screen)") + @".*?\r?\n[ ]{4}\}",
+        var section = Body(screen, "private void SummariesSection(MeetingScreen screen)");
+
+        section.ShouldContain(".Checked +=");
+        section.ShouldNotContain(".Click +=");
+    }
+
+    /// <summary>
+    /// A summary row being drawn never writes, and nothing says so but the order it is built in:
+    /// <c>IsChecked</c> is set in the initialiser, before <c>Checked +=</c> is subscribed, and the
+    /// one row drawn checked is the one shown, which <c>ShowSummary</c> refuses on
+    /// <c>given.IsShown</c>.
+    /// </summary>
+    /// <remarks>
+    /// The flag that used to guard the drawing is gone for that reason (O-20261001-31): a field
+    /// guarding against an event nothing raises is a remark that gives the wrong reason.
+    /// </remarks>
+    [Fact]
+    public void A_drawn_row_never_writes()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        screen.ShouldNotContain("_drawingTheSummaries");
+
+        var section = Body(screen, "private void SummariesSection(MeetingScreen screen)");
+
+        section.IndexOf("IsChecked = given.IsShown", StringComparison.Ordinal)
+            .ShouldBeGreaterThan(-1, "a row is no longer drawn checked from the summary that is shown.");
+
+        section.IndexOf("IsChecked = given.IsShown", StringComparison.Ordinal)
+            .ShouldBeLessThan(
+                section.IndexOf(".Checked +=", StringComparison.Ordinal),
+                "the row is checked after its handler is subscribed, so drawing it would write.");
+
+        Body(screen, "private void ShowSummary(GivenSummary given)").ShouldContain("given.IsShown");
+    }
+
+    /// <summary>
+    /// After a put-back redraws the rows, the keyboard goes back to the one that is checked, and not
+    /// to wherever the framework leaves it (O-20261001-32).
+    /// </summary>
+    [Fact]
+    public void A_put_back_summary_hands_the_keyboard_back_to_its_row()
+    {
+        var put = Body(
+            File.ReadAllText(AppSources.At(Screen).FullName),
+            "private void ShowSummary(GivenSummary given)");
+
+        put.ShouldContain("AfterWriting();");
+        put.ShouldContain(".Focus(FocusState.Keyboard)");
+
+        put.IndexOf("AfterWriting();", StringComparison.Ordinal)
+            .ShouldBeLessThan(
+                put.IndexOf(".Focus(FocusState.Keyboard)", StringComparison.Ordinal),
+                "focus is handed back before the redraw that throws the row away.");
+    }
+
+    /// <summary>
+    /// The transcript is every turn as the rendered files say it, through the render's own
+    /// <c>MeetingRenderer.AsRead</c>, so this screen and <c>transcript.md</c> carry the same words.
+    /// </summary>
+    [Fact]
+    public void The_transcript_is_read_through_the_render_s_own_words()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        screen.ShouldContain("MeetingRenderer.AsRead(context, meetingId)");
+        screen.ShouldNotContain("EveryTurn");
+
+        // The turns unfolded under a citation are the same corrected set, not a second read of the
+        // stored words.
+        var around = Body(screen, "private IReadOnlyList<UIElement> TheTranscriptAround(LeftThing thing)");
+
+        around.ShouldContain("_turns");
+        around.ShouldNotContain("CorpusDatabase");
+    }
+
+    /// <summary>
+    /// The transcript is a repeater that draws the lines in view and never a panel holding an
+    /// element per turn, so a long meeting costs no more than a short one.
+    /// </summary>
+    [Fact]
+    public void The_transcript_is_virtualised()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        markup.ShouldContain("<ItemsRepeater x:Name=\"TheTranscriptLines\"");
+        screen.ShouldContain("TheTranscriptLines.ItemTemplate = new LineFactory(");
+
+        // Handed over as data: no line is added to a panel here, whatever the number of turns.
+        var section = Body(screen, "private void TheTranscriptSection()");
+
+        section.ShouldContain("TheTranscriptLines.ItemsSource");
+        section.ShouldNotContain(".Children.Add(");
+    }
+
+    /// <summary>The summary's longer account is drawn under its abstract.</summary>
+    [Fact]
+    public void The_summary_s_body_is_drawn()
+    {
+        var left = Body(
+            File.ReadAllText(AppSources.At(Screen).FullName),
+            "private void WhatWasLeft(WhatTheAiLeft left)");
+
+        left.ShouldContain("left.Body");
+        left.ShouldContain("left.Abstract");
+    }
+
+    /// <summary>
+    /// A meeting with work under way asks what it is doing every couple of seconds, off the UI
+    /// thread, and draws again only when the status changed — without touching the player.
+    /// </summary>
+    [Fact]
+    public void A_screen_with_work_under_way_watches_for_it_to_land()
+    {
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        screen.ShouldContain("KeepAskingWhileWorkIsUnderWay(read.Screen.WorkIsUnderWay)");
+        screen.ShouldContain("TimeSpan.FromSeconds(2)");
+
+        var asking = Body(screen, "private async Task AskTheWorkAsync()");
+
+        asking.ShouldContain("Task.Run(");
+        asking.ShouldContain(".On(meeting)");
+        asking.ShouldContain("owed.Status != read.Screen.Owed.Status");
+        asking.ShouldContain("Draw(theRecordingToo: false)");
+        asking.ShouldNotContain("theRecordingToo: true");
+
+        // It stops when the screen is let go of and when another screen takes the window.
+        Body(screen, "public void Pause()").ShouldContain("_workWatch.Stop()");
+        Body(screen, "public void Close()").ShouldContain("_workWatch.Stop()");
+    }
+
+    /// <summary>
+    /// Who made what is a compact table and not a sentence per stage, and the right column scrolls
+    /// apart from the left so a short window cuts nothing off.
+    /// </summary>
+    [Fact]
+    public void The_right_column_is_a_table_that_scrolls_apart_from_the_left()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+
+        markup.ShouldContain("x:Name=\"WhoMadeWhat\"");
+        markup.ShouldContain("UiTexts.Transcribed)");
+        markup.ShouldContain("UiTexts.Summarised)");
+
+        Regex.Matches(markup, @"<ScrollViewer Grid\.Column=""\d""").Count.ShouldBe(
+            2,
+            "each column of the screen should scroll on its own.");
+    }
+
+    private static string Body(string source, string signature)
+    {
+        var found = Regex.Match(
+            source,
+            Regex.Escape(signature) + @".*?\r?\n[ ]{4}\}",
             RegexOptions.Singleline);
 
-        section.Success.ShouldBeTrue("the screen no longer has a SummariesSection.");
-        section.Value.ShouldContain(".Checked +=");
-        section.Value.ShouldNotContain(".Click +=");
-        section.Value.ShouldContain("_drawingTheSummaries = true");
-        section.Value.ShouldContain("_drawingTheSummaries = false");
-
-        var putBack = Regex.Match(
-            screen,
-            Regex.Escape("private void ShowSummary(GivenSummary given)") + @".*?\r?\n[ ]{4}\}",
-            RegexOptions.Singleline);
-
-        putBack.Success.ShouldBeTrue("the screen no longer has a ShowSummary.");
-        putBack.Value.ShouldContain("_drawingTheSummaries");
+        found.Success.ShouldBeTrue($"the screen no longer has a `{signature}`.");
+        return found.Value;
     }
 
     /// <summary>

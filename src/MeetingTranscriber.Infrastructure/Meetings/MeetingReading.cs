@@ -332,7 +332,7 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
         var summary = context.Summaries
             .AsNoTracking()
             .Where(row => row.MeetingId == meetingId && row.ExtractionRunId == accepted)
-            .Select(row => row.Abstract)
+            .Select(row => new { row.Abstract, row.Body })
             .FirstOrDefault();
 
         var decisions = context.Decisions
@@ -372,9 +372,12 @@ public sealed class MeetingReading(CorpusDbContext context, TimeProvider clock)
                 row.Evidence.SpeakerLabel));
 
         return new WhatTheAiLeft(
-            summary,
+            summary?.Abstract,
             WhatTheAiLeft.InTheOrderTheyWereSaid([.. decisions, .. actions, .. questions]),
-            wrote);
+            wrote)
+        {
+            Body = string.IsNullOrWhiteSpace(summary?.Body) ? null : summary.Body,
+        };
     }
 
     /// <summary>

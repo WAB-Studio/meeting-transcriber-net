@@ -1,4 +1,5 @@
 using MeetingTranscriber.Domain.Jobs;
+using MeetingTranscriber.Domain.Meetings;
 using MeetingTranscriber.Domain.Time;
 using MeetingTranscriber.Infrastructure.Storage;
 
@@ -112,6 +113,7 @@ public static class SummarisingAMeeting
         ArgumentNullException.ThrowIfNull(clock);
 
         MeetingInput prepared;
+        string model;
         using (var context = CorpusDatabase.Open(root))
         {
             var job = context.ProcessingJobs.FirstOrDefault(row => row.Id == jobId);
@@ -124,6 +126,7 @@ public static class SummarisingAMeeting
             try
             {
                 prepared = MeetingInput.Prepare(context, job.MeetingId);
+                model = WireNames<SummaryModel>.Of(new CorpusSettings(context).SummaryModel());
             }
             catch (InvalidOperationException exception)
             {
@@ -134,11 +137,14 @@ public static class SummarisingAMeeting
         try
         {
             var request = new ExtractionRequest(
-                prepared, ExtractionInstructions.ToExtract, ExtractionInstructions.Schema, null);
+                prepared, ExtractionInstructions.ToExtract, ExtractionInstructions.Schema, null)
+            {
+                Model = model,
+            };
             var answer = await provider.ExtractAsync(request, stopping).ConfigureAwait(false);
 
             return answer is SummaryProviderAnswer.Extracted extracted
-                ? await FileAsync(root, jobId, prepared, extracted, provider, clock, stopping).ConfigureAwait(false)
+                ? await FileAsync(root, jobId, prepared, model, extracted, provider, clock, stopping).ConfigureAwait(false)
                 : NotExtracted(answer);
         }
         catch (OperationCanceledException) when (stopping.IsCancellationRequested)
@@ -159,6 +165,7 @@ public static class SummarisingAMeeting
         DirectoryInfo root,
         Guid jobId,
         MeetingInput prepared,
+        string model,
         SummaryProviderAnswer.Extracted extracted,
         ISummaryProvider provider,
         TimeProvider clock,
@@ -178,7 +185,10 @@ public static class SummarisingAMeeting
             prepared,
             ExtractionInstructions.ToCorrect,
             ExtractionInstructions.Schema,
-            new SummaryCorrection(extracted.Output, ExtractionCorrection.WhatWasWrong(received.Refusals)));
+            new SummaryCorrection(extracted.Output, ExtractionCorrection.WhatWasWrong(received.Refusals)))
+        {
+            Model = model,
+        };
 
         var correctionAnswer = await provider.ExtractAsync(correctionRequest, stopping).ConfigureAwait(false);
 

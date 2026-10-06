@@ -1,3 +1,5 @@
+using System.Xml.Linq;
+
 namespace MeetingTranscriber.App.Tests;
 
 /// <summary>
@@ -56,6 +58,49 @@ public class PackageManifestTests
                 + "If a capability is missing here, put it back in Package.appxmanifest; if one is "
                 + "here that the package does not declare, say on this list what the application "
                 + "does with it and what somebody is agreeing to at install.");
+
+    /// <summary>
+    /// ISC-215: what the window calls itself in Start, the installed apps and the taskbar is the
+    /// application's name, and not the name of the project that builds it.
+    /// </summary>
+    [Fact]
+    public void The_application_is_called_what_its_window_calls_it()
+    {
+        var manifest = PackageManifest.Source();
+        var named = UiTexts.TheApplicationsName.English;
+
+        manifest.Descendants().Single(element => element.Name.LocalName == "DisplayName")
+            .Value.ShouldBe(named);
+
+        var window = manifest.Descendants()
+            .Single(element => element.Name.LocalName == "Application"
+                && element.Attribute("Id")?.Value == "App");
+        var visual = window.Elements().Single(element => element.Name.LocalName == "VisualElements");
+
+        visual.Attribute("DisplayName")?.Value.ShouldBe(named);
+        visual.Attribute("Description")?.Value.ShouldBe(named);
+    }
+
+    /// <summary>
+    /// ISC-216: installing puts the application on the desktop. Read by namespace, because
+    /// <c>desktop7</c> is ignorable and a block written under another one is dropped by the
+    /// tooling without a word.
+    /// </summary>
+    [Fact]
+    public void Installing_puts_the_application_on_the_desktop()
+    {
+        XNamespace desktop7 = "http://schemas.microsoft.com/appx/manifest/desktop/windows10/7";
+
+        var window = PackageManifest.Source().Descendants()
+            .Single(element => element.Name.LocalName == "Application"
+                && element.Attribute("Id")?.Value == "App");
+
+        var shortcut = window.Descendants(desktop7 + "Shortcut").ShouldHaveSingleItem();
+
+        shortcut.Attribute("File")?.Value.ShouldStartWith("[{Desktop}]");
+        window.Descendants(desktop7 + "Extension").Single().Attribute("Category")?.Value
+            .ShouldBe("windows.shortcut");
+    }
 
     /// <summary>
     /// The two faces used from outside the window, each with a name on the user's <c>PATH</c>.

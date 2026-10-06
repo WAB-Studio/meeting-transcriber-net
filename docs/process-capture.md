@@ -75,6 +75,25 @@ one of that root's children rather than another candidate. That is what makes `-
 work with seventeen `msedge` processes running. Two roots of one name is refused, because picking
 one is picking which meeting gets recorded.
 
+## Which programs the screen offers
+
+The screen does not list processes. A machine runs hundreds and a browser is twenty of them, so
+channel 0's picker offers *the whole machine* and then **one entry per application**, the way OBS
+lists them (`AudioPrograms`). An application is on the list when it has a visible, titled,
+unowned top-level window (not a tool window, not cloaked) or holds an audio session on an active
+playback endpoint. Each is reduced to the root of its own same-name tree — the rule above — and a
+session whose owner stands under a windowed application is that application, so a web view
+playing for Teams is Teams. The entry reads the name with the first window title of its tree in
+z-order, or the name alone when it has no window. Windows alone would lose a meeting rig that has
+none and sessions alone would lose Zoom before the meeting starts.
+
+Two things are never offered and never folded into: this application, and the shell, found by the
+process of `GetShellWindow()` and never by the name `explorer`. The shell owns windows and parents
+everything started from Start or the taskbar, so a player in the tray whose parent is it is
+offered under its own name. What is followed is still the root process, so the tree rule is
+untouched, and the title is never what a choice is compared on: a browser's title changes with
+its tab. The command line's `capture --follow` is not this list; it still matches a name or an id.
+
 ## What was probed, following one program, 2026-08-15, Windows 11 25H2 build 26200
 
 Every run is `capture --seconds N --process <name-or-pid>`, with the tone played at a level the whole

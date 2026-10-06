@@ -209,7 +209,7 @@ edge would make SQLite depend on how a Deepgram response is parsed.
 
 `Recording` references `Processing`, and rendering reaches the application only through it: the
 application names two projects, `Presentation` for the words and `Recording` for everything else,
-and it is the second of those the whole corpus stack arrives on. Its exceptions are six files, each naming `Processing` for one thing a window cannot do without:
+and it is the second of those the whole corpus stack arrives on. Its exceptions are eight files, each naming `Processing` for one thing a window cannot do without:
 `App.xaml.cs` starts `JobRunner`'s pump; `TranscribingOnThisMachinesKey` binds the key a
 transcription sends with; `SummarisingOnThisMachine` composes the provider a summary is sent with,
 and tells the list of meetings which memory file stopped one; `Configuracion` exports the corpus
@@ -217,7 +217,9 @@ through `Processing.Export` and asks Claude Code whether it answers through
 `Processing.Summaries`; and `AddingSomebody` catches the `RenderException` a corrected name can
 end on, from `Processing.Rendering`; and `WordsThatComeOutWrong` reads `Processing.Corrections`
 and catches the `RenderException` a correction can end on, reading the meetings it could not render
-off `RenderException.Meetings`. All six reach it through the reference `App.csproj`'s own
+off `RenderException.Meetings`; `ReadingAMeeting` reads the transcript through `MeetingRenderer.AsRead`, so the screen
+and `transcript.md` say the same words; and `CorrectingAWord` catches the `RenderException` a correction made where
+a word is read can end on, from `Processing.Rendering`. All eight reach it through the reference `App.csproj`'s own
 comment already says brings `Processing` along — the same closure `App.xaml.cs` already reaches
 `Infrastructure` through — so a second, explicit `ProjectReference` would only restate what that
 comment already commits to. The rule still lives

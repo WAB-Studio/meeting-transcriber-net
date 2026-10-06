@@ -140,8 +140,11 @@ The stopwatch is 62/72 on a screen it owns. Where a live transcript or an alert 
 instead, it drops to 40/48 and keeps everything else.
 
 A **sub-screen** is one reached from another and returning to it — the meeting, classifying it,
-who is who, the corrections, the settings. It carries the 20/26 title and a 34px round back
-button; the screens at the top level carry the 26/32 title and no back button.
+who is who, the corrections, a node's story, the settings. It carries the 20/26 title and no back
+button of its own: the round back button, 34px, is the app bar's, one for every sub-screen, and
+Alt+Left does the same. It is shown while a sub-screen has the room, never for the raised list, and
+is drawn dead while a screen refuses to be left — the corrections screen, mid-save. The screens at
+the top level carry the 26/32 title.
 
 The fallbacks are `'Segoe UI', system-ui, sans-serif` for text and `'Cascadia Mono', Consolas,
 monospace` for numbers, so a machine without the two fonts still reads.
@@ -250,15 +253,19 @@ already named.
 | Start, pause, stop a recording | *Empezar a grabar* · *Pausar* · *Detener* |
 | Try the same thing again | *Reintentar* |
 | Point a channel somewhere else | *Cambiar* |
-| Change where the corpus is kept | *Cambiar* |
+| Change where the meetings are kept | *Cambiar* |
 | Say where Claude Code is | *Cambiar* |
-| Take the corpus out of the application | *Exportar* |
+| Take the meetings out of the application | *Exportar* |
 | Stop a summary that is running, or a second one waiting to run | *Detener* |
 | Take the whole machine instead | *Grabar toda la máquina* |
 | Buy a transcription or a summary | *Transcribir* · *Resumir* |
 | Ask a summarised meeting for another | *Resumir de nuevo* |
 | Put names on the voices | *Decir quién es quién* |
 | Correct the words that come out wrong | *Corregir palabras* |
+| Correct a word, from where it is read | *Corregir* |
+| Rename a name somebody typed wrong | *Renombrar* |
+| Check that Claude Code answers | *Probar* |
+| Leave the first step | *Empezar* |
 | Answer a word that turned up by itself | *Sí, es esa* · *No* |
 | File it under what it was about | *Clasificar* |
 | Keep or throw away an unfinished recording | *Conservar* · *Descartar* |
@@ -274,14 +281,18 @@ already named.
 A screen needing a verb that is not here either found a new act — which is a decision — or is saying
 one of these in its own words, which is the thing this table exists to stop.
 
-**One status is olivo and the rest are secondary.** *transcribiendo* is a row that is alive and
-running, which is what olivo means everywhere else in this application. Everything else a row can
-say about itself — *necesita revisión*, *en cola* — is quiet.
+**A meeting has one status, and it is one word.** *Sin audio*, *Grabada*, *En cola…*,
+*Transcribiendo…*, *Transcrita*, *Resumiendo…*, *Resumida*, *Ignorada* or *Detenida*, decided once
+by `OwedWork.Status` and said the same on a meeting's row and on its own screen. A word that ends in
+an ellipsis is work in progress. **The two that run are olivo and the rest are secondary**:
+*Transcribiendo…* and *Resumiendo…* are a row that is alive and running, which is what olivo means
+everywhere else in this application. *Detenida* is the one that waits on a person, and takes the
+primary ink to be noticed; the others are quiet.
 
 A drop-down is a 34-high control on papel with a 1px `#E6E4DE` rule and an 11px chevron in
-secondary. A two-way choice is two halves inside a `#E6E4DE` trough with 3px of padding, the trough
-at radius 4 and each half at 3; the chosen one is papel with weight 500 and the other is secondary
-with no fill. A set of more than two is a radio row: a 16px circle — genuinely round — olivo with a
+secondary. No control offers a two-way choice now. When one does, it is two halves inside a `#E6E4DE`
+trough with 3px of padding, the trough at radius 4 and each half at 3; the chosen one is papel with
+weight 500 and the other is secondary with no fill. A set of more than two is a radio row: a 16px circle — genuinely round — olivo with a
 4px papel inset when chosen and a 1.5px `#C3BFB6` ring when not, and the whole chosen row sits on
 the decision tint.
 
@@ -307,12 +318,13 @@ An optional or empty control — *add somebody*, *+*, *none of these* — has no
 
 ## Notices
 
-Two, and neither is ever a pop-up.
+Three, and none is ever a pop-up.
 
-**Nothing stops the screen except these two, and this list is closed:**
+**Nothing stops the screen except these three, and this list is closed:**
 
 1. **A charge**, at the moment somebody asks for it. Below.
 2. **Adding a person**, from wherever a flow needs one.
+3. **Correcting a word**, from where it is read.
 
 Closed means closed. A screen that wants a third does not get to decide it has a good reason —
 that is a decision somebody takes deliberately and writes on this list, and until they have, the
@@ -333,32 +345,33 @@ where every other answer on every other screen sits.
 
 ### What a charge costs, asked once
 
-The one dialogue in the application. It exists because a charge is the one thing that cannot be
-undone by pressing again, and because putting the price in the row instead — *puede que ya se haya
-cobrado*, *reintentar · se cobra* — made every screen carry a sentence about money that ninety-nine
-readings out of a hundred did not need.
+The first dialogue. It exists because a charge is the one thing that cannot be undone by pressing
+again, and because putting a sentence about it in the row instead — *puede que ya se haya cobrado*,
+*reintentar · se cobra* — made every screen carry a sentence about money that ninety-nine readings
+out of a hundred did not need.
 
 It opens on the press, not before it. Radius 12, on the elevated surface, over a `rgba(28,27,25,.32)`
-scrim. It says what is about to happen, what it costs, and offers two answers: the act, and leaving
-it as it was. Nothing else — no explanation of how the price was reached, no note about the
-provider.
+scrim. It says what is about to happen, what is sent, and offers two answers: the act, and leaving
+it as it was. Nothing else — no explanation of how the figure was reached, no note about the
+provider. **It never shows an amount of money**: neither provider quotes a price before a call, so
+any amount would be invented.
 
-The two are not asked the same way, because only one of them can be known in advance:
+The two are not asked the same way, because only one of them has a size that can be known in
+advance:
 
-- **Transcribing** carries a figure worked out from the meeting's own length. It reads as an
-  estimate and says so in the number's own words, not in a sentence beside it.
-- **Summarising** carries the model's published price and nothing worked out at all. There is no
-  honest estimate for it, and inventing one would be the worst thing on this page.
+- **Transcribing** shows how many minutes will be sent, an estimate worked out from what is sent —
+  the meeting's own audio. It reads as an estimate and says so in the number's own words, not in a
+  sentence beside it.
+- **Summarising** shows the model that will write it and no figure. There is nothing honest to
+  count, and inventing a count would be the worst thing on this page.
 
-Both go as `[costo]` until a real run produces a number.
-
-The amount takes the stopwatch rank dropped to 40/48 — the ramp already lets it drop for a screen
-an alert owns, and this is that. The dialogue's title takes the sub-screen rank, 20/26: the panel is
-not a screen, and the screen title inside it reads as shouting.
+The number of minutes takes the stopwatch rank dropped to 40/48 — the ramp already lets it drop for
+a screen an alert owns, and this is that. The dialogue's title takes the sub-screen rank, 20/26: the
+panel is not a screen, and the screen title inside it reads as shouting.
 
 ### Adding a person, from wherever
 
-The second and last dialogue. It exists because naming somebody is needed from more than one place —
+The second dialogue. It exists because naming somebody is needed from more than one place —
 classifying a meeting, saying who a voice is — and because a flow that sends you to another screen
 to type three fields is a flow that loses what you were doing.
 
@@ -372,6 +385,21 @@ While a name is typed, up to three people the corpus already holds under a name 
 same way, or under a name the typed one is the start of or a word of, are offered under the field, each a pill with the organization they belong to; pressing one
 answers the dialogue with that person and adds nobody. *Guardar* still adds the name as typed. It is
 offered only while adding, never while correcting a name.
+
+### Correcting a word, from where it is read
+
+The third and last dialogue. It exists because a word that came out wrong is seen where it is read —
+on a line of the transcript, in a voice's quotation — and a flow that sends you to another screen to
+type it is one that loses the line you were reading. It was asked for as a dialogue, and it is the
+one place this list was opened after being closed.
+
+Same panel as the other two: radius 12, papel, the same scrim. It holds the selection as the word
+was written, a field for the word as it should be, and the choice the corrections screen has of
+where the correction holds — everywhere, or one place the meeting is filed under or above — read
+from the same place, so the two screens never offer different scopes. *Guardar* on the right,
+*Cancelar* on the left. A selection offers it from a right-click and from a *Corregir* press in the
+transcript's heading while something is selected. Saving goes through the one door corrections go
+through, off the screen's own thread, and the transcript is read again.
 
 ## Movement
 
@@ -393,9 +421,13 @@ and a screen that moves for any other reason is a screen that has not decided wh
 | What | How long | How |
 | --- | --- | --- |
 | A control answering the press — fill, ring, tick | **150 ms** | straight in, no easing worth naming |
-| Something entering or leaving — a row, a notice, a clip | **250 ms** | decelerating in, accelerating out |
+| Something entering or leaving — a row, a notice, a clip, a sub-screen | **250 ms** | decelerating in, accelerating out |
 | The meetings drawer, and a dialogue arriving | **300 ms** | the same pair, over a distance you can follow |
 | A meter's level falling back | **20 dB in 1.5 s** | a rate, not a duration — and rising is immediate |
+
+A sub-screen takes the room at once and nothing travels for it: the recording card and the report go,
+the strip stays when a meeting is under way, and the sub-screen fills everything between the app bar
+and the foot, arriving by a fade. Only the raised list travels.
 
 Entering decelerates and leaving accelerates, which is the platform's own grammar and reads as
 weight rather than as an effect. Nothing eases both ways; nothing bounces; nothing overshoots.
@@ -507,29 +539,37 @@ no signal is a source that is still there and hearing nothing; a dead source is 
 
 ### Where it goes
 
-The meter is **pinned to the control that chooses its source** — the program picker for channel 0,
-the microphone picker for channel 1. Pick, look, pick the next one. Separating them turns the
-answer into a memory test.
+The meter is **pinned to the control that chooses its source** — the program picker for the others,
+the microphone picker for you. Pick, look, pick the next one. Separating them turns the answer into
+a memory test.
 
-Two meters, always: **channel 0 is the others and channel 1 is you.** They are fixed and there are
-two. This is never a list.
+Two meters, always: **the others and you.** They are fixed and there are two, each named by what it
+hears (*Los demás*, *Yo*) and never by a number. This is never a list.
 
 ## The rules the design imposes
 
 These do not show in the markup and are as load-bearing as any colour.
 
+- **Labels are one or two words.** A label or a press is imperative where it asks for an act. A
+  status is a word with an ellipsis while something runs — *Transcribiendo…*, *En cola…*. A sentence
+  appears only where something failed, and says it in one short sentence; the machine's own words
+  stay after it.
 - **No vocabulary from the domain reaches the screen.** Nothing named `work_of`, `counterpart`,
-  `meeting_people`, `ch0:speaker_1`. The stored speaker label is not what a person reads: the voices
-  are called *Tu micrófono*, *Voz 1*, *Voz 2*. Nothing about the three-level tree is named as a
-  tree; it is *Es trabajo de* and a chevron between two pills.
+  `meeting_people`, `ch0:speaker_1`, and nothing that names the application's insides: not
+  *corpus*, not a channel number (*canal 0*, `ch0`), not a process id, not a meeting id, not a folder
+  of ids, not a migration. The folder the meetings live in is *la carpeta de reuniones*. The stored
+  speaker label is not what a person reads: the voices are called *Tu micrófono*, *Voz 1*,
+  *Voz 2*. Nothing about the three-level tree is named as a tree; it is *Es trabajo de* and a
+  chevron between two pills.
 - **Nothing explanatory about how the application works inside.** If a line exists to explain the
   mechanism, it goes. The order of a list can *be* the rule without stating it: the meeting still
   running is at the top of the recovery screen and offers none of the three choices, and that is the
   whole of "there is nothing to decide yet".
 - **Neutral Spanish, no voseo**, in everything a person reads. *Escuchá*, *cambialo*, *mirá*,
   *apretés*, *decís* are wrong; *escuche*, *cámbielo*, *mire*, *lo pulse*, *dice* are right.
-- **Amounts of money are `[costo]` until a run produces one.** The real price comes off the person's
-  own account and is never invented on a mockup or in a string.
+- **No screen shows an amount of money.** Neither provider quotes a price before a call, and the real
+  one comes off the person's own account, so an amount written on a screen or in a string would be
+  invented. What a charge shows is minutes, and the settings screen shows no figure at all.
 - **A screen gets one sentence, and only where something failed.** Everything else on it is a
   label. A second explanatory line under every option and every notice is the voice of something
   being helpful at somebody rather than an application saying what it is. **If an option needs a
@@ -574,10 +614,29 @@ against. Two artboards have none, and a note nobody has written is not one this 
 ### The flow — recording
 
 **`Main`** · *Grabar una reunión*. The top-level screen: the recording card above, the meetings
-below. The program picker and the microphone picker are each pinned to their meter — this is the
-three-Teams case. Language and transcription engine are pills at the top right of the card; live or
-at-the-end is the two-way pill at the bottom left; *Empezar a grabar* is the principal act at the
-bottom right. Under it, the meetings list, and above the list anything waiting on a decision.
+below. The app bar carries the mark and the name, and the round back button while a sub-screen has
+the room; nothing stands at its right. The foot carries *Configuración* at the left, as a press at the
+margin and a word, never an icon, and the packaging press at the right; it is not on screen while a
+sub-screen has the room. The program picker and the microphone picker are each pinned to their meter
+— this is the three-Teams case — and the strips are named by what they hear, *Los demás* and *Yo*,
+never by a channel number. The program picker offers *Todo el audio* first and then one entry per
+application, the way a recorder lists windows: twenty processes of one browser are one entry, and a
+program that only plays is offered under its own name. Both pickers read the machine again when they
+are opened, so nothing on the screen says *refrescar*. Language and transcription engine are pills at
+the top right of the card; there is no *al terminar* pill, because nothing transcribes live and a
+two-way that offers one answer reads as broken. *Empezar a grabar* is the principal act at the bottom
+right. Under it, the meetings list, and above the list anything waiting on a decision.
+
+**A meeting's row is one line**: the name, which is the press that opens it, when and how long in the
+data rank, its status, and its presses at the right; a failure stands under it. Rows stand 6 apart. A
+list with no meetings shows one quiet line where the rows would be.
+
+**The report under the card says only what failed.** A stop that worked says nothing: the meeting is
+in the list and that is the answer. A failure is one sentence with the machine's own words under it.
+The report is not selectable, so the cursor never turns into a text cursor over it, and it takes no
+room while it holds no line. The status line at the foot keeps one sentence, the refusal of a
+recording with nowhere to put it; every other state is already said by the stopwatch, the strip, the
+saving card and the presses.
 
 **`GrabandoVivo`** · Recording, transcribing live. Stopwatch at 40/48, *Pausar* and *Detener*, both
 meters compressed to one row each, and the live transcript filling the rest. Text arrives word by
@@ -598,15 +657,15 @@ With no transcript, the stopwatch takes the full 62/72 and the meters take the s
 being padded out with invented filler. The foot of the card says what will happen and how much has
 been written.
 
-**`NadaLlego`** · Nothing arrived from the program. Channel 0 reads *sin señal*, and the notice sits
+**`NadaLlego`** · Nothing arrived from the program. The others' meter reads *sin señal*, and the notice sits
 directly under it because that meter is the evidence. The act on the right is *Grabar toda la
 máquina*, because it is the one press that makes audio arrive; *Cambiar* is the neutral one on the
 left, since it opens a picker rather than answering the notice — a button that opens the question is
 not the button that answers it. Neither is pico: taking the whole machine costs nothing and loses
-nothing. Channel 1 goes on reading normally underneath, which is what says the recording is fine.
+nothing. Your meter goes on reading normally underneath, which is what says the recording is fine.
 In the window the meter says *sin señal* where its level was, and the sentence and its two presses
 stand in the row under the card with the fault lines, so they are on screen and in the automation
-tree whichever way the window is arranged. The same row stands, with a sentence of its own, when the program channel 0 follows goes away
+tree whichever way the window is arranged. The same row stands, with a sentence of its own, when the program being followed goes away
 mid-meeting: it says that program closed, the two presses are the same, and where both reports
 stand the went-away sentence is the one said, being the cause. *Sin señal* is the recording's
 verdict that nothing arrives from the program — it never did, or it stopped when the program went
@@ -619,8 +678,8 @@ is answered by pointing somewhere else, so taking the whole machine is the act t
 stopped responding is answered by trying that same device again, so retrying is the act here.
 Pointing the channel somewhere else is offered on both and answers neither — a replacement plugged in
 mid-meeting is reached without stopping the recording.
-**Losing the microphone does not kill the meeting**: channel 0 goes on
-and is visibly going on. Channel 1 dims to the dead state described above, and the notice says what
+**Losing the microphone does not kill the meeting**: the others' strip goes on
+and is visibly going on. Yours dims to the dead state described above, and the notice says what
 was observed, then that what was said into that microphone from that moment is gone and does not
 come back.
 
@@ -646,13 +705,24 @@ application reassuring the reader about a thing it was never going to do.
 
 ### The flow — afterwards
 
-**`Reunion`** · The meeting. **The read-the-transcript screen does not exist** — nobody opens an
-application to read 148 turns. What is there instead is what the AI left: the abstract on the
-decision tint, then *Qué se decidió*, *Qué queda por hacer*, *Qué quedó sin resolver*, each item
-carrying a timestamp pill that opens the transcript **in place**, not on another screen. Decisions
-take an olive bullet and open questions a pico one. The right column is who spoke with their share,
-what it was about, and who wrote this. The player runs along the bottom: **the coloured marks on the
-track are the summary's citations**, so where each thing falls across the hour is visible. A
+**`Reunion`** · The meeting. What is there first is what the AI left: the abstract on the decision
+tint with the summary's longer account under it, then *Qué se decidió*, *Qué queda por hacer*,
+*Qué quedó sin resolver*, each item carrying a timestamp pill that opens the turns around it **in
+place**, not on another screen. Decisions take an olive bullet and open questions a pico one.
+**Under them, once the meeting is transcribed, stands the whole transcript**, alone when nothing has
+been left: one line per turn — who said it (the voice's name once it has one, its handle until then),
+the minute as a press that seeks the player, and the words as the rendered files carry them, every
+correction included. It draws only the lines in view, so a long meeting costs no more than a short
+one. Selecting words on a line offers *Corregir*, which opens the third dialogue.
+
+**The screen says what the meeting is, in the one word the list says.** While a job for it is queued
+or running it asks again every couple of seconds and redraws when the word changes, so a summary that
+finishes is on the screen without leaving it and coming back, and the player is not touched.
+
+The right column is a compact table: who spoke with their share, what it was about, and who
+transcribed and who summarised and when. It scrolls apart from the left. The player runs along the
+bottom: **the coloured marks on the track are the summary's citations**, so where each thing falls
+across the hour is visible. A
 meeting given more than one summary lists every one of them in the card that says who wrote this,
 under the label *resúmenes de esta reunión*, newest accepted first: a radio row each, saying who
 wrote it and when it was accepted. The chosen row is the summary on the screen, and choosing
@@ -667,7 +737,7 @@ rows.
 *Trata sobre* start empty and say so. *Quiénes* carries a person, optionally the badge saying the
 meeting is about them, and their affiliation and since when. No role with a technical name, no help
 panel. A name typed wrong is corrected where it was typed, and every picker on the screen says so
-the same way: *Corregir este nombre*, over a pill and over a person alike. On a pill it opens the
+the same way: *Renombrar*, over a pill and over a person alike. On a pill it opens the
 field a new name is typed into, holding the old name. On a person it opens the notice that adds one,
 retitled *Sobre esta persona*, with the name already in it and neither the organization nor the year
 asked — where somebody belongs is about a person across years and this screen is about one meeting.
@@ -681,7 +751,7 @@ Under the fourteen, a classification filled by hand can be put by: a name typed 
 *Recordar* puts by what the columns and *Quiénes* hold, and it comes back on every meeting as
 a chip after the fourteen, drawn like them. Choosing it adds what it holds beside whatever is
 already answered and never takes an answer away, as a shape does. *Recordar* under the name
-of one already put by replaces what that one holds. With one lit, *Corregir este nombre…*
+of one already put by replaces what that one holds. With one lit, *Renombrar…*
 opens its name in the same field and Enter corrects it, and *Descartar*, past the gap at the
 margin, throws it away. None of these reaches a meeting already filed with it: a meeting
 holds what it is filed under and never which chip filled it.
@@ -693,7 +763,8 @@ that caught exactly one voice is settled already and says so. **One that spoke l
 clips instead of one**, because one is not enough to recognise somebody by. Nothing on it failed,
 so the screen carries no sentence at all: the clips being there are the instruction. A
 voice somebody always talked over has no clip to bring, and says so in a label where its clip
-would be.
+would be. The quotation is where a wrong word is seen, so selecting words in it offers *Corregir*,
+the third dialogue.
 
 **`Correcciones`** · Words that come out wrong. **The problem was never applying a correction, it
 was finding one** — nobody reads a corpus looking for what went wrong. So: the person types the word
@@ -707,7 +778,14 @@ one place the meeting is filed under or above.
 **`Configuracion`** · Settings, the one screen that lives apart. **Choosing between transcribing and
 summarising stopped being a screen per meeting and became a preference set once.** The two engines
 are separate choices with a separate cost each, and *a model on this machine* is one option among
-them rather than a special case. Amounts go as `[costo]`. Under where the corpus is kept there are
+them rather than a special case. No amount of money is on it: neither provider quotes a price before a
+call. **Every block is a card**: after a recording; the summariser, whose model — *Sonnet*, *Opus* or
+*Haiku* — is chosen once under *Resumir con* and read when a summary is sent; Deepgram; you;
+the folder the meetings are kept in; the export; and Claude Code, with where it is, *Cambiar* and
+*Probar*, which runs the same check the screen runs when it opens and says the result either way,
+*Funciona* included. The screen fills everything between the app bar and the foot and arrives by a
+fade. It writes one thing at a time and disables nothing while it does: a choice made while a write
+is running is written after it, and the last one wins. Under the folder there are
 four ticks for what an export takes — the audio, the transcripts, the summaries and what somebody
 corrected by hand — with *Exportar* beside them at the normal rank, and one line saying when the last
 export was made, what it took and where it went. Under the two engines is the Deepgram key the first
@@ -735,33 +813,41 @@ under the last card.
 ### Across the flow
 
 **`Costo`** · The dialogue. Two of them on one artboard, side by side, because the difference
-between them is the whole point: transcribing carries a figure worked out from the meeting's length
-and says it is an estimate; summarising carries the model's published price and estimates nothing.
-The only thing in this application that stops the screen.
+between them is the whole point: transcribing shows how many minutes will be sent, worked out from
+what is sent, and says it is an estimate; summarising shows the model and no figure. Neither shows
+money. The first of the three things in this application that stop the screen.
 
 **`ReunionCruda`** · The meeting, recorded and nothing else. **It is `Reunion` with the middle
 missing** — the same header, the same columns, the same player along the bottom. What the AI has not
-left yet is simply not there, and *Transcribir* is the act on the right. The screen looks sparse,
+left yet, and the transcript the meeting does not have yet, are simply not there, and *Transcribir*
+is the act on the right. The screen looks sparse,
 and that is honest: a meeting nobody has bought anything for has little in it. A screen drawn for
 the empty case would be a second blueprint for one screen, which is where a design starts
 disagreeing with itself.
 
 **`ReunionTranscrita`** · The meeting, transcribed and not yet summarised. The third of the three
 and the reason the other two are not two designs: it is the same screen again with more of it
-filled in. The left column is still empty because nothing has read the meeting yet, and the right
-one has gained what a transcription buys — who spoke and their share, and *Resumir* as the act.
+filled in. The left column holds the transcript alone, because nothing has read the meeting yet, and the
+right one has gained what a transcription buys — who spoke and their share, and *Resumir* as the act.
 **The player has no marks on its track**, and that is the picture's whole point: the marks are the
 summary's citations, so a meeting with no summary has none, and the track is where a reader sees
 that the difference between these three is what has been bought rather than which screen they are
 looking at.
 
-**`Primera`** · The first time the application opens. **Three questions, and there are only three
-because everything else has a right answer already**: the language comes from Windows, the corpus
-has a folder in the user's own profile, and there is one transcription engine and one summariser, so
-neither is a choice. What is left is the name of the person using it — nobody can work that out, and
-every citation of every meeting rests on it — what should happen when a recording ends, which is the
-only one of the four that spends money, and where the corpus goes, which is asked here because the
-corpus holds artifacts that cannot be obtained again and moving it later means moving all of them.
+**`Primera`** · The first time the application opens. **It is the settings screen in its first-time
+arrangement and not a screen of its own**: a second drawing of three blocks the settings screen
+already has would be where a design starts disagreeing with itself. It opens exactly when the
+meetings can be reached and nobody has said who is using this, titled *Primeros pasos*, with three
+blocks and *Empezar* as the principal act, which leaves it. **Three questions, and there are only
+three because everything else has a right answer already**: the language comes from Windows, the
+meetings have a folder in the user's own profile, and there is one transcription engine and one
+summariser, so neither engine is a choice (the summariser's model is, in settings). What is left is the name of the person using it — nobody can
+work that out, and every citation of every meeting rests on it — the Deepgram key, without which a
+recording is never transcribed, and what should happen when a recording ends, which is the only one
+of the three that spends money. Where the meetings are kept is not asked: the default stands and
+*Configuración* changes it. The back button in the app bar leaves it too and nothing is lost; it
+opens again at the next launch until a name is saved. A folder that cannot be read does not open it,
+because every block would be dead there and the card that fixes the folder is on the full screen.
 
 No affiliation is asked for. A person has as many as they have, each with its own period, and the
 first screen of an application is not where somebody enumerates their jobs.
@@ -782,7 +868,7 @@ meeting's name, and none of the presses but one:
   can be in — opening its devices, recording, paused, saving — and it is olivo in all four, because
   on the strip olivo says a meeting is under way rather than, as in a list, which row is the live
   one.
-- **one line of data**: how long the meeting has been running, what channel 0 is following and which
+- **one line of data**: how long the meeting has been running, which program is being followed and which
   microphone is on it. The length only where there is one — opening the devices and saving the
   meeting have no clock, and a strip showing the last reading through either would be a screen
   saying a meeting is still being recorded. Elapsed time is spelled the way it is spelled
@@ -792,8 +878,7 @@ meeting's name, and none of the presses but one:
   card. It is the one press that cannot wait for somebody to lower the list, so it is the only one
   the strip has: *Pausar* and *Seguir* wait, and lowering the list is what reaches them.
 
-**`Persona`** · Adding somebody, over whatever screen asked. The second of the two dialogues, and
-the last: name, and optionally an organization and since when. It adds an affiliation and never
+**`Persona`** · Adding somebody, over whatever screen asked. The second of the three dialogues: name, and optionally an organization and since when. It adds an affiliation and never
 replaces one, and while a name is typed it offers up to three people already there under a nearly
 identical name, or under a name the typed one is the start of or a word of, which a press answers
 with and adds nobody.
