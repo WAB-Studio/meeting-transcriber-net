@@ -225,6 +225,33 @@ public class ReadingAMeetingTests
     }
 
     /// <summary>
+    /// A corrected word is a press inside the line's own text, in the transcript's ink and not the
+    /// accent, and pressing it names the two spellings. What it looks like drawn is the owner's walk.
+    /// </summary>
+    [Fact]
+    public void A_corrected_word_is_a_press_that_shows_before_and_after()
+    {
+        var markup = File.ReadAllText(AppSources.At(Markup).FullName);
+        var screen = File.ReadAllText(AppSources.At(Screen).FullName);
+
+        var words = Body(screen, "private void TheWordsOf(TextBlock said, TranscriptLine line)");
+        words.ShouldContain("new Hyperlink { UnderlineStyle = UnderlineStyle.Single, Foreground = TheInk() }");
+        words.ShouldContain("corrected.Click += (_, _) => ShowTheCorrection(said, corrected, mark);");
+        screen.ShouldContain("TheWordsOf(said, line);");
+        screen.ShouldContain("colours.TryGetValue(\"InkBrush\"");
+
+        var flyout = Body(screen, "private void ShowTheCorrection(TextBlock said, Hyperlink corrected, CorrectionMark mark)");
+        flyout.ShouldContain("corrected.ContentStart.GetCharacterRect(LogicalDirection.Forward)");
+        flyout.ShouldContain("FlyoutShowOptions");
+        Body(screen, "private StackPanel TheCorrection(CorrectionMark mark)").ShouldContain("UiTexts.TheWordBefore");
+        Body(screen, "private StackPanel TheCorrection(CorrectionMark mark)").ShouldContain("UiTexts.TheWordAfter");
+
+        // Still the one selectable block of words, so *Corregir* keeps working on it.
+        screen.ShouldContain("CorrectTheSelection.OfferOver(said,");
+        markup.ShouldContain("x:Key=\"TheCorrectionFlyout\"");
+    }
+
+    /// <summary>
     /// The transcript is a repeater that draws the lines in view and never a panel holding an
     /// element per turn, so a long meeting costs no more than a short one.
     /// </summary>

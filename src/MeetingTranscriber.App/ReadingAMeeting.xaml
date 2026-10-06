@@ -76,6 +76,23 @@
 
             <Style x:Key="Data" TargetType="TextBlock" BasedOn="{StaticResource DataText}" />
 
+            <!-- What a corrected word was, in a small flyout at the word: on paper with the rule round
+                 it and the corner a card has, so it reads as part of the page and not as the platform's
+                 own menu. -->
+            <Style x:Key="TheCorrectionFlyout" TargetType="FlyoutPresenter">
+                <Setter Property="Background" Value="{ThemeResource PaperBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource LineBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="{StaticResource CardCorner}" />
+                <Setter Property="Padding" Value="12" />
+            </Style>
+
+            <Style x:Key="TheCorrectionLabel" TargetType="TextBlock" BasedOn="{StaticResource DataText}">
+                <Setter Property="Foreground" Value="{ThemeResource SecondaryTextBrush}" />
+            </Style>
+
+            <Style x:Key="TheCorrectionWords" TargetType="TextBlock" BasedOn="{StaticResource TranscriptText}" />
+
             <!-- The meeting's name as text, at the sub-screen rank; secondary ink when nobody named
                  it. Two styles and not a colour set in code, so the code-behind chooses a style
                  and never a colour. -->

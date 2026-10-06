@@ -12,7 +12,9 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
 
 using Windows.System;
@@ -148,8 +150,11 @@ public sealed partial class ReadingAMeeting : UserControl
     /// </summary>
     private IReadOnlyList<MarkedTurn>? _turns;
 
-    /// <summary>One line of the transcript: who said it, the minute, and the words.</summary>
-    private sealed record TranscriptLine(string Who, Duration At, string Text);
+    /// <summary>
+    /// One line of the transcript: who said it, the minute, the words, and the spans of them that a
+    /// correction changed.
+    /// </summary>
+    private sealed record TranscriptLine(string Who, Duration At, string Text, IReadOnlyList<CorrectionMark> Marks);
 
     /// <summary>
     /// What a repeater builds each line with, handed the screen's own method: the line is built
@@ -790,6 +795,10 @@ public sealed partial class ReadingAMeeting : UserControl
         }
     }
 
+    // The sign before how many times a correction landed: a multiplication sign, which is not a
+    // word a person reads in either language.
+    private const string Times = "×";
+
     /// <summary>
     /// The way to correct the words that came out wrong, and what has been corrected in this
     /// transcript. Collapsed until the meeting has a transcription, for the reason
@@ -820,7 +829,7 @@ public sealed partial class ReadingAMeeting : UserControl
 
             if (seen.Times > 1)
             {
-                row.Children.Add(new TextBlock { Text = $"×{seen.Times}", Style = Chrome("Data") });
+                row.Children.Add(new TextBlock { Text = Times + seen.Times, Style = Chrome("Data") });
             }
 
             TheCorrectionsHere.Children.Add(row);
@@ -1071,7 +1080,8 @@ public sealed partial class ReadingAMeeting : UserControl
             turns.Select(marked => new TranscriptLine(
                 VoiceWords.ReadsAs(voices.ForLabel(marked.Turn.SpeakerLabel)!, _language),
                 marked.Turn.Start,
-                marked.Turn.Text)));
+                marked.Turn.Text,
+                marked.Marks)));
 
         TheTranscriptCard.Visibility = Visibility.Visible;
     }
@@ -1104,13 +1114,121 @@ public sealed partial class ReadingAMeeting : UserControl
         heading.Children.Add(who);
         heading.Children.Add(minute);
 
-        var said = new TextBlock { Text = line.Text, Style = Chrome("Spoken") };
+        var said = new TextBlock { Style = Chrome("Spoken") };
+        TheWordsOf(said, line);
         CorrectTheSelection.OfferOver(said, Chrome("TheSelectionsPress"), In(UiTexts.CorrectThisWord), AskToCorrect);
 
         var turn = new StackPanel { Spacing = 2 };
         turn.Children.Add(heading);
         turn.Children.Add(said);
         return turn;
+    }
+
+    /// <summary>
+    /// The words of a line, with a press over each span a correction changed: underlined, in the
+    /// transcript's own ink, and showing what the stored words were when pressed.
+    /// </summary>
+    /// <remarks>
+    /// Inlines of the one <see cref="TextBlock"/> and never a second element per span, so the line
+    /// stays one selectable run of words for <em>Corregir</em>. The ink is set here as well as in
+    /// the screen's resources, because a <see cref="Hyperlink"/> is a text element and whether the
+    /// resource overrides reach one built in code is not something this screen can read off. The
+    /// brush is looked up for the theme the screen is drawn in, and set again when that changes.
+    /// </remarks>
+    private void TheWordsOf(TextBlock said, TranscriptLine line)
+    {
+        var at = 0;
+        foreach (var mark in line.Marks.OrderBy(mark => mark.Start))
+        {
+            if (mark.Length == 0 || mark.Start < at)
+            {
+                continue;
+            }
+
+            if (mark.Start > at)
+            {
+                said.Inlines.Add(new Run { Text = line.Text[at..mark.Start] });
+            }
+
+            var corrected = new Hyperlink { UnderlineStyle = UnderlineStyle.Single, Foreground = TheInk() };
+            corrected.Inlines.Add(new Run { Text = line.Text.Substring(mark.Start, mark.Length) });
+            corrected.Click += (_, _) => ShowTheCorrection(said, corrected, mark);
+            said.Inlines.Add(corrected);
+            at = mark.Start + mark.Length;
+        }
+
+        if (at < line.Text.Length || said.Inlines.Count == 0)
+        {
+            said.Inlines.Add(new Run { Text = line.Text[at..] });
+        }
+
+        if (line.Marks.Count > 0)
+        {
+            said.ActualThemeChanged += (_, _) =>
+            {
+                foreach (var corrected in said.Inlines.OfType<Hyperlink>())
+                {
+                    corrected.Foreground = TheInk();
+                }
+            };
+        }
+    }
+
+    /// <summary>The transcript's ink in the theme this screen is drawn in.</summary>
+    private Brush TheInk()
+    {
+        var theme = Root.ActualTheme == ElementTheme.Dark ? "Dark" : "Default";
+
+        foreach (var merged in Application.Current.Resources.MergedDictionaries)
+        {
+            if (merged.ThemeDictionaries.TryGetValue(theme, out var themed)
+                && themed is ResourceDictionary colours
+                && colours.TryGetValue("InkBrush", out var ink))
+            {
+                return (Brush)ink;
+            }
+        }
+
+        throw new InvalidOperationException("The application's resources hold no InkBrush for the theme it is drawn in.");
+    }
+
+    /// <summary>
+    /// What the stored words were and what they read now, as a small flyout at the word that was
+    /// pressed. A press and not a hover, which is how the owner preferred it.
+    /// </summary>
+    private void ShowTheCorrection(TextBlock said, Hyperlink corrected, CorrectionMark mark)
+    {
+        var inside = TheCorrection(mark);
+
+        // A flyout is hosted outside the content a window sets its theme on, so it is told the
+        // theme the words are drawn in, as the *Corregir* press is.
+        inside.RequestedTheme = said.ActualTheme;
+
+        var flyout = new Flyout
+        {
+            Content = inside,
+            FlyoutPresenterStyle = Chrome("TheCorrectionFlyout"),
+            Placement = FlyoutPlacementMode.Bottom,
+        };
+
+        var at = corrected.ContentStart.GetCharacterRect(LogicalDirection.Forward);
+        flyout.ShowAt(said, new FlyoutShowOptions { Position = new Windows.Foundation.Point(at.X, at.Y + at.Height) });
+    }
+
+    /// <summary>What the flyout holds: <em>Antes</em> and the stored words, then <em>Después</em> and what they read now.</summary>
+    private StackPanel TheCorrection(CorrectionMark mark)
+    {
+        var inside = new StackPanel { Spacing = 8 };
+
+        foreach (var (label, words) in new[] { (UiTexts.TheWordBefore, mark.Before), (UiTexts.TheWordAfter, mark.After) })
+        {
+            var part = new StackPanel { Spacing = 2 };
+            part.Children.Add(new TextBlock { Text = In(label), Style = Chrome("TheCorrectionLabel") });
+            part.Children.Add(new TextBlock { Text = words, Style = Chrome("TheCorrectionWords") });
+            inside.Children.Add(part);
+        }
+
+        return inside;
     }
 
     // ── What is under way ─────────────────────────────────────────────────────────────────────

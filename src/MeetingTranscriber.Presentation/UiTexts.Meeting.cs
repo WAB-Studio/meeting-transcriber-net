@@ -152,6 +152,12 @@ public static partial class UiTexts
     public static UiText WordsThatComeOutWrongHere { get; } =
         new("palabras que salen mal", "words that come out wrong");
 
+    // The two spellings a corrected word shows when it is pressed in the transcript: what the
+    // provider returned, and what the corrections made of it.
+    public static UiText TheWordBefore { get; } = new("Antes", "Before");
+
+    public static UiText TheWordAfter { get; } = new("Después", "After");
+
     // The press on that card; docs/design.md §One verb per act's own verb for this act.
     public static UiText CorrectWords { get; } = new("Corregir palabras", "Correct words");
 
