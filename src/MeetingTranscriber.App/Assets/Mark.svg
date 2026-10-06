@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <!-- The application's mark: the two arcs MainWindow.xaml draws in its app bar, and the one
+       drawing every logo, taskbar icon and the program's .ico are rendered from. Redrawing the mark
+       is editing this file and running tools/MeetingTranscriber.Icons; ApplicationIconTests fails
+       while the app bar and this file disagree.
+
+       The colours are the light theme's, so the file reads right when opened on its own. The
+       renderer recolours #ink and #olive per variant from Olivo.xaml's InkBrush and OliveBrush, so
+       a stroke colour here is never what decides an asset. -->
+  <path id="ink" d="M8 7a7 7 0 0 0 0 10" fill="none" stroke="#1C1B19" stroke-width="2.2" stroke-linecap="round" />
+  <path id="olive" d="M14.5 5a9.5 9.5 0 0 1 0 14" fill="none" stroke="#4F7561" stroke-width="2.2" stroke-linecap="round" />
+</svg>

@@ -18,14 +18,19 @@
     <EnableMsixTooling>true</EnableMsixTooling>
   </PropertyGroup>
 
+  <!-- Every image the manifest names, at every scale and target size, and the .ico the window and
+       the desktop shortcut show: all rendered from Assets/Mark.svg by tools/MeetingTranscriber.Icons
+       and never drawn by hand. A wildcard, because which variants exist is that tool's to decide;
+       ApplicationIconTests holds the set against what the manifest names. Mark.svg itself stays out
+       of the package. Copied to the output as well as packed, like the fonts below, so a layout
+       registered straight from bin has them too. -->
+  <PropertyGroup>
+    <ApplicationIcon>Assets\MeetingTranscriber.ico</ApplicationIcon>
+  </PropertyGroup>
+
   <ItemGroup>
-    <Content Include="Assets\SplashScreen.scale-200.png" />
-    <Content Include="Assets\LockScreenLogo.scale-200.png" />
-    <Content Include="Assets\Square150x150Logo.scale-200.png" />
-    <Content Include="Assets\Square44x44Logo.scale-200.png" />
-    <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
-    <Content Include="Assets\StoreLogo.png" />
-    <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    <Content Include="Assets\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\MeetingTranscriber.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- The two faces, inside the package. `docs/design.md` says every text on every screen is set

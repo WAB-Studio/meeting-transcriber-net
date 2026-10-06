@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Renders the application's logos and its .ico from Assets/Mark.svg. Run by hand after the mark
+       or the palette changes, with `dotnet run` from this folder. What it
+       writes is committed, so neither the application's build nor CI renders anything. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>MeetingTranscriber.Icons</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Svg.Skia" />
+  </ItemGroup>
+
+</Project>

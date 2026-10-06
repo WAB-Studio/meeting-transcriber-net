@@ -924,6 +924,11 @@ Two things on them are deliberately unfinished: the product's name and mark are 
 `Sistema` is this page as a picture, so it is the one artboard that has to be re-read whenever this
 page changes.
 
+Outside the window the mark is `src/MeetingTranscriber.App/Assets/Mark.svg`: every logo the package
+names, both taskbar variants and the program's `.ico` are rendered from it, in Olivo's colours, by
+running `tools/MeetingTranscriber.Icons`. Redrawing the mark is that file, the app bar's two paths in
+`MainWindow.xaml` and one run, and `ApplicationIconTests` fails while the two drawings disagree.
+
 ## Opening the artboards
 
 `docs/design/README.md` says what the files are and what a browser does and does not render.

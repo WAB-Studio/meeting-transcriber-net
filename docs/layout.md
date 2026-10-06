@@ -14,6 +14,7 @@ src/MeetingTranscriber.Presentation/      what the application says, and what la
 src/MeetingTranscriber.Processing/        Deepgram, transcript and summaries, the words a transcript keeps getting wrong, and the runner that sends what is queued
 src/MeetingTranscriber.Recording/         a meeting recorded into a corpus, and what a launch owes one: where the sides meet
 tools/MeetingTranscriber.CorpusFixtures/  builds the fixtures from the Python corpus
+tools/MeetingTranscriber.Icons/           renders every logo the package names, and the program's .ico, from Assets/Mark.svg
 tools/MeetingTranscriber.UiProbe/         starts the application, reads its window, presses what is on it and
                                           kills it — as a script, and as an MCP server an agent drives a turn
                                           at a time. It drives a corpus of its own and records real
