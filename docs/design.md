@@ -927,7 +927,8 @@ page changes.
 Outside the window the mark is `src/MeetingTranscriber.App/Assets/Mark.svg`: every logo the package
 names, both taskbar variants and the program's `.ico` are rendered from it, in Olivo's colours, by
 running `tools/MeetingTranscriber.Icons`. Redrawing the mark is that file, the app bar's two paths in
-`MainWindow.xaml` and one run, and `ApplicationIconTests` fails while the two drawings disagree.
+`MainWindow.xaml` and one run, and `ApplicationIconTests` fails while the two drawings disagree or
+the images were rendered from anything but what both say now.
 
 ## Opening the artboards
 

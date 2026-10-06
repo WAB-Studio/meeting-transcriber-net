@@ -184,20 +184,58 @@ public partial class ApplicationIconTests
     [Fact]
     public void The_mark_rendered_is_the_one_the_app_bar_draws()
     {
+        // Which arc wears which colour is part of the mark: the SVG names it by id, the app bar by
+        // brush, and both caps of each arc are compared.
         var svg = XDocument.Load(Path.Combine(Assets.FullName, "Mark.svg"));
         var drawn = svg.Descendants().Where(element => element.Name.LocalName == "path")
-            .Select(path => ((string?)path.Attribute("d"), (string?)path.Attribute("stroke-width"), (string?)path.Attribute("stroke-linecap")))
+            .Select(path => (
+                (string?)path.Attribute("id"),
+                (string?)path.Attribute("d"),
+                (string?)path.Attribute("stroke-width"),
+                (string?)path.Attribute("stroke-linecap"),
+                (string?)path.Attribute("stroke-linecap")))
             .ToArray();
 
         var window = XDocument.Load(AppSources.At(Path.Combine("MeetingTranscriber.App", "MainWindow.xaml")).FullName);
         var appBar = window.Descendants().Where(element => element.Name.LocalName == "Path"
                 && ((string?)element.Attribute("Data"))?.Contains('a') == true
                 && element.Ancestors().Any(ancestor => ancestor.Name.LocalName == "Viewbox"))
-            .Select(path => ((string?)path.Attribute("Data"), (string?)path.Attribute("StrokeThickness"), ((string?)path.Attribute("StrokeEndLineCap"))?.ToLowerInvariant()))
+            .Select(path => (
+                (string?)path.Attribute("Stroke") switch
+                {
+                    "{ThemeResource InkBrush}" => "ink",
+                    "{ThemeResource OliveBrush}" => "olive",
+                    var other => other,
+                },
+                (string?)path.Attribute("Data"),
+                (string?)path.Attribute("StrokeThickness"),
+                ((string?)path.Attribute("StrokeStartLineCap"))?.ToLowerInvariant(),
+                ((string?)path.Attribute("StrokeEndLineCap"))?.ToLowerInvariant()))
             .ToArray();
 
         appBar.Length.ShouldBe(2, "the app bar's mark is two arcs");
         drawn.ShouldBe(appBar, "Mark.svg and the app bar in MainWindow.xaml are one mark: redraw both, then run tools/MeetingTranscriber.Icons");
+    }
+
+    /// <summary>
+    /// ISC-217.1: the images are the mark as it stands. The stamp is what the renderer was run on, so
+    /// a mark or a palette that moved without the renderer being run again fails here rather than
+    /// shipping the old drawing.
+    /// </summary>
+    [Fact]
+    public void The_images_were_drawn_from_the_mark_and_the_palette_as_they_stand()
+    {
+        var mark = File.ReadAllText(Path.Combine(Assets.FullName, "Mark.svg")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        var colours = string.Join(",", new[]
+        {
+            Palette.Of("Default").Ink, Palette.Of("Default").Olive, Palette.Of("Default").Paper,
+            Palette.Of("Dark").Ink, Palette.Of("Dark").Olive,
+        }.Select(colour => $"#{colour:X6}"));
+        var drawnFrom = Convert.ToHexStringLower(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(mark + "\n" + colours)));
+
+        File.ReadAllText(Path.Combine(Assets.FullName, "Mark.stamp")).Trim().ShouldBe(
+            drawnFrom,
+            "Mark.svg or Olivo.xaml changed after the images were rendered: run tools/MeetingTranscriber.Icons");
     }
 
     [GeneratedRegex(@"new \w+Window\(")]
@@ -224,7 +262,7 @@ public partial class ApplicationIconTests
             .ToHashSet(StringComparer.Ordinal);
     }
 
-    private sealed record Palette(uint Ink, uint Olive)
+    private sealed record Palette(uint Ink, uint Olive, uint Paper)
     {
         public static Palette Of(string theme)
         {
@@ -236,7 +274,7 @@ public partial class ApplicationIconTests
                 .Single(element => (string?)element.Attribute(Xaml + "Key") == key)
                 .Attribute("Color")!).TrimStart('#'), 16);
 
-            return new Palette(Brush("InkBrush"), Brush("OliveBrush"));
+            return new Palette(Brush("InkBrush"), Brush("OliveBrush"), Brush("PaperBrush"));
         }
     }
 

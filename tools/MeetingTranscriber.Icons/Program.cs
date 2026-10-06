@@ -6,8 +6,10 @@ namespace MeetingTranscriber.Icons;
 
 /// <summary>
 /// Renders every image the package hands Windows, and the program's .ico, from
-/// <c>Assets/Mark.svg</c> and the two palettes in <c>Olivo.xaml</c>. Every <c>.png</c> at the top of
-/// <c>Assets/</c> is deleted first, so nothing drawn by hand or left by a template survives a run.
+/// <c>Assets/Mark.svg</c> and the two palettes in <c>Olivo.xaml</c>. Everything is drawn in memory
+/// first; only then is every <c>.png</c> at the top of <c>Assets/</c> deleted and the new set
+/// written, so nothing drawn by hand or left by a template survives a run and a mark that does not
+/// parse leaves the folder as it was. <c>Mark.stamp</c> records what the set was drawn from.
 /// </summary>
 /// <remarks>
 /// Three looks, because the mark has to read on whatever Windows puts behind it:
@@ -36,14 +38,11 @@ internal static class Program
         var light = Palette.Read(Path.Combine(app, "Olivo.xaml"), "Default");
         var dark = Palette.Read(Path.Combine(app, "Olivo.xaml"), "Dark");
 
-        foreach (var stale in Directory.EnumerateFiles(assets, "*.png"))
-        {
-            File.Delete(stale);
-        }
-
         var plated = new Look(mark, light, light.Paper);
         var unplated = new Look(mark, dark, Background: null);
         var lightUnplated = new Look(mark, light, Background: null);
+
+        var rendered = new Dictionary<string, byte[]>(StringComparer.Ordinal);
 
         // The share of the shorter side the mark's 24-unit box takes. The arcs fill about two thirds
         // of that box, so 1.0 leaves a sixth of margin each way and a tile at 0.8 sits the mark
@@ -51,28 +50,35 @@ internal static class Program
         foreach (var scale in Scales)
         {
             int At(int size) => size * scale / 100;
-            Write(assets, $"Square44x44Logo.scale-{scale}.png", plated.Draw(At(44), At(44), 1.0));
-            Write(assets, $"Square150x150Logo.scale-{scale}.png", plated.Draw(At(150), At(150), 0.8));
-            Write(assets, $"Wide310x150Logo.scale-{scale}.png", plated.Draw(At(310), At(150), 0.8));
-            Write(assets, $"StoreLogo.scale-{scale}.png", plated.Draw(At(50), At(50), 1.0));
-            Write(assets, $"SplashScreen.scale-{scale}.png", plated.Draw(At(620), At(300), 0.6));
+            rendered[$"Square44x44Logo.scale-{scale}.png"] = plated.Draw(At(44), At(44), 1.0);
+            rendered[$"Square150x150Logo.scale-{scale}.png"] = plated.Draw(At(150), At(150), 0.8);
+            rendered[$"Wide310x150Logo.scale-{scale}.png"] = plated.Draw(At(310), At(150), 0.8);
+            rendered[$"StoreLogo.scale-{scale}.png"] = plated.Draw(At(50), At(50), 1.0);
+            rendered[$"SplashScreen.scale-{scale}.png"] = plated.Draw(At(620), At(300), 0.6);
         }
 
         // Larger than the plated share, because nothing frames it: at 16 px the arcs are 13 px tall.
         foreach (var size in TargetSizes)
         {
-            Write(assets, $"Square44x44Logo.targetsize-{size}_altform-unplated.png", unplated.Draw(size, size, 1.2));
-            Write(assets, $"Square44x44Logo.targetsize-{size}_altform-lightunplated.png", lightUnplated.Draw(size, size, 1.2));
+            rendered[$"Square44x44Logo.targetsize-{size}_altform-unplated.png"] = unplated.Draw(size, size, 1.2);
+            rendered[$"Square44x44Logo.targetsize-{size}_altform-lightunplated.png"] = lightUnplated.Draw(size, size, 1.2);
         }
 
-        Write(assets, "MeetingTranscriber.ico", Ico.Of(IcoSizes.Select(size => plated.Draw(size, size, 1.1))));
-        return 0;
-    }
+        rendered["MeetingTranscriber.ico"] = Ico.Of(IcoSizes.Select(size => plated.Draw(size, size, 1.1)));
+        rendered["Mark.stamp"] = System.Text.Encoding.ASCII.GetBytes(Stamp.Of(mark, light, dark) + "\n");
 
-    private static void Write(string folder, string name, byte[] bytes)
-    {
-        File.WriteAllBytes(Path.Combine(folder, name), bytes);
-        Console.WriteLine(name);
+        foreach (var stale in Directory.EnumerateFiles(assets, "*.png"))
+        {
+            File.Delete(stale);
+        }
+
+        foreach (var (name, bytes) in rendered)
+        {
+            File.WriteAllBytes(Path.Combine(assets, name), bytes);
+            Console.WriteLine(name);
+        }
+
+        return 0;
     }
 
     private static string RepositoryRoot()
@@ -86,6 +92,22 @@ internal static class Program
         }
 
         throw new InvalidOperationException("Run this from inside the repository: no MeetingTranscriber.slnx above the current folder.");
+    }
+}
+
+/// <summary>
+/// What a set of images was drawn from: the SHA-256 of the mark, its line endings made one, and of
+/// the colours both themes gave it. <c>ApplicationIconTests</c> computes the same and fails when
+/// the mark or the palette moved and this tool was not run again.
+/// </summary>
+internal static class Stamp
+{
+    public static string Of(string mark, Palette light, Palette dark)
+    {
+        var colours = string.Join(",", new[] { light.Ink, light.Olive, light.Paper, dark.Ink, dark.Olive }
+            .Select(colour => $"#{colour.Red:X2}{colour.Green:X2}{colour.Blue:X2}"));
+        var drawn = mark.Replace("\r\n", "\n", StringComparison.Ordinal) + "\n" + colours;
+        return Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(drawn)));
     }
 }
 
@@ -147,8 +169,8 @@ internal sealed record Look(string Mark, Palette Colours, SKColor? Background)
 }
 
 /// <summary>
-/// An .ico whose every image is a PNG, which every Windows this application installs on reads and
-/// the compiler embeds as it is.
+/// An .ico whose every image is a PNG, the format Windows has read since Vista and the compiler
+/// embeds as it is. A shell drawing one is still a person looking at an installed copy.
 /// </summary>
 internal static class Ico
 {

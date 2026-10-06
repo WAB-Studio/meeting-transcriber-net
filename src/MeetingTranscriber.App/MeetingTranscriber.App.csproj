@@ -20,8 +20,8 @@
 
   <!-- Every image the manifest names, at every scale and target size, and the .ico the window and
        the desktop shortcut show: all rendered from Assets/Mark.svg by tools/MeetingTranscriber.Icons
-       and never drawn by hand. A wildcard, because which variants exist is that tool's to decide;
-       ApplicationIconTests holds the set against what the manifest names. Mark.svg itself stays out
+       and never drawn by hand. A wildcard, because the tool writes the variants;
+       ApplicationIconTests holds the set to what the manifest names and Windows asks for. Mark.svg itself stays out
        of the package. Copied to the output as well as packed, like the fonts below, so a layout
        registered straight from bin has them too. -->
   <PropertyGroup>
