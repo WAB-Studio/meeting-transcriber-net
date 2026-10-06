@@ -24,7 +24,7 @@ namespace MeetingTranscriber.Audio;
 /// Nothing here can be run by a build agent, for the same reason nothing that opens a microphone
 /// can: there is no endpoint on one. What <em>is</em> provable is the arithmetic, and it is two
 /// things — <see cref="Within"/>, where a seek somebody asked for actually lands, and
-/// <see cref="BothSidesInBothEars"/>, what the two channels become before an endpoint hears them.
+/// <see cref="AsPlayed"/>, what the two channels become before an endpoint hears them.
 /// Both are public for that reason and no other: they are what a device is about to be asked to
 /// do, worked out before there is a device. Everything else in this type is one call to one.
 /// </para>
@@ -61,18 +61,20 @@ public sealed class Playback : IDisposable
     public Exception? WhatStoppedIt { get; private set; }
 
     /// <summary>
-    /// How loud it is played, from 0 (nothing) to 1 (as the recording is), applied after the two
-    /// sides are folded.
+    /// How loud it is played, from 0 (nothing) through 1 (the recording's own level, bent only above about −6 dBFS by the limiter) to 2 (twice as
+    /// loud), applied after the two sides are folded and before the soft limiter.
     /// </summary>
     /// <remarks>
     /// Clamped rather than refused: it is driven by a slider whose ends are reachable by ordinary
     /// use, and somebody dragging past an end means the end. It scales what this player sends to
-    /// the endpoint and never the machine's own volume, which is somebody else's to set.
+    /// the endpoint and never the machine's own volume, which is somebody else's to set. The
+    /// limiter is after it so that 2 is louder and not a crackle: a gain after the limiter would
+    /// clip at full scale.
     /// </remarks>
     public float Volume
     {
         get => _volume.Volume;
-        set => _volume.Volume = Math.Clamp(value, 0f, 1f);
+        set => _volume.Volume = Math.Clamp(value, 0f, 2f);
     }
 
     /// <summary>How long the recording is.</summary>
@@ -108,10 +110,10 @@ public sealed class Playback : IDisposable
 
         try
         {
-            var volume = new VolumeSampleProvider(BothSidesInBothEars(wav.ToSampleProvider()));
+            var (heard, gain) = AsPlayed(wav.ToSampleProvider());
             var through = new WasapiOut();
-            through.Init(volume);
-            return new Playback(wav, through, volume);
+            through.Init(heard);
+            return new Playback(wav, through, gain);
         }
         catch (Exception refused)
         {
@@ -126,7 +128,8 @@ public sealed class Playback : IDisposable
     }
 
     /// <summary>
-    /// What actually goes to the endpoint: a recording's two channels folded into one.
+    /// What actually goes to the endpoint: a recording's two channels folded into one, then the
+    /// volume, then the soft limiter.
     /// </summary>
     /// <remarks>
     /// A meeting's two channels are two sources and not a stereo image — channel 0 is what the
@@ -144,6 +147,13 @@ public sealed class Playback : IDisposable
     /// it has, so there is no corner to hear.
     /// </para>
     /// <para>
+    /// The order is fold, gain, limiter, and it is the same for every recording. The gain reaches
+    /// 2, and a limiter before it would let a loud passage through at twice full scale; after it,
+    /// nothing clips hard at any setting. The limiter is therefore also on a one-track recording
+    /// and on <em>Quién es quién</em>'s voice clips, which play through <see cref="Of"/>: peaks
+    /// above about −6 dBFS are bent at a gain of 1 where they used to pass as recorded.
+    /// </para>
+    /// <para>
     /// Both weights are written here rather than left to the provider's own, because they decide
     /// what every listener hears and a package's default is not this repository's to state.
     /// <c>PlaybackTests.One_side_speaking_is_heard_at_its_own_level_and_both_never_pass_full_scale</c>
@@ -155,29 +165,29 @@ public sealed class Playback : IDisposable
     /// the path to one that is arithmetic. <see cref="Within"/> is public for the same reason.
     /// </para>
     /// <para>
-    /// Only where there are exactly two, and everything else goes to the endpoint as it is. One
-    /// track is what audio somebody brought in from outside becomes before it is a meeting's, and a
-    /// fold over it would do nothing but stand between the file and the device. Anything wider is
-    /// not a shape this corpus stores, and nothing here refuses it — it is played with its channels
-    /// as they are, which is the one answer that does not invent which pair of them was the
-    /// conversation.
+    /// The fold only where there are exactly two. One track is what audio somebody brought in from
+    /// outside becomes before it is a meeting's, and a fold over it would do nothing but stand
+    /// between the file and the device. Anything wider is not a shape this corpus stores, and
+    /// nothing here refuses it — it is played with its channels as they are, which is the one
+    /// answer that does not invent which pair of them was the conversation.
     /// </para>
     /// </remarks>
-    /// <param name="samples">The recording, as the samples it plays.</param>
-    public static ISampleProvider BothSidesInBothEars(ISampleProvider samples)
+    /// <param name="recording">The recording, as the samples it plays.</param>
+    /// <returns>
+    /// What the endpoint is handed, and the gain inside it that <see cref="Volume"/> sets, starting
+    /// at 1.
+    /// </returns>
+    public static (ISampleProvider Heard, VolumeSampleProvider Gain) AsPlayed(ISampleProvider recording)
     {
-        ArgumentNullException.ThrowIfNull(samples);
+        ArgumentNullException.ThrowIfNull(recording);
 
-        if (samples.WaveFormat.Channels != CapturedAudio.ChannelCount)
-        {
-            return samples;
-        }
+        var folded = recording.WaveFormat.Channels == CapturedAudio.ChannelCount
+            ? new StereoToMonoSampleProvider(recording) { LeftVolume = 1f, RightVolume = 1f }
+            : recording;
 
-        return new SoftLimiter(new StereoToMonoSampleProvider(samples)
-        {
-            LeftVolume = 1f,
-            RightVolume = 1f,
-        });
+        var gain = new VolumeSampleProvider(folded) { Volume = 1f };
+
+        return (new SoftLimiter(gain), gain);
     }
 
     /// <summary>
