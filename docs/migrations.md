@@ -11,10 +11,11 @@ something that is not at fault, which is why they are written down rather than l
 
 ## A migration owes nobody anything yet
 
-Nothing has shipped, so a migration may drop what it replaces and say so, and needs no compatibility
-path, fallback or version check — CLAUDE.md's "Nothing has shipped yet" is the rule. The first
-install somebody records into is when that section gets deleted, and only migrations written after
-that point have to carry data forward.
+Nothing has shipped — builds are installed on the owner's machine, nothing has been handed to
+anybody and no corpus is kept — so a migration may drop what it replaces and say so, and needs no
+compatibility path, fallback or version check — CLAUDE.md's "Nothing has shipped yet" is the
+rule. That section goes when the first build is handed to somebody who keeps what it records, and
+only migrations written after that point have to carry data forward.
 
 ## Check the id sorts last, before anything else
 
@@ -22,11 +23,9 @@ A migration runs in the position its id sorts to, so an id that lands before one
 runs in the wrong order — and every check below is meaningless against a migration you tested in a
 position it will never run in. `ls` the folder and confirm the new file is last.
 
-Twelve of the ids here are hand-picked and were ahead of the clock at the time, which is why a
-generated one used to sort before them and had to be renamed into the next free slot. That block
-ends at `20260806200000_Affiliations`; the clock passed it on 2026-08-07, so a generated timestamp
-now sorts last on its own and is kept. Renaming one into an invented slot from here would be
-reintroducing hand-picked ids for a problem that no longer exists.
+A generated id sorts last on its own and is kept; never rename one into an invented slot. The
+twelve hand-picked ids in the folder end at `20260806200000_Affiliations`, and every generated id is
+later than that.
 
 ## Run `dotnet format` afterwards
 

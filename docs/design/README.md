@@ -29,9 +29,8 @@ of why a screen is shaped the way it is, and they are mined into `../design.md`.
 
 **A note names what it is about and is never placed.** It carries `file` and is drawn against that
 artboard wherever the artboard ends up, or it carries `page` and is about the page as a whole —
-exactly one of the two, and no coordinates of its own. It used to carry only a position, and five
-notes had already come loose from the artboards they were written about by the time a row grew.
-`Sistema` has no note; that is a sentence nobody has written, not an entry
+exactly one of the two, and no coordinates of its own, so it stays with its artboard when a row
+grows. `Sistema` has no note; that is a sentence nobody has written, not an entry
 missing from this file.
 
 | Page | Row | File | Screen |

@@ -1,7 +1,10 @@
 # Layout
 
-What each folder holds. The rules a task would go wrong without are in `CLAUDE.md`; this is the
-map you open when you need to know where something lives.
+What each folder holds, what it may reference, and why. The rules a task would go wrong without are
+in `CLAUDE.md`; this is the map you open when you need to know where something lives.
+`arquitectura.md` §3 is the split and why it is shaped so; a project appears when there is code to
+put in it, and one appears where code has nowhere it can go — which is what `Recording` is.
+`MeetingTranscriber.Domain` stays free of Windows and WinUI references, and tests assert it.
 
 ```text
 src/MeetingTranscriber.App/               WinUI 3, packaged as MSIX
@@ -24,49 +27,126 @@ tests/MeetingTranscriber.FakeClaudeCode/  the program behind the fake Claude Cod
 tests/fixtures/deepgram/                  anonymised responses, free to test against
 ```
 
-Every project under `src/` has its tests under `tests/<project>.Tests/`, and `Isa.Tests` is the one
-suite with no project behind it: it reads `ISA.md` and this tree. `UiProbe.Tests` is the one whose
-project is under `tools/` rather than `src/`, and the paragraph about `tools/` below says what that
-suite may and may not do. `Testing` is the other directory under `tests/` with nothing behind it and
-is no suite at all — it is what a suite opens, and `FakeClaudeCode` is a program one suite runs. What
-`Audio.Tests` can hold is bounded by there being no device on a build agent: the rules — which
-endpoint a typed name means, what a block of bytes is worth on a meter — are tested there, and that
-two streams really open at once is a probe somebody runs with `capture`, recorded in the ISA like a
-paid one. What touches a file in there is the spool and the recording made out of it, and both have
-to: what the first claims is the shape of a file on disk after a write was cut, and what the second
-claims is that the bytes read back off the disk are the recording that was made — neither of which
-is something a stream in memory can be.
+What each `src/` project may reference:
 
-`SharedTimeline` is the exception that boundary was drawn around. It takes packets rather than
-opening streams, so two hours of a clock running fast is arithmetic in `Audio.Tests` instead of a
-meeting on a machine nobody has — which is the only way the product's largest technical risk gets
-tested at all. Nothing in it touches WASAPI, and `Fabricated` is where the devices that never
-existed are written. That arithmetic is why `Audio.Tests` takes about a minute where every other
-suite takes seconds: `TimelineDriftTests` really does run the two hours ISC-66 claims, half a
-billion frames of it, and a shorter one would be a different claim.
+| Project | References | Targets |
+| --- | --- | --- |
+| `Domain` | nothing | `net10.0` |
+| `Presentation` | nothing | `net10.0` |
+| `Infrastructure` | `Domain` | `net10.0` |
+| `Processing` | `Domain`, `Infrastructure` | `net10.0` |
+| `Mcp` | `Domain`, `Infrastructure` | `net10.0` |
+| `Audio` | `Domain` | Windows |
+| `Recording` | `Audio`, `Domain`, `Infrastructure`, `Processing` | Windows |
+| `Cli` | `Audio`, `Domain`, `Infrastructure`, `Processing`, `Recording` | Windows |
+| `App` | `Presentation`, `Recording` | Windows |
 
-`tests/MeetingTranscriber.Testing/` holds no test. It is where `TemporaryCorpus`, the corpus
-outside application data that the facts about *where* a corpus may live need, the rows a meeting
-somebody summarised is made of, the raw-SQL helpers and the inventory of the Deepgram fixtures,
-where this clone is and what is under it, a source file read without the prose about it, and what a
-folder holds live, so a suite that opens a corpus or walks the fixture set references it instead of
-carrying a copy — and adding a fixture is one edit every
-suite sees. It stops at `Infrastructure` on purpose: `Domain.Tests` references it, and a path from
-there to `Processing` would let a domain rule be proved against the parser's own output.
+Dependencies point inwards. The sections below say why each edge is there and why the missing ones
+are missing.
 
-`MeetingTranscriber.Cli` is the product's other front end and holds no rule of its own: every
-command is a call into the same service the application calls, and what it adds is argument
-parsing, a report and an exit code. It targets Windows because `capture` does, and `capture` is
-there rather than only in the window because drift is claimed over two hours — a measurement
-nobody repeats by clicking. It is where the whole path from a paid response to an answer
-can be exercised without automating a window — `tests/MeetingTranscriber.Cli.Tests/` walks it —
-and it is one of the two faces the alias reaches: `MeetingTranscriber.App` publishes it into the
-package and `Package.appxmanifest` declares `meeting-transcriber` on the PATH beside
-`meeting-transcriber-mcp`. What ISC-113 still waits on is a run: nobody has installed a build and
-started either name.
+## Projects
 
-**One exception, named, and it is a spend a person agrees to at the prompt.** `LiveCheck`,
-`SendingMark` and `TypedBack` are rules and they are here:
+### `MeetingTranscriber.Domain`
+
+Entities, states and pure rules. It references nothing and is free of Windows and WinUI types.
+
+### `MeetingTranscriber.Audio`
+
+Everything that touches WASAPI: endpoints, streams, the spool, `SharedTimeline` and the recording
+made out of it, and `Playback`.
+
+- `Playback` is here, beside capture: an endpoint, a format and a stream are the same kind of thing
+  whichever way the bytes are going, and WASAPI is known in one place.
+- It never references `Infrastructure`, and `Infrastructure` never references it — see *Where a
+  name two projects both write and read goes*.
+
+### `MeetingTranscriber.Infrastructure`
+
+SQLite, the filesystem and credentials.
+
+- It is plain `net10.0`, so `Processing` is not dragged onto a Windows target framework.
+- It never references `Audio`: that edge would put WASAPI behind rendering a transcript.
+- A Windows-only type that it needs lives here under that constraint (`DeepgramKey.cs`).
+
+### `MeetingTranscriber.Processing`
+
+Deepgram, the transcript, summaries, corrections, rendering, export and `JobRunner`.
+
+- It references `Infrastructure` and only that way round: rendering reads the paid response out of
+  the corpus and puts the derivatives back, so it sits above storage. The opposite edge would make
+  SQLite depend on how a Deepgram response is parsed.
+- It names neither the Deepgram key's type nor its store (`DeepgramTranscription.cs`); the key is
+  handed to it.
+- What a provider response must hold is `LiveInvariants`, here.
+
+### `MeetingTranscriber.Recording`
+
+Where the rules that need more than one of `Audio`, `Infrastructure` and `Processing` live, and what
+the application composes through. `Audio` and `Infrastructure` may not reference each other: an
+edge from `Infrastructure` to `Audio` would put WASAPI behind rendering a transcript and force
+`Processing` onto a Windows target framework, and an edge the other way would stop the audio engine
+being provable on a machine with no corpus. So the composition sits above both.
+
+It holds:
+
+- the corpus side of recording: the meeting row and its folder before the first sample, the run
+  written from the card the recording wrote about itself, what stopping makes of the spools, and
+  what a start after a crash finds waiting. All of it runs with no device; one thin type opens the
+  devices in order and is too small to hold a rule;
+- audio brought in from outside: reading a WAV is the engine's and filing a meeting is the
+  corpus's, and whether a two-channel file is a meeting's two sources is decided from both — the
+  audio's own shape and the recovery card beside it;
+- the watch that tells a list of meetings it has stopped saying what the corpus says. It is the only
+  thing in the product that polls the corpus, because that list draws the corpus's meetings and the
+  spool folder's recordings and only this project sees both;
+- `RowPresses`: the ids that tell one press on one row of that list from the same press on another
+  row, so a re-read can hand somebody's keyboard back; half name a meeting and half a spool folder;
+- `WhatALaunchOwes`: what a launch owes the corpus, as one ordered list, because two of it were two
+  background writers over one corpus. This is the only project that may hold the rule and see both
+  the sweep and the renders: the prompt sees both and holds no rule, the application has no probe a
+  build agent could run, and `Processing` may not see this side;
+- the closed list of what a read of the corpus throws that a screen says rather than stops over. The
+  watch reads the corpus from the thread a window is being built on, and every exception on the list
+  — the audio engine's, the recording's, the filesystem's two and SQLite's — is visible from here
+  and from nowhere lower.
+
+`MeetingTranscriber.App` was not an option for any of it: touching a type from that assembly fires
+the Windows App SDK module initializer and throws outside a packaged host, so anything living there
+would have no probe a build agent could run.
+
+`Recording` references `Processing`, and rendering reaches the application only through it: the
+application names two projects, `Presentation` for the words and `Recording` for everything else.
+`Audio`, `Infrastructure`, `Domain` and `Processing` arrive through `Recording`, which is the same
+composition the command line goes through. The edge from `Recording` to `Processing` is narrow on
+purpose. It is there for:
+
+- `WhatALaunchOwes`, which finds the renders a launch owes through `OwedRenders`;
+- `NamingTheVoices`, which saves the names on a meeting's voices and renders that one meeting again
+  in the same transaction, so a name it saved is a name that transcript already shows;
+- `RenamingSomebody`, which corrects a person's name and renders every meeting it touches, each in a
+  transaction of its own so the rename does not hold the corpus's write lock across them. What did
+  not render is named on the way out and caught up by the next launch;
+- `CorrectingWords`, which saves a correction and renders every meeting it touches the same way.
+
+Any of the four can be there because of the direction: `Processing` knows nothing about a window,
+so nothing came back the other way.
+
+### `MeetingTranscriber.Cli`
+
+The product's other front end. It holds no rule of its own: every command is a call into the same
+service the application calls, and what it adds is argument parsing, a report and an exit code.
+
+- It targets Windows because `capture` does. `capture` is here rather than only in the window
+  because drift is claimed over two hours, a measurement nobody repeats by clicking.
+- It is where the whole path from a paid response to an answer can be exercised without automating a
+  window; `tests/MeetingTranscriber.Cli.Tests/` walks it.
+- It is one of the two faces the alias reaches: `MeetingTranscriber.App` publishes it into the
+  package and `Package.appxmanifest` declares `meeting-transcriber` on the PATH beside
+  `meeting-transcriber-mcp`. ISC-113 waits on a run: nobody has installed a build and started either
+  name.
+
+**One exception, named: a spend a person agrees to at the prompt.** `LiveCheck`, `SendingMark` and
+`TypedBack` are rules and they are here:
 
 - which files a live run sends;
 - how much audio that is;
@@ -76,259 +156,229 @@ started either name.
   transcribed again alike.
 
 Whether a meeting may be sent again, and the sending itself, is decided in `MeetingWork` and
-`JobRunner`; the one thing the prompt still decides for itself is how many named voices a new
-response would take a name off, which it counts before and after because it is the one number
-this command exists to report honestly and no screen prints it. The application spends now too,
-through `JobRunner`, on
-whatever a stop or a press queued — but that is a service call, the same shape every other rule in
-this document is about a call into, and these two are not: they are a prompt's own rules about a
-folder somebody named on its command line, or about a number somebody typed back, with nothing
-behind them a service could be a call into. That is the whole of the exception and it does not grow
-past a spend confirmed at a prompt — which is why every other sentence in this document and in the
-tree saying the prompt holds no rule of its own is still true as written: each of them is about a
-rule that is not a spend confirmed at a prompt's. What a provider *response* has to hold is not
-part of it and lives in `Processing` with `LiveInvariants`, for the reason that paragraph gives.
+`JobRunner`. The one thing the prompt still decides for itself is how many named voices a new
+response would take a name off: it counts before and after, because it is the one number
+`transcribe-again` exists to report honestly and no screen prints it. These are a prompt's own rules
+about a folder somebody named on its command line, or about a number somebody typed back, with
+nothing behind them a service could be a call into. The exception does not grow past a spend
+confirmed at a prompt, so every other statement that the prompt holds no rule of its own is true as
+written.
 
-`MeetingTranscriber.Mcp` is the corpus's other read-only face — eight tools an agent asks about
-meetings somebody recorded, and about the nodes they are filed under — and it holds no rule of its
-own either, exactly as
-`MeetingTranscriber.Cli` does not: every tool is a read the application already does, and what it
-adds is a tool surface, a bounded answer and a sentence for each way a corpus can refuse to open.
-It references `Infrastructure` and `Domain` and no further, and the other three edges are each
-refused for one reason: `Processing` would put rendering behind an MCP tool, `Audio` would put
-WASAPI behind one, and `Recording` would bring both. It opens the corpus read-only, so no row of
-anybody's corpus can be written through it whatever the code above says — that is the connection's
-promise and not a rule anything here has to remember. What SQLite does still write is its own
-`-wal` and `-shm` beside the database, which is what reading a write-ahead-logged file costs, so a
-corpus on a volume this user cannot write to is not readable from here either. The one file it
-writes of its own is a line per request, appended to `agent-requests.jsonl` under the user's local
-application data and outside the corpus, so that what an agent read can be reconstructed while the
-corpus is still never written through it. A packaged build keeps that file in the container an
-uninstall removes.
+### `MeetingTranscriber.Mcp`
 
-`MeetingTranscriber.Recording` is where the rules that need more than one of `Audio`,
-`Infrastructure` and `Processing` live, and it is what the application composes through. The prompt
-reaches each of those directly and holds no rule of its own, which is the
-`MeetingTranscriber.Cli` paragraph above, bar the live run named beside it. Neither
-of `Audio` and `Infrastructure` may reference the other: an edge from `Infrastructure` to `Audio`
-would put WASAPI behind rendering a transcript and force `Processing` onto a Windows target
-framework, and an edge the other way would stop the audio engine being provable on a machine with
-no corpus. So the composition sits above both. What is in
-it is the corpus side of recording — the meeting row and its folder before the first sample, the
-run written from the card the recording wrote about itself, what stopping makes of the spools, and
-what a start after a crash finds waiting and makes of one of them — all of which runs with no
-device, plus one thin type that opens the devices in that order and is
-deliberately too small to hold a rule. Audio somebody brought in from outside is here for that same
-reason and not a second one: reading a WAV is the engine's and filing a meeting is the corpus's, and
-whether a two-channel file is a meeting's two sources is decided from both — the audio's own shape
-and the recovery card beside it. The watch that tells a list of meetings it has stopped saying what
-the corpus says is here for that reason again, and it is the only thing in the product that polls
-the corpus: what that list draws is the corpus's meetings *and* the spool folder's recordings, and
-this is the only project that can see both. `RowPresses` is here for that reason once more: the ids
-it builds tell one press on one row of that list from the same press on another row — which is what
-a re-read needs to hand somebody's keyboard back — and what they name is a row, so half of them are
-a meeting and half a spool folder. `WhatALaunchOwes` is here for that reason once more: what a
-launch owes the corpus is one ordered list because two of it were two background writers over one
-corpus, and this is the only project that may hold a rule and can see both the sweep and the
-renders — the prompt sees both and holds no rule, the application has no probe a build agent could
-run, and `Processing` may not see this side. The closed list of what a read of the corpus throws
-that a screen says rather than stops over is here for the same reason once more: the watch reads
-the corpus from the thread a window is being built on, so that list stopped being only the
-screens' — and every exception it names, the audio engine's and the recording's and the
-filesystem's two and SQLite's, is visible from exactly here and from nowhere lower.
-`MeetingTranscriber.App` was not an option for any of it: touching a type from that assembly fires
-the Windows App SDK module initializer and throws outside a packaged host, so anything living
-there would have no probe a build agent could run.
+The corpus's other read-only face: the tools an agent asks about meetings somebody recorded and the
+nodes they are filed under. It holds no rule of its own, exactly as `Cli` does not: every tool is a
+read the application already does, and what it adds is a tool surface, a bounded answer and a
+sentence for each way a corpus can refuse to open.
 
-That last sentence is also why the recording screen's rules are here rather than beside the window.
-What can be pressed at any moment — and what a press would have to be answered with first — is
-`RecorderScreen` and the table beside it, which hold no meeting, open no device and start nothing.
-What the screen shows while a meeting runs is `RecordingMeters`, and it is the other shape: it
-answers about a recording, so one half of it takes the numbers and holds the rules, and the other
-half is the projection off two open devices that no build agent can run.
-The window sets every control from one of those and asks it again inside each handler, so the half
-of a screen that has rules is the half a build agent runs, and the half that needs a microphone is
-the half a person presses. `MeetingTranscriber.App` references this project for all of that:
-`Audio`, `Infrastructure`, `Domain` and `Processing` arrive through it, which is the same
-composition the command line goes through.
+- It references `Infrastructure` and `Domain` and no further. `Processing` would put rendering
+  behind an MCP tool, `Audio` would put WASAPI behind one, and `Recording` would bring both.
+- It opens the corpus read-only, so no row of anybody's corpus can be written through it. What
+  SQLite still writes is its own `-wal` and `-shm` beside the database, which is what reading a
+  write-ahead-logged file costs; a corpus on a volume this user cannot write to is not readable from
+  here either.
+- The one file it writes of its own is a line per request, appended to `agent-requests.jsonl` under
+  the user's local application data and outside the corpus, so what an agent read can be
+  reconstructed. A packaged build keeps that file in the container an uninstall removes.
 
-The same split, in the same two places, is what the screen a meeting is read from is made of, and
-the halves land in different projects because the two questions are different. What that screen
-shows and offers — whether the player is there at all, what act is on the right, whether the name
-may be typed — is `MeetingScreen` in `Domain`, over the corpus side `MeetingReading` in
-`Infrastructure`. Playing the file is `Playback` in `Audio`, beside capture: an endpoint, a format
-and a stream are the same kind of thing whichever way the bytes are going, and this repository does
-not get a second place that knows what WASAPI is. `Presentation` was never the alternative for
-either half — it holds every word a person reads and nothing else, it is plain `net10.0`, and a
-WASAPI call in it would not compile.
+### `MeetingTranscriber.Presentation`
 
-**Where a screen's rules go**, since there are now several sets of them and the two paragraphs
-above only say where two went. The record a window reads its controls off never lives beside the
-window, for the reason those paragraphs give; past that it goes in the project its **subject**
-already lives in — the thing the screen is asking about, which is not the same as the types the
-record is made of. Everything the recorder screen decides is about a recording, so `RecorderScreen`,
-`RecordingMeters`, `WaitingRows` and the states behind them are in `Recording`. What the screen a
-meeting is read from decides is about a meeting, so `MeetingScreen` is in `Domain/Meetings`. And
-`WhoIsUsingThisRow` is about the person the corpus flags as me, so it is in `Domain/Meetings` too,
-beside the `Person` its answer is written onto — not in `Presentation`, where it first landed for
-being made of four primitives and needing nothing.
+Every word a person reads, and UI that has to be provable without a window: the catalogue, the rule
+that picks a language, the choice on disk, and `Movement`.
 
-What a record is made of is the weakest reason available and is the one to distrust. It is a design
-choice rather than a fact about the screen, so it moves a screen's rules between projects on a
-changed parameter type, and it says nothing at all when every parameter is a primitive — which is
-exactly the case that went wrong. What a screen is about does not move. `Presentation` is never the
-answer either, and not for what it references: it holds what a screen **says** — the catalogue, the
-rule that picks a language, the line a screen keeps instead of a string. A record of what a screen
-decides is a different kind of thing and goes with its subject. The earlier version of this
-paragraph said the stronger thing, that nothing in `Presentation` is ever a subject a screen asks
-about, and the language picker falsifies it: `LanguageChoice` and `UiLanguages` are exactly what
-that picker is about. The positive reason is the one that decides, and it decides those three cases
-without the universal.
+- It references nothing and targets plain `net10.0`, which is what lets a test read it.
+- That is not tidiness. The Windows App SDK compiles a module initializer into every assembly that
+  references it, and touching any type from `MeetingTranscriber.App` fires it and throws outside a
+  packaged host. Anything there has no probe a build agent can run, which is why `RecorderScreen`,
+  `MeetingScreen`, `Playback` and `ScreenStatus` are not beside the window.
+- A WASAPI call in it would not compile.
 
-That paragraph is about a **record a window reads its controls off**, and one rule in `Presentation`
-is not one: `Movement`, which says how long each of the four things that move takes and whether
-Windows was asked for none. It has no subject in the corpus at all — it is not about a recording or
-a meeting, it is the one rule every screen obeys — so "the project its subject lives in" has no
-answer to give, and the rule that decides instead is the other half of what `Presentation` is for:
-it references nothing, so it is where a thing about the UI goes when it has to be provable without a
-window. A project of its own for three numbers would be a folder and a `.csproj` holding a lookup
-table.
+### `MeetingTranscriber.App`
 
-**Where a name two projects both write and read goes.** `Audio` and `Infrastructure` may not
-reference each other, for the reasons the `MeetingTranscriber.Recording` paragraph above gives, so a
-string both of them have to spell goes in `Domain`, which is the only project either can see, and
-each side defines its own constant from that one so the compiler proves they agree. `RecordingFiles`
-in `Domain/Artifacts/` is the case that settled it, and says on itself what it cost to find out.
-`Domain/Artifacts/` and not `Domain/Audio/`, because the question a file name answers here — what
-the file is, and whether losing it costs anything — is the one that folder already holds, and
-because `Domain/Audio/` is on the audit floor for the channel contract and the profile rule, which
-`.claude/audit-floor.md` is the place to read.
+The WinUI 3 window, packaged as MSIX. It names two projects, `Presentation` and `Recording`, and the
+rest arrives through `Recording`. Eight files also name `Processing` for one thing a window cannot do
+without; all eight reach it through the reference `MeetingTranscriber.App.csproj`'s own comment
+already says brings `Processing` along, so a second, explicit `ProjectReference` would only restate
+it:
 
-`Processing` references `Infrastructure`, and only that way round: rendering reads the paid
-response out of the corpus and puts the derivatives back, so it sits above storage. The opposite
-edge would make SQLite depend on how a Deepgram response is parsed.
+- `App.xaml.cs` starts `JobRunner`'s pump;
+- `TranscribingOnThisMachinesKey.cs` binds the key a transcription sends with;
+- `SummarisingOnThisMachine.cs` composes the provider a summary is sent with, and tells the list of
+  meetings which memory file stopped one;
+- `Configuracion.xaml.cs` exports the corpus through `Processing.Export` and asks Claude Code
+  whether it answers through `Processing.Summaries`;
+- `AddingSomebody.xaml.cs` catches the `RenderException` a corrected name can end on, from
+  `Processing.Rendering`;
+- `WordsThatComeOutWrong.xaml.cs` reads `Processing.Corrections` and catches the `RenderException`
+  a correction can end on, reading the meetings it could not render off `RenderException.Meetings`.
+  It is the one screen a correction ends on, whether the words were typed there or selected where
+  they are read and brought in;
+- `ReadingAMeeting.xaml.cs` reads the transcript through `MeetingRenderer.AsRead`, so the screen and
+  `transcript.md` say the same words;
+- `SayingWhoIsWho.xaml.cs` reads each voice's quotation through it for the same reason.
 
-`Recording` references `Processing`, and rendering reaches the application only through it: the
-application names two projects, `Presentation` for the words and `Recording` for everything else,
-and it is the second of those the whole corpus stack arrives on. Its exceptions are eight files, each naming `Processing` for one thing a window cannot do without:
-`App.xaml.cs` starts `JobRunner`'s pump; `TranscribingOnThisMachinesKey` binds the key a
-transcription sends with; `SummarisingOnThisMachine` composes the provider a summary is sent with,
-and tells the list of meetings which memory file stopped one; `Configuracion` exports the corpus
-through `Processing.Export` and asks Claude Code whether it answers through
-`Processing.Summaries`; and `AddingSomebody` catches the `RenderException` a corrected name can
-end on, from `Processing.Rendering`; and `WordsThatComeOutWrong` reads `Processing.Corrections`
-and catches the `RenderException` a correction can end on, reading the meetings it could not render
-off `RenderException.Meetings` — and it is the one screen a correction ends on, whether the words were typed
-there or selected where they are read and brought in; `ReadingAMeeting` reads the transcript through
-`MeetingRenderer.AsRead`, so the screen and `transcript.md` say the same words; and `SayingWhoIsWho` reads each
-voice's quotation through it for the same reason. All eight reach it through the reference `App.csproj`'s own
-comment already says brings `Processing` along — the same closure `App.xaml.cs` already reaches
-`Infrastructure` through — so a second, explicit `ProjectReference` would only restate what that
-comment already commits to. The rule still lives
-where a build agent runs it — `Processing` and everything under it — and what the application
-holds is the call and the thread it goes on. The rendered files are the one
-thing a person is never asked about — they cost nothing and can be produced again, so no screen
-offers them and nothing at a prompt is supposed to be needed for them to exist. Something
-therefore has to produce them without being asked, and that is work a launch owes the corpus,
-which is one ordered list because two of it were two writers over one SQLite corpus at the same
-launch. `Recording` is where that list can live: it is the only project that may hold a rule and
-can see both the sweep and the renders — `Cli` sees both and holds no rule of its own, the
-application has no probe a build agent could run, and the opposite edge would push WASAPI under
-`Processing`. The rule for which meetings are owed a render still lives on the `Processing` side,
-where a build agent runs it; what the application holds is the call and the thread it goes on. The
-edge is narrow on purpose — it is there for `WhatALaunchOwes`, and for the three acts that change a
-name or a word a transcript shows — `NamingTheVoices`, which saves the names on a meeting's voices and
-renders that one meeting again in the same transaction, so a name it saved is a name that one
-transcript already shows, and `RenamingSomebody`, which corrects a person's name and then renders
-every meeting it touches, each in a transaction of its own, so the rename does not hold the
-corpus's write lock across them — a name it saved is a name every render that landed already
-shows, and what did not is named on the way out and caught up by the next launch, which `OwedRenders` finds off the corpus — and
-`CorrectingWords`, which saves a correction and renders every meeting it touches, each in a
-transaction of its own, the same way; what it did not reach is caught up by the next launch,
-through `OwedRenders` — and the reason any of the three can be is the direction: `Processing` knows nothing about a window, so nothing came
-back the other way.
+The rule still lives where a build agent runs it, in `Processing` and below; what the application
+holds is the call and the thread it goes on. The rendered files are the one thing a person is never
+asked about: they cost nothing and can be produced again, so no screen offers them and nothing at a
+prompt is supposed to be needed for them to exist. Something therefore produces them without being
+asked, and that is `WhatALaunchOwes`.
 
-`MeetingTranscriber.Presentation` holds every word a person reads and nothing else — the
-catalogue, the rule that picks a language, and the choice on disk. It references nothing and
-targets plain `net10.0`, which is what lets a test read it. That is not tidiness: the Windows
-App SDK compiles a module initializer into every assembly that references it, and touching any
-type from `MeetingTranscriber.App` fires it and throws outside a packaged host. Anything about
-the UI that has to be provable lives here rather than beside a window.
+## Where a screen's rules go
 
-`tests/MeetingTranscriber.App.Tests/` follows from that: it cannot reference the application at
-all, for the reason the sentence above gives, so it references `Presentation` and nothing else, and
-reads the app's `.xaml` and `.xaml.cs` as source to hold every screen to naming an entry in the
-catalogue instead of carrying words of its own. Running a WinUI tree would need a UI thread and
-a packaged host, neither of which a build agent has — so the check that needed one is the check
-that would never run there. It runs somewhere: `tools/MeetingTranscriber.UiProbe` starts the
-packaged application on a desktop somebody is logged into and reads the tree itself, by hand and
-never in a build. `docs/ui-probe.md` is when to reach for it.
+The record a window reads its controls off never lives beside the window, for the reason in
+`Presentation` and `Recording` above: the half of a screen that has rules is the half a build agent
+runs, and the half that needs a microphone is the half a person presses. The window sets every
+control from the record and asks it again inside each handler.
 
-It reads source out of other `src/` projects as well as out of the application — the enum a
-screen's table is over, the prompt's own recording command — and that is not a widening of what it
-is about. A table falling behind its enum, or a window that files a meeting the prompt files
-through one call, are both facts about two files agreeing, and one of the two is the application's.
-`AppSources` resolves every path under `src/`, so how the repo is laid out is written down there
-once rather than once per check.
+Past that, the record goes in the project its **subject** already lives in — the thing the screen is
+asking about, which is not the same as the types the record is made of.
 
-`tests/MeetingTranscriber.Isa.Tests/` is the exception to that pattern and references no `src/`
-project: it reads `ISA.md` at the repo root. The claims surface is a repo document rather than a
-layer, so its gate does not belong under any one of them.
+- The recorder screen decides things about a recording, so `RecorderScreen`, `RecordingMeters` and
+  `WaitingRows` and the states behind them are in `Recording`. `RecorderScreen` and the table beside
+  it say what can be pressed at any moment and what a press is answered with first; they hold no
+  meeting, open no device and start nothing. `RecordingMeters` answers about a recording: one half
+  takes the numbers and holds the rules, the other is the projection off two open devices that no
+  build agent can run.
+- The screen a meeting is read from decides things about a meeting, so `MeetingScreen` is in
+  `Domain/Meetings`: whether the player is there at all, what act is on the right, whether the name
+  may be typed. It sits over the corpus side, `MeetingReading` in `Infrastructure`. Playing the file
+  is `Playback` in `Audio`.
+- `WhoIsUsingThisRow` is about the person the corpus flags as me, so it is in `Domain/Meetings`,
+  beside the `Person` its answer is written onto.
 
-What a screen looks like lives in `docs/design.md` — the tokens, the type ramp, the radii, the
-meter's anatomy and the rules the design imposes — with the nineteen artboards it was written from
-beside it in `docs/design/`. Nothing under `src/` reads that folder and nothing builds it: they are
-pictures a person opens. A screen is built from the prose, and the artboards are what the prose is
-checked against.
+What a record is made of is the weakest reason available and the one to distrust: it is a design
+choice rather than a fact about the screen, it moves a screen's rules on a changed parameter type,
+and it says nothing when every parameter is a primitive. What a screen is about does not move.
 
-**That page reaches a screen through `src/MeetingTranscriber.App/Olivo.xaml`**, which is the one
-place a colour, a type rank, a corner, a height or a control rank is written down. `docs/design.md`
-says the resource key is its suggestion and the first screen to need one settles it; `MainWindow`
-was the first, so the keys are settled and every screen after it names them rather than proposing
-its own. `OlivoTests` is what holds the page and the dictionary to each other, in both directions:
-no screen may carry a colour, a size or a corner of its own, every row of that page's colour table
-is a brush here at both values the row gives, and every colour the page writes down either has a
-brush here behind it or stands in §Colour's *Decided, and not yet a key* table, which is what stops
-the page sanctioning a value the screens are refused. The two fonts sit beside it in
-`Assets/Fonts/`, inside the package with the licence that permits it.
+`Presentation` holds what a screen **says** — the catalogue, the rule that picks a language, the line
+a screen keeps instead of a string. A record of what a screen decides is a different kind of thing
+and goes with its subject. Where the subject is in `Presentation`, so is the record:
+`LanguageChoice` and `UiLanguages` are what the language picker is about.
 
-The one thing about how a screen looks that is **not** in that dictionary is how long a move takes,
-and that is deliberate: a duration fixed when the application starts cannot be zero on a machine
-asked for no animation. `Movement` decides it, `ScreenMotion` applies it. `docs/design/README.md` is
-what to open before touching an artboard.
+One rule in `Presentation` is not a record a window reads its controls off: `Movement`, which says
+how long each of the four things that move takes and whether Windows was asked for none. It has no
+subject in the corpus — it is the one rule every screen obeys — so "the project its subject lives
+in" has no answer, and the other half of what `Presentation` is for decides: it references nothing,
+so it is where a thing about the UI goes when it has to be provable without a window. A project of
+its own for three numbers would be a folder and a `.csproj` holding a lookup table.
 
-`tools/` is run by hand and is not part of the product. Nothing under `src/` may reference it, which
-is the rule that made deleting the Python corpus importer two folders and two solution lines rather
-than untangling the application, on the day the last old corpus had been imported and it became dead
-code. The UI probe is in here for the same reason and a second one: it needs an interactive desktop,
-so no build agent can run it and **nothing under `tests/` may drive it**. A suite may reference it,
-and one does — `tests/MeetingTranscriber.UiProbe.Tests/` holds the halves that open no window, which
-is the two walks every staleness refusal the probe makes is computed from, and those were otherwise
-free to stop watching silently. Starting a window is the line, not the reference, and
-`ProbeIsNotDrivenTests` in that suite is what holds the line rather than this sentence: it sweeps
-the suite's own source and fails the moment a fact names anything that opens or presses a window.
+## Where a name two projects both write and read goes
 
-The probe references one project, `MeetingTranscriber.Infrastructure`, for three types:
-`ApplicationHome`, `CorpusLocation` and `CorpusDatabase`. It gives the application a home of its
-own and tells it so on its launch line, `--home "<folder>"`, rather than moving a setting of the
-owner's: the application keeps its corpus pointer, its Claude Code pointer and its first corpus in
-that home, and nothing under the owner's `%USERPROFILE%\MeetingTranscriber` is read or written by a
-probe session. What it still never references is `MeetingTranscriber.App` — touching a type from
-that assembly would fire the Windows App SDK module initializer in the probe's own process — so it
-reaches the application only the way anybody else does, through the shell.
+`Audio` and `Infrastructure` may not reference each other, so a string both have to spell goes in
+`Domain`, the only project either can see, and each side defines its own constant from that one so
+the compiler proves they agree. `RecordingFiles` in `Domain/Artifacts/` is the case that settled it,
+and says on itself what it cost to find out. It is under `Domain/Artifacts/` because the question a
+file name answers here — what the file is, and whether losing it costs anything — is the one that
+folder already holds; another folder is on the audit floor for the channel contract and the profile
+rule, which `.claude/audit-floor.md` is the place to read.
 
-The project split in `arquitectura.md` §3 is the destination, not the scaffolding: a project
-appears when there is code to put in it, and one the destination never named appears when the code
-turns out to have nowhere it can go — which is what `Recording` is. Dependencies point inwards, and
-`MeetingTranscriber.Domain` stays free of Windows and WinUI references, with tests asserting
-exactly that.
+## Tests
+
+Every project under `src/` has its tests under `tests/<project>.Tests/`. Three directories are not
+that:
+
+- `Isa.Tests` has no project behind it: it reads `ISA.md` and this tree, because the claims surface
+  is a repository document rather than a layer. It references no `src/` project.
+- `UiProbe.Tests` is the suite whose project is under `tools/` rather than `src/`; the section on
+  `tools/` below says what it may and may not do.
+- `Testing` is no suite at all. It is what a suite opens, and `FakeClaudeCode` is a program one
+  suite runs.
+
+### `tests/MeetingTranscriber.Testing`
+
+Holds no test. It is where `TemporaryCorpus` (the corpus outside application data that the facts
+about *where* a corpus may live need), the rows a summarised meeting is made of, the raw-SQL helpers,
+the inventory of the Deepgram fixtures, where this clone is and what is under it, a source file
+read without its prose, and what a folder holds live, so a suite that opens a corpus or walks the
+fixture set references it instead of carrying a copy, and adding a fixture is one edit every suite
+sees. It stops at `Infrastructure` on purpose: `Domain.Tests` references it, and a path from there to
+`Processing` would let a domain rule be proved against the parser's own output.
+
+### `tests/MeetingTranscriber.Audio.Tests`
+
+What it can hold is bounded by there being no device on a build agent. The rules are tested here —
+which endpoint a typed name means, what a block of bytes is worth on a meter. That two streams
+really open at once is a probe somebody runs with `capture`, recorded in the ISA like a paid one.
+
+- What touches a file here is the spool and the recording made out of it, and both have to: the
+  first claims the shape of a file on disk after a write was cut, and the second that the bytes read
+  back off the disk are the recording that was made. A stream in memory can be neither.
+- `SharedTimeline` is the exception the boundary was drawn around. It takes packets rather than
+  opening streams, so two hours of a clock running fast is arithmetic here instead of a meeting on a
+  machine nobody has — the only way the product's largest technical risk gets tested at all. Nothing
+  in it touches WASAPI, and `Fabricated` is where the devices that never existed are written.
+- That arithmetic is why this suite takes about a minute where every other takes seconds:
+  `TimelineDriftTests` really does run the two hours ISC-66 claims, half a billion frames of it, and
+  a shorter one would be a different claim.
+
+### `tests/MeetingTranscriber.App.Tests`
+
+It cannot reference the application at all, for the module-initializer reason under `Presentation`,
+so it references `Presentation` and nothing else. It reads the app's `.xaml` and `.xaml.cs` as source
+to hold every screen to naming an entry in the catalogue instead of carrying words of its own.
+
+- Running a WinUI tree needs a UI thread and a packaged host, neither of which a build agent has, so
+  a check that needed one would never run there. It runs somewhere: `tools/MeetingTranscriber.UiProbe`
+  starts the packaged application on a desktop somebody is logged into and reads the tree itself,
+  by hand and never in a build. `docs/ui-probe.md` is when to reach for it.
+- It reads source out of other `src/` projects as well — the enum a screen's table is over, the
+  prompt's own recording command. A table falling behind its enum, or a window that files a meeting
+  the prompt files through one call, are facts about two files agreeing, and one of the two is the
+  application's. `AppSources` resolves every path under `src/`, so how the repository is laid out is
+  written down there once.
+
+## What a screen looks like
+
+`docs/design.md` holds the tokens, the type ramp, the radii, the meter's anatomy and the rules the
+design imposes, with the nineteen artboards it was written from beside it in `docs/design/`. Nothing
+under `src/` reads that folder and nothing builds it: they are pictures a person opens. A screen is
+built from the prose, and the artboards are what the prose is checked against.
+
+**That page reaches a screen through `src/MeetingTranscriber.App/Olivo.xaml`**, the one place a
+colour, a type rank, a corner, a height or a control rank is written down. Every screen names its
+keys rather than proposing its own. `OlivoTests` holds the page and the dictionary to each other, in
+both directions:
+
+- no screen may carry a colour, a size or a corner of its own;
+- every row of the page's colour table is a brush there, at both values the row gives;
+- every colour the page writes down either has a brush behind it or stands in §Colour's *Decided,
+  and not yet a key* table, which is what stops the page sanctioning a value the screens are
+  refused.
+
+The two fonts sit beside it in `Assets/Fonts/`, inside the package with the licence that permits it.
+
+How long a move takes is **not** in that dictionary, deliberately: a duration fixed when the
+application starts cannot be zero on a machine asked for no animation. `Movement` decides it,
+`ScreenMotion` applies it. `docs/design/README.md` is what to open before touching an artboard.
+
+## `tools/`
+
+Run by hand and not part of the product. Nothing under `src/` may reference it, which is why
+deleting the Python corpus importer was two folders and two solution lines rather than untangling
+the application.
+
+The UI probe needs an interactive desktop, so no build agent can run it and **nothing under `tests/`
+may drive it**. A suite may reference it, and one does: `tests/MeetingTranscriber.UiProbe.Tests/`
+holds the halves that open no window, which are the two walks every staleness refusal the probe
+makes is computed from. Starting a window is the line, not the reference, and
+`ProbeIsNotDrivenTests` holds the line: it sweeps the suite's own source and fails the moment a fact
+names anything that opens or presses a window.
+
+The probe references one project, `MeetingTranscriber.Infrastructure`, for `ApplicationHome`,
+`CorpusLocation` and `CorpusDatabase`. It gives the application a home of its own and tells it so on
+its launch line, `--home "<folder>"`, rather than moving a setting of the owner's: the application
+keeps its corpus pointer, its Claude Code pointer and its first corpus in that home, and nothing
+under the owner's `%USERPROFILE%\MeetingTranscriber` is read or written by a probe session. It never
+references `MeetingTranscriber.App` — touching a type from that assembly would fire the Windows App
+SDK module initializer in the probe's own process — so it reaches the application only the way
+anybody else does, through the shell.
 
 ## After a crash
 
 The application writes what an exception nobody caught told it to `crash-record.log`, beside the
 language and theme choices and never in the corpus: `%LOCALAPPDATA%\MeetingTranscriber\`, which an
-installed build has redirected to `%LOCALAPPDATA%\Packages\<package family>\LocalCache\Local\
-MeetingTranscriber\`. One entry is the time, where it was caught, and each exception's type, message
-and stack; `CrashRecord` says what it leaves out and when the file starts again. Not every kind of crash reaches it (a native fail-fast may not); an empty file after a crash is itself an answer. Windows' own report
-for a managed crash names a native module (`CoreMessagingXP.dll`, code `0xc000027b`), so this file
-is the first thing to read.
+installed build has redirected to
+`%LOCALAPPDATA%\Packages\<package family>\LocalCache\Local\MeetingTranscriber\`. One entry is the
+time, where it was caught, and each exception's type, message and stack; `CrashRecord` says what it
+leaves out and when the file starts again. Not every kind of crash reaches it (a native fail-fast
+may not); an empty file after a crash is itself an answer.

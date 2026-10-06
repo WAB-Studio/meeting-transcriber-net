@@ -6,8 +6,8 @@ namespace MeetingTranscriber.Presentation;
 /// </summary>
 /// <remarks>
 /// Not the language a meeting was spoken in. That one is a property of a recording, is whatever
-/// the provider supports, and never reaches this type — `arquitectura.md` §6.5 calls it `idioma`
-/// too and means something else entirely.
+/// the provider supports, and never reaches this type — `arquitectura.md` §6.5 calls it
+/// *the language* too and means something else entirely.
 /// </remarks>
 public enum UiLanguage
 {

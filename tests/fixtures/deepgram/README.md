@@ -25,9 +25,9 @@ same word is always the same word. No name of a person, a company or a product s
 test that says so does not work from a list of the real names — it checks that every word in every
 fixture is one of the vocabulary's, which is the same claim without publishing what it hides.
 
-The test walks the whole document rather than the fields the tool substitutes, because those two
-lists used to be the same one and shared a blind spot. Ten paths are exempt as structure, and each
-of them has to keep looking like structure: the request id, the audio hash, the date, Deepgram's
+The test walks the whole document rather than the fields the tool substitutes, so a field the
+tool does not know about cannot hide. A short list of paths is exempt as structure, and each of
+them has to keep looking like structure: the request id, the audio hash, the date, Deepgram's
 `transaction_key` constant, the model ids and what the models are called, and the per-utterance
 ids. A string anywhere else — a block a request option turns on, a field the next API release
 adds — is held to the vocabulary and fails until the tool is taught to substitute it.

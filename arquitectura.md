@@ -1,168 +1,162 @@
-# Arquitectura objetivo local
+# Local architecture
 
-Este documento es la propuesta de arquitectura vigente.
+This document is the design of the application as built, and why it is shaped so. What is decided
+and not built yet stays in the section it belongs to, in a paragraph that opens
+`**Not built yet.**` and names the open `ISA.md` claim or the issue it waits on.
 
-La aplicación objetivo es una aplicación Windows nativa escrita íntegramente en
-.NET. No depende de Python, WSL, OBS, FFmpeg, un navegador, un backend propio ni
-una base de datos remota.
+The application is a native Windows application written entirely in .NET. It does not depend on
+Python, WSL, OBS, FFmpeg, a browser, a backend of its own or a remote database.
 
-Las primeras versiones mantienen todo el corpus en el equipo del usuario:
+The whole corpus lives on the user's machine:
 
-- SQLite guarda estado, metadatos y proyecciones consultables;
-- el filesystem guarda audio y artefactos grandes o inmutables;
-- Windows Credential Manager guarda credenciales;
-- Deepgram es el servicio externo de transcripción;
-- Claude Code headless puede usarse opcionalmente para generar summaries con la
-  cuenta y los créditos incluidos del usuario, sin integrar directamente una API
-  key de LLM.
+- SQLite holds state, metadata and queryable projections;
+- the filesystem holds audio and the large or immutable artifacts;
+- Windows Credential Manager holds credentials;
+- Deepgram is the external transcription service;
+- Claude Code headless is an optional way to generate summaries, on the user's own account and
+  plan, without integrating an LLM API key directly.
 
-En este documento, **local** significa que no existe almacenamiento, autoridad ni
-servicio de aplicación en la nube. Deepgram y, si se habilita, Claude Code siguen
-procesando datos fuera de la aplicación y requieren consentimiento explícito del
-usuario.
+In this document, **local** means there is no cloud storage, authority or application service.
+Deepgram and, when it is enabled, Claude Code still process data outside the application and need
+the user's explicit consent.
 
-El objetivo no es solamente transcribir. Es convertir reuniones en conocimiento
-local, consultable y verificable por personas y agentes LLM.
+The goal is not only to transcribe. It is to turn meetings into knowledge that is local,
+queryable and verifiable by people and by LLM agents.
 
 ---
 
-## 1. Decisiones
+## 1. Decisions
 
-### 1.1 Aplicación Windows nativa y autocontenida
+### 1.1 A native, self-contained Windows application
 
-**Stack recomendado: .NET 10 LTS, C#, WinUI 3 y Windows App SDK.**
+**Stack: .NET 10 LTS, C#, WinUI 3 and the Windows App SDK.**
 
-La aplicación se implementa de nuevo en .NET. El código Python actual sirve como
-referencia funcional y como fuente de fixtures, pero no forma parte del runtime,
-del instalador ni del flujo de usuario de la nueva aplicación.
+The application is responsible for:
 
-La aplicación es responsable de:
+- capturing the microphone and the meeting's audio;
+- aligning both streams on one common timeline;
+- showing levels, source and errors while recording;
+- writing a recoverable spool;
+- validating the audio before transcribing;
+- calling Deepgram with the user's own key;
+- keeping `deepgram.json` as a paid, immutable artifact;
+- rendering the transcript, turns and projections without external tools;
+- generating summaries through interchangeable providers;
+- keeping a durable local queue;
+- searching, querying and editing meetings;
+- exporting the corpus.
 
-- capturar micrófono y audio de la reunión;
-- alinear ambos flujos sobre una timeline común;
-- mostrar niveles, fuente y errores durante la grabación;
-- escribir un spool recuperable;
-- validar el audio y estimar el coste antes de transcribir;
-- llamar a Deepgram con una clave del usuario;
-- conservar `deepgram.json` como artefacto pagado e inmutable;
-- renderizar transcript, turnos y proyecciones sin herramientas externas;
-- generar summaries mediante proveedores intercambiables;
-- mantener una cola local durable;
-- buscar, consultar y editar reuniones;
-- exportar y restaurar backups manuales.
+**Not built yet.** Estimating the cost of a transcription before it is sent (ISC-85), a backup
+snapshot and restoring one (ISC-111, §9). Export is built (`CorpusExport`, ISC-194.1 to .3).
 
-No se requiere FFmpeg. El primer formato de intercambio será WAV PCM lineal de
-16 bits, 16 kHz y dos canales. Es más grande que FLAC, pero elimina una dependencia
-y reduce el riesgo del MVP. La compresión se añadirá únicamente si el tamaño o el
-tiempo de subida medidos lo justifican.
+FFmpeg is not required. The interchange format is linear PCM WAV, 16-bit, 16 kHz, two channels
+(`CapturedAudio`). It is bigger than FLAC, but it removes a dependency and a risk. Compression is
+added only if measured size or upload time justifies it.
 
-### 1.2 Persistencia exclusivamente local
+### 1.2 Local persistence only
 
-SQLite es la única base de datos de la aplicación. No hay PostgreSQL, Supabase,
-object storage, API remota ni sincronización entre máquinas.
+SQLite is the application's only database. There is no PostgreSQL, Supabase, object storage,
+remote API or synchronisation between machines.
 
-SQLite contiene datos pequeños y consultables. El filesystem contiene audio,
-respuestas originales y derivados grandes. Los blobs no se guardan dentro de la
-base de datos.
+SQLite holds small, queryable data. The filesystem holds audio, original responses and large
+derivatives. Blobs are not stored inside the database.
 
-Este reparto permite:
+This split gives:
 
-- transacciones y constraints para el estado local;
-- Full Text Search con FTS5;
-- inspeccionar y copiar los artefactos sin herramientas especiales;
-- reconstruir la base consultable desde las fuentes guardadas;
-- crear backups consistentes sin diseñar todavía un sistema distribuido.
+- transactions and constraints for local state;
+- full-text search with FTS5;
+- artifacts that can be inspected and copied without special tools;
+- a queryable database that can be rebuilt from the stored sources;
+- consistent backups without designing a distributed system.
 
-### 1.3 Proveedores externos explícitos
+### 1.3 Explicit external providers
 
-Deepgram es una integración necesaria para la transcripción, no parte de la
-persistencia de la aplicación. La clave es BYOK y se guarda en Windows Credential
-Manager.
+Deepgram is a required integration for transcription, not part of the application's persistence.
+The key is BYOK and is kept in Windows Credential Manager.
 
-El summary puede operar en tres modos:
+The summary can work in three ways:
 
-- **Claude Code headless:** usa la instalación y autenticación del usuario;
-- **API BYOK:** adaptador futuro para un proveedor LLM con clave propia;
-- **manual/desactivado:** la reunión puede existir y buscarse sin summary.
+- **Claude Code headless:** built; it uses the user's installation and authentication, on the
+  person's own plan only;
+- **API key:** **Not built yet.** An adapter for an LLM provider with the person's own key (#125);
+- **transcribe only, or nothing:** the *Después de grabar* choice of *Solo transcribir* or *Nada*,
+  where a meeting can exist and be searched without a summary.
 
-La ausencia de Claude Code nunca bloquea grabación, transcripción, renderizado,
-búsqueda ni recuperación.
+The absence of Claude Code never blocks recording, transcription, rendering, search or recovery.
 
-### 1.4 Acceso local para agentes
+### 1.4 Local access for agents
 
-La primera interfaz para agentes será un servidor MCP local por `stdio`, escrito
-en .NET y separado de la GUI. No abre un puerto, no expone SQLite a la red y no
-requiere un backend.
+The first interface for agents is a local MCP server over `stdio`, written in .NET and separate
+from the GUI. It opens no port, does not expose SQLite to the network and needs no backend.
 
-El proceso MCP usa los permisos del usuario de Windows y ofrece herramientas de
-dominio limitadas. No entrega acceso SQL arbitrario ni rutas internas salvo cuando
-una operación de lectura lo necesita.
+The MCP process uses the Windows user's permissions and offers a limited set of domain tools. It
+gives no arbitrary SQL access and no internal paths except where a read operation needs one.
 
-### 1.5 Sin arquitectura cloud anticipada
+### 1.5 No anticipated cloud architecture
 
-No se diseñan tablas, APIs ni jobs para una nube hipotética. Si más adelante se
-necesita backup remoto, la primera solución será unidireccional:
+No tables, APIs or jobs are designed for a hypothetical cloud. If remote backup is needed later,
+the first solution is one-way:
 
 ```text
-snapshot local verificado -> destino remoto -> restauración manual
+verified local snapshot -> remote destination -> manual restore
 ```
 
-Ese backup será una copia opaca y versionada del corpus, no sincronización, edición
-remota ni una segunda fuente de verdad.
+That backup is an opaque, versioned copy of the corpus: not synchronisation, not remote editing
+and not a second source of truth.
 
 ---
 
-## 2. Vista general
+## 2. Overview
 
 ```text
-┌──────────────────── APP WINDOWS — .NET / WINUI ────────────────────┐
-│ captura WASAPI · timeline · medidores · recuperación · búsqueda     │
-│ cola durable · Deepgram BYOK · summaries · edición local            │
+┌──────────────────── WINDOWS APP — .NET / WINUI ────────────────────┐
+│ WASAPI capture · timeline · meters · recovery · search              │
+│ durable queue · Deepgram BYOK · summaries · local editing           │
 └───────────────┬───────────────────────┬──────────────────────────────┘
                 │                       │
                 ▼                       ▼
        ┌─────────────────┐     ┌──────────────────────────────────┐
-       │ SQLITE          │     │ FILESYSTEM LOCAL                 │
-       │ reuniones       │     │ spool y audio                    │
-       │ jobs y estados  │     │ deepgram.json                    │
-       │ turnos          │     │ extraction.json                  │
-       │ summaries       │     │ transcript.md y derivados        │
-       │ decisiones      │     │ snapshots de backup              │
-       │ acciones + FTS5 │     └──────────────────────────────────┘
+       │ SQLITE          │     │ LOCAL FILESYSTEM                 │
+       │ meetings        │     │ spool and audio                  │
+       │ jobs and states │     │ deepgram.json                    │
+       │ turns           │     │ extractions/<id>.json            │
+       │ summaries       │     │ transcript.md and derivatives    │
+       │ decisions       │     └──────────────────────────────────┘
+       │ actions + FTS5  │
        └────────┬────────┘
                 │
                 ▼
        ┌─────────────────┐
-       │ MCP LOCAL .NET  │
+       │ LOCAL MCP .NET  │
        │ stdio/read-only │
        └─────────────────┘
 
-Integraciones explícitas:
+Explicit integrations:
 
 App ──HTTPS──► Deepgram
-App ──proceso local opcional──► Claude Code headless
+App ──optional local process──► Claude Code headless
 ```
 
 ---
 
-## 3. Estructura de la solución .NET
+## 3. Structure of the .NET solution
 
-La UI no contiene reglas de negocio. La solución se divide por responsabilidades:
+The UI holds no business rules. The solution is split by responsibility:
 
 ```text
-MeetingTranscriber.sln
+MeetingTranscriber.slnx
   src/
-    MeetingTranscriber.App/             WinUI, navegación y composición
-    MeetingTranscriber.Domain/          entidades, estados y reglas puras
-    MeetingTranscriber.Audio/           WASAPI, timeline, spool y niveles
-    MeetingTranscriber.Infrastructure/  SQLite, filesystem y credenciales
-    MeetingTranscriber.Presentation/    lo que la aplicación dice y en qué idioma lo dice
-    MeetingTranscriber.Processing/      Deepgram, transcript y summaries
-    MeetingTranscriber.Recording/       grabar una reunión dentro del corpus
-    MeetingTranscriber.Mcp/             servidor MCP local por stdio
-    MeetingTranscriber.Cli/             diagnóstico, reparación y automatización
+    MeetingTranscriber.App/             WinUI, navigation and composition
+    MeetingTranscriber.Domain/          entities, states and pure rules
+    MeetingTranscriber.Audio/           WASAPI, timeline, spool and levels
+    MeetingTranscriber.Infrastructure/  SQLite, filesystem and credentials
+    MeetingTranscriber.Presentation/    what the application says, and in which language
+    MeetingTranscriber.Processing/      Deepgram, transcript and summaries
+    MeetingTranscriber.Recording/       recording a meeting into the corpus
+    MeetingTranscriber.Mcp/             local MCP server over stdio
+    MeetingTranscriber.Cli/             diagnosis, repair and automation
   tests/
-    MeetingTranscriber.Testing/         corpus temporal, SQL y el inventario de fixtures
+    MeetingTranscriber.Testing/         temporary corpus, SQL and the fixture inventory
     MeetingTranscriber.Domain.Tests/
     MeetingTranscriber.Audio.Tests/
     MeetingTranscriber.Infrastructure.Tests/
@@ -170,58 +164,71 @@ MeetingTranscriber.sln
     MeetingTranscriber.Presentation.Tests/
     MeetingTranscriber.App.Tests/
     MeetingTranscriber.Recording.Tests/
+    MeetingTranscriber.Cli.Tests/
+    MeetingTranscriber.Mcp.Tests/
+    MeetingTranscriber.Isa.Tests/
+    MeetingTranscriber.UiProbe.Tests/
+    MeetingTranscriber.FakeClaudeCode/  a stand-in for the Claude Code executable
+  tools/
+    MeetingTranscriber.CorpusFixtures/
+    MeetingTranscriber.Icons/
+    MeetingTranscriber.UiProbe/
 ```
 
-Las dependencias apuntan hacia el dominio. WinUI, SQLite, WASAPI, Deepgram y Claude
-Code son adaptadores reemplazables alrededor de reglas comprobables sin hardware
-ni red.
+`docs/layout.md` says what each project holds and what it may reference.
 
-`MeetingTranscriber.Testing` no contiene tests: es lo que un test abre. Llega hasta
-Infrastructure y no más allá — las pruebas del dominio lo referencian, y un camino
-desde ahí hasta Processing dejaría probar una regla del dominio contra la salida del
-parser en vez de contra una respuesta.
+Dependencies point towards the domain. WinUI, SQLite, WASAPI, Deepgram and Claude Code are
+replaceable adapters around rules that can be checked without hardware or network.
 
-Todo texto que una persona lee vive en `MeetingTranscriber.Presentation` y en ningún otro
-lugar. El catálogo lleva las dos versiones de cada texto en la misma línea, así que un texto
-que exista sólo en un idioma no es algo que se pueda escribir; una pantalla nombra una entrada
-y nunca carga las palabras. Está afuera de `App` por una razón dura, no por gusto: el Windows
-App SDK compila un inicializador de módulo dentro de todo ensamblado que lo referencie, y ese
-inicializador levanta el runtime apenas se toca un tipo del ensamblado — de modo que un
-catálogo que viviera ahí no se podría leer desde ninguna prueba. Por eso también
-`MeetingTranscriber.App.Tests` no referencia a `App`: lo que puede exigirle es su código
-fuente, y lo que le exige es que ninguna pantalla lleve palabras propias.
+`MeetingTranscriber.Testing` contains no tests: it is what a test opens. It reaches as far as
+Infrastructure and no further — the domain's tests reference it, and a path from there to
+Processing would let a domain rule be tested against the parser's output instead of against a
+response.
 
-La CLI comparte los mismos servicios de aplicación que WinUI. No implementa un
-segundo pipeline. Sirve para diagnóstico, importación, rebuild y recuperación,
-además de permitir tests del flujo completo sin automatizar la interfaz gráfica.
+Every text a person reads lives in `MeetingTranscriber.Presentation` and nowhere else. The
+catalogue carries both versions of each text on the same line, so a text that exists in only one
+language is not something that can be written; a screen names an entry and never carries the
+words. It sits outside `App` for a hard reason, not a matter of taste: the Windows App SDK
+compiles a module initializer into every assembly that references it, and that initializer starts
+the runtime as soon as a type of the assembly is touched — so a catalogue living there could not
+be read from any test. For the same reason `MeetingTranscriber.App.Tests` does not reference
+`App`: what it can demand of it is its source code, and what it demands is that no screen carries
+words of its own.
+
+The command line shares the application's services with WinUI. It does not implement a second
+pipeline. It serves diagnosis, import, rebuild and recovery, and it allows tests of the whole flow
+without automating the graphical interface.
 
 ---
 
-## 4. Corpus local
+## 4. The local corpus
 
-### 4.1 Ubicación
+### 4.1 Location
 
-El corpus vive por defecto bajo una carpeta de datos del usuario, configurable
-desde la UI. No vive dentro del directorio de instalación ni en la carpeta de
-datos del paquete MSIX: esa carpeta se borra al desinstalar y el corpus contiene
-artefactos pagados que no se pueden volver a obtener.
+By default the corpus lives in `%USERPROFILE%\MeetingTranscriber` (`ApplicationHome`,
+`CorpusLocation.ApplicationFolderName`) and is configurable from the UI. It never lives inside the
+installation directory or the MSIX package's data folder — `CorpusLocation` refuses application
+data. That folder is wiped on uninstall, and the corpus holds paid artifacts that cannot be
+obtained again.
 
-Cambiar la carpeta desde la UI mueve las reuniones: si la carpeta elegida está vacía, la
-aplicación ofrece moverlas, y nunca mientras se graba, se guarda o hay trabajo en curso. La base
-se copia con la API de backup de SQLite y todos los demás archivos del corpus, menos lo que es
-transitorio por diseño; se abre la copia y se comprueba que cada archivo que la base lista está
-ahí con su hash; sólo entonces se recuerda la carpeta nueva. Si algo falta, no queda nada escrito
-y la carpeta anterior sigue siendo la del corpus. La copia anterior sólo se borra si la persona
-lo pidió, y sólo después de volver a encontrar entera la nueva.
+Changing the folder from the UI moves the meetings (`CorpusMove`): if the chosen folder is empty,
+the application offers to move them, and never while recording, saving or with work in progress.
+The database is copied with SQLite's backup API and so is every other file of the corpus, except
+what is transient by design; the copy is opened and every file the database lists is checked to
+be there, whole, with its hash; only then is the new folder remembered. If anything is missing,
+nothing is left written and the previous folder stays the corpus. The previous copy is deleted
+only if the person asked, and only after finding the new one whole again.
 
 ```text
 MeetingTranscriber/
   corpus.db
+  runner.mark
   meetings/
     <meeting_id>/
       manifest.json
       audio.wav
       deepgram.json
+      deepgram.v<n>.json
       transcript.md
       utterances.jsonl
       extractions/
@@ -230,72 +237,74 @@ MeetingTranscriber/
   spool/
     <meeting_id>/
       manifest.json
-      changes.jsonl        (sólo si alguien movió un canal mientras grababa)
-      pauses.jsonl         (sólo si alguien pausó la grabación)
+      changes.jsonl        (only if somebody moved a channel while recording)
+      pauses.jsonl         (only if somebody paused the recording)
       loopback.blocks
       microphone.blocks
-  backups/
-  logs/
 ```
 
-`manifest.json` no sustituye SQLite. Es una ficha mínima de recuperación que
-permite reconocer de qué reunión es una carpeta si la base está dañada o ausente:
-su id, cuándo empezó, con qué perfil se grabó, en qué idioma y cómo se llama. No
-lista los archivos que tiene al lado — están nombrados por lo que son, y una
-ficha que los repitiera sólo repetiría el listado del directorio.
+`docs/corpus.md` has every file, what it is and what a backup carries.
 
-### 4.2 Fuentes y derivados
+`manifest.json` does not replace SQLite. It is a minimal recovery card that makes it possible to
+recognise which meeting a folder belongs to if the database is damaged or missing: its id, when it
+started, which profile it was recorded with, in which language, and what it is called. It does not
+list the files beside it — they are named for what they are, and a card that repeated them would
+only repeat the directory listing.
 
-Fuentes que no se sobrescriben:
+### 4.2 Sources and derivatives
 
-- bloques originales del spool mientras sean la única copia recuperable;
-- `audio.wav`, si la política local del usuario decide conservarlo;
-- `deepgram.json` recibido de la transcripción pagada;
-- cada extracción aceptada bajo su propio `extraction_id`;
-- clasificación, nombres y correcciones aprobados por una persona;
-- el estado y el responsable de cada acción, que los mueve una persona.
+Sources, which are not overwritten:
 
-Derivados reconstruibles:
+- the spool's original blocks while they are the only recoverable copy;
+- `audio.wav`, if the user's local policy decides to keep it;
+- the `deepgram.json` received from the paid transcription;
+- each accepted extraction under its own `extraction_id`;
+- classification, names and corrections approved by a person;
+- the state and owner of each action, which a person moves.
+
+Rebuildable derivatives:
 
 - `transcript.md`;
 - `utterances.jsonl`;
 - `summary.md`;
-- tablas de utterances, summaries, decisiones, acciones y preguntas abiertas;
-- índices FTS5.
+- the tables of utterances, summaries, decisions, actions and open questions;
+- the FTS5 indexes.
 
-Una fila reconstruida vuelve tal como la propuso la extracción. Lo que una persona
-le anota no está en esa fila: el estado y el responsable de una acción viven en
-`action_item_progress`, apuntados a la extracción y a la posición dentro de ella, y
-no al id, que la reproyección vuelve a generar. Esa es la regla de toda fila
-proyectada que alguien puede anotar —decisión, acción y pregunta abierta llevan la
-posición por eso— y la base rechaza dos decisiones, dos acciones o dos preguntas en
-una misma posición de una misma corrida: dos no serían un error visible, serían una
-nota que se lee contra cualquiera de las dos. La posición cuenta dentro de su propia
-lista, así que la primera decisión y la primera acción de una extracción están las
-dos en la posición cero y lo que las distingue es de qué lista salieron.
+A rebuilt row comes back as the extraction proposed it. What a person annotates on it is not in
+that row: the state and owner of an action live in `action_item_progress`, pointing at the
+extraction and the position inside it, and not at the id, which reprojection generates again. That
+is the rule for every projected row somebody can annotate — decision, action and open question
+carry the position for that reason — and the database rejects two decisions, two actions or two
+open questions at the same position of the same run: two would not be a visible error, they would
+be a note read against either. The position counts within its own list, so the first decision and
+the first action of an extraction are both at position zero, and what tells them apart is which
+list they came from.
 
-Un rerender nunca modifica `deepgram.json` ni una extracción anterior. Una nueva
-extracción crea una versión nueva y conserva la anterior.
+A rerender never modifies `deepgram.json` or an earlier extraction. A new extraction creates a new
+version and keeps the previous one.
 
-### 4.3 Escrituras durables
+A person may delete a meeting's audio, its transcript or the meeting, and `docs/corpus.md`
+§Deleting and archiving says what each takes.
 
-Los artefactos importantes se escriben así:
+### 4.3 Durable writes
 
-1. escribir un fichero temporal en el mismo volumen;
-2. vaciar buffers y cerrar;
-3. calcular tamaño y SHA-256;
-4. validar que el contenido puede releerse;
-5. reemplazar atómicamente el destino;
-6. registrar el artefacto confirmado en una transacción SQLite.
+Important artifacts are written like this (`DurableArtifact`):
 
-Al iniciar, un reconciliador examina temporales, spools y ficheros sin fila de
-base de datos. Nunca interpreta la mera existencia de un temporal como éxito.
+1. write a temporary file on the same volume;
+2. flush buffers and close;
+3. compute size and SHA-256;
+4. validate that the content can be read back;
+5. atomically replace the destination;
+6. register the confirmed artifact in a SQLite transaction.
+
+At start a reconciler examines temporaries, spools and files with no database row. It never
+interprets the mere existence of a temporary as success.
 
 ---
 
-## 5. Modelo SQLite
+## 5. The SQLite model
 
-### 5.1 Tablas iniciales
+### 5.1 Tables
 
 ```text
 schema_migrations
@@ -328,12 +337,15 @@ settings
 audit_events
 ```
 
-FTS5 indexa summaries y transcript proyectado. La búsqueda semántica y los
-embeddings quedan fuera de las primeras versiones.
+`schema_migrations` is EF's history table, named by `CorpusDatabase.MigrationsHistoryTable`.
 
-### 5.2 Reunión
+FTS5 has eight external-content indexes (`CorpusIntegrity.SearchIndexes`): utterances, summaries,
+meetings, nodes, people, decisions, action items and open questions. `utterances_fts_terms` is an
+`fts5vocab` table over the first. Semantic search and embeddings stay out.
 
-Campos principales:
+### 5.2 Meeting
+
+Main fields:
 
 ```text
 id UUID/TEXT PRIMARY KEY
@@ -347,119 +359,120 @@ lifecycle_state TEXT
 created_at TEXT
 updated_at TEXT
 deleted_at TEXT NULL
+archived_at TEXT NULL
+audio_removed_at TEXT NULL
 ```
 
-`lifecycle_state` describe solamente si la reunión está activa, eliminándose o
-eliminada. No intenta resumir todos los procesos.
+`lifecycle_state` says only whether the meeting is active, being deleted or deleted — `active`,
+`deleting` or `deleted` under a CHECK — and `deleted_at` is set exactly when it is not `active`.
+It does not try to summarise every process. Archiving is a column, not a state: a meeting that is
+put away is still an active one, and `docs/corpus.md` says why.
 
-La reunión no cuelga de un proyecto: se relaciona con nodos de `nodes`, y cada
-vínculo dice de qué manera. Una reunión sobre dos proyectos son dos vínculos
-`work_of`; una con un cliente suma un `counterpart` a la organización del otro
-lado; una que ocurrió antes de que existiera el proyecto cuelga directamente de
-la organización. El árbol llega hasta tres niveles: es una clasificación que
-alguien tiene en la cabeza, no un árbol de carpetas, y con el tope todo lo que
-cuelga de un nodo está a dos joins.
+A meeting does not hang from a project: it relates to nodes of `nodes`, and each link says in what
+way. A meeting about two projects is two `work_of` links; one with a client adds a `counterpart`
+to the organisation on the other side; one that happened before the project existed hangs
+directly from the organisation. The tree is at most three levels deep: it is a classification
+somebody holds in their head, not a folder tree, and with the cap everything under a node is two
+joins away.
 
-### 5.3 Clasificación de una reunión
+### 5.3 Classifying a meeting
 
-El vocabulario está cerrado. Son valores guardados con CHECK, no etiquetas de una
-interfaz, así que cambiar cualquiera de estos nombres es otra migración.
+The vocabulary is closed. These are values stored under a CHECK, not labels of an interface, so
+renaming any of them is another migration.
 
-Clases de nodo — qué es:
+Node classes — what it is:
 
-| Clase | Qué nombra |
+| Class | What it names |
 | --- | --- |
-| `organization` | Una organización de cualquier tipo: un cliente, una facultad, la que organiza una conferencia. Deliberadamente no `company` — llamarlas empresas hacía que el nombre mintiera. |
-| `initiative` | Un cuerpo de trabajo que dura: un proyecto, una materia, una línea de soporte. |
-| `topic` | Un asunto concreto: un incidente, un ticket, una renegociación. Nunca es raíz. |
+| `organization` | An organisation of any kind: a client, a faculty, the one that runs a conference. Deliberately not `company` — calling them companies made the name lie. |
+| `initiative` | A body of work that lasts: a project, a course, a line of support. |
+| `topic` | A concrete matter: an incident, a ticket, a renegotiation. Never a root. |
 
-Papeles del vínculo — cómo se relaciona la reunión con ese nodo:
+Link roles — how the meeting relates to that node:
 
-| Papel | Qué dice |
+| Role | What it says |
 | --- | --- |
-| `work_of` | La reunión es trabajo de ese nodo. Lo que antes era el proyecto. |
-| `counterpart` | El otro lado de la mesa: un cliente, la empresa que entrevista, un socio. |
-| `about` | De qué trata, sin ser trabajo de eso. |
+| `work_of` | The meeting is work of that node. What used to be the project. |
+| `counterpart` | The other side of the table: a client, the company interviewing, a partner. |
+| `about` | What it is about, without being work of it. |
 
-Y en las personas que la reunión nombra, en `meeting_people`: `attended`, y
-`subject` cuando la reunión es sobre esa persona. Los dos a la vez son dos filas,
-porque el 1:1 de alguien es una reunión a la que asistió y de la que es el sujeto,
-y una desvinculación se habla antes de que la persona esté en la sala.
+And on the people a meeting names, in `meeting_people`: `attended`, and `subject` when the meeting
+is about that person. Both at once are two rows, because somebody's 1:1 is a meeting they attended
+and are the subject of, and a termination is discussed before the person is in the room.
 
-Las personas no son nodos. Dónde están es `affiliations`: tantas como tengan —un
-contractor está en dos clientes a la vez— y cada una con desde y hasta, porque una
-reunión se lee años después y sin período contratar al candidato que entrevistaste
-reescribe la entrevista en una reunión con un empleado propio. Los dos extremos son
-abiertos y no desconocidos: sin desde es "hasta donde este corpus llega", sin hasta
-es "sigue ahí".
+People are not nodes. Where they belong is `affiliations`: as many as they have —a contractor is at
+two clients at once— and each with a from and an until, because a meeting is read years later and
+without a period, hiring the candidate you interviewed rewrites the interview into a meeting with
+one of your own employees. Both ends are open and not unknown: no from means "as far back as this
+corpus reaches", no until means "still there".
 
-Un template es una clasificación que alguien llenó a mano y guardó con un nombre para volver a
-usarla: qué nodos vincula y con qué papel, en `template_nodes`, y a quién nombra y cómo, en
-`template_people`, con los mismos nombres cerrados y los mismos CHECK que `meeting_nodes` y
-`meeting_people`. Sólo pre-llena: elegirlo suma lo que guardó a lo que la reunión ya tiene, no
-puede expresar lo que los constraints prohíben, y ninguna reunión guarda qué template la llenó,
-así que cambiarlo o descartarlo no toca ninguna reunión ya clasificada. Las trece de abajo no
-son templates guardados: son lo que el código abre al elegir cada una, y cada chip nombra sus
-lugares con las palabras de esa reunión (*Universidad › Materia*, *Profesor*) sin cambiar lo que
-se guarda.
+A template is a classification somebody filled in by hand and saved under a name to use again:
+which nodes it links and with which role, in `template_nodes`, and whom it names and how, in
+`template_people`, with the same closed names and the same CHECKs as `meeting_nodes` and
+`meeting_people`. A template only ever pre-fills: choosing one adds what it holds to what the
+meeting already has, it cannot express what the constraints forbid, and no meeting records which
+template filled it, so changing or discarding one touches no meeting already classified. A
+template is put by with *Recordar*. The thirteen below are not templates: choosing one opens
+places named in that meeting's own words and answers none of them, and each chip names its places
+with the words of that meeting (*Universidad › Materia*, *Profesor*) without changing what is
+stored.
 
-#### Las trece reuniones contra las que se cerró
+#### The thirteen meetings the vocabulary was closed against
 
-Cada una se guarda sin inventar filas, y se encuentra por organización, por
-iniciativa o por persona. `ClassificationStoriesTests` son las trece en un corpus.
+Each is stored without inventing rows, and found by organisation, by initiative or by person.
+`ClassificationStoriesTests` is the thirteen in one corpus.
 
-| # | Reunión | Cómo se guarda |
+| # | Meeting | How it is stored |
 | --- | --- | --- |
-| 1 | Clase de facultad | `work_of` la materia. La facultad se alcanza por el árbol, sin que nada la nombre. |
-| 2 | Junta casual | Sin vínculos. Aparece en el listado de sin clasificar y en la búsqueda por texto. |
-| 3 | Entrevista, yo candidato | `counterpart` la empresa. No hay proyecto y no hace falta inventarlo. |
-| 4 | Entrevista, yo entrevistando | `work_of` mi organización; el candidato con la afiliación de entonces, que contratarlo no pisa. |
-| 5 | Dos proyectos | Dos `work_of`. |
-| 6 | Vendedor con cliente | `work_of` la iniciativa y `counterpart` el cliente. |
-| 7 | PM con su equipo | `work_of` la iniciativa; cada contractor con sus afiliaciones abiertas. |
-| 8 | Conferencia | `about` la conferencia. Doscientos asistentes que no se cargan, y ninguna fila que finja que sí. |
-| 9 | Reunión entre dos empresas | Dos `counterpart`, y ningún vínculo que invente un dueño. |
-| 10 | RRHH desvinculando | `work_of` mi organización; la persona como `subject`, haya estado o no. |
-| 11 | 1:1 recurrente | `work_of` la organización, sin proyecto; la persona `attended` y `subject`. |
-| 12 | Daily | `work_of` la iniciativa. |
-| 13 | Soporte post-venta | `work_of` el ticket, que es un `topic`, y `counterpart` el cliente. |
+| 1 | University class | `work_of` the course. The faculty is reached through the tree, with nothing naming it. |
+| 2 | Casual chat | No links. It shows in the unclassified list and in text search. |
+| 3 | Interview, me as candidate | `counterpart` the company. There is no project and none needs inventing. |
+| 4 | Interview, me interviewing | `work_of` my organisation; the candidate with the affiliation of then, which hiring them does not overwrite. |
+| 5 | Two projects | Two `work_of`. |
+| 6 | Salesperson with a client | `work_of` the initiative and `counterpart` the client. |
+| 7 | PM with their team | `work_of` the initiative; each contractor with their open affiliations. |
+| 8 | Conference | `about` the conference. Two hundred attendees who are not entered, and no row pretending they are. |
+| 9 | Meeting between two companies | Two `counterpart`, and no link inventing an owner. |
+| 10 | HR terminating | `work_of` my organisation; the person as `subject`, whether or not they were there. |
+| 11 | Recurring 1:1 | `work_of` the organisation, no project; the person `attended` and `subject`. |
+| 12 | Daily | `work_of` the initiative. |
+| 13 | After-sales support | `work_of` the ticket, which is a `topic`, and `counterpart` the client. |
 
-Dos cosas quedan afuera a propósito, y ninguna es clasificación: la serie que
-relaciona las doscientas dailies del mismo equipo entre sí, y la política de
-retención propia de una reunión sensible.
+Two things stay out on purpose, and neither is classification: the series that relates the two
+hundred dailies of the same team to each other, and the retention policy of a sensitive meeting.
 
-#### Los cruces
+#### The crossings
 
-Las trece cerraron el vocabulario y siguen siendo trece: los dos de acá se
-numeran aparte justamente por eso. Lo que ninguna de ellas trae es el cruce:
-alguien con un trabajo, un segundo trabajo y una carrera, en una reunión que es
-trabajo de uno de los trabajos y trata de algo de la carrera. Se lee absurdo
-hasta que pasa. `CrossedStoriesTests` son estas dos en el mismo corpus que las
-trece.
+The thirteen closed the vocabulary and remain thirteen: the two here are numbered apart for
+exactly that reason. What none of them brings is the crossing: somebody with a job, a second job
+and a degree, in a meeting that is work of one of the jobs and is about something of the degree.
+It reads as absurd until it happens. `CrossedStoriesTests` is these two in the same corpus as the
+thirteen.
 
-| # | Reunión | Cómo se guarda |
+| # | Meeting | How it is stored |
 | --- | --- | --- |
-| Cruce 1 | Reunión de trabajo que toca la tesis | `work_of` la iniciativa del trabajo y `about` la maestría, que es una iniciativa de la facultad. Tres afiliaciones abiertas en la persona, una de ellas la facultad. |
-| Cruce 2 | Reunión con el cliente donde también trabajo | `work_of` la iniciativa de un empleador y `counterpart` el otro. Las dos afiliaciones abiertas siguen abiertas y ninguna de las dos aparece en la reunión. |
+| Crossing 1 | Work meeting that touches the thesis | `work_of` the job's initiative and `about` the master's, which is an initiative of the faculty. Three open affiliations on the person, one of them the faculty. |
+| Crossing 2 | Meeting with the client where I also work | `work_of` the initiative of one employer and `counterpart` the other. The two open affiliations stay open and neither shows on the meeting. |
 
-**Dónde estaba parada la persona no se guarda, y es deliberado.** Una afiliación
-dice dónde pertenece alguien y durante qué período; un vínculo dice cómo se
-relaciona la reunión con un nodo. Cruzar los dos —decir que Sam estuvo *como*
-Orchard— sería afirmar algo que nadie registró, y una reunión leída dos años
-después diría que fue con la empresa equivocada. Cuando alguien necesite esa
-respuesta, es una columna nueva en `meeting_people` con una decisión detrás, y el
-test que hoy fija las cuatro columnas de esa tabla es lo que la va a hacer
-visible.
+**Where the person was standing is not stored, and that is deliberate.** An affiliation says where
+somebody belongs and during which period; a link says how the meeting relates to a node. Crossing
+the two — saying Sam was there *as* Orchard — would assert something nobody recorded, and a
+meeting read two years later would say it was with the wrong company. When somebody needs that
+answer, it is a new column on `meeting_people` with a decision behind it, and the test that today
+pins the four columns of that table (`ClassificationStoriesTests` reads
+`pragma_table_info('meeting_people')`) is what will make it visible.
 
-Que la facultad sea una `organization` no es una casualidad que aprovechamos: es
-para lo que se eligió esa palabra en lugar de `company`, y el CHECK sobre
-`affiliations.organization_kind` es lo que hace que una carrera se guarde igual
-que un empleo sin inventar un tipo nuevo.
+That the faculty is an `organization` is not a coincidence we took advantage of: it is what that
+word was chosen for instead of `company`, and the CHECK on `affiliations.organization_kind` is
+what makes a degree stored the same way as a job without inventing a new type.
 
-### 5.4 Jobs y estados independientes
+### 5.4 Independent jobs and states
 
-Captura, finalización, transcripción, extracción, renderizado y backup son jobs
-separados. Cada job contiene:
+Capture, finishing, transcription, extraction, rendering and backup are separate jobs. The kinds
+`processing_jobs.kind` allows are `backup`, `capture`, `extract`, `finalize`, `render` and
+`transcribe`; the runner runs `transcribe` and `extract` only — capture and finishing happen
+inside the recording, rendering is a step of filing and a launch chore, and backup is not built.
+Each job contains:
 
 ```text
 id
@@ -473,9 +486,11 @@ started_at
 finished_at
 last_error
 next_attempt_at
+awaiting_reason
+failure
 ```
 
-Estados comunes:
+Common states:
 
 ```text
 pending
@@ -487,10 +502,10 @@ failed_permanent
 cancelled
 ```
 
-Esto permite que una reunión esté transcrita aunque su summary haya fallado, o
-que pueda consultarse mientras un backup está pendiente.
+This allows a meeting to be transcribed even though its summary failed, or to be queried while a
+backup is pending.
 
-Transiciones válidas, y no hay otras:
+Valid transitions, and there are no others (`JobStates`):
 
 ```mermaid
 stateDiagram-v2
@@ -516,287 +531,290 @@ stateDiagram-v2
     cancelled --> [*]
 ```
 
-El runner arranca por su cuenta los jobs en `pending` y `failed_retryable`, y
-sólo cuando llegó su `next_attempt_at`. `awaiting_user` queda deliberadamente
-fuera de esa lista y sin fecha de reintento: es donde para lo que la aplicación
-no decide sola —un coste a aprobar, un intento cuyo resultado no puede
-establecer— y de ahí sale únicamente porque una persona lo movió. La excepción
-es `awaiting_user → succeeded`, que es el reinicio encontrando en disco la
-respuesta ya pagada: resolver el job con lo que ya se cobró no es reintentarlo.
+The runner starts by itself the jobs in `pending` and `failed_retryable`, and only once their
+`next_attempt_at` has arrived. `awaiting_user` is deliberately outside that list and has no retry
+date: it is where what the application does not decide alone stops —a cost to approve, an attempt
+whose result cannot be established— and it leaves only because a person moved it. The exception
+is `awaiting_user → succeeded`, which is a restart finding the already paid response on disk:
+resolving the job with what was already charged is not retrying it. `Requeue` is the one move a
+person makes on a job that already ran.
 
-`succeeded`, `failed_permanent` y `cancelled` son terminales. Volver a intentar
-ese trabajo es un job nuevo con su propia `idempotency_key`, no éste revivido.
+`succeeded`, `failed_permanent` and `cancelled` are terminal. Trying that work again is a new job
+with its own `idempotency_key`, not this one revived.
 
-### 5.5 Configuración de SQLite
+### 5.5 SQLite configuration
 
-- foreign keys activadas;
-- WAL para permitir lecturas mientras la aplicación escribe;
-- `busy_timeout` definido;
-- migraciones hacia delante y versionadas;
-- una sola capa responsable de abrir conexiones y transacciones;
-- integrity check periódico y antes de crear un backup;
-- timestamps UTC y duraciones enteras en milisegundos.
+- foreign keys on;
+- WAL, so reads are possible while the application writes;
+- `busy_timeout` of 5 seconds;
+- forward-only, versioned migrations;
+- a single layer responsible for opening connections and transactions;
+- an integrity check, which the `check` command runs (`CorpusIntegrity.Check`);
+- UTC timestamps and whole-millisecond durations.
 
-La base puede reconstruir sus proyecciones desde artefactos, pero la capa humana
-también debe formar parte de cada backup porque no es inferible.
+**Not built yet.** Running the integrity check before a backup is made (§9).
+
+The database can rebuild its projections from artifacts, but the human layer must also be part of
+every backup because it cannot be inferred.
 
 ---
 
-## 6. Flujo completo de una reunión
+## 6. The whole flow of a meeting
 
-### 6.1 Identidad antes del audio
+### 6.1 Identity before audio
 
-Al pulsar grabar se crea un `meeting_id` UUID, una fila SQLite, un directorio de
-spool y un manifiesto mínimo.
+Pressing record creates a `meeting_id` UUID, a SQLite row, a spool directory and a minimal card.
 
-El manifiesto contiene:
+The card (`SpoolManifest`) holds:
 
 ```text
-meeting_id
-capture_run_id
+meeting
+capture_run
 started_at
 source_profile
 others_capture_mode
-qué oyó cada canal, con el id del dispositivo cuando hay uno
+sources: for each channel, channel, heard, and device when there is one
 ```
 
-El canal 0 nunca lleva id de dispositivo, porque ninguna de sus dos formas es un dispositivo: el
-que dice cuál de las dos fue es `others_capture_mode`. Se dedujo del id ausente mientras el
-loopback completo era un endpoint; desde que no lo es, la ausencia dice lo mismo de las dos.
+Channel 0 never carries a device id, because neither of its two forms is a device: what says
+which of the two it was is `others_capture_mode`.
 
-Se escribe una vez y no se vuelve a tocar. Todo lo que cambia mientras se graba
-—hasta dónde llegó cada fuente, qué se pudo recuperar— vive en los bloques, que
-es donde una escritura cortada cuesta un paquete; un manifiesto reescrito a cada
-bloque sería exactamente la escritura torcida que el spool existe para evitar. No
-lista los archivos que tiene al lado ni sus formatos: están nombrados por la
-fuente que llevan y cada uno declara el suyo.
+It is written once and not touched again. Everything that changes while recording —how far each
+source got, what could be recovered— lives in the blocks, which is where a cut write costs one
+packet; a card rewritten at every block would be exactly the twisted write the spool exists to
+avoid. It does not list the files beside it or their formats: they are named for the source they
+carry and each declares its own.
 
-Lo que cambia con la reunión en curso —el canal 0 movido a toda la máquina o a otro
-programa, con el modo al que pasó, un micrófono elegido o seguido cuando Windows lo
-quitó— va en `changes.jsonl`, al lado de la ficha: una línea por cambio, escrita
-entera de una vez y nunca reescrita, diciendo cuándo fue, qué escucha desde ahí y
-qué escuchaba antes. La ficha dice con qué abrió cada canal y
-esto dice con qué terminó, de modo que una carpeta recuperada tras un cierre
-abrupto no afirma que las notificaciones de la máquina quedaron fuera del archivo
-cuando entraron a mitad de la reunión. Lo único que un cambio puede borrar es la
-cola sin terminar que dejó el cambio anterior al fallar: se escribe antes del
-relevo, así que una escritura que falla es un movimiento que no ocurrió, y lo que
-alcanzó a caer no cuenta nada. Se descarta antes de escribir encima, de modo que
-dos escrituras nunca se peguen en una sola línea completa e ilegible.
+What changes while the meeting goes on —channel 0 moved to the whole machine or to another
+program, with the mode it moved to, a microphone chosen or followed when Windows took one away—
+goes in `changes.jsonl`, beside the card: one line per change, written whole at once and never
+rewritten, saying when it was, what it listens to from there and what it listened to before. The
+card says what each channel opened with and this says what it ended with, so a folder recovered
+after an abrupt close does not claim that the machine's notifications stayed out of the file when
+they came in halfway through the meeting. The only thing a change may erase is the unfinished tail
+left by the previous change failing: it is written before the handover, so a write that fails is a
+move that did not happen, and what managed to fall says nothing. It is discarded before writing
+over it, so two writes never stick together into one complete, unreadable line.
 
-La identidad no depende del título, el nombre de un archivo ni la conexión a un
-proveedor.
+Identity does not depend on the title, a file name or a connection to a provider.
 
-### 6.2 Captura
+### 6.2 Capture
 
-Se abren dos flujos:
+Two streams are opened:
 
-- **loopback:** audio del proceso seleccionado, o todo lo que reproduce la máquina;
-- **micrófono:** micrófono seleccionado.
+- **loopback:** the audio of the selected process, or everything the machine plays;
+- **microphone:** the selected microphone.
 
-El contrato de canales es estable:
+The channel contract is stable:
 
 ```text
-canal 0 = loopback
-canal 1 = micrófono
+channel 0 = loopback
+channel 1 = microphone
 ```
 
-Los dos nombran un origen de audio y no una persona. Un canal es determinista
-sobre por qué dispositivo entró el sonido, y no dice cuánta gente habló por él:
-dos personas en la misma sala comparten un micrófono.
+Both name a source of audio and not a person. A channel is deterministic about which device the
+sound came in through, and does not say how many people spoke through it: two people in the same
+room share a microphone.
 
-Las dos formas del canal 0 son la misma llamada: `ActivateAudioInterfaceAsync`
-con process loopback, incluyendo el árbol del proceso elegido, o excluyendo el
-árbol de la propia aplicación —que es todo lo demás en la máquina—. Ninguna de
-las dos abre un dispositivo. Teams, Zoom, navegadores y aplicaciones WebView se
-prueban individualmente porque el audio puede salir de procesos auxiliares o
-compartidos.
+The two forms of channel 0 are the same call: `ActivateAudioInterfaceAsync` with process
+loopback, including the tree of the chosen process, or excluding the tree of the application
+itself — which is everything else on the machine. Neither opens a device. Edge and Firefox work,
+Teams opens and is unproven, and Zoom has not been probed: `docs/process-capture.md` says what ran
+and what did not, because the audio may come from helper or shared processes.
 
-El canal 0 no es el audio de una salida: es lo que reproduce esta máquina, salga
-por donde salga, de modo que con parlantes y auriculares a la vez entran los dos.
-No se graba el endpoint de reproducción con un loopback porque un endpoint no
-entrega nada mientras nada suene por él —ni silencio, ni paquetes— y mantenerlo
-despierto obligaba a que grabar dependiera de poder abrir una reproducción. Del
-endpoint por defecto se sigue leyendo el formato, que es lo único que el
-dispositivo virtual no dice: preguntarle no es reproducir por él.
-`docs/process-capture.md` tiene lo medido y lo que no lo está.
+Channel 0 is not the audio of one output: it is what this machine plays, wherever it goes out, so
+with speakers and headphones at once both come in. The playback endpoint is not recorded with a
+loopback because an endpoint delivers nothing while nothing sounds through it —neither silence nor
+packets— and keeping it awake made recording depend on being able to open a playback. The format
+is still read from the default endpoint, which is the one thing the virtual device does not say:
+asking it is not playing through it. `docs/process-capture.md` has what was measured and what was
+not.
 
-Si el proceso seleccionado no produce audio, la UI ofrece loopback completo y
-advierte que puede incluir notificaciones y otras aplicaciones. Ofrece: nada mueve
-el canal 0 solo. Aceptarlo mueve el canal con la reunión en curso — la misma
-grabación, el mismo spool, los paquetes colocados donde dejaron los anteriores— y
-el cambio queda escrito al lado de la ficha.
+If the selected process produces no audio, the UI offers the whole-machine loopback and warns that
+it may include notifications and other applications. It offers: nothing moves channel 0 alone.
+Accepting moves the channel with the meeting in progress — the same recording, the same spool, the
+packets placed where the previous ones left off — and the change is written beside the card. A
+followed program that goes away mid-meeting is said on the screen, with the same two presses as
+nothing arriving.
 
-Si la API no está disponible o Windows rechaza seguir el proceso, la grabación no
-empieza y se dice por qué. Abrir el loopback completo en su lugar produciría un
-archivo con todas las notificaciones y todas las demás aplicaciones a partir de
-una pulsación que pedía un programa, y eso no se decide por nadie.
+If the API is not available or Windows refuses to follow the process, the recording does not start
+and says why. Opening the whole-machine loopback instead would produce a file with all the
+notifications and every other application from a press that asked for one program, and that is not
+decided on anybody's behalf.
 
-Un proceso que no se puede seguir no falla: Windows acepta cualquier PID y
-entrega un flujo silencioso. Lo que detecta un proceso equivocado es el medidor,
-nunca un error, y por eso el nivel de canal 0 es parte de la pantalla de
-grabación y no un detalle de diagnóstico. La regla es una sola: el canal 0 sigue
-un programa, no ha oído nada desde que abrió, y han pasado diez segundos.
+A process that cannot be followed does not fail: Windows accepts any PID and delivers a silent
+stream. What detects a wrong process is the meter, never an error, which is why channel 0's level
+is part of the recording screen and not a diagnostic detail. The rule is a single one: channel 0
+follows a program, has heard nothing since it opened, and ten seconds have passed.
 
-La aplicación declara y comprueba su versión mínima de Windows en instalación y
-al iniciar; no espera a que la grabación falle para descubrir una API ausente.
+The minimum Windows: the package declares build 22000 (`Package.appxmanifest`), and process
+loopback's own floor, build 20348, is checked before a recording opens
+(`ProcessLoopback.IsAvailable`); the application does not wait for a recording to fail to find an
+absent API.
 
-### 6.3 Timeline común
+### 6.3 Common timeline
 
-Micrófono y loopback pueden pertenecer a relojes físicos distintos. Acumular sus
-muestras de forma independiente produce deriva.
+Microphone and loopback may belong to different physical clocks. Accumulating their samples
+independently produces drift.
 
-El motor de audio:
+The audio engine:
 
-1. conserva posición de dispositivo y timestamp QPC de cada paquete WASAPI;
-2. correlaciona ambos flujos con una timeline monotónica;
-3. conserva silencios y discontinuidades como huecos reales, salvo una pausa: el spool sigue
-   recibiendo bloques mientras está en pausa, y `pauses.jsonl` dice, en el reloj de los propios
-   paquetes, qué tramos fueron pausa, de modo que `audio.wav` los deja fuera al materializarse y
-   la reunión dura lo que se grabó;
-4. convierte cada fuente a un formato interno conocido;
-5. corrige deriva gradualmente durante el remuestreo;
-6. materializa WAV estéreo a 16 kHz sin cambiar el orden lógico de canales.
+1. keeps the device position and the QPC timestamp of every WASAPI packet;
+2. correlates both streams on a monotonic timeline;
+3. keeps silences and discontinuities as real gaps, except for a pause: the spool keeps receiving
+   blocks while paused, and `pauses.jsonl` says, in the clock of the packets themselves, which
+   stretches were pause, so `audio.wav` leaves them out when it is materialised and the meeting
+   lasts what was recorded;
+4. converts each source to a known internal format;
+5. corrects drift gradually during resampling;
+6. materialises stereo WAV at 16 kHz without changing the logical order of channels.
 
-La timeline es un componente independiente de WinUI y WASAPI. Puede recibir
-paquetes sintéticos para probar deriva, huecos, reinicios y desorden.
+The timeline is a component independent of WinUI and WASAPI. It can receive synthetic packets to
+test drift, gaps, restarts and disorder.
 
-El criterio inicial de aceptación es menos de 50 ms de divergencia acumulada
-después de dos horas, medido con señales conocidas. Se informa por separado la
-latencia constante de entrada/salida y la deriva acumulada.
+The acceptance criterion is under 50 ms of accumulated divergence after two hours, measured with
+known signals (`TimelineDriftTests`, ISC-66). Constant input/output latency and accumulated drift
+are reported separately.
 
-### 6.4 Spool recuperable
+### 6.4 Recoverable spool
 
-Durante la grabación se escriben bloques independientes por fuente junto con sus
-timestamps. Un bloque incompleto puede descartarse sin perder los anteriores. No
-se depende de cerrar correctamente un WAV para conservar la reunión: la longitud
-de un WAV vive en una cabecera que se escribe al cerrarlo, así que una grabación
-sólo sería legible en el momento exacto que un cierre abrupto se lleva.
+While recording, independent blocks are written per source along with their timestamps. An
+incomplete block can be discarded without losing the earlier ones. Keeping the meeting does not
+depend on closing a WAV properly: a WAV's length lives in a header written on closing, so a
+recording would be readable only at the exact moment an abrupt close takes away.
 
-Cada bloque lleva lo mismo que el paquete que lo originó — la posición de frames
-del dispositivo, el instante en que la leyó y si el dispositivo la avala — porque
-eso es lo que ubica el audio, y un spool que sólo guardara muestras volvería como
-una grabación con todos los huecos cerrados. Cada archivo declara su propio
-formato en su cabecera: un archivo alcanza para leer una fuente, y no hay una
-segunda ruta por la que perderla.
+Each block carries the same as the packet that produced it — the device's frame position, the
+instant it read it and whether the device vouches for it — because that is what places the audio,
+and a spool that only kept samples would come back as a recording with every gap closed. Each file
+declares its own format in its header: one file is enough to read a source, and there is no second
+route through which to lose it.
 
-Un bloque llega al disco en una sola escritura, de modo que un proceso muerto
-deja bloques enteros y no medio bloque. Lo que un corte de luz sí puede dejar —
-una cola que enmarca bien y no es audio — lo detecta el checksum de cada bloque.
+A block reaches the disk in a single write, so a dead process leaves whole blocks and not half a
+block. What a power cut can leave — a tail that frames correctly and is not audio — is detected by
+each block's checksum.
 
-Al detener:
+On stopping:
 
-1. se cierran y verifican los streams;
-2. se reconstruye la timeline;
-3. se genera `audio.wav` en un temporal;
-4. se verifican duración, canales, niveles y legibilidad;
-5. se calcula el hash;
-6. se registra el artefacto;
-7. solo entonces se elimina el spool redundante.
+1. the streams are closed and verified;
+2. the timeline is rebuilt;
+3. `audio.wav` is generated as a temporary;
+4. duration, channels, levels and readability are verified;
+5. the hash is computed;
+6. the artifact is registered;
+7. only then is the redundant spool removed.
 
-Si la aplicación termina abruptamente, el siguiente inicio ofrece recuperar,
-exportar o descartar explícitamente la grabación. Nunca la descarta en silencio.
+If the application ends abruptly, the next start offers *Conservar* and *Descartar* on the
+meetings list for the recording, explicitly. It never discards it silently. Exporting a waiting
+recording is the command line's (`recovery --export`, `recover --export`).
 
-El inicio lee la ficha y el tamaño de cada spool, y nunca los bloques: dos horas
-son cientos de megabytes por fuente, y una lista que los recorriera sería una que
-nadie espera. Leer una grabación entera es lo que hace conservarla o exportarla,
-sobre una sola, porque alguien lo pidió. Descartar es lo único en el producto que
-borra una grabación, y sólo se llega desde esa decisión sobre esa grabación.
+Start reads each spool's card and size, and never the blocks: two hours are hundreds of megabytes
+per source, and a list that walked them would be one nobody waits for. Reading a whole recording is
+what keeping or exporting does, on a single one, because somebody asked. Discarding is the only
+thing in the product that deletes a recording, and it is reached only from that decision on that
+recording.
 
-Nada saca una carpeta de la lista. Una sin ficha sigue siendo una grabación
-—cada archivo declara su formato—, y una cuya ficha quedó partida al medio se
-ofrece diciendo por qué no puede nombrarse: que una carpeta dañada tirara abajo
-la lista sería el cierre abrupto ganando dos veces. Lo que sí se dice aparte es
-la que todavía se está grabando, porque las tres decisiones la rechazan: dos
-leerían un archivo que sigue creciendo y la tercera tiraría una reunión que
-está pasando.
+Nothing takes a folder off the list. One with no card is still a recording —each file declares its
+format—, and one whose card was split in half is offered saying why it cannot be named: a damaged
+folder bringing the list down would be the abrupt close winning twice. What is said apart is the
+one still being recorded, because the three decisions refuse it: two would read a file that is
+still growing and the third would throw away a meeting that is happening.
 
-Mientras nada convierta un spool en reunión, una grabación que alguien paró y
-una que la máquina cortó son la misma carpeta. Se ofrecen las dos: afirmar una
-diferencia que el disco no registra sería inventarla.
+While nothing turns a spool into a meeting, a recording somebody stopped and one the machine cut
+off are the same folder. Both are offered: asserting a difference the disk does not record would be
+inventing it.
 
-### 6.5 Puertas de coste
+### 6.5 Cost gates
 
-Antes de llamar a Deepgram:
+Before calling Deepgram:
 
-- el WAV es legible;
-- la duración es coherente con el spool;
-- existe audio suficiente en los canales esperados;
-- el perfil de fuente coincide con el número de canales;
-- el idioma está configurado;
-- se muestran los minutos que se enviarían, estimados a partir de lo que se envía, y se solicita aprobación;
-- no existe un `deepgram.json` confirmado para esa versión del audio;
-- el SHA-256 del audio coincide con el de la ejecución aprobada.
+- the meeting's audio is in the corpus with its hash and is on disk (`TranscribingAMeeting`:
+  nothing is sent otherwise);
+- a first transcription is refused when a response is already filed;
+- the source profile agrees with the number of channels;
+- the language the meeting is spoken in is set;
+- the run records the audio's SHA-256 and the hash of the billable configuration
+  (`transcription_runs`).
 
-Ninguna pantalla muestra dinero: ningún proveedor cotiza un precio antes de una
-llamada, y una cifra escrita sin esa cotización sería inventada. El diálogo que
-aprueba una transcripción dice cuántos minutos se enviarán; el de un resumen
-dice el modelo y ninguna cifra.
+Readability, length and levels are checked when the recording is saved (§6.4, step 4), not before
+the call.
 
-### 6.6 Transcripción
+**Not built yet.** Showing the minutes that would be sent and asking for approval (ISC-85), except
+at the prompt: `deepgram-live` and `transcribe-again` send only after a person types the minutes
+back (`TypedBack`).
 
-Perfiles iniciales:
+No screen shows money: no provider quotes a price before a call, and a figure written without
+that quote would be invented. When the approval of ISC-85 is built, the dialogue for a transcription will say how many
+minutes will be sent and the one for a summary the model, and neither a figure.
+
+### 6.6 Transcription
+
+Profiles:
 
 ```text
-multichannel = audio capturado por la app, dos canales
-diarize       = archivo importado de una sola pista
+multichannel = audio captured by the app, two channels
+diarize       = a single-track file brought in
 ```
 
-Deepgram se invoca directamente desde el escritorio con la clave BYOK. La clave
-se obtiene de Credential Manager únicamente durante la operación y no se escribe
-en logs, SQLite, manifiestos ni argumentos de procesos.
+A `diarize` meeting is a file imported with `import-audio` and `import-response --profile
+diarize`.
 
-Después de una respuesta completa:
+Deepgram is called directly from the desktop with the BYOK key. The key is taken from Credential
+Manager only for the duration of the operation and is not written to logs, SQLite, manifests or
+process arguments.
 
-1. se guarda localmente mediante escritura durable;
-2. se valida JSON y estructura mínima;
-3. se calcula SHA-256;
-4. se registra el artefacto y la ejecución;
-5. se generan transcript, utterances y proyecciones.
+After a complete response:
 
-`deepgram.json` es la condición de skip para el mismo hash de audio y la misma
-configuración facturable. No se sobrescribe. Una retranscripción voluntaria usa
-una nueva versión y requiere confirmación explícita de coste.
+1. it is saved locally with a durable write;
+2. the JSON and its minimal structure are validated;
+3. SHA-256 is computed;
+4. the artifact and the run are registered;
+5. the transcript, utterances and projections are generated.
 
-Existe una ventana inevitable en la que Deepgram puede haber cobrado y la app
-puede morir antes de guardar la respuesta. En una arquitectura sin backend se
-acepta este límite. Un job que quede `running` tras reiniciar pasa a
-`awaiting_user`; nunca se reintenta automáticamente una llamada cuyo cobro sea
-incierto.
+`deepgram.json` is the skip condition for the same audio hash and the same billable
+configuration. It is not overwritten. A voluntary retranscription writes `deepgram.v<n>.json` as a
+new version and needs explicit cost confirmation; today it is the prompt's `transcribe-again`.
 
-### 6.7 Transcript y proyecciones
+There is an unavoidable window in which Deepgram may have charged and the app may die before
+saving the response. In an architecture with no backend that limit is accepted. A job found
+`running` after a restart goes to `awaiting_user` (`JobsARestartFound`); a call whose charge is
+uncertain is never retried automatically.
 
-El renderer .NET transforma `deepgram.json` en:
+### 6.7 Transcript and projections
 
-- turnos ordenados por tiempo;
-- `utterances.jsonl` con labels originales;
-- `transcript.md` legible;
-- filas `utterances` para búsqueda y citas;
-- participantes pendientes de resolución humana.
+The .NET renderer turns `deepgram.json` into:
 
-El canal del micrófono asigna al usuario solamente cuando trajo un único speaker:
-no había nadie más que pudiera ser. Con dos, cuál es cuál es justo lo que la
-grabación no sabe, así que ninguno se asigna. Los demás speakers diarizados son
-probabilísticos y se conservan como labels hasta que una persona los asigne.
+- turns ordered by time;
+- `utterances.jsonl` with the original labels;
+- a readable `transcript.md`;
+- `utterances` rows for search and citations;
+- participants pending human resolution.
 
-Los nombres y correcciones se aplican al renderizar. Nunca se escriben dentro de
-`deepgram.json` ni de la evidencia cruda usada para validar citas.
+The microphone channel assigns the user only when it brought a single speaker: nobody else could
+have been there. With two, which is which is exactly what the recording does not know, so neither
+is assigned. The other diarized speakers are probabilistic and are kept as labels until a person
+assigns them.
+
+Names and corrections are applied at render time. They are never written into `deepgram.json` or
+into the raw evidence used to validate citations.
 
 ---
 
-## 7. Summary y Claude Code headless
+## 7. Summary and Claude Code headless
 
-### 7.1 Contrato común
+### 7.1 Common contract
 
-Todos los proveedores de summary implementan el mismo contrato:
+Every summary provider implements `ISummaryProvider`:
 
 ```text
-IsAvailable()
-DescribeCost()
-Extract(meeting_input, schema, cancellation_token)
+Name
+IsAvailableAsync
+ExtractAsync(meeting_input, schema, cancellation_token)
 ```
 
-Una extracción registra:
+`ExtractAsync` makes one extraction, or one correction of a refused one. There is no cost
+description: no provider quotes a price.
+
+An extraction records:
 
 ```text
 extraction_id
@@ -809,63 +827,73 @@ schema_version
 created_at
 input_hash
 raw_output_hash
+accepted_at
+chosen_at
+corrects_run_id
+session_id
 ```
 
-El resultado estructurado contiene abstract, summary, participantes, decisiones,
-acciones, preguntas abiertas y evidencia. Los temas no: de qué trata una reunión
-lo archiva una persona al clasificarla, y el esquema `"1"` rechaza un campo
-`topics`.
+The structured result (schema `"1"`, `ExtractionReader.SchemaVersion`) carries `schema_version`,
+`meeting_id`, `abstract`, an optional `title`, `summary`, `participants`, `decisions`, `actions`,
+`open_questions` and evidence, and refuses any key it does not name. Topics are not among them: what
+a meeting is about is filed by a person when classifying it, and the reader refuses a `topics`
+field.
 
-### 7.2 Adaptador Claude Code
+### 7.2 The Claude Code adapter
 
-Claude Code es una dependencia opcional elegida por el usuario. La app detecta
-el ejecutable, muestra su disponibilidad y permite configurar su ruta. No intenta
-instalarlo ni iniciar sesión por el usuario.
+Claude Code is an optional dependency chosen by the user. The app detects the executable, shows
+its availability and allows its path to be configured. It does not try to install it or to sign in
+for the user.
 
-Cada reunión se procesa en un proceso nuevo para evitar contaminación entre
-contextos. La app crea un workspace temporal que contiene únicamente:
+Each meeting is processed in a new process to avoid contamination between contexts. The app
+creates a fresh temporary workspace per run, under `%TEMP%\meeting-transcriber-summaries`, deleted
+afterwards, which contains only:
 
-- el transcript o los turnos requeridos;
-- contexto humano autorizado;
-- instrucciones versionadas;
-- el esquema de salida.
+- the transcript or the turns required;
+- authorised human context;
+- versioned instructions;
+- the output schema.
 
-La invocación headless:
+The headless invocation:
 
-- no reutiliza una sesión de otra reunión;
-- solicita salida JSON;
-- limita las herramientas al mínimo necesario;
-- no concede acceso al corpus completo ni a credenciales;
-- captura stdout, stderr, exit code, timeout, versión y session ID disponible;
-- inicia el proceso con un entorno saneado, sin heredar `ANTHROPIC_API_KEY`, cuando
-  el usuario elige el modo basado en su cuenta;
-- puede cancelarse desde la UI;
-- se prueba con un ejecutable fake sin consumir cuota ni créditos.
+- does not reuse a session from another meeting;
+- is started with no tools (`--tools ""`), `--strict-mcp-config`, `--setting-sources project` and
+  `--no-session-persistence`, and asks for JSON output;
+- grants no access to the whole corpus or to credentials;
+- captures stdout, stderr, exit code, timeout, version and the session ID when available;
+- runs on the person's own account only, with an environment built from an allowlist
+  (`ClaudeCodeSummaries.AllowedEnvironmentNames`), so an `ANTHROPIC_API_KEY` never reaches a run;
+- lasts ten minutes at most, and is refused under a Claude Code memory file above the workspace;
+- can be stopped from the meeting screen (*Detener*);
+- is tested against `tests/MeetingTranscriber.FakeClaudeCode`, without spending quota or credits.
 
-La integración con la CLI está aislada detrás del adaptador porque sus flags y
-su envelope pueden cambiar. Un cambio de Claude Code no modifica reglas de
-dominio, almacenamiento ni validación.
+**Not built yet.**
 
-Claude Code permite autenticarse con planes de usuario, pero el uso headless y
-sus créditos o límites pueden cambiar independientemente del plan interactivo.
-La app no promete coste cero: muestra el modo detectado, evita heredar una API key
-accidental y detiene la automatización cuando la CLI indique falta de cuota o una
-transición a uso pagado. El texto sigue enviándose al proveedor y la UI lo
-comunica antes de habilitar summaries automáticos.
+- The authorised human context: nothing lets a person authorise one (`MeetingInput` says so).
+  The bullet stays because it is the design that comment cites.
+- Stopping the automation when the CLI reports no quota or a move to paid use (ISC-190.2).
+- The screen saying, before automatic summaries are turned on, that the text is sent (ISC-190).
 
-### 7.3 Validación
+The integration with the CLI is isolated behind the adapter because its flags and its envelope may
+change. A change in Claude Code does not modify domain rules, storage or validation.
 
-Una extracción solo se acepta si:
+Claude Code allows signing in with user plans, but headless use and its credits or limits may
+change independently of the interactive plan. The app does not promise zero cost: it avoids
+inheriting an accidental API key. The text is still sent to the provider.
 
-- cumple el esquema JSON;
-- sus speakers existen en la reunión;
-- cada cita apunta al inicio de un turno existente;
-- el texto citado pertenece a ese turno;
-- decisiones, acciones y preguntas abiertas incluyen evidencia;
-- no mezcla IDs, participantes ni contenido de otra reunión;
-- su `input_hash` coincide con la entrada preparada.
+### 7.3 Validation
 
-Una cita guarda al menos:
+An extraction is accepted only if:
+
+- it meets the JSON schema;
+- its speakers exist in the meeting;
+- each citation points at the start of an existing turn;
+- the cited text belongs to that turn;
+- decisions, actions and open questions include evidence;
+- it does not mix IDs, participants or content of another meeting;
+- its `input_hash` matches the prepared input.
+
+A citation keeps at least (the six fields `CorpusNamingTests` pins):
 
 ```text
 utterance_ordinal
@@ -876,81 +904,82 @@ quoted_text
 source_artifact_sha256
 ```
 
-El turno se nombra por la reunión y su posición dentro de ella, nunca por su id. Los ids los
-reparte la proyección, así que un rebuild los borra y entrega otros; el par reunión y ordinal es lo
-que la proyección reproduce a partir del mismo `deepgram.json`, y por eso es lo que sobrevive. La
-reunión no se guarda aparte: es la de la decisión o la acción que lleva la cita, así que no hay
-forma de citar un turno de otra reunión.
+A turn is named by the meeting and its position within it, never by its id. Ids are handed out by
+the projection, so a rebuild deletes them and issues others; the pair of meeting and ordinal is
+what the projection reproduces from the same `deepgram.json`, and that is why it is what survives.
+The meeting is not stored apart: it is that of the decision or action carrying the citation, so
+there is no way to cite a turn of another meeting.
 
-### 7.4 Corrección guiada
+### 7.4 Guided correction
 
-Un modelo devuelve JSON casi siempre y casi nunca todas las veces. Rechazar y reintentar la
-extracción entera gasta lo mismo que corregirla y tira la parte que estaba bien, así que una
-extracción rechazada se devuelve **una vez**, con qué falló, y lo que vuelve pasa por las mismas
-condiciones de §7.3 que la primera.
+A model returns JSON almost always and almost never every time. Rejecting and retrying the whole
+extraction spends the same as correcting it and throws away the part that was right, so a rejected
+extraction is returned **once**, with what failed, and what comes back goes through the same
+conditions of §7.3 as the first.
 
-La corrección va en un proceso nuevo que recibe la salida anterior y los errores, nunca reanudando
-la sesión anterior: los flags y el envelope de la CLI cambian, y el intento tiene que poder
-probarse con un ejecutable fake. Va por el mismo adaptador y el mismo workspace, así que una
-corrección no ve más de la reunión ni del corpus que el intento que corrige.
+The correction goes in a new process that receives the previous output and the errors, never
+resuming the previous session: the CLI's flags and envelope change, and the attempt has to be
+testable with a fake executable. It goes through the same adapter and the same workspace, so a
+correction sees no more of the meeting or of the corpus than the attempt it corrects.
 
-Qué se puede corregir es la decisión que importa, y son dos clases:
+What can be corrected is the decision that matters, and there are two classes:
 
-- **La forma.** No es JSON, no cumple el esquema, falta un campo, un tipo no es el que dice ser.
-  Se devuelve y se acepta corregida como cualquier otra.
-- **Lo que la reunión no sostiene.** Una cita a un turno que no existe, un texto citado que no
-  está en ese turno, un speaker que la reunión no tiene, un participante o un contenido que no
-  salió de esta reunión. Se devuelve pidiendo **quitar el enunciado**, y sólo se acepta sin él. Si
-  vuelve con el mismo enunciado apuntando a otra cosa, se rechaza.
+- **The form.** It is not JSON, it does not meet the schema, a field is missing, a type is not what
+  it says it is. It is returned and accepted corrected like any other.
+- **What the meeting does not support.** A citation to a turn that does not exist, a cited text
+  that is not in that turn, a speaker the meeting does not have, a participant or content that
+  did not come out of this meeting. It is returned asking to **remove the statement**, and it is
+  accepted only without it. If it comes back with the same statement pointing at something else,
+  it is rejected.
 
-Esa segunda regla es el punto entero. Pedirle a un modelo que arregle una cita que no resuelve es
-invitarlo a buscar una que sí pase el chequeo, y una cita elegida para pasar el chequeo es
-exactamente lo que la validación existe para atrapar: el corpus quedaría lleno de enunciados con
-evidencia plausible y falsa, que es peor que no tener el enunciado. Un enunciado sin respaldo se
-cae; no se le busca respaldo.
+That second rule is the whole point. Asking a model to fix a citation that does not resolve is
+inviting it to look for one that passes the check, and a citation chosen to pass the check is
+exactly what validation exists to catch: the corpus would fill with statements with plausible and
+false evidence, which is worse than not having the statement. A statement without support falls;
+support is not looked for.
 
-Un `input_hash` que no coincide no se corrige: la respuesta no se produjo contra la entrada que se
-preparó, y no hay nada ahí que corregir. Es corrida fallida directa.
+An `input_hash` that does not match is not corrected: the response was not produced against the
+input that was prepared, and there is nothing there to correct. It is a failed run outright.
 
-Una sola corrección, y después corrida fallida. Un segundo intento sobre el mismo contexto rara
-vez trae algo nuevo y cada uno gasta cuota del usuario, que la app no promete gratis (§7.2).
+A single correction, and then a failed run. A second attempt on the same context rarely brings
+anything new and each one spends the user's quota, which the app does not promise is free (§7.2).
 
-Un error del proveedor —un timeout, un proceso que muere— deja el job reintentable. Una
-extracción rechazada es una corrida fallida: el job termina y la reunión vuelve a ofrecer el
-resumen, sin que nada lo reintente solo. Ninguno de los dos modifica la última extracción
-aceptada.
-Reintentar un summary nunca llama otra vez a Deepgram.
+A provider error —a timeout, a process that dies— leaves the job retryable. A rejected extraction
+is a failed run: the job ends and the meeting offers the summary again, with nothing retrying it by
+itself. Neither modifies the last accepted extraction. Retrying a summary never calls Deepgram
+again.
 
 ---
 
-## 8. Consulta, edición y MCP local
+## 8. Query, editing and local MCP
 
-### 8.1 Búsqueda
+### 8.1 Search
 
-FTS5 cubre inicialmente:
+FTS5 covers:
 
-- título y contexto humano;
-- compañías, proyectos y participantes;
-- abstract y summary;
+- title and human context;
+- companies, projects and participants;
+- abstract and summary;
 - transcript;
-- decisiones, acciones y preguntas abiertas;
-- voces a las que alguien le puso nombre.
+- decisions, actions and open questions;
+- voices somebody has named.
 
-*Participante* y *voz* no son lo mismo, y ninguna se convierte en la otra. Un
-participante es alguien que una persona puso en la reunión; una voz es alguien
-que el corpus sabe que habló en ella, porque alguien le puso nombre a una
-etiqueta de hablante. Buscar un nombre trae las reuniones donde esa persona
-figura y las reuniones donde habló, y son conjuntos distintos: se puede haber
-hablado en una reunión sin figurar en ella, y figurar en una sin haber dicho
-nada.
+*Participant* and *voice* are not the same, and neither becomes the other. A participant is
+somebody a person put in the meeting; a voice is somebody the corpus knows spoke in it, because
+somebody named a speaker label. Searching a name brings the meetings where that person appears
+and the meetings where they spoke, and those are different sets: somebody can have spoken in a
+meeting without appearing in it, and appear in one without having said anything.
 
-La búsqueda devuelve resultados pequeños con `meeting_id`, fecha, título,
-snippet y timestamps relevantes. El transcript completo solo se abre cuando es
-necesario.
+The main screen's search ranks a meeting by where the word is — filed under or called, then
+summary, then transcript, then a similar word (`MeetingSearch`, ISC-226) — and a corrected term
+also finds the meetings where it came out the wrong way (ISC-199).
 
-### 8.2 Herramientas MCP
+Search returns small results with `meeting_id`, date, title, snippet and the relevant timestamps.
+The full transcript is opened only when necessary.
 
-Herramientas read-only iniciales:
+### 8.2 MCP tools
+
+Read-only tools:
 
 ```text
 buscar_reuniones(query, filtros)
@@ -963,329 +992,329 @@ listar_nodos(filtros)
 leer_nodo(nodo_id, filtros)
 ```
 
-El patrón esperado es:
+`filtros` is filled by `limite`, `desde` and `hasta`, and paging is `saltar`
+(`CorpusServerTests` spells the parameters of each tool). The tool and parameter names are in
+Spanish because they are the wire names an agent calls.
 
-1. buscar;
-2. leer summaries de pocos resultados;
-3. abrir solo los turnos necesarios;
-4. responder con `meeting_id`, timestamp, cita y hash de fuente.
+The expected pattern is:
 
-El tercer camino no entra por una reunión sino por un nodo: `listar_nodos` da el id
-y `leer_nodo` lee la historia — lo que decidieron, dejaron por hacer y dejaron
-abierto todas las reuniones colgadas de él y de lo que cuelga de él — en orden y
-sin opinar sobre qué sigue en pie.
+1. search;
+2. read the summaries of a few results;
+3. open only the turns needed;
+4. answer with `meeting_id`, timestamp, citation and source hash.
 
-El servidor MCP es otro ejecutable de la misma solución. Abre SQLite en modo
-lectura cuando sea posible, respeta paginación y límites de tamaño y comparte las
-mismas consultas de dominio que la aplicación.
+The third way in is not through a meeting but through a node: `listar_nodos` gives the id and
+`leer_nodo` reads the history — what was decided, left to do and left open in all the meetings
+hanging from it and from what hangs from it — in order and with no opinion about what still
+stands.
 
-El cliente MCP lo lanza por un nombre estable, no por su ruta: dentro de un
-paquete MSIX el directorio de instalación cambia en cada versión, así que el
-ejecutable se expone mediante un *app execution alias* declarado en el manifiesto.
+The MCP server is another executable of the same solution. It opens SQLite read-only, respects
+paging and size limits, and shares the application's domain queries. Every request is appended to
+`%LOCALAPPDATA%\MeetingTranscriber\agent-requests.jsonl` (ISC-100).
 
-Las herramientas de escritura quedan fuera del MVP. Una futura edición mediante
-agentes requiere confirmación humana y auditoría explícitas.
+The MCP client launches it by a stable name, not by its path: inside an MSIX package the
+installation directory changes with every version, so the executable is exposed through an *app
+execution alias* declared in the manifest. That an installed build reaches it by name is ISC-113,
+open.
+
+Write tools are outside the MVP. A future editing through agents requires explicit human
+confirmation and auditing.
 
 ---
 
-## 9. Backups y recuperación
+## 9. Backups and recovery
 
-### 9.1 Snapshot local
+What exists today is the export (*Exportar*, with its four ticks, ISC-194) and moving the corpus to
+an empty folder (§4.1). `CorpusIntegrity.Ensure` is what a backup will run first; nothing runs it
+today.
 
-La app crea backups a un directorio elegido por el usuario, idealmente en otra
-unidad. Un snapshot contiene:
+### 9.1 Local snapshot
+
+**Not built yet.** A backup snapshot (ISC-111). The design:
+
+The app creates backups in a directory chosen by the user, ideally on another drive. A snapshot
+contains:
 
 ```text
 backup-manifest.json
-corpus.db consistente
-artefactos fuente
-capa humana
-hashes SHA-256
-versión de esquema
+consistent corpus.db
+source artifacts
+human layer
+SHA-256 hashes
+schema version
 ```
 
-Se utiliza la API de backup de SQLite o un mecanismo equivalente de snapshot; no
-se copia directamente una base abierta esperando que sea consistente.
+SQLite's backup API or an equivalent snapshot mechanism is used; an open database is not copied
+directly in the hope that it is consistent.
 
-El backup se considera exitoso solamente después de verificar manifiesto, hashes
-y apertura de la copia SQLite. La aplicación ofrece una restauración de prueba a
-una carpeta distinta antes de reemplazar un corpus activo.
+A backup counts as successful only after verifying the manifest, the hashes and opening the SQLite
+copy. The application offers a trial restore to a different folder before replacing an active
+corpus.
 
-### 9.2 Futuro backup remoto
+### 9.2 Future remote backup
 
-Si se añade nube, su alcance inicial es subir snapshots cerrados y verificados.
-No introduce una base remota ni sincronización de entidades.
+If a cloud is added, its initial scope is uploading closed, verified snapshots. It introduces no
+remote database and no entity synchronisation.
 
 ```text
-corpus activo local
+active local corpus
        │
        ▼
-snapshot inmutable y opcionalmente cifrado
+immutable, optionally encrypted snapshot
        │
        ▼
-destino remoto
+remote destination
 ```
 
-Restaurar siempre es una operación manual y explícita. El corpus local sigue
-siendo la única fuente de verdad.
+Restoring is always a manual and explicit operation. The local corpus remains the only source of
+truth.
 
 ---
 
-## 10. Seguridad y privacidad
+## 10. Security and privacy
 
-- Las API keys se guardan en Windows Credential Manager.
-- Los secretos nunca aparecen en argumentos, logs, SQLite o reportes de error.
-- El corpus hereda ACL del perfil de Windows.
-- Los workspaces temporales de summaries contienen solo la reunión necesaria.
-- Los temporales se eliminan después de una extracción, salvo cuando se conservan
-  explícitamente para diagnóstico.
-- Logs y dumps no contienen audio, transcript completo ni respuestas crudas.
-- El usuario ve qué proveedor recibirá audio o texto antes de habilitarlo.
-- La eliminación distingue entre derivados reconstruibles, fuentes y backups.
+- API keys are kept in Windows Credential Manager.
+- Secrets never appear in arguments, logs, SQLite or error reports.
+- The corpus inherits the ACL of the Windows profile.
+- The temporary summary workspaces contain only the meeting needed.
+- Temporaries are deleted after an extraction; nothing keeps one.
+- Logs and dumps contain no audio, full transcript or raw responses.
+- The settings cards name both engines, Deepgram and Claude Code.
+- Deletion distinguishes between rebuildable derivatives, sources and backups.
 
-Antes de usar la aplicación fuera de un grupo controlado hacen falta aviso de
-grabación, consentimiento cuando aplique, política de retención y revisión de las
-condiciones de Deepgram y del proveedor usado para summaries.
+**Not built yet.** The stronger promise that the user sees which provider will receive audio or
+text before enabling it (ISC-190).
 
-La inmutabilidad protege contra sobrescrituras accidentales; no impide una
-eliminación solicitada por el usuario.
+Before using the application outside a controlled group, a recording notice, consent where it
+applies, a retention policy and a review of the terms of Deepgram and of the provider used for
+summaries are needed.
+
+Immutability protects against accidental overwriting; it does not prevent a deletion the user
+asked for.
 
 ---
 
-## 11. Distribución Windows
+## 11. Windows distribution
 
-La aplicación se empaqueta como MSIX desde la primera versión y se distribuye por
-Microsoft Store. El empaquetado es uno solo; los canales son dos:
+The application is packaged as MSIX from the first version. The packaging is one; the channels are
+two:
 
 ```text
-MSIX firmado ──sideload──► alpha, sin revisión de por medio
-             ──Partner Center──► distribución pública
+signed MSIX ──sideload──► alpha, with no review in between
+            ──Partner Center──► public distribution
 ```
 
-Empaquetar desde el día uno evita reescribir la distribución más tarde y resuelve
-la firma: la Store firma el paquete y no hace falta comprar un certificado
-Authenticode. Durante la alpha el mismo paquete se instala por sideload con un
-certificado propio, sin pasar por la revisión de la Store en cada iteración.
+**Not built yet.** The Store channel. The sideloaded alpha is `docs/packaging.md`.
 
-Consecuencias que el resto del diseño tiene que respetar:
+Packaging from day one avoids rewriting distribution later and settles signing: the Store signs
+the package and no Authenticode certificate has to be bought. During the alpha the same package is
+installed by sideloading with a certificate of our own, without going through Store review at
+every iteration.
 
-- el corpus nunca vive en la carpeta de datos del paquete, porque desinstalar una
-  app MSIX la borra y el corpus contiene artefactos pagados e irrecuperables;
-- el directorio de instalación es de sólo lectura y su ruta cambia en cada
-  versión, así que la CLI y el servidor MCP se publican mediante un *app execution
-  alias* declarado en el manifiesto, que da un nombre estable en el `PATH`;
-- el micrófono se declara como capacidad del manifiesto y se consiente al usarlo;
-- publicar exige una política de privacidad accesible, porque la aplicación envía
-  audio y texto a proveedores externos: la política 10.5.1 de la Store la vuelve
-  obligatoria para cualquier producto Win32 que acceda a información personal;
-- Claude Code es software no integrado del que la aplicación puede depender, así
-  que la política 10.2.4 obliga a declarar esa dependencia al principio de la
-  descripción de la ficha;
-- lanzar Claude Code desde una app empaquetada arranca el proceso hijo dentro del
-  contexto del paquete: el saneamiento de entorno de la sección 7.2 se prueba
-  antes de construir el adaptador, no después.
+Consequences the rest of the design has to respect:
 
-Durante la alpha:
+- the corpus never lives in the package's data folder, because uninstalling an MSIX app wipes it
+  and the corpus holds paid, irrecoverable artifacts;
+- the installation directory is read-only and its path changes with every version, so the CLI and
+  the MCP server are published through an *app execution alias* declared in the manifest, which
+  gives a stable name on the `PATH`;
+- the microphone is declared as a manifest capability and consented to on use;
+- publishing requires an accessible privacy policy, because the application sends audio and text
+  to external providers: Store policy 10.5.1 makes it mandatory for any Win32 product that
+  accesses personal information;
+- Claude Code is non-integrated software the application may depend on, so policy 10.2.4 requires
+  declaring that dependency at the start of the listing's description;
+- launching Claude Code from a packaged app starts the child process inside the package's context:
+  the environment sanitising of section 7.2 is tested before building the adapter, not after.
 
-- build x64 self-contained dentro del MSIX, para no exigir runtime previo;
-- instalación por usuario, sin privilegios de administrador;
-- ejecutables y artefactos versionados con SHA-256;
-- actualizaciones manuales;
-- diagnóstico accesible desde la CLI/CMD mediante el alias.
+During the alpha:
 
-La aplicación valida en el arranque:
+- x64 self-contained build inside the MSIX, so no prior runtime is required;
+- per-user installation, without administrator privileges;
+- manual updates;
+- diagnosis from the prompt through the alias waits on ISC-113.
 
-- versión de Windows;
-- permisos sobre el corpus;
-- disponibilidad de dispositivos de audio;
-- integridad y versión de SQLite;
-- presencia opcional de Claude Code;
-- credencial Deepgram cuando se solicita transcribir.
+At launch the application:
 
-Antes de distribución pública:
+- resolves the corpus folder and says so when it will not open;
+- runs the four chores of `WhatALaunchOwes.InOrder`: jobs a restart found, deletions to finish,
+  meetings nobody recorded, and owed renders;
+- starts the runner.
 
-- cuenta de desarrollador verificada en Partner Center;
-- política de privacidad publicada y enlazada desde la ficha;
-- divulgación de la grabación y del envío a proveedores externos;
-- CI y tests en runner Windows;
-- pruebas de instalación limpia, upgrade, rollback y restauración;
-- evaluación ARM64 según demanda.
+Claude Code is asked about when the settings screen opens; the Deepgram key when a transcription
+is sent; the microphone's consent is Windows'.
 
-No se mantienen a la vez MSIX, portable y varios instaladores sin una necesidad
-medida. Publicar además por winget o GitHub Releases se evalúa después de la
-primera versión pública, y sólo si el mismo paquete alcanza.
+Before public distribution:
+
+- a verified developer account in Partner Center;
+- a privacy policy published and linked from the listing;
+- disclosure of the recording and of the sending to external providers;
+- CI and tests on a Windows runner;
+- tests of clean installation, upgrade, rollback and restore;
+- ARM64 evaluation according to demand.
+
+MSIX, portable and several installers are not maintained at once without a measured need.
+Publishing also through winget or GitHub Releases is evaluated after the first public version, and
+only if the same package is enough.
 
 ---
 
-## 12. Pruebas
+## 12. Testing
 
-### 12.1 Regla general
+### 12.1 General rule
 
-Los tests automáticos son offline y nunca consumen créditos ni cuota. Deepgram y
-Claude Code se reemplazan por servidores y procesos fake.
+Automatic tests are offline and never spend credits or quota. Deepgram and Claude Code are replaced
+by fake servers and processes.
 
-Las pruebas live son comandos separados, requieren opt-in explícito, muestran el
-coste máximo antes de ejecutarse y nunca forman parte de `dotnet test`.
+Live tests are separate commands, need explicit opt-in, show the maximum cost before running and
+are never part of `dotnet test`.
 
-### 12.2 Caracterización desde `deepgram.json`
+### 12.2 Characterisation from `deepgram.json`
 
-Los artefactos existentes permiten probar gratuitamente la mayor parte del nuevo
-sistema:
+Existing artifacts make it possible to test most of the system for free:
 
-- parsing de respuestas reales;
-- orden temporal multichannel;
-- agrupación de turnos;
-- detección de canales vacíos;
-- renderizado Markdown y JSONL;
+- parsing of real responses;
+- multichannel time ordering;
+- grouping of turns;
+- detection of empty channels;
+- Markdown and JSONL rendering;
 - speaker assignments;
-- correcciones humanas;
-- citas y validación de summaries;
-- rebuild de SQLite y FTS5;
-- importación idempotente.
+- human corrections;
+- citations and validation of summaries;
+- rebuild of SQLite and FTS5.
 
-No es obligatorio producir texto byte a byte idéntico al Python actual. Los tests
-comprueban invariantes de dominio y diferencias intencionales documentadas.
+Byte-for-byte identical text is not required. The tests check domain invariants and documented
+intentional differences (`docs/reference-behaviour.md`).
 
-Esas respuestas no se leen del corpus del usuario: están versionadas en
-`tests/fixtures/deepgram/` con cada palabra sustituida por una de un vocabulario
-cerrado y con los tiempos, las confianzas y los números de canal tal como los
-mandó el proveedor. Ningún test depende del corpus real, y el que necesite un
-caso que el juego no cubre amplía el juego. El corpus no tiene ninguna reunión de
-una sola pista ni ningún canal vacío, así que esas dos se derivan de una
-respuesta real y el README de la carpeta dice exactamente cómo.
+Those responses are not read from the user's corpus: they are versioned in
+`tests/fixtures/deepgram/` with every word replaced by one from a closed vocabulary and with the
+timings, confidences and channel numbers as the provider sent them. No test depends on the real
+corpus, and one that needs a case the set does not cover extends the set. The corpus has no
+single-track meeting and no empty channel, so those two are derived from a real response and the
+folder's README says exactly how.
 
-### 12.3 Motor de audio
+### 12.3 Audio engine
 
-El motor consume paquetes sintéticos con timestamp y devuelve audio alineado.
+The engine consumes synthetic packets with a timestamp and returns aligned audio
+(`tests/MeetingTranscriber.Audio.Tests`).
 
-Casos:
+Cases:
 
-- tasas de reloj ligeramente distintas;
-- formatos y sample rates distintos;
-- huecos y silencios;
-- discontinuidades y paquetes tardíos;
-- fin abrupto;
-- cambio de dispositivo;
-- dos horas de deriva simulada;
-- inversión accidental de canales;
-- recuperación de un último bloque incompleto;
-- idempotencia al finalizar dos veces el mismo spool.
+- slightly different clock rates;
+- different formats and sample rates;
+- gaps and silences;
+- discontinuities and late packets;
+- abrupt end;
+- device change;
+- two hours of simulated drift;
+- accidental channel inversion;
+- recovery of a last incomplete block;
+- idempotence when finishing the same spool twice.
 
-### 12.4 Integración Windows
+### 12.4 Windows integration
 
-- micrófono y loopback con señales conocidas;
-- proceso objetivo y árbol de hijos;
-- paso de un programa a toda la máquina con la reunión en curso;
-- parlantes tomados en modo exclusivo por otra aplicación;
-- Teams, Zoom, Meet y navegadores;
-- altavoces, auriculares USB y Bluetooth;
-- suspensión y reanudación;
-- cambio y desconexión de dispositivo;
-- cierre forzado y recuperación;
-- instalación y actualización en una máquina limpia.
+What has to be probed by hand, because no build agent has the hardware.
+`docs/process-capture.md` records what has run, and anything below that it does not record has not
+been probed.
 
-### 12.5 Pruebas live pagadas
+- microphone and loopback with known signals;
+- target process and tree of children;
+- moving from a program to the whole machine with the meeting in progress;
+- speakers taken in exclusive mode by another application;
+- Teams, Zoom, Meet and browsers;
+- speakers, USB and Bluetooth headsets;
+- suspend and resume;
+- device change and disconnection;
+- forced close and recovery;
+- installation and update on a clean machine.
 
-Un conjunto pequeño de audios conocidos valida periódicamente la integración real
-con Deepgram. Cada ejecución:
+### 12.5 Paid live tests
 
-- usa una cuenta/proyecto de pruebas;
-- tiene presupuesto máximo;
-- requiere confirmación interactiva;
-- guarda el nuevo artefacto como fixture solo después de revisar privacidad;
-- compara estructura e invariantes, no redacción exacta.
+The paid checks are the prompt's `deepgram-live` and `claude-live`: separate commands, never part
+of `dotnet test`, with a ceiling, and the minutes typed back before anything is sent. A small set
+of known audios periodically validates the real integration with Deepgram. Each run:
 
-El precio por minuto es externo y puede cambiar; la arquitectura no depende de
-una cifra fija para considerar las pruebas baratas.
+- uses a test account or project;
+- has a maximum budget;
+- requires interactive confirmation;
+- saves the new artifact as a fixture only after a privacy review;
+- compares structure and invariants, not exact wording.
 
----
-
-## 13. Plan de implementación
-
-Las ocho fases y sus tareas viven en el board de ClickUp, space `MeetingTranscriber`, una lista
-por fase. Ahí se mueven de estado y ahí se ve qué está en curso; una copia acá sería la foto
-congelada de algo que cambia todas las semanas, y la foto es la que se termina leyendo.
-
-Qué persigue cada fase —qué tiene que ser cierto cuando termina— está en `ISA.md`, en el bloque
-`### F<n>` que nombra su lista.
-
-Los estados dicen algo más que en qué anda cada tarjeta, porque hay sesiones que eligen su
-trabajo solas: **`Open` es el pool del que se toma la próxima tarea y `pending` significa que
-espera a una persona** — una reunión real, dos placas de audio, una decisión de producto. Mover
-algo a `pending` lo saca del pool hasta que alguien lo destrabe, así que es una afirmación sobre
-el mundo y no una forma de postergar. Una tarjeta en `in progress` es de una sesión que no llegó
-a terminar: la próxima la retoma en vez de empezar otra.
+The price per minute is external and may change; the architecture does not depend on a fixed
+figure to consider the tests cheap.
 
 ---
 
-## 14. Riesgos principales
+## 13. Work
 
-1. **Deriva entre micrófono y loopback.** Es el mayor riesgo técnico y se valida
-   antes de completar WinUI.
-2. **Captura por proceso multiproceso.** El PID visible puede no ser quien emite
-   el audio; siempre se puede pasar a toda la máquina con la reunión en curso.
-3. **Eco del sistema en el micrófono.** Puede duplicar voces aunque los canales
-   estén temporalmente alineados; debe medirse y explicarse al usuario.
-4. **Cobro sin artefacto.** Sin backend no existe garantía exactly-once alrededor
-   de Deepgram; un estado incierto exige decisión humana.
-5. **Pérdida del único disco.** Local-first necesita backups externos visibles y
-   restauración probada.
-6. **SQLite y filesystem fuera de transacción común.** El reconciliador y los
-   hashes son parte del diseño, no una reparación posterior.
-7. **Cambios de Claude Code.** La integración depende de una CLI externa opcional
-   y debe permanecer detrás de un adaptador probado con fakes.
-8. **Falsa equivalencia con el sistema anterior.** Reescribir es aceptable, pero
-   las invariantes de artefactos pagados, capa humana y citas no pueden perderse.
-9. **Privacidad.** La persistencia es local, pero transcripción y summary pueden
-   enviar audio o texto a proveedores externos.
-10. **Crecimiento de WAV.** PCM simplifica el MVP a costa de tamaño; se mide antes
-    de introducir compresión y otra superficie de fallos.
+Work is queued as GitHub issues. The project board is a view for people. The `github` skill says
+how a card moves, and what each feature has to make true is `ISA.md`'s, in the `### F<n>` block.
 
 ---
 
-## 15. Criterios de salida para la primera versión
+## 14. Main risks
 
-Están en `ISA.md`, como claims con su marca de cerrado y el conteo `progress: M/N` en el
-encabezado.
-
-Eran doce frases que nadie podía verificar sin leerse el código entero, y que envejecían sin que
-se notara porque nada las contaba. Como claims, cada una cierra sobre evidencia registrada o
-sigue abierta, y el número dice cuántas van.
-
----
-
-## 16. Decisiones aplazadas
-
-Quedan deliberadamente fuera de las primeras versiones:
-
-- PostgreSQL y cualquier base remota;
-- Supabase u otro Backend as a Service;
-- object storage remoto;
-- cliente web;
-- sincronización entre dispositivos;
-- usuarios, tenants y facturación;
-- workers server-side;
-- MCP remoto;
-- embeddings y búsqueda vectorial;
-- summaries automáticos con credenciales gestionadas;
-- backup cloud integrado.
-
-Estas piezas solo se reconsideran cuando una necesidad real no pueda resolverse
-con la aplicación y el corpus locales.
+1. **Drift between microphone and loopback.** It is the biggest technical risk and is validated
+   before WinUI is completed.
+2. **Multi-process capture.** The visible PID may not be the one emitting the audio; it is always
+   possible to move to the whole machine with the meeting in progress.
+3. **System echo in the microphone.** It may duplicate voices even though the channels are
+   aligned in time; it has to be measured and explained to the user.
+4. **Charge without an artifact.** Without a backend there is no exactly-once guarantee around
+   Deepgram; an uncertain state needs a human decision.
+5. **Loss of the only disk.** Local-first needs visible external backups and a proven restore.
+6. **SQLite and the filesystem outside a common transaction.** The reconciler and the hashes are
+   part of the design, not a later repair.
+7. **Changes in Claude Code.** The integration depends on an optional external CLI and has to stay
+   behind an adapter tested with fakes.
+8. **False equivalence with the previous system.** Rewriting is acceptable, but the invariants of
+   paid artifacts, the human layer and citations cannot be lost.
+9. **Privacy.** Persistence is local, but transcription and summary may send audio or text to
+   external providers.
+10. **WAV growth.** PCM simplifies the MVP at the cost of size; it is measured before introducing
+    compression and another surface for failures.
 
 ---
 
-## 17. Referencias técnicas
+## 15. Exit criteria for the first version
+
+They are in `ISA.md`, as claims with their closed mark and the `progress: M/N` count in the
+heading.
+
+---
+
+## 16. Deferred decisions
+
+Deliberately left out of the first versions:
+
+- PostgreSQL and any remote database;
+- Supabase or another Backend as a Service;
+- remote object storage;
+- a web client;
+- synchronisation between devices;
+- users, tenants and billing;
+- server-side workers;
+- remote MCP;
+- embeddings and vector search;
+- automatic summaries with managed credentials;
+- integrated cloud backup.
+
+These pieces are reconsidered only when a real need cannot be solved with the local application and
+corpus.
+
+---
+
+## 17. Technical references
 
 - [.NET support policy](https://dotnet.microsoft.com/en-us/platform/support/policy)
-- [WinUI 3 y Windows App SDK](https://learn.microsoft.com/windows/apps/winui/winui3/)
+- [WinUI 3 and the Windows App SDK](https://learn.microsoft.com/windows/apps/winui/winui3/)
 - [Application loopback sample](https://learn.microsoft.com/samples/microsoft/windows-classic-samples/applicationloopbackaudio-sample/)
 - [WASAPI capture](https://learn.microsoft.com/windows/win32/coreaudio/capturing-a-stream)
 - [SQLite backup API](https://www.sqlite.org/backup.html)
 - [SQLite FTS5](https://www.sqlite.org/fts5.html)
 - [Deepgram authentication](https://developers.deepgram.com/guides/fundamentals/authenticating)
 - [Claude Code CLI reference](https://docs.anthropic.com/en/docs/claude-code/cli-usage)
-- [Qué es MSIX](https://learn.microsoft.com/windows/msix/overview)
-- [Guía de decisión de empaquetado](https://learn.microsoft.com/windows/apps/package-and-deploy/)
-- [Extensiones de empaquetado, incluido el app execution alias](https://learn.microsoft.com/windows/apps/desktop/modernize/desktop-to-uwp-extensions)
-- [Políticas de Microsoft Store](https://learn.microsoft.com/windows/apps/publish/store-policies)
+- [What is MSIX](https://learn.microsoft.com/windows/msix/overview)
+- [Packaging decision guide](https://learn.microsoft.com/windows/apps/package-and-deploy/)
+- [Packaging extensions, including the app execution alias](https://learn.microsoft.com/windows/apps/desktop/modernize/desktop-to-uwp-extensions)
+- [Microsoft Store policies](https://learn.microsoft.com/windows/apps/publish/store-policies)

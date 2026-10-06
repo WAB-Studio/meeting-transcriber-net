@@ -53,9 +53,9 @@ making; a crash lets it go with the process. Like the spool's marks it holds no 
 that restored it would restore nothing, and it is outside the two folders `check` walks.
 
 **`deepgram.refused.<run>.json` is a paid response the corpus would not file, and nothing
-deletes it but a person deleting that meeting's transcript or the meeting.** The runner writes a response into a `.partial` and files it through `MeetingIntake`,
-where a meeting's first comes in the way `import-response` files it, and every later one comes in
-beside it. When that door refuses a response that arrived whole — it does not read, its channels
+deletes it but a person deleting that meeting's transcript or the meeting.** The runner writes a
+response into a `.partial` and files it through `MeetingIntake`, where a meeting's first comes in the
+way `import-response` files it, and every later one comes in beside it. When that door refuses a response that arrived whole — it does not read, its channels
 disagree with how the meeting was recorded, or another response was filed onto the meeting while
 the call was out — the bytes were still paid for, so they are renamed out of the one suffix a
 sweep deletes and kept under the run that bought them. There is no row for it, so `check` names it
@@ -102,8 +102,8 @@ recording is under that path, which is what a backup sweeping `spool/` would fin
 skipped it loses nothing: the corpus holds the meeting either way, whether what is in it is a
 recording whose owner already said to throw it away or one a finish had already filed.
 
-One still there after a start is a discard that did not finish, or just as likely now a finish that
-did not finish — the removal goes through the same rename-then-erase either way. It is a machine
+One still there after a start is a discard that did not finish or a finish that did not finish —
+the removal goes through the same rename-then-erase either way. It is a machine
 that died inside one, or a delete that stayed refused. It holds whatever the delete had not reached
 yet, so it may be the whole recording or a part of one. **Nothing in the product ever cleans it**:
 the sweep of folders nothing was recorded into names it and removes nothing, and no second removal
@@ -169,10 +169,10 @@ recover from.
 
 Filing a meeting writes its card, and so does a rebuild — every meeting, every time. That second
 one is what makes this a promise about a folder rather than about a moment: intake only ever
-reaches the meeting being filed, so a meeting that predates the card gets its card from `rebuild`
-and from nothing else. A title somebody changed is no longer one of those: the screen a meeting is
-read from is the only thing in the application that renames one, and it writes the card in the same
-transaction it writes the row — which is what ISC-52 asks of every change that has to reach both.
+reaches the meeting being filed, so a meeting that has no card gets its card from `rebuild` and from
+nothing else. A title somebody changes does not wait for one: the screen a meeting is read from is
+the only thing in the application that renames one, and it writes the card in the same transaction
+it writes the row — which is what ISC-52 asks of every change that has to reach both.
 
 It is also the one source that may be written over, which is the distinction the rest of this
 section turns on: *source* decides what a backup carries and what a deletion spares, and it is a
@@ -186,6 +186,10 @@ first and leave a meeting whose card was never written without one for good.
 
 Derived tables — `utterances`, `turn_sources`, `summaries`, `decisions`, `action_items`,
 `open_questions`. They are projections of `deepgram.json` and the accepted extractions.
+
+`utterances_fts_terms` is derived as well and is not one of the eight indexes below: it is an
+`fts5vocab` virtual table over `utterances_fts` that holds nothing of its own, so it is as
+rebuildable as the index it reads.
 
 The eight FTS5 indexes are derived too, and they are derived whatever they index. Three of them —
 `meetings_fts`, `nodes_fts`, `people_fts` — sit over tables that are sources, and that does not make
@@ -218,10 +222,10 @@ on a turn that no longer exists. The pair is what projecting the same `deepgram.
 The meeting is not stored twice: a citation reads the one on the claim that carries it, so citing a
 turn of another meeting has nowhere to be written.
 
-A citation names its turn without cascading off it. It used to, which made deleting utterances
-take every decision and action citing them and say nothing about it. Deleting turns on their own
-now fails, and a meeting still deletes whole: the turns and the claims go in one statement, and
-that is when the constraint is checked.
+A citation names its turn without cascading off it, so a cascade cannot take every decision and
+action citing a turn and say nothing about it. Deleting turns on their own fails, and a meeting
+deletes whole: the turns and the claims go in one statement, and that is when the constraint is
+checked.
 
 `CorpusRebuild.Run` is how a rebuild gets past that without deleting the claims. Every meeting is
 reprojected inside one transaction with `PRAGMA defer_foreign_keys`, so the turns go and come back
@@ -241,9 +245,11 @@ tries it, and is one release away from not being.
 ## Checking a corpus
 
 `CorpusIntegrity.Check` reports what is wrong instead of answering yes or no, and
-`CorpusIntegrity.Ensure` throws the same list. Anything that copies the corpus runs it first: a
-backup taken of a corpus that was already wrong is a backup of being wrong, restored later with
-confidence.
+`CorpusIntegrity.Ensure` throws the same list. The `check` command runs `Check`. `Ensure` is what a
+backup will run before copying, because a backup taken of a corpus that was already wrong is a
+backup of being wrong, restored later with confidence; there is no backup yet, so nothing calls it.
+A move of the corpus (`CorpusMove`) proves what it copied another way: it finds every file the
+database lists, whole.
 
 It covers three things — `PRAGMA integrity_check` for the file, `PRAGMA foreign_key_check` for
 orphans, and each FTS5 index against the table it indexes. The third one is easy to write and have
@@ -258,20 +264,20 @@ come back under new rowids, and the triggers go, because a trigger belongs to it
 the schema the model tracks. Both have to be put back by hand, and not in that same migration — EF
 emits raw SQL before a rebuild it still has pending, so the statements would run against the table
 about to be dropped. Three of those eight are the human layer, which is where a CHECK is most
-likely to be added, so this is a larger surface than it was when it was two.
+likely to be added.
 
 Everything else is a source, and the part that matters most is the **human layer**: `nodes`,
 `meeting_nodes`, `templates`, `template_nodes`, `template_people`, `people`, `affiliations`,
 `meeting_people`, `speaker_assignments`, `terminology_corrections`, `action_item_progress`, and the
 titles, context notes and classifications on `meetings`, and when a person archived one or
-deleted its audio (`meetings.archived_at`, `meetings.audio_removed_at`), and the `words-said-right` row of
-`settings`, and the `chosen_at` somebody puts on an `extraction_runs` row by putting that summary
-back. None of it is inferable from any artifact, so a backup that copies
-only the files loses it.
+deleted its audio (`meetings.archived_at`, `meetings.audio_removed_at`), and the `words-said-right`
+row of `settings`, and the `chosen_at` somebody puts on an `extraction_runs` row by putting that
+summary back. None of it is inferable from any artifact, so a backup that copies only the files
+loses it.
 
 `HumanLayer` writes all of it but that one row, which `CorpusSettings` alone writes: a word somebody
-said is right, beside the preferences it already keeps. The reason `HumanLayer` exists rather than a page of `context.Add` is the
-two rules that cannot be constraints: exactly one person is the user of this install, and a speaker
+said is right, beside the preferences it already keeps. The reason `HumanLayer` exists rather than a
+page of `context.Add` is the two rules that cannot be constraints: exactly one person is the user of this install, and a speaker
 label somebody resolved is not overwritten by one the recording settled. The first is two rows
 changing together, which a unique index refuses halfway through; the second is the same row written
 twice, of which the database only ever sees the second.

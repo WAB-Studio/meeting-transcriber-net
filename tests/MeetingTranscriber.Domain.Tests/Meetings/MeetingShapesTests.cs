@@ -88,7 +88,7 @@ public class MeetingShapesTests
     /// </summary>
     /// <remarks>
     /// This is a check about the two types and not about the values in them, and it has to stay one.
-    /// §5.3 says outright that a template <em>siempre va a pre-llenar nada más</em> — it opens
+    /// §5.3 says outright that a shape <em>answers none of them</em> — it opens
     /// places and never answers one — so what would break it is not a wrong id in a row of the
     /// table but somebody giving <see cref="ShapeOpens"/> or <see cref="PersonSlot"/> somewhere for
     /// an id to live, and then pre-filling an organization off whoever is using this install.

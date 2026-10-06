@@ -8,7 +8,7 @@ page is what that file's table sends you to.
   silently: read `docs/migrations.md` before running it, not after.
 - Tests are xunit v3 with Shouldly. Versions live in `Directory.Packages.props`, a
   `<PackageReference>` carries no `Version`, and three pins are load-bearing: `docs/packages.md`.
-- Every context comes from `CorpusDatabase`. A connection interceptor turns foreign keys on —
+- Every context comes from `CorpusDatabase`. `CorpusPragmaInterceptor` turns foreign keys on —
   SQLite has them off per connection — and sets WAL and `busy_timeout`.
 - Tables and columns are snake_case by a naming pass in `CorpusDbContext`, enum values by a
   convention in `WireNames`. Both are conventions, so a rename changes what is on disk; the

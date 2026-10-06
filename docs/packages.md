@@ -21,19 +21,17 @@ says it too — this is the longer version.
 
 ## What each area uses
 
-Not all of these are referenced yet. What each area uses is settled here so it does not get decided
-in a hurry later, mid-task.
+Every row is referenced by the tree.
 
 | Area | Package |
 | --- | --- |
 | SQLite and migrations | `Microsoft.EntityFrameworkCore.Sqlite` |
-| Process capture and other Win32 APIs | `Microsoft.Windows.CsWin32` |
+| Process capture and other Win32 APIs | none: interop is declared by hand (`DllImport`, `ComImport`) |
 | Windows credentials | `Meziantou.Framework.Win32.CredentialManager` |
 | Audio | `NAudio.Wasapi` |
 | Deepgram | `HttpClient` + `System.Text.Json`, no SDK |
 | MCP, in the corpus server and in the UI probe | `ModelContextProtocol.Core`: neither has a host to put it in |
-| MVVM | `CommunityToolkit.Mvvm` |
-| DI, hosting and logging | `Microsoft.Extensions.*` |
+| The window | `Microsoft.WindowsAppSDK` and `Microsoft.Windows.SDK.BuildTools`, in `MeetingTranscriber.App` alone; screens are code-behind, with no MVVM library |
 | Tests | xUnit v3 + Shouldly |
 | Reading who signed the `.msix` | `System.Security.Cryptography.Pkcs`, in `MeetingTranscriber.App.Tests` alone |
 | Rendering the mark into the logos and the `.ico` | `Svg.Skia`, in `tools/MeetingTranscriber.Icons` alone |

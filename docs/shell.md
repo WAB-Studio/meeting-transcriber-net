@@ -7,12 +7,13 @@ costs an hour the first time because the failure names the wrong cause.
 
 `Get-Content file | ... | Set-Content file` re-encodes as the system ANSI codepage, so every dash
 and accent comes back double-encoded — and the file still opens, still builds, and only shows up
-as mojibake later. `arquitectura.md`, `ISA.md` and half the comments in this repo are full of both.
+as mojibake later. `ISA.md`, the docs and the comments are full of dashes, and every Spanish string a
+screen shows is full of accents.
 
 The damage is done on the read, so it is not only files going back to disk: `Get-Content -Raw`
-handed to a program is the same corruption, and it lands somewhere no diff will ever show it. A
-ClickUp description written that way reached the board double-encoded while the same text sent
-from `bash` with `"$(cat file)"` arrived intact.
+handed to a program is the same corruption, and it lands somewhere no diff will ever show it. Text
+handed to a program that way arrives double-encoded, while the same text sent from `bash` with
+`"$(cat file)"` arrives intact.
 
 Use `[System.IO.File]::ReadAllText` and `::WriteAllText`, which are byte-faithful and default to
 UTF-8, or the editor, or the Bash tool. Never `Get-Content` for text that has to survive.

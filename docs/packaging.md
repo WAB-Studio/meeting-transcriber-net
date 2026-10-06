@@ -1,12 +1,13 @@
 # Packaging
 
 Building, signing and handing out the MSIX. `arquitectura.md` §11 is the design this serves —
-*MSIX firmado ──sideload──► alpha* — and this is the command that makes its first row real.
+*signed MSIX ──sideload──► alpha* — and this is the command that makes its first row real.
 
-**Everything up to and including §3 has been run in this repository and is written from what it
-did. §4 has not been run by anybody**, and that is not an oversight: running it needs a machine
-that did not build the package, which is #151. Read §4 as the best account there is and #4's own
-warning as the reason to read it carefully.
+**§1 to §3 have been run in this repository and are written from what they did: the package has
+been built and installed on the machine that built it. §4 — handing it to another machine — has not
+been run by anybody**, because running it needs a machine that did not build the package, which is
+#151, open. Read §4 as the best account there is and its own warning as the reason to read it
+carefully.
 
 ## What this produces
 
@@ -16,8 +17,8 @@ administrator rights, on a machine that already trusts the certificate.
 
 Beside the window it carries the product's two other faces — `meeting-transcriber` and
 `meeting-transcriber-mcp` — which the manifest declares an app execution alias over, so installing
-should put each on that user's `PATH`. *Should*: nobody has installed a build and typed either name,
-and that run is what ISC-113 is still waiting on. §3.1 says how they get inside.
+should put each on that user's `PATH`. *Should*: that an installed build answers to either name is
+what ISC-113, still open, waits on. §3.1 says how they get inside.
 
 **The Windows App SDK is not inside it.** The package's manifest declares
 
@@ -62,9 +63,9 @@ problem. Either pass `-NotAfter (Get-Date).AddYears(5)` or expect to make anothe
 note that a package signed by a *different* certificate needs its `.cer` trusted again on every
 machine that has one installed.
 
-A machine may already carry a `CN=pc` certificate that is not this one. This repository's own
-machine had an Encrypting File System certificate under that subject, which the packaging build will
-not sign with. Check the usage, not the subject:
+A machine may already carry a `CN=pc` certificate that is not this one — an Encrypting File System
+certificate under that subject is not one the packaging build will sign with. Check the usage, not
+the subject:
 
 ```powershell
 Get-ChildItem Cert:\CurrentUser\My |
@@ -122,19 +123,19 @@ down in `win-x64.pubxml` looks like the obvious fix. It is not: that profile is 
 *ordinary* `dotnet build`, because the csproj names it in `<PublishProfile>`, and putting either
 switch in it turns every build of this project red. The comment in
 `src/MeetingTranscriber.App/Properties/PublishProfiles/win-x64.pubxml` says what each one did and
-what belongs in that file instead. What forgetting them costs now is one command, not an alpha
+what belongs in that file instead. What forgetting them costs is one command, not an alpha
 handed out: the section below fails on a package that is not there, and `The_package_is_signed`
 fails on one that is not signed. **That run, and nothing in the build, is where the refusal over a
 forgotten switch lives**, and it is settled rather than open: a target in the project would have to
 guess which builds were meant to be signed, because the certificate is on this line precisely as a
 fact about the machine typing it, and CI runs neither switch.
 
-**`dotnet publish` is what produced the package here**, on 2026-09-11, with the Windows SDK MSIX
-build tools that come in through the Windows App SDK package — no Developer PowerShell, no
-`msbuild`, nothing installed by hand. The single-project MSIX targets have historically wanted full
-MSBuild, so `msbuild /t:Publish` with the same `-p:` switches is what to reach for if this stops
-working; it was not needed and has not been run in this repository. If you ever have to use it,
-change this paragraph rather than leaving both here as equally good.
+**`dotnet publish` produces the package**, with the Windows SDK MSIX build tools that come in
+through the Windows App SDK package — no Developer PowerShell, no `msbuild`, nothing installed by
+hand. The single-project MSIX targets have historically wanted full MSBuild, so `msbuild /t:Publish`
+with the same `-p:` switches is the fallback if `dotnet publish` stops working; it has never been
+run in this repository. If it ever has to be used, change this paragraph rather than leaving both
+here as equally good.
 
 The package lands under `src/MeetingTranscriber.App/AppPackages/`, in a folder named for the version
 and architecture, beside the `.cer`, an `Install.ps1`, `Add-AppDevPackage.ps1` and `Dependencies/`.
@@ -144,8 +145,9 @@ Three warnings come out of that command and all three are expected:
 
 - **APPX0105** — *cannot import the key file, it may be password protected* — and **APPX0107** —
   *the certificate specified is not valid for signing*. Both come from a validation pass that reads
-  the `.pfx` without the password; the signing itself then succeeds with it. The package that came
-  out of the run above is signed, and by whom is not something to take on trust or read by hand:
+  the `.pfx` without the password; the signing itself then succeeds with it. A package
+  that comes out of the command is signed, and by whom is not something to take on trust or read by
+  hand:
   `PackagedAppTests.The_package_is_signed` decodes the PKCS#7 inside `AppxSignature.p7x` and holds
   the signer's subject against `<Identity Publisher>`, which is the comparison Windows makes on the
   receiving end and answers by naming neither side. Run it in the same breath — the section below —
@@ -264,12 +266,12 @@ take. Open another one before concluding anything. **This is the run ISC-113 wai
 it is really for is an MCP client starting `meeting-transcriber-mcp` by name over stdio, which is a
 different launch from typing it: record what both did.
 
-**Do not run this on a development machine that drives the UI probe.** A Release package carries
-`<Identity Name>` `7feb8c95-4553-46f0-a036-6574f4cd7cb4` — the same name a checkout without a
-`PackageIdentity.props` registers under. Installing here replaces that registration, moves the
-install location out of the checkout, and every probe verb then refuses because `docs/ui-probe.md`'s
-own check no longer finds the application under the working directory. `docs/ui-probe.md` says how
-to register it back.
+**On a development machine that drives the UI probe, give the checkout a `PackageIdentity.props`
+suffix first** (`docs/ui-probe.md`, *Once per machine*). A Release package carries `<Identity Name>`
+`7feb8c95-4553-46f0-a036-6574f4cd7cb4` — the same name a checkout without one registers under — so
+installing it there replaces that registration, moves the install location out of the checkout, and
+every probe verb then refuses because `docs/ui-probe.md`'s own check no longer finds the application
+under the working directory. `docs/ui-probe.md` says how to register it back.
 
 **Smart App Control is on in a clean Windows 11 install, and it can refuse this package whatever the
 certificate says.** It judges reputation, not signatures, and a publisher with none has nothing to
